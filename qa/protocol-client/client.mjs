@@ -27,7 +27,7 @@ export function prepareNative(args, scenarioUrl, prefix = 'packet') {
   const port = Number(args.get('port') ?? 65490);
   assert(['26.1.2', '26.2', '26.3'].includes(version), 'Validate another exact version before adding its QA adapter');
   assert(Number.isInteger(port) && port > 0 && port < 65536, 'Invalid loopback port');
-  const resultDir = path.join(root, '.qa', 'protocol-cache', 'results', `${new Date().toISOString().replaceAll(':', '-')}-${prefix}-${process.pid}-${version}`);
+  const resultDir = path.join(args.get('results') ? path.resolve(args.get('results')) : path.join(root, '.qa', 'protocol-cache', 'results'), `${new Date().toISOString().replaceAll(':', '-')}-${prefix}-${process.pid}-${version}`);
   // Per-run classes prevent concurrent platform scenarios from racing javac.
   const classes = path.join(resultDir, 'classes');
   mkdirSync(classes, { recursive: true });

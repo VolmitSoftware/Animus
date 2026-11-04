@@ -76,7 +76,7 @@ final class CombatFixture implements Listener, AutoCloseable {
                         new Vec3(at.getX(), at.getY(), at.getZ())), 0.6, 1.8, 20);
                 state.spawn();
                 BukkitCombatBridge bridge = new BukkitCombatBridge(plugin, exactMinecraftVersion(), false,
-                        CombatLimits.DEFAULT, (action, npc, realEntity) -> true);
+                        CombatLimits.DEFAULT, (action, npc, realEntity) -> true, BukkitCombatBridge.Defense.NONE);
                 try {
                     bridge.register(state, () -> true, snapshot -> {}).control(zombie, MobProfile.DEFAULT);
                     bridge.close();
@@ -89,7 +89,7 @@ final class CombatFixture implements Listener, AutoCloseable {
                             "Bridge close did not revoke registrations/counts: rejected=" + rejected
                                     + " mobs=" + bridge.controlledMobCount() + " npcs=" + bridge.combatantCount());
                     try (BukkitCombatBridge fresh = new BukkitCombatBridge(plugin, exactMinecraftVersion(), false,
-                            CombatLimits.DEFAULT, (action, npc, realEntity) -> true)) {
+                            CombatLimits.DEFAULT, (action, npc, realEntity) -> true, BukkitCombatBridge.Defense.NONE)) {
                         fresh.register(state, () -> true, snapshot -> {}).control(zombie, MobProfile.DEFAULT);
                         require(fresh.controlledMobCount() == 1, "Closed bridge retained the global mob claim");
                         fresh.close();

@@ -51,6 +51,8 @@ public interface NpcRuntime extends AutoCloseable {
     Optional<String> selection(UUID viewer);
     void select(UUID viewer, String id);
     Optional<ActiveNpc> active(UUID npc);
+    /** Also finds a combat NPC that has died while its definition stays spawned; without combat it is {@link #active}. */
+    default Optional<ActiveNpc> combatant(UUID npc) { return active(npc); }
     String navigationStatus(String id);
     PlayerAccess players();
 

@@ -18,6 +18,23 @@ class RideSessionTest {
         return session;
     }
 
+    @Test void lostConnectionEndsTheRideWithoutMovingTheRider() {
+        RideSession closed = riding(0);
+        ControlInbox inbox = new ControlInbox(0);
+        inbox.close(ControlInbox.CONNECTION_CLOSED);
+        RideSession.Step step = closed.tick(STEP, anchor, 0, 0, 0, inbox.snapshot(), CLEAR);
+        assertEquals(RideSession.Action.STOP, step.action());
+        assertTrue(RideSession.leavesRiderInPlace(step.reason()), step.reason());
+
+        RideSession stale = riding(0);
+        ControlInbox silent = new ControlInbox(0);
+        RideSession.Step staleStep = stale.tick(ControlLoop.LIVENESS_NANOS + STEP, anchor, 0, 0, 0, silent.snapshot(), CLEAR);
+        assertEquals(RideSession.Action.STOP, staleStep.action());
+        assertTrue(RideSession.leavesRiderInPlace(staleStep.reason()), staleStep.reason());
+
+        for (String placed : new String[] {"session-retired", "shift", "expired", "terrain-unavailable", "attach-timeout"})
+            assertFalse(RideSession.leavesRiderInPlace(placed), placed);
+    }
     @Test void beginsAttachingAndCannotSteerUntilTheAttachPacketCompleted() {
         ControlInbox inbox = new ControlInbox(0); inbox.offer(FORWARD, 0);
         RideSession session = new RideSession(UUID.randomUUID(), UUID.randomUUID(), anchor, SETTINGS, false, 0);
