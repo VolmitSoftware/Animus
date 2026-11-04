@@ -6,7 +6,7 @@ import art.arcane.animus.bukkit.navigation.NavigationLimits;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.packet.NativeViewerEpoch;
 import art.arcane.animus.core.AnimusRuntime;
-import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.navigation.MovementProfile;
@@ -167,7 +167,7 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
         String state = view.live() ? "active" : phase == NpcOwnership.Phase.DORMANT ? "waiting for its chunk to load or a player nearby" : phase.name().toLowerCase(java.util.Locale.ROOT);
         return "Runtime " + id + ": " + state + "; uuid=" + actor.uuid + "; revision=" + definition.revision() + "; owner=" + phase.name().toLowerCase(java.util.Locale.ROOT)
                 + "; health=" + view.snapshot().health() + "; position=" + view.snapshot().position().point() + "; navigation=" + view.navigation()
-                + (view.type().equals("minecraft:player") ? "" : "; nameplate=unavailable for non-player bodies")
+                + NpcPresentation.describe(view.spec(), view.equipment().size(), packets.presentationAvailable())
                 + (view.mount() ? "; mount=" + MOUNTS_UNAVAILABLE : "") + (view.ride() ? "; ride=" + RIDING_UNAVAILABLE : "")
                 + (actor.error == null ? "" : "; last-valid-retained=true; " + actor.error);
     }
@@ -221,7 +221,7 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
     @Override public void followRoute(String id, String route) { navigable(id).followRoute(route); }
     @Override public CompletableFuture<Void> awaitRoute(String id) { return navigable(id).awaitRoute(); }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) { navigable(id).setAppearance(name, skin, reset); }
-    @Override public void setEquipment(String id, BehaviorPlatform.EquipmentSlot slot, ItemStack item) { navigable(id).setEquipment(slot, item); }
+    @Override public void setEquipment(String id, EquipmentSlot slot, ItemStack item) { navigable(id).setEquipment(slot, item); }
 
     private RegionActor navigable(String id) {
         RegionActor actor = owned(id);

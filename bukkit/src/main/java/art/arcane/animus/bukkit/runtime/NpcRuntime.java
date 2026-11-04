@@ -1,6 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
-import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -68,7 +68,7 @@ public interface NpcRuntime extends AutoCloseable {
     void followRoute(String id, String route);
     CompletableFuture<Void> awaitRoute(String id);
     void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset);
-    void setEquipment(String id, BehaviorPlatform.EquipmentSlot slot, ItemStack item);
+    void setEquipment(String id, EquipmentSlot slot, ItemStack item);
 
     @Override void close();
 }

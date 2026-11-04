@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 3;
+    public static final int CONVERTER_VERSION = 4;
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     public record Preview(String id, Path directory, int records, int valid, int skins, JsonObject summary) {
         public Preview { summary = summary.deepCopy(); }
@@ -125,7 +125,14 @@ public final class CitizensImporter {
                     position.addProperty("world", world);
                     for (String coordinate : List.of("x", "y", "z", "yaw", "pitch"))
                         position.add(coordinate, location.has(coordinate) ? location.get(coordinate).deepCopy() : (Set.of("yaw", "pitch").contains(coordinate) ? new JsonPrimitive(0) : JsonNull.INSTANCE));
+                    CitizensPresentation.Result presentation = CitizensPresentation.map(definition.get("type").getAsString(), reviewed, record);
+                    presentation.facing().ifPresent((CitizensPresentation.Facing facing) -> {
+                        position.addProperty("yaw", facing.yaw());
+                        position.addProperty("pitch", facing.pitch());
+                    });
                     definition.add("position", position);
+                    for (Map.Entry<String, JsonElement> field : presentation.fields().entrySet()) definition.add(field.getKey(), field.getValue());
+                    for (String warning : presentation.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
                     JsonObject modules = new JsonObject();
                     if (traits.has("sentinel")) {
                         SentinelMapping.Result combat = SentinelMapping.convertRaw(reviewed.get("sentinel"), reviewed.get("equipment"), references);
@@ -158,7 +165,8 @@ public final class CitizensImporter {
                     JsonObject report = new JsonObject();
                     report.addProperty("citizensId", numeric);
                     JsonObject fields = new JsonObject();
-                    classify(record, "", fields);
+                    classify(record, "", fields, presentation.converted());
+                    report.add("presentationWarnings", GSON.toJsonTree(presentation.warnings()));
                     report.addProperty("fieldPathFormat", "json-pointer");
                     report.add("fields", fields);
                     report.add("worldRemaps", worldRemaps);
@@ -189,7 +197,7 @@ public final class CitizensImporter {
                 JsonObject sourceFields = new JsonObject();
                 JsonObject sourceMetadata = new JsonObject();
                 root.entrySet().stream().filter(e -> !e.getKey().equals("npc")).forEach(e -> sourceMetadata.add(e.getKey(), e.getValue().deepCopy()));
-                if (!sourceMetadata.isEmpty()) classify(sourceMetadata, "", sourceFields);
+                if (!sourceMetadata.isEmpty()) classify(sourceMetadata, "", sourceFields, Set.of());
                 summary.add("sourceFields", sourceFields);
                 summary.add("idMap", mapping);
                 summary.add("documents", manifest);
@@ -330,14 +338,15 @@ public final class CitizensImporter {
         throw new IOException("Unsupported YAML scalar type: " + value.getClass().getSimpleName() + "; original input was not changed");
     }
 
-    private static void classify(JsonElement value, String path, JsonObject fields) {
+    private static void classify(JsonElement value, String path, JsonObject fields, Set<String> converted) {
         if (value.isJsonObject() && !value.getAsJsonObject().isEmpty()) {
-            value.getAsJsonObject().entrySet().forEach(e -> classify(e.getValue(), path + "/" + pointer(e.getKey()), fields));
+            value.getAsJsonObject().entrySet().forEach(e -> classify(e.getValue(), path + "/" + pointer(e.getKey()), fields, converted));
         } else if (value.isJsonArray() && !value.getAsJsonArray().isEmpty()) {
-            for (int i = 0; i < value.getAsJsonArray().size(); i++) classify(value.getAsJsonArray().get(i), path + "/" + i, fields);
+            for (int i = 0; i < value.getAsJsonArray().size(); i++) classify(value.getAsJsonArray().get(i), path + "/" + i, fields, converted);
         } else {
             Status status = Status.UNSUPPORTED_PRESERVED;
-            if (Set.of("/uuid", "/name", "/traits/type", "/traits/location/world", "/traits/location/x", "/traits/location/y", "/traits/location/z", "/traits/location/yaw", "/traits/location/pitch").contains(path)) status = Status.CONVERTED;
+            if (converted.contains(path)) status = Status.CONVERTED;
+            else if (Set.of("/uuid", "/name", "/traits/type", "/traits/location/world", "/traits/location/x", "/traits/location/y", "/traits/location/z", "/traits/location/yaw", "/traits/location/pitch").contains(path)) status = Status.CONVERTED;
             else if (path.startsWith("/traits/")) {
                 String[] parts = path.substring(8).split("/", 3);
                 String trait = parts[0];

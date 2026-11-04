@@ -6,7 +6,7 @@ import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
 import art.arcane.animus.bukkit.navigation.NavigationPlan;
 import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
-import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.navigation.BlockPos;
@@ -43,9 +43,9 @@ final class RegionActor implements RegionOwner.Body {
     /** What the definition asks for. A null spec means the definition was removed or despawned. */
     record Desired(DefinitionSpec spec, NativePacketAdapter.Skin skin) {}
     /** Immutable state for viewers, commands and behaviors on other threads. */
-    record Publication(boolean live, VirtualNpcState.Snapshot snapshot, String type, String name, NativePacketAdapter.Skin skin,
+    record Publication(boolean live, VirtualNpcState.Snapshot snapshot, DefinitionSpec spec, String type, String name, NativePacketAdapter.Skin skin,
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
-                       Map<BehaviorPlatform.EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
+                       Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision) {}
     private static final int NAVIGATION_CELLS = 2048;
     private final RegionNpcRuntime host;
@@ -84,7 +84,7 @@ final class RegionActor implements RegionOwner.Body {
     private String displayName;
     private NativePacketAdapter.Skin displaySkin;
     private AppearanceRead appearanceRead;
-    private final EnumMap<BehaviorPlatform.EquipmentSlot, ItemStack> equipment = new EnumMap<>(BehaviorPlatform.EquipmentSlot.class);
+    private final EnumMap<EquipmentSlot, ItemStack> equipment = new EnumMap<>(EquipmentSlot.class);
     private ChunkPosition anchored;
 
     RegionActor(RegionNpcRuntime host, Desired desired, boolean announced) {
@@ -107,7 +107,7 @@ final class RegionActor implements RegionOwner.Body {
         mount = MountDeclaration.parse(spec.definition().json()).isPresent();
         yaw = spec.yaw(); pitch = spec.pitch(); onGround = true;
         displayName = spec.name(); displaySkin = skin;
-        equipment.clear(); equipmentRevision++; appearance++; pose++;
+        equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec)); equipmentRevision++; appearance++; pose++;
         waypoints = WaypointSettings.parse(spec.definition()).map(WaypointProgress::new).orElse(null);
         routeReadWanted = waypoints == null && routeSource != null;
     }
@@ -251,9 +251,7 @@ final class RegionActor implements RegionOwner.Body {
         return routeWatch;
     }
     void setAppearance(Optional<String> name, Optional<String> reference, boolean reset) {
-        boolean player = spec.type().equals("minecraft:player");
-        if ((name.isPresent() || reference.isPresent()) && !player) throw new IllegalArgumentException("Names and skins display only on player bodies");
-        if (name.isPresent()) NativePacketAdapter.validateProfileName(name.get());
+        NpcPresentation.validateChange(spec, name, reference);
         cancelAppearanceRead();
         if (reset) { displayName = spec.name(); displaySkin = skin; }
         else {
@@ -263,7 +261,7 @@ final class RegionActor implements RegionOwner.Body {
         appearance++;
         publish(true);
     }
-    void setEquipment(BehaviorPlatform.EquipmentSlot slot, ItemStack item) {
+    void setEquipment(EquipmentSlot slot, ItemStack item) {
         if (!host.packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
         equipment.put(slot, item.clone());
         equipmentRevision++;
@@ -500,10 +498,10 @@ final class RegionActor implements RegionOwner.Body {
         if (previous != null && previous.live() == presented && previous.snapshot().equals(snapshot) && previous.appearance() == appearance
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
                 && Objects.equals(previous.navigation(), navigation())) return;
-        Map<BehaviorPlatform.EquipmentSlot, ItemStack> items = new EnumMap<>(BehaviorPlatform.EquipmentSlot.class);
+        Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         equipment.forEach((slot, item) -> items.put(slot, item.clone()));
-        publication = new Publication(presented, snapshot, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
-                Map.copyOf(items), equipmentRevision, ids, navigation(), arrivals, ride != null, mount, ++revision);
+        publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
+                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision);
     }
     private String navigation() {
         return navigationStatus + (routeSource == null ? "" : "; route-source=" + routeSource) + (routeError == null ? "" : "; route-error=" + routeError);

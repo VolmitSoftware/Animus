@@ -155,10 +155,10 @@ final class RegionViewer {
     }
     private void spawn(RegionActor actor, RegionActor.Publication now) {
         try {
-            NativePacketAdapter.Body body = host.packets.createBody(actor.uuid, now.type(), now.name(), now.skin());
+            NativePacketAdapter.Body body = NpcPresentation.body(host.packets, now.spec(), now.name(), now.skin());
             Presented presented = new Presented(actor, body, now);
             visible.put(actor.uuid, presented); presentationOrder.addLast(presented);
-            nativeIds += now.ids(); pendingSpawns++; shown.incrementAndGet();
+            nativeIds += presented.ids; pendingSpawns++; shown.incrementAndGet();
             host.packets.spawn(player, body, pose(now)).whenComplete((nothing, failure) -> enqueue(() -> {
                 if (!host.current(this)) return;
                 presented.spawnFinished = true; pendingSpawns--;
@@ -269,7 +269,7 @@ final class RegionViewer {
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping;
         long pose, equipment;
         Presented(RegionActor actor, NativePacketAdapter.Body body, RegionActor.Publication now) {
-            this.actor = actor; this.body = body; appearance = now.appearance(); ids = now.ids(); pose = now.pose();
+            this.actor = actor; this.body = body; appearance = now.appearance(); ids = body.entityIds().length; pose = now.pose();
             equipment = now.equipment().isEmpty() ? now.equipmentRevision() : -1;
         }
     }

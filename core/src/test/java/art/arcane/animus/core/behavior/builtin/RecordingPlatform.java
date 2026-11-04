@@ -1,6 +1,7 @@
 package art.arcane.animus.core.behavior.builtin;
 
 import art.arcane.animus.api.NpcHandle;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.List;
