@@ -94,7 +94,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     }
 
     @Override public int say(NpcHandle npc, Audience audience, String text) {
-        NpcRuntime.ActiveNpc active = require(npc);
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
         String line = active.name() + ": " + text;
         return deliver(audience, active.state().position(), false, viewer -> viewer.sendMessage(line));
     }
@@ -184,12 +184,12 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     }
 
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) {
-        Location at = bodyCenter(require(npc));
+        Location at = bodyCenter(requireVoice(npc));
         return deliver(audience, position(at), true, viewer -> viewer.playSound(at, sound.sound(), sound.volume(), sound.pitch()));
     }
 
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
-        Location at = bodyCenter(require(npc));
+        Location at = bodyCenter(requireVoice(npc));
         Particle particle = particle(effect.particle());
         return deliver(audience, position(at), true, viewer -> viewer.spawnParticle(particle, at, effect.count(), effect.spread(), effect.spread(), effect.spread()));
     }
@@ -209,6 +209,11 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
 
     private NpcRuntime.ActiveNpc require(NpcHandle npc) {
         return living.active(npc.uuid()).orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "npc-inactive", "The NPC is not active"));
+    }
+    /** Dialogue, sounds and particles also come from a combat NPC that has just died, so its death routine can announce it. */
+    private NpcRuntime.ActiveNpc requireVoice(NpcHandle npc) {
+        return living.active(npc.uuid()).or(() -> living.combatant(npc.uuid()))
+                .orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "npc-inactive", "The NPC is not active"));
     }
     private static CapabilityRefusal offline() {
         return new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "player-offline", "The triggering player is no longer online");

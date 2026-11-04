@@ -60,6 +60,7 @@ public final class NativeProtocolClient {
     private volatile boolean closed;
     private volatile boolean loaded;
     private volatile boolean tickHeartbeat = true;
+    private volatile int ownEntity, ridingVehicle;
     private volatile boolean expectedDisconnect;
     private int positionReminder;
     private Vec3 queuedMove;
@@ -69,7 +70,8 @@ public final class NativeProtocolClient {
         "add_entity", "player_info_update", "player_info_remove", "remove_entities",
         "entity_position_sync", "teleport_entity", "player_position", "system_chat", "respawn",
         "keep_alive", "ping", "disconnect", "chunk_batch_finished", "set_entity_data",
-        "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health");
+        "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health",
+        "login", "sound", "level_particles", "boss_event", "move_entity_rot", "move_entity_pos_rot");
 
     private NativeProtocolClient(int port, String username) throws Exception {
         this.username = username;
@@ -168,7 +170,11 @@ public final class NativeProtocolClient {
         // client ticks even when stationary. Use only acknowledged coordinates.
         // Serialize with teleport ACKs and reset their timer: 26.3 permits one
         // hasPosition movement packet per client tick.
-        if (queuedMove != null) {
+        // Exact LocalPlayer.tick: a passenger sends rotation every tick and never a position.
+        if (ridingVehicle != 0) {
+            send(new ServerboundMovePlayerPacket.Rot(position.yRot(), position.xRot(), false, false));
+            positionReminder = 0;
+        } else if (queuedMove != null) {
             Vec3 feet = queuedMove; queuedMove = null;
             position = new PositionMoveRotation(feet, Vec3.ZERO, position.yRot(), position.xRot());
             send(new ServerboundMovePlayerPacket.Pos(feet, true, false));
@@ -259,7 +265,7 @@ public final class NativeProtocolClient {
             }
             Vec3 v = accepted.position();
             event("position", "x", v.x, "y", v.y, "z", v.z, "yaw", accepted.yRot(), "pitch", accepted.xRot());
-        } else if (packet instanceof ClientboundSystemChatPacket p) event("chat", "text", p.content().getString());
+        } else if (packet instanceof ClientboundSystemChatPacket p) event("chat", "text", p.content().getString(), "clicks", clicks(p.content()));
         else if (packet instanceof ClientboundSetHealthPacket p) event("health", "health", p.getHealth(), "food", p.getFood(), "saturation", p.getSaturation());
         else if (packet instanceof ClientboundAddEntityPacket p) event("spawn", "id", p.getId(), "uuid", p.getUUID().toString(), "type", BuiltInRegistries.ENTITY_TYPE.getKey(p.getType()).toString(), "x", p.getX(), "y", p.getY(), "z", p.getZ());
         else if (packet instanceof ClientboundPlayerInfoUpdatePacket p) {
@@ -278,7 +284,25 @@ public final class NativeProtocolClient {
         else if (packet instanceof ClientboundRemoveEntitiesPacket p) event("remove", "ids", ProtocolRevision.removed(p));
         else if (packet instanceof ClientboundEntityPositionSyncPacket p) emitMove(p.id(), ProtocolRevision.position(p));
         else if (packet instanceof ClientboundTeleportEntityPacket p) emitMove(p.id(), p.change().position());
-        else if (packet instanceof ClientboundSetPassengersPacket p) event("passengers", "vehicle", p.getVehicle(), "ids", p.getPassengers());
+        else if (packet instanceof ClientboundSetPassengersPacket p) {
+            synchronized (this) {
+                boolean aboard = Arrays.stream(p.getPassengers()).anyMatch(id -> id == ownEntity);
+                if (aboard) ridingVehicle = p.getVehicle();
+                else if (ridingVehicle == p.getVehicle()) ridingVehicle = 0;
+            }
+            event("passengers", "vehicle", p.getVehicle(), "ids", p.getPassengers(), "own", ownEntity);
+        }
+        else if (packet instanceof ClientboundLoginPacket p) { ownEntity = p.playerId(); event("login", "id", ownEntity); }
+        else if (packet instanceof ClientboundSetEquipmentPacket p) {
+            Map<String, Object> slots = new LinkedHashMap<>();
+            for (var pair : p.getSlots()) slots.put(pair.getFirst().getName(), pair.getSecond().isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(pair.getSecond().getItem()).toString());
+            event("equipment", "id", p.getEntity(), "slots", slots);
+        }
+        else if (packet instanceof ClientboundSoundPacket p) event("sound", "sound", p.getSound().unwrapKey().map(key -> key.identifier().toString()).orElse(p.getSound().value().location().toString()), "volume", p.getVolume(), "pitch", p.getPitch());
+        else if (packet instanceof ClientboundLevelParticlesPacket p) event("particle", "particle", BuiltInRegistries.PARTICLE_TYPE.getKey(p.particle().getType()).toString(), "count", p.count());
+        else if (packet instanceof ClientboundBossEventPacket) event("boss_event");
+        else if (packet instanceof ClientboundRotateHeadPacket p) event("head", "id", reflectedId(p), "yaw", p.getYHeadRot());
+        else if (packet instanceof ClientboundMoveEntityPacket p && p.hasRotation()) event("rotation", "id", reflectedId(p), "yaw", p.getYRot(), "pitch", p.getXRot());
         else if (packet instanceof ClientboundSetEntityDataPacket p) {
             List<Map<String, Object>> fields = new ArrayList<>();
             for (var item : p.packedItems()) {
@@ -294,6 +318,22 @@ public final class NativeProtocolClient {
             event("expected_disconnect","reason",p.reason().getString());close();
         }
         else if (packet instanceof ClientboundLoginDisconnectPacket p) throw new IOException("Login disconnected: " + p.reason().getString());
+    }
+
+    private static List<String> clicks(net.minecraft.network.chat.Component root) {
+        List<String> found = new ArrayList<>();
+        root.visit((style, text) -> {
+            if (style.getClickEvent() instanceof net.minecraft.network.chat.ClickEvent.RunCommand run) found.add(run.command());
+            return Optional.empty();
+        }, net.minecraft.network.chat.Style.EMPTY);
+        return found;
+    }
+
+    private static int reflectedId(Object packet) throws ReflectiveOperationException {
+        for (Class<?> type = packet.getClass(); type != null; type = type.getSuperclass())
+            for (var field : type.getDeclaredFields())
+                if (field.getName().equals("entityId")) { field.setAccessible(true); return field.getInt(packet); }
+        throw new NoSuchFieldException("entityId");
     }
 
     private void emitMove(int id, Vec3 v) { event("move", "id", id, "x", v.x, "y", v.y, "z", v.z); }

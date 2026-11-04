@@ -474,12 +474,13 @@ public final class NativePacketAdapter implements AutoCloseable {
             return (visible != null && visible != presentation) || (spawning != null && spawning != presentation);
         }
     }
-    private void retire(Session session) {
+    private void retire(Session session) { retire(session, "session-retired"); }
+    private void retire(Session session, String reason) {
         Set<Body> bodies = new HashSet<>();
         synchronized (session) {
             if (!session.active.compareAndSet(true, false)) return;
             ControlSubscription control = session.control.getAndSet(null);
-            if (control != null) control.inbox.close("session-retired");
+            if (control != null) control.inbox.close(reason);
             session.visible.values().forEach(value -> bodies.add(value.body));
             session.spawning.values().forEach(value -> bodies.add(value.body));
             session.visible.clear(); session.spawning.clear(); session.passengers.clear();
@@ -533,7 +534,7 @@ public final class NativePacketAdapter implements AutoCloseable {
             } finally { ReferenceCountUtil.release(message); }
         }
         @Override public void channelInactive(ChannelHandlerContext context) throws Exception {
-            if (sessions.remove(session.viewerId, session)) retire(session);
+            if (sessions.remove(session.viewerId, session)) retire(session, ControlInbox.CONNECTION_CLOSED);
             context.fireChannelInactive();
         }
     }
