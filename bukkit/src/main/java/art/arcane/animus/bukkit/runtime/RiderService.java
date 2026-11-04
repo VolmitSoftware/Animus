@@ -171,7 +171,7 @@ final class RiderService implements AutoCloseable {
         Vec3 position = npc.position().point();
         ControlInbox.Snapshot input = ride.input.latest();
         RideSession.Step step = ride.session.tick(now, position, ride.vehicle.yaw(), ride.player.getLocation().getYaw(), input, probe(world, ride.vehicle));
-        if (step.action() == RideSession.Action.STOP) { end(ride, step.reason(), Exit.RESTORE_POSITION); return; }
+        if (step.action() == RideSession.Action.STOP) { end(ride, step.reason(), RideSession.leavesRiderInPlace(step.reason()) ? Exit.LEAVE_POSITION : Exit.RESTORE_POSITION); return; }
         if (ride.session.state() != RideSession.State.RIDING) return;
         if (!step.position().equals(position) || step.yaw() != ride.vehicle.yaw()) ride.vehicle.commit(step.position(), step.yaw());
         place(ride);
