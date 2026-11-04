@@ -1167,7 +1167,8 @@ async function dragon() {
     await go(0, 61, 21.5);
     await owner.look(0, 61.5, 18.5);
     await delay(300);
-    assert.equal(await strike(body.id + 9), false);
+    // body + 9 is now the name text display, which identifies the same NPC; forge an id no entity uses.
+    assert.equal(await strike(2_000_000), false);
   });
   await check('moving dragon uses flight phase and returns to sitting', async () => {
     await go(0, 61, -20);
