@@ -1,0 +1,87 @@
+package art.arcane.animus.core.npc;
+
+import art.arcane.animus.core.storage.JsonDocuments;
+import com.google.gson.*;
+import java.io.IOException;
+import java.util.*;
+
+/** Immutable persisted definition. Unknown extension data is deliberately retained. */
+public final class NpcDefinition {
+    private final JsonObject data;
+    private NpcDefinition(JsonObject data) { this.data = data.deepCopy(); }
+
+    public static NpcDefinition parse(String json) throws IOException {
+        JsonObject object = JsonDocuments.object(json);
+        List<String> errors = validate(object);
+        if (!errors.isEmpty()) throw new IOException(String.join("; ", errors));
+        return new NpcDefinition(object);
+    }
+
+    public static List<String> validate(JsonObject object) {
+        List<String> errors = new ArrayList<>();
+        integer(object, "schemaVersion", 1, 1, errors);
+        integer(object, "revision", 1, Long.MAX_VALUE, errors);
+        String uuid = string(object, "uuid", errors);
+        try { if (!UUID.fromString(uuid).toString().equals(uuid)) throw new IllegalArgumentException(); }
+        catch (IllegalArgumentException e) { errors.add("$.uuid: expected canonical UUID"); }
+        for (String key : List.of("id", "group")) {
+            if (!string(object, key, errors).matches("[a-z0-9][a-z0-9_-]{0,63}"))
+                errors.add("$." + key + ": expected 1–64 lowercase letters, digits, _ or -");
+        }
+        string(object, "name", errors);
+        if (!string(object, "type", errors).matches("[a-z0-9_]+:[a-z0-9_/]+"))
+            errors.add("$.type: expected namespace:type");
+        if (!object.has("spawned") || !object.get("spawned").isJsonPrimitive() || !object.getAsJsonPrimitive("spawned").isBoolean())
+            errors.add("$.spawned: expected boolean");
+        if (!object.has("position") || !object.get("position").isJsonObject()) errors.add("$.position: expected object");
+        else {
+            JsonObject position = object.getAsJsonObject("position");
+            List<String> positionErrors = new ArrayList<>();
+            string(position, "world", positionErrors);
+            for (String key : List.of("x", "y", "z", "yaw", "pitch")) {
+                JsonElement value = position.get(key);
+                if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()
+                        || !Double.isFinite(value.getAsDouble()) || Math.abs(value.getAsDouble()) > 30_000_000)
+                    positionErrors.add("$." + key + ": expected finite coordinate within ±30000000");
+            }
+            positionErrors.forEach(e -> errors.add("$.position" + e.substring(1)));
+        }
+        if (object.has("skin") && (!object.get("skin").isJsonPrimitive() || !object.getAsJsonPrimitive("skin").isString()
+                || !object.get("skin").getAsString().matches("[a-f0-9]{64}"))) errors.add("$.skin: expected SHA-256 reference");
+        if (object.has("behaviors")) {
+            if (!object.get("behaviors").isJsonArray()) errors.add("$.behaviors: expected array");
+            else for (JsonElement ref : object.getAsJsonArray("behaviors")) {
+                if (!ref.isJsonPrimitive() || !ref.getAsJsonPrimitive().isString() || !ref.getAsString().matches("[a-z0-9_-]+:[a-z0-9_/-]+"))
+                    errors.add("$.behaviors: expected namespace:id references");
+            }
+        }
+        if (object.has("modules") && !object.get("modules").isJsonObject()) errors.add("$.modules: expected object");
+        return List.copyOf(errors);
+    }
+
+    private static String string(JsonObject data, String key, List<String> errors) {
+        JsonElement value = data.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString() || value.getAsString().isBlank()) {
+            errors.add("$." + key + ": expected nonblank string"); return "";
+        }
+        return value.getAsString();
+    }
+
+    private static void integer(JsonObject object, String key, long min, long max, List<String> errors) {
+        try {
+            JsonElement value = object.get(key);
+            if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) throw new ArithmeticException();
+            long n = value.getAsBigDecimal().longValueExact();
+            if (n < min || n > max) throw new ArithmeticException();
+        } catch (ArithmeticException | NumberFormatException e) { errors.add("$." + key + ": expected integer " + min + ".." + max); }
+    }
+
+    public UUID uuid() { return UUID.fromString(data.get("uuid").getAsString()); }
+    public String id() { return data.get("id").getAsString(); }
+    public String group() { return data.get("group").getAsString(); }
+    public String name() { return data.get("name").getAsString(); }
+    public long revision() { return data.get("revision").getAsLong(); }
+    public String path() { return "npcs/" + group() + "/" + id() + ".json"; }
+    public JsonObject json() { return data.deepCopy(); }
+    public String serialize() { return JsonDocuments.write(data); }
+}

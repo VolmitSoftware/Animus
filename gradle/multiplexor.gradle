@@ -24,7 +24,7 @@ gradle.projectsEvaluated {
             minecraftVersions: minecraftTargets.keySet().toList()
         ]]
     ]]
-    for (String loader : ['fabric', 'forge', 'neoforge']) {
+    for (String loader : (providers.gradleProperty('includeModDistributions').getOrElse('false').toBoolean() ? ['fabric', 'forge', 'neoforge'] : [])) {
         minecraftTargets.each { String minecraft, Map<String, Object> properties ->
             if (loader == 'neoforge' && properties.neoforgeUsesForge) {
                 return

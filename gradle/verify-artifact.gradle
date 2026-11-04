@@ -47,7 +47,7 @@ TaskProvider verification = tasks.register('verifyArtifact') {
             }
             Set<String> classes = new HashSet<>()
             List<String> forbidden = ['org/bukkit/', 'org/spigotmc/', 'io/papermc/', 'net/minecraft/',
-                'com/mojang/', 'net/minecraftforge/', 'net/neoforged/', 'net/fabricmc/', 'art/arcane/volmlib/', 'com/google/gson/']
+                'com/mojang/', 'net/minecraftforge/', 'net/neoforged/', 'net/fabricmc/', 'art/arcane/volmlib/', 'com/google/gson/', 'org/yaml/snakeyaml/']
             archive.entries().each { JarEntry entry ->
                 if (!entry.name.endsWith('.class')) {
                     return
@@ -61,7 +61,7 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                         DataInputStream bytes = new DataInputStream(new ByteArrayInputStream(bytecode))
                         require(bytes.readInt() == -889275714, "invalid class file ${entry.name}")
                         bytes.readUnsignedShort()
-                        int javaVersion = platform == 'bukkit' || classPath.startsWith(namespace + 'core/') ? 17 : (int) target.javaVersion
+                        int javaVersion = platform == 'bukkit' || classPath.startsWith(namespace + 'core/') ? 25 : (int) target.javaVersion
                         require(bytes.readUnsignedShort() == javaVersion + 44, "${entry.name} must target Java ${javaVersion}")
                         String constants = new String(bytecode, StandardCharsets.ISO_8859_1)
                         require(!constants.contains('art/arcane/volmlib/') && !constants.contains('com/google/gson/'), "unrelocated library reference in ${entry.name}")
@@ -113,7 +113,7 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                     }
                 }
                 require(fields.name == animus.projectName && fields.version == animus.projectVersion && fields.main == entrypoint, 'Bukkit identity does not match build properties')
-                require(fields['api-version'] == '1.20' && fields['folia-supported'] == 'true', 'incorrect Bukkit API or Folia declaration')
+                require(fields['api-version'] == '26.1.2' && fields['folia-supported'] == 'true', 'incorrect Bukkit API or Folia declaration')
                 require(Pattern.compile('(?m)^  ' + Pattern.quote(animus.projectId) + ':\\s*$').matcher(metadata).find(), 'missing configured Bukkit command')
             } else {
                 Closure<List<Map<String, String>>> sections = { String section ->
