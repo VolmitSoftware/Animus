@@ -89,7 +89,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     }
 
     @Override public int say(NpcHandle npc, Audience audience, String text) {
-        PersistedNpcService.ActiveNpc active = require(npc);
+        PersistedNpcService.ActiveNpc active = requireVoice(npc);
         List<Player> viewers = viewers(audience, location(active), false);
         String line = active.name() + ": " + text;
         for (Player viewer : viewers) viewer.sendMessage(line);
@@ -173,14 +173,14 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     }
 
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) {
-        Location at = bodyCenter(require(npc));
+        Location at = bodyCenter(requireVoice(npc));
         List<Player> viewers = viewers(audience, at, true);
         for (Player viewer : viewers) viewer.playSound(at, sound.sound(), sound.volume(), sound.pitch());
         return viewers.size();
     }
 
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
-        Location at = bodyCenter(require(npc));
+        Location at = bodyCenter(requireVoice(npc));
         Particle particle = particle(effect.particle());
         List<Player> viewers = viewers(audience, at, true);
         for (Player viewer : viewers) viewer.spawnParticle(particle, at, effect.count(), effect.spread(), effect.spread(), effect.spread());
@@ -202,6 +202,11 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
 
     private PersistedNpcService.ActiveNpc require(NpcHandle npc) {
         return living.active(npc.uuid()).orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "npc-inactive", "The NPC is not active"));
+    }
+    /** Dialogue, sounds and particles also come from a combat NPC that has just died, so its death routine can announce it. */
+    private PersistedNpcService.ActiveNpc requireVoice(NpcHandle npc) {
+        return living.active(npc.uuid()).or(() -> living.combatant(npc.uuid()))
+                .orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "npc-inactive", "The NPC is not active"));
     }
 
     private Location location(PersistedNpcService.ActiveNpc active) {
