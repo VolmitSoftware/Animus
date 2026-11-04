@@ -1,12 +1,13 @@
 package art.arcane.animus.bukkit;
 
+import org.bukkit.inventory.ItemStack;
+import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.bukkit.combat.BukkitCombatBridge;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.CombatLimits;
 import art.arcane.animus.bukkit.combat.MobProfile;
 import art.arcane.animus.bukkit.combat.WorldGuardProtection;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
-import art.arcane.animus.bukkit.runtime.PersistedNpcService;
 import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
@@ -69,7 +70,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
             + " | attack <npc-id> <target-uuid> [damage] | target <npc-id> <zombie-uuid>|stop";
     private final JavaPlugin plugin;
     private final AnimusRuntime runtime;
-    private final PersistedNpcService living;
+    private final PersistedNpcService<Player, ItemStack> living;
     private final BukkitCombatBridge bridge;
     private final BukkitCombatWorld world;
     private final CombatEngine engine;
@@ -85,7 +86,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private BukkitTask task;
 
     /** {@code living} is the main-thread runtime, and null on Folia, where combat stays unavailable. */
-    RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService living, String version, boolean folia) {
+    RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService<Player, ItemStack> living, String version, boolean folia) {
         this.plugin = plugin; this.runtime = runtime; this.living = living;
         ProtectionAdapter adapter = ProtectionAdapter.NONE;
         String name = "none installed";
