@@ -4,6 +4,7 @@ import art.arcane.animus.api.*;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
+import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntime;
 import art.arcane.animus.core.config.BehaviorSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
@@ -18,10 +19,10 @@ import java.util.function.*;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-/** Administrative manual execution only. File work shares the engine lane; no private owner accesses Bukkit objects. */
+/** Administrative behavior commands and the owned execution runtime. File work shares the engine lane; no private owner accesses Bukkit objects. */
 final class BukkitBehaviorCommands implements AutoCloseable {
     enum State { DISABLED, WAITING_MODULES, LOADING, READY, FAILED, CLOSED }
-    static final List<String> OPERATIONS=List.of("status","list","validate","reload","run","inspect","cancel");
+    static final List<String> OPERATIONS=List.of("status","list","validate","reload","run","inspect","cancel","triggers");
     private static final int PAGE_SIZE=20,MAX_LINES=24,MAX_LINE_CHARS=2048;
     private static final BehaviorCatalog.Snapshot EMPTY_CATALOG=new BehaviorCatalog.Snapshot(0,Map.of(),Map.of(),List.of());
     private final Path dataDirectory;
@@ -35,6 +36,7 @@ final class BukkitBehaviorCommands implements AutoCloseable {
     private final AtomicBoolean closed=new AtomicBoolean(),initializationSeen=new AtomicBoolean();
     private final AtomicReference<CatalogTask> fileTask=new AtomicReference<>();
     private final ManualBehaviorRuntime coordinator;
+    private final TriggerDispatcher triggers;
     private final AtomicLong unavailableReplies=new AtomicLong();
     private volatile BehaviorCatalog catalog;
     private volatile State state;
@@ -53,8 +55,10 @@ final class BukkitBehaviorCommands implements AutoCloseable {
         files=Objects.requireNonNull(fileExecutor.apply(this::fileEvent));state=settings.enabled()?State.WAITING_MODULES:State.DISABLED;
         // Own and resolve lifecycle classes while the plugin archive is open. Startup catalog I/O
         // remains asynchronous; the empty source snapshot cannot admit executions before READY.
+        triggers=settings.enabled()?new TriggerDispatcher(settings.triggers(),repository::snapshot,this::catalogSnapshot):null;
+        if(triggers!=null)extensions.connectTriggers(triggers);
         coordinator=settings.enabled()?new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(settings.maximumOperations(),settings.operationsPerTick(),settings.tickMillis(),settings.deliveryBudgetMillis()),
-                settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker()):null;
+                settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers):null;
     }
     /** The one initialization observer only admits bounded file work; it never scans on module management. */
     void modulesInitialized(ExtensionRuntime.State terminal){
@@ -86,7 +90,8 @@ final class BukkitBehaviorCommands implements AutoCloseable {
                         else reply(sender,outcomeLines("Behavior cancel",outcome,"execution="+id+outcome.value().map(value->" | cancelled="+value).orElse("")));
                     });
                 }
-                default->throw new IllegalArgumentException("behaviors status|list [page]|validate|reload|run <npc-id> <behavior-id>|inspect <execution-uuid>|cancel <execution-uuid>");
+                case "triggers"->{arity(args,2,3,"behaviors triggers [page]");int page=args.length==3?Integer.parseInt(args[2]):1;reply(sender,triggerLines(page));}
+                default->throw new IllegalArgumentException("behaviors status|list [page]|validate|reload|run <npc-id> <behavior-id>|inspect <execution-uuid>|cancel <execution-uuid>|triggers [page]");
             }
         }catch(RuntimeException invalid){reply(sender,List.of("Animus behaviors: "+Objects.toString(invalid.getMessage(),invalid.getClass().getSimpleName())));}
         return true;
@@ -162,8 +167,26 @@ final class BukkitBehaviorCommands implements AutoCloseable {
         BehaviorCatalog current=catalog;BehaviorCatalog.Snapshot snapshot=current==null?null:current.snapshot();ManualBehaviorRuntime runtime=coordinator;
         List<String> result=new ArrayList<>();result.add("Behaviors "+state+" | catalog-generation="+(snapshot==null?0:snapshot.generation())+" | documents="+(snapshot==null?0:snapshot.entries().size())+" | available="+(snapshot==null?0:available(snapshot))+" | catalog-work="+(fileTask.get()==null?"idle":"pending")+" | unavailable-replies="+unavailableReplies.get()+" | failure="+failure);
         if(runtime!=null){var status=runtime.status();result.add("Behavior runtime: "+status.state()+" | admitted="+status.admittedOperations()+" | queued="+status.queuedOperations()+" | active="+status.engine().activeExecutions()+" | retained-calls="+status.engine().retiredCalls()+" | tick="+status.engine().tick()+" | delivery-queued="+status.queuedDeliveries()+" | delivery-active="+status.activeDeliveries()+" | delivery-over-budget="+status.overBudgetDeliveries()+" | failure="+status.failure());}
+        if(triggers!=null)result.add(triggerSummary(triggers.snapshot()));
         return List.copyOf(result);
     }
+    private static String triggerSummary(TriggerDispatcher.Snapshot view){
+        long dropped=view.dropped().values().stream().mapToLong(Long::longValue).sum();
+        return "Behavior triggers: "+(view.available()?"AVAILABLE":"UNAVAILABLE | reason="+view.reason())+" | bindings="+view.bindings()+" | timers="+view.timers()+" | proximity-npcs="+view.proximityNpcs()+" | active="+view.active()+" | queued="+view.queued()+" | events="+view.events()+" | started="+view.started()+" | suppressed="+view.suppressed()+" | dropped="+dropped;
+    }
+    private List<String> triggerLines(int page){
+        if(page<1||page>1000)throw new IllegalArgumentException("Page must be 1..1000");
+        if(triggers==null)return List.of("Behavior triggers: UNAVAILABLE | state="+state);
+        TriggerDispatcher.Snapshot view=triggers.snapshot();List<String> lines=new ArrayList<>();lines.add(triggerSummary(view)+" | page="+page);
+        if(!view.dropped().isEmpty())lines.add("Trigger drops: "+new TreeMap<>(view.dropped()));
+        view.diagnostics().stream().limit(2).forEach(diagnostic->lines.add(diagnosticLine("triggers",diagnostic)));
+        if(view.diagnostics().size()>2)lines.add("Trigger diagnostics: "+(view.diagnostics().size()-2)+" more");
+        for(TriggerDispatcher.Row row:triggers.rows((page-1)*PAGE_SIZE,PAGE_SIZE))
+            lines.add("Trigger npc="+row.npcId()+" | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
+        return lines;
+    }
+    /** The dispatcher the platform bridge connects to; null only when behaviors are disabled. */
+    TriggerDispatcher triggers(){return triggers;}
     /** Engine diagnostics only. Enabled services own this from construction; null only when disabled. */
     ManualBehaviorRuntime diagnosticRuntime(){return coordinator;}
     private List<String> listLines(int page){
@@ -190,7 +213,7 @@ final class BukkitBehaviorCommands implements AutoCloseable {
     }
     static List<String> executionLines(ManualBehaviorRuntime.Execution execution){
         BehaviorEngine.Report report=execution.report();List<String> rows=new ArrayList<>();
-        rows.add("Behavior execution="+report.id()+" | state="+report.state()+" | npc="+execution.npcId()+" | npc-uuid="+execution.npcUuid()+" | npc-revision="+execution.npcRevision()+" | behavior="+execution.behaviorId()+" | behavior-revision="+execution.behaviorRevision()+" | source-hash="+execution.sourceHash()+" | steps="+report.steps()+" | reason="+report.reason());
+        rows.add("Behavior execution="+report.id()+" | state="+report.state()+" | npc="+execution.npcId()+" | npc-uuid="+execution.npcUuid()+" | npc-revision="+execution.npcRevision()+" | behavior="+execution.behaviorId()+" | behavior-revision="+execution.behaviorRevision()+" | source-hash="+execution.sourceHash()+execution.trigger().map(trigger->" | trigger="+trigger).orElse("")+" | steps="+report.steps()+" | reason="+report.reason());
         report.waits().stream().limit(4).forEach(wait->rows.add("Behavior wait: "+wait));
         for(Diagnostic diagnostic:report.diagnostics()){if(rows.size()>=18)break;rows.add(diagnosticLine("execution",diagnostic));}
         report.trace().stream().skip(Math.max(0,report.trace().size()-6)).limit(6).forEach(trace->rows.add("Behavior trace: tick="+trace.tick()+" | "+trace.path()+" | "+trace.event()));

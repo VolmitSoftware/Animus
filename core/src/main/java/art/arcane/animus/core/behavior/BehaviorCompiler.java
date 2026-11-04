@@ -3,6 +3,8 @@ package art.arcane.animus.core.behavior;
 import art.arcane.animus.api.*;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.behavior.BehaviorProgram.*;
+import art.arcane.animus.core.behavior.trigger.TriggerBinding;
+import art.arcane.animus.core.behavior.trigger.TriggerCompiler;
 import com.google.gson.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -35,7 +37,7 @@ public final class BehaviorCompiler {
         return safe.toString();
     }
     private BehaviorProgram program(JsonObject object){
-        keys(object,"$","schemaVersion","id","entry","variables","routines");integer(object,"schemaVersion","$",1,1);
+        keys(object,"$","schemaVersion","id","entry","variables","routines","triggers");integer(object,"schemaVersion","$",1,1);
         String id=text(object,"id","$");
         if(id.length()>256||!id.matches("[a-z0-9_-]+:[a-z0-9_/-]+"))throw new Invalid("$.id","expected a lowercase namespace:path behavior reference within 256 characters");
         String entry=identifier(text(object,"entry","$"),"$.entry");
@@ -54,7 +56,10 @@ public final class BehaviorCompiler {
         }
         if(!routines.containsKey(entry))throw new Invalid("$.entry","unknown routine");
         for(Call call:references)if(!routines.containsKey(call.routine()))throw new Invalid(call.path()+".routine","unknown routine");
-        return new BehaviorProgram(id,entry,variables,routines,nodes);
+        List<TriggerBinding> triggers;
+        try{triggers=object.has("triggers")?TriggerCompiler.compile(object.get("triggers"),routines.keySet()):List.of();}
+        catch(TriggerCompiler.Invalid invalid){throw new Invalid(invalid.field(),invalid.getMessage());}
+        return new BehaviorProgram(id,entry,variables,routines,nodes,triggers);
     }
     private Node node(JsonElement element,String path,int depth){
         if(depth>MAX_DEPTH)throw new Invalid(path,"node nesting exceeds 32");if(++nodes>MAX_NODES)throw new Invalid(path,"node budget exceeds 2048");

@@ -47,6 +47,7 @@ public final class StartupModules implements AutoCloseable {
                         ModuleContext observed=new ModuleContext(){
                             public DefinitionService definitions(){return context.definitions();}
                             public Capabilities.Registrar registrations(){return context.registrations();}
+                            public Capabilities.TriggerPublisher triggers(){return context.triggers();}
                             public ModuleScheduler scheduler(){return context.scheduler();}
                             public void onClose(AutoCloseable resource){Objects.requireNonNull(resource);context.onClose(()->{callback(id,"resource-close");try{resource.close();}finally{callback("","idle");}});}
                         };

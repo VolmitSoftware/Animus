@@ -4,6 +4,7 @@ import art.arcane.animus.api.*;
 import art.arcane.animus.core.behavior.*;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.catalog.BehaviorPath;
+import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.npc.NpcDefinition;
 import java.time.Duration;
 import java.util.*;
@@ -11,7 +12,7 @@ import java.util.concurrent.*;
 import java.util.function.Supplier;
 
 /**
- * Manual module/data execution only. A private owner advances the interpreter; immutable source
+ * Manual and trigger-started module/data execution. A private owner advances the interpreter; immutable source
  * suppliers must be quick, thread-safe observations with no file, platform, or world access.
  * Existing dormant definitions are allowed. Player identity grants no world or preview authority.
  */
@@ -30,13 +31,14 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
                          int activeDeliveries,int overBudgetDeliveries,long completedOverBudgetDeliveries,
                          BehaviorEngine.Status engine,String failure) {}
     public record Execution(String npcId,UUID npcUuid,long npcRevision,String behaviorId,long behaviorRevision,
-                            String sourceHash,Optional<UUID> player,BehaviorEngine.Report report) {}
+                            String sourceHash,Optional<UUID> player,Optional<String> trigger,BehaviorEngine.Report report) {}
     public record Snapshot(Status status,Map<UUID,Execution> executions) {
         public Snapshot {executions=Map.copyOf(executions);}
     }
     private enum Phase { QUEUED,RUNNING,DELIVERY_QUEUED,DELIVERING }
     private record Capture(String npcId,NpcDefinition definition,UUID npcUuid,long revision,
-                           String behaviorId,BehaviorCatalog.Accepted accepted,Optional<UUID> player) {}
+                           String behaviorId,BehaviorCatalog.Accepted accepted,Optional<UUID> player,
+                           Optional<TriggerDispatcher.Request> trigger) {}
     private record Lease(UUID execution,Capture capture) {}
     private record Publication(BehaviorEngine.Status engine,Map<UUID,Execution> executions) {}
     private static final BehaviorEngine.Status EMPTY_ENGINE=new BehaviorEngine.Status(0,0,0,0,0,0,0,0,0,0,false);
@@ -46,13 +48,14 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     private final Supplier<Map<String,NpcDefinition>> definitions;
     private final Supplier<BehaviorCatalog.Snapshot> catalog;
     private final BehaviorInvoker invoker;
+    private final TriggerDispatcher triggers;
     private final Object control=new Object();
     private final ArrayDeque<Operation<?>> requests=new ArrayDeque<>();
     private final Set<Operation<?>> admitted=Collections.newSetFromMap(new IdentityHashMap<>());
     private final ScheduledThreadPoolExecutor ownerExecutor;
     private final ThreadPoolExecutor deliveries;
     private final Map<UUID,Lease> active=new LinkedHashMap<>(); // owner only
-    private final Map<UUID,Lease> byNpc=new HashMap<>(); // one live execution per NPC
+    private final Map<UUID,Lease> manualByNpc=new HashMap<>(); // one live manual execution per NPC
     private final LinkedHashMap<UUID,Execution> history=new LinkedHashMap<>(); // owner only, bounded
     private volatile Publication published=new Publication(EMPTY_ENGINE,Map.of());
     private volatile Thread owner;
@@ -64,15 +67,26 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     public ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
                                  Supplier<Map<String,NpcDefinition>> definitions,
                                  Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker) {
-        this(limits,engineLimits,definitions,catalog,invoker,daemonFactory("animus-behavior-owner"));
+        this(limits,engineLimits,definitions,catalog,invoker,(TriggerDispatcher)null);
+    }
+    /** A null dispatcher runs manual executions only. */
+    public ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
+                                 Supplier<Map<String,NpcDefinition>> definitions,
+                                 Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,TriggerDispatcher triggers) {
+        this(limits,engineLimits,definitions,catalog,invoker,triggers,daemonFactory("animus-behavior-owner"));
     }
     // Package-private deterministic owner-start seam; production always uses its private daemon owner.
     ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
                           Supplier<Map<String,NpcDefinition>> definitions,
                           Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,ThreadFactory ownerFactory) {
+        this(limits,engineLimits,definitions,catalog,invoker,null,ownerFactory);
+    }
+    private ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
+                                  Supplier<Map<String,NpcDefinition>> definitions,
+                                  Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,TriggerDispatcher triggers,ThreadFactory ownerFactory) {
         this.limits=Objects.requireNonNull(limits);this.engineLimits=Objects.requireNonNull(engineLimits);
         this.definitions=Objects.requireNonNull(definitions);this.catalog=Objects.requireNonNull(catalog);
-        this.invoker=Objects.requireNonNull(invoker);
+        this.invoker=Objects.requireNonNull(invoker);this.triggers=triggers;
         LifecycleClasses.prepare();
         deliveries=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(limits.maximumOperations()),
                 daemonFactory("animus-behavior-result"),new ThreadPoolExecutor.AbortPolicy());
@@ -97,7 +111,7 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
             BehaviorCatalog.Resolution resolution=Objects.requireNonNull(catalog.get()).byId().get(behaviorId);
             if(resolution==null)return rejected(Outcome.Status.NOT_FOUND,"behavior-missing","Behavior is not in the accepted catalog");
             if(!resolution.available()||resolution.accepted().isEmpty())return rejected(Outcome.Status.UNAVAILABLE,"behavior-unavailable","Behavior source or capabilities are unavailable");
-            capture=new Capture(npcId,definition,definition.uuid(),definition.revision(),behaviorId,resolution.accepted().orElseThrow(),player);
+            capture=new Capture(npcId,definition,definition.uuid(),definition.revision(),behaviorId,resolution.accepted().orElseThrow(),player,Optional.empty());
         } catch(RuntimeException | AssertionError | LinkageError invalid) {
             return rejected(Outcome.Status.FAILED,"source-observation","Immutable source observation failed: "+invalid.getClass().getSimpleName());
         }
@@ -129,7 +143,7 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
         }
     }
     /** Revokes new requests immediately. Neither trusted handlers nor public result callbacks run here. */
-    @Override public void close(){synchronized(control){closing=true;control.notifyAll();}}
+    @Override public void close(){if(triggers!=null)triggers.unavailable("behavior runtime is stopping");synchronized(control){closing=true;control.notifyAll();}}
     /** Standalone owner/test convenience; platform shutdown must use close() plus immutable diagnostics. */
     public boolean awaitStopped(Duration duration)throws InterruptedException {
         Objects.requireNonNull(duration);if(duration.isNegative()||duration.compareTo(Duration.ofMinutes(1))>0)throw new IllegalArgumentException("Wait must be between zero and one minute");
@@ -150,7 +164,10 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
                 operation.perform();completed.add(operation);
             }
             if(closing)engine.close();
-            else for(Lease lease:List.copyOf(active.values()))if(!current(lease.capture()))engine.cancel(lease.execution(),"captured-source-changed");
+            else{
+                for(Lease lease:List.copyOf(active.values()))if(!current(lease.capture()))engine.cancel(lease.execution(),"captured-source-changed");
+                pumpTriggers();
+            }
             engine.tick();publish();
         } catch(RuntimeException | AssertionError | LinkageError fault) {
             fail(fault);
@@ -165,6 +182,20 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
             } else ownerExecutor.schedule(this::turn,limits.tickMillis(),TimeUnit.MILLISECONDS);
         }
     }
+    /** A dispatcher fault retires triggers and leaves manual execution running. */
+    private void pumpTriggers(){
+        if(triggers==null)return;
+        try{triggers.pump(this::startTriggered);}
+        catch(RuntimeException | AssertionError | LinkageError fault){triggers.unavailable("trigger dispatcher failed: "+fault.getClass().getSimpleName());}
+    }
+    private Outcome<UUID> startTriggered(TriggerDispatcher.Request request){
+        NpcDefinition definition=request.definition();
+        Capture capture=new Capture(definition.id(),definition,definition.uuid(),definition.revision(),request.binding().behavior(),request.accepted(),request.player(),Optional.of(request));
+        if(!current(capture))return Outcome.rejected(Outcome.Status.CONFLICT,"captured-source-changed","NPC or accepted behavior changed after trigger admission");
+        Outcome<UUID> result=engine.start(request.program(),new BehaviorEngine.Context(new NpcHandle(capture.npcUuid()),capture.player(),false,()->current(capture)));
+        result.value().ifPresent(id->active.put(id,new Lease(id,capture)));
+        return result;
+    }
     private void fail(Throwable fault){synchronized(control){if(failure.isEmpty())failure=fault.getClass().getSimpleName();closing=true;}}
     private boolean current(Capture capture) {
         if(closing||Objects.requireNonNull(definitions.get()).get(capture.npcId())!=capture.definition())return false;
@@ -174,7 +205,7 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     private void terminal(BehaviorEngine.Report report) {
         Lease lease=active.remove(report.id());
         if(lease==null)throw new IllegalStateException("Terminal execution has no captured lease");
-        byNpc.remove(lease.capture().npcUuid(),lease);history.put(report.id(),view(lease,report));
+        manualByNpc.remove(lease.capture().npcUuid(),lease);lease.capture().trigger().ifPresent(request->triggers.finished(request));history.put(report.id(),view(lease,report));
         while(history.size()>engineLimits.historyEntries())history.remove(history.keySet().iterator().next());
     }
     private void publish() {
@@ -188,7 +219,7 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
         for(Lease lease:active.values())views.put(lease.execution(),view(lease,engine.inspect(lease.execution()).orElseThrow()));
         published=new Publication(status,Map.copyOf(views));
     }
-    private static Execution view(Lease lease,BehaviorEngine.Report report){Capture c=lease.capture();return new Execution(c.npcId(),c.npcUuid(),c.revision(),c.behaviorId(),c.accepted().revision(),c.accepted().sourceHash(),c.player(),report);}
+    private static Execution view(Lease lease,BehaviorEngine.Report report){Capture c=lease.capture();return new Execution(c.npcId(),c.npcUuid(),c.revision(),c.behaviorId(),c.accepted().revision(),c.accepted().sourceHash(),c.player(),c.trigger().map(request->request.binding().key()),report);}
     private void queueDelivery(Operation<?> operation) {
         synchronized(control){operation.phase=Phase.DELIVERY_QUEUED;}
         // Every queued/running delivery retains one global admission, so this bounded queue cannot overflow.
@@ -213,9 +244,9 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
         final Capture capture;RunOperation(Capture capture){this.capture=capture;}
         Outcome<UUID> execute(){
             if(!current(capture))return Outcome.rejected(Outcome.Status.CONFLICT,"captured-source-changed","NPC or accepted behavior changed after request admission");
-            if(byNpc.containsKey(capture.npcUuid()))return Outcome.rejected(Outcome.Status.BUSY,"npc-execution-active","Only one manual execution per NPC may be active");
-            Outcome<UUID> result=engine.start(capture.accepted().program(),new BehaviorEngine.Context(new NpcHandle(capture.npcUuid()),capture.player(),false));
-            result.value().ifPresent(id->{Lease lease=new Lease(id,capture);active.put(id,lease);byNpc.put(capture.npcUuid(),lease);});return result;
+            if(manualByNpc.containsKey(capture.npcUuid()))return Outcome.rejected(Outcome.Status.BUSY,"npc-execution-active","Only one manual execution per NPC may be active");
+            Outcome<UUID> result=engine.start(capture.accepted().program(),new BehaviorEngine.Context(new NpcHandle(capture.npcUuid()),capture.player(),false,()->current(capture)));
+            result.value().ifPresent(id->{Lease lease=new Lease(id,capture);active.put(id,lease);manualByNpc.put(capture.npcUuid(),lease);});return result;
         }
     }
     private final class CancelOperation extends Operation<Boolean> {
@@ -224,13 +255,11 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     }
     private final class GuardedInvoker implements BehaviorInvoker {
         public boolean available(Capabilities.Key key,Capabilities.Kind kind){return !closing&&invoker.available(key,kind);}
+        // The engine carries each execution's own source guard. The host worker may evaluate it after
+        // queueing/schema preparation: it reads only immutable publications and the volatile closing flag.
         private Invocation guarded(Invocation invocation){
-            Lease lease=byNpc.get(invocation.npc().uuid());if(lease==null||!current(lease.capture()))return null;
-            Capture capture=lease.capture();
-            // The host worker may evaluate this guard after queueing/schema preparation. It reads only
-            // immutable publications and the volatile closing flag, never these owner-only lease maps.
-            return new Invocation(invocation.capability(),invocation.npc(),invocation.player(),invocation.argumentsJson(),invocation.variables(),false,
-                    ()->invocation.sourceCurrent().getAsBoolean()&&current(capture));
+            if(!invocation.sourceCurrent().getAsBoolean())return null;
+            return new Invocation(invocation.capability(),invocation.npc(),invocation.player(),invocation.argumentsJson(),invocation.variables(),false,invocation.sourceCurrent());
         }
         public Call<String> action(Invocation invocation){Invocation guarded=guarded(invocation);return guarded==null?revoked():invoker.action(guarded);}
         public Call<Boolean> condition(Invocation invocation){Invocation guarded=guarded(invocation);return guarded==null?revoked():invoker.condition(guarded);}
