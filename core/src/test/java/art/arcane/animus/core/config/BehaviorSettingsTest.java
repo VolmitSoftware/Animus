@@ -3,6 +3,7 @@ package art.arcane.animus.core.config;
 import art.arcane.animus.core.*;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
+import art.arcane.animus.core.behavior.trigger.TriggerSettings;
 import art.arcane.animus.core.storage.*;
 import java.io.IOException;
 import java.nio.file.*;
@@ -42,6 +43,26 @@ class BehaviorSettingsTest {
             new Budget("behaviors.catalog","maximumDocumentBytes",1,262144,s->s.catalog().maximumDocumentBytes()),
             new Budget("behaviors.catalog","maximumAggregateBytes",1,67108864,s->s.catalog().maximumAggregateBytes()),
             new Budget("behaviors.catalog","maximumCapabilityChecks",1,16384,s->s.catalog().maximumCapabilityChecks()),
+            new Budget("behaviors.triggers","eventQueue",1,4096,s->s.triggers().eventQueue()),
+            new Budget("behaviors.triggers","eventsPerTick",1,1024,s->s.triggers().eventsPerTick()),
+            new Budget("behaviors.triggers","startsPerTick",1,64,s->s.triggers().startsPerTick()),
+            new Budget("behaviors.triggers","maximumQueued",1,4096,s->s.triggers().maximumQueued()),
+            new Budget("behaviors.triggers","queuePerNpc",1,64,s->s.triggers().queuePerNpc()),
+            new Budget("behaviors.triggers","queuePerTrigger",1,64,s->s.triggers().queuePerTrigger()),
+            new Budget("behaviors.triggers","queueLifetimeTicks",1,72000,s->s.triggers().queueLifetimeTicks()),
+            new Budget("behaviors.triggers","concurrentTotal",1,128,s->s.triggers().concurrentTotal()),
+            new Budget("behaviors.triggers","concurrentPerNpc",1,16,s->s.triggers().concurrentPerNpc()),
+            new Budget("behaviors.triggers","concurrentPerTrigger",1,16,s->s.triggers().concurrentPerTrigger()),
+            new Budget("behaviors.triggers","defaultCooldownTicks",0,72000,s->s.triggers().defaultCooldownTicks()),
+            new Budget("behaviors.triggers","npcCooldownTicks",0,72000,s->s.triggers().npcCooldownTicks()),
+            new Budget("behaviors.triggers","maximumBindings",1,65536,s->s.triggers().maximumBindings()),
+            new Budget("behaviors.triggers","maximumTimers",1,16384,s->s.triggers().maximumTimers()),
+            new Budget("behaviors.triggers","minimumTimerTicks",1,72000,s->s.triggers().minimumTimerTicks()),
+            new Budget("behaviors.triggers","maximumProximityRadius",1,64,s->s.triggers().maximumProximityRadius()),
+            new Budget("behaviors.triggers","proximityIntervalTicks",1,200,s->s.triggers().proximityIntervalTicks()),
+            new Budget("behaviors.triggers","proximityViewersPerTick",1,256,s->s.triggers().proximityViewersPerTick()),
+            new Budget("behaviors.triggers","proximityCandidates",1,1024,s->s.triggers().proximityCandidates()),
+            new Budget("behaviors.triggers","proximityTrackedPerViewer",1,1024,s->s.triggers().proximityTrackedPerViewer()),
             new Budget("behaviors.state","maximumKeys",1,1048576,s->s.state().maximumKeys()),
             new Budget("behaviors.state","maximumTransientKeys",1,1048576,s->s.state().maximumTransientKeys()),
             new Budget("behaviors.state","maximumValueBytes",1,4096,s->s.state().maximumValueBytes()),
@@ -57,7 +78,7 @@ class BehaviorSettingsTest {
     @Test void newDefaultsGenerateNestedTomlAndUseActualEngineAndCatalogDefaults()throws Exception{
         try(DocumentStore store=new DocumentStore(root)){
             var settings=PluginSettings.load(store);assertEquals(BehaviorSettings.DEFAULT,settings.behaviors());assertEquals(BehaviorEngine.Limits.defaults(),settings.behaviors().engine());assertEquals(BehaviorCatalog.Limits.defaults(),settings.behaviors().catalog());
-            String source=Files.readString(root.resolve("config.toml"));assertTrue(source.contains("[behaviors]"));assertTrue(source.contains("[behaviors.engine]"));assertTrue(source.contains("[behaviors.catalog]"));assertFalse(Files.exists(root.resolve("config.json")));assertFalse(Files.exists(root.resolve("behaviors")));
+            String source=Files.readString(root.resolve("config.toml"));assertTrue(source.contains("[behaviors]"));assertTrue(source.contains("[behaviors.engine]"));assertTrue(source.contains("[behaviors.catalog]"));assertTrue(source.contains("[behaviors.triggers]"));assertEquals(TriggerSettings.DEFAULT,settings.behaviors().triggers());assertFalse(Files.exists(root.resolve("config.json")));assertFalse(Files.exists(root.resolve("behaviors")));
             assertEquals(settings,PluginSettings.load(store));assertEquals(source,Files.readString(root.resolve("config.toml")));
         }
     }

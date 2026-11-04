@@ -151,7 +151,7 @@ class ScopedVariableEngineTest {
 
     @Test
     void engineWithoutAStateServiceRejectsScopedProgramsButRunsExecutionPrograms() {
-        BehaviorEngine engine = new BehaviorEngine(Limits.defaults(), new Invoker());
+        BehaviorEngine engine = new BehaviorEngine(Limits.defaults(), new Invoker(),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
         Outcome<UUID> outcome = engine.start(program("{" + declare("v", "npc", "transient") + "}", set("v", 1)), context(NPC_A, null));
         assertEquals(Outcome.Status.UNAVAILABLE, outcome.status());
         assertEquals("behavior-state-unavailable", outcome.diagnostics().getFirst().code());
@@ -276,7 +276,7 @@ class ScopedVariableEngineTest {
             @Override public Call<String> action(Invocation invocation) { return new Call<>(CompletableFuture.completedFuture(Outcome.ok("{}")), () -> {}); }
             @Override public Call<Boolean> condition(Invocation invocation) { return new Call<>(answer, () -> {}); }
         };
-        BehaviorEngine engine = new BehaviorEngine(Limits.defaults(), invoker);
+        BehaviorEngine engine = new BehaviorEngine(Limits.defaults(), invoker,ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
         UUID id = engine.start(program("{}", "{\"type\":\"condition\",\"capability\":\"sample:allowed\",\"then\":{\"type\":\"wait\",\"ticks\":9}}"), context(NPC_A, null)).value().orElseThrow();
         engine.tick();
         assertEquals(List.of("condition:sample:allowed@$.routines.main"), engine.inspect(id).orElseThrow().waits());
@@ -290,7 +290,7 @@ class ScopedVariableEngineTest {
 
     @Test
     void traceRingIsBoundedToTheNewestEntries() {
-        BehaviorEngine engine = new BehaviorEngine(new Limits(4, 8, 4, 16, 1000, 1000, 4, 4, 4), new Invoker());
+        BehaviorEngine engine = new BehaviorEngine(new Limits(4, 8, 4, 16, 1000, 1000, 4, 4, 4), new Invoker(),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
         Report report = run(engine, program("{\"v\":{\"type\":\"integer\",\"initial\":0}}", "{\"type\":\"repeat\",\"count\":20,\"body\":" + set("v", 1) + "}"), context(NPC_A, null));
         assertEquals(4, report.trace().size());
         assertTrue(report.trace().getLast().event().startsWith("completed:"));

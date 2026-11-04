@@ -28,7 +28,7 @@ import java.util.TreeMap;
 public final class BehaviorCheckpoints {
     private static final String PREFIX="state/behavior-catalog/last-valid/",NAMESPACE="behavior-catalog";
     private static final int TREE_DEPTH=20;
-    /** Used by validation, which must not write anything. */
+    /** Validation and read-only catalog views must not write anything. */
     private static final BehaviorCheckpoints DISABLED=new BehaviorCheckpoints();
 
     record Saved(long revision,String sourceHash,String source){}
@@ -40,7 +40,7 @@ public final class BehaviorCheckpoints {
 
     public BehaviorCheckpoints(DocumentStore store){this.store=Objects.requireNonNull(store);}
     private BehaviorCheckpoints(){store=null;}
-    static BehaviorCheckpoints disabled(){return DISABLED;}
+    public static BehaviorCheckpoints disabled(){return DISABLED;}
 
     /** Reads pointers whose source file still exists. A pointer without a source stays unused and is dropped by the next reload. */
     Loaded load()throws IOException{

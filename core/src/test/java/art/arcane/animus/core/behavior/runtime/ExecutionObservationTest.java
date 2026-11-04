@@ -52,7 +52,7 @@ class ExecutionObservationTest {
             assertEquals(trace.recent().size(), byUuid.recent().size());
             sources.replaceProgram(WAIT, 2);
             UUID active = await(runtime.run("test", "example:manual")).value().orElseThrow();
-            assertEquals(active, await(runtime.observeNpc("test")).value().orElseThrow().active().orElseThrow().report().id());
+            assertEquals(active, await(runtime.observeNpc("test")).value().orElseThrow().active().getFirst().report().id());
             assertEquals(Outcome.Status.NOT_FOUND, await(runtime.observeNpc("nobody")).status());
         } finally {
             stop(runtime);
@@ -89,7 +89,7 @@ class ExecutionObservationTest {
             @Override public void write(Subject subject, Map<String, Value> writes, Map<String, ScopedVariable> declarations) {}
             @Override public void maintain() { maintained.incrementAndGet(); }
         };
-        ManualBehaviorRuntime runtime = new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8, 8, 50, 20), BehaviorEngine.Limits.defaults(), sources.npcs::get, sources.catalog::get, new Fake(), state);
+        ManualBehaviorRuntime runtime = new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8, 8, 50, 20), BehaviorEngine.Limits.defaults(), sources.npcs::get, sources.catalog::get, new Fake(),null, state);
         try {
             eventually(() -> maintained.get() > 1);
         } finally {

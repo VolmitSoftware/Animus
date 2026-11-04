@@ -86,7 +86,7 @@ class ArgumentBindingTest {
     @Test void expandedUtf8AndEscapesAreBoundedWithoutInvokingHandler(){
         for(String value:List.of("x".repeat(4096),"é".repeat(2048),"\0".repeat(4096))){
             var vars=variables("string",value);JsonObject args=new JsonObject();String[] pointers=new String[32];for(int i=0;i<32;i++){args.add("v"+i,JsonNull.INSTANCE);pointers[i]="/v"+i;}
-            var program=program(vars,action(args,bindings(pointers)));var invoker=new Fake();var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),invoker);var report=finish(engine,start(engine,program));
+            var program=program(vars,action(args,bindings(pointers)));var invoker=new Fake();var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),invoker,ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);var report=finish(engine,start(engine,program));
             assertEquals(BehaviorEngine.State.FAILED,report.state());assertTrue(report.reason().contains("arguments-invalid:$.routines.main.arguments"));assertTrue(invoker.actions.isEmpty());assertEquals(0,engine.status().callsInFlight());
         }
     }
@@ -100,13 +100,13 @@ class ArgumentBindingTest {
         var vars=variables("integer",0);JsonObject action=action(object("{\"x\":null}"),bindings("/x"));
         String branch="{\"type\":\"sequence\",\"steps\":[{\"type\":\"set\",\"variable\":\"value\",\"value\":%d},"+action+"]}";
         var program=compile(document(vars.toString(),"\"main\":{\"type\":\"parallel\",\"branches\":["+branch.formatted(1)+","+branch.formatted(2)+"]}"));
-        Fake invoker=new Fake();var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),invoker);var report=finish(engine,start(engine,program));
+        Fake invoker=new Fake();var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),invoker,ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);var report=finish(engine,start(engine,program));
         assertEquals(List.of(1,2),invoker.actions.stream().map(i->object(i.argumentsJson()).get("x").getAsInt()).toList());assertEquals(0L,report.variables().get("value").value());assertEquals(BehaviorEngine.State.FAILED,report.state());
     }
     @Test void conditionReceivesBoundValuesAndSelectsBranchWithoutSchemaCoercion(){
         var vars=variables("boolean",true);JsonObject node=action(object("{\"enabled\":null}"),bindings("/enabled"));node.addProperty("type","condition");node.add("then",object(EMPTY));
         Fake invoker=new Fake();invoker.condition=i->new BehaviorInvoker.Call<>(java.util.concurrent.CompletableFuture.completedFuture(art.arcane.animus.api.Outcome.ok(object(i.argumentsJson()).get("enabled").getAsBoolean())),()->{});
-        var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),invoker);assertEquals(BehaviorEngine.State.COMPLETED,finish(engine,start(engine,program(vars,node))).state());assertEquals(1,invoker.conditions.size());assertTrue(invoker.actions.isEmpty());
+        var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),invoker,ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);assertEquals(BehaviorEngine.State.COMPLETED,finish(engine,start(engine,program(vars,node))).state());assertEquals(1,invoker.conditions.size());assertTrue(invoker.actions.isEmpty());
     }
     @Test void behaviorReferencesMatchNpcGrammarIncludingSlashPathsWithExplicitLengthNarrowing()throws Exception{
         for(String id:List.of("example:quests/town/greet","_pack-:/a//b/","a:"+"b".repeat(254))){

@@ -14,7 +14,7 @@ public final class ColdShutdownProbe {
         CountDownLatch ownerRelease=new CountDownLatch(1);
         NpcDefinition definition=NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"c7ff1352-2c8c-46c5-8f8c-e662e2ccdc6a\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");
         // No compiler, capability key, module installation or prior Outcome/Diagnostic construction.
-        BehaviorProgram program=new BehaviorProgram("example:manual","main",Map.of(),Map.of(),Map.of("main",new BehaviorProgram.Wait("$",100)),1);
+        BehaviorProgram program=new BehaviorProgram("example:manual","main",Map.of(),Map.of(),Map.of("main",new BehaviorProgram.Wait("$",100)),1,List.of());
         var accepted=new BehaviorCatalog.Accepted(1,"1".repeat(64),100,program,Set.of());
         var catalog=new BehaviorCatalog.Snapshot(1,Map.of(),Map.of("example:manual",new BehaviorCatalog.Resolution("example:manual",true,Optional.of(accepted),List.of())),List.of());
         BehaviorInvoker noModules=new BehaviorInvoker(){
@@ -22,7 +22,7 @@ public final class ColdShutdownProbe {
             public Call<String> action(Invocation invocation){throw new AssertionError("Closed runtime invoked action");}
             public Call<Boolean> condition(Invocation invocation){throw new AssertionError("Closed runtime invoked condition");}
         };
-        var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),()->Map.of("test",definition),()->catalog,noModules,
+        var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),()->Map.of("test",definition),()->catalog,noModules,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,
                 task->{Thread thread=new Thread(()->{try{if(!ownerRelease.await(5,TimeUnit.SECONDS))throw new AssertionError("Owner start not released");task.run();}catch(InterruptedException failure){throw new AssertionError(failure);}},"cold-owner");thread.setDaemon(true);return thread;});
         CompletionStage<Outcome<UUID>> request=queued?runtime.run("test","example:manual"):null;
         runtime.close();
