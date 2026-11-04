@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.virtual.ChunkPosition;
 import java.lang.reflect.*;
 import java.util.Set;
 import org.bukkit.entity.Player;
@@ -31,12 +32,11 @@ final class ChunkDelivery {
     }
     boolean sent(Player player, int x, int z) {
         try {
-            if (paperSent != null) return (boolean) paperSent.invoke(player, key(x, z));
+            if (paperSent != null) return (boolean) paperSent.invoke(player, ChunkPosition.key(x, z));
             Object nativePlayer = handle.invoke(player);
             return (boolean) contains.invoke(trackingView.invoke(nativePlayer), x, z)
-                    && !(boolean) pending.invoke(sender.get(connection.get(nativePlayer)), key(x, z));
+                    && !(boolean) pending.invoke(sender.get(connection.get(nativePlayer)), ChunkPosition.key(x, z));
         } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Chunk delivery capability failed", failure); }
     }
     String implementation() { return paperSent != null ? "Paper isChunkSent" : "native tracked-and-not-pending"; }
-    static long key(int x, int z) { return (x & 0xffffffffL) | ((z & 0xffffffffL) << 32); }
 }

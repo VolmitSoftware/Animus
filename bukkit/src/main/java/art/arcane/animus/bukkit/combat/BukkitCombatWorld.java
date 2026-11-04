@@ -1,9 +1,9 @@
 package art.arcane.animus.bukkit.combat;
 
+import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.bukkit.event.VirtualNpcDamageEvent;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
-import art.arcane.animus.bukkit.runtime.NpcRuntime;
-import art.arcane.animus.bukkit.runtime.PersistedNpcService;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatTarget;
 import art.arcane.animus.core.combat.CombatWorld;
@@ -55,11 +55,11 @@ public final class BukkitCombatWorld implements CombatWorld {
     private static final int PROBE_CELLS = 256;
     private static final double MAXIMUM_KNOCKBACK = 1.5;
     private final Plugin plugin;
-    private final PersistedNpcService living;
+    private final PersistedNpcService<Player, ItemStack> living;
     private final NamespacedKey helperKey;
     private final Set<UUID> suppressedDrops = new HashSet<>();
 
-    public BukkitCombatWorld(Plugin plugin, PersistedNpcService living) {
+    public BukkitCombatWorld(Plugin plugin, PersistedNpcService<Player, ItemStack> living) {
         this.plugin = plugin;
         this.living = living;
         helperKey = new NamespacedKey(plugin, "combat_helper");

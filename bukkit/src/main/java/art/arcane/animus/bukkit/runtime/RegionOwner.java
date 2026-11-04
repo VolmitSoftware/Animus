@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import java.util.Objects;
 import java.util.UUID;

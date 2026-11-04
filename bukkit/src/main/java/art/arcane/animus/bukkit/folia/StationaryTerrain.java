@@ -1,6 +1,6 @@
 package art.arcane.animus.bukkit.folia;
 
-import art.arcane.animus.bukkit.navigation.CollisionCells;
+import art.arcane.animus.bukkit.navigation.BlockCells;
 import art.arcane.animus.core.navigation.*;
 import art.arcane.animus.core.virtual.*;
 import org.bukkit.*;
@@ -54,7 +54,7 @@ final class StationaryTerrain {
         // Recheck before every live sample, in addition to the whole-footprint admission.
         if (!owner.owns(viewer) || !owner.owns(world,x>>4,z>>4,x>>4,z>>4)
                 || !world.isChunkLoaded(x>>4,z>>4) || !owner.sent(viewer,x>>4,z>>4)) return VoxelSnapshot.Cell.UNAVAILABLE;
-        return CollisionCells.of(world.getBlockAt(x,y,z));
+        return BlockCells.of(world.getBlockAt(x,y,z));
     }
     private static int floor(double value) {
         if (!Double.isFinite(value) || Math.abs(value)>30_000_000) throw new IllegalArgumentException("Coordinate outside bounds");

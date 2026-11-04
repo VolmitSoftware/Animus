@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.folia;
 
+import art.arcane.animus.core.presentation.BodyPose;
+import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.packet.NativeViewerEpoch;
@@ -134,7 +136,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
             throw failure;
         }
     }
-    private void beginTransport(Lease lease, NativePacketAdapter.Skin skin) {
+    private void beginTransport(Lease lease, BodySkin skin) {
         if(!eligible(lease)) {lease.resources.close();return;}
         NativePacketAdapter transport=null;
         try {
@@ -152,7 +154,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
                 if(failure!=null){fail(lease,"packet-watch-failed");return;}
                 if(!eligible(lease)){lease.resources.close();return;}
                 lease.phase="SPAWNING";
-                installed.spawn(lease.viewer,lease.body,new NativePacketAdapter.Pose(lease.worldId,lease.feet.x(),lease.feet.y(),lease.feet.z(),lease.yaw,0,true))
+                installed.spawn(lease.viewer,lease.body,new BodyPose(lease.worldId.toString(),lease.feet.x(),lease.feet.y(),lease.feet.z(),lease.yaw,0,true))
                         .whenComplete((sent,problem)->dispatch(lease,()->{
                             if(problem!=null){fail(lease,"packet-spawn-failed");return;}
                             if(!eligible(lease)){lease.resources.close();return;}
@@ -259,7 +261,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
                     if(!json.get("signature").isJsonPrimitive() || !json.getAsJsonPrimitive("signature").isString())throw new IOException("signature must be a string");
                     signature=json.get("signature").getAsString();
                 }
-                var skin=new NativePacketAdapter.Skin(json.get("textureRaw").getAsString(),signature);
+                var skin=new BodySkin(json.get("textureRaw").getAsString(),signature);
                 dispatch(lease,()->beginTransport(lease,skin));
             } catch(IOException | RuntimeException failure){dispatch(lease,()->fail(lease,"skin-read-failed"));}
             finally{state.set(2);reads.release();}
