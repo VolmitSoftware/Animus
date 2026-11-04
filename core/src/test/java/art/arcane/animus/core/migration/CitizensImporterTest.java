@@ -199,7 +199,7 @@ class CitizensImporterTest {
         Files.writeString(v1Directory.resolve("report.json"), JsonDocuments.write(summary));
         assertEquals(1, importer.readPreview(v1Directory, v1Id).records());
         var fresh = importer.preview(input, out, Map.of()); assertNotEquals(v1Id, fresh.id());
-        assertEquals(2, fresh.summary().get("converterVersion").getAsInt());
+        assertEquals(CitizensImporter.CONVERTER_VERSION, fresh.summary().get("converterVersion").getAsInt());
         try (DocumentStore store = new DocumentStore(out)) { importer.apply(store, v1Id); }
     }
 }
