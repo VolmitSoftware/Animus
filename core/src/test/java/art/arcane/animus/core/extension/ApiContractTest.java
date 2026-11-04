@@ -24,7 +24,7 @@ class ApiContractTest {
     @Test void malformedUtf8AndActualByteBoundsAreRejected(){
         var handle=new NpcHandle(UUID.randomUUID());var revision=new RevisionToken(1,"0".repeat(64));
         assertThrows(IllegalArgumentException.class,()->new DefinitionEdit(handle,revision,"\uD800"));
-        assertThrows(IllegalArgumentException.class,()->new Capabilities.Invocation(handle,Optional.empty(),"é".repeat(32769),false,()->false));
+        assertThrows(IllegalArgumentException.class,()->new Capabilities.Invocation(handle,Optional.empty(),"é".repeat(32769),false,()->false,Optional.empty()));
         assertThrows(IllegalArgumentException.class,()->new RevisionToken(0,"0".repeat(64)));
     }
     @Test void selfAndDuplicateDependenciesAreRejected(){

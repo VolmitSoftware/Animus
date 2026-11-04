@@ -33,6 +33,10 @@ public final class NativeSignatureProbe {
         field(version.equals("26.1.2") ? entity + "Entity" : "net/minecraft/server/level/ServerLevel", "ENTITY_COUNTER", "Ljava/util/concurrent/atomic/AtomicInteger;");
         method(packets + "ClientboundAddEntityPacket", "<init>", "(ILjava/util/UUID;DDDFFLnet/minecraft/world/entity/EntityType;I" + vec3 + "D)V");
         method(packets + "ClientboundRemoveEntitiesPacket", "<init>", "([I)V");
+        method(packets + "ClientboundSetEquipmentPacket", "<init>", "(ILjava/util/List;)V");
+        method("com/mojang/datafixers/util/Pair", "of", "(Ljava/lang/Object;Ljava/lang/Object;)Lcom/mojang/datafixers/util/Pair;");
+        for (String slot : List.of("MAINHAND", "OFFHAND", "HEAD", "CHEST", "LEGS", "FEET", "BODY"))
+            field(entity + "EquipmentSlot", slot, "L" + entity + "EquipmentSlot;");
         method(packets + "ClientboundPlayerInfoRemovePacket", "<init>", "(Ljava/util/List;)V");
         method(packets + "ClientboundPlayerInfoUpdatePacket", "<init>", "(Ljava/util/EnumSet;Ljava/util/Collection;)V");
         field(packets + "ClientboundPlayerInfoUpdatePacket", "entries", "Ljava/util/List;");

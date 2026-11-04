@@ -224,13 +224,14 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     }
     private final class GuardedInvoker implements BehaviorInvoker {
         public boolean available(Capabilities.Key key,Capabilities.Kind kind){return !closing&&invoker.available(key,kind);}
+        @Override public boolean available(Capabilities.Key key,Capabilities.Kind kind,String behavior){return !closing&&invoker.available(key,kind,behavior);}
         private Invocation guarded(Invocation invocation){
             Lease lease=byNpc.get(invocation.npc().uuid());if(lease==null||!current(lease.capture()))return null;
             Capture capture=lease.capture();
             // The host worker may evaluate this guard after queueing/schema preparation. It reads only
             // immutable publications and the volatile closing flag, never these owner-only lease maps.
-            return new Invocation(invocation.capability(),invocation.npc(),invocation.player(),invocation.argumentsJson(),invocation.variables(),false,
-                    ()->invocation.sourceCurrent().getAsBoolean()&&current(capture));
+            return new Invocation(invocation.capability(),invocation.npc(),invocation.player(),invocation.argumentsJson(),invocation.variables(),invocation.preview(),
+                    ()->invocation.sourceCurrent().getAsBoolean()&&current(capture),invocation.behavior());
         }
         public Call<String> action(Invocation invocation){Invocation guarded=guarded(invocation);return guarded==null?revoked():invoker.action(guarded);}
         public Call<Boolean> condition(Invocation invocation){Invocation guarded=guarded(invocation);return guarded==null?revoked():invoker.condition(guarded);}

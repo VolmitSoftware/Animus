@@ -6,9 +6,10 @@ import java.util.Objects;
 
 /** Plugin-wide behavior budgets are TOML; behavior sources and runtime data remain JSON. Requires restart. */
 public record BehaviorSettings(boolean enabled, int maximumOperations, int operationsPerTick, int tickMillis,
-                               int deliveryBudgetMillis, BehaviorEngine.Limits engine, BehaviorCatalog.Limits catalog) {
+                               int deliveryBudgetMillis, BehaviorEngine.Limits engine, BehaviorCatalog.Limits catalog,
+                               BuiltinActionSettings actions) {
     public static final BehaviorSettings DEFAULT = new BehaviorSettings(true, 64, 8, 50, 250,
-            BehaviorEngine.Limits.defaults(), BehaviorCatalog.Limits.defaults());
+            BehaviorEngine.Limits.defaults(), BehaviorCatalog.Limits.defaults(), BuiltinActionSettings.DEFAULT);
 
     public BehaviorSettings {
         if (maximumOperations < 1 || maximumOperations > 256)
@@ -21,5 +22,6 @@ public record BehaviorSettings(boolean enabled, int maximumOperations, int opera
             throw new IllegalArgumentException("deliveryBudgetMillis must be within 1..60000");
         Objects.requireNonNull(engine, "engine");
         Objects.requireNonNull(catalog, "catalog");
+        Objects.requireNonNull(actions, "actions");
     }
 }

@@ -35,6 +35,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private RuntimeCombatService combat;
     private art.arcane.animus.core.extension.ExtensionRuntime extensions;
     private volatile BukkitBehaviorCommands behaviors;
+    private art.arcane.animus.core.behavior.builtin.BuiltinCapabilities builtins;
     private volatile boolean stopping;
 
 
@@ -66,11 +67,15 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(combat.status());
             getLogger().info(proof.status(null));
             var modulePlatform = modulePlatform();
+            // Flag and quest values are in memory until the durable state store backs this contract.
+            builtins = new art.arcane.animus.core.behavior.builtin.BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, replies.isFolia()),
+                    new art.arcane.animus.core.behavior.builtin.InMemoryQuestStateStore(4096), this::publishChoice,
+                    runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new art.arcane.animus.core.extension.ExtensionRuntime(runtime.documents().resolve("modules"),
                     modulePlatform, runtime.definitionGateway(), runtime.moduleSettings(), message -> getLogger().info(message), initialized -> {
                         BukkitBehaviorCommands current = behaviors;
                         if (current != null) current.modulesInitialized(initialized);
-                    });
+                    }, builtins);
             behaviors = new BukkitBehaviorCommands(getDataFolder().toPath(), runtime, extensions, replies, message -> getLogger().info(message));
             extensions.start();
             printSplash(AnimusSplash.render(environment, getServer().getVersion(), true));
@@ -84,6 +89,7 @@ public final class AnimusPlugin extends JavaPlugin {
     public void onDisable() {
         stopping = true;
         if (behaviors != null) behaviors.close();
+        if (builtins != null) builtins.close();
         if (extensions != null) extensions.close();
         if (combat != null) combat.close();
         if (living != null) living.close();
@@ -98,6 +104,11 @@ public final class AnimusPlugin extends JavaPlugin {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] arguments) {
         AnimusRuntime activeRuntime = runtime;
         if (stopping || activeRuntime == null) { sender.sendMessage("Animus is not running."); return true; }
+        // A dialogue click comes from ordinary players. Only its single-use token grants anything.
+        if (arguments.length > 0 && arguments[0].equalsIgnoreCase("choice") && builtins != null) {
+            BukkitChoiceCommand.execute(sender, arguments, builtins::selectChoice);
+            return true;
+        }
         boolean status = arguments.length == 0 || arguments[0].equalsIgnoreCase("status");
         if (!sender.hasPermission(status ? "animus.status" : "animus.admin")) {
             sender.sendMessage("You do not have permission to use this command."); return true;
@@ -248,6 +259,12 @@ public final class AnimusPlugin extends JavaPlugin {
             } else throw new IllegalArgumentException("modules status|list|capabilities|action|condition");
         } catch (RuntimeException failure) { sender.sendMessage("Animus modules: " + failure.getMessage()); }
         return true;
+    }
+
+    private void publishChoice(art.arcane.animus.core.behavior.builtin.DialogueChoice choice) {
+        Player player = getServer().getPlayer(choice.player());
+        if (player != null) getServer().getPluginManager().callEvent(new art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent(
+                player, choice.npc().uuid(), choice.behavior(), choice.prompt(), choice.option()));
     }
 
     private art.arcane.animus.api.Platform modulePlatform() {

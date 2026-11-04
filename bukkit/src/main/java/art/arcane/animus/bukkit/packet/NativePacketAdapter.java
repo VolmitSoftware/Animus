@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.packet;
 
+import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.control.ControlInput;
 import art.arcane.animus.core.control.ControlInbox;
 import io.netty.channel.*;
@@ -8,6 +9,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.util.ReferenceCountUtil;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 
 import java.lang.reflect.*;
@@ -89,7 +91,9 @@ public final class NativePacketAdapter implements AutoCloseable {
     private NativePacketAdapter(Plugin plugin, String version) throws ReflectiveOperationException {
         this.plugin = Objects.requireNonNull(plugin);
         nativeApi = new NativeBindings(plugin, version);
-        capabilities = new Capabilities(version, TYPES, Set.of("spawn", "despawn", "move", "signed-player-textures", "attack-interception", "use-interception", "head-rotation", "passengers", "control-input"), "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
+        Set<String> operations = new HashSet<>(Set.of("spawn", "despawn", "move", "signed-player-textures", "attack-interception", "use-interception", "head-rotation", "passengers", "control-input"));
+        if (nativeApi.equipment != null) operations.add("equipment");
+        capabilities = new Capabilities(version, TYPES, operations, "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
     }
     public static NativePacketAdapter bind(Plugin plugin, String exactMinecraftVersion) throws ReflectiveOperationException {
         if (!Set.of("26.1.2", "26.2", "26.3").contains(exactMinecraftVersion)) throw new IllegalArgumentException("No packet adapter for " + exactMinecraftVersion);
@@ -242,6 +246,39 @@ public final class NativePacketAdapter implements AutoCloseable {
             write(session, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
+    }
+
+    public boolean equipmentAvailable() { return nativeApi.equipment != null; }
+
+    /** Viewer-local items on a visible body. An empty stack clears its slot. Call on the viewer's owner: stacks convert here. */
+    public CompletionStage<Void> equipment(Player viewer, Body body, Map<BehaviorPlatform.EquipmentSlot, ItemStack> items) {
+        checkBody(body);
+        if (nativeApi.equipment == null) return failed("Equipment packets are unavailable on this server version");
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        Presentation presentation = session.visible.get(body.entityId);
+        if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        Object packet;
+        try { packet = nativeApi.equipment.packet(body.entityId, items); }
+        catch (ReflectiveOperationException | RuntimeException failure) { return CompletableFuture.failedFuture(failure); }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, () -> {
+            if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned before equipment");
+            write(session, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
+    static String nativeSlot(BehaviorPlatform.EquipmentSlot slot) {
+        return switch (slot) {
+            case MAIN_HAND -> "MAINHAND";
+            case OFF_HAND -> "OFFHAND";
+            case HEAD -> "HEAD";
+            case CHEST -> "CHEST";
+            case LEGS -> "LEGS";
+            case FEET -> "FEET";
+            case BODY -> "BODY";
+        };
     }
 
     /** Despawn is authoritative: it bypasses the cosmetic/normal outgoing operation admission limit. */
@@ -423,7 +460,32 @@ public final class NativePacketAdapter implements AutoCloseable {
         }
     }
 
+    /** Bound separately so a missing cosmetic signature disables equipment alone, not every body. */
+    private static final class EquipmentBindings {
+        private final Constructor<?> packet;
+        private final Method pair, nativeStack;
+        private final Class<? extends Enum> slots;
+
+        @SuppressWarnings("unchecked")
+        private EquipmentBindings(String craftPackage) throws ReflectiveOperationException {
+            packet = Class.forName("net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket").getConstructor(int.class, List.class);
+            pair = Class.forName("com.mojang.datafixers.util.Pair").getMethod("of", Object.class, Object.class);
+            nativeStack = Class.forName(craftPackage + ".inventory.CraftItemStack").getMethod("asNMSCopy", ItemStack.class);
+            slots = (Class<? extends Enum>) Class.forName("net.minecraft.world.entity.EquipmentSlot");
+            for (BehaviorPlatform.EquipmentSlot slot : BehaviorPlatform.EquipmentSlot.values()) Enum.valueOf((Class) slots, nativeSlot(slot));
+        }
+
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private Object packet(int entity, Map<BehaviorPlatform.EquipmentSlot, ItemStack> items) throws ReflectiveOperationException {
+            List<Object> entries = new ArrayList<>(items.size());
+            for (Map.Entry<BehaviorPlatform.EquipmentSlot, ItemStack> item : items.entrySet())
+                entries.add(pair.invoke(null, Enum.valueOf((Class) slots, nativeSlot(item.getKey())), nativeStack.invoke(null, item.getValue())));
+            return packet.newInstance(entity, entries);
+        }
+    }
+
     private static final class NativeBindings {
+        private final EquipmentBindings equipment;
         private final NativeEntityIds ids;
         private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
         private final Method identifierParse, registryContains, registryValue, typeWidth, typeHeight;
@@ -510,6 +572,10 @@ public final class NativePacketAdapter implements AutoCloseable {
             String craftPackage = plugin.getServer().getClass().getPackageName();
             if (!craftPackage.startsWith("org.bukkit.craftbukkit")) throw new ClassNotFoundException("CraftBukkit implementation unavailable");
             craftPlayerHandle = type(craftPackage + ".entity.CraftPlayer").getMethod("getHandle");
+            EquipmentBindings boundEquipment = null;
+            try { boundEquipment = new EquipmentBindings(craftPackage); }
+            catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC equipment unavailable: " + missing.getClass().getSimpleName()); }
+            equipment = boundEquipment;
             playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
             networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
             channel = field(type("net.minecraft.network.Connection"), "channel");
