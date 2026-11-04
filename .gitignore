@@ -2,6 +2,7 @@
 **/build/
 **/run/
 .codegraph/
+.claude/
 .idea/
 *.iml
 .DS_Store
