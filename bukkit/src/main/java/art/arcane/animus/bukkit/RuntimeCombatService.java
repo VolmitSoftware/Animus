@@ -84,6 +84,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private Iterator<NpcDefinition> pass;
     private BukkitTask task;
 
+    /** {@code living} is the main-thread runtime, and null on Folia, where combat stays unavailable. */
     RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService living, String version, boolean folia) {
         this.plugin = plugin; this.runtime = runtime; this.living = living;
         ProtectionAdapter adapter = ProtectionAdapter.NONE;
@@ -102,7 +103,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         world = new BukkitCombatWorld(plugin, living);
         CombatBudgets budgets = runtime.combatBudgets();
         String unavailable = null;
-        if (folia) unavailable = "unavailable on Folia, where the general NPC runtime is disabled";
+        if (folia) unavailable = BukkitCombatBridge.FOLIA_UNAVAILABLE;
         else if (!budgets.enabled()) unavailable = "disabled in config.toml";
         else if (!living.available()) unavailable = "unavailable because the NPC runtime is: " + living.status();
         moduleUnavailable = unavailable;

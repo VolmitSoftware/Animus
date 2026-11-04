@@ -2,7 +2,10 @@ package art.arcane.animus.bukkit;
 
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.admin.Administration;
+import art.arcane.animus.bukkit.runtime.NpcRuntime;
 import art.arcane.animus.bukkit.runtime.PersistedNpcService;
+import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
+import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.folia.FoliaStationaryProofService;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
@@ -31,7 +34,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private ReplyScheduler replies;
     private PacketProofService proof;
     private FoliaStationaryProofService foliaProof;
-    private PersistedNpcService living;
+    private NpcRuntime living;
     private RuntimeCombatService combat;
     private art.arcane.animus.core.extension.ExtensionRuntime extensions;
     private volatile BukkitBehaviorCommands behaviors;
@@ -63,15 +66,18 @@ public final class AnimusPlugin extends JavaPlugin {
                 getLogger().info(foliaProof.status());
             }
             var npcSettings = runtime.npcSettings();
-            living = new PersistedNpcService(this, runtime, environment.minecraftVersion(), commands,
-                    new PersistedNpcService.Settings(npcSettings.enabled(), npcSettings.viewDistance(), npcSettings.maximumVisible(),
-                            npcSettings.maximumViewers(), npcSettings.updatesPerTick()), (player, task) -> replies.reply(player, task));
+            PersistedNpcService.Settings settings = new PersistedNpcService.Settings(npcSettings.enabled(), npcSettings.viewDistance(), npcSettings.maximumVisible(),
+                    npcSettings.maximumViewers(), npcSettings.updatesPerTick());
+            FoliaRegions regions = replies.isFolia() ? new FoliaRegions(this) : null;
+            PersistedNpcService mainThread = regions == null ? new PersistedNpcService(this, runtime, environment.minecraftVersion(), commands, settings, (player, task) -> replies.reply(player, task)) : null;
+            living = regions == null ? mainThread : new RegionNpcRuntime(this, runtime, environment.minecraftVersion(), commands, settings, regions);
             getLogger().info(living.status());
-            combat = new RuntimeCombatService(this, runtime, living, environment.minecraftVersion(), replies.isFolia());
+            combat = new RuntimeCombatService(this, runtime, mainThread, environment.minecraftVersion(), replies.isFolia());
             getLogger().info(combat.status());
             getLogger().info(proof.status(null));
             var modulePlatform = modulePlatform();
-            builtins = new art.arcane.animus.core.behavior.builtin.BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, replies.isFolia()),
+            java.util.function.Function<Runnable, AutoCloseable> ownerTicks = regions != null ? regions::globalTicks : tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel;
+            builtins = new art.arcane.animus.core.behavior.builtin.BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, ownerTicks),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new art.arcane.animus.core.extension.ExtensionRuntime(runtime.documents().resolve("modules"),
@@ -345,24 +351,32 @@ public final class AnimusPlugin extends JavaPlugin {
         if (operation.equals("navigation")) {
             if (args.length < 2 || args.length > 3) throw new IllegalArgumentException("navigation <id> [status|stop]");
             String action = args.length == 2 ? "status" : args[2].toLowerCase(Locale.ROOT);
-            if (action.equals("stop")) {
-                boolean stopped = living.stopNavigation(args[1]);
-                sender.sendMessage("Navigation stop requested for " + args[1] + "; stopped=" + stopped);
-            } else if (!action.equals("status")) throw new IllegalArgumentException("navigation <id> [status|stop]");
-            sender.sendMessage(living.navigationStatus(args[1]));
+            if (action.equals("status")) { sender.sendMessage(living.navigationStatus(args[1])); return; }
+            if (!action.equals("stop")) throw new IllegalArgumentException("navigation <id> [status|stop]");
+            onNpcOwner(sender, args[1], () -> "Navigation stop requested for " + args[1] + "; stopped=" + living.stopNavigation(args[1]) + "\n" + living.navigationStatus(args[1]));
             return;
         }
         if (args.length < 5 || args.length > (operation.equals("navigate") ? 7 : 5))
             throw new IllegalArgumentException(operation.equals("navigate") ? "navigate <id> <x> <y> <z> [walk|swim|fly] [speed]" : "look <id> <x> <y> <z>");
-        WorldPosition origin = living.navigationOrigin(args[1]);
-        WorldPosition destination = new WorldPosition(origin.world(), new Vec3(Double.parseDouble(args[2]), Double.parseDouble(args[3]), Double.parseDouble(args[4])));
-        if (operation.equals("look")) {
-            living.lookAt(args[1], destination); sender.sendMessage("Look target set for " + args[1]); return;
-        }
+        Vec3 point = new Vec3(Double.parseDouble(args[2]), Double.parseDouble(args[3]), Double.parseDouble(args[4]));
         MovementProfile.Mode mode = args.length > 5 ? MovementProfile.Mode.valueOf(args[5].toUpperCase(Locale.ROOT)) : MovementProfile.Mode.WALK;
         double speed = args.length > 6 ? Double.parseDouble(args[6]) : 2.0;
-        var route = living.navigate(args[1], destination, mode, speed);
-        sender.sendMessage("Navigation requested for " + args[1] + "; route=" + route);
+        onNpcOwner(sender, args[1], () -> {
+            WorldPosition destination = new WorldPosition(living.navigationOrigin(args[1]).world(), point);
+            if (operation.equals("look")) { living.lookAt(args[1], destination); return "Look target set for " + args[1]; }
+            return "Navigation requested for " + args[1] + "; route=" + living.navigate(args[1], destination, mode, speed);
+        });
+    }
+
+    /** Runs NPC work on the NPC's owner, which on Folia is its region, and replies on the sender's own scheduler. */
+    private void onNpcOwner(CommandSender sender, String id, java.util.function.Supplier<String> work) {
+        boolean accepted = living.onOwner(id, () -> {
+            String message;
+            try { message = work.get(); }
+            catch (RuntimeException e) { message = "Animus navigation: " + e.getMessage(); }
+            for (String line : message.split("\n")) reply(sender, line);
+        }, reason -> reply(sender, "Animus navigation: " + reason));
+        if (!accepted) sender.sendMessage("Animus navigation: " + (living.available() ? "NPC " + id + " is not active; it starts when its chunk loads or a player is near" : living.status()));
     }
 
     private boolean onProofCommand(CommandSender sender, String[] arguments) {

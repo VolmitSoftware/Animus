@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit.combat;
 
 import art.arcane.animus.bukkit.event.VirtualNpcDamageEvent;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
+import art.arcane.animus.bukkit.runtime.NpcRuntime;
 import art.arcane.animus.bukkit.runtime.PersistedNpcService;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatTarget;
@@ -71,8 +72,8 @@ public final class BukkitCombatWorld implements CombatWorld {
     /** Whether a death in progress should drop nothing because an NPC that disallows victim drops caused it. */
     public boolean suppressesDrops(UUID entity) { return suppressedDrops.contains(entity); }
 
-    @Override public Optional<VirtualNpcState.Snapshot> npc(UUID npc) { return living.combatant(npc).map(PersistedNpcService.ActiveNpc::state); }
-    @Override public String npcName(UUID npc) { return living.combatant(npc).map(PersistedNpcService.ActiveNpc::name).orElse(""); }
+    @Override public Optional<VirtualNpcState.Snapshot> npc(UUID npc) { return living.combatant(npc).map(NpcRuntime.ActiveNpc::state); }
+    @Override public String npcName(UUID npc) { return living.combatant(npc).map(NpcRuntime.ActiveNpc::name).orElse(""); }
 
     @Override public Optional<CombatTarget> real(TargetRef ref) {
         if (ref.kind() == TargetKind.NPC) return Optional.empty();
@@ -130,7 +131,7 @@ public final class BukkitCombatWorld implements CombatWorld {
     }
 
     @Override public MoveStatus move(UUID npc, WorldPosition goal, double speed) {
-        Optional<PersistedNpcService.ActiveNpc> active = living.combatant(npc);
+        Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         if (active.isEmpty()) return MoveStatus.REJECTED;
         Vec3 origin = active.get().state().position().point();
         Vec3 delta = goal.point().subtract(origin);
@@ -145,13 +146,13 @@ public final class BukkitCombatWorld implements CombatWorld {
         }
     }
     @Override public void stop(UUID npc) {
-        living.combatant(npc).ifPresent((PersistedNpcService.ActiveNpc active) -> {
+        living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {
             try { living.stopNavigation(active.id()); }
             catch (IllegalStateException inactive) { /* nothing is moving it */ }
         });
     }
     @Override public void release(UUID npc) {
-        living.combatant(npc).ifPresent((PersistedNpcService.ActiveNpc active) -> {
+        living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {
             try { living.resumePatrol(active.id()); }
             catch (IllegalArgumentException | IllegalStateException inactive) { /* no patrol to resume */ }
         });
@@ -160,14 +161,14 @@ public final class BukkitCombatWorld implements CombatWorld {
         return relocate(npc, destination);
     }
     @Override public void face(UUID npc, Vec3 point) {
-        living.combatant(npc).ifPresent((PersistedNpcService.ActiveNpc active) -> {
+        living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {
             try { living.lookAt(active.id(), new WorldPosition(active.state().position().world(), point)); }
             catch (IllegalArgumentException | IllegalStateException ignored) { /* facing is cosmetic */ }
         });
     }
     @Override public double yaw(UUID npc) { return living.yaw(npc); }
     @Override public void knockback(UUID npc, Vec3 direction, double strength) {
-        Optional<PersistedNpcService.ActiveNpc> active = living.combatant(npc);
+        Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         double horizontal = Math.hypot(direction.x(), direction.z());
         if (active.isEmpty() || horizontal < .0001) return;
         double distance = Math.min(MAXIMUM_KNOCKBACK, strength);
@@ -176,7 +177,7 @@ public final class BukkitCombatWorld implements CombatWorld {
     }
     /** Moves the NPC only onto loaded, clear and supported ground; anything else leaves it in place. */
     private boolean relocate(UUID npc, WorldPosition destination) {
-        Optional<PersistedNpcService.ActiveNpc> active = living.combatant(npc);
+        Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         if (active.isEmpty()) return false;
         Optional<PersistedNpcService.CombatBinding> binding = living.combat(active.get().id());
         World world = world(destination.world());
@@ -191,7 +192,7 @@ public final class BukkitCombatWorld implements CombatWorld {
         return true;
     }
     @Override public void heal(UUID npc, double amount) {
-        living.combatant(npc).flatMap((PersistedNpcService.ActiveNpc active) -> living.combat(active.id())).ifPresent(
+        living.combatant(npc).flatMap((NpcRuntime.ActiveNpc active) -> living.combat(active.id())).ifPresent(
                 (PersistedNpcService.CombatBinding binding) -> binding.changed().accept(binding.state().heal(amount)));
     }
     @Override public boolean revive(UUID npc, WorldPosition at) { return living.revive(npc, at); }
@@ -228,8 +229,8 @@ public final class BukkitCombatWorld implements CombatWorld {
         return new DamageOutcome(DamageStatus.APPLIED, applied, victim.isDead() || victim.getHealth() <= 0);
     }
     @Override public DamageOutcome damageVirtual(UUID npc, TargetRef attacker, double amount) {
-        Optional<PersistedNpcService.ActiveNpc> active = living.combatant(npc);
-        Optional<PersistedNpcService.CombatBinding> binding = active.flatMap((PersistedNpcService.ActiveNpc value) -> living.combat(value.id()));
+        Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
+        Optional<PersistedNpcService.CombatBinding> binding = active.flatMap((NpcRuntime.ActiveNpc value) -> living.combat(value.id()));
         if (binding.isEmpty()) return new DamageOutcome(DamageStatus.INVALID, 0, false);
         double before = binding.get().state().snapshot().health();
         VirtualNpcState.Snapshot after = binding.get().state().damage(amount);

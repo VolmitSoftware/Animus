@@ -13,10 +13,19 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Bounded hand-off to the platform owner. Budgets defer work to a later tick; only a full queue refuses it. */
+/**
+ * Bounded hand-off to the platform owner. Budgets defer work to a later tick; only a full queue refuses it.
+ * The router places each item where its NPC is owned, which on a single-owner server is the tick itself.
+ */
 final class OwnerActionQueue implements AutoCloseable {
+    /** Accepted work runs exactly once, or {@code refused} runs if the owner later drops it. */
+    @FunctionalInterface interface Router {
+        Router INLINE = (npc, work, refused) -> { work.run(); return true; };
+        boolean dispatch(NpcHandle npc, Runnable work, Consumer<String> refused);
+    }
     record Limits(int perTick, int perNpc, int queued) {
         Limits {
             if (perTick < 1 || perNpc < 1 || perNpc > perTick || queued < 1)
@@ -25,10 +34,11 @@ final class OwnerActionQueue implements AutoCloseable {
     }
 
     private final Limits limits;
+    private final Router router;
     private final Set<Item<?>> pending = new LinkedHashSet<>();
     private boolean closed;
 
-    OwnerActionQueue(Limits limits) { this.limits = Objects.requireNonNull(limits); }
+    OwnerActionQueue(Limits limits, Router router) { this.limits = Objects.requireNonNull(limits); this.router = Objects.requireNonNull(router); }
 
     <T> CompletionStage<T> submit(NpcHandle npc, Capabilities.Cancellation token, Supplier<T> work) {
         Item<T> item = new Item<>(Objects.requireNonNull(npc), Objects.requireNonNull(token), Objects.requireNonNull(work));
@@ -41,7 +51,7 @@ final class OwnerActionQueue implements AutoCloseable {
         return item.result;
     }
 
-    /** Owner only. Work and cancellation observations run outside the queue lock. */
+    /** Dispatching owner only. Work and cancellation observations run outside the queue lock. */
     void tick() {
         List<Item<?>> snapshot;
         synchronized (this) {
@@ -61,7 +71,10 @@ final class OwnerActionQueue implements AutoCloseable {
             if (!remove(item)) continue;
             remaining--;
             used.put(item.npc, spent + 1);
-            item.run();
+            boolean accepted;
+            try { accepted = router.dispatch(item.npc, item::run, item::refuse); }
+            catch (RuntimeException | LinkageError failure) { item.result.completeExceptionally(failure); continue; }
+            if (!accepted) item.refuse("The NPC's owner cannot accept work now");
         }
     }
 
@@ -95,6 +108,10 @@ final class OwnerActionQueue implements AutoCloseable {
         void run() {
             try { result.complete(work.get()); }
             catch (RuntimeException | LinkageError | AssertionError failure) { result.completeExceptionally(failure); }
+        }
+
+        void refuse(String reason) {
+            result.completeExceptionally(new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "npc-owner-unavailable", reason));
         }
     }
 }
