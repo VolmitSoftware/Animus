@@ -8,7 +8,7 @@ import java.io.IOException;
 import java.nio.file.*;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
-public record PluginSettings(String statusMessage) {
+public record PluginSettings(String statusMessage, boolean packetProofEnabled) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -24,6 +24,7 @@ public record PluginSettings(String statusMessage) {
         } else {
             document = new JsonObject();
             document.addProperty("statusMessage", "Hello from " + BuildIdentity.NAME);
+            document.addProperty("packetProofEnabled", false);
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -47,6 +48,9 @@ public record PluginSettings(String statusMessage) {
         JsonElement message = data.getAsJsonObject().get("statusMessage");
         if (message == null || !message.isJsonPrimitive() || !message.getAsJsonPrimitive().isString() || message.getAsString().isBlank())
             throw new IOException(path + ": statusMessage must be a nonblank string");
-        return new PluginSettings(message.getAsString());
+        JsonElement proof = data.getAsJsonObject().get("packetProofEnabled");
+        if (proof != null && (!proof.isJsonPrimitive() || !proof.getAsJsonPrimitive().isBoolean()))
+            throw new IOException(path + ": packetProofEnabled must be a boolean");
+        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean());
     }
 }

@@ -8,6 +8,9 @@ import art.arcane.animus.core.AnimusSplash;
 import art.arcane.animus.core.RuntimeEnvironment;
 import java.io.IOException;
 import java.util.List;
+import java.util.ArrayList;
+import org.bukkit.entity.Player;
+import art.arcane.animus.core.storage.JsonDocuments;
 import java.util.Locale;
 import java.util.logging.Level;
 import org.bukkit.ChatColor;
@@ -19,6 +22,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private volatile AnimusRuntime runtime;
     private ThreadPoolExecutor commands;
     private ReplyScheduler replies;
+    private PacketProofService proof;
     private volatile boolean stopping;
 
 
@@ -38,6 +42,8 @@ public final class AnimusPlugin extends JavaPlugin {
             }) {
                 @Override protected void terminated() { ownedRuntime.close(); }
             };
+            proof = new PacketProofService(this, replies, environment.minecraftVersion(), runtime.packetProofEnabled());
+            getLogger().info(proof.status(null));
             printSplash(AnimusSplash.render(environment, getServer().getVersion(), true));
         } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {
             getLogger().log(Level.SEVERE, "Failed to start " + BuildIdentity.NAME, exception);
@@ -48,6 +54,7 @@ public final class AnimusPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         stopping = true;
+        if (proof != null) proof.close();
         AnimusRuntime activeRuntime = runtime;
         runtime = null;
         if (commands != null) {
@@ -67,6 +74,7 @@ public final class AnimusPlugin extends JavaPlugin {
         if (!sender.hasPermission(status ? "animus.status" : "animus.admin")) {
             sender.sendMessage("You do not have permission to use this command."); return true;
         }
+        if (arguments.length > 0 && arguments[0].equalsIgnoreCase("proof")) return onProofCommand(sender, arguments);
         String[] args = arguments.clone();
         if (args.length > 0) args[0] = args[0].toLowerCase(Locale.ROOT);
         try {
@@ -89,7 +97,8 @@ public final class AnimusPlugin extends JavaPlugin {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] arguments) {
         if (arguments.length == 1) {
-            List<String> available = sender.hasPermission("animus.admin") ? Administration.COMMANDS : List.of("status");
+            List<String> available = sender.hasPermission("animus.admin") ? new ArrayList<>(Administration.COMMANDS) : new ArrayList<>(List.of("status"));
+            if (sender.hasPermission("animus.admin")) available.add("proof");
             return available.stream().filter(c -> c.startsWith(arguments[0].toLowerCase(Locale.ROOT))).toList();
         }
         AnimusRuntime activeRuntime = runtime;
@@ -99,6 +108,60 @@ public final class AnimusPlugin extends JavaPlugin {
         if (arguments.length == 2 && arguments[0].equals("import") && sender.hasPermission("animus.admin"))
             return List.of("preview", "apply").stream().filter(s -> s.startsWith(arguments[1])).toList();
         return List.of();
+    }
+
+    private boolean onProofCommand(CommandSender sender, String[] arguments) {
+        try {
+            String operation = arguments.length < 2 ? "status" : arguments[1].toLowerCase(Locale.ROOT);
+            if (operation.equals("status")) { sender.sendMessage(proof.status(sender instanceof Player player ? player : null)); return true; }
+            if (!(sender instanceof Player player)) { sender.sendMessage("Proof presentation requires a player viewer."); return true; }
+            switch (operation) {
+                case "clear" -> { proof.clear(player); sender.sendMessage("Proof cleared"); }
+                case "mount" -> {
+                    if (arguments.length < 3 || arguments.length > 11) throw new IllegalArgumentException("proof mount <vehicle-id> [rider-id...]");
+                    List<Integer> riders = new ArrayList<>();
+                    for (int i = 3; i < arguments.length; i++) riders.add(Integer.parseInt(arguments[i]));
+                    proof.mount(player, Integer.parseInt(arguments[2]), riders);
+                }
+                case "move" -> {
+                    if (arguments.length != 6) throw new IllegalArgumentException("proof move <entity-id> <dx> <dy> <dz>");
+                    proof.move(player, Integer.parseInt(arguments[2]), Double.parseDouble(arguments[3]), Double.parseDouble(arguments[4]), Double.parseDouble(arguments[5]));
+                }
+                case "path" -> {
+                    if (arguments.length != 6) throw new IllegalArgumentException("proof path <entity-id> <dx> <dy> <dz>");
+                    proof.path(player, Integer.parseInt(arguments[2]), Integer.parseInt(arguments[3]), Integer.parseInt(arguments[4]), Integer.parseInt(arguments[5]));
+                }
+                case "spawn" -> {
+                    if (arguments.length < 3 || arguments.length > 4) throw new IllegalArgumentException("proof spawn <namespace:type> [skin-hash]");
+                    if (arguments.length == 3) proof.spawn(player, arguments[2], null, null);
+                    else {
+                        if (!arguments[3].matches("[a-f0-9]{64}")) throw new IllegalArgumentException("Skin reference must be a SHA-256 hash");
+                        AnimusRuntime active = runtime;
+                        var request = proof.beginSkinLoad(player);
+                        String skinHash = arguments[3], type = arguments[2];
+                        try { commands.execute(() -> {
+                            try {
+                                String content = active.documents().read("skins/" + skinHash + ".json");
+                                if (content == null || !JsonDocuments.hash(content).equals(skinHash)) throw new IOException("Skin is missing or its content hash changed");
+                                var skin = JsonDocuments.object(content);
+                                String texture = skin.get("textureRaw").getAsString();
+                                String signature = skin.has("signature") && !skin.get("signature").isJsonNull() ? skin.get("signature").getAsString() : null;
+                                if (!stopping) replies.reply(player, () -> {
+                                    try { if (!stopping && proof.finishSkinLoad(player, request)) proof.spawn(player, type, texture, signature); }
+                                    catch (RuntimeException e) { player.sendMessage("Animus proof: " + e.getMessage()); }
+                                });
+                            } catch (IOException | RuntimeException e) {
+                                if (!stopping) replies.reply(player, () -> {
+                                    if (proof.finishSkinLoad(player, request)) player.sendMessage("Cannot load proof skin: " + e.getMessage());
+                                });
+                            }
+                        }); } catch (RejectedExecutionException e) { proof.finishSkinLoad(player, request); throw e; }
+                    }
+                }
+                default -> throw new IllegalArgumentException("proof status | spawn <type> [skin-hash] | move <id> <dx> <dy> <dz> | path <id> <dx> <dy> <dz> | mount <vehicle-id> [rider-id...] | clear");
+            }
+        } catch (RuntimeException e) { sender.sendMessage("Animus proof: " + e.getMessage()); }
+        return true;
     }
 
     private void printSplash(String splash) {

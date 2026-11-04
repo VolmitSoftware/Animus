@@ -1,5 +1,6 @@
 gradle.projectsEvaluated {
     Jar bukkitArchive = project(':bukkit').tasks.named('shadowJar', Jar).get()
+    // These are pure build/check targets. Managed-server scenarios live in qa/multiplexor/.
     List<Map<String, Object>> targets = [[
         id: 'core',
         tasks: [':core:check'],
@@ -23,7 +24,28 @@ gradle.projectsEvaluated {
             platforms: ['plugin'],
             minecraftVersions: minecraftTargets.keySet().toList()
         ]]
+    ], [
+        id: 'converter',
+        tasks: [':converter:build'],
+        arguments: [],
+        java: 25,
+        memoryMiB: 4096,
+        workers: 2,
+        dependsOn: ['animus:core'],
+        artifacts: []
     ]]
+    minecraftTargets.keySet().each { String target ->
+        targets.add([
+            id: "bukkit-api-${target}".toString(),
+            tasks: [":bukkit:compileSpigot${target.replace('.', '_')}".toString()],
+            arguments: [],
+            java: 25,
+            memoryMiB: 4096,
+            workers: 2,
+            dependsOn: ['animus:core'],
+            artifacts: []
+        ])
+    }
     for (String loader : (providers.gradleProperty('includeModDistributions').getOrElse('false').toBoolean() ? ['fabric', 'forge', 'neoforge'] : [])) {
         minecraftTargets.each { String minecraft, Map<String, Object> properties ->
             if (loader == 'neoforge' && properties.neoforgeUsesForge) {

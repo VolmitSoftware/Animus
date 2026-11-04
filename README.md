@@ -1,6 +1,6 @@
 # Animus
 
-Animus is being built as a Citizens replacement with virtual, packet-rendered NPCs. It currently provides durable NPC **definitions**, administration commands, and a staged Citizens converter. **Packet rendering, navigation, interactions, behaviors, and combat are not implemented.** Installing or importing a definition does not create a visible NPC.
+Animus is being built as a Citizens replacement with virtual, packet-rendered NPCs. It currently provides durable NPC **definitions**, administration commands, a staged Citizens converter, virtual runtime foundations, and an opt-in packet proof. Installing or importing a definition does not create a visible NPC. Production activation, live navigation, behaviors, and combat remain unfinished.
 
 The target releases are Minecraft **26.1.2, 26.2, and 26.3**, using **Java 25**. Spigot/Paper/Folia are first; the inherited Fabric/Forge/NeoForge entry points remain experimental until the server milestones are complete. API compilation is not gameplay certification. See [compatibility](docs/compatibility.md) and [implementation evidence](docs/implementation.md).
 
@@ -21,6 +21,8 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 ```
 
 The Bukkit artifact is in `bukkit/build/libs/` and `build/distributions/`. The converter is in `converter/build/install/converter/`, with archives under `converter/build/distributions/`. `build/artifacts.json` describes the Bukkit distribution (or all platform distributions when opted in).
+
+For isolated builds, artifact delivery, managed server checks and client scenarios, follow the [Multiplexor verification guide](docs/multiplexor.md). Native packet checks use exact-version clients attached to Multiplexor-managed servers where its standard client lacks protocol data.
 
 The build automatically uses a sibling/ancestor VolmLib checkout. Override with `-PlocalVolmLibDirectory=/path/to/VolmLib`, `VOLMLIB_DIR`, or `-PuseLocalVolmLib=false` for published dependencies.
 
@@ -55,9 +57,9 @@ converter/build/install/converter/bin/converter validate /path/to/Animus
 converter/build/install/converter/bin/converter rollback /path/to/Animus <transaction-id>
 ```
 
-Apply installs definitions with `spawned: false` and imported combat disabled. Unknown traits, Denizen flags/assignments, and unimplemented settings remain preserved. Denizen script definitions are needed for future behavior translation. World remapping currently changes the main spawn location only; preserved waypoint/combat locations still require review. Numeric references remain preserved alongside the ID map; they are not executable Animus references yet.
+Apply installs definitions with `spawned: false` and imported combat disabled. Unknown traits, Denizen flags/assignments, and unimplemented settings remain preserved. Denizen script definitions are needed for future behavior translation. Version 2 remaps known spawn, waypoint, Sentinel, and sitting locations and resolves known mount/guard references through the UUID map. Unknown references remain preserved with diagnostics. Reviewable transformed traits live in `modules["citizens:review"]`; original records remain unchanged in the archive. Sentinel historical statistics are separated from settings. These data transformations do not execute behavior.
 
-A repeated identical preview reuses its import ID. Repeated apply reports `already-applied`; other identity/path collisions are rejected. Replacement/duplication import modes are not implemented. A modified candidate fails hash verification; import it first, then edit the installed definitions through the validation service. Rollback refuses to overwrite subsequent edits. It also removes the import receipt, allowing a fresh apply after rollback.
+A repeated identical preview reuses its versioned import ID. Version 1 bundles remain readable; version 2 conversion uses a distinct identity. Repeated apply reports `already-applied`; other identity/path collisions are rejected. Replacement/duplication import modes are not implemented. A modified candidate fails hash verification; import it first, then edit the installed definitions through the validation service. Rollback refuses to overwrite subsequent edits. It also removes the import receipt, allowing a fresh apply after rollback.
 
 The local CLI cannot open a running server's data directory: both hold the same exclusive lock. Use server commands while online. Archive and transaction files may contain private data; they are not public fixtures.
 
@@ -89,11 +91,32 @@ Plugin-wide configuration uses `config.toml`, consistent with other Volmit plugi
 ```toml
 # Animus plugin settings. NPC and behavior documents use JSON.
 statusMessage = "Hello from Animus"
+packetProofEnabled = false
 ```
 
 Existing TOML files and comments are preserved. On first startup with only a legacy `config.json`, Animus validates it, archives it under `backups/config-<hash>.json`, and writes TOML only if a lossless conversion is possible. The original JSON remains unchanged; subsequent startup reads TOML. Invalid TOML prevents startup rather than falling back to legacy settings. Restart after changing plugin settings.
 
 NPC definitions, behavior packs, skins, migration bundles/reports, state, and generated data use **JSON**. Original import sources are archived in their original format for recovery.
+
+## Experimental packet proof
+
+Set `packetProofEnabled = true` in TOML and restart an isolated Bukkit/Paper test server. The proof requires `animus.admin`, is viewer-only, and expires after two minutes. It does not activate persisted definitions. Folia deliberately reports it unavailable until region-safe world snapshots and ownership transfer are implemented.
+
+```text
+/animus proof status
+/animus proof spawn minecraft:player [skin-sha256]
+/animus proof spawn minecraft:horse
+/animus proof move <entity-id> <dx> <dy> <dz>
+/animus proof path <entity-id> <dx> <dy> <dz>
+/animus proof mount <vehicle-id> [rider-id ...]
+/animus proof clear
+```
+
+Types: player, armor stand, horse, turtle, frog, llama, armadillo, and ender dragon. Skin hashes reference complete JSON skin documents under `skins/`. The adapter constructs packets without native NPC entity bodies. It supports signed textures, movement/head rotation, static passengers, despawn, and inbound use/attack interception. Static mounts must be detached before movement or interaction; controllable mounts and dragon behavior are unimplemented.
+
+Interactions use server position and view direction, a virtual hitbox, reach/rate/visibility checks, and block line of sight. Preview attacks change only virtual health. `VirtualNpcInteractionEvent` supports cancellation and marks previews explicitly. No real damage or behavior commands run. Disconnect, teleport, world change, respawn, expiry, and shutdown invalidate the viewer session. The proof has bounded viewers, bodies, issued IDs, pending work, and packet queues. It is a technical gate, not production Citizens compatibility.
+
+`core/virtual` provides immutable runtime snapshots, hit validation, spatial indexing, and bounded visibility deltas. `core/navigation` provides immutable voxel snapshots and bounded cancellable A* for walking, stepping, upward jumping, falling, swimming, and flight. The diagnostic `proof path` captures at most 8,192 voxels from already loaded chunks, with a shared budget of 256 capture operations per tick and eight outstanding jobs. One worker searches immutable snapshots; it never reads Bukkit worlds. The result reports its capture interval and does not move the body. Terrain can change during or after capture, so execution will require live revalidation. The planner uses whole-block occupancy; it does not prove partial-block support/collision, gap jumps, or executed physics.
 
 ## Editable definitions and recovery
 
@@ -109,9 +132,9 @@ Transactions are capped at 10,000 documents and a 16 MiB encoded journal. File/d
 
 | Path | Purpose |
 |---|---|
-| `core/` | Java 25 runtime, immutable definitions, repository, journal store, migration, shared administration |
+| `core/` | Java 25 runtime, immutable definitions, repository, journal store, migration, virtual state, bounded navigation, shared administration |
 | `converter/` | Standalone converter using the same core services |
-| `bukkit/` | Plugin lifecycle, permissions, bounded command queue, platform reply scheduling |
+| `bukkit/` | Plugin lifecycle, permissions, bounded command queue, platform reply scheduling, isolated packet proof and events |
 | `adapters/` | Experimental mod-loader scaffold; no NPC gameplay |
 | `gradle/` | Build matrix, packaging, artifact and Multiplexor declarations |
 | `qa/` | Reproducible platform scenarios |

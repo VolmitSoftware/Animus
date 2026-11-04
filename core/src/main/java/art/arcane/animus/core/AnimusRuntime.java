@@ -66,6 +66,11 @@ public final class AnimusRuntime implements AutoCloseable {
         return documents;
     }
 
+    public synchronized boolean packetProofEnabled() {
+        if (!isRunning()) throw new IllegalStateException("Animus is not running");
+        return settings.packetProofEnabled();
+    }
+
     public boolean isRunning() {
         return settings != null;
     }

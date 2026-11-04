@@ -16,6 +16,7 @@ class PluginSettingsTest {
             assertEquals("Hello from Animus", PluginSettings.load(store).statusMessage());
             assertTrue(Files.exists(root.resolve("config.toml")));
             assertFalse(Files.exists(root.resolve("config.json")));
+            assertFalse(PluginSettings.load(store).packetProofEnabled());
             String source = "# Admin comment\nstatusMessage = 'Custom message'\n[future]\nkeep = true\n";
             Files.writeString(root.resolve("config.toml"), source);
             assertEquals("Custom message", PluginSettings.load(store).statusMessage());
@@ -32,6 +33,14 @@ class PluginSettingsTest {
             assertTrue(store.read("config.toml").contains("preserved"));
             Files.writeString(root.resolve("config.json"), "invalid legacy now");
             assertEquals("He said \"hello\"\nAgain", PluginSettings.load(store).statusMessage());
+        }
+    }
+    @Test void proofRequiresExplicitBooleanOptIn() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\npacketProofEnabled = true\n");
+            assertTrue(PluginSettings.load(store).packetProofEnabled());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\npacketProofEnabled = 'true'\n");
+            assertThrows(IOException.class, () -> PluginSettings.load(store));
         }
     }
     @Test void refusesLossyLegacyNullsAndRetainsTheSource() throws Exception {

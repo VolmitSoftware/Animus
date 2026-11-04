@@ -3,6 +3,7 @@ package art.arcane.animus.core.migration;
 import art.arcane.animus.core.npc.*;
 import art.arcane.animus.core.storage.*;
 import org.junit.jupiter.api.Test;
+import com.google.gson.*;
 import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.*;
@@ -36,8 +37,8 @@ class CitizensImporterTest {
         assertEquals(Files.readString(source), Files.readString(preview.directory().resolve("source.yml")));
         assertEquals(preview.id(), importer.preview(source, target, Map.of("old", "world")).id());
         var report = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/1.json"))).getAsJsonObject("fields");
-        assertEquals("UNSUPPORTED_PRESERVED", report.get("$.traits.mystery.answer").getAsString());
-        assertEquals("REQUIRES_INTEGRATION", report.get("$.traits.assignment.assignment").getAsString());
+        assertEquals("UNSUPPORTED_PRESERVED", report.get("/traits/mystery/answer").getAsString());
+        assertEquals("REQUIRES_INTEGRATION", report.get("/traits/assignment/assignment").getAsString());
         try (DocumentStore store = new DocumentStore(target)) {
             String tx = importer.apply(store, preview.id());
             assertEquals("already-applied", importer.apply(store, preview.id()));
@@ -45,7 +46,7 @@ class CitizensImporterTest {
             assertEquals("world", definition.json().getAsJsonObject("position").get("world").getAsString());
             assertFalse(definition.json().get("spawned").getAsBoolean());
             assertFalse(definition.json().getAsJsonObject("modules").getAsJsonObject("animus:combat").get("enabled").getAsBoolean());
-            assertEquals(42, definition.json().getAsJsonObject("modules").getAsJsonObject("citizens:preserved").getAsJsonObject("mystery").get("answer").getAsInt());
+            assertEquals(42, definition.json().getAsJsonObject("modules").getAsJsonObject("citizens:review").getAsJsonObject("mystery").get("answer").getAsInt());
             store.rollback(tx);
             assertNull(store.read("npcs/citizens/citizens-1.json"));
             assertNull(store.read("imports/" + preview.id() + "/receipt.json"));
@@ -88,5 +89,117 @@ class CitizensImporterTest {
         var first = importer.preview(source, root.resolve("out"), Map.of());
         var second = importer.preview(source, root.resolve("out"), Map.of("old", "new"));
         assertEquals(first.summary().get("idMap"), second.summary().get("idMap"));
+    }
+
+    @Test void remapsKnownNestedLocationsAndSeparatesHistoryWithoutChangingArchives() throws Exception {
+        String extra = """
+                  waypoints:
+                    guided:
+                      guides:
+                        - location: {world: old, worldid: old-world-uuid, x: 2, y: 65, z: 3}
+                    linear:
+                      points:
+                        '0':
+                          location: {world: old, worldid: old-world-uuid, x: 4, y: 65, z: 5}
+                  sittrait:
+                    sittingAt: {world: old, worldid: old-world-uuid, x: 6, y: 65, z: 7}
+                  unknown:
+                    location: {world: old, worldid: preserve, x: 1, y: 2, z: 3}
+                """;
+        String input = "npc:\n" + npc("1").replace("sentinel: {health: 40, targets: [MONSTERS]}", "sentinel: {health: 40, stats_punches: 23, spawnPoint: {world: old, worldid: old-world-uuid, x: 8, y: 65, z: 9}}") + extra.indent(4);
+        Path source = source(input);
+        var preview = new CitizensImporter().preview(source, root.resolve("out"), Map.of("old", "new"));
+        JsonObject candidate = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/citizens/citizens-1.json")));
+        JsonObject reviewed = candidate.getAsJsonObject("modules").getAsJsonObject("citizens:review");
+        JsonObject guide = reviewed.getAsJsonObject("waypoints").getAsJsonObject("guided").getAsJsonArray("guides").get(0).getAsJsonObject().getAsJsonObject("location");
+        assertEquals("new", guide.get("world").getAsString()); assertFalse(guide.has("worldid"));
+        assertEquals("new", reviewed.getAsJsonObject("sentinel").getAsJsonObject("spawnPoint").get("world").getAsString());
+        assertEquals("old", reviewed.getAsJsonObject("unknown").getAsJsonObject("location").get("world").getAsString());
+        assertEquals("new", candidate.getAsJsonObject("position").get("world").getAsString());
+        JsonObject combat = candidate.getAsJsonObject("modules").getAsJsonObject("animus:combat");
+        assertEquals(23, combat.getAsJsonObject("historicalStatistics").get("stats_punches").getAsInt());
+        assertFalse(combat.getAsJsonObject("preservedSettings").has("stats_punches"));
+        assertFalse(reviewed.getAsJsonObject("sentinel").has("stats_punches"));
+        assertEquals(5, preview.summary().get("remappedLocations").getAsInt());
+        assertEquals(input, Files.readString(preview.directory().resolve("source.yml")));
+        JsonObject archived = JsonDocuments.object(Files.readString(preview.directory().resolve("records/1.json")));
+        assertEquals(23, archived.getAsJsonObject("traits").getAsJsonObject("sentinel").get("stats_punches").getAsInt());
+        assertEquals("old", archived.getAsJsonObject("traits").getAsJsonObject("location").get("world").getAsString());
+    }
+
+    @Test void resolvesForwardNumericGuardAndUuidMountReferencesAndReportsMissing() throws Exception {
+        String input = "npc:\n" + npc("1").replace("sentinel: {health: 40, targets: [MONSTERS]}", "sentinel: {guardedNPC: 2}")
+                + "      mounttrait: {mountedon: '00000000-0000-0000-0000-000000000002'}\n"
+                + npc("2").replace("sentinel: {health: 40, targets: [MONSTERS]}", "sentinel: {guardedNPC: 999}");
+        var preview = new CitizensImporter().preview(source(input), root.resolve("out"), Map.of());
+        assertEquals(2, preview.summary().get("resolvedReferences").getAsInt());
+        assertEquals(1, preview.summary().get("unresolvedReferences").getAsInt());
+        JsonObject first = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/1.json")));
+        for (JsonElement reference : first.getAsJsonArray("references")) {
+            assertEquals("resolved", reference.getAsJsonObject().get("status").getAsString());
+            assertEquals("citizens-2", reference.getAsJsonObject().get("npcId").getAsString());
+        }
+        assertTrue(preview.summary().getAsJsonArray("migrationWarnings").toString().contains("/traits/sentinel/guardedNPC"));
+        assertEquals(2, preview.valid(), "Unresolved preserved reference needs review, not silent deletion");
+    }
+
+    @Test void jsonPointerReportsCannotCollideAndIncludeRootMetadata() throws Exception {
+        String input = "last-created-npc-id: 1\nnpc:\n" + npc("1").replace("mystery: {answer: 42}", "mystery: {'a.b': 1, a: {b: 2}, 'a/b': 3, 'a~b': 4}");
+        var preview = new CitizensImporter().preview(source(input), root.resolve("out"), Map.of());
+        JsonObject fields = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/1.json"))).getAsJsonObject("fields");
+        for (String key : new String[]{"/traits/mystery/a.b", "/traits/mystery/a/b", "/traits/mystery/a~1b", "/traits/mystery/a~0b"}) assertTrue(fields.has(key), key);
+        assertEquals("UNSUPPORTED_PRESERVED", preview.summary().getAsJsonObject("sourceFields").get("/last-created-npc-id").getAsString());
+    }
+
+    @Test void sentinelNoGuardMarkerAndIdenticalWorldMappingAreNotChanged() throws Exception {
+        String input = "npc:\n" + npc("1").replace("sentinel: {health: 40, targets: [MONSTERS]}", "sentinel: {guardedNPC: -1}").replace("world: old, x:", "world: old, worldid: original, x:");
+        var preview = new CitizensImporter().preview(source(input), root.resolve("out"), Map.of("old", "old"));
+        assertEquals(0, preview.summary().get("remappedLocations").getAsInt());
+        assertEquals(0, preview.summary().get("unresolvedReferences").getAsInt());
+        JsonObject definition = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/citizens/citizens-1.json")));
+        assertEquals("original", definition.getAsJsonObject("modules").getAsJsonObject("citizens:review").getAsJsonObject("location").get("worldid").getAsString());
+    }
+
+    @Test void rejectsIncompleteRepeatApplyAndEnabledCombatEvenWithUpdatedManifest() throws Exception {
+        var importer = new CitizensImporter();
+        var preview = importer.preview(source("npc:\n" + npc("1")), root.resolve("out"), Map.of());
+        try (DocumentStore store = new DocumentStore(root.resolve("out"))) {
+            importer.apply(store, preview.id());
+            Files.delete(root.resolve("out/npcs/citizens/citizens-1.json"));
+            assertTrue(assertThrows(IOException.class, () -> importer.apply(store, preview.id())).getMessage().contains("incomplete"));
+            // Remove only our generated receipt, then exercise the independent staged-combat check.
+            Files.delete(root.resolve("out/imports/" + preview.id() + "/receipt.json"));
+            String name = "npcs/citizens/citizens-1.json";
+            Path candidatePath = preview.directory().resolve(name);
+            JsonObject candidate = JsonDocuments.object(Files.readString(candidatePath));
+            candidate.getAsJsonObject("modules").getAsJsonObject("animus:combat").addProperty("enabled", true);
+            String content = JsonDocuments.write(candidate); Files.writeString(candidatePath, content);
+            JsonObject report = preview.summary(); report.getAsJsonObject("documents").addProperty(name, JsonDocuments.hash(content));
+            Files.writeString(preview.directory().resolve("report.json"), JsonDocuments.write(report));
+            assertTrue(assertThrows(IOException.class, () -> importer.apply(store, preview.id())).getMessage().contains("disabled"));
+            assertFalse(Files.exists(root.resolve("out/npcs/citizens/citizens-1.json")));
+        }
+    }
+
+    @Test void canReadAndApplyVersionOneBundlesWithoutReusingThemForVersionTwoPreview() throws Exception {
+        var importer = new CitizensImporter();
+        Path input = source("npc:\n" + npc("1"));
+        Path out = root.resolve("out");
+        var v2 = importer.preview(input, out, Map.of());
+        String v1Id = JsonDocuments.hash("animus-citizens-v1\n" + JsonDocuments.hash(Files.readString(input)) + "\n{}");
+        Path v1Directory = out.resolve("imports/" + v1Id);
+        Files.move(v2.directory(), v1Directory);
+        JsonObject summary = v2.summary(); summary.addProperty("converterVersion", 1); summary.addProperty("importId", v1Id);
+        String name = "npcs/citizens/citizens-1.json";
+        JsonObject definition = JsonDocuments.object(Files.readString(v1Directory.resolve(name)));
+        definition.getAsJsonObject("migration").addProperty("importId", v1Id);
+        JsonObject modules = definition.getAsJsonObject("modules"); modules.add("citizens:preserved", modules.remove("citizens:review"));
+        String content = JsonDocuments.write(definition); Files.writeString(v1Directory.resolve(name), content);
+        summary.getAsJsonObject("documents").addProperty(name, JsonDocuments.hash(content));
+        Files.writeString(v1Directory.resolve("report.json"), JsonDocuments.write(summary));
+        assertEquals(1, importer.readPreview(v1Directory, v1Id).records());
+        var fresh = importer.preview(input, out, Map.of()); assertNotEquals(v1Id, fresh.id());
+        assertEquals(2, fresh.summary().get("converterVersion").getAsInt());
+        try (DocumentStore store = new DocumentStore(out)) { importer.apply(store, v1Id); }
     }
 }
