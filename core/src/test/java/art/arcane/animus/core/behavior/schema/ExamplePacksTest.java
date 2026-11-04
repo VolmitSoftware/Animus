@@ -4,12 +4,17 @@ import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.behavior.BehaviorCompiler;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.catalog.BehaviorCheckpoints;
+import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.TargetCategory;
+import art.arcane.animus.core.combat.TargetRules;
+import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonObject;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -76,7 +81,51 @@ class ExamplePacksTest {
         }
         String readme = Files.readString(RepositoryFiles.packs().resolve("README.md"));
         assertTrue(readme.contains("animus:combat-control"));
-        assertTrue(readme.contains("cannot follow"));
+        assertTrue(readme.contains("modules[\"animus:combat\"]"));
+    }
+
+    private static CombatSettings combat(String pack, String npc) throws Exception {
+        NpcDefinition definition = NpcDefinition.parse(Files.readString(RepositoryFiles.packs().resolve(pack + "/npcs/examples/" + npc + ".json")));
+        return CombatSettings.active(definition).orElseThrow(() -> new AssertionError(pack + " must enable animus:combat"));
+    }
+
+    @Test void theTownGuardFightsMonstersAndAttackersAndReturnsToPost() throws Exception {
+        CombatSettings settings = combat("town-guard", "town-guard");
+        assertTrue(settings.targets().categories().contains(TargetCategory.MONSTERS));
+        assertFalse(settings.targets().categories().contains(TargetCategory.PLAYERS));
+        assertTrue(settings.targeting().fightBack());
+        assertTrue(settings.pursuit().returnToPost());
+        assertTrue(settings.pursuit().leashRange() <= settings.pursuit().giveUpRange());
+        assertEquals(Optional.of("town-guard"), settings.squad().name());
+    }
+
+    @Test void theBodyguardGuardsWhoeverHiresItAndStopsOnDismissal() throws Exception {
+        CombatSettings settings = combat("personal-guard", "bodyguard");
+        assertEquals(TargetRules.NONE, settings.targets());
+        assertTrue(settings.targeting().fightBack());
+        assertTrue(settings.guard().player().isEmpty());
+        JsonObject behavior = JsonDocuments.object(Files.readString(RepositoryFiles.packs().resolve("personal-guard/behaviors/personal-guard/bodyguard.json")));
+        String hire = behavior.getAsJsonObject("routines").get("hire").toString();
+        assertTrue(hire.contains("{\"operation\":\"guard\",\"target\":\"player\"}"), hire);
+        String dismiss = behavior.getAsJsonObject("routines").get("dismiss").toString();
+        assertTrue(dismiss.contains("{\"operation\":\"guard\"}"), dismiss);
+    }
+
+    @Test void theShopChargesTheClickerBeforeGivingAnything() throws Exception {
+        JsonObject behavior = JsonDocuments.object(Files.readString(RepositoryFiles.packs().resolve("shop/behaviors/shop/keeper.json")));
+        List<String> commands = new ArrayList<>();
+        for (com.google.gson.JsonElement step : behavior.getAsJsonObject("routines").getAsJsonObject("buy").getAsJsonArray("steps")) {
+            JsonObject action = step.getAsJsonObject();
+            if (action.get("capability").getAsString().equals("animus:command")) commands.add(action.getAsJsonObject("arguments").get("command").getAsString());
+        }
+        assertEquals(3, commands.size(), commands.toString());
+        for (String command : commands) {
+            assertTrue(command.contains("{player}"), command);
+            assertFalse(command.contains("@p"), command);
+        }
+        assertTrue(commands.get(0).contains("store success score @s animus_shop run clear @s minecraft:emerald 1"), commands.get(0));
+        assertTrue(commands.get(1).contains("if score @s animus_shop matches 1 run give"), commands.get(1));
+        assertTrue(commands.get(2).startsWith("scoreboard players reset"), commands.get(2));
     }
 
     @Test void everyExampleNpcReferencesABehaviorOfItsOwnPack() throws Exception {

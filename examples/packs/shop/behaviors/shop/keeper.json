@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "id": "shop:keeper",
   "entry": "main",
   "routines": {
@@ -41,14 +41,21 @@
           "type": "action",
           "capability": "animus:command",
           "arguments": {
-            "command": "execute positioned 16 64 0 as @p[distance=..6] if items entity @s container.* minecraft:emerald run give @s minecraft:bread 4"
+            "command": "execute as {player} store success score @s animus_shop run clear @s minecraft:emerald 1"
           }
         },
         {
           "type": "action",
           "capability": "animus:command",
           "arguments": {
-            "command": "execute positioned 16 64 0 as @p[distance=..6] run clear @s minecraft:emerald 1"
+            "command": "execute as {player} if score @s animus_shop matches 1 run give @s minecraft:bread 4"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "scoreboard players reset {player} animus_shop"
           }
         },
         {
@@ -66,9 +73,21 @@
       "arguments": {
         "text": "Come back when you are hungry."
       }
+    },
+    "setup": {
+      "type": "action",
+      "capability": "animus:command",
+      "arguments": {
+        "command": "scoreboard objectives add animus_shop dummy"
+      }
     }
   },
   "triggers": [
+    {
+      "id": "ready",
+      "event": "spawn",
+      "routine": "setup"
+    },
     {
       "id": "click",
       "event": "interaction",

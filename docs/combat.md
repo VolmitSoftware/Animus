@@ -86,7 +86,7 @@ The built-in [`animus:combat-control`](behaviors.md#actions) action drives comba
 | `release` | — | Drops the current target; rules keep running. |
 | `guard` | Optional | Guards this player or NPC; without `target`, stops guarding. Replaces the definition's guard until despawn. |
 
-The action fails with a reason when the NPC has no enabled combat, is dead, or the target is not available in its world. Use the `damage` and `death` triggers to react to fights.
+`target` is a UUID, or `player` for the player who started the run, so a hire dialogue can guard whoever answered it. The action fails with a reason when the NPC has no enabled combat, is dead, or the target is not available in its world. Use the `damage` and `death` triggers to react to fights.
 
 Administrators have the same operations:
 

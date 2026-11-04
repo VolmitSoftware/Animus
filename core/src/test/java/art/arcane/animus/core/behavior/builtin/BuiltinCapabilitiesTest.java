@@ -197,6 +197,16 @@ class BuiltinCapabilitiesTest {
         assertEquals(List.of("combat:GUARD:true", "combat:GUARD:false"), platform.calls);
     }
 
+    @Test void combatControlCanTargetOrGuardTheTriggeringPlayer() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("combat-control", "{\"operation\":\"guard\",\"target\":\"player\"}").status());
+        assertEquals(Outcome.Status.OK, action("combat-control", "{\"operation\":\"target\",\"target\":\"player\"}").status());
+        Outcome<String> alone = action("combat-control", "{\"operation\":\"guard\",\"target\":\"player\"}", Optional.empty(), false, false, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.INVALID, alone.status());
+        assertEquals("no-triggering-player", code(alone));
+        assertEquals(List.of("combat:GUARD:" + PLAYER, "combat:TARGET:" + PLAYER), platform.targets);
+    }
+
     @Test void navigateFollowsReusableRoutesAndLookFacesTheTriggeringPlayer() throws Exception {
         start();
         assertEquals(Outcome.Status.OK, action("navigate", "{\"route\":\"town-patrol\"}").status());
@@ -276,6 +286,16 @@ class BuiltinCapabilitiesTest {
         assertTrue(builtins.commandAllowed("town:quest/gate"));
         assertFalse(builtins.commandAllowed("towns:gate"));
         assertFalse(builtins.commandAllowed("other:town"));
+    }
+
+    @Test void consoleCommandNamesTheTriggeringPlayerByUuid() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        Outcome<String> outcome = action("command", "{\"command\":\"clear {player} minecraft:emerald 1\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.OK, outcome.status(), outcome.diagnostics().toString());
+        Outcome<String> alone = action("command", "{\"command\":\"clear {player} minecraft:emerald 1\"}", Optional.empty(), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.INVALID, alone.status());
+        assertEquals("no-triggering-player", code(alone));
+        assertEquals(List.of("command:CONSOLE:clear " + PLAYER + " minecraft:emerald 1"), platform.calls);
     }
 
     @Test void playerCommandRequiresATriggeringPlayer() throws Exception {

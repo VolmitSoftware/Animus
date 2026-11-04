@@ -17,5 +17,56 @@
   },
   "behaviors": [
     "town-guard:guard"
-  ]
+  ],
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targets": {
+        "categories": [
+          "monsters"
+        ]
+      },
+      "ignores": {
+        "entityTypes": [
+          "minecraft:creeper"
+        ]
+      },
+      "avoids": {
+        "entityTypes": [
+          "minecraft:creeper"
+        ]
+      },
+      "targeting": {
+        "scanRange": 16,
+        "fightBack": true,
+        "lineOfSight": "required"
+      },
+      "avoidance": {
+        "range": 4
+      },
+      "squad": {
+        "name": "town-guard",
+        "alertRange": 24
+      },
+      "pursuit": {
+        "speed": 4,
+        "giveUpRange": 24,
+        "leashRange": 24,
+        "returnToPost": true
+      },
+      "melee": {
+        "damage": 5,
+        "reach": 3,
+        "cooldownTicks": 20
+      },
+      "defense": {
+        "maximumHealth": 40,
+        "armor": 0.2,
+        "healRateTicks": 100
+      },
+      "respawn": {
+        "delayTicks": 600
+      }
+    }
+  }
 }
