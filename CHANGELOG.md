@@ -33,6 +33,9 @@
 - Persistent behavior state under `state/behavior-state/` with coalesced journaled writes, flush on clean shutdown, and `[behaviors.state]` budgets.
 - Accepted behaviors keep last-valid checkpoints across restarts, and deleted sources do not return.
 - `/animus behaviors trace`, `/animus behaviors state status` and `/animus behaviors state purge`.
+- Persisted NPC-on-NPC mounts from native and imported definitions, with cycle and bound validation and exact field diagnostics.
+- Opt-in real-player riding through validated interaction, with semantic steering and server-side movement checks.
+- Packet-only ender dragon presentation with facing, synced phases and part-based hit validation.
 
 ### Changed
 
@@ -41,4 +44,4 @@
 
 ### Notes
 
-Partial-block movement, mounted riding, Folia rendering, behaviors, the full combat module, extension modules, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
+Partial-block movement, Folia rendering, behaviors, the full combat module, extension modules, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.

@@ -13,7 +13,9 @@ This is a development inventory, not a release-parity claim. Counts were produce
 | Ownership (388) | Preserved for review | Administration uses plugin permissions; per-NPC ownership pending |
 | Sentinel (103) | All settings preserved; disabled pending review | Manual damage and ordinary-zombie adapter implemented; full combat module pending; statistics kept separate |
 | Denizen flags (24), assignment/trigger records (8 each) | Preserved; requires integration | External scripts required to translate behaviors |
-| Mounts (2), controllable (1), dragons (3 bodies) | Preserved for review | Mount UUIDs resolved; static passengers/dragon packet proof; unmounted preview control verified on exact Paper/Spigot targets; mounted authority and graphical gameplay pending |
+| Mounts (2) | Preserved; UUID references resolved | Resolved references apply from definitions on exact Paper/Spigot: passengers for every viewer, across restart. Unresolved ones stay preserved and reported. See [mounted NPCs](runtime.md#mounted-npcs) |
+| Controllable (1) | Preserved for review | Trait not executed. A definition opts in with `animus:riding`, with `reviewAccepted: true` when imported. See [riding](runtime.md#riding-an-npc) |
+| Dragons (3 bodies) | Preserved; type converted | Packet body with correct facing, phase and part-based hits; no AI. See [presentation](runtime.md#ender-dragon-presentation) |
 | Missing/unknown modules and traits | Preserved as JSON and in original archive | Trusted Java startup loader passed runtime10 module/data workflows on all nine exact targets; manual JSON behaviors in the current source await their own managed gate. Unknown imported settings remain unexecuted |
 
 Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog 1, llama 1, armadillo 1. All 495 are represented and validate as definitions. All eight body types were decoded by an exact26.3 protocol client in the isolated packet proof. Persisted activation passes dedicated restart and viewer scenarios on every exact Spigot/Paper target. Graphical and client frame-time validation remain open; see [runtime limits](runtime.md).
@@ -100,13 +102,17 @@ The locally cached Mojang 26.1.2 and 26.3 classes expose `ServerboundInteractPac
 | Runtime-6 Paper/Spigot unmounted preview control |18 checks each pass|18 checks each pass|18 checks each pass|
 | Runtime-6 Paper/Spigot navigation and JSON routes |16 checks each pass|16 checks each pass|16 checks each pass|
 | Runtime-6 Folia unavailable-feature rejection + recovery |27 pass, stable8|27 pass, beta7|27 pass, alpha6|
+| Mounts, real riders and dragon presentation (Paper/Spigot) | Unit tests and exact-jar checks; not yet run on a live server | Same | Same |
+| Mounts, real riders and dragon presentation (Folia) | Unavailable with a diagnostic | Unavailable with a diagnostic | Unavailable with a diagnostic |
 | Fabric/Forge/NeoForge NPC runtime | Deferred | Deferred | Deferred |
 
 Exact server and plugin hashes, commands, and machine-readable direct-test evidence are retained locally under `.qa/platform-tests/evidence-index.json`. Separate Multiplexor reports live under `.qa/multiplexor-workspace/animus-evidence/`; see the [runner guide](multiplexor.md). Reproduce with `qa/platform-smoke.py`; the selected release channel is explicit. Lifecycle checks use synthetic dormant definitions and are separate from gameplay checks. All six owned servers were shut down after verification.
 
-Supplemental Leaf26.3-17/af63114 coverage includes console administration, invalid-reload retention, TOML migration, restart persistence, and an exact-protocol777 client proof. The client decodes player profiles, signed textures, all eight body types, movement, static passengers, despawn, accepted/rejected interactions, block occlusion, and virtual health. These historical proof scenarios do not establish real-target damage or vanilla-mob targeting; new runtime/combat scenarios report those independently. No graphical-client rendering, controllable mounts, combat parity, bandwidth benchmark or measured performance improvement is claimed. See [implementation evidence](implementation.md) for completed scenario results and runner details.
+Supplemental Leaf26.3-17/af63114 coverage includes console administration, invalid-reload retention, TOML migration, restart persistence, and an exact-protocol777 client proof. The client decodes player profiles, signed textures, all eight body types, movement, static passengers, despawn, accepted/rejected interactions, block occlusion, and virtual health. These historical proof scenarios do not establish real-target damage or vanilla-mob targeting; new runtime/combat scenarios report those independently. No graphical-client rendering, combat parity, bandwidth benchmark or measured performance improvement is claimed. See [implementation evidence](implementation.md) for completed scenario results and runner details.
 
 Benchmark Animus against a reproducible server baseline with the same world and clients. Record visible work, simulation and exact configurations; no architecture-only performance claim is justified.
+
+Mounts, riding and dragon presentation bind to the same exact-version adapter. On Folia the NPC runtime reports them unavailable through `/animus status`, `/animus ride status` and activation errors, and any other Minecraft version refuses to bind. If one of the server methods riding needs is missing, only riding reports unavailable and the rest of the runtime keeps working. `NativeSignatureProbe` checks the native members they use against an exact server jar.
 
 Current runtime details and explicit manual combat limits are in [runtime.md](runtime.md). [Spigot provenance](spigot-verification.md) records official server builds and prior proof artifact hashes. Do not mix baseline proof evidence with later production artifact results.
 

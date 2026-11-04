@@ -129,6 +129,14 @@ public final class AnimusPlugin extends JavaPlugin {
             catch (RuntimeException e) { sender.sendMessage("Animus combat: " + e.getMessage()); }
             return true;
         }
+        if (arguments.length > 0 && arguments[0].equalsIgnoreCase("ride")) {
+            try {
+                if (arguments.length == 3 && arguments[1].equalsIgnoreCase("stop")) sender.sendMessage(living.stopRider(arguments[2]) ? "Dismounted " + arguments[2] : arguments[2] + " is not riding");
+                else if (arguments.length == 1 || (arguments.length == 2 && arguments[1].equalsIgnoreCase("status"))) sender.sendMessage(living.rideStatus());
+                else sender.sendMessage("ride [status] | ride stop <player>");
+            } catch (RuntimeException e) { sender.sendMessage("Animus ride: " + e.getMessage()); }
+            return true;
+        }
         if (arguments.length > 0 && arguments[0].equalsIgnoreCase("select")) {
             if (!(sender instanceof Player player)) { sender.sendMessage("Selection belongs to a player; use an explicit NPC id from the console."); return true; }
             try {
@@ -176,7 +184,7 @@ public final class AnimusPlugin extends JavaPlugin {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] arguments) {
         if (arguments.length == 1) {
             List<String> available = sender.hasPermission("animus.admin") ? new ArrayList<>(Administration.COMMANDS) : new ArrayList<>(List.of("status"));
-            if (sender.hasPermission("animus.admin")) available.addAll(List.of("proof", "select", "attack", "target", "combat", "navigate", "navigation", "look", "modules", "behaviors"));
+            if (sender.hasPermission("animus.admin")) available.addAll(List.of("proof", "select", "attack", "target", "combat", "navigate", "navigation", "look", "ride", "modules", "behaviors"));
             if (sender.hasPermission("animus.admin") && foliaProof != null) available.add("foliaproof");
             return available.stream().filter(c -> c.startsWith(arguments[0].toLowerCase(Locale.ROOT))).toList();
         }
@@ -198,6 +206,8 @@ public final class AnimusPlugin extends JavaPlugin {
                         .map(c -> c.descriptor().key().toString()).filter(s -> s.startsWith(arguments[2])).limit(100).toList();
             if (arguments.length == 6 && arguments[0].equalsIgnoreCase("navigate"))
                 return List.of("walk", "swim", "fly").stream().filter(s -> s.startsWith(arguments[5].toLowerCase(Locale.ROOT))).toList();
+            if (arguments.length == 2 && arguments[0].equalsIgnoreCase("ride"))
+                return List.of("status", "stop").stream().filter(s -> s.startsWith(arguments[1].toLowerCase(Locale.ROOT))).toList();
             if (arguments.length == 3 && arguments[0].equalsIgnoreCase("navigation"))
                 return List.of("status", "stop").stream().filter(s -> s.startsWith(arguments[2].toLowerCase(Locale.ROOT))).toList();
             if (arguments.length == 2 && arguments[0].equalsIgnoreCase("foliaproof"))
