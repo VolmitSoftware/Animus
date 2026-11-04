@@ -17,7 +17,10 @@ public final class BehaviorEngine implements AutoCloseable {
         private static void bound(int value,int maximum){if(value<1||value>maximum)throw new IllegalArgumentException("Invalid behavior budget");}
         public static Limits defaults(){return new Limits(64,128,16,256,4096,20000,8,64,64);}
     }
-    public record Context(NpcHandle npc,Optional<UUID> player,boolean preview){public Context{Objects.requireNonNull(npc);Objects.requireNonNull(player);}}
+    public record Context(NpcHandle npc,Optional<UUID> player,boolean preview,java.util.function.BooleanSupplier sourceCurrent){
+        public Context{Objects.requireNonNull(npc);Objects.requireNonNull(player);Objects.requireNonNull(sourceCurrent);}
+        public Context(NpcHandle npc,Optional<UUID> player,boolean preview){this(npc,player,preview,()->true);}
+    }
     public enum State { RUNNING, COMPLETED, CANCELLED, FAILED, UNAVAILABLE, BUDGET_EXHAUSTED }
     public record Trace(long tick,String path,String event){}
     public record Report(UUID id,String behavior,State state,String reason,long steps,Map<String,Value> variables,List<String> waits,List<Trace> trace,List<Diagnostic> diagnostics){
@@ -106,7 +109,7 @@ public final class BehaviorEngine implements AutoCloseable {
         String arguments;
         try{arguments=template.resolve(fiber.variables);}
         catch(ArgumentTemplate.Invalid invalid){terminate(fiber.execution,State.FAILED,"arguments-invalid:"+invalid.field()+":"+invalid.getMessage());return;}
-        var invocation=new BehaviorInvoker.Invocation(key,fiber.execution.context.npc(),fiber.execution.context.player(),arguments,fiber.variables,fiber.execution.context.preview());
+        var invocation=new BehaviorInvoker.Invocation(key,fiber.execution.context.npc(),fiber.execution.context.player(),arguments,fiber.variables,fiber.execution.context.preview(),fiber.execution.context.sourceCurrent());
         BehaviorInvoker.Call<?> call=condition?invoker.condition(invocation):invoker.action(invocation);
         Pending pending=new Pending(fiber.execution.id,fiber.id,condition,Objects.requireNonNull(call));calls.add(pending);fiber.awaiting=pending;
         trace(fiber,fiber.stack.peek().node.path(),"invoking:"+key);

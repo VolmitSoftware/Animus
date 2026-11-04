@@ -132,7 +132,7 @@ public final class BehaviorCatalog {
                         catch(RuntimeException | AssertionError | LinkageError failure){capability=new Capability(false,"registry-check-failed");}
                         capabilities.put(requirement,capability);
                     }
-                    if(!capability.available()){available=false;owner.add(error("behavior-capability-unavailable","$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+capability.reason()));}
+                    if(!capability.available()){available=false;owner.add(error("behavior-capability-unavailable",requirement.kind()==Kind.TRIGGER?"$.triggers":"$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+capability.reason()));}
                 }
                 resolutions.put(id,new Resolution(id,available,Optional.of(owner.accepted),owner.diagnostics()));
             }
@@ -187,6 +187,8 @@ public final class BehaviorCatalog {
             case Parallel parallel->pending.addAll(parallel.branches());
             default->{} // Calls name routines already scanned once; do not recursively follow them.
         }
+        for(art.arcane.animus.core.behavior.trigger.TriggerBinding trigger:program.triggers())
+            if(trigger.spec() instanceof art.arcane.animus.core.behavior.trigger.TriggerBinding.ModuleEvent module)result.add(new Requirement(module.key(),Kind.TRIGGER));
         return Set.copyOf(result);
     }
     private static Reload rejected(String code,String message,Snapshot unchanged){return new Reload(false,unchanged,List.of(error(code,"behaviors",message)),0,0);}

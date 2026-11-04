@@ -108,7 +108,7 @@ class BukkitBehaviorCommandsTest {
         }
     }
     @Test void disabledBehaviorSettingsNeverQueueCatalogOrCreateOwner()throws Exception{
-        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog());AtomicInteger submitted=new AtomicInteger();
+        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers());AtomicInteger submitted=new AtomicInteger();
         try(var harness=new Harness(disabled,observer->task->submitted.incrementAndGet())){
             harness.extensions.start();assertEquals(0,submitted.get());assertNull(harness.service.diagnosticRuntime());CommandSender sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
         }
@@ -119,6 +119,61 @@ class BukkitBehaviorCommandsTest {
             harness.start();CommandSender sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","list","2"});pump();assertEquals(11,messages.size());assertTrue(messages.getFirst().contains("30 documents; page 2"));
             messages.clear();harness.service.execute(sender(false,false),new String[]{"behaviors","run","test","example:p0"});pump();assertEquals(List.of("You do not have permission to use this command."),messages);assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());
             for(int i=0;i<30;i++)Files.writeString(root.resolve("behaviors/example/p"+i+".json"),"malformed");messages.clear();harness.service.execute(sender,new String[]{"behaviors","validate"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: INVALID")));assertEquals(17,messages.size());
+        }
+    }
+    private void triggerSource(String id,long revision,String triggers)throws Exception{
+        Path path=root.resolve("behaviors/"+id.replace(':','/')+".json");Files.createDirectories(path.getParent());Files.writeString(path,"{\"schemaVersion\":1,\"revision\":"+revision+",\"id\":\""+id+"\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"wait\",\"ticks\":2000}},\"triggers\":"+triggers+"}");
+    }
+    private void attach(Harness harness,String behavior)throws Exception{
+        var before=harness.runtime.npcs().draft("test");var document=before.document();document.addProperty("spawned",true);
+        var references=new com.google.gson.JsonArray();references.add(behavior);document.add("behaviors",references);
+        harness.runtime.npcs().apply(new art.arcane.animus.core.npc.NpcRepository.Draft(before.path(),before.expectedHash(),before.expectedRevision(),document));
+    }
+    @Test void triggerCommandListsBindingsLastFiredAndDrops()throws Exception{
+        triggerSource("example:greeter",1,"[{\"id\":\"click\",\"event\":\"interaction\"}]");
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();attach(harness,"example:greeter");var triggers=harness.service.triggers();triggers.connect();
+            UUID npc=harness.runtime.npcs().find("test").orElseThrow().uuid();triggers.activated(npc);
+            until(()->triggers.snapshot().bindings()==1);
+            CommandSender sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","triggers"});pump();
+            assertTrue(messages.getFirst().startsWith("Behavior triggers: AVAILABLE"),messages.getFirst());assertTrue(messages.getFirst().contains("bindings=1"));
+            String row=messages.stream().filter(line->line.startsWith("Trigger ")).findFirst().orElseThrow();
+            assertTrue(row.contains("npc=test"));assertTrue(row.contains("behavior=example:greeter"));assertTrue(row.contains("trigger=click"));assertTrue(row.contains("event=interaction"));assertTrue(row.contains("last-fired=never"));
+            assertEquals(art.arcane.animus.api.Outcome.Status.OK,triggers.publish(new art.arcane.animus.core.behavior.trigger.TriggerEvent.Interaction(npc,playerId,art.arcane.animus.core.behavior.trigger.TriggerEvent.Action.INTERACT)).status());
+            until(()->harness.service.diagnosticRuntime().snapshot().executions().values().stream().anyMatch(item->item.trigger().isPresent()));
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","triggers"});pump();
+            assertTrue(messages.stream().anyMatch(line->line.startsWith("Trigger ")&&line.contains("fired=1")&&!line.contains("last-fired=never")),messages.toString());
+            var execution=harness.service.diagnosticRuntime().snapshot().executions().values().iterator().next();assertEquals(Optional.of(playerId),execution.player());
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","inspect",execution.report().id().toString()});pump();assertTrue(messages.getFirst().contains("trigger=example:greeter#click"),messages.getFirst());
+            assertTrue(harness.service.statusLines().stream().anyMatch(line->line.startsWith("Behavior triggers: AVAILABLE")));
+            assertTrue(BukkitBehaviorCommands.OPERATIONS.contains("triggers"));
+        }
+    }
+    @Test void triggerPagesAreBounded()throws Exception{
+        StringBuilder many=new StringBuilder("[");for(int i=0;i<30;i++)many.append(i==0?"":",").append("{\"id\":\"t").append(i).append("\",\"event\":\"interaction\"}");many.append(']');
+        triggerSource("example:greeter",1,many.toString());
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();attach(harness,"example:greeter");var triggers=harness.service.triggers();triggers.connect();triggers.activated(harness.runtime.npcs().find("test").orElseThrow().uuid());
+            until(()->triggers.snapshot().bindings()==30);
+            CommandSender sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","triggers","2"});pump();
+            assertTrue(messages.size()<=24,messages.toString());assertEquals(10,messages.stream().filter(line->line.startsWith("Trigger ")).count());
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","triggers","0"});pump();assertTrue(messages.getFirst().contains("Page must be"));
+        }
+    }
+    @Test void unavailablePlatformReportsItsDiagnosticAndStillAllowsManualRuns()throws Exception{
+        triggerSource("example:greeter",1,"[{\"id\":\"click\",\"event\":\"interaction\"}]");
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();attach(harness,"example:greeter");harness.service.triggers().unavailable("NPC runtime unavailable on Folia until region-safe ownership and snapshots are proven");
+            CommandSender sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","triggers"});pump();
+            assertTrue(messages.getFirst().startsWith("Behavior triggers: UNAVAILABLE"),messages.getFirst());assertTrue(messages.getFirst().contains("Folia"));
+            var outcome=harness.service.triggers().publish(new art.arcane.animus.core.behavior.trigger.TriggerEvent.Waypoint(UUID.randomUUID(),1));assertEquals(art.arcane.animus.api.Outcome.Status.UNAVAILABLE,outcome.status());
+            harness.run(sender,"example:greeter");
+        }
+    }
+    @Test void disabledBehaviorsHaveNoDispatcherAndReportIt()throws Exception{
+        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers());
+        try(var harness=new Harness(disabled,observer->task->{})){
+            assertNull(harness.service.triggers());harness.service.execute(sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE"));
         }
     }
     @Test void lineBoundDoesNotSplitUnicodeOrEmitEmbeddedNewlines(){

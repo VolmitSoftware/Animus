@@ -12,7 +12,8 @@ final class LifecycleClasses {
         if(prepared)return;
         Set<Class<?>> seen=Collections.newSetFromMap(new IdentityHashMap<>());
         for(Class<?> root:List.of(ManualBehaviorRuntime.class,BehaviorEngine.class,BehaviorInvoker.class,
-                BehaviorProgram.class,ArgumentTemplate.class,Outcome.class,Diagnostic.class,NpcHandle.class,Capabilities.class))load(root,seen);
+                BehaviorProgram.class,ArgumentTemplate.class,Outcome.class,Diagnostic.class,NpcHandle.class,Capabilities.class,
+                art.arcane.animus.core.behavior.trigger.TriggerDispatcher.class))load(root,seen);
         // Cancellation receipts use the API's private UTF-8 validation helper. Signature resolution
         // alone does not load method-body dependencies; construct one bounded receipt before close.
         Outcome.rejected(Outcome.Status.CANCELLED,"lifecycle-ready","Engine lifecycle types are ready");

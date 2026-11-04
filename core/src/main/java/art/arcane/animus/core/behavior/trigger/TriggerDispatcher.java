@@ -1,0 +1,410 @@
+package art.arcane.animus.core.behavior.trigger;
+
+import art.arcane.animus.api.Diagnostic;
+import art.arcane.animus.api.Outcome;
+import art.arcane.animus.core.behavior.BehaviorProgram;
+import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
+import art.arcane.animus.core.npc.NpcDefinition;
+import java.util.*;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Supplier;
+
+/**
+ * Turns events into bounded execution starts. {@link #publish}, {@link #activated}, {@link #deactivated},
+ * {@link #dead} and the diagnostic reads are thread-safe; {@link #pump} and {@link #finished} belong to the
+ * behavior owner. Sources must be quick immutable observations. Overflow is dropped and counted, never queued.
+ */
+public final class TriggerDispatcher implements TriggerSink {
+    public enum DropReason { EVENT_QUEUE, INACTIVE, NPC_QUEUE, TRIGGER_QUEUE, TOTAL_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE, ACTIVE_CAPACITY }
+    @FunctionalInterface public interface Starter { Outcome<UUID> start(Request request); }
+    public record Request(Binding binding, NpcDefinition definition, BehaviorCatalog.Accepted accepted, BehaviorProgram program, Optional<UUID> player) {}
+    public record Row(String npcId, UUID npc, String behavior, String trigger, String event, String routine, OptionalLong lastFiredTicksAgo,
+                      long fired, int active, int queued, long suppressed, long dropped) {}
+    public record Snapshot(boolean available, String reason, long tick, int bindings, int timers, int proximityNpcs, int queued, int active,
+                           long events, long started, long suppressed, Map<DropReason, Long> dropped, List<Diagnostic> diagnostics) {}
+
+    /** Single writer (the behavior owner); volatile so diagnostics can read from a command thread. */
+    private static final class Stats {
+        volatile long lastFired = -1, lastAdmitted = -1, fired, suppressed, dropped;
+        volatile int active, queued;
+    }
+    /** An immutable NPC, accepted program and trigger combination. A source change produces a new one. */
+    public static final class Binding {
+        private final NpcDefinition definition; private final String behavior; private final BehaviorCatalog.Accepted accepted;
+        private final TriggerBinding trigger; private final BehaviorProgram program; private final Stats stats; private final String key;
+        private Binding(NpcDefinition definition, String behavior, BehaviorCatalog.Accepted accepted, TriggerBinding trigger, Stats stats) {
+            this.definition = definition; this.behavior = behavior; this.accepted = accepted; this.trigger = trigger; this.stats = stats;
+            key = behavior + "#" + trigger.id();
+            program = trigger.routine().map(accepted.program()::withEntry).orElse(accepted.program());
+        }
+        public String key() { return key; }
+        public String behavior() { return behavior; }
+        public TriggerBinding trigger() { return trigger; }
+    }
+    private record Index(Map<UUID, List<Binding>> byNpc, List<Binding> ordered, List<Diagnostic> diagnostics) {
+        static final Index EMPTY = new Index(Map.of(), List.of(), List.of());
+    }
+    private record Pending(Binding binding, Optional<UUID> player, long admitted) {}
+    private record Timer(long due, Binding binding, int interval) {}
+
+    private static final int MAX_DIAGNOSTICS = 64, MAX_TRACKED_NPCS = 16384;
+    private final TriggerSettings settings;
+    private final Supplier<Map<String, NpcDefinition>> definitions;
+    private final Supplier<BehaviorCatalog.Snapshot> catalog;
+    private final Object lock = new Object();
+    private final ArrayDeque<TriggerEvent> inbox = new ArrayDeque<>(); // lock
+    private final Set<UUID> active = new HashSet<>(), despawning = new HashSet<>(); // lock
+    private final LinkedHashSet<UUID> spawning = new LinkedHashSet<>(); // lock
+    private long activityGeneration; // lock
+    private final LongAdder events = new LongAdder(), suppressed = new LongAdder(), started = new LongAdder();
+    private final EnumMap<DropReason, LongAdder> drops = new EnumMap<>(DropReason.class);
+    private volatile String unavailable = "no platform bridge is connected";
+    private volatile Index index = Index.EMPTY;
+    private volatile ProximityTracker.Plan plan = ProximityTracker.Plan.EMPTY;
+    private volatile List<Diagnostic> activityDiagnostics = List.of();
+    private volatile long tick;
+    private volatile int queuedCount, activeCount, timerCount;
+
+    // Behavior owner only.
+    private Map<String, NpcDefinition> observedDefinitions;
+    private BehaviorCatalog.Snapshot observedCatalog;
+    private boolean indexDirty, stateCleared;
+    private long observedActivity = -1;
+    private Set<UUID> activeView = Set.of(), despawningView = Set.of();
+    private final Map<String, Stats> stats = new HashMap<>();
+    private final ArrayDeque<Pending> queue = new ArrayDeque<>();
+    private final Map<UUID, Integer> npcQueued = new HashMap<>(), npcActive = new HashMap<>();
+    private final Map<UUID, Long> npcAdmitted = new HashMap<>();
+    private final PriorityQueue<Timer> timers = new PriorityQueue<>(Comparator.comparingLong(Timer::due));
+    private final Map<String, Long> timerDue = new HashMap<>();
+
+    public TriggerDispatcher(TriggerSettings settings, Supplier<Map<String, NpcDefinition>> definitions, Supplier<BehaviorCatalog.Snapshot> catalog) {
+        this.settings = Objects.requireNonNull(settings); this.definitions = Objects.requireNonNull(definitions); this.catalog = Objects.requireNonNull(catalog);
+        for (DropReason reason : DropReason.values()) drops.put(reason, new LongAdder());
+        if (!settings.enabled()) unavailable = "disabled in config.toml";
+    }
+
+    /** The platform proved it can run NPCs on their owner. Disabled settings stay unavailable. */
+    public void connect() { if (settings.enabled()) unavailable = null; }
+    public void unavailable(String reason) { unavailable = Objects.requireNonNull(reason); }
+    @Override public boolean available() { return unavailable == null; }
+    @Override public String availability() { String reason = unavailable; return reason == null ? "available" : reason; }
+    public TriggerSettings settings() { return settings; }
+    public ProximityTracker.Plan proximityPlan() { return available() ? plan : ProximityTracker.Plan.EMPTY; }
+
+    @Override public Outcome<Boolean> publish(TriggerEvent event) {
+        Objects.requireNonNull(event);
+        String reason = unavailable;
+        if (reason != null) {
+            drops.get(DropReason.UNAVAILABLE).increment();
+            return Outcome.rejected(Outcome.Status.UNAVAILABLE, "trigger-dispatch-unavailable", reason);
+        }
+        if (!index.byNpc().containsKey(event.npc())) return Outcome.ok(false);
+        synchronized (lock) {
+            if (inbox.size() >= settings.eventQueue()) {
+                drops.get(DropReason.EVENT_QUEUE).increment();
+                return Outcome.rejected(Outcome.Status.BUSY, "trigger-event-capacity", "Trigger event queue is full; the event was dropped");
+            }
+            inbox.addLast(event);
+        }
+        events.increment();
+        return Outcome.ok(true);
+    }
+    /** The platform started presenting this NPC. Its spawn trigger waits for the first behavior catalog. */
+    public void activated(UUID npc) {
+        Objects.requireNonNull(npc);
+        synchronized (lock) {
+            if (active.size() >= MAX_TRACKED_NPCS && !active.contains(npc)) { drops.get(DropReason.ACTIVE_CAPACITY).increment(); return; }
+            if (active.add(npc)) { spawning.add(npc); activityGeneration++; }
+        }
+    }
+    /** The platform stopped presenting this NPC. Fires despawn unless it died or never reached its spawn trigger. */
+    public void deactivated(UUID npc) {
+        Objects.requireNonNull(npc);
+        synchronized (lock) {
+            if (!active.remove(npc)) return;
+            activityGeneration++;
+            if (spawning.remove(npc)) return;
+            if (inbox.size() >= settings.eventQueue()) { drops.get(DropReason.EVENT_QUEUE).increment(); return; }
+            despawning.add(npc);
+            inbox.addLast(new TriggerEvent.Despawn(npc));
+        }
+        events.increment();
+    }
+    /** Health reached zero. Timers and proximity stop; a later removal fires no despawn. */
+    public void dead(UUID npc) {
+        Objects.requireNonNull(npc);
+        synchronized (lock) {
+            if (!active.remove(npc)) return;
+            spawning.remove(npc);
+            activityGeneration++;
+        }
+    }
+
+    public void pump(Starter starter) {
+        Objects.requireNonNull(starter);
+        tick = tick + 1;
+        if (unavailable != null) { clearState(); return; }
+        stateCleared = false;
+        refresh();
+        drainSpawns();
+        drainEvents();
+        fireTimers();
+        startQueued(starter);
+    }
+    public void finished(Request request) {
+        Stats stat = request.binding().stats; stat.active = stat.active - 1;
+        activeCount = activeCount - 1;
+        decrement(npcActive, request.definition().uuid());
+    }
+
+    private void clearState() {
+        if (stateCleared) return;
+        stateCleared = true;
+        for (Pending pending : queue) {
+            drops.get(DropReason.UNAVAILABLE).increment();
+            pending.binding().stats.queued = pending.binding().stats.queued - 1;
+        }
+        queue.clear(); npcQueued.clear(); queuedCount = 0;
+        timers.clear(); timerDue.clear(); timerCount = 0;
+        plan = ProximityTracker.Plan.EMPTY;
+        observedActivity = -1;
+        synchronized (lock) { inbox.clear(); spawning.clear(); despawning.clear(); }
+    }
+
+    private void refresh() {
+        Map<String, NpcDefinition> currentDefinitions = definitions.get();
+        BehaviorCatalog.Snapshot currentCatalog = catalog.get();
+        boolean activityChanged = false;
+        synchronized (lock) {
+            if (activityGeneration != observedActivity || despawning.size() != despawningView.size()) {
+                observedActivity = activityGeneration; activityChanged = true;
+                activeView = Set.copyOf(active); despawningView = Set.copyOf(despawning);
+            }
+        }
+        boolean rebuild = indexDirty || currentDefinitions != observedDefinitions || currentCatalog != observedCatalog
+                || activityChanged && !dormantRetainedCurrent();
+        if (rebuild) {
+            observedDefinitions = currentDefinitions; observedCatalog = currentCatalog; indexDirty = false;
+            rebuildIndex(currentDefinitions, currentCatalog);
+        }
+        if (rebuild || activityChanged) rebuildActivity();
+    }
+    /** Only a dormant NPC gaining or losing retention can change the index; ordinary activity leaves it alone. */
+    private boolean dormantRetainedCurrent() {
+        for (UUID npc : despawningView) if (!index.byNpc().containsKey(npc)) return false;
+        return true;
+    }
+
+    private void rebuildIndex(Map<String, NpcDefinition> sources, BehaviorCatalog.Snapshot behaviors) {
+        List<NpcDefinition> candidates = new ArrayList<>();
+        for (NpcDefinition definition : sources.values()) {
+            if (definition.behaviors().isEmpty()) continue;
+            UUID uuid = definition.uuid();
+            if (definition.spawned() || activeView.contains(uuid) || despawningView.contains(uuid)) candidates.add(definition);
+        }
+        candidates.sort(Comparator.comparing(NpcDefinition::id));
+        Map<UUID, List<Binding>> byNpc = new HashMap<>();
+        List<Binding> ordered = new ArrayList<>();
+        Map<String, Stats> retained = new HashMap<>();
+        Problems problems = new Problems();
+        for (NpcDefinition definition : candidates) {
+            String npcField = "npc=" + definition.id();
+            List<Binding> bound = new ArrayList<>();
+            for (String reference : new LinkedHashSet<>(definition.behaviors())) {
+                String field = npcField + " behavior=" + reference;
+                BehaviorCatalog.Resolution resolution = behaviors.byId().get(reference);
+                if (resolution == null) { problems.add("trigger-behavior-missing", field, "NPC attaches a behavior that is not in the accepted catalog"); continue; }
+                if (!resolution.available() || resolution.accepted().isEmpty()) { problems.add("trigger-behavior-unavailable", field, "Attached behavior source or capabilities are unavailable; its triggers are unbound"); continue; }
+                BehaviorCatalog.Accepted accepted = resolution.accepted().orElseThrow();
+                for (TriggerBinding trigger : accepted.program().triggers()) {
+                    String triggerField = npcField + " trigger=" + reference + "#" + trigger.id();
+                    if (trigger.spec() instanceof TriggerBinding.Proximity proximity && proximity.radius() > settings.maximumProximityRadius()) {
+                        problems.add("trigger-proximity-budget", triggerField, "Radius exceeds behaviors.triggers.maximumProximityRadius"); continue;
+                    }
+                    if (trigger.spec() instanceof TriggerBinding.Timer timer && timer.intervalTicks() < settings.minimumTimerTicks()) {
+                        problems.add("trigger-timer-budget", triggerField, "Interval is below behaviors.triggers.minimumTimerTicks"); continue;
+                    }
+                    if (ordered.size() >= settings.maximumBindings()) {
+                        problems.add("trigger-binding-capacity", triggerField, "behaviors.triggers.maximumBindings reached; this trigger is unbound"); continue;
+                    }
+                    String statsKey = definition.uuid() + "|" + reference + "#" + trigger.id();
+                    Stats stat = stats.get(statsKey);
+                    if (stat == null) stat = new Stats();
+                    retained.put(statsKey, stat);
+                    Binding binding = new Binding(definition, reference, accepted, trigger, stat);
+                    bound.add(binding); ordered.add(binding);
+                }
+            }
+            if (!bound.isEmpty()) byNpc.put(definition.uuid(), List.copyOf(bound));
+        }
+        stats.clear(); stats.putAll(retained);
+        npcAdmitted.keySet().retainAll(byNpc.keySet());
+        index = new Index(Map.copyOf(byNpc), List.copyOf(ordered), problems.list());
+    }
+
+    /** Timers and the proximity plan cover only NPCs the platform currently presents. */
+    private void rebuildActivity() {
+        Map<String, Long> previous = new HashMap<>(timerDue);
+        timers.clear(); timerDue.clear();
+        Map<UUID, List<ProximityTracker.Binding>> proximity = new HashMap<>();
+        double maximum = 0;
+        Problems problems = new Problems();
+        for (Binding binding : index.ordered()) {
+            UUID npc = binding.definition.uuid();
+            if (!binding.definition.spawned() || !activeView.contains(npc)) continue;
+            switch (binding.trigger.spec()) {
+                case TriggerBinding.Timer timer -> {
+                    String timerKey = npc + "|" + binding.key();
+                    if (timers.size() >= settings.maximumTimers()) {
+                        problems.add("trigger-timer-capacity", "npc=" + binding.definition.id() + " trigger=" + binding.key(), "behaviors.triggers.maximumTimers reached; this timer is not scheduled");
+                        continue;
+                    }
+                    long due = previous.getOrDefault(timerKey, tick + timer.intervalTicks());
+                    timers.add(new Timer(due, binding, timer.intervalTicks())); timerDue.put(timerKey, due);
+                }
+                case TriggerBinding.Proximity near -> {
+                    proximity.computeIfAbsent(npc, ignored -> new ArrayList<>()).add(new ProximityTracker.Binding(binding.key(), near.phase(), near.radius()));
+                    maximum = Math.max(maximum, near.radius());
+                }
+                default -> {}
+            }
+        }
+        timerCount = timers.size();
+        activityDiagnostics = problems.list();
+        plan = proximity.isEmpty() ? ProximityTracker.Plan.EMPTY : new ProximityTracker.Plan(copyLists(proximity), maximum);
+    }
+    private static Map<UUID, List<ProximityTracker.Binding>> copyLists(Map<UUID, List<ProximityTracker.Binding>> source) {
+        Map<UUID, List<ProximityTracker.Binding>> copy = new HashMap<>();
+        source.forEach((npc, bindings) -> copy.put(npc, List.copyOf(bindings)));
+        return copy;
+    }
+
+    private void drainSpawns() {
+        if (observedCatalog.generation() == 0) return;
+        List<UUID> ready = new ArrayList<>();
+        synchronized (lock) {
+            Iterator<UUID> iterator = spawning.iterator();
+            while (iterator.hasNext() && ready.size() < settings.eventsPerTick()) { ready.add(iterator.next()); iterator.remove(); }
+        }
+        for (UUID npc : ready) admit(new TriggerEvent.Spawn(npc));
+    }
+    private void drainEvents() {
+        for (int count = 0; count < settings.eventsPerTick(); count++) {
+            TriggerEvent event;
+            synchronized (lock) { event = inbox.pollFirst(); }
+            if (event == null) return;
+            admit(event);
+        }
+    }
+    private void admit(TriggerEvent event) {
+        if (event instanceof TriggerEvent.Despawn) {
+            synchronized (lock) { despawning.remove(event.npc()); }
+            indexDirty = true;
+        }
+        List<Binding> bound = index.byNpc().get(event.npc());
+        if (bound == null) return;
+        // Terminal facts already happened to a presented NPC; they outrun the activity change they cause.
+        boolean presented = activeView.contains(event.npc()) || event instanceof TriggerEvent.Despawn || event instanceof TriggerEvent.Death || event instanceof TriggerEvent.Damage;
+        Long lastAdmitted = npcAdmitted.get(event.npc());
+        boolean cooling = settings.npcCooldownTicks() > 0 && lastAdmitted != null && tick - lastAdmitted < settings.npcCooldownTicks();
+        boolean admitted = false;
+        for (Binding binding : bound) {
+            if (!binding.trigger.matches(event, binding.key())) continue;
+            if (!presented) { drop(binding, DropReason.INACTIVE); continue; }
+            if (cooling) { suppress(binding); continue; }
+            admitted |= enqueue(binding, event.player());
+        }
+        if (admitted && settings.npcCooldownTicks() > 0) npcAdmitted.put(event.npc(), tick);
+    }
+    private void fireTimers() {
+        for (int count = 0; count < settings.eventsPerTick() && !timers.isEmpty() && timers.peek().due() <= tick; count++) {
+            Timer timer = timers.poll();
+            long next = tick + timer.interval();
+            timers.add(new Timer(next, timer.binding(), timer.interval()));
+            timerDue.put(timer.binding().definition.uuid() + "|" + timer.binding().key(), next);
+            enqueue(timer.binding(), Optional.empty());
+        }
+    }
+    private boolean enqueue(Binding binding, Optional<UUID> player) {
+        Stats stat = binding.stats;
+        int cooldown = binding.trigger.cooldownTicks().orElse(binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
+        if (stat.lastAdmitted >= 0 && tick - stat.lastAdmitted < cooldown) { suppress(binding); return false; }
+        UUID npc = binding.definition.uuid();
+        if (queue.size() >= settings.maximumQueued()) { drop(binding, DropReason.TOTAL_QUEUE); return false; }
+        if (npcQueued.getOrDefault(npc, 0) >= settings.queuePerNpc()) { drop(binding, DropReason.NPC_QUEUE); return false; }
+        if (stat.queued >= settings.queuePerTrigger()) { drop(binding, DropReason.TRIGGER_QUEUE); return false; }
+        queue.addLast(new Pending(binding, player, tick));
+        queuedCount = queue.size(); stat.queued = stat.queued + 1; stat.lastAdmitted = tick;
+        npcQueued.merge(npc, 1, Integer::sum);
+        return true;
+    }
+    private void suppress(Binding binding) { binding.stats.suppressed = binding.stats.suppressed + 1; suppressed.increment(); }
+    private void drop(Binding binding, DropReason reason) { binding.stats.dropped = binding.stats.dropped + 1; drops.get(reason).increment(); }
+
+    private void startQueued(Starter starter) {
+        int starts = 0;
+        Iterator<Pending> iterator = queue.iterator();
+        while (iterator.hasNext()) {
+            Pending pending = iterator.next();
+            Binding binding = pending.binding();
+            UUID npc = binding.definition.uuid();
+            if (tick - pending.admitted() > settings.queueLifetimeTicks()) { release(iterator, pending); drop(binding, DropReason.EXPIRED); continue; }
+            if (!current(binding)) { release(iterator, pending); drop(binding, DropReason.STALE); continue; }
+            if (starts >= settings.startsPerTick() || activeCount >= settings.concurrentTotal()) continue;
+            if (npcActive.getOrDefault(npc, 0) >= settings.concurrentPerNpc() || binding.stats.active >= settings.concurrentPerTrigger()) continue;
+            Outcome<UUID> result = starter.start(new Request(binding, binding.definition, binding.accepted, binding.program, pending.player()));
+            if (result.status() == Outcome.Status.BUSY) { starts = settings.startsPerTick(); continue; }
+            release(iterator, pending);
+            if (result.status() != Outcome.Status.OK) { drop(binding, DropReason.START_FAILED); continue; }
+            starts++;
+            Stats stat = binding.stats;
+            stat.active = stat.active + 1; stat.fired = stat.fired + 1; stat.lastFired = tick;
+            activeCount = activeCount + 1; started.increment();
+            npcActive.merge(npc, 1, Integer::sum);
+        }
+    }
+    private void release(Iterator<Pending> iterator, Pending pending) {
+        iterator.remove(); queuedCount = queue.size();
+        Stats stat = pending.binding().stats; stat.queued = stat.queued - 1;
+        decrement(npcQueued, pending.binding().definition.uuid());
+    }
+    private static void decrement(Map<UUID, Integer> counts, UUID npc) { counts.computeIfPresent(npc, (key, count) -> count <= 1 ? null : count - 1); }
+    private boolean current(Binding binding) {
+        if (observedDefinitions.get(binding.definition.id()) != binding.definition) return false;
+        BehaviorCatalog.Resolution resolution = observedCatalog.byId().get(binding.behavior);
+        return resolution != null && resolution.available() && resolution.accepted().orElse(null) == binding.accepted;
+    }
+
+    public Snapshot snapshot() {
+        Index view = index; String reason = unavailable;
+        Map<DropReason, Long> counted = new EnumMap<>(DropReason.class);
+        drops.forEach((drop, count) -> { long value = count.sum(); if (value > 0) counted.put(drop, value); });
+        List<Diagnostic> diagnostics = new ArrayList<>(view.diagnostics()); diagnostics.addAll(activityDiagnostics);
+        return new Snapshot(reason == null, reason == null ? "none" : reason, tick, view.ordered().size(), timerCount, proximityPlan().npcs().size(),
+                queuedCount, activeCount, events.sum(), started.sum(), suppressed.sum(), Map.copyOf(counted), List.copyOf(diagnostics));
+    }
+    /** A bounded page of bindings ordered by NPC id and then declaration. */
+    public List<Row> rows(int skip, int limit) {
+        List<Binding> ordered = index.ordered(); long now = tick;
+        List<Row> rows = new ArrayList<>();
+        for (int position = Math.max(0, skip); position < ordered.size() && rows.size() < limit; position++) {
+            Binding binding = ordered.get(position); Stats stat = binding.stats; long fired = stat.lastFired;
+            rows.add(new Row(binding.definition.id(), binding.definition.uuid(), binding.behavior, binding.trigger.id(), binding.trigger.spec().kind().jsonName(),
+                    binding.program.entry(), fired < 0 ? OptionalLong.empty() : OptionalLong.of(now - fired), stat.fired, stat.active, stat.queued, stat.suppressed, stat.dropped));
+        }
+        return List.copyOf(rows);
+    }
+
+    private static final class Problems {
+        private final List<Diagnostic> items = new ArrayList<>();
+        private int omitted;
+        void add(String code, String field, String message) {
+            if (items.size() < MAX_DIAGNOSTICS) items.add(new Diagnostic(Diagnostic.Severity.ERROR, code, field, message)); else omitted++;
+        }
+        List<Diagnostic> list() {
+            if (omitted > 0) items.add(new Diagnostic(Diagnostic.Severity.ERROR, "trigger-diagnostics-truncated", "triggers", omitted + " additional diagnostics omitted"));
+            return List.copyOf(items);
+        }
+    }
+}
