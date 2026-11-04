@@ -37,6 +37,13 @@ final class MotionFixture implements Listener, AutoCloseable {
             } else expected.remove(id);
             player.sendMessage("QA motion " + args[1] + " npc=" + id); return true;
         }
+        if (args.length == 5 && args[1].equals("cell")) {
+            int x = Integer.parseInt(args[2]), y = Integer.parseInt(args[3]), z = Integer.parseInt(args[4]);
+            org.bukkit.block.Block block = player.getWorld().getBlockAt(x, y, z);
+            player.sendMessage("QA cell " + x + " " + y + " " + z + " " + block.getType() + " shape=" + block.getCollisionShape().getBoundingBoxes()
+                    + " cell=" + art.arcane.animus.bukkit.navigation.CollisionCells.of(block));
+            return true;
+        }
         if (args.length == 2 && args[1].equals("cleanup")) {
             cleanup(player.getUniqueId()); player.sendMessage("QA motion cleanup complete"); return true;
         }
