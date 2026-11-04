@@ -1,0 +1,12 @@
+pluginManagement {
+    repositories {
+        maven { url = uri('https://maven.minecraftforge.net/') }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+rootProject.name = 'animus-forge'
+include(':core')
+project(':core').projectDir = file('../../core')
+ext.animusRoot = file('../..')
+apply from: '../../gradle/volmlib.settings.gradle'

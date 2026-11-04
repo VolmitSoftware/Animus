@@ -1,0 +1,30 @@
+configurations {
+    bundle {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+configurations.implementation.extendsFrom(configurations.bundle)
+ext.distributionJar = tasks.named('shadowJar').flatMap { task -> task.archiveFile }
+dependencies {
+    bundle(project(':core'))
+}
+
+tasks.named('shadowJar').configure {
+    addMultiReleaseAttribute.set(false)
+    configurations = [project.configurations.bundle]
+    filesMatching('META-INF/services/**') { duplicatesStrategy = DuplicatesStrategy.INCLUDE }
+    mergeServiceFiles()
+    if (animus.projectGroup != 'art.arcane.animus') {
+        relocate('art.arcane.animus', animus.projectGroup)
+    }
+    relocate('art.arcane.volmlib', "${animus.projectGroup}.internal.volmlib")
+    relocate('com.google.gson', "${animus.projectGroup}.internal.gson")
+    relocate('net.kyori', "${animus.projectGroup}.internal.kyori")
+    relocate('com.moandjiezana.toml', "${animus.projectGroup}.internal.toml")
+    exclude('META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class')
+    from(new File(animusRoot, 'LICENSE'))
+    archiveClassifier.set('')
+}
+tasks.named('jar').configure { enabled = false }
+tasks.named('assemble').configure { dependsOn('shadowJar') }

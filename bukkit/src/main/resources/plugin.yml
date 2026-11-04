@@ -1,0 +1,11 @@
+name: '${projectName}'
+version: '${projectVersion}'
+main: ${projectGroup}.bukkit.AnimusPlugin
+description: 'NPCs that act alive instead of being fake players.'
+authors: [Volmit Software]
+api-version: '${apiVersion}'
+folia-supported: true
+commands:
+  ${projectId}:
+    description: Shows the runtime status.
+    usage: '/<command> [status]'
