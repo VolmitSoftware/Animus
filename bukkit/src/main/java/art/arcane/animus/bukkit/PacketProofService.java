@@ -216,7 +216,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 if (point.distance(position(viewer.getLocation()).point()) > 32) { stopControl(session, "viewer-range", true); continue; }
                 var input = control.subscription.latest();
                 if (input.latest() != null) control.sequence = input.latest().sequence();
-                var proposed = control.loop.propose(System.nanoTime(), point, viewer.getLocation().getYaw(), input);
+                var proposed = control.loop.propose(System.nanoTime(), point, viewer.getLocation().getYaw(), viewer.getLocation().getPitch(), input);
                 if (proposed.state() == ControlLoop.State.STOPPED) { stopControl(session, proposed.reason(), true); continue; }
                 if (proposed.state() == ControlLoop.State.THROTTLED) continue;
                 if (body.moving) { control.state = "PENDING"; continue; }
@@ -283,7 +283,8 @@ final class PacketProofService implements Listener, AutoCloseable {
         int minZ = Math.min(start.z(), goal.z()) - padding;
         CaptureBounds bounds = new CaptureBounds(minX, minY, minZ,
                 Math.abs(dx) + padding * 2 + 1, Math.abs(dy) + height + 6, Math.abs(dz) + padding * 2 + 1);
-        MovementProfile profile = new MovementProfile(Set.of(MovementProfile.Mode.WALK), height, radius, 0, 1, 3, true);
+        MovementProfile profile = new MovementProfile(Set.of(MovementProfile.Mode.WALK), Math.min(MovementProfile.MAX_WIDTH, body.body.width()),
+                Math.min(MovementProfile.MAX_HEIGHT, body.body.height()), BodyMobility.ORDINARY_STEP, BodyMobility.JUMP, BodyMobility.FALL, true);
         NavigationPlan plan = navigation.plan(body.pose.world(), bounds, start, goal, profile, new PathPlanner.Limits(2048, 2048, 128));
         session.plan = plan;
         viewer.sendMessage("Proof path queued id=" + id + " request=" + plan.id());

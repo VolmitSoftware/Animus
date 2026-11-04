@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class RideLedgerTest {
     private static final RideSettings SETTINGS = new RideSettings("animus.ride", 4, 16, 120);
-    private static RideLedger.Admission admit(RideLedger ledger, UUID rider, UUID npc) { return ledger.admit(rider, npc, Vec3.ZERO, SETTINGS, 0); }
+    private static RideLedger.Admission admit(RideLedger ledger, UUID rider, UUID npc) { return ledger.admit(rider, npc, Vec3.ZERO, SETTINGS, false, 0); }
 
     @Test void onePlayerRidesOneNpcAndOneNpcCarriesOneRealRider() {
         RideLedger ledger = new RideLedger();

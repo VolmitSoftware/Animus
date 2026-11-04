@@ -1,65 +1,124 @@
 package art.arcane.animus.core.navigation;
 
+import art.arcane.animus.core.navigation.VoxelSnapshot.Cell;
 import art.arcane.animus.core.virtual.Vec3;
+import java.util.BitSet;
 import java.util.Objects;
 
-/** Bounded swept whole-voxel clearance. Unknown/partial shapes never become imaginary ground. */
+/**
+ * Bounded swept clearance against real collision boxes. The swept volume is the box spanning the body at both ends of
+ * one segment of at most two blocks. Support means a collision surface exactly at the feet under any part of the body,
+ * as with a vanilla entity. A body may not move into a hazard it was not already touching.
+ */
 public final class MotionValidator {
+    /** GROUND allows wading while the top of the body stays out of water; AIR allows no fluid; WATER needs fluid at the feet. */
     public enum Medium { GROUND, AIR, WATER, AMPHIBIOUS_AIR }
-    public enum Status { CLEAR, BLOCKED, UNAVAILABLE_TERRAIN, UNSUPPORTED_GEOMETRY, BUDGET_EXHAUSTED }
-    @FunctionalInterface public interface Sampler { VoxelSnapshot.Cell sample(int x, int y, int z); }
+    public enum Status { CLEAR, BLOCKED, HAZARD, UNAVAILABLE_TERRAIN, UNSUPPORTED_GEOMETRY, BUDGET_EXHAUSTED }
+    @FunctionalInterface public interface Sampler { Cell sample(int x, int y, int z); }
     public record Result(Status status, int sampledCells, String detail) {
         public boolean clear() { return status == Status.CLEAR; }
     }
-    private static final double EPSILON = 0.000001;
+    public static final double MAX_SEGMENT = 2;
+    static final double EPSILON = 0.000001;
+    private static final double TOUCH = 0.01;
     private MotionValidator() {}
+
+    /**
+     * The most cells {@link #check} can read for this body moving at most {@code distance}, so a caller can size a budget
+     * for a large body instead of failing it. It is at most 588 for the largest hull and longest segment.
+     */
+    public static int cellBudget(double width, double height, double distance) {
+        if (!(width > 0 && width <= MovementProfile.MAX_WIDTH) || !(height > 0 && height <= MovementProfile.MAX_HEIGHT)
+                || !(distance >= 0 && distance <= MAX_SEGMENT + EPSILON))
+            throw new IllegalArgumentException("Requires width<=4, height<=8 and a segment of at most 2 blocks");
+        int across = (int) Math.ceil(width + distance) + 1, up = (int) Math.ceil(height + distance) + 2;
+        return across * across * up;
+    }
 
     public static Result check(Vec3 from, Vec3 to, double width, double height, Medium medium,
                                boolean requireSupport, int maximumCells, Sampler terrain) {
         Objects.requireNonNull(from); Objects.requireNonNull(to); Objects.requireNonNull(medium); Objects.requireNonNull(terrain);
         if (maximumCells < 1 || maximumCells > 4096) throw new IllegalArgumentException("Cell budget must be 1..4096");
-        if (!Double.isFinite(width) || !Double.isFinite(height) || width <= 0 || width > 4 || height <= 0 || height > 8
-                || from.distance(to) > 1.000001 || (requireSupport && (Math.abs(from.y() - to.y()) > EPSILON
-                || Math.abs(to.y() - Math.rint(to.y())) > EPSILON)))
-            return new Result(Status.UNSUPPORTED_GEOMETRY, 0, "Requires width<=4, height<=8, <=1 block segment and integer-height ground support");
+        if (!Double.isFinite(width) || !Double.isFinite(height) || width <= 0 || width > MovementProfile.MAX_WIDTH
+                || height <= 0 || height > MovementProfile.MAX_HEIGHT || from.distance(to) > MAX_SEGMENT + EPSILON)
+            return new Result(Status.UNSUPPORTED_GEOMETRY, 0, "Requires width<=4, height<=8 and a segment of at most 2 blocks");
         double half = width / 2;
-        int minX = floor(Math.min(from.x(), to.x()) - half + EPSILON), maxX = floor(Math.max(from.x(), to.x()) + half - EPSILON);
-        int minZ = floor(Math.min(from.z(), to.z()) - half + EPSILON), maxZ = floor(Math.max(from.z(), to.z()) + half - EPSILON);
-        int minY = floor(Math.min(from.y(), to.y()) + EPSILON), maxY = floor(Math.max(from.y(), to.y()) + height - EPSILON);
-        // Unknown shapes can overhang their voxel (for example a fence's upper half).
-        // Sample a closed one-voxel halo, charging every read to the same explicit budget.
-        int sizeX = maxX - minX + 3, sizeY = maxY - minY + 3, sizeZ = maxZ - minZ + 3;
-        long budget = (long) sizeX * sizeY * sizeZ;
-        if (budget > maximumCells) return new Result(Status.BUDGET_EXHAUSTED, 0, "Swept volume exceeds cell budget");
-        VoxelSnapshot.Cell[] cells = new VoxelSnapshot.Cell[(int) budget];
+        double lowX = Math.min(from.x(), to.x()) - half, highX = Math.max(from.x(), to.x()) + half;
+        double lowZ = Math.min(from.z(), to.z()) - half, highZ = Math.max(from.z(), to.z()) + half;
+        double lowY = Math.min(from.y(), to.y()), highY = Math.max(from.y(), to.y()) + height;
+        int minX = floor(lowX + EPSILON), maxX = floor(highX - EPSILON), minZ = floor(lowZ + EPSILON), maxZ = floor(highZ - EPSILON);
+        // The layer under the feet holds support, and its boxes may overhang upwards by half a block.
+        int minY = floor(lowY + EPSILON) - 1, maxY = floor(highY - EPSILON);
+        int sizeX = maxX - minX + 1, sizeY = maxY - minY + 1, sizeZ = maxZ - minZ + 1;
+        long volume = (long) sizeX * sizeY * sizeZ;
+        if (volume > maximumCells) return new Result(Status.BUDGET_EXHAUSTED, 0, "Swept volume exceeds cell budget");
+        Cell[] cells = new Cell[(int) volume];
         int count = 0;
-        for (int x = minX - 1; x <= maxX + 1; x++) for (int z = minZ - 1; z <= maxZ + 1; z++) for (int y = minY - 1; y <= maxY + 1; y++) {
-            var cell = terrain.sample(x, y, z); count++;
-            cells[((y - minY + 1) * sizeZ + z - minZ + 1) * sizeX + x - minX + 1] = cell;
-            if (cell == VoxelSnapshot.Cell.UNAVAILABLE) return new Result(Status.UNAVAILABLE_TERRAIN, count, "Swept volume or collision halo reaches unavailable terrain");
-            if (cell == VoxelSnapshot.Cell.OBSTACLE) return new Result(Status.UNSUPPORTED_GEOMETRY, count, "Partial or unsupported block shape in collision halo");
-            if (x < minX || x > maxX || z < minZ || z > maxZ || y < minY || y > maxY) continue;
-            if (cell == VoxelSnapshot.Cell.SOLID || cell == VoxelSnapshot.Cell.LAVA
-                    || (cell == VoxelSnapshot.Cell.WATER && medium != Medium.WATER && medium != Medium.AMPHIBIOUS_AIR))
-                return new Result(Status.BLOCKED, count, "Swept body is obstructed");
+        for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) for (int y = maxY; y >= minY; y--) {
+            Cell cell = terrain.sample(x, y, z); count++;
+            // Only the layer under the feet can lie below the world while the body is in it; there is nothing there.
+            if ((cell == null || cell.unavailable()) && y == minY) cell = Cell.AIR;
+            if (cell == null || cell.unavailable()) return new Result(Status.UNAVAILABLE_TERRAIN, count, "Swept volume reaches unavailable terrain");
+            cells[((y - minY) * sizeZ + z - minZ) * sizeX + x - minX] = cell;
         }
-        if (requireSupport || medium == Medium.WATER) {
-            int feetY = floor(to.y() + EPSILON);
-            for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) {
-                if (!requireSupport) {
-                    var feet = cells[((feetY - minY + 1) * sizeZ + z - minZ + 1) * sizeX + x - minX + 1];
-                    if (feet == VoxelSnapshot.Cell.UNAVAILABLE) return new Result(Status.UNAVAILABLE_TERRAIN, count, "Fluid unavailable");
-                    if (feet == VoxelSnapshot.Cell.WATER) continue;
-                }
-                var floor = cells[((feetY - minY) * sizeZ + z - minZ + 1) * sizeX + x - minX + 1];
-                if (floor == VoxelSnapshot.Cell.UNAVAILABLE) return new Result(Status.UNAVAILABLE_TERRAIN, count, "Support unavailable");
-                if (floor == VoxelSnapshot.Cell.OBSTACLE) return new Result(Status.UNSUPPORTED_GEOMETRY, count, "Support shape is not a verified full block");
-                if (floor != VoxelSnapshot.Cell.SOLID) return new Result(Status.BLOCKED, count, "No continuous support or swimming fluid");
-            }
+        Region region = new Region(minX, minY, minZ, sizeX, sizeZ, cells);
+        for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) for (int y = minY; y <= maxY; y++) {
+            Cell cell = region.at(x, y, z);
+            for (Cell.Box box : cell.boxes())
+                if (overlaps(x + box.minX(), x + box.maxX(), lowX, highX) && overlaps(z + box.minZ(), z + box.maxZ(), lowZ, highZ)
+                        && overlaps(y + box.minY(), y + box.maxY(), lowY, highY))
+                    return new Result(Status.BLOCKED, count, "Swept body is obstructed");
+            if (medium == Medium.AIR && cell.water() && overlaps(y, y + 1, lowY, highY))
+                return new Result(Status.BLOCKED, count, "Water in the way of an airborne body");
         }
+        BitSet before = region.hazards(from, half, height), after = region.hazards(to, half, height);
+        if (from.distance(to) <= EPSILON ? !after.isEmpty() : !subset(after, before))
+            return new Result(Status.HAZARD, count, "Lava, fire or another hazard in the way");
+        if (medium == Medium.GROUND && region.water(to, half, floor(to.y() + height - EPSILON)))
+            return new Result(Status.BLOCKED, count, "Water too deep to wade");
+        boolean supported = region.supported(to, half);
+        if (requireSupport && !supported) return new Result(Status.BLOCKED, count, "No ground under the body");
+        if (medium == Medium.WATER && !supported && !region.water(to, half, floor(to.y() + EPSILON)))
+            return new Result(Status.BLOCKED, count, "No swimming fluid or support");
         return new Result(Status.CLEAR, count, "clear");
     }
-    private static int floor(double value) {
+
+    private record Region(int minX, int minY, int minZ, int sizeX, int sizeZ, Cell[] cells) {
+        Cell at(int x, int y, int z) { return cells[((y - minY) * sizeZ + z - minZ) * sizeX + x - minX]; }
+        int columns(double centre, double half, boolean high) { return floor(high ? centre + half - EPSILON : centre - half + EPSILON); }
+        BitSet hazards(Vec3 feet, double half, double height) {
+            BitSet touched = new BitSet();
+            int y0 = floor(feet.y() - TOUCH), y1 = floor(feet.y() + height - EPSILON);
+            for (int x = columns(feet.x(), half, false); x <= columns(feet.x(), half, true); x++)
+                for (int z = columns(feet.z(), half, false); z <= columns(feet.z(), half, true); z++)
+                    for (int y = Math.max(minY, y0); y <= y1; y++)
+                        if (at(x, y, z).hazard()) touched.set(((y - minY) * sizeZ + z - minZ) * sizeX + x - minX);
+            return touched;
+        }
+        boolean water(Vec3 feet, double half, int y) {
+            for (int x = columns(feet.x(), half, false); x <= columns(feet.x(), half, true); x++)
+                for (int z = columns(feet.z(), half, false); z <= columns(feet.z(), half, true); z++)
+                    if (at(x, y, z).water()) return true;
+            return false;
+        }
+        boolean supported(Vec3 feet, double half) {
+            double lowX = feet.x() - half, highX = feet.x() + half, lowZ = feet.z() - half, highZ = feet.z() + half;
+            int y0 = Math.max(minY, floor(feet.y() - Cell.MAX_HEIGHT + EPSILON)), y1 = floor(feet.y() + EPSILON);
+            for (int x = columns(feet.x(), half, false); x <= columns(feet.x(), half, true); x++)
+                for (int z = columns(feet.z(), half, false); z <= columns(feet.z(), half, true); z++)
+                    for (int y = y0; y <= y1; y++)
+                        for (Cell.Box box : at(x, y, z).boxes())
+                            if (Math.abs(y + box.maxY() - feet.y()) <= EPSILON
+                                    && overlaps(x + box.minX(), x + box.maxX(), lowX, highX) && overlaps(z + box.minZ(), z + box.maxZ(), lowZ, highZ))
+                                return true;
+            return false;
+        }
+    }
+    private static boolean subset(BitSet inner, BitSet outer) {
+        BitSet extra = (BitSet) inner.clone(); extra.andNot(outer); return extra.isEmpty();
+    }
+    static boolean overlaps(double min, double max, double low, double high) { return min < high - EPSILON && max > low + EPSILON; }
+    static int floor(double value) {
         if (value < -30_000_000 || value > 30_000_000) throw new IllegalArgumentException("Motion outside world bounds");
         return (int) Math.floor(value);
     }

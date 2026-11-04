@@ -9,12 +9,13 @@ import static art.arcane.animus.core.navigation.PathPlanner.Motion.STEP;
 import static art.arcane.animus.core.navigation.PathPlanner.Motion.JUMP;
 import static art.arcane.animus.core.navigation.PathPlanner.Motion.FALL;
 import static art.arcane.animus.core.navigation.MovementProfile.Mode.*;
-import static art.arcane.animus.core.navigation.VoxelSnapshot.Cell.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PathPlannerTest {
+    private static final VoxelSnapshot.Cell AIR = VoxelSnapshot.Cell.AIR, SOLID = VoxelSnapshot.Cell.SOLID,
+            WATER = VoxelSnapshot.Cell.WATER, LAVA = VoxelSnapshot.Cell.LAVA;
     private static final PathPlanner.Limits NORMAL = new PathPlanner.Limits(5000, 5000, 500);
-    private static final MovementProfile FLAT = new MovementProfile(Set.of(WALK), 2, 0, 0, 0, 0, true);
+    private static final MovementProfile FLAT = new MovementProfile(Set.of(WALK), 0.6, 2, 0, 0, 0, true);
     private static final BlockPos START = new BlockPos(2, 1, 2);
     private final PathPlanner planner = new PathPlanner();
 
@@ -52,8 +53,8 @@ class PathPlannerTest {
     @Test void stepAndJumpCapabilitiesAreDistinctAndRequireVerticalClearance() {
         var builder = room(8, 7, 5); builder.set(3, 1, 2, SOLID);
         BlockPos goal = new BlockPos(3, 2, 2);
-        var stepper = new MovementProfile(Set.of(WALK), 2, 0, 1, 0, 0, false);
-        var jumper = new MovementProfile(Set.of(WALK), 2, 0, 0, 1, 0, false);
+        var stepper = new MovementProfile(Set.of(WALK), 0.6, 2, 1, 0, 0, false);
+        var jumper = new MovementProfile(Set.of(WALK), 0.6, 2, 0, 1, 0, false);
         assertEquals(STEP, plan(builder.build(), START, goal, stepper).path().getLast().motion());
         assertEquals(JUMP, plan(builder.build(), START, goal, jumper).path().getLast().motion());
         assertEquals(UNREACHABLE, plan(builder.build(), START, goal, FLAT).status());
@@ -66,8 +67,8 @@ class PathPlannerTest {
         var builder = room(7, 8, 5);
         builder.set(2, 1, 2, SOLID).set(2, 2, 2, SOLID).set(2, 3, 2, SOLID);
         BlockPos from = new BlockPos(2, 4, 2), goal = new BlockPos(3, 1, 2);
-        var faller = new MovementProfile(Set.of(WALK), 2, 0, 0, 0, 3, false);
-        var safe = new MovementProfile(Set.of(WALK), 2, 0, 0, 0, 2, false);
+        var faller = new MovementProfile(Set.of(WALK), 0.6, 2, 0, 0, 3, false);
+        var safe = new MovementProfile(Set.of(WALK), 0.6, 2, 0, 0, 2, false);
         var result = plan(builder.build(), from, goal, faller);
         assertEquals(FOUND, result.status()); assertEquals(2, result.path().size()); assertEquals(FALL, result.path().getLast().motion());
         assertEquals(UNREACHABLE, plan(builder.build(), from, goal, safe).status());
@@ -91,26 +92,26 @@ class PathPlannerTest {
         for (int y = 1; y < 4; y++) for (int z = 1; z < 10; z++) if (z != 5) builder.set(5, y, z, SOLID);
         BlockPos from = new BlockPos(2, 1, 5), goal = new BlockPos(8, 1, 5);
         assertEquals(FOUND, plan(builder.build(), from, goal, FLAT).status());
-        var wide = new MovementProfile(Set.of(WALK), 2, 1, 0, 0, 0, true);
+        var wide = new MovementProfile(Set.of(WALK), 2, 2, 0, 0, 0, true);
         assertEquals(UNREACHABLE, plan(builder.build(), from, goal, wide).status());
     }
     @Test void swimmingAndFlightAreExplicitAndLavaRemainsBlocked() {
         var builder = room(8, 7, 5);
         for (int x = 1; x < 7; x++) for (int y = 1; y < 5; y++) builder.set(x, y, 2, WATER);
-        var swimmer = new MovementProfile(Set.of(SWIM), 2, 0, 0, 0, 0, false);
+        var swimmer = new MovementProfile(Set.of(SWIM), 0.6, 2, 0, 0, 0, false);
         var swim = plan(builder.build(), START, new BlockPos(5, 3, 2), swimmer);
         assertEquals(FOUND, swim.status()); assertTrue(swim.path().stream().skip(1).allMatch(s -> s.motion() == PathPlanner.Motion.SWIM));
         assertEquals(UNREACHABLE, plan(builder.build(), START, new BlockPos(5, 1, 2), FLAT).status());
         builder.set(5, 3, 2, LAVA);
         assertEquals(UNREACHABLE, plan(builder.build(), START, new BlockPos(5, 3, 2), swimmer).status());
-        var flyer = new MovementProfile(Set.of(FLY), 2, 0, 0, 0, 0, true);
+        var flyer = new MovementProfile(Set.of(FLY), 0.6, 2, 0, 0, 0, true);
         var fly = plan(room(8, 8, 8).build(), START, new BlockPos(5, 4, 5), flyer);
         assertEquals(FOUND, fly.status()); assertTrue(fly.path().stream().skip(1).allMatch(s -> s.motion() == PathPlanner.Motion.FLY));
     }
     @Test void flyingDiagonalCannotPassBetweenTouchingObstacles() {
         var builder = room(5, 5, 5);
         builder.set(2, 1, 1, SOLID).set(1, 2, 1, SOLID).set(1, 1, 2, SOLID);
-        var flyer = new MovementProfile(Set.of(FLY), 1, 0, 0, 0, 0, true);
+        var flyer = new MovementProfile(Set.of(FLY), 0.6, 1, 0, 0, 0, true);
         assertEquals(UNREACHABLE, plan(builder.build(), new BlockPos(1, 1, 1), new BlockPos(2, 2, 2), flyer).status());
     }
     @Test void allSearchBudgetsAndCancellationAreObservable() {

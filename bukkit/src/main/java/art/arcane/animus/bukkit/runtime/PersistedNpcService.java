@@ -376,6 +376,10 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     /** Terrain checks use a central hull. A dragon's outstretched wings and tail are presentation, so they may overhang terrain. */
     static double moveWidth(Value value) { return Math.min(HULL_WIDTH_LIMIT, bodyWidth(value)); }
     static double moveHeight(Value value) { return Math.min(HULL_HEIGHT_LIMIT, bodyHeight(value)); }
+    /** A small body keeps the flat per-move budget; a large hull gets the most its sweep can read, which stays bounded by the hull limits. */
+    static int motionCells(Value value, double distance) {
+        return Math.max(MOTION_CELLS, MotionValidator.cellBudget(moveWidth(value), moveHeight(value), distance));
+    }
     private void validateDestination(Value value, WorldPosition destination, MovementProfile.Mode mode, double speed) {
         WorldPosition origin = value.state.snapshot().position(); Vec3 delta = destination.point().subtract(origin.point());
         if (!Double.isFinite(speed) || speed < 1 || speed > 5) throw new IllegalArgumentException("Navigation speed must be1..5 blocks/second");
@@ -396,9 +400,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                 maxY - minY + 1, Math.max(from.z(), to.z()) + margin - minZ + 1);
     }
     private static MovementProfile profile(Value value, MovementProfile.Mode mode) {
-        Set<MovementProfile.Mode> modes = mode == MovementProfile.Mode.SWIM ? Set.of(MovementProfile.Mode.WALK, mode) : Set.of(mode);
-        return new MovementProfile(modes, (int) Math.ceil(moveHeight(value)), Math.max(0, (int) Math.ceil((moveWidth(value) - 1) / 2)),
-                1, 2, 3, true);
+        return BodyMobility.forRoute(value.spec.type(), moveWidth(value), moveHeight(value), mode);
     }
     private boolean routeCurrent(Route route) {
         Value value = route.value; Entry entry = byUuid.get(value.spec.definition().uuid());
@@ -465,7 +467,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                         if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspend(route, "unavailable captured terrain");
                         else if (planned.status() != PathPlanner.Status.FOUND) stopRoute(value, "failed: " + planned.status());
                         else {
-                            route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), route.goal.point(), route.mode);
+                            route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), route.goal.point(), profile(value, route.mode));
                             routeStatus(route, "moving", "kinematic; live collision revalidation");
                         }
                     }
@@ -475,12 +477,14 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                     else if (route.execution.finished()) arrive(route);
                     else {
                         var step = route.execution.next(route.speed / 20).orElseThrow();
-                        var validation = LiveMovementProbe.check(world, step.from(), step.to(), moveWidth(value), moveHeight(value), step.medium(), step.requireSupport(), MOTION_CELLS);
+                        int sweep = motionCells(value, step.from().distance(step.to())), settle = motionCells(value, 0);
+                        if (cells < sweep + (step.landing() ? settle : 0)) { routeOrder.addFirst(route); break; }
+                        var validation = LiveMovementProbe.check(world, step.from(), step.to(), moveWidth(value), moveHeight(value), step.medium(), step.requireSupport(), sweep);
                         cells -= validation.sampledCells();
                         if (validation.clear() && step.landing()) {
                             validation = LiveMovementProbe.check(world, step.to(), step.to(), moveWidth(value), moveHeight(value),
                                     route.mode == MovementProfile.Mode.SWIM ? MotionValidator.Medium.WATER : MotionValidator.Medium.GROUND,
-                                    route.mode != MovementProfile.Mode.SWIM, MOTION_CELLS);
+                                    route.mode != MovementProfile.Mode.SWIM, settle);
                             cells -= validation.sampledCells();
                         }
                         if (validation.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) suspend(route, validation.detail());
