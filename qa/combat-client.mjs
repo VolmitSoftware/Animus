@@ -134,7 +134,7 @@ try {
   await owner.wait(e => e.event === 'chat' && e.text.includes(`Despawn requested for ${id}`), removeStart);
   await delay(200);
   const status = await command('animus combat status', 'Combat ready');
-  assert(status.text.includes('registered=0') && status.text.includes('controlled-mobs=0'));
+  assert(status.text.includes('manual registrations=0') && status.text.includes('controlled-mobs=0'));
   passed('despawn revokes combat and releases mob ownership');
 } catch (error) {
   failure = error;

@@ -7,6 +7,8 @@ public final class ControlInbox {
     public record Frame(ControlInput input, long sequence, long receivedAtNanos) {}
     public record Snapshot(Frame latest, long lastActivityNanos, boolean active, String reason) {}
     public static final int MAX_INPUTS_PER_SECOND = 80;
+    /** The rider's network connection is gone; the server may not have processed the logout yet. */
+    public static final String CONNECTION_CLOSED = "connection-closed";
     private Frame latest;
     private long lastActivity, windowStart, sequence;
     private int receivedInWindow;

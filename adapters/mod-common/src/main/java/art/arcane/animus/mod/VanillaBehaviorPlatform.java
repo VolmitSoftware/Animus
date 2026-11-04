@@ -71,7 +71,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         return ModWorldKeys.key(online.get().level()).equals(at.world()) && new Vec3(position.x(), position.y(), position.z()).distance(at.point()) <= radius;
     }
     @Override public int say(NpcHandle npc, Audience audience, String text) {
-        NpcRuntime.ActiveNpc active = require(npc);
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
         Component line = Component.literal(active.name() + ": " + text);
         return deliver(audience, active.state().position(), false, (ServerPlayer viewer) -> viewer.sendSystemMessage(line));
     }
@@ -152,7 +152,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         return new ItemStack(BuiltInRegistries.ITEM.getValue(id));
     }
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) {
-        NpcRuntime.ActiveNpc active = require(npc);
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
         WorldPosition at = bodyCenter(active);
         Identifier id = Identifier.tryParse(sound.sound());
         if (id == null) throw PlatformRefusals.refusal(art.arcane.animus.api.Outcome.Status.INVALID, "unknown-sound", new IllegalArgumentException("Unknown sound: " + sound.sound()));
@@ -163,7 +163,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
                 at.point().x(), at.point().y(), at.point().z(), sound.volume(), sound.pitch(), seed)));
     }
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
-        NpcRuntime.ActiveNpc active = require(npc);
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
         WorldPosition at = bodyCenter(active);
         SimpleParticleType particle = particle(effect.particle());
         ServerLevel level = ModWorldKeys.level(server, at.world());
@@ -184,6 +184,8 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     }
 
     private NpcRuntime.ActiveNpc require(NpcHandle npc) { return living.active(npc.uuid()).orElseThrow(PlatformRefusals::inactive); }
+    /** Dialogue, sounds and particles also come from a combat NPC that has just died, so its death routine can announce it. */
+    private NpcRuntime.ActiveNpc requireVoice(NpcHandle npc) { return living.voice(npc.uuid()).orElseThrow(PlatformRefusals::inactive); }
     private static WorldPosition bodyCenter(NpcRuntime.ActiveNpc active) {
         WorldPosition position = active.state().position();
         double y = (active.state().bounds().min().y() + active.state().bounds().max().y()) / 2;

@@ -123,7 +123,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         private final ControlInbox inbox = new ControlInbox(System.nanoTime());
         private ControlSubscription(Session session) { this.session = session; }
         @Override public ControlInbox.Snapshot latest() {
-            if (!current(session) || session.control != this) inbox.close("session-retired");
+            if (!session.viewer.connection.isAcceptingMessages()) inbox.close(ControlInbox.CONNECTION_CLOSED);
+            else if (!current(session) || session.control != this) inbox.close("session-retired");
             return inbox.snapshot();
         }
         @Override public void close() { inbox.close("subscription-closed"); if (session.control == this) session.control = null; }
@@ -436,7 +437,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         for (Packet<ClientGamePacketListener> packet : packets) session.viewer.connection.send(packet);
     }
     private void retire(Session session) {
-        if (session.control != null) { session.control.inbox.close("session-retired"); session.control = null; }
+        String reason = session.viewer.connection.isAcceptingMessages() ? "session-retired" : ControlInbox.CONNECTION_CLOSED;
+        if (session.control != null) { session.control.inbox.close(reason); session.control = null; }
         Set<Body> bodies = new HashSet<>(session.visible.values());
         session.visible.clear(); session.passengers.clear();
         if (!session.viewer.connection.isAcceptingMessages()) return;
