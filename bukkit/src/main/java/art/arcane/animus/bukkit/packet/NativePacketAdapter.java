@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.packet;
 
-import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
+import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.control.ControlInput;
 import art.arcane.animus.core.control.ControlInbox;
 import art.arcane.animus.core.mount.SeatGeometry;
@@ -68,10 +69,17 @@ public final class NativePacketAdapter implements AutoCloseable {
         private final double width, height;
         private final SeatGeometry seat;
         private final Object nativeType, playerInfo;
-        private Body(NativePacketAdapter owner, int entityId, int reservedIds, UUID uuid, String typeKey,
-                     double width, double height, SeatGeometry seat, Object nativeType, Object playerInfo) {
-            this.owner = owner; this.entityId = entityId; this.reservedIds = reservedIds; this.uuid = uuid;
+        private final NativePresentation.Look look;
+        private final int displayId, seatId;
+        private final UUID displayUuid = UUID.randomUUID(), seatUuid = UUID.randomUUID();
+        private final Object[] nameTeam;
+        private Body(NativePacketAdapter owner, int entityId, int baseIds, UUID uuid, String typeKey, double width, double height,
+                     SeatGeometry seat, Object nativeType, Object playerInfo, NativePresentation.Look look, Object[] nameTeam) {
+            this.owner = owner; this.entityId = entityId; this.reservedIds = baseIds + look.extraIds(); this.uuid = uuid;
             this.typeKey = typeKey; this.width = width; this.height = height; this.seat = seat; this.nativeType = nativeType; this.playerInfo = playerInfo;
+            this.look = look; this.nameTeam = nameTeam;
+            displayId = look.text().isPresent() ? entityId + baseIds : -1;
+            seatId = look.seated() ? entityId + baseIds + (look.text().isPresent() ? 1 : 0) : -1;
         }
         public int entityId() { return entityId; }
         public UUID uuid() { return uuid; }
@@ -102,6 +110,7 @@ public final class NativePacketAdapter implements AutoCloseable {
         Set<String> operations = new HashSet<>(Set.of("spawn", "despawn", "move", "signed-player-textures", "attack-interception", "use-interception", "head-rotation", "passengers", "control-input", "dragon-presentation"));
         if (riderUnavailable == null) operations.add("real-rider");
         if (nativeApi.equipment != null) operations.add("equipment");
+        if (nativeApi.presentation != null) operations.add("presentation");
         capabilities = new Capabilities(version, TYPES, operations, "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
     }
     public static NativePacketAdapter bind(Plugin plugin, String exactMinecraftVersion) throws ReflectiveOperationException {
@@ -114,6 +123,14 @@ public final class NativePacketAdapter implements AutoCloseable {
 
     static int reservedIds(String typeKey) { return typeKey.equals(DragonBody.TYPE) ? DragonBody.RESERVED_IDS : 1; }
     static float wireYaw(String typeKey, float yaw) { return typeKey.equals(DragonBody.TYPE) ? DragonBody.wireYaw(yaw) : yaw; }
+    /** A body's own text display always stays in its roster, after every other passenger. */
+    static int[] withText(int[] roster, int displayId) {
+        if (displayId < 0) return roster;
+        if (roster.length + 1 > MAX_PASSENGER_IDS) throw new IllegalArgumentException("Passenger list must contain at most " + MAX_PASSENGER_IDS + " bodies");
+        int[] result = Arrays.copyOf(roster, roster.length + 1);
+        result[roster.length] = displayId;
+        return result;
+    }
     /** The real rider is identified by its own server entity, never by a fabricated virtual body. */
     static int[] passengerRoster(List<Integer> virtualPassengers, int realRider) {
         if (realRider == NO_REAL_RIDER) return virtualPassengers.stream().mapToInt(Integer::intValue).toArray();
@@ -146,17 +163,41 @@ public final class NativePacketAdapter implements AutoCloseable {
         @Override public void close() { inbox.close("subscription-closed"); session.control.compareAndSet(this, null); }
     }
 
+    /** A plain body: the profile name is its nameplate and nothing else is presented. */
     public Body createBody(UUID uuid, String typeKey, String profileName, Skin skin) throws ReflectiveOperationException {
+        return createBody(uuid, typeKey, NativePresentation.named(profileName), skin);
+    }
+
+    /**
+     * A body showing its definition's appearance: pose, armor stand parts, and a text display for hologram lines and
+     * names a profile cannot carry. Without presentation support only the plain body is shown.
+     */
+    public Body createBody(UUID uuid, String typeKey, String name, NpcAppearance appearance, Skin skin) throws ReflectiveOperationException {
+        NativePresentation.Look look = NativePresentation.look(uuid, typeKey, name, appearance);
+        if (nativeApi.presentation == null) look = NativePresentation.named(look.profileName());
+        return createBody(uuid, typeKey, look, skin);
+    }
+
+    /** Extra native IDs a body with this appearance reserves beyond its type's own. */
+    public int presentationIds(UUID uuid, String typeKey, String name, NpcAppearance appearance) {
+        return nativeApi.presentation == null ? 0 : NativePresentation.look(uuid, typeKey, name, appearance).extraIds();
+    }
+
+    public boolean presentationAvailable() { return nativeApi.presentation != null; }
+
+    private Body createBody(UUID uuid, String typeKey, NativePresentation.Look look, Skin skin) throws ReflectiveOperationException {
         ensureOpen();
         Objects.requireNonNull(uuid);
         if (!TYPES.contains(typeKey)) throw new IllegalArgumentException("Body type is not enabled by the proof adapter: " + typeKey);
-        if (typeKey.equals("minecraft:player")) validateProfileName(profileName);
+        if (typeKey.equals("minecraft:player")) validateProfileName(look.profileName());
         if (!typeKey.equals("minecraft:player") && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
         Object type = nativeApi.entityType(typeKey);
         int reserved = reservedIds(typeKey);
-        Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, profileName, skin) : null;
-        return new Body(this, nativeApi.ids.reserve(reserved), reserved, uuid, typeKey,
-                ((Number) nativeApi.typeWidth.invoke(type)).doubleValue(), ((Number) nativeApi.typeHeight.invoke(type)).doubleValue(), nativeApi.seat(type), type, playerInfo);
+        Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, look.profileName(), skin) : null;
+        int entityId = nativeApi.ids.reserve(reserved + look.extraIds());
+        Object[] team = look.hideProfileName() ? nativeApi.presentation.hiddenNameTeam(entityId, look.profileName()) : null;
+        return new Body(this, entityId, reserved, uuid, typeKey, ((Number) nativeApi.typeWidth.invoke(type)).doubleValue(),
+                ((Number) nativeApi.typeHeight.invoke(type)).doubleValue(), nativeApi.seat(type), type, playerInfo, look, team);
     }
 
     /** Native PLAYER_NAME uses stringUtf8(16), not the authenticated-login username policy. */
@@ -201,11 +242,7 @@ public final class NativePacketAdapter implements AutoCloseable {
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
             if (session.spawning.get(body.entityId) != presentation) throw new CancellationException("Body spawn was cancelled");
-            List<Object> packets = new ArrayList<>();
-            if (body.playerInfo != null) packets.add(body.playerInfo);
-            packets.add(nativeApi.spawn(body, pose));
-            packets.add(nativeApi.rotateHead(body.entityId, wireYaw(body.typeKey, pose.yaw)));
-            if (body.playerInfo != null) packets.add(nativeApi.playerMetadata(body.entityId));
+            List<Object> packets = nativeApi.spawnPackets(body, pose);
             write(session, packets).whenComplete((nothing, failure) -> {
                 boolean published = false;
                 synchronized (session) {
@@ -235,7 +272,12 @@ public final class NativePacketAdapter implements AutoCloseable {
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
             if (session.visible.get(body.entityId) != presentation) throw new IllegalStateException("Body was despawned before movement");
-            write(session, List.of(nativeApi.move(body, pose), nativeApi.rotateHead(body.entityId, wireYaw(body.typeKey, pose.yaw)))).whenComplete((nothing, failure) -> complete(result, failure));
+            List<Object> packets = new ArrayList<>(3);
+            // A seated body follows its seat on the client, so the seat carries the movement.
+            if (body.seatId >= 0) packets.add(nativeApi.seatMove(body, pose));
+            packets.add(nativeApi.move(body, pose));
+            packets.add(nativeApi.rotateHead(body.entityId, wireYaw(body.typeKey, pose.yaw)));
+            write(session, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -266,7 +308,7 @@ public final class NativePacketAdapter implements AutoCloseable {
         int realRiderId = realRider == null ? NO_REAL_RIDER : realRider.getEntityId();
         submit(session, result, authoritative, () -> {
             List<Integer> passengerIds = requested.stream().map(Body::entityId).toList();
-            Object packet = nativeApi.passengers(vehicle.entityId, passengerRoster(passengerIds, realRiderId));
+            Object packet = nativeApi.passengers(vehicle.entityId, withText(passengerRoster(passengerIds, realRiderId), vehicle.displayId));
             synchronized (session) {
                 for (Presentation presentation : presentations)
                     if (session.visible.get(presentation.body.entityId) != presentation) throw new CancellationException("Mount presentation retired");
@@ -296,7 +338,7 @@ public final class NativePacketAdapter implements AutoCloseable {
     public boolean equipmentAvailable() { return nativeApi.equipment != null; }
 
     /** Viewer-local items on a visible body. An empty stack clears its slot. Call on the viewer's owner: stacks convert here. */
-    public CompletionStage<Void> equipment(Player viewer, Body body, Map<BehaviorPlatform.EquipmentSlot, ItemStack> items) {
+    public CompletionStage<Void> equipment(Player viewer, Body body, Map<EquipmentSlot, ItemStack> items) {
         checkBody(body);
         if (nativeApi.equipment == null) return failed("Equipment packets are unavailable on this server version");
         Session session = sessions.get(viewer.getUniqueId());
@@ -325,7 +367,7 @@ public final class NativePacketAdapter implements AutoCloseable {
         nativeApi.placeRider(rider, x, y, z);
     }
 
-    static String nativeSlot(BehaviorPlatform.EquipmentSlot slot) {
+    static String nativeSlot(EquipmentSlot slot) {
         return switch (slot) {
             case MAIN_HAND -> "MAINHAND";
             case OFF_HAND -> "OFFHAND";
@@ -334,6 +376,7 @@ public final class NativePacketAdapter implements AutoCloseable {
             case LEGS -> "LEGS";
             case FEET -> "FEET";
             case BODY -> "BODY";
+            case SADDLE -> "SADDLE";
         };
     }
 
@@ -418,6 +461,7 @@ public final class NativePacketAdapter implements AutoCloseable {
             List<Object> packets = new ArrayList<>();
             packets.add(nativeApi.removeEntities.newInstance((Object) body.entityIds()));
             if (body.playerInfo != null) packets.add(nativeApi.removePlayerInfo.newInstance(List.of(body.uuid)));
+            if (body.nameTeam != null) packets.add(body.nameTeam[1]);
             return write(session, packets);
         } catch (ReflectiveOperationException e) { return CompletableFuture.failedFuture(e); }
     }
@@ -530,13 +574,13 @@ public final class NativePacketAdapter implements AutoCloseable {
             pair = Class.forName("com.mojang.datafixers.util.Pair").getMethod("of", Object.class, Object.class);
             nativeStack = Class.forName(craftPackage + ".inventory.CraftItemStack").getMethod("asNMSCopy", ItemStack.class);
             slots = (Class<? extends Enum>) Class.forName("net.minecraft.world.entity.EquipmentSlot");
-            for (BehaviorPlatform.EquipmentSlot slot : BehaviorPlatform.EquipmentSlot.values()) Enum.valueOf((Class) slots, nativeSlot(slot));
+            for (EquipmentSlot slot : EquipmentSlot.values()) Enum.valueOf((Class) slots, nativeSlot(slot));
         }
 
         @SuppressWarnings({"unchecked", "rawtypes"})
-        private Object packet(int entity, Map<BehaviorPlatform.EquipmentSlot, ItemStack> items) throws ReflectiveOperationException {
+        private Object packet(int entity, Map<EquipmentSlot, ItemStack> items) throws ReflectiveOperationException {
             List<Object> entries = new ArrayList<>(items.size());
-            for (Map.Entry<BehaviorPlatform.EquipmentSlot, ItemStack> item : items.entrySet())
+            for (Map.Entry<EquipmentSlot, ItemStack> item : items.entrySet())
                 entries.add(pair.invoke(null, Enum.valueOf((Class) slots, nativeSlot(item.getKey())), nativeStack.invoke(null, item.getValue())));
             return packet.newInstance(entity, entries);
         }
@@ -544,6 +588,8 @@ public final class NativePacketAdapter implements AutoCloseable {
 
     private static final class NativeBindings {
         private final EquipmentBindings equipment;
+        private final NativePresentation presentation;
+        private final Object textDisplayType, seatType;
         private final NativeEntityIds ids;
         private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
         private final Method identifierParse, registryContains, registryValue, typeWidth, typeHeight;
@@ -638,6 +684,11 @@ public final class NativePacketAdapter implements AutoCloseable {
             try { boundEquipment = new EquipmentBindings(craftPackage); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC equipment unavailable: " + missing.getClass().getSimpleName()); }
             equipment = boundEquipment;
+            NativePresentation boundPresentation = null;
+            try { boundPresentation = new NativePresentation(dataValueCreate); }
+            catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC poses, text and long names unavailable: " + missing.getClass().getSimpleName()); }
+            presentation = boundPresentation;
+            textDisplayType = entityType("minecraft:text_display"); seatType = entityType("minecraft:armor_stand");
             playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
             networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
             channel = field(type("net.minecraft.network.Connection"), "channel");
@@ -724,6 +775,38 @@ public final class NativePacketAdapter implements AutoCloseable {
             float yaw = wireYaw(body.typeKey, pose.yaw);
             return addEntity.newInstance(body.entityId, body.uuid, pose.x, pose.y, pose.z, pose.pitch, yaw, body.nativeType, 0, zeroVelocity, (double) yaw);
         }
+        /** Every packet that presents a body, in the order the client must receive them. */
+        private List<Object> spawnPackets(Body body, Pose pose) throws ReflectiveOperationException {
+            List<Object> packets = new ArrayList<>();
+            NativePresentation.Look look = body.look;
+            if (body.playerInfo != null) packets.add(body.playerInfo);
+            if (body.nameTeam != null) packets.add(body.nameTeam[0]);
+            float yaw = wireYaw(body.typeKey, pose.yaw);
+            if (body.seatId >= 0) {
+                packets.add(addEntity.newInstance(body.seatId, body.seatUuid, pose.x, pose.y, pose.z, 0f, yaw, seatType, 0, zeroVelocity, (double) yaw));
+                packets.add(metadataPacket.newInstance(body.seatId, presentation.seatValues()));
+            }
+            packets.add(spawn(body, pose));
+            packets.add(rotateHead(body.entityId, yaw));
+            List<Object> values = new ArrayList<>();
+            if (body.playerInfo != null) values.add(dataValueCreate.invoke(null, playerSkinAccessor, (byte) 0x7f));
+            if (presentation != null) values.addAll(presentation.bodyValues(look));
+            if (!values.isEmpty()) packets.add(metadataPacket.newInstance(body.entityId, values));
+            if (body.displayId >= 0) {
+                packets.add(addEntity.newInstance(body.displayId, body.displayUuid, pose.x, pose.y + body.height, pose.z, 0f, 0f, textDisplayType, 0, zeroVelocity, 0d));
+                double lift = NativePresentation.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate());
+                packets.add(metadataPacket.newInstance(body.displayId, presentation.textValues(look.text().orElseThrow(), lift)));
+                packets.add(passengers(body.entityId, new int[]{body.displayId}));
+            }
+            if (body.seatId >= 0) packets.add(passengers(body.seatId, new int[]{body.entityId}));
+            return packets;
+        }
+        private Object seatMove(Body body, Pose pose) throws ReflectiveOperationException {
+            Object position = vector.newInstance(pose.x, pose.y, pose.z);
+            float yaw = wireYaw(body.typeKey, pose.yaw);
+            if (steppedMovement) return movement.newInstance(body.seatId, positionPath.invoke(null, position), yaw, 0f, pose.onGround);
+            return movement.newInstance(body.seatId, positionValues.newInstance(position, zeroVelocity, yaw, 0f), pose.onGround);
+        }
         private Object move(Body body, Pose pose) throws ReflectiveOperationException {
             Object position = vector.newInstance(pose.x, pose.y, pose.z);
             float yaw = wireYaw(body.typeKey, pose.yaw);
@@ -752,10 +835,6 @@ public final class NativePacketAdapter implements AutoCloseable {
             Constructor<?> constructor = type(className).getDeclaredConstructor(buffer);
             if (!constructor.trySetAccessible()) throw new NoSuchMethodException("Cannot access explicit packet decoder " + className);
             return constructor;
-        }
-        private Object playerMetadata(int id) throws ReflectiveOperationException {
-            Object value = dataValueCreate.invoke(null, playerSkinAccessor, (byte) 0x7f);
-            return metadataPacket.newInstance(id, List.of(value));
         }
         private static Class<?> type(String name) throws ClassNotFoundException { return Class.forName(name); }
         private static Field field(Class<?> owner, String name) throws NoSuchFieldException {

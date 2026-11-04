@@ -2,6 +2,7 @@ package art.arcane.animus.core.behavior.builtin;
 
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.navigation.MovementProfile;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.List;
 import java.util.Objects;
@@ -18,8 +19,6 @@ import java.util.concurrent.CompletionStage;
 public interface BehaviorPlatform {
     enum CommandSource { CONSOLE, PLAYER }
     enum CombatOperation { ENABLE, DISABLE, TARGET, RELEASE, GUARD }
-    enum EquipmentSlot { MAIN_HAND, OFF_HAND, HEAD, CHEST, LEGS, FEET, BODY }
-
     record NpcStatus(boolean spawned, double health) {}
     /** A present player addresses only that viewer. An empty player addresses every viewer within the radius. */
     record Audience(Optional<UUID> player, double radius) {
