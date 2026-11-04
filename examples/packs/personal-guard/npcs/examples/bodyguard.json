@@ -17,5 +17,42 @@
   },
   "behaviors": [
     "personal-guard:bodyguard"
-  ]
+  ],
+  "modules": {
+    "animus:combat": {
+      "enabled": true,
+      "targeting": {
+        "scanRange": 16,
+        "fightBack": true,
+        "lineOfSight": "required"
+      },
+      "squad": {
+        "name": "personal-guard",
+        "alertRange": 16
+      },
+      "guard": {
+        "followDistance": 4,
+        "pointRange": 2
+      },
+      "pursuit": {
+        "speed": 5,
+        "giveUpRange": 24,
+        "leashRange": 32,
+        "returnToPost": true
+      },
+      "melee": {
+        "damage": 4,
+        "reach": 3,
+        "cooldownTicks": 15
+      },
+      "defense": {
+        "maximumHealth": 30,
+        "armor": 0.1,
+        "healRateTicks": 100
+      },
+      "respawn": {
+        "delayTicks": 200
+      }
+    }
+  }
 }

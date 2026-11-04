@@ -1,28 +1,16 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "id": "town-guard:guard",
   "entry": "main",
   "routines": {
     "main": {
-      "type": "sequence",
-      "steps": [
-        {
-          "type": "action",
-          "capability": "animus:set-equipment",
-          "arguments": {
-            "slot": "main_hand",
-            "item": "minecraft:iron_sword"
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:combat-control",
-          "arguments": {
-            "operation": "enable"
-          }
-        }
-      ]
+      "type": "action",
+      "capability": "animus:set-equipment",
+      "arguments": {
+        "slot": "main_hand",
+        "item": "minecraft:iron_sword"
+      }
     },
     "challenge": {
       "type": "sequence",
@@ -80,6 +68,15 @@
           }
         }
       ]
+    },
+    "fallen": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "The guard has fallen! Hold the gate!",
+        "audience": "nearby",
+        "radius": 32
+      }
     }
   },
   "triggers": [
@@ -100,6 +97,11 @@
       "event": "damage",
       "routine": "alarm",
       "cooldownTicks": 100
+    },
+    {
+      "id": "fallen",
+      "event": "death",
+      "routine": "fallen"
     }
   ]
 }
