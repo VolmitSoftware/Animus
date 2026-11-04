@@ -142,6 +142,8 @@ public final class ExtensionRuntime implements AutoCloseable {
     public boolean capabilityAvailable(Capabilities.Key key, Capabilities.Kind kind) {
         return state == State.READY && host.capabilityAvailable(key, kind, false, false);
     }
+    /** Connect before start so module startup and the behavior catalog observe dispatch. */
+    public void connectTriggers(art.arcane.animus.core.behavior.trigger.TriggerSink sink) { host.connectTriggers(sink); }
     /** Internal manual-behavior bridge: READY only, no preview or implicit privileged capability grants. */
     public BehaviorInvoker behaviorInvoker() { return behaviorInvoker; }
 

@@ -34,7 +34,7 @@ class HostBehaviorInvokerTest {
         CompletableFuture<String> raw=new CompletableFuture<>();AtomicReference<Cancellation> token=new AtomicReference<>();
         try(var host=host(2,2000)){
             host.install(module(c->c.registrations().action(descriptor("wait",Kind.ACTION),i->{token.set(i.cancellation());return raw;})));
-            var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),new HostBehaviorInvoker(host));UUID id=engine.start(program(),new BehaviorEngine.Context(NPC,Optional.empty(),true)).value().orElseThrow();engine.tick();eventually(()->token.get()!=null);
+            var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),new HostBehaviorInvoker(host),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);UUID id=engine.start(program(),new BehaviorEngine.Context(NPC,Optional.empty(),true)).value().orElseThrow();engine.tick();eventually(()->token.get()!=null);
             assertTrue(engine.cancel(id,"npc despawn simulation"));assertTrue(token.get().cancelled());eventually(()->host.invocationStatus().queuedDeliveries()==0);engine.tick();
             assertEquals(1,engine.status().callsInFlight());assertEquals(1,host.outstandingInvocations());assertEquals(BehaviorEngine.State.CANCELLED,engine.inspect(id).orElseThrow().state());assertEquals(ModuleHost.State.ACTIVE,host.modules().getFirst().state());
             raw.complete("{}");eventually(()->host.outstandingInvocations()==0);engine.tick();assertEquals(0,engine.status().callsInFlight());engine.close();
@@ -44,7 +44,7 @@ class HostBehaviorInvokerTest {
         CompletableFuture<String> raw=new CompletableFuture<>();
         try(var host=host(1,75)){
             host.install(module(c->c.registrations().action(descriptor("wait",Kind.ACTION),i->raw)));
-            var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),new HostBehaviorInvoker(host));UUID id=engine.start(program(),new BehaviorEngine.Context(NPC,Optional.empty(),true)).value().orElseThrow();engine.tick();
+            var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),new HostBehaviorInvoker(host),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);UUID id=engine.start(program(),new BehaviorEngine.Context(NPC,Optional.empty(),true)).value().orElseThrow();engine.tick();
             eventually(()->host.modules().getFirst().state()==ModuleHost.State.SUSPENDED);
             for(int i=0;i<100&&engine.inspect(id).orElseThrow().state()==BehaviorEngine.State.RUNNING;i++){engine.tick();Thread.sleep(2);}
             assertEquals(BehaviorEngine.State.FAILED,engine.inspect(id).orElseThrow().state());assertEquals(1,engine.status().retiredCalls());assertEquals(1,host.outstandingInvocations());
@@ -65,7 +65,7 @@ class HostBehaviorInvokerTest {
                    "then":{"type":"action","capability":"sample:record","arguments":{"count":null,"label":null},"bindings":{"/count":{"variable":"count"},"/label":{"variable":"label"}}}}}}
                 """;
             var prepared=BehaviorCompiler.compile(source);assertTrue(prepared.program().isPresent(),prepared.diagnostics().toString());
-            var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),new HostBehaviorInvoker(host));UUID id=engine.start(prepared.program().orElseThrow(),new BehaviorEngine.Context(NPC,Optional.empty(),true)).value().orElseThrow();
+            var engine=new BehaviorEngine(BehaviorEngine.Limits.defaults(),new HostBehaviorInvoker(host),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);UUID id=engine.start(prepared.program().orElseThrow(),new BehaviorEngine.Context(NPC,Optional.empty(),true)).value().orElseThrow();
             for(int i=0;i<1000&&engine.inspect(id).orElseThrow().state()==BehaviorEngine.State.RUNNING;i++){engine.tick();Thread.sleep(2);}
             assertEquals(BehaviorEngine.State.COMPLETED,engine.inspect(id).orElseThrow().state());
             var condition=art.arcane.animus.core.storage.JsonDocuments.object(conditionArgs.get());var action=art.arcane.animus.core.storage.JsonDocuments.object(actionArgs.get());

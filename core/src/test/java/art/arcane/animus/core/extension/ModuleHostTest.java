@@ -52,6 +52,48 @@ class ModuleHostTest {
             eventually(()->host.outstandingInvocations()==0);assertEquals(ModuleHost.State.ACTIVE,host.modules().getFirst().state());
         }
     }
+    private static final class RecordingSink implements art.arcane.animus.core.behavior.trigger.TriggerSink {
+        final List<art.arcane.animus.core.behavior.trigger.TriggerEvent> events=new CopyOnWriteArrayList<>();volatile boolean available=true;
+        public boolean available(){return available;}
+        public String availability(){return available?"available":"NPC runtime unavailable on Folia";}
+        public Outcome<Boolean> publish(art.arcane.animus.core.behavior.trigger.TriggerEvent event){events.add(event);return Outcome.ok(true);}
+    }
+    @Test void modulesPublishOnlyTheirOwnRegisteredTriggers()throws Exception {
+        AtomicReference<ModuleContext> context=new AtomicReference<>();RecordingSink sink=new RecordingSink();
+        try(ModuleHost host=host()){
+            host.connectTriggers(sink);
+            host.install(module("sample",c->{context.set(c);c.registrations().trigger(descriptor("sample","door",Kind.TRIGGER));c.registrations().action(descriptor("sample","act",Kind.ACTION),i->CompletableFuture.completedFuture("{}"));}));
+            host.install(module("other",c->c.registrations().trigger(descriptor("other","door",Kind.TRIGGER))));
+            NpcHandle npc=new NpcHandle(UUID.randomUUID());UUID player=UUID.randomUUID();
+            assertTrue(host.capabilityAvailable(new Key("sample","door"),Kind.TRIGGER,false,false));
+            assertTrue(host.capabilities().stream().filter(a->a.descriptor().key().equals(new Key("sample","door"))).findFirst().orElseThrow().available());
+            assertEquals(Outcome.ok(true),context.get().triggers().publish(new Key("sample","door"),npc,Optional.of(player)));
+            assertEquals(List.of(new art.arcane.animus.core.behavior.trigger.TriggerEvent.Module(npc.uuid(),Optional.of(player),new Key("sample","door"))),sink.events);
+            assertEquals(Outcome.Status.NOT_FOUND,context.get().triggers().publish(new Key("other","door"),npc,Optional.empty()).status());
+            assertEquals(Outcome.Status.NOT_FOUND,context.get().triggers().publish(new Key("sample","act"),npc,Optional.empty()).status());
+            assertEquals(Outcome.Status.NOT_FOUND,context.get().triggers().publish(new Key("sample","missing"),npc,Optional.empty()).status());
+            assertEquals(1,sink.events.size());
+        }
+    }
+    @Test void unavailableDispatchIsReportedThroughThePublisherAndCapabilityListing()throws Exception {
+        AtomicReference<ModuleContext> context=new AtomicReference<>();RecordingSink sink=new RecordingSink();sink.available=false;
+        try(ModuleHost host=host()){
+            host.connectTriggers(sink);host.install(module("sample",c->{context.set(c);c.registrations().trigger(descriptor("sample","door",Kind.TRIGGER));}));
+            var listed=host.capabilities().getFirst();assertFalse(listed.available());assertTrue(listed.reason().contains("Folia"));
+            Outcome<Boolean> outcome=context.get().triggers().publish(new Key("sample","door"),new NpcHandle(UUID.randomUUID()),Optional.empty());
+            assertEquals(Outcome.Status.UNAVAILABLE,outcome.status());assertTrue(outcome.diagnostics().getFirst().message().contains("Folia"));assertEquals(List.of(),sink.events);
+            assertTrue(host.capabilityAvailable(new Key("sample","door"),Kind.TRIGGER,false,false),"manual behaviors naming the trigger stay runnable");
+        }
+    }
+    @Test void revokedHostRefusesRetainedPublishers()throws Exception {
+        AtomicReference<ModuleContext> context=new AtomicReference<>();RecordingSink sink=new RecordingSink();
+        ModuleHost host=host();
+        try{
+            host.connectTriggers(sink);host.install(module("sample",c->{context.set(c);c.registrations().trigger(descriptor("sample","door",Kind.TRIGGER));}));
+            host.revoke();
+            assertEquals(Outcome.Status.UNAVAILABLE,context.get().triggers().publish(new Key("sample","door"),new NpcHandle(UUID.randomUUID()),Optional.empty()).status());assertEquals(List.of(),sink.events);
+        }finally{host.close();}
+    }
     @Test void revocationDoesNotWaitForTrustedEnableAndRejectsRetainedSchedulerAndActions()throws Exception {
         CountDownLatch enabling=new CountDownLatch(1),finishEnable=new CountDownLatch(1),called=new CountDownLatch(1);
         List<String> cleanup=Collections.synchronizedList(new ArrayList<>());

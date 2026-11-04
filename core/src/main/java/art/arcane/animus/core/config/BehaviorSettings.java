@@ -3,14 +3,15 @@ package art.arcane.animus.core.config;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
+import art.arcane.animus.core.behavior.trigger.TriggerSettings;
 import java.util.Objects;
 
 /** Plugin-wide behavior budgets are TOML; behavior sources and runtime data remain JSON. Requires restart. */
 public record BehaviorSettings(boolean enabled, int maximumOperations, int operationsPerTick, int tickMillis,
                                int deliveryBudgetMillis, BehaviorEngine.Limits engine, BehaviorCatalog.Limits catalog,
-                               BehaviorStateStore.Limits state) {
+                               TriggerSettings triggers, BehaviorStateStore.Limits state) {
     public static final BehaviorSettings DEFAULT = new BehaviorSettings(true, 64, 8, 50, 250,
-            BehaviorEngine.Limits.defaults(), BehaviorCatalog.Limits.defaults(), BehaviorStateStore.Limits.defaults());
+            BehaviorEngine.Limits.defaults(), BehaviorCatalog.Limits.defaults(), TriggerSettings.DEFAULT, BehaviorStateStore.Limits.defaults());
 
     public BehaviorSettings {
         if (maximumOperations < 1 || maximumOperations > 256)
@@ -24,5 +25,6 @@ public record BehaviorSettings(boolean enabled, int maximumOperations, int opera
         Objects.requireNonNull(engine, "engine");
         Objects.requireNonNull(catalog, "catalog");
         Objects.requireNonNull(state, "state");
+        Objects.requireNonNull(triggers, "triggers");
     }
 }

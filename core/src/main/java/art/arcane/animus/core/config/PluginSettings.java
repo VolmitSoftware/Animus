@@ -4,6 +4,7 @@ import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
+import art.arcane.animus.core.behavior.trigger.TriggerSettings;
 import art.arcane.animus.core.storage.*;
 import art.arcane.volmlib.util.config.TomlCodec;
 import com.google.gson.*;
@@ -99,7 +100,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
 
     private static BehaviorSettings behaviors(JsonObject document) {
         BehaviorSettings defaults = BehaviorSettings.DEFAULT;
-        JsonObject engine = table(document, "engine"), catalog = table(document, "catalog"), state = table(document, "state");
+        JsonObject engine = table(document, "engine"), catalog = table(document, "catalog"), trigger = table(document, "triggers"), state = table(document, "state");
         BehaviorEngine.Limits execution = defaults.engine();
         BehaviorEngine.Limits engineLimits = new BehaviorEngine.Limits(
                 budget(engine, "executions", execution.executions(), 1, 128, "engine"),
@@ -119,6 +120,28 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 budget(catalog, "maximumDocumentBytes", sources.maximumDocumentBytes(), 1, 262144, "catalog"),
                 longBudget(catalog, "maximumAggregateBytes", sources.maximumAggregateBytes(), 1, 64L * 1024 * 1024, "catalog"),
                 budget(catalog, "maximumCapabilityChecks", sources.maximumCapabilityChecks(), 1, 16384, "catalog"));
+        TriggerSettings triggers = defaults.triggers();
+        TriggerSettings triggerBudgets = new TriggerSettings(bool(trigger, "enabled", triggers.enabled()),
+                budget(trigger, "eventQueue", triggers.eventQueue(), 1, 4096, "triggers"),
+                budget(trigger, "eventsPerTick", triggers.eventsPerTick(), 1, 1024, "triggers"),
+                budget(trigger, "startsPerTick", triggers.startsPerTick(), 1, 64, "triggers"),
+                budget(trigger, "maximumQueued", triggers.maximumQueued(), 1, 4096, "triggers"),
+                budget(trigger, "queuePerNpc", triggers.queuePerNpc(), 1, 64, "triggers"),
+                budget(trigger, "queuePerTrigger", triggers.queuePerTrigger(), 1, 64, "triggers"),
+                budget(trigger, "queueLifetimeTicks", triggers.queueLifetimeTicks(), 1, 72000, "triggers"),
+                budget(trigger, "concurrentTotal", triggers.concurrentTotal(), 1, 128, "triggers"),
+                budget(trigger, "concurrentPerNpc", triggers.concurrentPerNpc(), 1, 16, "triggers"),
+                budget(trigger, "concurrentPerTrigger", triggers.concurrentPerTrigger(), 1, 16, "triggers"),
+                budget(trigger, "defaultCooldownTicks", triggers.defaultCooldownTicks(), 0, 72000, "triggers"),
+                budget(trigger, "npcCooldownTicks", triggers.npcCooldownTicks(), 0, 72000, "triggers"),
+                budget(trigger, "maximumBindings", triggers.maximumBindings(), 1, 65536, "triggers"),
+                budget(trigger, "maximumTimers", triggers.maximumTimers(), 1, 16384, "triggers"),
+                budget(trigger, "minimumTimerTicks", triggers.minimumTimerTicks(), 1, 72000, "triggers"),
+                budget(trigger, "maximumProximityRadius", triggers.maximumProximityRadius(), 1, 64, "triggers"),
+                budget(trigger, "proximityIntervalTicks", triggers.proximityIntervalTicks(), 1, 200, "triggers"),
+                budget(trigger, "proximityViewersPerTick", triggers.proximityViewersPerTick(), 1, 256, "triggers"),
+                budget(trigger, "proximityCandidates", triggers.proximityCandidates(), 1, 1024, "triggers"),
+                budget(trigger, "proximityTrackedPerViewer", triggers.proximityTrackedPerViewer(), 1, 1024, "triggers"));
         BehaviorStateStore.Limits stored = defaults.state();
         BehaviorStateStore.Limits stateLimits = new BehaviorStateStore.Limits(
                 budget(state, "maximumKeys", stored.maximumKeys(), 1, 1_048_576, "state"),
@@ -130,7 +153,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 integer(document, "maximumOperations", defaults.maximumOperations()),
                 integer(document, "operationsPerTick", defaults.operationsPerTick()),
                 integer(document, "tickMillis", defaults.tickMillis()),
-                integer(document, "deliveryBudgetMillis", defaults.deliveryBudgetMillis()), engineLimits, catalogLimits, stateLimits);
+                integer(document, "deliveryBudgetMillis", defaults.deliveryBudgetMillis()), engineLimits, catalogLimits, triggerBudgets, stateLimits);
     }
 
     private static int budget(JsonObject object, String field, int fallback, int minimum, int maximum, String table) {

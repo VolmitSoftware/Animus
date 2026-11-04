@@ -9,7 +9,15 @@ import java.util.*;
 /** Immutable persisted definition. Unknown extension data is deliberately retained. */
 public final class NpcDefinition {
     private final JsonObject data;
-    private NpcDefinition(JsonObject data) { this.data = data.deepCopy(); }
+    private final boolean spawned;
+    private final List<String> behaviors;
+    private NpcDefinition(JsonObject data) {
+        this.data = data.deepCopy();
+        spawned = data.get("spawned").getAsBoolean();
+        List<String> references = new ArrayList<>();
+        if (data.has("behaviors")) for (JsonElement reference : data.getAsJsonArray("behaviors")) references.add(reference.getAsString());
+        behaviors = List.copyOf(references);
+    }
 
     public static NpcDefinition parse(String json) throws IOException {
         JsonObject object = JsonDocuments.object(json);
@@ -85,6 +93,9 @@ public final class NpcDefinition {
     public String name() { return data.get("name").getAsString(); }
     public long revision() { return data.get("revision").getAsLong(); }
     public String path() { return "npcs/" + group() + "/" + id() + ".json"; }
+    public boolean spawned() { return spawned; }
+    /** Behavior references attached to this NPC. Their trigger bindings run once the NPC is active. */
+    public List<String> behaviors() { return behaviors; }
     public JsonObject json() { return data.deepCopy(); }
     public String serialize() { return JsonDocuments.write(data); }
 }
