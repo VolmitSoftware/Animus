@@ -16,8 +16,9 @@ public final class Capabilities {
     public record Availability(Descriptor descriptor,boolean available,String reason) {
         public Availability {Objects.requireNonNull(descriptor);ApiText.text(reason,2048,"reason");}
     }
-    public record Invocation(NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview,Cancellation cancellation) {
-        public Invocation {Objects.requireNonNull(npc);player=Objects.requireNonNull(player);ApiText.text(argumentsJson,65536,"arguments JSON");Objects.requireNonNull(cancellation);}
+    /** {@code behavior} names the accepted JSON behavior making this call; it is empty for direct dispatch. */
+    public record Invocation(NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview,Cancellation cancellation,Optional<String> behavior) {
+        public Invocation {Objects.requireNonNull(npc);player=Objects.requireNonNull(player);ApiText.text(argumentsJson,65536,"arguments JSON");Objects.requireNonNull(cancellation);behavior=Objects.requireNonNull(behavior);}
     }
     @FunctionalInterface public interface Cancellation {boolean cancelled();}
     @FunctionalInterface public interface Action {CompletionStage<String> run(Invocation invocation) throws Exception;}

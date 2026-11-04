@@ -3,6 +3,7 @@ package art.arcane.animus.bukkit.runtime;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.navigation.*;
+import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.navigation.*;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
@@ -24,6 +25,7 @@ import org.bukkit.event.*;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.world.*;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
@@ -40,6 +42,8 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     }
     /** Internal trusted integration lease; replacement/deletion revokes it. Access only on the owning scheduler. */
     public record CombatBinding(VirtualNpcState state, BooleanSupplier current, Consumer<VirtualNpcState.Snapshot> changed) {}
+    /** Owner-thread view of an applied NPC body for behavior actions. */
+    public record ActiveNpc(String id, String name, VirtualNpcState.Snapshot state) {}
     private record Geometry(double width, double height, int ids, SeatGeometry seat) {}
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
     private static final int RECONCILE_WORK = 64, PACKET_WORK = 32, MAX_PENDING_PER_VIEWER = 8, MAX_ISSUED_IDS = 8192;
@@ -67,15 +71,18 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     private final ArrayBlockingQueue<Runnable> completions;
     private final ConcurrentLinkedQueue<SkinCompletion> skinCompletions = new ConcurrentLinkedQueue<>();
     private final Set<SkinTask> skinTasks = new HashSet<>();
+    private final ConcurrentLinkedQueue<AppearanceCompletion> appearanceCompletions = new ConcurrentLinkedQueue<>();
+    private final Set<AppearanceTask> appearanceTasks = new HashSet<>();
     private MountRuntime mountRuntime;
     private RiderService riders;
     private Iterator<? extends Player> admissions = Collections.emptyIterator();
-    NativePacketAdapter packets;
+    volatile NativePacketAdapter packets;
     private BukkitNavigationBridge navigation;
     private ChunkDelivery chunks;
     private BukkitTask ticker;
     private TriggerBridge triggers;
-    private String unavailable, lastFailure;
+    private volatile String unavailable;
+    private String lastFailure;
     private volatile boolean closed;
     private long accepted, rejected;
     long tickNumber;
@@ -180,6 +187,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         Value value = navigable(id); Objects.requireNonNull(destination); Objects.requireNonNull(mode);
         validateDestination(value, destination, mode, blocksPerSecond);
         if (value.route == null && routeOrder.size() >= MAX_ROUTES) throw new IllegalStateException("Navigation capacity reached: " + MAX_ROUTES);
+        failWatch(value, "cancelled: replaced by a new route");
         stopRoute(value, "cancelled: replaced by manual route");
         cancelRouteRead(value);
         value.waypoints = null;
@@ -192,7 +200,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
         if (value == null) return false;
         boolean running = value.route != null || value.routeReadQueued || value.routeTask != null || (value.waypoints != null && !value.waypoints.complete());
-        cancelRouteRead(value); value.waypoints = null; stopRoute(value, "cancelled by administrator"); return running;
+        cancelRouteRead(value); value.waypoints = null; stopRoute(value, "cancelled by administrator"); failWatch(value, "cancelled: navigation stopped"); return running;
     }
     public String navigationStatus(String id) {
         if (!available()) return "Navigation " + id + ": " + (closed ? "closed" : unavailable);
@@ -212,6 +220,107 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         float yaw = (float) Math.toDegrees(Math.atan2(-delta.x(), delta.z()));
         float pitch = (float) -Math.toDegrees(Math.atan2(delta.y(), Math.hypot(delta.x(), delta.z())));
         setPose(value, yaw, pitch, value.onGround);
+    }
+
+    public Optional<ActiveNpc> active(UUID npc) {
+        if (!available()) return Optional.empty();
+        owner();
+        Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
+        if (value == null || !value.state.snapshot().active()) return Optional.empty();
+        return Optional.of(new ActiveNpc(entry.id, value.displayName, value.state.snapshot()));
+    }
+    /** Replaces the current route with a reusable route; its read and any read failure are reported in navigation status. */
+    public void followRoute(String id, String route) {
+        Value value = navigable(id);
+        if (route == null || !route.matches("[a-z0-9][a-z0-9_-]{0,63}")) throw new IllegalArgumentException("Invalid reusable route identifier");
+        if (routeReads.size() >= MAX_ROUTE_READS) throw new IllegalStateException("Reusable route reads are busy; retry shortly");
+        failWatch(value, "cancelled: replaced by a new route");
+        cancelRouteRead(value);
+        stopRoute(value, "cancelled: replaced by reusable route");
+        value.waypoints = null;
+        RouteReadTask task = new RouteReadTask(value, route, runtime.documents());
+        value.routeTask = task; routeReads.add(task);
+        try { io.execute(task); }
+        catch (RejectedExecutionException full) {
+            routeReads.remove(task); value.routeTask = null;
+            throw new IllegalStateException("I/O queue is full; retry shortly");
+        }
+        value.navigationStatus = "loading reusable route " + route;
+    }
+    /** The current route's outcome, for one watcher. Call right after starting the route, in the same owner turn. */
+    public CompletableFuture<Void> awaitRoute(String id) {
+        Value value = navigable(id);
+        if (value.route == null && value.routeTask == null) throw new IllegalStateException("The NPC has no route to wait for");
+        failWatch(value, "cancelled: replaced by a new wait");
+        value.routeWatch = new CompletableFuture<>();
+        return value.routeWatch;
+    }
+    private static void failWatch(Value value, String reason) {
+        CompletableFuture<Void> watch = value.routeWatch;
+        if (watch == null) return;
+        value.routeWatch = null;
+        watch.completeExceptionally(NavigationRefusals.of(reason));
+    }
+    private static void finishWatch(Value value) {
+        CompletableFuture<Void> watch = value.routeWatch;
+        if (watch == null) return;
+        value.routeWatch = null;
+        watch.complete(null);
+    }
+    /** Runtime-only override. Restart or a definition change restores the definition's own appearance. */
+    public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) {
+        Value value = navigable(id);
+        boolean player = value.spec.type().equals("minecraft:player");
+        if ((name.isPresent() || skin.isPresent()) && !player) throw new IllegalArgumentException("Names and skins display only on player bodies");
+        if (name.isPresent()) NativePacketAdapter.validateProfileName(name.get());
+        cancelAppearanceRead(value);
+        if (reset) {
+            value.displayName = value.spec.name();
+            value.displaySkin = value.skin;
+        } else {
+            if (name.isPresent()) value.displayName = name.get();
+            if (skin.isPresent()) { readAppearanceSkin(value, skin.get()); return; }
+        }
+        representBody(value);
+    }
+    /** An empty stack clears the slot. Runtime-only, like appearance. */
+    public void setEquipment(String id, BehaviorPlatform.EquipmentSlot slot, ItemStack item) {
+        Value value = navigable(id);
+        if (!packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
+        value.equipment.put(slot, item);
+        value.equipmentRevision++;
+    }
+    private void readAppearanceSkin(Value value, String skin) {
+        if (appearanceTasks.size() >= MAX_SKIN_READS) throw new IllegalStateException("Skin reads are busy; retry shortly");
+        AppearanceTask task = new AppearanceTask(value, skin, runtime.documents());
+        value.appearanceTask = task; appearanceTasks.add(task);
+        try { io.execute(task); }
+        catch (RejectedExecutionException full) {
+            appearanceTasks.remove(task); value.appearanceTask = null;
+            throw new IllegalStateException("I/O queue is full; retry shortly");
+        }
+    }
+    private void cancelAppearanceRead(Value value) {
+        if (value.appearanceTask == null) return;
+        value.appearanceTask.cancelled = true;
+        value.appearanceTask = null;
+    }
+    private void finishAppearance(AppearanceCompletion completion) {
+        AppearanceTask task = completion.task; appearanceTasks.remove(task); Value value = task.value;
+        boolean owns = value.appearanceTask == task;
+        if (owns) value.appearanceTask = null;
+        if (task.cancelled || !owns || !valueCurrent(value)) return;
+        if (completion.error != null) { lastFailure = "$.skin: " + completion.error; return; }
+        value.displaySkin = completion.skin;
+        representBody(value);
+    }
+    /** Identity is fixed when a body spawns, so viewers receive a fresh body through the normal retire and spawn path. */
+    private void representBody(Value value) {
+        UUID uuid = value.spec.definition().uuid();
+        for (Viewer viewer : viewers.values()) {
+            Presented body = viewer.visible.get(uuid);
+            if (body != null && body.value == value) retire(viewer, body);
+        }
     }
 
     private Value navigable(String id) {
@@ -264,16 +373,16 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
             if (route.execution != null) route.execution.cancel();
         }
         if (route == null) value.navigationStatus = reason;
-        else routeStatus(route, reason, "");
+        else { routeStatus(route, reason, ""); failWatch(value, reason); }
     }
     private void beginWaypoint(Value value, int waypoint) {
         WaypointProgress progress = value.waypoints;
         if (progress == null || progress.complete() || !value.state.snapshot().active()) return;
         WaypointSettings settings = progress.settings();
-        if (routeOrder.size() >= MAX_ROUTES) { value.navigationStatus = "unavailable: navigation capacity " + MAX_ROUTES; return; }
+        if (routeOrder.size() >= MAX_ROUTES) { value.navigationStatus = "unavailable: navigation capacity " + MAX_ROUTES; failWatch(value, value.navigationStatus); return; }
         WorldPosition goal = new WorldPosition(value.state.snapshot().position().world(), settings.points().get(waypoint));
         try { validateDestination(value, goal, settings.mode(), settings.speed()); }
-        catch (IllegalArgumentException invalid) { value.navigationStatus = "invalid waypoint " + waypoint + ": " + invalid.getMessage(); return; }
+        catch (IllegalArgumentException invalid) { value.navigationStatus = "invalid waypoint " + waypoint + ": " + invalid.getMessage(); failWatch(value, value.navigationStatus); return; }
         Route route = new Route(value, goal, settings.mode(), settings.speed(), waypoint);
         route.nextAttempt = tickNumber + Math.max(1, settings.waitTicks());
         value.route = route; routeOrder.addLast(route); routeStatus(route, "queued", "");
@@ -285,6 +394,8 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                 + (detail.isEmpty() ? "" : "; " + detail);
     }
     private void suspend(Route route, String reason) {
+        // A waiting behavior is told now and the route ends, rather than holding its slot until terrain returns.
+        if (route.value.routeWatch != null) { stopRoute(route.value, "unavailable: " + reason); return; }
         if (route.plan != null) route.plan.cancel(); route.plan = null; route.result = null;
         // Resume by planning from the current point. An airborne kinematic phase is retained and revalidated.
         route.nextAttempt = tickNumber + 40; routeStatus(route, "suspended", reason);
@@ -359,11 +470,13 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         plugin.getServer().getPluginManager().callEvent(new VirtualNpcWaypointEvent(value.spec.definition().uuid(), value.spec.definition().id(),
                 route.id, route.waypoint, value.state.snapshot().position()));
         if (triggers != null) triggers.waypoint(value.spec.definition().uuid(), route.waypoint);
+        if (progress == null) finishWatch(value);
         Entry entry = byUuid.get(value.spec.definition().uuid());
         if (!available() || entry == null || entry.value != value || value.route != null || value.waypoints != progress || progress == null
                 || !value.state.snapshot().active() || !value.authority.accepts(runtime.npcs().snapshot().get(entry.id))) return;
         OptionalInt next = progress.arrived(route.waypoint);
         if (next.isPresent()) beginWaypoint(value, next.getAsInt());
+        else finishWatch(value);
     }
     static void setPose(Value value, float yaw, float pitch, boolean onGround) {
         if (value.yaw != yaw || value.pitch != pitch || value.onGround != onGround) {
@@ -393,10 +506,12 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
             if (task.cancelled || !ownsTask || !valueCurrent(value)) continue;
             if (completion.error != null) {
                 value.routeError = completion.error + "; last-valid-route-retained=" + (value.waypoints != null);
+                failWatch(value, "unavailable: " + completion.error);
                 if (value.route == null && value.waypoints == null) value.navigationStatus = "unavailable: reusable route";
                 continue;
             }
             value.routeError = null;
+            if (value.routeWatch != null && completion.settings.loop()) { value.navigationStatus = "invalid: a looping route never finishes"; failWatch(value, value.navigationStatus); continue; }
             if (value.waypoints != null && !value.waypoints.reload(completion.settings)) continue;
             stopRoute(value, "replaced by reusable route reload");
             if (value.waypoints == null) value.waypoints = new WaypointProgress(completion.settings);
@@ -405,7 +520,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         for (int i = 0; i < MAX_ROUTE_READS && routeReads.size() < MAX_ROUTE_READS && !routeReadQueue.isEmpty(); i++) {
             Value value = routeReadQueue.removeFirst(); value.routeReadQueued = false;
             if (!valueCurrent(value)) continue;
-            RouteReadTask task = new RouteReadTask(value, runtime.documents()); value.routeTask = task; routeReads.add(task);
+            RouteReadTask task = new RouteReadTask(value, value.routeSource, runtime.documents()); value.routeTask = task; routeReads.add(task);
             try { io.execute(task); }
             catch (RejectedExecutionException full) { routeReads.remove(task); value.routeTask = null; value.routeError = "I/O queue full; retry reload"; }
         }
@@ -449,6 +564,10 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
             for (int i = 0; i < MAX_SKIN_READS; i++) {
                 SkinCompletion completion = skinCompletions.poll(); if (completion == null) break;
                 finishSkin(completion);
+            }
+            for (int i = 0; i < MAX_SKIN_READS; i++) {
+                AppearanceCompletion completion = appearanceCompletions.poll(); if (completion == null) break;
+                finishAppearance(completion);
             }
             tickRouteReads();
             boolean forced = refresh.getAndSet(false);
@@ -564,7 +683,9 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         entry.value = null;
         mountRuntime.removed(old);
         stopRoute(old, "cancelled by definition replacement/despawn");
+        failWatch(old, "cancelled by definition replacement/despawn");
         cancelRouteRead(old);
+        cancelAppearanceRead(old);
         UUID uuid = old.spec.definition().uuid(); byUuid.remove(uuid, entry); index.remove(uuid); old.state.despawn();
         for (Viewer viewer : viewers.values()) {
             Presented body = viewer.visible.get(uuid);
@@ -613,6 +734,10 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                     move(viewer, body); sent++;
                     if (!current(viewer)) return sent;
                 }
+                if (body.spawnFinished && !body.equipping && sent < packetBudget && body.deliveredEquipmentRevision != body.value.equipmentRevision) {
+                    equip(viewer, body); sent++;
+                    if (!current(viewer)) return sent;
+                }
             }
             sent += mountRuntime.update(viewer, packetBudget - sent);
         }
@@ -639,7 +764,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     }
     private void spawn(Viewer viewer, Value value) {
         try {
-            var body = packets.createBody(value.spec.definition().uuid(), value.spec.type(), value.spec.name(), value.skin);
+            var body = packets.createBody(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.displaySkin);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented);
             viewer.presentationOrder.addLast(presented);
             viewer.nativeIds += value.ids; viewer.pendingSpawns++;
@@ -674,6 +799,22 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                 if (body.bound) viewer.guard.updateSnapshot(body.body.entityId(), body.value.state.snapshot());
             }));
         } catch (RuntimeException failure) { fail(viewer, concise(failure)); }
+    }
+    /** Cosmetic: a failed send is recorded and not retried, and never costs the viewer their session. */
+    private void equip(Viewer viewer, Presented body) {
+        long revision = body.value.equipmentRevision;
+        body.equipping = true;
+        try {
+            packets.equipment(viewer.player, body.body, Map.copyOf(body.value.equipment)).whenComplete((nothing, failure) -> enqueue(viewer, () -> {
+                body.equipping = false;
+                body.deliveredEquipmentRevision = revision;
+                if (failure != null && current(viewer) && !body.retired) lastFailure = concise(failure);
+            }));
+        } catch (RuntimeException failure) {
+            body.equipping = false;
+            body.deliveredEquipmentRevision = revision;
+            lastFailure = concise(failure);
+        }
     }
     private boolean eligibleNow(Viewer viewer, Value value) {
         if (!current(viewer) || !viewer.player.isOnline() || viewer.player.isDead()) return false;
@@ -805,8 +946,10 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         HandlerList.unregisterAll(this);
         for (SkinTask task : skinTasks) task.cancelled = true;
         skinTasks.clear(); skinCompletions.clear(); completions.clear();
+        for (AppearanceTask task : appearanceTasks) task.cancelled = true;
+        appearanceTasks.clear(); appearanceCompletions.clear();
         viewers.values().forEach(viewer -> viewer.guard.close()); viewers.clear(); viewerOrder.clear();
-        entries.values().forEach(entry -> { if (entry.value != null) { entry.value.state.despawn(); index.remove(entry.value.spec.definition().uuid()); } });
+        entries.values().forEach(entry -> { if (entry.value != null) { failWatch(entry.value, "cancelled: runtime shutdown"); entry.value.state.despawn(); index.remove(entry.value.spec.definition().uuid()); } });
         entries.clear(); byUuid.clear(); selections.clear(); viewerFailures.clear(); changes.clear(); definitions.clear();
         if (packets != null) packets.close();
     }
@@ -825,8 +968,13 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         RouteReadTask routeTask; boolean routeReadQueued;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         Vec3 restingPoint; long lastMotionTick; int dragonPhase = DragonBody.PHASE_HOVERING;
+        CompletableFuture<Void> routeWatch;
+        String displayName; NativePacketAdapter.Skin displaySkin; AppearanceTask appearanceTask;
+        final Map<BehaviorPlatform.EquipmentSlot, ItemStack> equipment = new EnumMap<>(BehaviorPlatform.EquipmentSlot.class);
+        long equipmentRevision;
         Value(DefinitionSpec spec, NativePacketAdapter.Skin skin, VirtualNpcState state, int ids, SeatGeometry seat) {
             this.spec = spec; this.skin = skin; this.state = state; this.ids = ids; this.seat = seat; yaw = spec.yaw(); pitch = spec.pitch();
+            displayName = spec.name(); displaySkin = skin;
             mountReference = MountDeclaration.parse(spec.definition().json()).orElse(null);
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
             routeSource = WaypointSettings.reference(spec.definition());
@@ -844,8 +992,8 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     }
     static final class Presented {
         final Value value; final NativePacketAdapter.Body body;
-        boolean bound, retired, spawnFinished, despawnFinished, moving;
-        long deliveredPoseRevision;
+        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping;
+        long deliveredPoseRevision, deliveredEquipmentRevision;
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;
         Presented(Value value, NativePacketAdapter.Body body) { this.value = value; this.body = body; }
@@ -866,12 +1014,23 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     }
     private record SkinCompletion(SkinTask task, NativePacketAdapter.Skin skin, String error) {}
     private record RouteReadCompletion(RouteReadTask task, WaypointSettings settings, String error) {}
+    private record AppearanceCompletion(AppearanceTask task, NativePacketAdapter.Skin skin, String error) {}
+    private final class AppearanceTask implements Runnable {
+        final Value value; final String reference; final DocumentStore documents; volatile boolean cancelled;
+        AppearanceTask(Value value, String reference, DocumentStore documents) { this.value = value; this.reference = reference; this.documents = documents; }
+        @Override public void run() {
+            NativePacketAdapter.Skin skin = null; String error = null;
+            try { if (!cancelled && !closed) skin = SkinDocuments.read(documents, reference); }
+            catch (Exception failure) { error = concise(failure); }
+            if (!closed) appearanceCompletions.add(new AppearanceCompletion(this, skin, error));
+        }
+    }
     private final class RouteReadTask implements Runnable {
-        final Value value; final DocumentStore documents; volatile boolean cancelled;
-        RouteReadTask(Value value, DocumentStore documents) { this.value = value; this.documents = documents; }
+        final Value value; final String source; final DocumentStore documents; volatile boolean cancelled;
+        RouteReadTask(Value value, String source, DocumentStore documents) { this.value = value; this.source = source; this.documents = documents; }
         @Override public void run() {
             WaypointSettings settings = null; String error = null;
-            try { if (!cancelled && !closed) settings = RouteDocuments.read(documents, value.routeSource); }
+            try { if (!cancelled && !closed) settings = RouteDocuments.read(documents, source); }
             catch (Exception failure) { error = concise(failure); }
             if (!closed) routeReadCompletions.add(new RouteReadCompletion(this, settings, error));
         }

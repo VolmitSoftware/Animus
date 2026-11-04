@@ -128,13 +128,13 @@ public final class BehaviorEngine implements AutoCloseable {
     }
     private void invoke(Fiber fiber,Capabilities.Key key,ArgumentTemplate template,boolean condition){
         Capabilities.Kind kind=condition?Capabilities.Kind.CONDITION:Capabilities.Kind.ACTION;
-        boolean available=invoker.available(key,kind);if(!current(fiber))return;
+        boolean available=invoker.available(key,kind,fiber.execution.program.id());if(!current(fiber))return;
         if(!available){terminate(fiber.execution,State.UNAVAILABLE,"capability-unavailable:"+key);return;}
         refresh(fiber);
         String arguments;
         try{arguments=template.resolve(fiber.variables);}
         catch(ArgumentTemplate.Invalid invalid){terminate(fiber.execution,State.FAILED,"arguments-invalid:"+invalid.field()+":"+invalid.getMessage());return;}
-        var invocation=new BehaviorInvoker.Invocation(key,fiber.execution.context.npc(),fiber.execution.context.player(),arguments,fiber.variables,fiber.execution.context.preview(),fiber.execution.context.sourceCurrent());
+        BehaviorInvoker.Invocation invocation=new BehaviorInvoker.Invocation(key,fiber.execution.context.npc(),fiber.execution.context.player(),arguments,fiber.variables,fiber.execution.context.preview(),fiber.execution.context.sourceCurrent(),fiber.execution.program.id());
         BehaviorInvoker.Call<?> call=condition?invoker.condition(invocation):invoker.action(invocation);
         Pending pending=new Pending(fiber.execution.id,fiber.id,condition,Objects.requireNonNull(call));calls.add(pending);fiber.awaiting=pending;
         trace(fiber,fiber.stack.peek().node.path(),"invoking:",key);

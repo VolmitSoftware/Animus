@@ -241,23 +241,23 @@ class ModuleLoadingTest {
         try{runtime.start();until(()->!reports.isEmpty());assertEquals(ExtensionRuntime.State.READY,runtime.status().state());assertTrue(runtime.status().failure().contains("module-initialization-observer"));assertEquals(1,calls.get());}
         finally{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(3)));}assertEquals(1,calls.get());
     }
-    @Test void retainedBehaviorAdapterRequiresReadyStateAndNeverGrantsPreviewOrPrivilege()throws Exception {
+    @Test void retainedBehaviorAdapterRequiresReadyStateCarriesPreviewAndNeverGrantsPrivilege()throws Exception {
         Path modules=temp.resolve("behavior-modules");String action="new Capabilities.Descriptor(new Capabilities.Key(\"base\",\"plain\"),Capabilities.Kind.ACTION,\"Plain\",\"{}\",Set.of(Platform.PAPER),false)";
         String privileged=action.replace("\"plain\"","\"privileged\"").replace("false)","true)");
         String condition="new Capabilities.Descriptor(new Capabilities.Key(\"base\",\"check\"),Capabilities.Kind.CONDITION,\"Check\",\"{}\",Set.of(Platform.PAPER),false)";
         String enable="context.registrations().action("+action+",i->CompletableFuture.completedFuture(\"{\\\"preview\\\":\"+i.preview()+\"}\"));context.registrations().action("+privileged+",i->CompletableFuture.completedFuture(\"{}\"));context.registrations().condition("+condition+",i->CompletableFuture.completedFuture(!i.preview()));";
         jar(modules,"base.jar",descriptor("base"),enable,"",Map.of(),List.of());var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,ModuleSettings.DEFAULT,ignored->{});var adapter=runtime.behaviorInvoker();
-        var plain=new Capabilities.Key("base","plain");var invocation=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(plain,new NpcHandle(UUID.randomUUID()),Optional.empty(),"{}",Map.of(),true);
+        var plain=new Capabilities.Key("base","plain");var invocation=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(plain,new NpcHandle(UUID.randomUUID()),Optional.empty(),"{}",Map.of(),true,()->true,"sample:test");
         try{
             assertFalse(adapter.available(plain,Capabilities.Kind.ACTION));assertEquals(Outcome.Status.UNAVAILABLE,adapter.action(invocation).result().toCompletableFuture().get(1,TimeUnit.SECONDS).status());
             runtime.start();until(()->runtime.status().state()==ExtensionRuntime.State.READY);assertTrue(adapter.available(plain,Capabilities.Kind.ACTION));assertFalse(adapter.available(plain,Capabilities.Kind.CONDITION));assertFalse(adapter.available(new Capabilities.Key("base","privileged"),Capabilities.Kind.ACTION));
-            var call=adapter.action(invocation);assertEquals("{\"preview\":false}",call.result().toCompletableFuture().get(1,TimeUnit.SECONDS).value().orElseThrow());until(()->call.isQuiescent().getAsBoolean());
-            var check=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(new Capabilities.Key("base","check"),invocation.npc(),Optional.empty(),"{}",Map.of(),true);assertTrue(adapter.condition(check).result().toCompletableFuture().get(1,TimeUnit.SECONDS).value().orElseThrow());
-            var revokedAction=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(plain,invocation.npc(),Optional.empty(),"{}",Map.of(),false,()->false);
-            var revokedCondition=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(check.capability(),invocation.npc(),Optional.empty(),"{}",Map.of(),false,()->false);
+            var call=adapter.action(invocation);assertEquals("{\"preview\":true}",call.result().toCompletableFuture().get(1,TimeUnit.SECONDS).value().orElseThrow());until(()->call.isQuiescent().getAsBoolean());
+            var check=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(new Capabilities.Key("base","check"),invocation.npc(),Optional.empty(),"{}",Map.of(),true,()->true,"sample:test");assertFalse(adapter.condition(check).result().toCompletableFuture().get(1,TimeUnit.SECONDS).value().orElseThrow());
+            var revokedAction=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(plain,invocation.npc(),Optional.empty(),"{}",Map.of(),false,()->false,"sample:test");
+            var revokedCondition=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(check.capability(),invocation.npc(),Optional.empty(),"{}",Map.of(),false,()->false,"sample:test");
             assertEquals(Outcome.Status.CANCELLED,adapter.action(revokedAction).result().toCompletableFuture().get(1,TimeUnit.SECONDS).status());
             assertEquals(Outcome.Status.CANCELLED,adapter.condition(revokedCondition).result().toCompletableFuture().get(1,TimeUnit.SECONDS).status());
-            var denied=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(new Capabilities.Key("base","privileged"),invocation.npc(),Optional.empty(),"{}",Map.of(),false);assertEquals(Outcome.Status.UNAVAILABLE,adapter.action(denied).result().toCompletableFuture().get(1,TimeUnit.SECONDS).status());
+            var denied=new art.arcane.animus.core.behavior.BehaviorInvoker.Invocation(new Capabilities.Key("base","privileged"),invocation.npc(),Optional.empty(),"{}",Map.of(),false,()->true,"sample:test");assertEquals(Outcome.Status.UNAVAILABLE,adapter.action(denied).result().toCompletableFuture().get(1,TimeUnit.SECONDS).status());
         }finally{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(3)));}
         assertFalse(adapter.available(plain,Capabilities.Kind.ACTION));var rejected=adapter.action(invocation);assertEquals(Outcome.Status.UNAVAILABLE,rejected.result().toCompletableFuture().get(1,TimeUnit.SECONDS).status());assertTrue(rejected.isQuiescent().getAsBoolean());
     }
