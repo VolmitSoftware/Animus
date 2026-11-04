@@ -5,12 +5,16 @@ This is a development inventory, not a release-parity claim. Counts were produce
 | Capability | Data conversion | Runtime status |
 |---|---|---|
 | UUID, readable ID, Citizens numeric ID | Converted; explicit ID map | Definition identity supported |
-| Name, type, main world/location | Converted; optional world mapping | Explicit live activation validates world/type/profile names; longer and non-player nameplates pending |
+| Name, type, main world/location | Converted; optional world mapping | Names up to 256 characters. Short plain player names use the player nameplate; longer or coloured player names and every non-player name show in a packet-only text display. See [appearance](runtime.md#appearance-text-and-inventory) |
 | Skins (489 traits, 409 unique complete documents) | Texture/signature/settings preserved and deduplicated | Signed textures in persisted runtime and opt-in proof; see artifact-specific evidence |
-| Equipment (123), inventory (121) | Preserved for review | No equipment/inventory simulation |
+| Equipment (123) | All eight slots convert to `equipment`; a cosmetic item replaces its slot. Item id, count and damage convert; other item data is kept in the item's `imported` field | Shown to every viewer from the definition, across restart. Kept item data (names, lore, enchantment glint, custom model data) is not shown. Equipment does not change combat damage or armor |
+| Inventory (121) | Slots 0–71 convert to `inventory` slot for slot, with the same item rules | Stored for behaviors and modules to read; never rendered, no inventory screen and no item transactions |
 | Waypoints (318), look behavior (495) | Preserved for review | Known locations remapped; native movement/look/JSON routes verified on exact Paper/Spigot targets; imported traits are not executed |
-| Text (2), holograms (91), poses (3) | Preserved for review | No presentation or dialogue runtime |
-| Ownership (388) | Preserved for review | Administration uses plugin permissions; per-NPC ownership pending |
+| Holograms (91) | Lines convert to `hologram.lines` in order; at most 16 lines of 256 characters | One packet-only text display above the NPC for every viewer. Lines are evenly spaced; line margins, line height, view ranges, renderer settings and placeholders are kept for review and not applied |
+| Poses (3), sneak (1), sit (1), armor stand (3) | The default named pose sets the facing; `sneak` becomes `sneaking`, `sittrait` becomes `sitting`; armor stand parts and angles convert | Sneaking, sleeping, swimming and sitting on player bodies; other body types stand. Armor stand size, arms, base plate, visibility and limb angles are shown. Marker and gravity are kept for review. Other named poses are kept and not applied |
+| Non-player NPCs (12) | Type converted | Every observed type has a packet body; names and hologram lines show in a text display; armor stand parts show; horse armor and saddle use the `body` and `saddle` slots |
+| Text (2) | Preserved for review | Talk lines, ranges and speech bubbles are not run. Write them as a behavior with [`animus:say`](behaviors.md#actions) |
+| Ownership (388) | A player UUID converts to `owner`; a server owner records none | Exposed through `NpcDefinition.owner()`, the definition snapshot and `/animus inspect` for plugins and modules to use. Animus management commands still require `animus.admin` |
 | Sentinel (103) | Settings converted to `animus:combat`; unsupported settings and statistics kept separately; disabled pending review | [Combat module](combat.md) runs once the review is accepted; live gameplay checks pending |
 | Denizen flags (24), assignment/trigger records (8 each) | Preserved; requires integration | External scripts required to translate behaviors |
 | Mounts (2) | Preserved; UUID references resolved | Resolved references apply from definitions on exact Paper/Spigot: passengers for every viewer, across restart. Unresolved ones stay preserved and reported. See [mounted NPCs](runtime.md#mounted-npcs) |
@@ -25,27 +29,27 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 | Trait | Records | Classification beyond converted fields |
 |---|---:|---|
 | age | 2 | Unsupported, preserved |
-| armorstandtrait | 3 | Unsupported, preserved |
+| armorstandtrait | 3 | Converted to `armorStand`; marker and gravity preserved |
 | assignment | 8 | Requires integration |
 | attributetrait | 13 | Unsupported, preserved |
 | controllable | 1 | Requires review |
 | denizen_flags | 24 | Requires integration |
-| equipment | 123 | Requires review |
+| equipment | 123 | Converted to `equipment`; extra item data preserved |
 | gravity | 4 | Unsupported, preserved |
-| hologramtrait | 91 | Requires review |
+| hologramtrait | 91 | Lines converted to `hologram`; layout settings preserved |
 | horsemodifiers | 4 | Unsupported, preserved |
-| inventory | 121 | Requires review |
+| inventory | 121 | Converted to `inventory`; extra item data preserved |
 | location | 495 | Main world/coordinates converted; other fields preserved for review |
 | lookclose | 495 | Requires review |
 | mounttrait | 2 | Requires review |
-| owner | 388 | Requires review |
-| poses | 3 | Requires review |
+| owner | 388 | Player UUID converted to `owner` |
+| poses | 3 | Default pose converted to the facing; other poses preserved |
 | rotationtrait | 1 | Unsupported, preserved |
 | scoreboardtrait | 495 | Unsupported, preserved |
 | sentinel | 103 | Converted to combat settings; disabled pending review |
-| sittrait | 1 | Unsupported, preserved |
+| sittrait | 1 | Converted to `pose: sitting` |
 | skintrait | 489 | Converted to skin documents; opt-in signed-texture proof |
-| sneak | 1 | Unsupported, preserved |
+| sneak | 1 | Converted to `pose: sneaking` |
 | sneaking | 1 | Unsupported, preserved |
 | spawned | 11 | Requires review; candidate spawned=false |
 | targetable | 24 | Unsupported, preserved |
@@ -56,7 +60,7 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 
 ## Sentinel settings
 
-Each Sentinel record becomes a disabled `modules["animus:combat"]` with `enabled` and `reviewAccepted` set to `false`. Accept the review by setting both to `true` after checking the result; until then the NPC neither fights nor takes combat damage. The unchanged Sentinel record stays in `citizens:review` and in the import archive. Converter version 3 writes this mapping; per-field reports mark converted fields `CONVERTED`, kept fields `UNSUPPORTED_PRESERVED`, and fields unknown at the pinned source `REQUIRES_INTEGRATION`.
+Each Sentinel record becomes a disabled `modules["animus:combat"]` with `enabled` and `reviewAccepted` set to `false`. Accept the review by setting both to `true` after checking the result; until then the NPC neither fights nor takes combat damage. The unchanged Sentinel record stays in `citizens:review` and in the import archive. Converter version 3 and later write this mapping; per-field reports mark converted fields `CONVERTED`, kept fields `UNSUPPORTED_PRESERVED`, and fields unknown at the pinned source `REQUIRES_INTEGRATION`.
 
 The module keeps three things apart:
 
@@ -129,7 +133,8 @@ The locally cached Mojang 26.1.2 and 26.3 classes expose `ServerboundInteractPac
 |---|---|---|---|
 | Spigot API compilation | Pass | Pass | Pass |
 | Spigot baseline lifecycle + native proof | Restart +38 checks pass | Restart +38 checks pass | Restart +38 checks pass |
-| Native descriptor probe (30 checks) | Pass | Pass | Pass |
+| Native descriptor probe (82 checks) | Pass | Pass | Pass |
+| Presentation codec audit: poses, armor stand parts, text displays, seats, hidden name teams (local, exact server jar codecs) | Pass | Pass | Pass |
 | Paper startup, packet binding, commands, restart | Stable74 pass | Stable135 pass | Stable240 pass |
 | Folia startup, commands, restart | Stable8 pass | Beta7 pass | Alpha6 pass |
 | Folia general NPC runtime and region movement | Disabled | Disabled | Disabled |
@@ -145,7 +150,7 @@ The locally cached Mojang 26.1.2 and 26.3 classes expose `ServerboundInteractPac
 | Mounts, real riders and dragon presentation (Folia) | Unavailable with a diagnostic | Unavailable with a diagnostic | Unavailable with a diagnostic |
 | Fabric/Forge/NeoForge NPC runtime | Deferred | Deferred | Deferred |
 
-Exact server and plugin hashes, commands, and machine-readable direct-test evidence are retained locally under `.qa/platform-tests/evidence-index.json`. Separate Multiplexor reports live under `.qa/multiplexor-workspace/animus-evidence/`; see the [runner guide](multiplexor.md). Reproduce with `qa/platform-smoke.py`; the selected release channel is explicit. Lifecycle checks use synthetic dormant definitions and are separate from gameplay checks. All six owned servers were shut down after verification.
+The presentation codec audit runs `node qa/protocol-client/audit-presentation.mjs --version <version>` after a build. It feeds the plugin's own pose, armor stand, text display, seat and team packets through each exact vanilla server jar's codecs; the 26.1.2 and 26.2 runs used the 26.3 server libraries. It does not start a server or show anything on a client. Exact server and plugin hashes, commands, and machine-readable direct-test evidence are retained locally under `.qa/platform-tests/evidence-index.json`. Separate Multiplexor reports live under `.qa/multiplexor-workspace/animus-evidence/`; see the [runner guide](multiplexor.md). Reproduce with `qa/platform-smoke.py`; the selected release channel is explicit. Lifecycle checks use synthetic dormant definitions and are separate from gameplay checks. All six owned servers were shut down after verification.
 
 Supplemental Leaf26.3-17/af63114 coverage includes console administration, invalid-reload retention, TOML migration, restart persistence, and an exact-protocol777 client proof. The client decodes player profiles, signed textures, all eight body types, movement, static passengers, despawn, accepted/rejected interactions, block occlusion, and virtual health. These historical proof scenarios do not establish real-target damage or vanilla-mob targeting; new runtime/combat scenarios report those independently. No graphical-client rendering, combat parity, bandwidth benchmark or measured performance improvement is claimed. See [implementation evidence](implementation.md) for completed scenario results and runner details.
 

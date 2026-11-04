@@ -35,7 +35,7 @@ public final class NativeSignatureProbe {
         method(packets + "ClientboundRemoveEntitiesPacket", "<init>", "([I)V");
         method(packets + "ClientboundSetEquipmentPacket", "<init>", "(ILjava/util/List;)V");
         method("com/mojang/datafixers/util/Pair", "of", "(Ljava/lang/Object;Ljava/lang/Object;)Lcom/mojang/datafixers/util/Pair;");
-        for (String slot : List.of("MAINHAND", "OFFHAND", "HEAD", "CHEST", "LEGS", "FEET", "BODY"))
+        for (String slot : List.of("MAINHAND", "OFFHAND", "HEAD", "CHEST", "LEGS", "FEET", "BODY", "SADDLE"))
             field(entity + "EquipmentSlot", slot, "L" + entity + "EquipmentSlot;");
         method(packets + "ClientboundPlayerInfoRemovePacket", "<init>", "(Ljava/util/List;)V");
         method(packets + "ClientboundPlayerInfoUpdatePacket", "<init>", "(Ljava/util/EnumSet;Ljava/util/Collection;)V");
@@ -80,6 +80,29 @@ public final class NativeSignatureProbe {
         method("net/minecraft/world/phys/Vec3", "y", "()D");
         method("net/minecraft/world/phys/Vec3", "z", "()D");
         field(entity + "boss/enderdragon/EnderDragon", "DATA_PHASE", "Lnet/minecraft/network/syncher/EntityDataAccessor;");
+        // Poses, armor stand parts, text displays and hidden profile names.
+        String accessor = "Lnet/minecraft/network/syncher/EntityDataAccessor;";
+        field(entity + "Entity", "DATA_SHARED_FLAGS_ID", accessor);
+        field(entity + "Entity", "DATA_POSE", accessor);
+        for (String pose : List.of("STANDING", "CROUCHING", "SLEEPING", "SWIMMING")) field(entity + "Pose", pose, "L" + entity + "Pose;");
+        for (String part : List.of("DATA_CLIENT_FLAGS", "DATA_HEAD_POSE", "DATA_BODY_POSE", "DATA_LEFT_ARM_POSE", "DATA_RIGHT_ARM_POSE", "DATA_LEFT_LEG_POSE", "DATA_RIGHT_LEG_POSE"))
+            field(entity + "decoration/ArmorStand", part, accessor);
+        method("net/minecraft/core/Rotations", "<init>", "(FFF)V");
+        field(entity + "Display", "DATA_TRANSLATION_ID", accessor);
+        field(entity + "Display", "DATA_BILLBOARD_RENDER_CONSTRAINTS_ID", accessor);
+        field(entity + "Display$TextDisplay", "DATA_TEXT_ID", accessor);
+        field(entity + "Display$TextDisplay", "DATA_LINE_WIDTH_ID", accessor);
+        method("net/minecraft/network/chat/Component", "literal", "(Ljava/lang/String;)Lnet/minecraft/network/chat/MutableComponent;");
+        String scores = "net/minecraft/world/scores/";
+        method(scores + "Scoreboard", "<init>", "()V");
+        method(scores + "PlayerTeam", "<init>", "(L" + scores + "Scoreboard;Ljava/lang/String;)V");
+        method(scores + "PlayerTeam", "setNameTagVisibility", "(L" + scores + "Team$Visibility;)V");
+        method(scores + "PlayerTeam", "setCollisionRule", "(L" + scores + "Team$CollisionRule;)V");
+        method(scores + "Scoreboard", "addPlayerToTeam", "(Ljava/lang/String;L" + scores + "PlayerTeam;)Z");
+        field(scores + "Team$Visibility", "NEVER", "L" + scores + "Team$Visibility;");
+        field(scores + "Team$CollisionRule", "NEVER", "L" + scores + "Team$CollisionRule;");
+        method(packets + "ClientboundSetPlayerTeamPacket", "createAddOrModifyPacket", "(L" + scores + "PlayerTeam;Z)L" + packets + "ClientboundSetPlayerTeamPacket;");
+        method(packets + "ClientboundSetPlayerTeamPacket", "createRemovePacket", "(L" + scores + "PlayerTeam;)L" + packets + "ClientboundSetPlayerTeamPacket;");
         method(entity + "Entity", "setPos", "(DDD)V");
         method("net/minecraft/server/level/ServerPlayer", "level", "()Lnet/minecraft/server/level/ServerLevel;");
         method("net/minecraft/server/level/ServerLevel", "getChunkSource", "()Lnet/minecraft/server/level/ServerChunkCache;");

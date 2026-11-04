@@ -19,9 +19,53 @@ All management operations require `animus.admin`; `animus.status` remains availa
 
 Live definitions use shared authoritative health and position. Valid appearance-only edits preserve that health and runtime position; an explicit definition position change updates the position. Despawn followed by a new activation creates fresh runtime state. Health and cooldowns are not written into hand-edited definitions.
 
-Player profile names accept printable Unicode and spaces, with at most16 UTF-16 code units because of the native profile codec. Longer names and control characters are rejected explicitly; extended nameplates are pending. The initial non-player types are armor stand, horse, turtle, frog, llama, armadillo and ender dragon. Non-player nameplate rendering, inventories, poses and type-specific behavior other than the [dragon presentation](#ender-dragon-presentation) remain incomplete. Behaviors can show equipment with [`animus:set-equipment`](behaviors.md#actions); definitions cannot declare it yet.
+Names accept printable Unicode and spaces, up to 256 UTF-16 code units, without control characters. The initial non-player types are armor stand, horse, turtle, frog, llama, armadillo and ender dragon. Equipment, text above the NPC, poses, armor stand parts, a stored inventory and an owner are declared in the definition; see [appearance](#appearance-text-and-inventory). Type-specific behavior other than the [dragon presentation](#ender-dragon-presentation) remains incomplete.
 
 Skin references identify content-hashed JSON documents in `skins/`. Reads use the bounded file worker and preserve texture/signature data. An invalid or missing live replacement retains the last valid active presentation and reports the field error. Accepted definitions also have durable recovery checkpoints: a known invalid source edit at restart retains its previous definition and reports the error without changing the edited file. Missing sources remain deleted. Referenced skin files are not included in that definition checkpoint. See [storage and recovery](storage.md).
+
+## Appearance, text and inventory
+
+These definition fields are optional. Every viewer sees the same result, and it comes back from the definition after a restart, a rejoin or a chunk reload. A change takes effect through `/animus edit` or a reload, which gives viewers a fresh body.
+
+```json
+{
+  "name": "Captain of the Northern Watch",
+  "type": "minecraft:player",
+  "equipment": {
+    "main_hand": {"id": "minecraft:iron_sword"},
+    "head": {"id": "minecraft:iron_helmet", "components": "[damage=12]"},
+    "off_hand": {"id": "minecraft:shield"}
+  },
+  "hologram": {"lines": ["&6Quest giver", "Right-click to talk"]},
+  "nameplate": {"visible": true},
+  "pose": "sitting",
+  "inventory": {"size": 36, "slots": {"0": {"id": "minecraft:bread", "count": 16}}},
+  "owner": "8667ba71-b85a-4004-af54-457a9734eed7"
+}
+```
+
+| Field | Accepted values |
+|---|---|
+| `equipment` | Slots `main_hand`, `off_hand`, `head`, `chest`, `legs`, `feet`, `body`, `saddle`. Each holds one item. |
+| item | `id` (`namespace:item`), optional `count` (1–99, default 1), optional `components`: the text that follows the item id in `/give`, such as `[enchantment_glint_override=true]`, at most 4096 characters. `imported` holds source item data that has no equivalent; it is kept and never read. |
+| `hologram.lines` | At most 16 lines of at most 256 characters each. `&` colour and format codes apply. |
+| `nameplate.visible` | `false` hides the name. Default `true`. |
+| `pose` | `standing` (default). Player bodies also accept `sneaking`, `sleeping`, `swimming` and `sitting`. |
+| `armorStand` | Armor stand bodies only: `small`, `arms`, `basePlate` (default `true`), `invisible`, and `head`, `body`, `leftArm`, `rightArm`, `leftLeg`, `rightLeg` as `[x, y, z]` degrees within ±360. Parts without angles keep the client's default pose. |
+| `inventory` | `size` is a multiple of 9 from 9 to 72; `slots` maps slot numbers below `size` to items. |
+| `owner` | The owning player's UUID. |
+
+A wrong value names its exact field, for example `$.equipment.head.count: expected integer 1..99`. `/animus spawn` also checks every equipment item against the running server, so an unknown item or bad component text is refused as `$.equipment.<slot>.id` or `.components`.
+
+Equipment is sent as an equipment packet after the body appears. The [`animus:set-equipment`](behaviors.md#actions) action replaces a slot until restart or the next definition change.
+
+A player name that fits the profile (16 characters, no `&` codes) stays the normal player nameplate. Longer or coloured player names, every non-player name and all hologram lines appear in one text display that rides the body, with the hologram lines above the name. A player body whose name moved to the text display, or whose nameplate is hidden, gets a short placeholder profile name that a client-side team hides. The text display and the team exist only in packets. Text lines are evenly spaced; per-line spacing, view ranges and placeholders such as `%player%` are not interpreted.
+
+Sneaking, sleeping and swimming set the body's pose. A sitting player rides a hidden, packet-only armor stand at its position, so its body appears lower than it stands; hits are still measured against the standing body. A sitting NPC cannot also ride another NPC.
+
+The inventory is stored data. Nothing renders it and no item moves in or out of it at run time. Modules read it from the definition snapshot, and Java code can use `NpcInventory.of(definition)`. The owner is exposed by `NpcDefinition.owner()`, `/animus inspect` and the definition snapshot, for plugins and modules to use in their own permission rules. Animus management commands still require `animus.admin`.
+
+`/animus inspect` shows the pose, the number of equipped slots and text lines, the owner, and `presentation=unavailable` on a server build without the needed signatures. Without them NPCs still appear, with their plain body and profile name.
 
 ## Work and visibility limits
 
