@@ -1,0 +1,27 @@
+modLoader = "javafml"
+loaderVersion = "[3,)"
+license = "GPL-3.0"
+
+[[mods]]
+modId = "${projectId}"
+version = "${projectVersion}"
+displayName = "${projectName}"
+description = "NPCs that act alive instead of being fake players."
+authors = "Volmit Software"
+
+[features.${projectId}]
+javaVersion = "[${javaVersion},)"
+
+[[dependencies.${projectId}]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${neoForgeVersion},)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.${projectId}]]
+modId = "minecraft"
+type = "required"
+versionRange = "[${minecraftVersion}]"
+ordering = "NONE"
+side = "BOTH"

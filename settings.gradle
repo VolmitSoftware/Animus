@@ -1,0 +1,11 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'Animus'
+include(':core', ':bukkit')
+ext.animusRoot = settingsDir
+apply from: 'gradle/volmlib.settings.gradle'
