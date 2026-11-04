@@ -1,6 +1,6 @@
 package art.arcane.animus.core.behavior.runtime;
 
-import static art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntimeTest.*;
+import static art.arcane.animus.core.behavior.runtime.BehaviorRuntimeTest.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import art.arcane.animus.api.Outcome;
@@ -8,8 +8,8 @@ import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.BehaviorProgram.ScopedVariable;
 import art.arcane.animus.core.behavior.BehaviorProgram.Value;
 import art.arcane.animus.core.behavior.BehaviorState;
-import art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntime.Execution;
-import art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntime.NpcTrace;
+import art.arcane.animus.core.behavior.runtime.BehaviorRuntime.Execution;
+import art.arcane.animus.core.behavior.runtime.BehaviorRuntime.NpcTrace;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -19,7 +19,7 @@ class ExecutionObservationTest {
     @Test
     void freshObservationReportsCurrentWaitsAndUnknownExecutionsAreNotFound() throws Exception {
         Sources sources = new Sources(WAIT);
-        ManualBehaviorRuntime runtime = sources.runtime(new Fake());
+        BehaviorRuntime runtime = sources.runtime(new Fake());
         try {
             UUID id = await(runtime.run("test", "example:manual")).value().orElseThrow();
             eventually(() -> runtime.status().engine().tick() > 3);
@@ -37,7 +37,7 @@ class ExecutionObservationTest {
     @Test
     void npcTraceShowsTheActiveRunAndABoundedRingOfRecentRuns() throws Exception {
         Sources sources = new Sources(EMPTY);
-        ManualBehaviorRuntime runtime = sources.runtime(new Fake());
+        BehaviorRuntime runtime = sources.runtime(new Fake());
         try {
             UUID npc = sources.npcs.get().get("test").uuid();
             for (int index = 0; index < 7; index++) {
@@ -47,7 +47,7 @@ class ExecutionObservationTest {
             NpcTrace trace = await(runtime.observeNpc("test")).value().orElseThrow();
             assertEquals(npc, trace.npc());
             assertTrue(trace.active().isEmpty());
-            assertEquals(ManualBehaviorRuntime.RECENT_PER_NPC, trace.recent().size());
+            assertEquals(BehaviorRuntime.RECENT_PER_NPC, trace.recent().size());
             NpcTrace byUuid = await(runtime.observeNpc(npc.toString())).value().orElseThrow();
             assertEquals(trace.recent().size(), byUuid.recent().size());
             sources.replaceProgram(WAIT, 2);
@@ -62,7 +62,7 @@ class ExecutionObservationTest {
     @Test
     void activeViewsAreNotRebuiltOnTicksWhenNobodyIsLooking() throws Exception {
         Sources sources = new Sources(WAIT);
-        ManualBehaviorRuntime runtime = sources.runtime(new Fake());
+        BehaviorRuntime runtime = sources.runtime(new Fake());
         try {
             UUID id = await(runtime.run("test", "example:manual")).value().orElseThrow();
             long ticks = runtime.status().engine().tick();
@@ -89,7 +89,7 @@ class ExecutionObservationTest {
             @Override public void write(Subject subject, Map<String, Value> writes, Map<String, ScopedVariable> declarations) {}
             @Override public void maintain() { maintained.incrementAndGet(); }
         };
-        ManualBehaviorRuntime runtime = new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8, 8, 50, 20), BehaviorEngine.Limits.defaults(), sources.npcs::get, sources.catalog::get, new Fake(),null, state);
+        BehaviorRuntime runtime = new BehaviorRuntime(new BehaviorRuntime.Limits(8, 8, 50, 20), BehaviorEngine.Limits.defaults(), sources.npcs::get, sources.catalog::get, new Fake(),null, state);
         try {
             eventually(() -> maintained.get() > 1);
         } finally {

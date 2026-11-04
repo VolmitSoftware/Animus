@@ -22,7 +22,7 @@ public final class ColdShutdownProbe {
             public Call<String> action(Invocation invocation){throw new AssertionError("Closed runtime invoked action");}
             public Call<Boolean> condition(Invocation invocation){throw new AssertionError("Closed runtime invoked condition");}
         };
-        var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),()->Map.of("test",definition),()->catalog,noModules,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,
+        var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),()->Map.of("test",definition),()->catalog,noModules,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,
                 task->{Thread thread=new Thread(()->{try{if(!ownerRelease.await(5,TimeUnit.SECONDS))throw new AssertionError("Owner start not released");task.run();}catch(InterruptedException failure){throw new AssertionError(failure);}},"cold-owner");thread.setDaemon(true);return thread;});
         CompletionStage<Outcome<UUID>> request=queued?runtime.run("test","example:manual"):null;
         runtime.close();

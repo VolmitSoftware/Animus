@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "9c0dc6e5-984c-5b88-989e-b41d53cba99e",
+  "id": "patroller",
+  "group": "examples",
+  "name": "Patroller",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 0.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "patrol:route"
+  ]
+}

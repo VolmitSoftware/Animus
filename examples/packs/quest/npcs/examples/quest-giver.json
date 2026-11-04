@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "bd597713-d058-5d6d-8e53-b61643e687bb",
+  "id": "quest-giver",
+  "group": "examples",
+  "name": "Quest Giver",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": -7.5,
+    "y": 64,
+    "z": -7.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "quest:giver"
+  ]
+}

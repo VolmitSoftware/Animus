@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "quest:recipient",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "letter",
+            "equals": 1
+          },
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:set-quest-state",
+                "arguments": {
+                  "name": "letter",
+                  "value": 2
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:say",
+                "arguments": {
+                  "text": "A letter for me? Tell the sender it arrived safely."
+                }
+              }
+            ]
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Nothing for me today."
+            }
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40
+    }
+  ]
+}

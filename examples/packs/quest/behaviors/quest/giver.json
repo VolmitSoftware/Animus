@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "quest:giver",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "letter",
+            "equals": 0
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:choices",
+            "arguments": {
+              "id": "offer",
+              "prompt": "Could you carry this letter to the harbour master?",
+              "options": [
+                {
+                  "id": "accept",
+                  "text": "I will take it"
+                },
+                {
+                  "id": "decline",
+                  "text": "Not today"
+                }
+              ]
+            }
+          },
+          "else": {
+            "type": "condition",
+            "capability": "animus:quest-state",
+            "arguments": {
+              "name": "letter",
+              "equals": 1
+            },
+            "then": {
+              "type": "action",
+              "capability": "animus:say",
+              "arguments": {
+                "text": "The harbour master is still waiting for that letter."
+              }
+            },
+            "else": {
+              "type": "condition",
+              "capability": "animus:quest-state",
+              "arguments": {
+                "name": "letter",
+                "equals": 2
+              },
+              "then": {
+                "type": "sequence",
+                "steps": [
+                  {
+                    "type": "action",
+                    "capability": "animus:say",
+                    "arguments": {
+                      "text": "Delivered! Thank you. Come back any time."
+                    }
+                  },
+                  {
+                    "type": "action",
+                    "capability": "animus:set-quest-state",
+                    "arguments": {
+                      "name": "letter",
+                      "value": 3
+                    }
+                  },
+                  {
+                    "type": "action",
+                    "capability": "animus:play-sound",
+                    "arguments": {
+                      "sound": "minecraft:entity.player.levelup"
+                    }
+                  }
+                ]
+              },
+              "else": {
+                "type": "action",
+                "capability": "animus:say",
+                "arguments": {
+                  "text": "You have done enough for me, friend."
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "accept": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:advance-quest-state",
+          "arguments": {
+            "name": "letter",
+            "maximum": 1
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Thank you. The harbour master is by the docks."
+          }
+        }
+      ]
+    },
+    "decline": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Another time, then."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40
+    },
+    {
+      "id": "accepted",
+      "event": "dialogue_choice",
+      "dialogue": "offer",
+      "choice": "accept",
+      "routine": "accept"
+    },
+    {
+      "id": "declined",
+      "event": "dialogue_choice",
+      "dialogue": "offer",
+      "choice": "decline",
+      "routine": "decline"
+    }
+  ]
+}
