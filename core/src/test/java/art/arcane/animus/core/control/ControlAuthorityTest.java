@@ -15,7 +15,7 @@ class ControlAuthorityTest {
         assertThrows(IllegalArgumentException.class, () -> FORWARD.horizontal(Double.NaN));
     }
     @Test void heldInputPersistsThroughHeartbeatsWithoutFreshKeyPackets() {
-        ControlInbox inbox = new ControlInbox(0); ControlLoop loop = new ControlLoop(Vec3.ZERO,0);
+        ControlInbox inbox = new ControlInbox(0); ControlLoop loop = new ControlLoop(Vec3.ZERO,0,ControlLoop.Limits.PREVIEW);
         inbox.offer(FORWARD,1); inbox.heartbeat(1_999_000_000L);
         assertEquals(ControlLoop.State.PROPOSED,loop.propose(2_000_000_000L,Vec3.ZERO,0,inbox.snapshot()).state());
         assertEquals(1,inbox.snapshot().latest().sequence());
@@ -23,7 +23,7 @@ class ControlAuthorityTest {
     }
     @Test void oneInputCannotProduceCatchUpStepsOrExceedTheServerStepRate() {
         ControlInbox inbox=new ControlInbox(0); inbox.offer(FORWARD,0);
-        ControlLoop loop=new ControlLoop(Vec3.ZERO,0); Vec3 position=Vec3.ZERO;
+        ControlLoop loop=new ControlLoop(Vec3.ZERO,0,ControlLoop.Limits.PREVIEW); Vec3 position=Vec3.ZERO;
         for (int millis=0;millis<=1000;millis++) {
             inbox.heartbeat(millis*1_000_000L);
             var next=loop.propose(millis*1_000_000L,position,0,inbox.snapshot());
@@ -35,7 +35,7 @@ class ControlAuthorityTest {
         assertEquals(ControlLoop.State.THROTTLED,loop.propose(10_000_000_001L,position,0,inbox.snapshot()).state());
     }
     @Test void keyChangesCannotReplaceHeartbeatsAndHeartbeatsCannotAcquireInput() {
-        ControlInbox inbox=new ControlInbox(0); ControlLoop loop=new ControlLoop(Vec3.ZERO,0);
+        ControlInbox inbox=new ControlInbox(0); ControlLoop loop=new ControlLoop(Vec3.ZERO,0,ControlLoop.Limits.PREVIEW);
         inbox.heartbeat(1_000_000_000L);
         assertEquals(ControlLoop.State.WAITING_INPUT,loop.propose(1_000_000_000L,Vec3.ZERO,0,inbox.snapshot()).state());
         inbox.offer(FORWARD,2_999_999_999L);
@@ -44,7 +44,7 @@ class ControlAuthorityTest {
     @Test void emptyAdmissionStopAndReplacementDoNotInheritLatchedInput() {
         ControlInbox first=new ControlInbox(0); first.offer(FORWARD,1); first.close("replaced");
         assertFalse(first.offer(FORWARD,2)); assertNull(first.snapshot().latest());
-        ControlInbox second=new ControlInbox(3); ControlLoop loop=new ControlLoop(Vec3.ZERO,3);
+        ControlInbox second=new ControlInbox(3); ControlLoop loop=new ControlLoop(Vec3.ZERO,3,ControlLoop.Limits.PREVIEW);
         assertEquals(ControlLoop.State.WAITING_INPUT,loop.propose(100_000_000L,Vec3.ZERO,0,second.snapshot()).state());
         second.offer(new ControlInput(false,false,false,false,false,true,false),100_000_001L);
         assertEquals("shift",loop.propose(100_000_002L,Vec3.ZERO,0,second.snapshot()).reason());
@@ -59,7 +59,7 @@ class ControlAuthorityTest {
     }
     @Test void leashAndLifetimeBoundTheControllerEvenWithContinuingHeartbeats() {
         ControlInbox inbox=new ControlInbox(0); inbox.offer(FORWARD,0); inbox.heartbeat(1_000_000_000L);
-        ControlLoop loop=new ControlLoop(Vec3.ZERO,0);
+        ControlLoop loop=new ControlLoop(Vec3.ZERO,0,ControlLoop.Limits.PREVIEW);
         assertEquals(ControlLoop.State.LEASH,loop.propose(1_000_000_000L,new Vec3(0,0,8),0,inbox.snapshot()).state());
         inbox.heartbeat(ControlLoop.LIFETIME_NANOS);
         assertEquals("expired",loop.propose(ControlLoop.LIFETIME_NANOS,Vec3.ZERO,0,inbox.snapshot()).reason());

@@ -3,6 +3,9 @@ package art.arcane.animus.core.extension;
 import art.arcane.animus.api.*;
 import art.arcane.animus.core.config.ModuleSettings;
 import art.arcane.animus.core.behavior.BehaviorInvoker;
+import art.arcane.animus.core.behavior.HostBehaviorInvoker;
+import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
+import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.extension.loader.ModuleDiscovery;
 import art.arcane.animus.core.extension.loader.StartupModules;
 import java.nio.file.Path;
@@ -27,6 +30,7 @@ public final class ExtensionRuntime implements AutoCloseable {
     private final Consumer<String> report;
     private final Consumer<State> initializationObserver;
     private final BehaviorInvoker behaviorInvoker;
+    private final BuiltinCapabilities builtins;
     // Private submission only: one startup, one shutdown, then at most one scheduled cleanup poll.
     private final ScheduledThreadPoolExecutor management;
     private volatile StartupModules loader;
@@ -38,12 +42,19 @@ public final class ExtensionRuntime implements AutoCloseable {
 
     public ExtensionRuntime(Path directory, Platform platform, DefinitionGateway definitions,
                             ModuleSettings settings, Consumer<String> report) {
-        this(directory, platform, definitions, settings, report, state -> {});
+        this(directory, platform, definitions, settings, report, state -> {}, null);
     }
 
     /** Observer is an engine-owned quick enqueue hook, never a module callback or a place to do file work. */
     public ExtensionRuntime(Path directory, Platform platform, DefinitionGateway definitions,
                             ModuleSettings settings, Consumer<String> report, Consumer<State> initializationObserver) {
+        this(directory, platform, definitions, settings, report, initializationObserver, null);
+    }
+
+    /** Built-in capabilities bind at startup on every platform and stay bound when Java modules are disabled. */
+    public ExtensionRuntime(Path directory, Platform platform, DefinitionGateway definitions, ModuleSettings settings,
+                            Consumer<String> report, Consumer<State> initializationObserver, BuiltinCapabilities builtins) {
+        this.builtins = builtins;
         this.directory = Objects.requireNonNull(directory);
         this.platform = Objects.requireNonNull(platform);
         this.settings = Objects.requireNonNull(settings);
@@ -51,19 +62,21 @@ public final class ExtensionRuntime implements AutoCloseable {
         this.initializationObserver = Objects.requireNonNull(initializationObserver);
         host = new ModuleHost(platform, definitions, settings.maximumInvocations(),
                 Duration.ofMillis(settings.invocationTimeoutMillis()), Duration.ofMillis(settings.deliveryBudgetMillis()));
+        HostBehaviorInvoker hostInvoker = new HostBehaviorInvoker(host, this::privilegedGranted);
         behaviorInvoker = new BehaviorInvoker() {
-            public boolean available(Capabilities.Key key, Capabilities.Kind kind) {
+            @Override public boolean available(Capabilities.Key key, Capabilities.Kind kind) {
                 return capabilityAvailable(key, kind);
             }
-            public Call<String> action(Invocation invocation) {
-                if (state != State.READY) return new Call<>(ExtensionRuntime.<String>unavailable(), () -> {}, () -> true);
-                var handle = host.actionHandle(invocation.capability(), invocation.npc(), invocation.player(), invocation.argumentsJson(), false, false, invocation.sourceCurrent());
-                return new Call<>(handle.result(), handle::cancel, handle::isQuiescent);
+            @Override public boolean available(Capabilities.Key key, Capabilities.Kind kind, String behavior) {
+                return admitting() && hostInvoker.available(key, kind, behavior);
             }
-            public Call<Boolean> condition(Invocation invocation) {
-                if (state != State.READY) return new Call<>(ExtensionRuntime.<Boolean>unavailable(), () -> {}, () -> true);
-                var handle = host.conditionHandle(invocation.capability(), invocation.npc(), invocation.player(), invocation.argumentsJson(), false, invocation.sourceCurrent());
-                return new Call<>(handle.result(), handle::cancel, handle::isQuiescent);
+            @Override public Call<String> action(Invocation invocation) {
+                if (!admitting()) return new Call<>(ExtensionRuntime.<String>unavailable(), () -> {}, () -> true);
+                return hostInvoker.action(invocation);
+            }
+            @Override public Call<Boolean> condition(Invocation invocation) {
+                if (!admitting()) return new Call<>(ExtensionRuntime.<Boolean>unavailable(), () -> {}, () -> true);
+                return hostInvoker.condition(invocation);
             }
         };
         management = new ScheduledThreadPoolExecutor(1, job -> {
@@ -86,14 +99,26 @@ public final class ExtensionRuntime implements AutoCloseable {
                 return;
             }
             state = State.DISABLED;
-            host.revoke();
+            if (builtins == null) host.revoke();
         }
+        installBuiltins();
         initialized(State.DISABLED);
     }
+
+    private void installBuiltins() {
+        if (builtins == null) return;
+        Outcome<ModuleHost.ModuleStatus> installed = host.installBuiltin(builtins, builtins);
+        if (installed.status() != Outcome.Status.OK)
+            report.accept("Built-in behavior capabilities unavailable: " + installed.diagnostics().stream().map(Diagnostic::code).toList());
+    }
+
+    private boolean admitting() { return state == State.READY || state == State.DISABLED && builtins != null; }
+    private boolean privilegedGranted(String behavior) { return builtins != null && builtins.commandAllowed(behavior); }
 
     private void load() {
         try {
             if (isClosing()) return;
+            installBuiltins();
             StartupModules next = new StartupModules(host, ModuleDiscovery.discover(directory, platform));
             loader = next;
             if (isClosing()) return; // The already queued shutdown owns even an unconsumed discovery plan.
@@ -140,22 +165,41 @@ public final class ExtensionRuntime implements AutoCloseable {
     public List<Capabilities.Availability> capabilities() { return host.capabilities(); }
     /** Single-key engine observation; descriptor/host admission is checked again when invoking. */
     public boolean capabilityAvailable(Capabilities.Key key, Capabilities.Kind kind) {
-        return state == State.READY && host.capabilityAvailable(key, kind, false, false);
+        return admitting() && host.capabilityAvailable(key, kind, false, false);
     }
+    /** Catalog view of this registry: invalid arguments, an unavailable platform and a missing grant stay distinct. */
+    public BehaviorCatalog.CapabilityResolver catalogResolver() {
+        return new BehaviorCatalog.CapabilityResolver() {
+            @Override public BehaviorCatalog.Capability resolve(BehaviorCatalog.Requirement requirement) {
+                if (!admitting()) return new BehaviorCatalog.Capability(false, "modules-not-ready");
+                return host.unavailableReason(requirement.key(), requirement.kind())
+                        .map(reason -> new BehaviorCatalog.Capability(false, bounded(reason)))
+                        .orElseGet(BehaviorCatalog.Capability::present);
+            }
+            @Override public BehaviorCatalog.Capability authorize(BehaviorCatalog.Requirement requirement, String behavior) {
+                if (!host.privileged(requirement.key()) || privilegedGranted(behavior)) return BehaviorCatalog.Capability.present();
+                return new BehaviorCatalog.Capability(false, "privileged-capability-not-granted: add this behavior or its namespace to the command allow-list");
+            }
+            @Override public List<Diagnostic> validate(BehaviorCatalog.Requirement requirement, String argumentsJson) {
+                return host.validateArguments(requirement.key(), requirement.kind(), argumentsJson);
+            }
+        };
+    }
+    private static String bounded(String reason) { return reason.length() > 200 ? reason.substring(0, 200) : reason; }
     /** Connect before start so module startup and the behavior catalog observe dispatch. */
     public void connectTriggers(art.arcane.animus.core.behavior.trigger.TriggerSink sink) { host.connectTriggers(sink); }
-    /** Internal manual-behavior bridge: READY only, no preview or implicit privileged capability grants. */
+    /** Internal behavior bridge. Carries the execution's preview flag; a privileged grant comes only from the allow-list. */
     public BehaviorInvoker behaviorInvoker() { return behaviorInvoker; }
 
     public CompletionStage<Outcome<String>> action(Capabilities.Key key, NpcHandle npc, Optional<UUID> player,
                                                     String argumentsJson) {
-        if (state != State.READY) return unavailable();
+        if (!admitting()) return unavailable();
         // Console execution is never implicitly granted by the administrative dispatch command.
         return host.action(key, npc, player, argumentsJson, false, false);
     }
     public CompletionStage<Outcome<Boolean>> condition(Capabilities.Key key, NpcHandle npc, Optional<UUID> player,
                                                        String argumentsJson) {
-        if (state != State.READY) return unavailable();
+        if (!admitting()) return unavailable();
         return host.condition(key, npc, player, argumentsJson, false);
     }
     private static <T> CompletionStage<Outcome<T>> unavailable() {

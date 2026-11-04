@@ -107,7 +107,7 @@ class Scenario:
         self.catalog_generation = 0
         self.report = {
             'schemaVersion': 1, 'runner': 'ServerMultiplexor',
-            'scope': 'explicit manual definition-bound JSON behavior execution; no world actions, automatic triggers, preview, privileged grants or durable execution stacks',
+            'scope': 'explicit manual definition-bound JSON behavior execution of module capabilities; built-in world actions, automatic triggers, preview, privileged grants and durable execution stacks are not exercised',
             'project': args.project, 'minecraftVersion': args.version,
             'serverBuild': self.pinned['build'], 'serverChannel': self.pinned['channel'],
             'serverSha256': self.pinned['serverSha256'], 'buildRun': args.build_run,
@@ -446,7 +446,7 @@ historyEntries = 64
         for item in self.fixtures['modules']:
             assert re.search(re.escape(item['id']) + r' \[' + re.escape(item['file']) + r'\] \| ' + item['expectedStartup'] + r' \|', listing), listing
         self.command('animus modules capabilities', r'.*qabehaviorctl:reset \| ACTION \| available=true.*')
-        catalog = self.output(); assert 'Module capabilities: 8;' in catalog and 'qabehaviorbad:staged' not in catalog and 'qabehaviorbad:unsupported' not in catalog
+        catalog = self.output(); assert 'Module capabilities: 8; built-in: 19;' in catalog and 'qabehaviorbad:staged' not in catalog and 'qabehaviorbad:unsupported' not in catalog
         self.check('module-schema-staging')
         saved = self.create(self.npc_id); self.create(self.control_id)
         self.report['npcUuid'] = saved['uuid']; self.report['initialRevision'] = saved['revision']

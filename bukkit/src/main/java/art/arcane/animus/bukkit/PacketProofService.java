@@ -320,7 +320,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         session.mountPending.addAll(affected);
         cancelPlan(session);
         try {
-            packets.passengers(viewer, vehicle.body, riders).whenComplete((nothing, failure) -> scheduler.reply(viewer, () -> {
+            packets.passengers(viewer, vehicle.body, riders, null, false).whenComplete((nothing, failure) -> scheduler.reply(viewer, () -> {
                 if (!current(session)) return;
                 session.mountPending.removeAll(affected);
                 if (failure != null) { fail(session, failure); return; }
@@ -362,7 +362,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                     for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++)
                         if (!viewer.getWorld().isChunkLoaded(x, z)) return false;
                     return distance <= 0.000001 || viewer.getWorld().rayTraceBlocks(eye, direction, Math.max(0, distance - 0.0001), FluidCollisionMode.NEVER, true) == null;
-                });
+                }, body.body.typeKey().equals(DragonBody.TYPE) ? DragonBody.hitShape(body.pose.yaw()) : ViewerSession.HitShape.BOUNDS);
         if (!result.accepted()) {
             session.rejected++;
             viewer.sendMessage("Proof rejected id=" + input.body().entityId() + " reason=" + result.rejection());
@@ -484,7 +484,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         long steps, sequence;
         String state = "WAITING_INPUT", reason = "fresh-input-required";
         ControlSession(ProofBody body, NativePacketAdapter.ControlSubscription subscription, Vec3 anchor, long now) {
-            this.body = body; this.subscription = subscription; loop = new ControlLoop(anchor, now);
+            this.body = body; this.subscription = subscription; loop = new ControlLoop(anchor, now, ControlLoop.Limits.PREVIEW);
         }
     }
 }

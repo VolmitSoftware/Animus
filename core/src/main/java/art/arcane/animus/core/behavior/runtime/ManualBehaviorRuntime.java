@@ -301,11 +301,12 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     private static UUID uuid(String text){try{return UUID.fromString(text);}catch(IllegalArgumentException notUuid){return null;}}
     private final class GuardedInvoker implements BehaviorInvoker {
         public boolean available(Capabilities.Key key,Capabilities.Kind kind){return !closing&&invoker.available(key,kind);}
+        @Override public boolean available(Capabilities.Key key,Capabilities.Kind kind,String behavior){return !closing&&invoker.available(key,kind,behavior);}
         // The engine carries each execution's own source guard. The host worker may evaluate it after
         // queueing/schema preparation: it reads only immutable publications and the volatile closing flag.
         private Invocation guarded(Invocation invocation){
             if(!invocation.sourceCurrent().getAsBoolean())return null;
-            return new Invocation(invocation.capability(),invocation.npc(),invocation.player(),invocation.argumentsJson(),invocation.variables(),false,invocation.sourceCurrent());
+            return new Invocation(invocation.capability(),invocation.npc(),invocation.player(),invocation.argumentsJson(),invocation.variables(),invocation.preview(),invocation.sourceCurrent(),invocation.behavior());
         }
         public Call<String> action(Invocation invocation){Invocation guarded=guarded(invocation);return guarded==null?revoked():invoker.action(guarded);}
         public Call<Boolean> condition(Invocation invocation){Invocation guarded=guarded(invocation);return guarded==null?revoked():invoker.condition(guarded);}

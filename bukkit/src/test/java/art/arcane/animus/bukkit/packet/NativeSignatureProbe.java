@@ -33,6 +33,10 @@ public final class NativeSignatureProbe {
         field(version.equals("26.1.2") ? entity + "Entity" : "net/minecraft/server/level/ServerLevel", "ENTITY_COUNTER", "Ljava/util/concurrent/atomic/AtomicInteger;");
         method(packets + "ClientboundAddEntityPacket", "<init>", "(ILjava/util/UUID;DDDFFLnet/minecraft/world/entity/EntityType;I" + vec3 + "D)V");
         method(packets + "ClientboundRemoveEntitiesPacket", "<init>", "([I)V");
+        method(packets + "ClientboundSetEquipmentPacket", "<init>", "(ILjava/util/List;)V");
+        method("com/mojang/datafixers/util/Pair", "of", "(Ljava/lang/Object;Ljava/lang/Object;)Lcom/mojang/datafixers/util/Pair;");
+        for (String slot : List.of("MAINHAND", "OFFHAND", "HEAD", "CHEST", "LEGS", "FEET", "BODY"))
+            field(entity + "EquipmentSlot", slot, "L" + entity + "EquipmentSlot;");
         method(packets + "ClientboundPlayerInfoRemovePacket", "<init>", "(Ljava/util/List;)V");
         method(packets + "ClientboundPlayerInfoUpdatePacket", "<init>", "(Ljava/util/EnumSet;Ljava/util/Collection;)V");
         field(packets + "ClientboundPlayerInfoUpdatePacket", "entries", "Ljava/util/List;");
@@ -65,6 +69,22 @@ public final class NativeSignatureProbe {
         field("net/minecraft/core/registries/BuiltInRegistries", "ENTITY_TYPE", "Lnet/minecraft/core/DefaultedRegistry;");
         method(entity + "EntityType", "getWidth", "()F");
         method(entity + "EntityType", "getHeight", "()F");
+        // Seats, dragon phase and real-rider placement.
+        String attachments = entity + "EntityAttachments";
+        method(entity + "EntityType", "getDimensions", "()L" + entity + "EntityDimensions;");
+        method(entity + "EntityDimensions", "attachments", "()L" + attachments + ";");
+        method(attachments, "getClamped", "(L" + entity + "EntityAttachment;IF)" + vec3);
+        field(entity + "EntityAttachment", "PASSENGER", "L" + entity + "EntityAttachment;");
+        field(entity + "EntityAttachment", "VEHICLE", "L" + entity + "EntityAttachment;");
+        method("net/minecraft/world/phys/Vec3", "x", "()D");
+        method("net/minecraft/world/phys/Vec3", "y", "()D");
+        method("net/minecraft/world/phys/Vec3", "z", "()D");
+        field(entity + "boss/enderdragon/EnderDragon", "DATA_PHASE", "Lnet/minecraft/network/syncher/EntityDataAccessor;");
+        method(entity + "Entity", "setPos", "(DDD)V");
+        method("net/minecraft/server/level/ServerPlayer", "level", "()Lnet/minecraft/server/level/ServerLevel;");
+        method("net/minecraft/server/level/ServerLevel", "getChunkSource", "()Lnet/minecraft/server/level/ServerChunkCache;");
+        method("net/minecraft/server/level/ServerChunkCache", "move", "(Lnet/minecraft/server/level/ServerPlayer;)V");
+        method("net/minecraft/server/network/ServerGamePacketListenerImpl", "resetPosition", "()V");
     }
     private void method(String owner, String name, String descriptor) throws IOException {
         if (load(owner).methods().stream().noneMatch(method -> method.methodName().stringValue().equals(name) && method.methodType().stringValue().equals(descriptor)))
