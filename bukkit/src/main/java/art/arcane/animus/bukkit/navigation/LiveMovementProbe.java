@@ -6,7 +6,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.World;
 import java.util.Objects;
 
-/** No collision-shape/neighbor APIs: only already-loaded voxels on the owning Bukkit thread. */
+/** Collision shapes of already-loaded voxels on the owning Bukkit thread; no neighbor or chunk-loading APIs. */
 public final class LiveMovementProbe {
     private LiveMovementProbe() {}
     public static MotionValidator.Result check(World world, Vec3 from, Vec3 to, double width, double height,
@@ -20,7 +20,7 @@ public final class LiveMovementProbe {
         return (x, y, z) -> {
             if (y < world.getMinHeight() || y >= world.getMaxHeight() || !world.isChunkLoaded(Math.floorDiv(x, 16), Math.floorDiv(z, 16)))
                 return VoxelSnapshot.Cell.UNAVAILABLE;
-            return ConservativeVoxelClassifier.classify(world.getBlockAt(x, y, z).getType().name());
+            return CollisionCells.of(world.getBlockAt(x, y, z));
         };
     }
 }

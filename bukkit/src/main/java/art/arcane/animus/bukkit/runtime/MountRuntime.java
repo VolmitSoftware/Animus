@@ -6,6 +6,8 @@ import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountReference;
 import art.arcane.animus.core.mount.MountRelations;
+import art.arcane.animus.core.navigation.BodyMobility;
+import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.virtual.DragonBody;
 import art.arcane.animus.core.virtual.Vec3;
@@ -245,6 +247,7 @@ final class MountRuntime implements AutoCloseable {
         @Override public double hullHeight() {
             return value.seat.riderClearance(PersistedNpcService.moveHeight(value), host.playerSeat().vehicleAttachmentY(), host.playerHeight());
         }
+        @Override public MovementProfile body() { return BodyMobility.forBody(value.spec.type(), hullWidth(), hullHeight()); }
         @Override public void claim() { host.cancelRouteRead(value); value.waypoints = null; host.stopRoute(value, "cancelled: a player is riding"); }
         @Override public void commit(Vec3 position, float nextYaw) {
             WorldPosition before = value.state.snapshot().position();

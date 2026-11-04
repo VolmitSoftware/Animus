@@ -1,80 +1,85 @@
 package art.arcane.animus.core.control;
 
+import art.arcane.animus.core.navigation.BodyTerrain;
+import art.arcane.animus.core.navigation.Maneuver;
 import art.arcane.animus.core.navigation.MotionValidator;
-import art.arcane.animus.core.navigation.VoxelSnapshot;
+import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Resolves one proposed ground step against the shared movement check: level, then a one-block step up,
- * then a descent of at most three blocks. Client coordinates are never an input and nothing is guessed.
+ * Resolves one proposed ride step against real surface heights. A walking body settles on the highest surface it can
+ * climb to, up to its jump height, or drops at most three blocks; a swimming body stays at the water surface; a flying
+ * body moves freely through clear air and settles on what it flies into. Client coordinates are never an input.
  */
 public final class RideSteering {
     @FunctionalInterface public interface Probe {
-        MotionValidator.Result check(Vec3 from, Vec3 to, boolean requireSupport);
+        /** Moves from {@code from} towards the horizontal position of {@code to}; flying bodies also use its height. */
+        Result check(Vec3 from, Vec3 to);
     }
     public enum Outcome { MOVED, BLOCKED, TERRAIN_UNAVAILABLE }
-    public record Result(Outcome outcome, Vec3 position, String detail) {}
+    /** {@code grounded} is false while the body flies or swims. */
+    public record Result(Outcome outcome, Vec3 position, boolean grounded, String detail) {}
     public static final int MAX_DROP = 3;
-    /** Level, the two step-up segments, the horizontal leg of a drop, then a descent and landing per block. */
-    public static final int MAX_CHECKS = 4 + MAX_DROP * 2;
     public static final double DISMOUNT_CLEARANCE = 0.5;
+    private static final double LANDING_DROP = 0.25;
     private RideSteering() {}
 
-    /**
-     * Swept clearance comes from the shared {@link MotionValidator}. Support is met when any full block lies under the
-     * hull, as with a vanilla entity: demanding every cell would leave a wide body unable to cross a ledge in either direction.
-     */
-    public static Probe probe(double width, double height, int maximumCells, MotionValidator.Sampler terrain) {
-        Objects.requireNonNull(terrain);
-        return (from, to, requireSupport) -> {
-            MotionValidator.Result clearance = MotionValidator.check(from, to, width, height, MotionValidator.Medium.GROUND, false, maximumCells, terrain);
-            if (!clearance.clear() || !requireSupport) return clearance;
-            if (Math.abs(from.y() - to.y()) > 0.000001 || Math.abs(to.y() - Math.rint(to.y())) > 0.000001)
-                return new MotionValidator.Result(MotionValidator.Status.UNSUPPORTED_GEOMETRY, clearance.sampledCells(), "Ground movement requires integer feet height");
-            double half = width / 2;
-            int below = (int) Math.rint(to.y()) - 1, sampled = clearance.sampledCells();
-            for (int x = cell(to.x() - half); x <= cell(to.x() + half - 0.000002); x++) for (int z = cell(to.z() - half); z <= cell(to.z() + half - 0.000002); z++) {
-                VoxelSnapshot.Cell floor = terrain.sample(x, below, z); sampled++;
-                if (floor == VoxelSnapshot.Cell.UNAVAILABLE) return new MotionValidator.Result(MotionValidator.Status.UNAVAILABLE_TERRAIN, sampled, "Support unavailable");
-                if (floor == VoxelSnapshot.Cell.SOLID) return new MotionValidator.Result(MotionValidator.Status.CLEAR, sampled, "clear");
-            }
-            return new MotionValidator.Result(MotionValidator.Status.BLOCKED, sampled, "No ground under the body");
-        };
+    public static Probe probe(MovementProfile body, int maximumCells, MotionValidator.Sampler terrain) {
+        Objects.requireNonNull(body); Objects.requireNonNull(terrain);
+        BodyTerrain ground = new BodyTerrain(body.width(), body.height(), body.supports(MovementProfile.Mode.SWIM), maximumCells, terrain);
+        Steering steering = new Steering(body, ground, maximumCells, terrain);
+        return body.supports(MovementProfile.Mode.FLY) ? steering::fly : steering::walk;
     }
-    private static int cell(double value) { return (int) Math.floor(value + 0.000001); }
 
-    public static Result step(Vec3 from, Vec3 to, Probe probe) {
-        Objects.requireNonNull(from); Objects.requireNonNull(to); Objects.requireNonNull(probe);
-        MotionValidator.Result level = probe.check(from, to, true);
-        if (level.clear()) return new Result(Outcome.MOVED, to, level.detail());
-        if (level.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return unavailable(from, level);
-
-        Vec3 above = new Vec3(from.x(), from.y() + 1, from.z()), landing = new Vec3(to.x(), to.y() + 1, to.z());
-        MotionValidator.Result rise = probe.check(from, above, false);
-        if (rise.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return unavailable(from, rise);
-        if (rise.clear()) {
-            MotionValidator.Result top = probe.check(above, landing, true);
-            if (top.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return unavailable(from, top);
-            if (top.clear()) return new Result(Outcome.MOVED, landing, "stepped up");
+    private record Steering(MovementProfile body, BodyTerrain ground, int cells, MotionValidator.Sampler terrain) {
+        Result walk(Vec3 from, Vec3 to) {
+            double climb = Math.max(body.stepHeight(), body.jumpHeight());
+            BodyTerrain.Rest rest = ground.rest(to.x(), to.z(), from.y(), climb, MAX_DROP, false);
+            // A body already touching a hazard may still move; the clearance check refuses any hazard it was not touching.
+            if (rest.kind() == BodyTerrain.Kind.HAZARD && ground.rest(from.x(), from.z(), from.y(), 0, 0, false).kind() == BodyTerrain.Kind.HAZARD)
+                rest = ground.rest(to.x(), to.z(), from.y(), climb, MAX_DROP, true);
+            if (rest.kind() == BodyTerrain.Kind.UNAVAILABLE) return new Result(Outcome.TERRAIN_UNAVAILABLE, from, true, rest.detail());
+            if (!rest.usable()) return new Result(Outcome.BLOCKED, from, true, rest.detail());
+            boolean swimming = rest.kind() == BodyTerrain.Kind.SWIM;
+            if (!swimming && !body.supports(MovementProfile.Mode.WALK)) return new Result(Outcome.BLOCKED, from, false, "This body cannot leave the water");
+            Vec3 target = new Vec3(to.x(), rest.feet(), to.z());
+            Result legs = follow(from, Maneuver.legs(from, target, Math.max(from.y(), target.y()), swimming, swimming, body), !swimming);
+            return legs != null ? legs : new Result(Outcome.MOVED, target, !swimming, swimming ? "swimming" : "ground");
         }
-
-        MotionValidator.Result across = probe.check(from, to, false);
-        if (across.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return unavailable(from, across);
-        if (!across.clear()) return new Result(Outcome.BLOCKED, from, level.detail());
-        Vec3 at = to;
-        for (int drop = 1; drop <= MAX_DROP; drop++) {
-            Vec3 below = new Vec3(at.x(), at.y() - 1, at.z());
-            MotionValidator.Result fall = probe.check(at, below, false);
-            if (fall.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return unavailable(from, fall);
-            if (!fall.clear()) break;
-            MotionValidator.Result ground = probe.check(below, below, true);
-            if (ground.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return unavailable(from, ground);
-            if (ground.clear()) return new Result(Outcome.MOVED, below, "stepped down");
-            at = below;
+        Result fly(Vec3 from, Vec3 to) {
+            MotionValidator.Result air = MotionValidator.check(from, to, body.width(), body.height(), MotionValidator.Medium.AIR, false, cells, terrain);
+            if (air.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return new Result(Outcome.TERRAIN_UNAVAILABLE, from, false, air.detail());
+            if (air.clear()) return new Result(Outcome.MOVED, to, supported(to), "flying");
+            // Flying into a surface settles on it, or steps over a low edge.
+            BodyTerrain.Rest rest = ground.rest(to.x(), to.z(), to.y(), body.stepHeight(), LANDING_DROP, false);
+            if (rest.kind() == BodyTerrain.Kind.UNAVAILABLE) return new Result(Outcome.TERRAIN_UNAVAILABLE, from, false, rest.detail());
+            if (rest.kind() != BodyTerrain.Kind.GROUND) return new Result(Outcome.BLOCKED, from, supported(from), air.detail());
+            Vec3 target = new Vec3(to.x(), rest.feet(), to.z());
+            Result legs = follow(from, Maneuver.legs(from, target, Math.max(from.y(), target.y()), false, false, body), true);
+            return legs != null ? legs : new Result(Outcome.MOVED, target, true, "landed");
         }
-        return new Result(Outcome.BLOCKED, from, level.detail());
+        /** @return null when every leg is clear, otherwise the refusal */
+        private Result follow(Vec3 from, List<Maneuver.Leg> legs, boolean grounded) {
+            Vec3 previous = from;
+            for (Maneuver.Leg leg : legs) {
+                MotionValidator.Result moved = MotionValidator.check(previous, leg.target(), body.width(), body.height(), leg.medium(), leg.support(), cells, terrain);
+                if (moved.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return new Result(Outcome.TERRAIN_UNAVAILABLE, from, grounded, moved.detail());
+                if (!moved.clear()) return new Result(Outcome.BLOCKED, from, grounded, moved.detail());
+                if (leg.landing()) {
+                    MotionValidator.Result settled = MotionValidator.check(leg.target(), leg.target(), body.width(), body.height(), leg.landingMedium(),
+                            leg.landingMedium() == MotionValidator.Medium.GROUND, cells, terrain);
+                    if (settled.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) return new Result(Outcome.TERRAIN_UNAVAILABLE, from, grounded, settled.detail());
+                    if (!settled.clear()) return new Result(Outcome.BLOCKED, from, grounded, settled.detail());
+                }
+                previous = leg.target();
+            }
+            return null;
+        }
+        private boolean supported(Vec3 at) {
+            return MotionValidator.check(at, at, body.width(), body.height(), MotionValidator.Medium.AMPHIBIOUS_AIR, true, cells, terrain).clear();
+        }
     }
 
     /** Places to stand after dismounting, nearest the rider's sides first. Each still needs a live ground check. */
@@ -87,8 +92,5 @@ public final class RideSteering {
                 new Vec3(feet.x() - leftX * reach, feet.y(), feet.z() - leftZ * reach),
                 new Vec3(feet.x() - forwardX * reach, feet.y(), feet.z() - forwardZ * reach),
                 new Vec3(feet.x() + forwardX * reach, feet.y(), feet.z() + forwardZ * reach));
-    }
-    private static Result unavailable(Vec3 from, MotionValidator.Result cause) {
-        return new Result(Outcome.TERRAIN_UNAVAILABLE, from, cause.detail());
     }
 }
