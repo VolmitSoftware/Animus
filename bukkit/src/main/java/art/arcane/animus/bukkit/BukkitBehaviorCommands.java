@@ -133,7 +133,7 @@ final class BukkitBehaviorCommands implements AutoCloseable {
             try{
                 if(closed.get())return;
                 BehaviorCatalog current=catalog;
-                if(current==null){current=new BehaviorCatalog(dataDirectory,settings.catalog(),requirement->new BehaviorCatalog.Capability(extensions.capabilityAvailable(requirement.key(),requirement.kind()),"module capability not ready or unavailable"));catalog=current;}
+                if(current==null){current=new BehaviorCatalog(dataDirectory,settings.catalog(),extensions.catalogResolver());catalog=current;}
                 List<String> messages;
                 if(validate){
                     var checked=current.validate(generation);messages=validationLines(checked);

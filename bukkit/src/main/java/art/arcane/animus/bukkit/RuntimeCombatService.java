@@ -21,6 +21,7 @@ final class RuntimeCombatService implements AutoCloseable {
     private final BukkitCombatBridge bridge;
     private final Map<UUID, Registration> registrations = new HashMap<>();
     private final Map<UUID, BukkitCombatBridge.MobLease> leases = new HashMap<>();
+    private final Set<UUID> disabled = new HashSet<>();
 
     RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService living, String version, boolean folia) {
         this.plugin = plugin; this.runtime = runtime; this.living = living;
@@ -75,17 +76,43 @@ final class RuntimeCombatService implements AutoCloseable {
         return "Mob control started npc=" + args[1] + " mob=" + targetId + " lifetime-ticks=" + MobProfile.DEFAULT.lifetimeTicks();
     }
 
+    /** Clears a behavior's runtime disable and registers the NPC. Definition policy and protection still decide. */
+    String enable(String id) {
+        if (!bridge.available()) throw new IllegalStateException(status());
+        if (worldGuardPresent()) throw new IllegalStateException(status());
+        prune();
+        living.combat(id).ifPresent(binding -> disabled.remove(binding.state().snapshot().npcId()));
+        registration(id);
+        return "Combat enabled for " + id;
+    }
+
+    /** Runtime-only: releases every lease and refuses this NPC until enabled again or the runtime restarts. */
+    String disable(String id) {
+        if (!bridge.available()) throw new IllegalStateException(status());
+        PersistedNpcService.CombatBinding binding = living.combat(id).orElseThrow(() -> new IllegalStateException("NPC must have an active runtime before combat"));
+        UUID uuid = binding.state().snapshot().npcId();
+        disabled.add(uuid);
+        for (Map.Entry<UUID, BukkitCombatBridge.MobLease> entry : List.copyOf(leases.entrySet())) if (entry.getValue().npcId().equals(uuid)) {
+            BukkitCombatBridge.MobLease previous = entry.getValue();
+            previous.close(); leases.remove(entry.getKey(), previous);
+        }
+        Registration registration = registrations.remove(uuid);
+        if (registration != null) registration.combatant().close();
+        return "Combat disabled for " + id;
+    }
+
     private Registration registration(String id) {
         runtime.npcs().find(id).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + id));
         CombatPolicy policy = new CombatPolicy(id);
         if (!policy.allowed()) throw new IllegalStateException("NPC combat is disabled or its migration review has not been accepted");
         var binding = living.combat(id).orElseThrow(() -> new IllegalStateException("NPC must have an active runtime before combat"));
         UUID uuid = binding.state().snapshot().npcId();
+        if (disabled.contains(uuid)) throw new IllegalStateException("NPC combat is disabled until a behavior enables it again");
         Registration previous = registrations.get(uuid);
         if (previous != null && previous.state() == binding.state() && previous.combatant().active()) return previous;
         if (previous != null) previous.combatant().close();
         Registration next = new Registration(id, binding.state(), bridge.register(binding.state(),
-                () -> binding.current().getAsBoolean() && policy.allowed() && !worldGuardPresent(), binding.changed()));
+                () -> binding.current().getAsBoolean() && policy.allowed() && !disabled.contains(uuid) && !worldGuardPresent(), binding.changed()));
         registrations.put(uuid, next);
         return next;
     }
@@ -124,6 +151,6 @@ final class RuntimeCombatService implements AutoCloseable {
         leases.values().removeIf(lease -> !lease.active());
     }
     @Override public void close() {
-        bridge.close(); registrations.clear(); leases.clear();
+        bridge.close(); registrations.clear(); leases.clear(); disabled.clear();
     }
 }
