@@ -10,6 +10,7 @@ public final class ControlLoop {
     public record Proposal(State state, Vec3 position, String reason) {}
     public static final long STEP_NANOS = 50_000_000L, LIFETIME_NANOS = 30_000_000_000L, LIVENESS_NANOS = 2_000_000_000L;
     public static final double STEP_BLOCKS = 0.1, LEASH_BLOCKS = 8;
+    public static final String CONNECTION_STALE = "connection-stale";
     /** A flat lease refuses any height change; otherwise the leash measures horizontal travel only. */
     public record Limits(double stepBlocks, double leashBlocks, long lifetimeNanos, boolean flat) {
         public static final Limits PREVIEW = new Limits(STEP_BLOCKS, LEASH_BLOCKS, LIFETIME_NANOS, true);
@@ -37,7 +38,7 @@ public final class ControlLoop {
         if (closed) return new Proposal(State.STOPPED, authoritativePosition, reason);
         if (!input.active()) return stop(authoritativePosition, input.reason());
         if (now - started >= limits.lifetimeNanos()) return stop(authoritativePosition, "expired");
-        if (now - input.lastActivityNanos() >= LIVENESS_NANOS) return stop(authoritativePosition, "connection-stale");
+        if (now - input.lastActivityNanos() >= LIVENESS_NANOS) return stop(authoritativePosition, CONNECTION_STALE);
         if (input.latest() != null && input.latest().input().shift()) return stop(authoritativePosition, "shift");
         if (now - lastStep < STEP_NANOS) return new Proposal(State.THROTTLED, authoritativePosition, "fixed-step");
         lastStep = now; ticks++;
