@@ -175,6 +175,7 @@ public final class BehaviorCatalog {
                     catch(RuntimeException | AssertionError | LinkageError failure){granted=new Capability(false,"registry-check-failed");}
                     if(!granted.available()){available=false;owner.add(error("behavior-capability-unavailable","$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+granted.reason()));}
                 }
+                BehaviorCompiler.warnings(owner.accepted.program()).forEach(owner::add);
                 resolutions.put(id,new Resolution(id,available,Optional.of(owner.accepted),owner.diagnostics()));
             }
             BehaviorSourceReader.Scan checked=reader.scan(false);

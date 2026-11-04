@@ -11,8 +11,8 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 def report():
     npc = 'behavior-qa-123-9'
-    return {'schemaVersion': 1, 'runner': 'ServerMultiplexor', 'scope': m.SCOPE, 'status': 'pass',
-            'checks': [{'id': name, 'status': 'passed'} for name in m.CHECKS],
+    return {'schemaVersion': 1, 'runner': 'ServerMultiplexor', 'scope': m.SCOPE, 'status': 'pass', 'sources': {'qa/multiplexor/behaviors.py': m.FROZEN_WRAPPER},
+            'checks': [{'id': name, 'status': live_status() if name in m.DIAGNOSTIC_STATUS_GATES else 'passed'} for name in m.CHECKS],
             'phases': [{'phase': phase} for phase in m.PHASES], 'stops': [{'phase': phase, 'serverPortClosed': True} for phase in m.PHASES],
             'serverPortClosed': True, 'outstandingGates': [], 'remainingDefinitions': [], 'remainingCheckpoints': [], 'remainingBehaviors': [], 'logFailures': [],
             'plannedCleanupAuthorizedByScenario': True, 'offlineCleanup': {'planned': True},
@@ -25,6 +25,14 @@ def status(cold=False):
              'catalogWorkPending': False, 'fileFailure': None, 'behaviorThreads': 0}
     value.update(runtime=None if cold else 'Status[admittedOperations=0, queuedDeliveries=0, activeDeliveries=0, callsInFlight=0, retiredCalls=0, activeExecutions=0, tick=99]',
                  modules=None if cold else 'Status[handlersOutstanding=0]', files=None if cold else 'Status[quiescent=true]')
+    return value
+
+
+def live_status():
+    value = status()
+    value.update(disabled=False, serviceClosed=False, coordinatorStopped=False, moduleStopped=False, behaviorThreads=1,
+                 runtime='Status[tick=99, admittedOperations=0, queuedOperations=0, queuedDeliveries=0, activeDeliveries=0, callsInFlight=0, retiredCalls=0, activeExecutions=0]',
+                 files='Status[admitted=0, quiescent=true]')
     return value
 
 

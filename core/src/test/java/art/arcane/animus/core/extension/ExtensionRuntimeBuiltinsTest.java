@@ -12,7 +12,7 @@ import art.arcane.animus.api.Platform;
 import art.arcane.animus.core.behavior.BehaviorInvoker;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
-import art.arcane.animus.core.behavior.builtin.InMemoryQuestStateStore;
+import art.arcane.animus.core.behavior.builtin.MemoryBehaviorState;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.config.ModuleSettings;
@@ -53,6 +53,8 @@ class ExtensionRuntimeBuiltinsTest {
         @Override public void runCommand(CommandSource source, Optional<UUID> player, String command) { throw new AssertionError(); }
         @Override public String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed) { throw new AssertionError(); }
         @Override public void followRoute(NpcHandle npc, String route) { throw new AssertionError(); }
+        @Override public CompletionStage<Void> routeFinished(NpcHandle npc) { throw new AssertionError(); }
+        @Override public String navigationStatus(NpcHandle npc) { throw new AssertionError(); }
         @Override public boolean stopNavigation(NpcHandle npc) { throw new AssertionError(); }
         @Override public void look(NpcHandle npc, Vec3 target) { throw new AssertionError(); }
         @Override public void lookAtPlayer(NpcHandle npc, UUID player) { throw new AssertionError(); }
@@ -66,8 +68,8 @@ class ExtensionRuntimeBuiltinsTest {
 
     private ExtensionRuntime start(boolean modulesEnabled, List<String> commandBehaviors) throws Exception {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
-        BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), commandBehaviors, List.of());
-        BuiltinCapabilities builtins = new BuiltinCapabilities(UNAVAILABLE, new InMemoryQuestStateStore(16), choice -> {}, settings, line -> {});
+        BuiltinActionSettings settings = new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), commandBehaviors, List.of(), defaults.navigationWaits());
+        BuiltinCapabilities builtins = new BuiltinCapabilities(UNAVAILABLE, new MemoryBehaviorState(), choice -> {}, settings, line -> {});
         runtime = new ExtensionRuntime(root.toRealPath().resolve("modules"), Platform.FOLIA, DEFINITIONS, new ModuleSettings(modulesEnabled, 8, 2000, 250), line -> {}, state -> {}, builtins);
         runtime.start();
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);

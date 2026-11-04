@@ -45,8 +45,9 @@ class BuiltinActionSettingsTest {
                 choiceLifetimeSeconds = 120
                 commandBehaviors = ["town:gate/open"]
                 commandNamespaces = ["quests"]
+                navigationWaits = 6
                 """);
-        assertEquals(new BuiltinActionSettings(8, 2, 16, 32, 120, List.of("town:gate/open"), List.of("quests")), settings);
+        assertEquals(new BuiltinActionSettings(8, 2, 16, 32, 120, List.of("town:gate/open"), List.of("quests"), 6), settings);
         assertTrue(settings.commandAllowed("town:gate/open"));
         assertFalse(settings.commandAllowed("town:gate/close"));
         assertTrue(settings.commandAllowed("quests:anything/nested"));
@@ -57,7 +58,7 @@ class BuiltinActionSettingsTest {
     @ParameterizedTest @ValueSource(strings = {
             "actionsPerTick = 0", "actionsPerTick = 257", "actionsPerNpcPerTick = 0", "actionsPerNpcPerTick = 65",
             "queuedActions = 0", "queuedActions = 1025", "pendingChoices = 0", "pendingChoices = 4097",
-            "choiceLifetimeSeconds = 0", "choiceLifetimeSeconds = 601",
+            "choiceLifetimeSeconds = 0", "choiceLifetimeSeconds = 601", "navigationWaits = 0", "navigationWaits = 65",
             "commandBehaviors = [\"*\"]", "commandBehaviors = [\"NotAnId\"]", "commandBehaviors = [1]", "commandBehaviors = \"town:gate\"",
             "commandNamespaces = [\"*\"]", "commandNamespaces = [\"Town\"]", "commandNamespaces = [\"town:gate\"]"})
     void invalidSettingsFailLoadWithoutChangingTheFile(String line) throws Exception {
@@ -68,11 +69,11 @@ class BuiltinActionSettingsTest {
     }
 
     @Test void perNpcBudgetCannotExceedTheGlobalBudget() {
-        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(2, 3, 8, 8, 60, List.of(), List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(2, 3, 8, 8, 60, List.of(), List.of(), 8));
     }
 
     @Test void allowListSizeIsBounded() {
         List<String> tooMany = java.util.stream.IntStream.range(0, 257).mapToObj(index -> "town:gate" + index).toList();
-        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(32, 4, 256, 256, 60, tooMany, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> new BuiltinActionSettings(32, 4, 256, 256, 60, tooMany, List.of(), 8));
     }
 }

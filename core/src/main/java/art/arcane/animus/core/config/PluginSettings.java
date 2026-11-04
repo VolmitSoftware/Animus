@@ -166,7 +166,8 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 integer(actions, "pendingChoices", defaults.pendingChoices()),
                 integer(actions, "choiceLifetimeSeconds", defaults.choiceLifetimeSeconds()),
                 strings(actions, "commandBehaviors", defaults.commandBehaviors()),
-                strings(actions, "commandNamespaces", defaults.commandNamespaces()));
+                strings(actions, "commandNamespaces", defaults.commandNamespaces()),
+                integer(actions, "navigationWaits", defaults.navigationWaits()));
     }
 
     private static List<String> strings(JsonObject document, String key, List<String> fallback) {

@@ -55,7 +55,7 @@ class BuiltinCapabilitiesTest {
 
     private void start(Platform runningOn, long deadlineMillis, BuiltinActionSettings settings) {
         host = new ModuleHost(runningOn, DEFINITIONS, 64, Duration.ofMillis(deadlineMillis));
-        builtins = new BuiltinCapabilities(platform, new InMemoryQuestStateStore(64), dialogue::add, settings, line -> { synchronized (log) { log.add(line); } });
+        builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), dialogue::add, settings, line -> { synchronized (log) { log.add(line); } });
         Outcome<ModuleHost.ModuleStatus> installed = host.installBuiltin(builtins, builtins);
         assertEquals(Outcome.Status.OK, installed.status(), installed.diagnostics().toString());
     }
@@ -64,7 +64,7 @@ class BuiltinCapabilitiesTest {
 
     private static BuiltinActionSettings grants(List<String> behaviors, List<String> namespaces) {
         BuiltinActionSettings defaults = BuiltinActionSettings.DEFAULT;
-        return new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), behaviors, namespaces);
+        return new BuiltinActionSettings(defaults.actionsPerTick(), defaults.actionsPerNpcPerTick(), defaults.queuedActions(), defaults.pendingChoices(), defaults.choiceLifetimeSeconds(), behaviors, namespaces, defaults.navigationWaits());
     }
     private static Key key(String name) { return new Key("animus", name); }
 
@@ -385,7 +385,7 @@ class BuiltinCapabilitiesTest {
 
     @Test void failingChoiceListenerIsLoggedAndStillAcceptsTheClick() throws Exception {
         host = new ModuleHost(Platform.PAPER, DEFINITIONS, 64, Duration.ofSeconds(5));
-        builtins = new BuiltinCapabilities(platform, new InMemoryQuestStateStore(64), choice -> { throw new IllegalStateException("listener"); }, BuiltinActionSettings.DEFAULT, line -> { synchronized (log) { log.add(line); } });
+        builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), choice -> { throw new IllegalStateException("listener"); }, BuiltinActionSettings.DEFAULT, line -> { synchronized (log) { log.add(line); } });
         assertEquals(Outcome.Status.OK, host.installBuiltin(builtins, builtins).status());
         action("choices", "{\"id\":\"greeting\",\"prompt\":\"Well?\",\"options\":[{\"id\":\"yes\",\"text\":\"Yes\"}]}");
         assertEquals(PendingChoices.Selection.ACCEPTED, selectOnOwner(platform.presentedToken, "yes"));
@@ -394,7 +394,7 @@ class BuiltinCapabilitiesTest {
 
     @Test void closingBeforeEnableNeverStartsOwnerTicks() {
         host = new ModuleHost(Platform.PAPER, DEFINITIONS, 64, Duration.ofSeconds(5));
-        builtins = new BuiltinCapabilities(platform, new InMemoryQuestStateStore(64), dialogue::add, BuiltinActionSettings.DEFAULT, line -> {});
+        builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), dialogue::add, BuiltinActionSettings.DEFAULT, line -> {});
         builtins.close();
         assertEquals(Outcome.Status.OK, host.installBuiltin(builtins, builtins).status());
         assertFalse(platform.tickBound());

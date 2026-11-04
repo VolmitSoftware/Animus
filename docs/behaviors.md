@@ -135,10 +135,10 @@ This example requires a module providing `example:wave` and `example:bow`. Every
 | `death` | None. | Authoritative NPC health reaches zero. No despawn trigger follows a death. |
 | `waypoint` | Optional `waypoint`: -1 to 4,095. | The NPC arrives at a route point; -1 is a manually requested destination. Without the field, any arrival fires. |
 | `timer` | `intervalTicks`: 1 to 72,000. | The interval passes while the NPC is active. |
-| `dialogue_choice` | `dialogue`. Optional `choice`. | Something publishes `TriggerEvent.DialogueChoice` for this NPC. |
+| `dialogue_choice` | `dialogue`. Optional `choice`. | A viewer's click on that prompt from this NPC passes validation. |
 | `module` | `key`: a `namespace:name` trigger. | The owning module publishes that trigger. |
 
-Interaction, proximity and dialogue executions carry the viewer's UUID, and module executions carry the UUID the module supplied. The other events carry no player. Triggers pass no other event data to the routine. Trigger-started runs use the same scoped variables as manual runs, and `player` and `relationship` variables resolve from the triggering player. Every routine a behavior's triggers start shares that behavior's variables. A trigger with no player cannot start a behavior declaring such a variable: that start is counted under `START_FAILED`, and `/animus behaviors triggers` shows the most recent refusal with its exact field.
+Interaction, proximity and dialogue executions carry the viewer's UUID, and module executions carry the UUID the module supplied. The other events carry no player. Triggers pass no other event data to the routine. Trigger-started runs use the same scoped variables as manual runs, and `player` and `relationship` variables resolve from the triggering player. Every routine a behavior's triggers start shares that behavior's variables. A trigger with no player cannot start a behavior declaring such a variable: that start is counted under `START_FAILED`, and `/animus behaviors triggers` shows the most recent refusal with its exact field. Spawn, despawn, damage, death, waypoint and timer triggers never have a player, so `/animus behaviors validate` warns with `behavior-trigger-needs-player` on each such trigger in that behavior. The behavior is still accepted, since its other triggers may work. A `module` trigger depends on what its module supplies and is not flagged.
 
 Only active NPCs fire. Dormant NPCs, which includes applied imports until they are spawned, hold no bindings and fire nothing. Preview presentations never fire triggers. Editing an active NPC's definition is neither a despawn nor a spawn. A player disconnecting fires no `leave`. Deleting an NPC fires no `despawn`, because no definition remains to run against. Stopping the server fires nothing.
 
@@ -179,12 +179,12 @@ proximityTrackedPerViewer = 64
 
 An event that finds its cooldown running is suppressed. An event that finds a full queue is dropped. A start waiting on a concurrency limit stays queued until `queueLifetimeTicks`, then is dropped. All of these are counted and never queue without limit. A timer below `minimumTimerTicks`, a radius above `maximumProximityRadius`, and bindings or timers beyond their maximums stay unbound and are listed as diagnostics. `concurrentTotal` also leaves engine capacity for manual runs when it is below `behaviors.engine.executions`.
 
-Dialogue is a contract for now: nothing in Animus publishes `TriggerEvent.DialogueChoice` yet.
+A valid click on [`animus:choices`](#dialogue-choices) publishes the dialogue event. `dialogue` matches the prompt's `id` and `choice` matches the option's `id`.
 
 
 ## Built-in capabilities
 
-Behaviors can use the `animus:` capabilities below as soon as the plugin starts, with no Java module installed. They share the registry and schema checks used for modules, and `/animus modules capabilities` lists them with their availability. Unknown argument fields are rejected. Coordinates are absolute and use the NPC's current world.
+Behaviors can use the `animus:` capabilities below as soon as the plugin starts, with no Java module installed. They share the registry and schema checks used for modules. `/animus modules capabilities` lists them after any module capabilities, and it and `/animus modules status` count the two separately. Unknown argument fields are rejected. Coordinates are absolute and use the NPC's current world.
 
 This greeter faces the player who started it, asks a question, and records that they met:
 
@@ -234,7 +234,7 @@ This greeter faces the player who started it, asks a question, and records that 
 | `animus:say` | `text` (up to 1,024 characters), optional `audience`, `radius` | Sends `Name: text`. |
 | `animus:choices` | `id`, `prompt`, `options` (1-8 of `id` and `text`), optional `lifetimeSeconds` (1-600) | Shows clickable options to the triggering player. Completes when shown and does not wait for the answer. |
 | `animus:command` | `command` (no leading slash), optional `as`: `console` (default) or `player` | Runs the command. Requires the allow-list below. |
-| `animus:navigate` | Either `x`, `y`, `z` with optional `mode` (`walk`, `swim`, `fly`) and `speed` (1-5), or `route` | Starts a route or follows `behaviors/routes/<route>.json`. Completes when requested and does not wait for arrival. The limits in [the runtime guide](runtime.md) apply. |
+| `animus:navigate` | Either `x`, `y`, `z` with optional `mode` (`walk`, `swim`, `fly`) and `speed` (1-5), or `route`. Optional `wait`, and with it `timeoutTicks` (20-12,000, default 1,200). | Starts a route or follows `behaviors/routes/<route>.json`. Completes when requested unless `wait` is true; see [walking a patrol](#walking-a-patrol). The limits in [the runtime guide](runtime.md) apply. |
 | `animus:stop-navigation` | None | Stops any route. Reports `stopped`. |
 | `animus:look` | Either `x`, `y`, `z`, or `"target": "player"` | Turns the NPC. The target must be within 64 blocks in the same world. |
 | `animus:set-appearance` | Any of `name` (up to 16 characters) and `skin` (a skin file hash), or `"reset": true` | Shows a new name or skin on a player body. Viewers receive a fresh body. |
@@ -250,7 +250,40 @@ This greeter faces the player who started it, asks a question, and records that 
 
 Appearance and equipment changes last until restart or until the NPC's definition changes, and they do not edit the definition. Changing the definition during a run cancels that run, which is why these actions stay out of the file.
 
-Flags and quest stages are currently held in memory, limited to 4,096 values, and lost on restart. They are not yet durable.
+### Flags and quests
+
+Flags and quest stages are durable behavior state. `scope` defaults to `player`, so a quest follows the player from NPC to NPC. Use `relationship` for a value between one player and one NPC, `npc` for one NPC, and `global` for the whole pack.
+
+They belong to the behavior's namespace rather than to one behavior: `town:greeter` and `town:quest/gatekeeper` see the same `main` quest, and `harbor:greeter` sees its own. A `name` uses lowercase letters, digits, `_` or `-`, up to 64 characters. Flags and quests have separate names, and calling one directly with `/animus modules action` is refused with `no-behavior-namespace`.
+
+`[behaviors.state]` budgets apply, and a write over a budget fails its run with the same diagnostics as a variable. One namespace holds at most 128 flags and 128 quests per subject. Values are stored as `animus:flags/<namespace>` and `animus:quests/<namespace>`, which behaviors cannot use as their own IDs. To remove them, use `/animus behaviors state purge`, for example `state purge behavior animus:quests/town`; the `npc`, `player`, `relationship` and `all` forms reach them too.
+
+### Walking a patrol
+
+With `"wait": true`, `animus:navigate` completes on arrival, so steps run one after another:
+
+```json
+{"type": "repeat", "count": 8, "body": {"type": "sequence", "steps": [
+  {"type": "action", "capability": "animus:navigate", "arguments": {"x": 10, "y": 64, "z": 4, "wait": true}},
+  {"type": "wait", "ticks": 40},
+  {"type": "action", "capability": "animus:navigate", "arguments": {"x": 16, "y": 64, "z": 4, "wait": true}},
+  {"type": "wait", "ticks": 40}
+]}}
+```
+
+The run fails with a diagnostic if the route ends any other way:
+
+| Code | Cause |
+| --- | --- |
+| `navigation-blocked`, `navigation-failed` | Something blocks the path, or no path exists. |
+| `navigation-unavailable` | Terrain is not loaded. A waiting route stops rather than retrying, and the same applies to a failed route read. |
+| `navigation-cancelled` | Another route replaced this one, the route was stopped, or the NPC was despawned or replaced. |
+| `navigation-timeout` | `timeoutTicks` passed; the route stops and the message gives its last status. Ticks are server ticks. |
+| `navigation-invalid` | A reusable route point is out of range, or the route has `loop` set, which never finishes. |
+
+Cancelling the run stops the route. With a reusable `route`, it completes at the last point.
+
+A waiting action holds one of `behaviors.engine.inFlight` and one of `modules.maximumInvocations` while the NPC walks, and other actions wait when `inFlight` is used up. `behaviors.actions.navigationWaits` caps waiting actions at 8 by default so walkers cannot starve everything else; past that, the action fails as `navigation-wait-capacity`. Raise it along with `inFlight` for more walkers.
 
 ### Unavailable and invalid
 
@@ -265,7 +298,15 @@ General NPC runtime is disabled on Folia. The capabilities still appear there, b
 
 Each prompt has a random single-use token. A click runs `/animus choice <token> <option>`, which any player may send and which does nothing without a matching prompt. A click is rejected unless the token is live, it comes from the player who was asked, the option exists, the NPC is still spawned and the player is within 64 blocks. Every rejection shows the same message and publishes nothing. A rejected click from the wrong player, on an unknown option or from too far away leaves the prompt open for its rightful answer. A new prompt from the same NPC to the same player replaces the earlier one.
 
-An accepted click fires `VirtualNpcDialogueChoiceEvent`. Behaviors do not yet start from that answer on their own.
+An accepted click starts any matching [`dialogue_choice` trigger](#automatic-triggers) with the clicking player, then fires `VirtualNpcDialogueChoiceEvent`. An NPC needs the behavior in its `behaviors` list, and the trigger's cooldown and queue limits apply. This pairs a question with its answers:
+
+```json
+"routines": {
+  "main": {"type": "action", "capability": "animus:choices", "arguments": {"id": "greeting", "prompt": "Need directions?", "options": [{"id": "yes", "text": "Yes"}, {"id": "no", "text": "No"}]}},
+  "directions": {"type": "action", "capability": "animus:say", "arguments": {"text": "The market is north."}}
+},
+"triggers": [{"id": "asked", "event": "dialogue_choice", "dialogue": "greeting", "choice": "yes", "routine": "directions"}]
+```
 
 ### Commands
 
@@ -280,13 +321,14 @@ pendingChoices = 256
 choiceLifetimeSeconds = 60
 commandBehaviors = ["town:gate/open"]
 commandNamespaces = []
+navigationWaits = 8
 ```
 
-Accepted ranges are 1-256 actions per tick, 1-64 per NPC per tick and no more than the tick budget, 1-1,024 queued actions, 1-4,096 pending choices and a lifetime of 1-600 seconds. Each list holds at most 256 entries. The listed values other than the example allow-list are the defaults. Restart after changing them.
+Accepted ranges are 1-256 actions per tick, 1-64 per NPC per tick and no more than the tick budget, 1-1,024 queued actions, 1-4,096 pending choices and a lifetime of 1-600 seconds. Each list holds at most 256 entries, and `navigationWaits` accepts 1-64. The listed values other than the example allow-list are the defaults. Restart after changing them.
 
 ### Limits and previews
 
-World and player work waits in a bounded queue and runs on the server's owner thread. Past the per-tick or per-NPC budget, an action waits for a later tick. A full queue fails the action as `BUSY`, which ends that run. Waiting is included in the module invocation deadline (`modules.invocationTimeoutMillis`). An action that misses the deadline fails its run and is dropped without running, and unlike a Java module the built-in capabilities are not suspended.
+World and player work waits in a bounded queue and runs on the server's owner thread. Past the per-tick or per-NPC budget, an action waits for a later tick. A full queue fails the action as `BUSY`, which ends that run. Waiting is included in the module invocation deadline (`modules.invocationTimeoutMillis`), except for a navigate with `wait`, which has its own timeout. An action that misses the deadline fails its run and is dropped without running, and unlike a Java module the built-in capabilities are not suspended.
 
 A preview run refuses `command`, `combat-control`, `navigate`, `stop-navigation`, `look`, `set-appearance`, `set-equipment`, `choices` and every flag or quest write. `say`, `play-sound` and `spawn-particle` work in a preview only for the viewer's own `trigger` audience. Conditions still read normally.
 

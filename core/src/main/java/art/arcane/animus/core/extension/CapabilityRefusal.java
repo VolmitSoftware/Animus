@@ -17,6 +17,14 @@ public final class CapabilityRefusal extends RuntimeException {
         diagnostics = List.of(new Diagnostic(Diagnostic.Severity.ERROR, code, "$", message));
     }
 
+    /** Keeps a field diagnostic from another engine layer. */
+    public CapabilityRefusal(Outcome.Status status, Diagnostic diagnostic) {
+        super(diagnostic.message(), null, false, false);
+        if (status == Outcome.Status.OK) throw new IllegalArgumentException("A refusal cannot report success");
+        this.status = status;
+        diagnostics = List.of(diagnostic);
+    }
+
     public Outcome.Status status() { return status; }
     public List<Diagnostic> diagnostics() { return diagnostics; }
     <T> Outcome<T> outcome() { return new Outcome<>(status, Optional.empty(), diagnostics); }

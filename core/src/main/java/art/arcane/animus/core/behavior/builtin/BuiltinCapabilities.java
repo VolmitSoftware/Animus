@@ -15,6 +15,8 @@ import art.arcane.animus.api.Outcome;
 import art.arcane.animus.api.Platform;
 import art.arcane.animus.api.TrustedModule;
 import art.arcane.animus.api.Version;
+import art.arcane.animus.core.behavior.BehaviorProgram;
+import art.arcane.animus.core.behavior.BehaviorState;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.AppearanceChange;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.Audience;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.ChoiceOption;
@@ -46,6 +48,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -61,7 +64,10 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final double CHOICE_RANGE = 64;
     private static final int MAXIMUM_LOGGED_COMMAND = 1024;
     private static final String IDENTIFIER = "[a-z0-9][a-z0-9_-]*";
-    private static final String STATE_NAME = "[a-z0-9][a-z0-9_./-]*";
+    private static final String FLAG_STATE = NAMESPACE + ":flags/", QUEST_STATE = NAMESPACE + ":quests/";
+    private static final Key NAVIGATE = new Key(NAMESPACE, "navigate");
+    private static final int DEFAULT_WAIT_TICKS = 1200, MINIMUM_WAIT_TICKS = 20, MAXIMUM_WAIT_TICKS = 12_000;
+    private static final long OWNER_TICK_MILLIS = 50, LAGGING_OWNER_ALLOWANCE = 2, WAIT_DEADLINE_SLACK_MILLIS = 5000;
     private static final String RESOURCE_KEY = "[a-z0-9_.-]+:[a-z0-9_./-]+";
     private static final String PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
 
@@ -71,6 +77,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         final boolean owner;
         Effect(boolean owner) { this.owner = owner; }
     }
+    private record StateSlot(BehaviorState.Subject subject, String name, BehaviorProgram.ScopedVariable declaration) {}
+    private static final BehaviorProgram.Value UNSET_FLAG = new BehaviorProgram.Value(BehaviorProgram.Type.BOOLEAN, false);
+    private static final BehaviorProgram.Value UNSET_QUEST = stage(0);
     private record Call(Invocation invocation, JsonObject arguments) {
         NpcHandle npc() { return invocation.npc(); }
         Optional<UUID> player() { return invocation.player(); }
@@ -80,22 +89,25 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private record Spec(Key key, Effect effect, Kind kind, String description, String schema, Semantics semantics, Body<String> action, Body<Boolean> condition) {}
 
     private final BehaviorPlatform platform;
-    private final QuestStateStore state;
+    private final BehaviorState state;
+    private final Object advances = new Object();
     private final BuiltinActionSettings settings;
     private final Consumer<String> log;
     private final OwnerActionQueue queue;
+    private final NavigationWaits waits;
     private final PendingChoices choices;
     private final Map<Key, Spec> specs = new LinkedHashMap<>();
     private volatile boolean closed;
     private AutoCloseable ticks;
 
-    public BuiltinCapabilities(BehaviorPlatform platform, QuestStateStore state, DialogueChoiceSink choiceSink,
+    public BuiltinCapabilities(BehaviorPlatform platform, BehaviorState state, DialogueChoiceSink choiceSink,
                                BuiltinActionSettings settings, Consumer<String> log) {
         this.platform = Objects.requireNonNull(platform);
         this.state = Objects.requireNonNull(state);
         this.settings = Objects.requireNonNull(settings);
         this.log = Objects.requireNonNull(log);
         queue = new OwnerActionQueue(new OwnerActionQueue.Limits(settings.actionsPerTick(), settings.actionsPerNpcPerTick(), settings.queuedActions()));
+        waits = new NavigationWaits(settings.navigationWaits(), platform);
         choices = new PendingChoices(settings.pendingChoices(), choiceSink, System::nanoTime,
                 failure -> this.log.accept("Dialogue choice listener failed: " + failure.getClass().getSimpleName()));
         registerConditions();
@@ -111,7 +123,12 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             if (spec.kind == Kind.ACTION) registrar.action(descriptor, invocation -> invoke(spec, spec.action, invocation));
             else registrar.condition(descriptor, invocation -> invoke(spec, spec.condition, invocation));
         }
-        if (!closed && platform.unavailable().isEmpty()) ticks = platform.ownerTicks(queue::tick);
+        if (!closed && platform.unavailable().isEmpty()) ticks = platform.ownerTicks(this::ownerTick);
+    }
+
+    private void ownerTick() {
+        queue.tick();
+        waits.tick();
     }
 
     @Override public void disable() { close(); }
@@ -121,6 +138,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         if (closed) return;
         closed = true;
         queue.close();
+        waits.close();
         if (ticks == null) return;
         try { ticks.close(); }
         catch (Exception ignored) { /* The platform owner ends with the process; there is nothing left to release. */ }
@@ -143,6 +161,16 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         List<Diagnostic> problems = new ArrayList<>();
         spec.semantics.check(arguments, problems);
         return List.copyOf(problems);
+    }
+
+    /** A waiting navigate is bounded by its own timeout instead of the short module deadline. */
+    @Override public OptionalLong deadlineMillis(Key key, String argumentsJson) {
+        if (!key.equals(NAVIGATE)) return OptionalLong.empty();
+        try {
+            JsonObject arguments = JsonDocuments.object(argumentsJson);
+            if (!flag(arguments, "wait", false)) return OptionalLong.empty();
+            return OptionalLong.of(timeoutTicks(arguments) * OWNER_TICK_MILLIS * LAGGING_OWNER_ALLOWANCE + WAIT_DEADLINE_SLACK_MILLIS);
+        } catch (IOException | RuntimeException invalid) { return OptionalLong.empty(); }
     }
 
     public boolean commandAllowed(String behavior) { return settings.commandAllowed(behavior); }
@@ -233,16 +261,16 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 });
         condition("flag-state", Effect.STATE_READ, "Compares a flag. An unset flag is false.",
                 schema(STATE + "," + bool("value"), required("name")),
-                (arguments, problems) -> matches(arguments, "name", STATE_NAME, problems),
+                (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
                 call -> {
                     boolean expected = flag(call.arguments, "value", true);
-                    return state.read(stateKey(call, QuestStateStore.Kind.FLAG)).thenApply(value -> (value.orElse(0) != 0) == expected);
+                    return CompletableFuture.completedFuture((Boolean) read(slot(call, FLAG_STATE), UNSET_FLAG).value() == expected);
                 });
         condition("quest-state", Effect.STATE_READ, "Compares a quest stage. An unset quest is stage zero.",
                 schema(STATE + "," + integer("equals", 0, 1_000_000_000_000L) + "," + integer("atLeast", 0, 1_000_000_000_000L) + "," + integer("atMost", 0, 1_000_000_000_000L),
                         required("name"), "\"anyOf\":[" + "{" + required("equals") + "},{" + required("atLeast") + "},{" + required("atMost") + "}]"),
-                (arguments, problems) -> matches(arguments, "name", STATE_NAME, problems),
-                call -> state.read(stateKey(call, QuestStateStore.Kind.QUEST)).thenApply(value -> questMatches(value, call.arguments)));
+                (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
+                call -> CompletableFuture.completedFuture(questMatches((Long) read(slot(call, QUEST_STATE), UNSET_QUEST).value(), call.arguments)));
     }
 
     private void registerActions() {
@@ -262,8 +290,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         action("command", Effect.PRIVILEGED, "Runs a console or player command. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
                 schema(string("command", 1024) + "," + choice("as", "console", "player"), required("command")),
                 BuiltinCapabilities::checkCommand, this::runCommand);
-        action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when the route is requested, not on arrival.",
-                schema(string("route", 64) + "," + COORDINATES + "," + choice("mode", "walk", "swim", "fly") + "," + number("speed", 1, 5),
+        action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
+                schema(string("route", 64) + "," + COORDINATES + "," + choice("mode", "walk", "swim", "fly") + "," + number("speed", 1, 5) + "," + bool("wait") + "," + integer("timeoutTicks", MINIMUM_WAIT_TICKS, MAXIMUM_WAIT_TICKS),
                         "\"oneOf\":[{" + required("route") + "},{" + required("x", "y", "z") + "}]"),
                 BuiltinCapabilities::checkNavigate, this::navigate);
         action("stop-navigation", Effect.WORLD, "Stops the NPC's current route and any route it is following.", schema(""),
@@ -318,23 +346,21 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 });
         action("set-flag", Effect.STATE_WRITE, "Sets a flag, true unless value says otherwise.",
                 schema(STATE + "," + bool("value"), required("name")),
-                (arguments, problems) -> matches(arguments, "name", STATE_NAME, problems),
-                call -> state.set(stateKey(call, QuestStateStore.Kind.FLAG), flag(call.arguments, "value", true) ? 1 : 0).thenApply(value -> "{}"));
+                (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
+                call -> { write(slot(call, FLAG_STATE), new BehaviorProgram.Value(BehaviorProgram.Type.BOOLEAN, flag(call.arguments, "value", true))); return CompletableFuture.completedFuture("{}"); });
         action("set-quest-state", Effect.STATE_WRITE, "Sets a quest stage.",
                 schema(STATE + "," + integer("value", 0, 1_000_000_000_000L), required("name", "value")),
-                (arguments, problems) -> matches(arguments, "name", STATE_NAME, problems),
-                call -> state.set(stateKey(call, QuestStateStore.Kind.QUEST), call.arguments.get("value").getAsLong()).thenApply(value -> "{}"));
+                (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
+                call -> { write(slot(call, QUEST_STATE), stage(call.arguments.get("value").getAsLong())); return CompletableFuture.completedFuture("{}"); });
         action("advance-quest-state", Effect.STATE_WRITE, "Advances a quest stage, by one unless by says otherwise, without passing maximum.",
                 schema(STATE + "," + integer("by", 1, 1_000_000) + "," + integer("maximum", 0, 1_000_000_000_000L), required("name")),
-                (arguments, problems) -> matches(arguments, "name", STATE_NAME, problems),
+                (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
                 call -> {
                     long by = call.arguments.has("by") ? call.arguments.get("by").getAsLong() : 1;
                     long maximum = call.arguments.has("maximum") ? call.arguments.get("maximum").getAsLong() : 1_000_000_000_000L;
-                    return state.advance(stateKey(call, QuestStateStore.Kind.QUEST), by, maximum).thenApply(value -> {
-                        JsonObject response = new JsonObject();
-                        response.addProperty("value", value);
-                        return response.toString();
-                    });
+                    JsonObject response = new JsonObject();
+                    response.addProperty("value", advance(slot(call, QUEST_STATE), by, maximum));
+                    return CompletableFuture.completedFuture(response.toString());
                 });
     }
 
@@ -372,16 +398,33 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     private CompletionStage<String> navigate(Call call) {
+        Supplier<JsonObject> start = routeStarter(call);
+        if (!flag(call.arguments, "wait", false)) return onOwner(call, () -> start.get().toString());
+        int timeout = timeoutTicks(call.arguments);
+        CompletionStage<CompletionStage<String>> waiting = onOwner(call, () -> {
+            waits.requireCapacity();
+            JsonObject response = start.get();
+            response.addProperty("arrived", true);
+            return waits.watch(call.npc(), call.invocation.cancellation(), platform.routeFinished(call.npc()), response.toString(), timeout);
+        });
+        return waiting.thenCompose(arrival -> arrival);
+    }
+
+    private Supplier<JsonObject> routeStarter(Call call) {
         Optional<String> route = text(call.arguments, "route");
-        if (route.isPresent()) return onOwner(call, () -> { platform.followRoute(call.npc(), route.get()); return "{}"; });
+        if (route.isPresent()) return () -> { platform.followRoute(call.npc(), route.get()); return new JsonObject(); };
         Vec3 destination = point(call.arguments);
         MovementProfile.Mode mode = MovementProfile.Mode.valueOf(text(call.arguments, "mode").orElse("walk").toUpperCase(Locale.ROOT));
         double speed = decimal(call.arguments, "speed").orElse(2);
-        return onOwner(call, () -> {
+        return () -> {
             JsonObject response = new JsonObject();
             response.addProperty("route", platform.navigate(call.npc(), destination, mode, speed));
-            return response.toString();
-        });
+            return response;
+        };
+    }
+
+    private static int timeoutTicks(JsonObject arguments) {
+        return arguments.has("timeoutTicks") ? arguments.get("timeoutTicks").getAsInt() : DEFAULT_WAIT_TICKS;
     }
 
     private CompletionStage<String> look(Call call) {
@@ -413,6 +456,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     private static void checkNavigate(JsonObject arguments, List<Diagnostic> problems) {
+        if (arguments.has("timeoutTicks") && !flag(arguments, "wait", false))
+            problems.add(problem("$.timeoutTicks", "navigation-timeout-without-wait", "timeoutTicks applies only with wait set to true"));
         if (!arguments.has("route")) return;
         matches(arguments, "route", IDENTIFIER, problems);
         if (arguments.has("mode") || arguments.has("speed"))
@@ -444,20 +489,45 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         return !arguments.has("maximumHealth") || status.health() <= arguments.get("maximumHealth").getAsDouble();
     }
 
-    private static boolean questMatches(OptionalLong stored, JsonObject arguments) {
-        long stage = stored.orElse(0);
+    private static boolean questMatches(long stage, JsonObject arguments) {
         if (arguments.has("equals") && stage != arguments.get("equals").getAsLong()) return false;
         if (arguments.has("atLeast") && stage < arguments.get("atLeast").getAsLong()) return false;
         return !arguments.has("atMost") || stage <= arguments.get("atMost").getAsLong();
     }
 
-    private static QuestStateStore.Key stateKey(Call call, QuestStateStore.Kind kind) {
-        QuestStateStore.Scope scope = QuestStateStore.Scope.valueOf(text(call.arguments, "scope").orElse("player").toUpperCase(Locale.ROOT));
-        boolean wantsNpc = scope == QuestStateStore.Scope.NPC || scope == QuestStateStore.Scope.RELATIONSHIP;
-        boolean wantsPlayer = scope == QuestStateStore.Scope.PLAYER || scope == QuestStateStore.Scope.RELATIONSHIP;
-        return new QuestStateStore.Key(kind, scope, wantsNpc ? Optional.of(call.npc().uuid()) : Optional.empty(),
-                wantsPlayer ? Optional.of(requirePlayer(call)) : Optional.empty(), text(call.arguments, "name").orElseThrow());
+    /**
+     * Flags and quests live in behavior state under one reserved identity per kind and behavior namespace,
+     * so a pack's behaviors share them, packs stay apart, and the state budgets and purge commands apply.
+     */
+    private static StateSlot slot(Call call, String identity) {
+        String behavior = call.invocation.behavior().orElseThrow(() -> new CapabilityRefusal(Outcome.Status.INVALID, "no-behavior-namespace", "Flags and quests belong to a behavior namespace, and this call has no behavior"));
+        BehaviorProgram.Scope scope = BehaviorProgram.Scope.valueOf(text(call.arguments, "scope").orElse("player").toUpperCase(Locale.ROOT));
+        if (scope.requiresPlayer()) requirePlayer(call);
+        return new StateSlot(new BehaviorState.Subject(identity + behavior.substring(0, behavior.indexOf(':')), call.npc().uuid(), call.player()),
+                text(call.arguments, "name").orElseThrow(), new BehaviorProgram.ScopedVariable(scope, BehaviorProgram.Lifetime.PERSISTENT));
     }
+
+    private BehaviorProgram.Value read(StateSlot slot, BehaviorProgram.Value unset) {
+        try { return state.read(slot.subject, slot.name, slot.declaration, unset); }
+        catch (BehaviorState.Rejected rejected) { throw new CapabilityRefusal(rejected.status(), rejected.diagnostic()); }
+    }
+
+    private void write(StateSlot slot, BehaviorProgram.Value value) {
+        try { state.write(slot.subject, Map.of(slot.name, value), Map.of(slot.name, slot.declaration)); }
+        catch (BehaviorState.Rejected rejected) { throw new CapabilityRefusal(rejected.status(), rejected.diagnostic()); }
+    }
+
+    /** Store writes are last-write-wins, so concurrent module workers serialize this read and write here. */
+    private long advance(StateSlot slot, long by, long maximum) {
+        synchronized (advances) {
+            long current = (Long) read(slot, UNSET_QUEST).value();
+            long next = Math.min(current + by, Math.max(current, maximum));
+            write(slot, stage(next));
+            return next;
+        }
+    }
+
+    private static BehaviorProgram.Value stage(long value) { return new BehaviorProgram.Value(BehaviorProgram.Type.INTEGER, value); }
 
     private static Audience audience(Call call) {
         if (text(call.arguments, "audience").orElse("trigger").equals("nearby"))

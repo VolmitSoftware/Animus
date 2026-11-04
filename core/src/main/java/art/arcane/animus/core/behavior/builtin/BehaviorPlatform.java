@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 
 /**
  * World and player work for built-in capabilities. {@link #unavailable()} and {@link #ownerTicks(Runnable)}
@@ -51,9 +52,15 @@ public interface BehaviorPlatform {
     /** Returns the number of viewers reached. The token identifies the pending prompt in its clickable responses. */
     int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options);
     void runCommand(CommandSource source, Optional<UUID> player, String command);
-    /** Returns the identity of the requested route. Completion does not wait for arrival. */
+    /** Returns the identity of the requested route. Completion does not wait for arrival; see {@link #routeFinished}. */
     String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed);
     void followRoute(NpcHandle npc, String route);
+    /**
+     * Completes on arrival of the route just started, at the last point of a reusable route. Fails with a
+     * {@link art.arcane.animus.core.extension.CapabilityRefusal} when it is blocked, unavailable, replaced or stopped.
+     */
+    CompletionStage<Void> routeFinished(NpcHandle npc);
+    String navigationStatus(NpcHandle npc);
     boolean stopNavigation(NpcHandle npc);
     void look(NpcHandle npc, Vec3 target);
     void lookAtPlayer(NpcHandle npc, UUID player);

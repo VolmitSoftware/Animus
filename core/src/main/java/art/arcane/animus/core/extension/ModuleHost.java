@@ -204,7 +204,8 @@ public final class ModuleHost implements AutoCloseable {
         if(registration.descriptor.privileged() && (preview || !privilegedGranted))return completedHandle(Outcome.Status.UNAVAILABLE,"privileged-capability-not-granted");
         Optional<String> refused=builtinRefusal(registration);
         if(refused.isPresent())return completedHandle(Outcome.Status.UNAVAILABLE,refused.get());
-        return invokeHandle(registration.owner,registration.descriptor,token->registration.action.run(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),true,sourceCurrent);
+        long deadline=registration.owner.policy==null?deadlineNanos:registration.owner.policy.deadlineMillis(key,argumentsJson).stream().map(millis->TimeUnit.MILLISECONDS.toNanos(millis)).findFirst().orElse(deadlineNanos);
+        return invokeHandle(registration.owner,registration.descriptor,token->registration.action.run(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),true,sourceCurrent,deadline);
     }
     public CompletionStage<Outcome<Boolean>> condition(Key key,NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview){
         return conditionHandle(key,npc,player,argumentsJson,preview).result();
@@ -251,12 +252,15 @@ public final class ModuleHost implements AutoCloseable {
         return invokeHandle(entry,descriptor,operation,jsonResult,()->true);
     }
     private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,boolean jsonResult,BooleanSupplier sourceCurrent){
+        return invokeHandle(entry,descriptor,operation,jsonResult,sourceCurrent,deadlineNanos);
+    }
+    private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,boolean jsonResult,BooleanSupplier sourceCurrent,long deadline){
         Call<T> call;
         synchronized(this){
             if(!available(entry) || descriptor!=null && !descriptor.platforms().contains(platform))return completedHandle(Outcome.Status.UNAVAILABLE,reason(entry));
             if(calls.size()>=maximumInvocations)return completedHandle(Outcome.Status.BUSY,"invocation-capacity");
             call=new Call<>(entry,operation,jsonResult,sourceCurrent);calls.add(call);
-            call.deadline=deadlines.schedule(call::timeout,deadlineNanos,TimeUnit.NANOSECONDS);
+            call.deadline=deadlines.schedule(call::timeout,deadline,TimeUnit.NANOSECONDS);
             workers.execute(call);
         }
         return new InvocationHandle<>(call.result.minimalCompletionStage(),()->call.cancel("invocation-cancelled"),call::quiescent);

@@ -36,6 +36,10 @@ public final class AnimusPlugin extends JavaPlugin {
     private art.arcane.animus.core.extension.ExtensionRuntime extensions;
     private volatile BukkitBehaviorCommands behaviors;
     private art.arcane.animus.core.behavior.builtin.BuiltinCapabilities builtins;
+    private final art.arcane.animus.core.behavior.builtin.DialogueTriggers dialogueTriggers = new art.arcane.animus.core.behavior.builtin.DialogueTriggers(() -> {
+        BukkitBehaviorCommands current = behaviors;
+        return current == null ? null : current.triggers();
+    });
     private volatile boolean stopping;
 
 
@@ -67,9 +71,8 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(combat.status());
             getLogger().info(proof.status(null));
             var modulePlatform = modulePlatform();
-            // Flag and quest values are in memory until the durable state store backs this contract.
             builtins = new art.arcane.animus.core.behavior.builtin.BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, replies.isFolia()),
-                    new art.arcane.animus.core.behavior.builtin.InMemoryQuestStateStore(4096), this::publishChoice,
+                    runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new art.arcane.animus.core.extension.ExtensionRuntime(runtime.documents().resolve("modules"),
                     modulePlatform, runtime.definitionGateway(), runtime.moduleSettings(), message -> getLogger().info(message), initialized -> {
@@ -227,7 +230,7 @@ public final class AnimusPlugin extends JavaPlugin {
                 if (args.length > 2) throw new IllegalArgumentException("modules status");
                 var snapshot = extensions.status();
                 sender.sendMessage("Modules " + snapshot.state() + " | startup=" + extensions.startupStatuses().size()
-                        + " | capabilities=" + extensions.capabilities().size() + " | failure=" + snapshot.failure());
+                        + " | " + ModuleCapabilityListing.of(extensions.capabilities()).counts() + " | failure=" + snapshot.failure());
                 sender.sendMessage("Module invocations: " + snapshot.invocations());
                 if (snapshot.lifecycle() != null) sender.sendMessage("Module lifecycle: " + snapshot.lifecycle());
                 if (snapshot.cleanup() != null) sender.sendMessage("Module cleanup: " + snapshot.cleanup());
@@ -244,9 +247,12 @@ public final class AnimusPlugin extends JavaPlugin {
                         return s.id() + " [" + s.archive() + "] | " + (current == null ? s.state() : current.state())
                                 + " | " + (current == null ? s.reason() : current.reason());
                     }).toList();
-                } else rows = extensions.capabilities().stream().map(c -> c.descriptor().key() + " | " + c.descriptor().kind()
-                        + " | available=" + c.available() + " | " + c.reason()).toList();
-                sender.sendMessage("Module " + operation + ": " + rows.size() + "; page " + page);
+                    sender.sendMessage("Module list: " + rows.size() + "; page " + page);
+                } else {
+                    ModuleCapabilityListing listing = ModuleCapabilityListing.of(extensions.capabilities());
+                    rows = listing.rows();
+                    sender.sendMessage(listing.header(page));
+                }
                 rows.stream().skip((page - 1L) * 20).limit(20).forEach(sender::sendMessage);
             } else if (operation.equals("action") || operation.equals("condition")) {
                 if (args.length < 5) throw new IllegalArgumentException("modules " + operation + " <namespace:name> <npc-id> <JSON object>");
@@ -270,6 +276,7 @@ public final class AnimusPlugin extends JavaPlugin {
     }
 
     private void publishChoice(art.arcane.animus.core.behavior.builtin.DialogueChoice choice) {
+        dialogueTriggers.publish(choice);
         Player player = getServer().getPlayer(choice.player());
         if (player != null) getServer().getPluginManager().callEvent(new art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent(
                 player, choice.npc().uuid(), choice.behavior(), choice.prompt(), choice.option()));

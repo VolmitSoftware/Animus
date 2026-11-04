@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.bukkit.Location;
@@ -124,6 +125,15 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     @Override public void followRoute(NpcHandle npc, String route) {
         PersistedNpcService.ActiveNpc active = require(npc);
         mapped(() -> { living.followRoute(active.id(), route); return true; });
+    }
+
+    @Override public CompletionStage<Void> routeFinished(NpcHandle npc) {
+        PersistedNpcService.ActiveNpc active = require(npc);
+        return mapped(() -> living.awaitRoute(active.id()));
+    }
+
+    @Override public String navigationStatus(NpcHandle npc) {
+        return living.active(npc.uuid()).map(active -> living.navigationStatus(active.id())).orElse("inactive");
     }
 
     @Override public boolean stopNavigation(NpcHandle npc) {
