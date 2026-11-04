@@ -22,6 +22,12 @@ public final class ViewerSession implements AutoCloseable {
         /** Both endpoints come from the server ray. Distance never exceeds Limits.maximumReach. */
         boolean clear(WorldPosition eye, Vec3 hitPoint, double distance);
     }
+    /** Measures a server ray against authoritative geometry. Multipart bodies supply their own parts. */
+    @FunctionalInterface
+    public interface HitShape {
+        HitShape BOUNDS = (npc, origin, direction, reach) -> npc.bounds().rayDistance(origin, direction, reach);
+        OptionalDouble rayDistance(VirtualNpcState.Snapshot npc, Vec3 origin, Vec3 direction, double reach);
+    }
     public enum Rejection { NONE, CLOSED, WRONG_VIEWER, STALE_SESSION, UNKNOWN_ENTITY, INACTIVE, WRONG_WORLD, RATE_LIMITED, INVALID_DIRECTION, OUT_OF_REACH, OCCLUDED, STATE_CHANGED }
     public record Validation(Rejection rejection, VirtualNpcState.Snapshot npc, Vec3 hitPoint, double distance) {
         public boolean accepted() { return rejection == Rejection.NONE; }
@@ -74,8 +80,9 @@ public final class ViewerSession implements AutoCloseable {
     /** Use on teleport, world change, respawn, chunk reset; issued IDs remain retired until session closure. */
     public synchronized void clear() { visible.clear(); }
 
-    public synchronized Validation validate(Request request, LineOfSight lineOfSight) {
-        Objects.requireNonNull(request, "request"); Objects.requireNonNull(lineOfSight, "lineOfSight");
+    public Validation validate(Request request, LineOfSight lineOfSight) { return validate(request, lineOfSight, HitShape.BOUNDS); }
+    public synchronized Validation validate(Request request, LineOfSight lineOfSight, HitShape shape) {
+        Objects.requireNonNull(request, "request"); Objects.requireNonNull(lineOfSight, "lineOfSight"); Objects.requireNonNull(shape, "shape");
         if (closed) return Validation.rejected(Rejection.CLOSED);
         if (!viewerId.equals(request.viewerId())) return Validation.rejected(Rejection.WRONG_VIEWER);
         if (!sessionId.equals(request.sessionId())) return Validation.rejected(Rejection.STALE_SESSION);
@@ -89,7 +96,7 @@ public final class ViewerSession implements AutoCloseable {
         Vec3 direction;
         try { direction = request.direction().normalized(); }
         catch (IllegalArgumentException e) { return Validation.rejected(Rejection.INVALID_DIRECTION); }
-        OptionalDouble hit = npc.bounds().rayDistance(request.eye().point(), direction, limits.maximumReach());
+        OptionalDouble hit = shape.rayDistance(npc, request.eye().point(), direction, limits.maximumReach());
         if (hit.isEmpty()) return Validation.rejected(Rejection.OUT_OF_REACH);
         double distance = hit.getAsDouble();
         Vec3 point = request.eye().point().add(direction.multiply(distance));
