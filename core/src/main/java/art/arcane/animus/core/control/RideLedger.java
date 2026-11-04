@@ -12,11 +12,11 @@ public final class RideLedger {
     public static final int MAX_RIDERS = 8;
     private final Map<UUID, RideSession> riders = new HashMap<>(), npcs = new HashMap<>();
 
-    public Admission admit(UUID rider, UUID npc, Vec3 anchor, RideSettings settings, long now) {
+    public Admission admit(UUID rider, UUID npc, Vec3 anchor, RideSettings settings, boolean flying, long now) {
         if (riders.containsKey(rider)) return new Admission(null, Rejection.ALREADY_RIDING);
         if (npcs.containsKey(npc)) return new Admission(null, Rejection.OCCUPIED);
         if (riders.size() >= MAX_RIDERS) return new Admission(null, Rejection.CAPACITY);
-        RideSession session = new RideSession(rider, npc, anchor, settings, now);
+        RideSession session = new RideSession(rider, npc, anchor, settings, flying, now);
         riders.put(rider, session); npcs.put(npc, session);
         return new Admission(session, null);
     }

@@ -1,18 +1,25 @@
 package art.arcane.animus.core.navigation;
 
-import java.util.*;
+import java.util.Objects;
+import java.util.Set;
 
-/** Explicit voxel movement capabilities. Partial-block collision and ballistic jump physics are not modeled. */
-public record MovementProfile(Set<Mode> modes, int bodyHeight, int bodyRadius, int maximumStepUp,
-                              int maximumJumpUp, int maximumFall, boolean diagonals) {
+/**
+ * Explicit movement capabilities of one body. Walking bodies climb up to {@code stepHeight} without a jump and up to
+ * {@code jumpHeight} with one, and drop at most {@code maximumFall} blocks. Swimming with walking keeps the body at the
+ * water surface; swimming alone lets it move anywhere in water. Ballistic jumps, buoyancy and currents are not modelled.
+ */
+public record MovementProfile(Set<Mode> modes, double width, double height, double stepHeight,
+                              double jumpHeight, int maximumFall, boolean diagonals) {
     public enum Mode { WALK, SWIM, FLY }
+    public static final double MAX_WIDTH = 4, MAX_HEIGHT = 8, MAX_STEP = 1.5, MAX_JUMP = 3;
     public MovementProfile {
         modes = Set.copyOf(Objects.requireNonNull(modes, "modes"));
-        if (modes.isEmpty() || bodyHeight < 1 || bodyHeight > 8 || bodyRadius < 0 || bodyRadius > 2
-                || maximumStepUp < 0 || maximumStepUp > 1 || maximumJumpUp < 0 || maximumJumpUp > 3
+        if (modes.isEmpty() || !(width > 0 && width <= MAX_WIDTH) || !(height > 0 && height <= MAX_HEIGHT)
+                || !(stepHeight >= 0 && stepHeight <= MAX_STEP) || !(jumpHeight >= 0 && jumpHeight <= MAX_JUMP)
                 || maximumFall < 0 || maximumFall > 16)
-            throw new IllegalArgumentException("Movement profile exceeds supported voxel capability bounds");
+            throw new IllegalArgumentException("Movement profile exceeds supported capability bounds");
     }
-    public static MovementProfile walking() { return new MovementProfile(Set.of(Mode.WALK), 2, 0, 0, 1, 3, true); }
     public boolean supports(Mode mode) { return modes.contains(mode); }
+    /** Water movement stays at the surface when the body can also walk. */
+    public boolean surfaceSwimmer() { return modes.contains(Mode.SWIM) && modes.contains(Mode.WALK); }
 }
