@@ -11,6 +11,7 @@ class NavigationWorkQueueTest {
     private static final CaptureBounds BOUNDS = new CaptureBounds(0, 0, 0, 4, 4, 4);
     private static final BlockPos START = new BlockPos(1, 1, 1), GOAL = new BlockPos(2, 1, 2);
     private static final PathPlanner.Limits SEARCH = new PathPlanner.Limits(256, 256, 64);
+    private static final MovementProfile WALKER = new MovementProfile(Set.of(MovementProfile.Mode.WALK), 0.6, 2, 0, 1, 3, true);
 
     @Test void captureBudgetIsGlobalAndRoundRobinWhileWorkerReceivesOnlySnapshot() throws Exception {
         var worldA = UUID.randomUUID(); var worldB = UUID.randomUUID();
@@ -66,7 +67,7 @@ class NavigationWorkQueueTest {
         var world = UUID.randomUUID(); var sampler = new Sampler(); sampler.unloadedChunks.add(1);
         try (var queue = new NavigationWorkQueue(NavigationLimits.DEFAULT)) {
             NavigationPlan plan = queue.plan(world, new CaptureBounds(14, 0, 0, 4, 4, 4),
-                    new BlockPos(15, 1, 1), new BlockPos(17, 1, 1), MovementProfile.walking(), SEARCH);
+                    new BlockPos(15, 1, 1), new BlockPos(17, 1, 1), WALKER, SEARCH);
             queue.pump(sampler, 1);
             assertEquals(PathPlanner.Status.UNAVAILABLE_TERRAIN, await(plan).status());
             assertEquals(32, sampler.totalReads);
@@ -179,7 +180,7 @@ class NavigationWorkQueueTest {
     }
 
     private static NavigationPlan submit(NavigationWorkQueue queue, UUID world) {
-        return queue.plan(world, BOUNDS, START, GOAL, MovementProfile.walking(), SEARCH);
+        return queue.plan(world, BOUNDS, START, GOAL, WALKER, SEARCH);
     }
     private static PathPlanner.Result await(NavigationPlan plan) throws Exception {
         return plan.future().toCompletableFuture().get(2, TimeUnit.SECONDS);

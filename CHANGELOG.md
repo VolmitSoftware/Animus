@@ -67,6 +67,8 @@
 - The ordinary-zombie adapter's hits respect the NPC's combat defense.
 - Renamed `ManualBehaviorRuntime` to `BehaviorRuntime`.
 - Diagnostics name the allowed fields and values and suggest the nearest match.
+- NPC movement and riding use real block collision shapes: bodies stand on slabs, stairs, paths and snow layers, avoid fire, magma and other hazards, and move by their body type (flyers fly, aquatic bodies dive, others walk and swim at the surface). Ridden flyers steer with the rider's pitch.
+- The per-step collision budget grows with the body's hull, so an ender dragon or other large NPC no longer stops with `BUDGET_EXHAUSTED`.
 
 ### Notes
 

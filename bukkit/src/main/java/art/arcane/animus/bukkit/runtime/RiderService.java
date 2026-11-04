@@ -7,7 +7,8 @@ import art.arcane.animus.core.control.RideLedger;
 import art.arcane.animus.core.control.RideSession;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.control.RideSteering;
-import art.arcane.animus.core.navigation.MotionValidator;
+import art.arcane.animus.core.navigation.BodyMobility;
+import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import java.util.ArrayList;
@@ -40,6 +41,8 @@ final class RiderService implements AutoCloseable {
         boolean presentedTo(Player rider);
         double hullWidth();
         double hullHeight();
+        /** What the body can do when a player steers it, sized to {@link #hullWidth()} and {@link #hullHeight()}. */
+        MovementProfile body();
         /** Takes the body from any route or conflicting movement owner. */
         void claim();
         /** Publishes one accepted step before any packet is sent. */
@@ -113,9 +116,10 @@ final class RiderService implements AutoCloseable {
         Vec3 feet = vehicle.snapshot().position().point();
         World world = player.getWorld();
         if (!world.getUID().toString().equals(vehicle.snapshot().position().world())) return "this NPC is in another world";
-        MotionValidator.Result ground = probe(world, vehicle).check(feet, feet, true);
-        if (!ground.clear()) return "the NPC must stand on full-block ground with clear space (" + ground.detail() + ")";
-        RideLedger.Admission admission = ledger.admit(player.getUniqueId(), vehicle.uuid(), feet, settings, System.nanoTime());
+        RideSteering.Result ground = probe(world, vehicle).check(feet, feet);
+        if (ground.outcome() != RideSteering.Outcome.MOVED) return "the NPC needs ground or open space with room for its rider (" + ground.detail() + ")";
+        RideLedger.Admission admission = ledger.admit(player.getUniqueId(), vehicle.uuid(), feet, settings,
+                vehicle.body().supports(MovementProfile.Mode.FLY), System.nanoTime());
         if (admission.rejection() != null) return switch (admission.rejection()) {
             case ALREADY_RIDING -> "you are already riding";
             case OCCUPIED -> "someone else is riding this NPC";
@@ -170,7 +174,8 @@ final class RiderService implements AutoCloseable {
         VirtualNpcState.Snapshot npc = ride.vehicle.snapshot();
         Vec3 position = npc.position().point();
         ControlInbox.Snapshot input = ride.input.latest();
-        RideSession.Step step = ride.session.tick(now, position, ride.vehicle.yaw(), ride.player.getLocation().getYaw(), input, probe(world, ride.vehicle));
+        RideSession.Step step = ride.session.tick(now, position, ride.vehicle.yaw(), ride.player.getLocation().getYaw(),
+                ride.player.getLocation().getPitch(), input, probe(world, ride.vehicle));
         if (step.action() == RideSession.Action.STOP) { end(ride, step.reason(), Exit.RESTORE_POSITION); return; }
         if (ride.session.state() != RideSession.State.RIDING) return;
         if (!step.position().equals(position) || step.yaw() != ride.vehicle.yaw()) ride.vehicle.commit(step.position(), step.yaw());
@@ -183,7 +188,7 @@ final class RiderService implements AutoCloseable {
         if (at.getX() != feet.x() || at.getY() != feet.y() || at.getZ() != feet.z()) presentation.place(ride.player, feet);
     }
     private static RideSteering.Probe probe(World world, Vehicle vehicle) {
-        return RideSteering.probe(vehicle.hullWidth(), vehicle.hullHeight(), MOTION_CELLS, LiveMovementProbe.sampler(world));
+        return RideSteering.probe(vehicle.body(), MOTION_CELLS, LiveMovementProbe.sampler(world));
     }
 
     /** A vehicle was removed or replaced. Presentation is still live here, so the rider is detached and put back on the ground. */
@@ -240,10 +245,12 @@ final class RiderService implements AutoCloseable {
         Vec3 feet = npc.position().point();
         Location fallback = new Location(world, feet.x(), feet.y(), feet.z(), from.getYaw(), from.getPitch());
         if (world == null || !world.getUID().toString().equals(npc.position().world())) return from;
-        RideSteering.Probe stand = RideSteering.probe(PLAYER_WIDTH, PLAYER_HEIGHT, STAND_CELLS, LiveMovementProbe.sampler(world));
+        RideSteering.Probe stand = RideSteering.probe(BodyMobility.forBody("minecraft:player", PLAYER_WIDTH, PLAYER_HEIGHT), STAND_CELLS,
+                LiveMovementProbe.sampler(world));
         for (Vec3 candidate : RideSteering.dismountCandidates(feet, ride.vehicle.yaw(), ride.vehicle.hullWidth() / 2)) {
-            if (stand.check(candidate, candidate, true).clear())
-                return new Location(world, candidate.x(), candidate.y(), candidate.z(), from.getYaw(), from.getPitch());
+            RideSteering.Result placed = stand.check(candidate, candidate);
+            if (placed.outcome() == RideSteering.Outcome.MOVED && placed.grounded())
+                return new Location(world, placed.position().x(), placed.position().y(), placed.position().z(), from.getYaw(), from.getPitch());
         }
         return fallback;
     }
