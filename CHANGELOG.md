@@ -54,6 +54,9 @@
 - Converter `validate-behaviors` and `schema` commands for offline checks.
 - Seven example packs: greeter, patrol, branching dialogue, quest giver, shop, town guard and personal guard.
 - Guide for moving imported Denizen flags and assignments to behaviors.
+- Definitions declare equipment in all eight slots, hologram text lines, nameplate visibility, poses (sneaking, sleeping, swimming, sitting), armor stand parts and angles, a stored inventory and an owner UUID, with exact field diagnostics.
+- Names up to 256 characters. Long or coloured player names, non-player names and hologram lines render in a packet-only text display.
+- Citizens equipment, inventory, hologram, sneak, sit, default pose, armor stand, owner and nameplate visibility data convert to definition fields (converter version 4).
 
 ### Changed
 
@@ -70,6 +73,7 @@
 - NPC movement and riding use real block collision shapes: bodies stand on slabs, stairs, paths and snow layers, avoid fire, magma and other hazards, and move by their body type (flyers fly, aquatic bodies dive, others walk and swim at the surface). Ridden flyers steer with the rider's pitch.
 - The per-step collision budget grows with the body's hull, so an ender dragon or other large NPC no longer stops with `BUDGET_EXHAUSTED`.
 - The town-guard and personal-guard example packs use `animus:combat`, and the shop charges the clicking player before giving goods. `animus:combat-control` accepts `"target": "player"`, and `animus:command` replaces `{player}` with the triggering player's UUID.
+- `set-appearance` names apply to every body type.
 
 ### Notes
 

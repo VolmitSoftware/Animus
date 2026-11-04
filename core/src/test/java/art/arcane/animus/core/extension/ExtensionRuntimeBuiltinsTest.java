@@ -17,6 +17,7 @@ import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.config.ModuleSettings;
 import art.arcane.animus.core.navigation.MovementProfile;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.virtual.Vec3;
 import java.nio.file.Path;
 import java.time.Duration;

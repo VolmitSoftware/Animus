@@ -7,6 +7,7 @@ import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.navigation.MovementProfile;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.List;

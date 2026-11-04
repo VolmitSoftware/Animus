@@ -3,7 +3,6 @@ package art.arcane.animus.bukkit.runtime;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.navigation.*;
-import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.navigation.*;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
@@ -13,6 +12,7 @@ import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountReference;
 import art.arcane.animus.core.mount.SeatGeometry;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.*;
 import art.arcane.animus.core.virtual.*;
@@ -167,10 +167,11 @@ public final class PersistedNpcService implements NpcRuntime, Listener {
                 + (entry.value == null ? "" : "; health=" + entry.value.state.snapshot().health())
                 + (entry.value == null ? "" : "; position=" + entry.value.state.snapshot().position().point() + "; navigation=" + entry.value.navigationStatus)
                 + (entry.value == null || entry.value.routeError == null ? "" : "; route-error=" + entry.value.routeError)
-                + (entry.value == null || entry.value.spec.type().equals("minecraft:player") ? "" : "; nameplate=unavailable for non-player bodies")
+                + (entry.value == null ? "" : appearance(entry.value))
                 + (entry.value == null ? "" : mountRuntime.summary(entry.value))
                 + (entry.error == null ? "" : "; last-valid-retained=" + (entry.value != null) + "; " + entry.error);
     }
+    private String appearance(Value value) { return NpcPresentation.describe(value.spec, value.equipment.size(), packets.presentationAvailable()); }
     public List<String> validateActivation(NpcDefinition definition) {
         if (!available()) return List.of("NPC runtime " + (closed ? "closed" : unavailable));
         owner(); Objects.requireNonNull(definition);
@@ -337,9 +338,7 @@ public final class PersistedNpcService implements NpcRuntime, Listener {
     /** Runtime-only override. Restart or a definition change restores the definition's own appearance. */
     public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) {
         Value value = navigable(id);
-        boolean player = value.spec.type().equals("minecraft:player");
-        if ((name.isPresent() || skin.isPresent()) && !player) throw new IllegalArgumentException("Names and skins display only on player bodies");
-        if (name.isPresent()) NativePacketAdapter.validateProfileName(name.get());
+        NpcPresentation.validateChange(value.spec, name, skin);
         cancelAppearanceRead(value);
         if (reset) {
             value.displayName = value.spec.name();
@@ -351,7 +350,7 @@ public final class PersistedNpcService implements NpcRuntime, Listener {
         representBody(value);
     }
     /** An empty stack clears the slot. Runtime-only, like appearance. */
-    public void setEquipment(String id, BehaviorPlatform.EquipmentSlot slot, ItemStack item) {
+    public void setEquipment(String id, EquipmentSlot slot, ItemStack item) {
         Value value = navigable(id);
         if (!packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
         value.equipment.put(slot, item);
@@ -834,7 +833,7 @@ public final class PersistedNpcService implements NpcRuntime, Listener {
             if (capacity == 0) break;
             Entry entry = byUuid.get(snapshot.npcId()); Value value = entry == null ? null : entry.value;
             if (value == null || viewer.visible.containsKey(snapshot.npcId()) || viewer.retiring.containsKey(snapshot.npcId())
-                    || viewer.nativeIds + value.ids > 256 || !eligible(value, at, visibleChunk)) continue;
+                    || viewer.nativeIds + nativeIds(value) > 256 || !eligible(value, at, visibleChunk)) continue;
             spawn(viewer, value); sent++; capacity--;
             if (!current(viewer)) break;
         }
@@ -848,10 +847,10 @@ public final class PersistedNpcService implements NpcRuntime, Listener {
     }
     private void spawn(Viewer viewer, Value value) {
         try {
-            var body = packets.createBody(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.displaySkin);
+            NativePacketAdapter.Body body = NpcPresentation.body(packets, value.spec, value.displayName, value.displaySkin);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented);
             viewer.presentationOrder.addLast(presented);
-            viewer.nativeIds += value.ids; viewer.pendingSpawns++;
+            viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
             presented.deliveredPoseRevision = value.poseRevision;
             var pose = pose(value);
             packets.spawn(viewer.player, body, pose).whenComplete((nothing, failure) -> enqueue(viewer, () -> {
@@ -865,6 +864,10 @@ public final class PersistedNpcService implements NpcRuntime, Listener {
                 catch (RuntimeException invalid) { fail(viewer, concise(invalid)); }
             }));
         } catch (ReflectiveOperationException | RuntimeException failure) { fail(viewer, concise(failure)); }
+    }
+    /** Native IDs a body of this NPC reserves, including its text display and seat. */
+    private int nativeIds(Value value) {
+        return NpcPresentation.nativeIds(packets, value.spec, value.displayName, value.ids);
     }
     private static NativePacketAdapter.Pose pose(Value value) {
         WorldPosition position = value.state.snapshot().position(); Vec3 p = position.point();
@@ -912,7 +915,7 @@ public final class PersistedNpcService implements NpcRuntime, Listener {
         viewer.retiring.put(body.body.uuid(), body); viewer.retirements.addLast(body);
     }
     private void releaseRetired(Viewer viewer, Presented body) {
-        if (body.spawnFinished && body.despawnFinished && viewer.retiring.remove(body.body.uuid(), body)) viewer.nativeIds -= body.value.ids;
+        if (body.spawnFinished && body.despawnFinished && viewer.retiring.remove(body.body.uuid(), body)) viewer.nativeIds -= body.body.entityIds().length;
     }
 
     private void interact(Viewer viewer, NativePacketAdapter.Interaction input) {
@@ -1054,11 +1057,12 @@ public final class PersistedNpcService implements NpcRuntime, Listener {
         Vec3 restingPoint; long lastMotionTick; int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; NativePacketAdapter.Skin displaySkin; AppearanceTask appearanceTask;
-        final Map<BehaviorPlatform.EquipmentSlot, ItemStack> equipment = new EnumMap<>(BehaviorPlatform.EquipmentSlot.class);
+        final Map<EquipmentSlot, ItemStack> equipment = new EnumMap<>(EquipmentSlot.class);
         long equipmentRevision;
         Value(DefinitionSpec spec, NativePacketAdapter.Skin skin, VirtualNpcState state, int ids, SeatGeometry seat) {
             this.spec = spec; this.skin = skin; this.state = state; this.ids = ids; this.seat = seat; yaw = spec.yaw(); pitch = spec.pitch();
             displayName = spec.name(); displaySkin = skin;
+            equipment.putAll(NpcPresentation.equipment(spec)); equipmentRevision = equipment.isEmpty() ? 0 : 1;
             mountReference = MountDeclaration.parse(spec.definition().json()).orElse(null);
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
             routeSource = WaypointSettings.reference(spec.definition());

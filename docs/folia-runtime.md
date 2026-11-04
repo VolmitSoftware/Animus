@@ -7,7 +7,7 @@ On Folia 26.1.2, 26.2 and 26.3, saved NPC definitions run on the region that own
 | Feature | On Folia |
 | --- | --- |
 | Activation, despawn, edits, skins, `/animus inspect`, `/animus status` | Yes |
-| Presentation to every player in range, equipment and appearance changes | Yes |
+| Presentation to every player in range: definition equipment, text lines and long names, nameplate visibility, poses including sitting, armor stand parts, and runtime equipment and appearance changes | Yes, built by the same code as on Paper |
 | Use and attack interactions, `VirtualNpcInteractionEvent`, administrator selection | Yes, when the player's region also owns the NPC |
 | Triggers: spawn, despawn, interaction, waypoint, proximity, timers | Yes |
 | Built-in behavior actions that touch the world or a player | Yes, except `animus:combat` |
