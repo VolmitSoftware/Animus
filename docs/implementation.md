@@ -13,7 +13,7 @@ Implemented source:
 - `core/navigation`: immutable voxel snapshots, bounded/cancellable path searches, kinematic route execution and live clearance/support validation contracts.
 - `bukkit/packet`: native semantic packet adapter with unique IDs, no native entity bodies, bounded queues, presentation leases, signed skins, passengers, head rotation and inbound interception.
 - `bukkit/runtime`: persisted activation, delivered-chunk visibility, fair bounded viewer reconciliation, shared virtual health, selection and production interaction events. Folia disabled explicitly.
-- `core/combat`, `bukkit/combat`, `bukkit/RuntimeCombatService`: supported real damage with cancellation/revalidation, strict import review policy, bounded ordinary-zombie targeting and restoration; manual commands only. No helper NPC entity or full Sentinel module.
+- `core/combat`, `bukkit/combat`, `bukkit/RuntimeCombatService`: the [combat module](combat.md) (target rules, state machine, squads, guards, melee and tracked arrows, defense, death and respawn, fail-closed protection with a WorldGuard adapter, bounded work) plus the manual hit and ordinary-zombie adapter. `core/migration/SentinelMapping` converts imported settings.
 - `bukkit/PacketProofService`: opt-in viewer-isolated proof, lifecycle teardown, virtual health and cancellable third-party preview events.
 - `bukkit/navigation`, `bukkit/runtime`: bounded owner-thread capture of loaded terrain, one planner worker, live movement checks, manual routes, inline/reusable JSON waypoints and cancellation. Partial-block physics and Folia ownership remain open.
 - `core/control`, packet/proof adapters: bounded semantic input, native heartbeat leases, unmounted preview control and authoritative real-player rider sessions.

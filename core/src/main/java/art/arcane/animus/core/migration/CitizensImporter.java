@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 2;
+    public static final int CONVERTER_VERSION = 3;
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     public record Preview(String id, Path directory, int records, int valid, int skins, JsonObject summary) {
         public Preview { summary = summary.deepCopy(); }
@@ -58,13 +58,14 @@ public final class CitizensImporter {
                 summary.addProperty("importId", id);
                 summary.addProperty("sourceSha256", JsonDocuments.hash(original));
                 summary.add("worldMap", options);
-                summary.addProperty("notice", "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; Sentinel is disabled.");
+                summary.addProperty("notice", "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.");
                 JsonObject mapping = identityMap(root.getAsJsonObject("npc"));
                 Map<String, List<String>> reverseIds = new HashMap<>();
                 mapping.entrySet().forEach(e -> reverseIds.computeIfAbsent(e.getValue().getAsString(), ignored -> new ArrayList<>()).add(e.getKey()));
                 JsonObject counts = new JsonObject();
                 JsonObject types = new JsonObject();
                 JsonObject sentinelFields = new JsonObject();
+                JsonObject sentinelMapping = new JsonObject();
                 JsonArray issues = new JsonArray();
                 JsonArray migrationWarnings = new JsonArray();
                 int remappedLocations = 0;
@@ -127,22 +128,20 @@ public final class CitizensImporter {
                     definition.add("position", position);
                     JsonObject modules = new JsonObject();
                     if (traits.has("sentinel")) {
-                        JsonObject combat = new JsonObject();
-                        combat.addProperty("enabled", false);
-                        combat.addProperty("reviewAccepted", false);
-                        JsonElement settings = reviewed.get("sentinel").deepCopy();
-                        JsonObject statistics = new JsonObject();
-                        if (settings.isJsonObject()) {
-                            for (String field : new ArrayList<>(settings.getAsJsonObject().keySet())) {
-                                if (field.startsWith("stats_")) {
-                                    statistics.add(field, settings.getAsJsonObject().remove(field));
-                                    reviewed.getAsJsonObject("sentinel").remove(field);
-                                }
+                        SentinelMapping.Result combat = SentinelMapping.convertRaw(reviewed.get("sentinel"), reviewed.get("equipment"), references);
+                        modules.add("animus:combat", combat.module());
+                        if (reviewed.get("sentinel").isJsonObject()) {
+                            JsonObject reviewedSentinel = reviewed.getAsJsonObject("sentinel");
+                            for (String field : new ArrayList<>(reviewedSentinel.keySet())) {
+                                increment(sentinelMapping, switch (SentinelMapping.disposition(field)) {
+                                    case CONVERTED -> "converted";
+                                    case UNSUPPORTED -> "unsupported";
+                                    case STATISTIC -> "statistics";
+                                    case UNKNOWN -> "unknown";
+                                });
+                                if (field.startsWith("stats_")) reviewedSentinel.remove(field);
                             }
                         }
-                        combat.add("preservedSettings", settings);
-                        combat.add("historicalStatistics", statistics);
-                        modules.add("animus:combat", combat);
                     }
                     // This review copy applies only known location transformations. Exact originals stay in records/ and source.yml.
                     reviewed.remove("skintrait");
@@ -181,6 +180,7 @@ public final class CitizensImporter {
                 summary.add("traits", counts);
                 summary.add("types", types);
                 summary.add("sentinelFields", sentinelFields);
+                summary.add("sentinelMapping", sentinelMapping);
                 summary.add("issues", issues);
                 summary.add("migrationWarnings", migrationWarnings);
                 summary.addProperty("remappedLocations", remappedLocations);
@@ -339,8 +339,14 @@ public final class CitizensImporter {
             Status status = Status.UNSUPPORTED_PRESERVED;
             if (Set.of("/uuid", "/name", "/traits/type", "/traits/location/world", "/traits/location/x", "/traits/location/y", "/traits/location/z", "/traits/location/yaw", "/traits/location/pitch").contains(path)) status = Status.CONVERTED;
             else if (path.startsWith("/traits/")) {
-                String trait = path.substring(8).split("/", 2)[0];
-                if (INTEGRATIONS.contains(trait) || trait.startsWith("denizen")) status = Status.REQUIRES_INTEGRATION;
+                String[] parts = path.substring(8).split("/", 3);
+                String trait = parts[0];
+                if (trait.equals("sentinel") && parts.length > 1) status = switch (SentinelMapping.disposition(parts[1])) {
+                    case CONVERTED -> Status.CONVERTED;
+                    case UNSUPPORTED, STATISTIC -> Status.UNSUPPORTED_PRESERVED;
+                    case UNKNOWN -> Status.REQUIRES_INTEGRATION;
+                };
+                else if (INTEGRATIONS.contains(trait) || trait.startsWith("denizen")) status = Status.REQUIRES_INTEGRATION;
                 else if (trait.equals("skintrait")) status = Status.CONVERTED;
                 else if (REVIEW.contains(trait)) status = Status.REQUIRES_REVIEW;
             }

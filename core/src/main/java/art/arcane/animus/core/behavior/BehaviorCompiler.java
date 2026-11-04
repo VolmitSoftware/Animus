@@ -6,16 +6,18 @@ import art.arcane.animus.core.behavior.BehaviorProgram.*;
 import art.arcane.animus.core.behavior.trigger.TriggerBinding;
 import art.arcane.animus.core.behavior.trigger.TriggerCompiler;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
+import art.arcane.animus.core.behavior.schema.Suggestions;
 import com.google.gson.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /** Strict first-gate compiler. Invalid/unsupported source is diagnosed; this compiler never writes source files. */
 public final class BehaviorCompiler {
-    public static final int MAX_BYTES=256*1024,MAX_NODES=2048,MAX_DEPTH=32,MAX_ROUTINES=32,MAX_VARIABLES=32;
+    public static final int MAX_BYTES=256*1024,MAX_NODES=2048,MAX_DEPTH=32,MAX_ROUTINES=32,MAX_VARIABLES=32,MAX_WAIT_TICKS=72000,MAX_REPEAT=128,MAX_STEPS=128,MAX_BRANCHES=8,MAX_STRING_BYTES=4096;
+    /** Top-level fields the compiler reads. Catalog sources also carry {@code revision}, which the catalog removes before compiling. */
+    public static final List<String> DOCUMENT_FIELDS=List.of("schemaVersion","id","entry","variables","routines","triggers");
     public record Result(Optional<BehaviorProgram> program,List<Diagnostic> diagnostics){public Result{diagnostics=List.copyOf(diagnostics);}}
-    private static final Set<TriggerKind> PLAYERLESS=EnumSet.of(TriggerKind.SPAWN,TriggerKind.DESPAWN,TriggerKind.DAMAGE,TriggerKind.DEATH,TriggerKind.WAYPOINT,TriggerKind.TIMER);
-    private final Map<String,Value> variables=new LinkedHashMap<>();
+        private final Map<String,Value> variables=new LinkedHashMap<>();
     private final Map<String,ScopedVariable> scoped=new LinkedHashMap<>();
     private final Map<String,Node> routines=new LinkedHashMap<>();
     private final List<Call> references=new ArrayList<>();
@@ -38,7 +40,7 @@ public final class BehaviorCompiler {
         List<Diagnostic> warnings=new ArrayList<>();
         for(int index=0;index<program.triggers().size();index++){
             TriggerKind kind=program.triggers().get(index).spec().kind();
-            if(!PLAYERLESS.contains(kind))continue;
+            if(kind.carriesPlayer())continue;
             warnings.add(new Diagnostic(Diagnostic.Severity.WARNING,"behavior-trigger-needs-player","$.triggers["+index+"]",
                     "A "+kind.name().toLowerCase(Locale.ROOT)+" trigger has no player, and this behavior declares the player variable "+variable+", so every firing will be refused"));
         }
@@ -55,7 +57,7 @@ public final class BehaviorCompiler {
         return safe.toString();
     }
     private BehaviorProgram program(JsonObject object){
-        keys(object,"$","schemaVersion","id","entry","variables","routines","triggers");integer(object,"schemaVersion","$",1,1);
+        keys(object,"$","document",DOCUMENT_FIELDS);integer(object,"schemaVersion","$",1,1);
         String id=text(object,"id","$");
         if(id.length()>256||!id.matches("[a-z0-9_-]+:[a-z0-9_/-]+"))throw new Invalid("$.id","expected a lowercase namespace:path behavior reference within 256 characters");
         if(id.matches("animus:(flags|quests)(/.*)?"))throw new Invalid("$.id","reserved for built-in flag and quest state");
@@ -63,9 +65,9 @@ public final class BehaviorCompiler {
         if(object.has("variables")){
             JsonObject vars=object(object.get("variables"),"$.variables");if(vars.size()>MAX_VARIABLES)throw new Invalid("$.variables","at most 32 variables");
             for(var item:vars.entrySet()){
-                String path="$.variables."+item.getKey();identifier(item.getKey(),path);JsonObject var=object(item.getValue(),path);keys(var,path,"type","initial","scope","lifetime");
+                String path="$.variables."+item.getKey();identifier(item.getKey(),path);JsonObject var=object(item.getValue(),path);keys(var,path,"variable",List.of("type","initial","scope","lifetime"));
                 ScopedVariable declaration=scope(var,path);if(declaration!=null)scoped.put(item.getKey(),declaration);
-                Type type;try{type=Type.valueOf(text(var,"type",path).toUpperCase(Locale.ROOT));}catch(IllegalArgumentException unsupported){throw new Invalid(path+".type","expected boolean, integer, decimal or string");}
+                Type type;try{type=Type.valueOf(text(var,"type",path).toUpperCase(Locale.ROOT));}catch(IllegalArgumentException unsupported){throw new Invalid(path+".type","expected boolean, integer, decimal or string"+schemaHint(text(var,"type",path),List.of("boolean","integer","decimal","string")));}
                 variables.put(item.getKey(),value(var.get("initial"),type,path+".initial"));
             }
         }
@@ -73,8 +75,8 @@ public final class BehaviorCompiler {
         for(var item:definitions.entrySet()){
             identifier(item.getKey(),"$.routines."+item.getKey());routines.put(item.getKey(),node(item.getValue(),"$.routines."+item.getKey(),0));
         }
-        if(!routines.containsKey(entry))throw new Invalid("$.entry","unknown routine");
-        for(Call call:references)if(!routines.containsKey(call.routine()))throw new Invalid(call.path()+".routine","unknown routine");
+        if(!routines.containsKey(entry))throw new Invalid("$.entry","unknown routine; declared: "+Suggestions.list(new ArrayList<>(routines.keySet()))+schemaHint(entry,new ArrayList<>(routines.keySet())));
+        for(Call call:references)if(!routines.containsKey(call.routine()))throw new Invalid(call.path()+".routine","unknown routine; declared: "+Suggestions.list(new ArrayList<>(routines.keySet()))+schemaHint(call.routine(),new ArrayList<>(routines.keySet())));
         List<TriggerBinding> triggers;
         try{triggers=object.has("triggers")?TriggerCompiler.compile(object.get("triggers"),routines.keySet()):List.of();}
         catch(TriggerCompiler.Invalid invalid){throw new Invalid(invalid.field(),invalid.getMessage());}
@@ -106,18 +108,19 @@ public final class BehaviorCompiler {
     private Node node(JsonElement element,String path,int depth){
         if(depth>MAX_DEPTH)throw new Invalid(path,"node nesting exceeds 32");if(++nodes>MAX_NODES)throw new Invalid(path,"node budget exceeds 2048");
         JsonObject obj=object(element,path);String type=text(obj,"type",path);
-        return switch(type){
-            case "sequence"->{keys(obj,path,"type","steps");yield new Sequence(path,children(obj.get("steps"),path+".steps",depth,0,128));}
-            case "action"->{keys(obj,path,"type","capability","arguments","bindings");yield new Action(path,capability(text(obj,"capability",path),path+".capability"),arguments(obj,path));}
-            case "condition"->{keys(obj,path,"type","capability","arguments","bindings","then","else");yield new Condition(path,capability(text(obj,"capability",path),path+".capability"),arguments(obj,path),node(obj.get("then"),path+".then",depth+1),obj.has("else")?node(obj.get("else"),path+".else",depth+1):empty(path+".else"));}
-            case "wait"->{keys(obj,path,"type","ticks");yield new Wait(path,integer(obj,"ticks",path,1,72000));}
-            case "repeat"->{keys(obj,path,"type","count","body");yield new Repeat(path,integer(obj,"count",path,0,128),node(obj.get("body"),path+".body",depth+1));}
-            case "parallel"->{keys(obj,path,"type","branches");yield new Parallel(path,children(obj.get("branches"),path+".branches",depth,1,8));}
-            case "call"->{keys(obj,path,"type","routine");Call call=new Call(path,identifier(text(obj,"routine",path),path+".routine"));references.add(call);yield call;}
-            case "set"->{keys(obj,path,"type","variable","value");String name=text(obj,"variable",path);Value declared=variables.get(name);if(declared==null)throw new Invalid(path+".variable","unknown declared variable");JsonElement input=obj.get("value");Operand operand;
-                if(input!=null&&input.isJsonObject()){JsonObject ref=input.getAsJsonObject();keys(ref,path+".value","variable");String source=text(ref,"variable",path+".value");Value other=variables.get(source);if(other==null||other.type()!=declared.type())throw new Invalid(path+".value.variable","unknown or mismatched variable type");operand=new Variable(source);}
+        BehaviorNodeType kind=BehaviorNodeType.find(type).orElseThrow(()->new Invalid(path+".type","unsupported node type; expected one of: "+Suggestions.list(BehaviorNodeType.names())+Suggestions.didYouMean(type,BehaviorNodeType.names())));
+        keys(obj,path,kind.jsonName(),kind.keys());
+        return switch(kind){
+            case SEQUENCE->new Sequence(path,children(obj.get("steps"),path+".steps",depth,0,MAX_STEPS));
+            case ACTION->new Action(path,capability(text(obj,"capability",path),path+".capability"),arguments(obj,path));
+            case CONDITION->new Condition(path,capability(text(obj,"capability",path),path+".capability"),arguments(obj,path),node(obj.get("then"),path+".then",depth+1),obj.has("else")?node(obj.get("else"),path+".else",depth+1):empty(path+".else"));
+            case WAIT->new Wait(path,integer(obj,"ticks",path,1,MAX_WAIT_TICKS));
+            case REPEAT->new Repeat(path,integer(obj,"count",path,0,MAX_REPEAT),node(obj.get("body"),path+".body",depth+1));
+            case PARALLEL->new Parallel(path,children(obj.get("branches"),path+".branches",depth,1,MAX_BRANCHES));
+            case CALL->{Call call=new Call(path,identifier(text(obj,"routine",path),path+".routine"));references.add(call);yield call;}
+            case SET->{String name=text(obj,"variable",path);Value declared=variables.get(name);if(declared==null)throw new Invalid(path+".variable","unknown declared variable"+schemaHint(name,new ArrayList<>(variables.keySet())));JsonElement input=obj.get("value");Operand operand;
+                if(input!=null&&input.isJsonObject()){JsonObject ref=input.getAsJsonObject();keys(ref,path+".value","variable reference",List.of("variable"));String source=text(ref,"variable",path+".value");Value other=variables.get(source);if(other==null||other.type()!=declared.type())throw new Invalid(path+".value.variable","unknown or mismatched variable type");operand=new Variable(source);}
                 else operand=new Literal(value(input,declared.type(),path+".value"));yield new SetValue(path,name,operand);}
-            default->throw new Invalid(path+".type","unsupported node type");
         };
     }
     private Node empty(String path){if(++nodes>MAX_NODES)throw new Invalid(path,"node budget exceeds 2048");return new Sequence(path,List.of());}
@@ -143,7 +146,8 @@ public final class BehaviorCompiler {
         }catch(RuntimeException invalid){throw new Invalid(path,"expected bounded "+type.name().toLowerCase(Locale.ROOT)+" value");}
     }
     private static JsonObject object(JsonElement element,String path){if(element==null||!element.isJsonObject())throw new Invalid(path,"expected object");return element.getAsJsonObject();}
-    private static void keys(JsonObject object,String path,String...allowed){Set<String> supported=Set.of(allowed);for(String key:object.keySet())if(!supported.contains(key))throw new Invalid(path+"."+key,"unsupported field");}
+    private static void keys(JsonObject object,String path,String owner,List<String> allowed){for(String key:object.keySet())if(!allowed.contains(key))throw new Invalid(path+"."+key,"unsupported field for "+owner+"; allowed: "+Suggestions.list(allowed)+Suggestions.didYouMean(key,allowed));}
+    private static String schemaHint(String word,List<String> options){return Suggestions.didYouMean(word,options);}
     private static String text(JsonObject object,String key,String path){JsonElement value=object.get(key);if(value==null||!value.isJsonPrimitive()||!value.getAsJsonPrimitive().isString()||value.getAsString().isBlank())throw new Invalid(path+"."+key,"expected nonblank string");return value.getAsString();}
     private static int integer(JsonObject object,String key,String path,int minimum,int maximum){try{JsonElement value=object.get(key);if(value==null||!value.isJsonPrimitive()||!value.getAsJsonPrimitive().isNumber())throw new ArithmeticException();int number=value.getAsBigDecimal().intValueExact();if(number<minimum||number>maximum)throw new ArithmeticException();return number;}catch(RuntimeException invalid){throw new Invalid(path+"."+key,"expected integer "+minimum+".."+maximum);}}
     private static String identifier(String value,String path){if(!value.matches("[a-z0-9][a-z0-9_-]{0,63}"))throw new Invalid(path,"expected a lowercase identifier within 64 characters");return value;}

@@ -17,7 +17,7 @@ import java.util.concurrent.CompletionStage;
  */
 public interface BehaviorPlatform {
     enum CommandSource { CONSOLE, PLAYER }
-    enum CombatOperation { ENABLE, DISABLE, TARGET, RELEASE }
+    enum CombatOperation { ENABLE, DISABLE, TARGET, RELEASE, GUARD }
     enum EquipmentSlot { MAIN_HAND, OFF_HAND, HEAD, CHEST, LEGS, FEET, BODY }
 
     record NpcStatus(boolean spawned, double health) {}

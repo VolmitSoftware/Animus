@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town-guard:guard",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-equipment",
+          "arguments": {
+            "slot": "main_hand",
+            "item": "minecraft:iron_sword"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "enable"
+          }
+        }
+      ]
+    },
+    "challenge": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:has-permission",
+          "arguments": {
+            "permission": "town.member"
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Evening, citizen."
+            }
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Stranger, state your business and keep your blade sheathed."
+            }
+          }
+        }
+      ]
+    },
+    "alarm": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "To arms! The guard is under attack!",
+            "audience": "nearby",
+            "radius": 32
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:play-sound",
+          "arguments": {
+            "sound": "minecraft:item.goat_horn.sound.0",
+            "audience": "nearby",
+            "radius": 32,
+            "volume": 2
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "ready",
+      "event": "spawn"
+    },
+    {
+      "id": "challenge",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 12,
+      "routine": "challenge",
+      "cooldownTicks": 200
+    },
+    {
+      "id": "attacked",
+      "event": "damage",
+      "routine": "alarm",
+      "cooldownTicks": 100
+    }
+  ]
+}

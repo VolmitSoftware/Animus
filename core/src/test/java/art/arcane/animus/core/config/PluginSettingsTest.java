@@ -26,6 +26,20 @@ class PluginSettingsTest {
             assertEquals(source, Files.readString(root.resolve("config.toml")));
         }
     }
+    @Test void combatBudgetsAreReadFromTomlAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(CombatBudgets.DEFAULT, PluginSettings.load(store).combat());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[combat]\nenabled = false\nmaximumNpcs = 8\nhelpersPerNpc = 2\n");
+            CombatBudgets budgets = PluginSettings.load(store).combat();
+            assertFalse(budgets.enabled());
+            assertEquals(8, budgets.maximumNpcs());
+            assertEquals(2, budgets.helpersPerNpc());
+            assertEquals(CombatBudgets.DEFAULT.targetScansPerTick(), budgets.targetScansPerTick());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[combat]\ntargetScansPerTick = 0\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("combat: targetScansPerTick must be within 1..64"), error.getMessage());
+        }
+    }
     @Test void extensionSettingsAreTomlAndDoNotRewriteExistingFilesOrModuleData() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             String toml = "# Existing operator comments\nstatusMessage = 'Test'\n[files]\nmaximumOperations = 8\n"

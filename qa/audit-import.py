@@ -113,7 +113,11 @@ for record in records:
     if 'sentinel' in original_traits:
         combat = candidate['modules']['animus:combat']
         assert combat['enabled'] is False and combat['reviewAccepted'] is False, f'Combat enabled without review in record {key}'
-        if version >= 2:
+        if version >= 3:
+            assert candidate['modules']['citizens:review']['sentinel'] == reviewed['sentinel'], f'Sentinel settings mismatch in record {key}'
+            assert not set(combat['preservedSettings']) & set(statistics), f'Sentinel history mixed into settings in record {key}'
+            assert combat['historicalStatistics'] == statistics, f'Sentinel history mismatch in record {key}'
+        elif version >= 2:
             assert combat['preservedSettings'] == reviewed['sentinel'], f'Sentinel settings mismatch in record {key}'
             assert combat['historicalStatistics'] == statistics, f'Sentinel history mismatch in record {key}'
         else:

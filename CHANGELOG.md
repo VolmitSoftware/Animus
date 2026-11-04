@@ -44,6 +44,16 @@
 - Dialogue clicks start `dialogue_choice` triggers and fire `VirtualNpcDialogueChoiceEvent`, through the player-facing `/animus choice` click target.
 - `Capabilities.Invocation.behavior()` in the module API.
 - `behavior-trigger-needs-player` validation warning.
+- Combat module: target, ignore and avoid rules, line of sight, squads, guarding, pursuit with leash and return, melee and tracked arrows, armor, healing, knockback, drops and respawn. NPCs fight players, mobs and other NPCs.
+- WorldGuard protection for combat (`pvp`, `invincible`, `damage-animals`, `mob-damage`). Combat damage is denied when no decision can be made.
+- `guard` operation for `animus:combat-control`, and `/animus combat <npc-id> status|engage|disengage|release|target|guard`.
+- `[combat]` work limits in `config.toml`.
+- Generated JSON Schemas for behaviors, NPC definitions and pack manifests, plus editor completion data, from the live capability registry (`/animus behaviors schema`).
+- Behavior packs under `packs/<pack-id>/` with `pack.json`, module requirements, reload without restart and preserved module configuration.
+- `/animus behaviors packs`, `/animus behaviors validate [behavior-id]` and tab completion for behavior commands.
+- Converter `validate-behaviors` and `schema` commands for offline checks.
+- Seven example packs: greeter, patrol, branching dialogue, quest giver, shop, town guard and personal guard.
+- Guide for moving imported Denizen flags and assignments to behaviors.
 
 ### Changed
 
@@ -52,7 +62,12 @@
 - Behavior validation rejects invalid literal capability arguments and reports unavailable capabilities separately.
 - `/animus modules status` and `capabilities` count built-ins apart from module capabilities.
 - Preview executions carry their preview flag through to capabilities.
+- Citizens import (converter version 3) converts Sentinel settings into a disabled `animus:combat` module, keeping unsupported settings and statistics separately.
+- `animus:combat-control` drives the combat module instead of the manual adapter, and WorldGuard no longer disables combat.
+- The ordinary-zombie adapter's hits respect the NPC's combat defense.
+- Renamed `ManualBehaviorRuntime` to `BehaviorRuntime`.
+- Diagnostics name the allowed fields and values and suggest the nearest match.
 
 ### Notes
 
-Partial-block movement, Folia rendering, the full combat module, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
+Partial-block movement, Folia rendering, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.

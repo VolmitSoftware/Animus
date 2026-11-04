@@ -144,10 +144,17 @@ public final class ModuleHost implements AutoCloseable {
     /** Why this registered capability cannot run on this platform now. A privileged grant is checked separately. */
     public synchronized Optional<String> unavailableReason(Key key,Kind kind){
         Registration registration=capabilities.get(Objects.requireNonNull(key));
-        if(registration==null || registration.descriptor.kind()!=Objects.requireNonNull(kind))return Optional.of("capability-not-registered");
+        if(registration==null)return Optional.of("capability-not-registered"+nearest(key,Objects.requireNonNull(kind)));
+        if(registration.descriptor.kind()!=Objects.requireNonNull(kind))return Optional.of("capability-not-registered: "+key+" is "+article(registration.descriptor.kind())+", not "+article(kind));
         if(kind==Kind.TRIGGER&&triggerSink==null)return Optional.of("trigger-dispatch-unwired");
         return unavailableReason(registration);
     }
+    private String nearest(Key key,Kind kind){
+        List<String> names=new ArrayList<>();
+        for(Registration candidate:capabilities.values())if(candidate.descriptor.kind()==kind)names.add(candidate.descriptor.key().toString());
+        return art.arcane.animus.core.behavior.schema.Suggestions.didYouMean(key.toString(),names);
+    }
+    private static String article(Kind kind){return kind==Kind.ACTION?"an action":kind==Kind.CONDITION?"a condition":"a trigger";}
     public synchronized boolean privileged(Key key){
         Registration registration=capabilities.get(Objects.requireNonNull(key));
         return registration!=null && registration.descriptor.privileged();

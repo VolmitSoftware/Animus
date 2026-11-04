@@ -11,7 +11,7 @@ This is a development inventory, not a release-parity claim. Counts were produce
 | Waypoints (318), look behavior (495) | Preserved for review | Known locations remapped; native movement/look/JSON routes verified on exact Paper/Spigot targets; imported traits are not executed |
 | Text (2), holograms (91), poses (3) | Preserved for review | No presentation or dialogue runtime |
 | Ownership (388) | Preserved for review | Administration uses plugin permissions; per-NPC ownership pending |
-| Sentinel (103) | All settings preserved; disabled pending review | Manual damage and ordinary-zombie adapter implemented; full combat module pending; statistics kept separate |
+| Sentinel (103) | Settings converted to `animus:combat`; unsupported settings and statistics kept separately; disabled pending review | [Combat module](combat.md) runs once the review is accepted; live gameplay checks pending |
 | Denizen flags (24), assignment/trigger records (8 each) | Preserved; requires integration | External scripts required to translate behaviors |
 | Mounts (2) | Preserved; UUID references resolved | Resolved references apply from definitions on exact Paper/Spigot: passengers for every viewer, across restart. Unresolved ones stay preserved and reported. See [mounted NPCs](runtime.md#mounted-npcs) |
 | Controllable (1) | Preserved for review | Trait not executed. A definition opts in with `animus:riding`, with `reviewAccepted: true` when imported. See [riding](runtime.md#riding-an-npc) |
@@ -42,7 +42,7 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 | poses | 3 | Requires review |
 | rotationtrait | 1 | Unsupported, preserved |
 | scoreboardtrait | 495 | Unsupported, preserved |
-| sentinel | 103 | Requires integration |
+| sentinel | 103 | Converted to combat settings; disabled pending review |
 | sittrait | 1 | Unsupported, preserved |
 | skintrait | 489 | Converted to skin documents; opt-in signed-texture proof |
 | sneak | 1 | Unsupported, preserved |
@@ -54,9 +54,48 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 | type | 495 | Converted identifier; opt-in packet proof for all observed types |
 | waypoints | 318 | Requires review |
 
-## Every observed Sentinel field
+## Sentinel settings
 
-All are preserved as source data and marked `REQUIRES_INTEGRATION` in per-field reports. None is silently interpreted as working Animus combat. The complete original Sentinel object remains in the archive. The disabled module configuration separates reviewable settings from historical statistics.
+Each Sentinel record becomes a disabled `modules["animus:combat"]` with `enabled` and `reviewAccepted` set to `false`. Accept the review by setting both to `true` after checking the result; until then the NPC neither fights nor takes combat damage. The unchanged Sentinel record stays in `citizens:review` and in the import archive. Converter version 3 writes this mapping; per-field reports mark converted fields `CONVERTED`, kept fields `UNSUPPORTED_PRESERVED`, and fields unknown at the pinned source `REQUIRES_INTEGRATION`.
+
+The module keeps three things apart:
+
+- The converted settings, described in [combat.md](combat.md). A field missing from a save means Sentinel's own default, so those defaults are written out rather than replaced by Animus defaults.
+- `preservedSettings`: every unsupported or unknown field, plus the original value of any converted field that could not be represented exactly (out of range, malformed, regular-expression names, item data, unresolvable guarded NPC). Nothing here runs.
+- `historicalStatistics`: the 16 `stats_*` counters, as imported. They are not updated.
+
+`migrationReport` lists which source fields converted, which are unsupported or unknown, and a note for every value that was adjusted.
+
+Of the 69 persisted fields at the pinned source, 44 settings convert, 9 settings are unsupported and kept, and 16 statistics are kept separately.
+
+| Sentinel field | Combat setting | Notes |
+| --- | --- | --- |
+| `allTargets`, `allIgnores`, `allAvoids` | `targets`, `ignores`, `avoids` | Categories (`PLAYERS`, `NPCS`, `MONSTERS`, `MOBS`, `PASSIVE_MOBS`), entity types, plain player/NPC/entity names, `squad:` and `uuid:` entries convert. Patterns, items, groups, events, statuses, `OWNER` and other entries are kept. |
+| `range` | `targeting.scanRange` | Limited to 64. |
+| `realistic`, `ignore_los` | `targeting.lineOfSight` | `ignore_los` gives `ignored`, else `realistic` gives `field_of_view`, else `required`. |
+| `enemyTargetTime`, `reaction_slowdown`, `retain_target`, `fightback` | `targeting.memoryTicks`, `reactionTicks`, `retainTarget`, `fightBack` | Ticks. |
+| `avoidRange`, `runaway`, `avoidReturnPoint` | `avoidance.range`, `fleeWhenAttacked`, `returnPoint` | |
+| `squad` | `squad.name` | |
+| `guardingUpper` + `guardingLower` | `guard.player` | The two halves form the player UUID. |
+| `guardedNPC` | `guard.npc` | Resolved to the guarded NPC's UUID in the same import, and to the copy's UUID when applied as a copy; otherwise kept. A guarded player takes precedence. |
+| `guard_distance_minimum`, `guard_selection_range` | `guard.followDistance`, `pointRange` | |
+| `chaseRange` | `pursuit.leashRange`, `giveUpRange` | |
+| `speed` | `pursuit.speed` | 1 means walking speed, 4.3 blocks per second; limited to 1–5. |
+| `close_chase`, `ranged_chase`, `disable_teleporting` | `pursuit.closeChase`, `rangedChase`, `teleportWhenStuck` | |
+| `damage` | `melee.damage`, `ranged.damage` | `-1` (from equipment) becomes 1 and is kept; `0` disables melee. |
+| `attackRate`, `attackRateRanged` | `melee.cooldownTicks`, `ranged.cooldownTicks` | Ticks. |
+| `reach` | `melee.reach` | Limited to 6. |
+| `projectileRange`, `accuracy`, `safeShot` | `ranged.range`, `inaccuracy`, `safeShot` | Ranged attacks are enabled when the imported equipment holds a bow or crossbow. |
+| `health` | `defense.maximumHealth` | Maximum, not current health. |
+| `armor` | `defense.armor` | `-1` (from equipment) becomes 0 and is kept. |
+| `invincible`, `protected`, `protectFromRange`, `allow_knockback`, `healRate` | `defense.invincible`, `protectedFromIgnored`, `protectFromRange`, `knockback`, `healRateTicks` | `protected` means protection from ignored targets, not region protection. |
+| `drops`, `dropChances` | `death.drops` | Plain items with their chances convert; items with extra data keep the whole original list. |
+| `enemyDrops`, `death_xp` | `death.victimDrops`, `experience` | |
+| `respawnTime`, `spawnPoint` | `respawn.delayTicks`, `locations` | `-1` never respawns. |
+
+Unsupported and kept: `worldguard_region`, `needsAmmo`, `autoswitch`, `weapon_damage_map`, `weapon_redirect_map`, `warning_text`, `greeting_text`, `greet_range`, `greet_rate`.
+
+Observed in the private reference, 21 of the 22 settings convert; `warning_text` (60 records) is kept. The seven observed statistics are kept separately.
 
 | Field | Records | Field | Records |
 |---|---:|---|---:|
@@ -82,7 +121,7 @@ VolmLib's `VirtualPlayers.create(Player owner, Location, int)` requires an onlin
 
 The locally cached Mojang 26.1.2 and 26.3 classes expose `ServerboundInteractPacket` as a record with `entityId`, `hand`, `location`, and `usingSecondaryAction`. In 26.3 attacks are a separate `ServerboundAttackPacket`. Do not port a pre-26.x handler that expects a nested `ServerboundInteractPacket.Handler`. Constructor/method inspection alone is not a packet proof.
 
-[Sentinel's documentation](https://github.com/mcmonkeyprojects/Sentinel) is the capability reference for future targeting, guarding, weapons, and integrations. The [pinned import source inventory](upstream-inventory.md) maps all fixture traits to 101 declared Citizens traits and 69 persisted Sentinel fields, with explicit capability gaps. Runtime parity still requires scenario evidence.
+[Sentinel's documentation](https://github.com/mcmonkeyprojects/Sentinel) explains the meaning of imported fields. The [pinned import source inventory](upstream-inventory.md) maps all fixture traits to 101 declared Citizens traits and 69 persisted Sentinel fields, with explicit capability gaps. Runtime parity still requires scenario evidence.
 
 ## Platform evidence
 
@@ -114,7 +153,7 @@ Benchmark Animus against a reproducible server baseline with the same world and 
 
 Mounts, riding and dragon presentation bind to the same exact-version adapter. On Folia the NPC runtime reports them unavailable through `/animus status`, `/animus ride status` and activation errors, and any other Minecraft version refuses to bind. If one of the server methods riding needs is missing, only riding reports unavailable and the rest of the runtime keeps working. `NativeSignatureProbe` checks the native members they use against an exact server jar.
 
-Current runtime details and explicit manual combat limits are in [runtime.md](runtime.md). [Spigot provenance](spigot-verification.md) records official server builds and prior proof artifact hashes. Do not mix baseline proof evidence with later production artifact results.
+Current runtime details are in [runtime.md](runtime.md); combat settings, protection and limits are in [combat.md](combat.md). [Spigot provenance](spigot-verification.md) records official server builds and prior proof artifact hashes. Do not mix baseline proof evidence with later production artifact results.
 
 Latest fully verified runtime artifact: `c89adc35796afe5c33d85cf3e0f853ae2cd0f68123e3c1c16a4e77abd93f9576`, Multiplexor build `run-1793803535545514-80447`. Independent audit passed480 native assertions and81 Folia lifecycle assertions. All nine final ports are closed, final logs have no errors/movement warnings, and owned definitions/checkpoints were removed. The later stationary Folia proof has separate runtime8 evidence below. Earlier native38-check proofs remain tied to their earlier artifact; see [current evidence](implementation.md).
 

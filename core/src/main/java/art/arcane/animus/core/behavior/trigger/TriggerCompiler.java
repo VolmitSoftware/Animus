@@ -1,6 +1,7 @@
 package art.arcane.animus.core.behavior.trigger;
 
 import art.arcane.animus.api.Capabilities;
+import art.arcane.animus.core.behavior.schema.Suggestions;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -45,16 +46,8 @@ public final class TriggerCompiler {
         String id = identifier(object, "id", path);
         String event = text(object, "event", path);
         TriggerKind kind = TriggerKind.find(event).orElseThrow(() -> new Invalid(path + ".event",
-                "expected interaction, proximity, spawn, despawn, damage, death, waypoint, timer, dialogue_choice or module"));
-        fields(object, path, switch (kind) {
-            case INTERACTION -> Set.of("action");
-            case PROXIMITY -> Set.of("phase", "radius");
-            case WAYPOINT -> Set.of("waypoint");
-            case TIMER -> Set.of("intervalTicks");
-            case DIALOGUE_CHOICE -> Set.of("dialogue", "choice");
-            case MODULE -> Set.of("key");
-            case SPAWN, DESPAWN, DAMAGE, DEATH -> Set.of();
-        });
+                "expected one of: " + Suggestions.list(TriggerKind.names()) + Suggestions.didYouMean(event, TriggerKind.names())));
+        fields(object, path, kind);
         Optional<String> routine = Optional.empty();
         if (object.has("routine")) {
             String name = text(object, "routine", path);
@@ -84,10 +77,11 @@ public final class TriggerCompiler {
         };
     }
 
-    private static void fields(JsonObject object, String path, Set<String> specific) {
+    private static void fields(JsonObject object, String path, TriggerKind kind) {
+        List<String> allowed = kind.keys();
         for (String key : object.keySet()) {
-            if (!Set.of("id", "event", "routine", "cooldownTicks").contains(key) && !specific.contains(key))
-                throw new Invalid(path + "." + key, "unsupported field for this event");
+            if (!allowed.contains(key))
+                throw new Invalid(path + "." + key, "unsupported field for a " + kind.jsonName() + " trigger; allowed: " + Suggestions.list(allowed) + Suggestions.didYouMean(key, allowed));
         }
     }
     private static String text(JsonObject object, String key, String path) {

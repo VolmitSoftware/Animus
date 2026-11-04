@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "b5a46d28-96d1-5d48-980b-deaf61945a94",
+  "id": "innkeeper",
+  "group": "examples",
+  "name": "Innkeeper",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": -7.5,
+    "y": 64,
+    "z": 8.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "dialogue:innkeeper"
+  ]
+}

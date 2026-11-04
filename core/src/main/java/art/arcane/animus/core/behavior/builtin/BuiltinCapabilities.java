@@ -336,8 +336,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     ParticleEffect particle = new ParticleEffect(text(call.arguments, "particle").orElseThrow(), count, decimal(call.arguments, "spread").orElse(0));
                     return onOwner(call, () -> delivered(platform.spawnParticle(call.npc(), audience, particle)));
                 });
-        action("combat-control", Effect.WORLD, "Enables or disables the NPC's manual combat, or starts or releases control of a target. Existing combat policy still applies.",
-                schema(choice("operation", "enable", "disable", "target", "release") + "," + string("target", 36), required("operation")),
+        action("combat-control", Effect.WORLD, "Engages or disengages the NPC's combat, attacks or releases a target, or guards a participant (no target stops guarding). Needs enabled combat settings; protection still applies.",
+                schema(choice("operation", "enable", "disable", "target", "release", "guard") + "," + string("target", 36), required("operation")),
                 BuiltinCapabilities::checkCombat,
                 call -> {
                     CombatOperation operation = CombatOperation.valueOf(text(call.arguments, "operation").orElseThrow().toUpperCase(Locale.ROOT));
@@ -472,12 +472,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     private static void checkCombat(JsonObject arguments, List<Diagnostic> problems) {
-        boolean targeting = arguments.get("operation").getAsString().equals("target");
-        if (targeting != arguments.has("target")) {
-            problems.add(problem("$.target", "combat-target", "target is required by the target operation and only by it"));
+        String operation = arguments.get("operation").getAsString();
+        boolean targeting = operation.equals("target");
+        if (!operation.equals("guard") && targeting != arguments.has("target")) {
+            problems.add(problem("$.target", "combat-target", "target is required by the target operation, optional for guard, and refused otherwise"));
             return;
         }
-        if (!targeting) return;
+        if (!arguments.has("target")) return;
         String target = arguments.get("target").getAsString();
         try { if (!UUID.fromString(target).toString().equals(target)) throw new IllegalArgumentException(); }
         catch (IllegalArgumentException invalid) { problems.add(problem("$.target", "combat-target", "target must be an entity UUID")); }

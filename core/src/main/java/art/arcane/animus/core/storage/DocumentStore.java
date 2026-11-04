@@ -14,7 +14,7 @@ public final class DocumentStore implements AutoCloseable {
     public record Change(String path, String expectedHash, String content) {}
     /** A whole replacement of generated data, where null deletes it. Generated data has no editor, so nothing can conflict. */
     public record Generated(String path, String content) {}
-    private static final String GENERATED_PATH = "state/behavior-state/[a-z0-9_/-]+\\.json|state/behavior-catalog/last-valid/behaviors/[a-z0-9_/-]+\\.json";
+    private static final String GENERATED_PATH = "state/behavior-state/[a-z0-9_/-]+\\.json|state/behavior-catalog/last-valid/(?:packs/[a-z0-9_-]+/)?behaviors/[a-z0-9_/-]+\\.json";
     private static final long MAX_TRANSACTION_BYTES = 256L * 1024 * 1024;
     private final Path root;
     private final FileChannel lockChannel;

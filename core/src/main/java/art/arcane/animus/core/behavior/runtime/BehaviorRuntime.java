@@ -16,7 +16,7 @@ import java.util.function.Supplier;
  * suppliers must be quick, thread-safe observations with no file, platform, or world access.
  * Existing dormant definitions are allowed. Player identity grants no world or preview authority.
  */
-public final class ManualBehaviorRuntime implements AutoCloseable {
+public final class BehaviorRuntime implements AutoCloseable {
     public record Limits(int maximumOperations,int operationsPerTick,int tickMillis,int deliveryBudgetMillis) {
         public Limits {
             if(maximumOperations<1||maximumOperations>256||operationsPerTick<1||operationsPerTick>64
@@ -76,13 +76,13 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     private BehaviorEngine engine; // owner only
 
     /** A null dispatcher runs manual executions only. */
-    public ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
+    public BehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
                                  Supplier<Map<String,NpcDefinition>> definitions,
                                  Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,TriggerDispatcher triggers,BehaviorState state) {
         this(limits,engineLimits,definitions,catalog,invoker,triggers,state,daemonFactory("animus-behavior-owner"));
     }
     // Package-private deterministic owner-start seam; production always uses its private daemon owner.
-    ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
+    BehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
                           Supplier<Map<String,NpcDefinition>> definitions,
                           Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,TriggerDispatcher triggers,BehaviorState state,ThreadFactory ownerFactory) {
         this.limits=Objects.requireNonNull(limits);this.engineLimits=Objects.requireNonNull(engineLimits);
@@ -314,5 +314,5 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     }
     private static <T> CompletionStage<Outcome<T>> rejected(Outcome.Status status,String code,String message){return CompletableFuture.completedFuture(Outcome.<T>rejected(status,code,message)).minimalCompletionStage();}
     private static <T> CompletionStage<Outcome<T>> unavailable(){return rejected(Outcome.Status.UNAVAILABLE,"runtime-closing","Behavior runtime is stopping");}
-    private static <T> CompletionStage<Outcome<T>> busy(){return rejected(Outcome.Status.BUSY,"operation-capacity","Manual behavior operation capacity reached");}
+    private static <T> CompletionStage<Outcome<T>> busy(){return rejected(Outcome.Status.BUSY,"operation-capacity","Behavior operation capacity reached");}
 }

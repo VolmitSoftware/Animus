@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "e50bd9c8-a450-5d3e-b905-671f48cfee3b",
+  "id": "harbour-master",
+  "group": "examples",
+  "name": "Harbour Master",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 24.5,
+    "y": 64,
+    "z": -7.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "quest:recipient"
+  ]
+}
