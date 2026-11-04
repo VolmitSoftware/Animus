@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:basic",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "qabehavior:record",
+          "arguments": {
+            "tag": "start"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "qabehavior:record",
+          "arguments": {
+            "tag": "bound",
+            "longValue": null,
+            "decimalValue": null,
+            "booleanValue": null,
+            "stringValue": null
+          },
+          "bindings": {
+            "/longValue": {
+              "variable": "long_value"
+            },
+            "/decimalValue": {
+              "variable": "decimal_value"
+            },
+            "/booleanValue": {
+              "variable": "boolean_value"
+            },
+            "/stringValue": {
+              "variable": "string_value"
+            }
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "qabehavior:true",
+          "then": {
+            "type": "action",
+            "capability": "qabehavior:record",
+            "arguments": {
+              "tag": "true"
+            }
+          },
+          "else": {
+            "type": "action",
+            "capability": "qabehavior:fail"
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "qabehavior:false",
+          "then": {
+            "type": "action",
+            "capability": "qabehavior:fail"
+          },
+          "else": {
+            "type": "action",
+            "capability": "qabehavior:record",
+            "arguments": {
+              "tag": "false"
+            }
+          }
+        },
+        {
+          "type": "repeat",
+          "count": 3,
+          "body": {
+            "type": "call",
+            "routine": "loop"
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": 3
+        },
+        {
+          "type": "parallel",
+          "branches": [
+            {
+              "type": "sequence",
+              "steps": [
+                {
+                  "type": "action",
+                  "capability": "qabehavior:record",
+                  "arguments": {
+                    "tag": "branch-a"
+                  }
+                },
+                {
+                  "type": "wait",
+                  "ticks": 2
+                }
+              ]
+            },
+            {
+              "type": "sequence",
+              "steps": [
+                {
+                  "type": "wait",
+                  "ticks": 1
+                },
+                {
+                  "type": "action",
+                  "capability": "qabehavior:record",
+                  "arguments": {
+                    "tag": "branch-b"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "action",
+          "capability": "qabehavior:record",
+          "arguments": {
+            "tag": "after"
+          }
+        }
+      ]
+    },
+    "loop": {
+      "type": "action",
+      "capability": "qabehavior:record",
+      "arguments": {
+        "tag": "loop"
+      }
+    }
+  },
+  "variables": {
+    "long_value": {
+      "type": "integer",
+      "initial": 9223372036854775807
+    },
+    "decimal_value": {
+      "type": "decimal",
+      "initial": 1.25
+    },
+    "boolean_value": {
+      "type": "boolean",
+      "initial": true
+    },
+    "string_value": {
+      "type": "string",
+      "initial": "Garde Étoile"
+    }
+  }
+}

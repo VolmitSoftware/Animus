@@ -5,6 +5,13 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PacketInputValuesTest {
+    @Test void npcProfileNamesPreserveSpacesAndUnicodeWithinTheWireLimit() {
+        assertDoesNotThrow(() -> NativePacketAdapter.validateProfileName("Town Guard"));
+        assertDoesNotThrow(() -> NativePacketAdapter.validateProfileName("Étoile 雪"));
+        assertDoesNotThrow(() -> NativePacketAdapter.validateProfileName("a".repeat(16)));
+        for (String invalid : new String[]{"", " ", "a".repeat(17), "Guard\nName", "Guard\u0000"})
+            assertThrows(IllegalArgumentException.class, () -> NativePacketAdapter.validateProfileName(invalid));
+    }
     @Test void rejectNonFiniteCoordinatesAndInvalidPitchBeforePacketConstruction() {
         UUID world = UUID.randomUUID();
         assertThrows(IllegalArgumentException.class, () -> new NativePacketAdapter.Pose(world, Double.NaN, 64, 0, 0, 0, true));

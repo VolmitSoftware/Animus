@@ -17,10 +17,61 @@ class PluginSettingsTest {
             assertTrue(Files.exists(root.resolve("config.toml")));
             assertFalse(Files.exists(root.resolve("config.json")));
             assertFalse(PluginSettings.load(store).packetProofEnabled());
+            assertEquals(NpcRuntimeSettings.DEFAULT, PluginSettings.load(store).npcs());
+            assertEquals(FileWorkSettings.DEFAULT, PluginSettings.load(store).files());
+            assertEquals(ModuleSettings.DEFAULT, PluginSettings.load(store).modules());
             String source = "# Admin comment\nstatusMessage = 'Custom message'\n[future]\nkeep = true\n";
             Files.writeString(root.resolve("config.toml"), source);
             assertEquals("Custom message", PluginSettings.load(store).statusMessage());
             assertEquals(source, Files.readString(root.resolve("config.toml")));
+        }
+    }
+    @Test void extensionSettingsAreTomlAndDoNotRewriteExistingFilesOrModuleData() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            String toml = "# Existing operator comments\nstatusMessage = 'Test'\n[files]\nmaximumOperations = 8\n"
+                    + "[modules]\nenabled = false\nmaximumInvocations = 12\ninvocationTimeoutMillis = 1500\n";
+            Files.writeString(root.resolve("config.toml"), toml);
+            DocumentStore.atomic(store.resolve("npcs/default/future.json"), "{\"modules\":{\"missing:feature\":{\"keep\":true}}}");
+            PluginSettings settings = PluginSettings.load(store);
+            assertEquals(new FileWorkSettings(8, 250), settings.files());
+            assertEquals(new ModuleSettings(false, 12, 1500, 250), settings.modules());
+            assertEquals(toml, Files.readString(root.resolve("config.toml")));
+            assertEquals("{\"modules\":{\"missing:feature\":{\"keep\":true}}}", store.read("npcs/default/future.json"));
+        }
+    }
+    @ParameterizedTest
+    @ValueSource(strings = {"[files]\nmaximumOperations = 0", "[files]\nmaximumOperations = 129",
+            "[files]\nmaximumOperations = 1.5", "[files]\ndeliveryBudgetMillis = 60001",
+            "[modules]\nenabled = 'false'", "[modules]\nmaximumInvocations = 257",
+            "[modules]\ninvocationTimeoutMillis = 0", "[modules]\ndeliveryBudgetMillis = '250'",
+            "files = []", "modules = true"})
+    void rejectsInvalidExtensionBudgetsWithoutChangingTheFile(String body) throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            String original = "statusMessage = 'Test'\n" + body + "\n";
+            Files.writeString(root.resolve("config.toml"), original);
+            IOException failure = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(failure.getMessage().contains(body.contains("files") ? "files" : "modules"));
+            assertEquals(original, Files.readString(root.resolve("config.toml")));
+        }
+    }
+    @Test void runtimeBudgetsUseTomlAndPreserveUnspecifiedDefaults() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            String toml = "statusMessage = 'Test'\n[npcs]\nenabled = false\nmaximumVisible = 12\nupdatesPerTick = 3\n";
+            Files.writeString(root.resolve("config.toml"), toml);
+            NpcRuntimeSettings settings = PluginSettings.load(store).npcs();
+            assertFalse(settings.enabled());
+            assertEquals(12, settings.maximumVisible());
+            assertEquals(3, settings.updatesPerTick());
+            assertEquals(48, settings.viewDistance());
+            assertEquals(toml, Files.readString(root.resolve("config.toml")));
+        }
+    }
+    @ParameterizedTest
+    @ValueSource(strings = {"enabled = 'true'", "viewDistance = 0", "viewDistance = 257", "maximumVisible = 129", "maximumVisible = 1.5", "maximumViewers = 1025", "updatesPerTick = 0", "updatesPerTick = 65", "maximumVisible = '12'"})
+    void rejectsInvalidRuntimeBudgetsBeforeStartup(String field) throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[npcs]\n" + field + "\n");
+            assertTrue(assertThrows(IOException.class, () -> PluginSettings.load(store)).getMessage().contains("npcs"));
         }
     }
     @Test void migratesLegacyJsonLosslesslyWithoutRemovingTheOriginal() throws Exception {

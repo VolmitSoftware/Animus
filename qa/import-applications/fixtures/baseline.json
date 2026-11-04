@@ -1,0 +1,76 @@
+{
+  "_qaFixture": "Public synthetic import application acceptance; never a private migration sample",
+  "npc": {
+    "900001": {
+      "uuid": "dbaec577-6a2b-5aad-a763-f3a4565a231f",
+      "name": "QA Base Guard",
+      "traits": {
+        "type": "PLAYER",
+        "spawned": true,
+        "location": {
+          "world": "qa_legacy",
+          "x": 0,
+          "y": 61,
+          "z": 3,
+          "yaw": 0,
+          "pitch": 0
+        },
+        "sentinel": {
+          "guardedNPC": 900002,
+          "health": 40,
+          "stats_ticksSpawned": 123
+        },
+        "mounttrait": {
+          "mountedon": "674ef9cb-e005-5b0b-a8fc-c8cc7cc9b067"
+        },
+        "qa_opaque": {
+          "unmappedNumericReference": 900002,
+          "unmappedUuidReference": "674ef9cb-e005-5b0b-a8fc-c8cc7cc9b067",
+          "nested": {
+            "a.b": "preserve exactly"
+          }
+        },
+        "skintrait": {
+          "textureRaw": "public-synthetic-texture-not-for-rendering",
+          "signature": "public-synthetic-signature-not-for-rendering"
+        }
+      }
+    },
+    "900002": {
+      "uuid": "936206dc-52dd-5437-8700-225da4deb195",
+      "name": "QA Partner",
+      "traits": {
+        "type": "PLAYER",
+        "spawned": true,
+        "location": {
+          "world": "qa_legacy",
+          "x": 2,
+          "y": 61,
+          "z": 3,
+          "yaw": 0,
+          "pitch": 0
+        },
+        "skintrait": {
+          "textureRaw": "public-synthetic-texture-not-for-rendering",
+          "signature": "public-synthetic-signature-not-for-rendering"
+        }
+      }
+    },
+    "900003": {
+      "uuid": "674ef9cb-e005-5b0b-a8fc-c8cc7cc9b067",
+      "name": "QA Mount",
+      "traits": {
+        "type": "HORSE",
+        "spawned": true,
+        "location": {
+          "world": "qa_legacy",
+          "x": 4,
+          "y": 61,
+          "z": 3,
+          "yaw": 0,
+          "pitch": 0
+        }
+      }
+    }
+  }
+}

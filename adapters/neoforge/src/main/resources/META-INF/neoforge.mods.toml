@@ -6,7 +6,7 @@ license = "GPL-3.0"
 modId = "${projectId}"
 version = "${projectVersion}"
 displayName = "${projectName}"
-description = "NPCs that act alive instead of being fake players."
+description = "A Manager for all things NPC."
 authors = "Volmit Software"
 
 [features.${projectId}]

@@ -1,6 +1,7 @@
 package art.arcane.animus.core.npc;
 
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.navigation.WaypointSettings;
 import com.google.gson.*;
 import java.io.IOException;
 import java.util.*;
@@ -56,6 +57,8 @@ public final class NpcDefinition {
             }
         }
         if (object.has("modules") && !object.get("modules").isJsonObject()) errors.add("$.modules: expected object");
+        else try { WaypointSettings.parse(object); }
+        catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
         return List.copyOf(errors);
     }
 

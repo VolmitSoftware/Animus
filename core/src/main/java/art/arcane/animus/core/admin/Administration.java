@@ -2,6 +2,7 @@ package art.arcane.animus.core.admin;
 
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.migration.CitizensImporter;
+import art.arcane.animus.core.migration.ImportApplications;
 import art.arcane.animus.core.npc.*;
 import art.arcane.animus.core.storage.*;
 import com.google.gson.*;
@@ -10,11 +11,15 @@ import java.util.*;
 
 /** Shared, filesystem-only administration. The platform is responsible for permission and scheduling. */
 public final class Administration {
-    public static final List<String> COMMANDS = List.of("status", "list", "create", "inspect", "edit", "clone", "delete", "validate", "reload", "import", "rollback");
+    public static final List<String> COMMANDS = List.of("status", "list", "create", "inspect", "edit", "clone", "delete", "spawn", "despawn", "validate", "reload", "import", "rollback");
     private final AnimusRuntime runtime;
     public Administration(AnimusRuntime runtime) { this.runtime = runtime; }
     public List<String> execute(String[] args) throws IOException {
-        if (args.length == 0 || args[0].equals("status")) return List.of(runtime.status(), "Definitions: " + runtime.npcs().all().size() + "; packet renderer unavailable (Milestone 0 proof pending).");
+        if (args.length == 0 || args[0].equals("status")) {
+            List<String> lines = new ArrayList<>(List.of(runtime.status(), "NPC definitions: " + runtime.npcs().all().size()));
+            if (!runtime.npcs().diagnostics().isEmpty()) lines.add("Definition file problems: " + runtime.npcs().diagnostics().size() + "; validate for field errors; retained definitions remain active");
+            return List.copyOf(lines);
+        }
         return switch (args[0]) {
             case "list" -> {
                 if (args.length > 2) throw new IOException("list [page]");
@@ -49,9 +54,17 @@ public final class Administration {
                 if (args.length < 3) throw new IOException("edit <id> <JSON object patch>");
                 NpcRepository.Draft draft = runtime.npcs().draft(args[1]);
                 JsonObject patch = JsonDocuments.object(String.join(" ", Arrays.copyOfRange(args, 2, args.length)));
-                if (patch.has("spawned") && !patch.get("spawned").equals(new JsonPrimitive(false))) throw new IOException("Packet rendering is not available; spawning is disabled");
                 JsonObject edited = draft.document(); patch.entrySet().forEach(e -> edited.add(e.getKey(), e.getValue()));
                 yield List.of("Saved; transaction " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited)));
+            }
+            case "spawn", "despawn" -> {
+                count(args, 2);
+                NpcRepository.Draft draft = runtime.npcs().draft(args[1]);
+                JsonObject document = draft.document();
+                boolean spawn = args[0].equals("spawn");
+                document.addProperty("spawned", spawn);
+                String tx = runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
+                yield List.of((spawn ? "Spawn requested for " : "Despawn requested for ") + args[1] + "; transaction " + tx);
             }
             case "clone" -> {
                 count(args, 3);
@@ -68,7 +81,7 @@ public final class Administration {
                 yield errors.isEmpty() ? List.of(args[0] + " successful; " + runtime.npcs().all().size() + " active definitions") : errors;
             }
             case "import" -> {
-                if (args.length < 3) throw new IOException("import preview <inbox-file.yml> [oldWorld=newWorld ...] | import apply <import-id>");
+                if (args.length < 3) throw new IOException("import preview <inbox-file.yml> [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");
                 CitizensImporter importer = new CitizensImporter();
                 if (args[1].equals("preview")) {
                     if (!args[2].matches("[a-zA-Z0-9_-]+\\.yml")) throw new IOException("Use a .yml filename under imports/inbox/");
@@ -80,9 +93,18 @@ public final class Administration {
                     var preview = importer.preview(runtime.documents().resolve("imports/inbox/" + args[2]), runtime.documents(), worlds);
                     yield List.of("Preview " + preview.id(), "Records: " + preview.records() + ", valid: " + preview.valid() + ", skins: " + preview.skins(), "Review " + preview.directory().resolve("report.json") + " before import apply.");
                 }
-                if (!args[1].equals("apply")) throw new IOException("Expected import preview or apply");
-                count(args, 3);
-                String tx = importer.apply(runtime.documents(), args[2]);
+                if (args[1].equals("stage")) {
+                    if (args.length > 5) throw new IOException("import stage <import-id> [reject|replace|duplicate <label>]");
+                    var application = ImportApplications.stage(runtime.documents(), args[2], args.length > 3 ? args[3] : "reject", args.length > 4 ? args[4] : null);
+                    yield List.of("Application " + application.applicationId(),
+                            "Mode: " + application.mode() + "; records: " + application.records() + "; replacements: " + application.replacements(),
+                            "Review " + application.report(),
+                            "Apply with /animus import apply-plan " + args[2] + " " + application.applicationId());
+                }
+                String tx;
+                if (args[1].equals("apply")) { count(args, 3); tx = importer.apply(runtime.documents(), args[2]); }
+                else if (args[1].equals("apply-plan")) { count(args, 4); tx = ImportApplications.apply(runtime.documents(), args[2], args[3]); }
+                else throw new IOException("Expected import preview, stage, apply or apply-plan");
                 List<String> errors = runtime.npcs().reload();
                 if (!errors.isEmpty()) throw new IOException("Import stored; registry kept last valid snapshot: " + String.join("; ", errors));
                 yield List.of("Installed dormant definitions; transaction " + tx);

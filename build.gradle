@@ -120,6 +120,16 @@ tasks.register('verifyDistributions') {
     }
 }
 tasks.named('assemble').configure { dependsOn('distributions') }
+tasks.register('apiDistribution', Sync) {
+    group = 'build'
+    description = 'Prepares the standalone extension API, sources and JavaDoc for consumers.'
+    dependsOn(':animus-api:build')
+    from(project(':animus-api').tasks.named('jar'))
+    from(project(':animus-api').tasks.named('sourcesJar'))
+    from(project(':animus-api').tasks.named('javadocJar'))
+    into(layout.buildDirectory.dir('api'))
+}
+tasks.named('assemble').configure { dependsOn('apiDistribution') }
 tasks.named('check').configure { dependsOn(':core:check', ':bukkit:check', 'verifyDistributions') }
 tasks.register('buildAll') {
     group = 'build'

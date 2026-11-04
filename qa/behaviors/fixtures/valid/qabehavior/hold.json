@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:hold",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "qabehavior:hold"
+        },
+        {
+          "type": "action",
+          "capability": "qabehavior:record",
+          "arguments": {
+            "tag": "after"
+          }
+        }
+      ]
+    }
+  }
+}

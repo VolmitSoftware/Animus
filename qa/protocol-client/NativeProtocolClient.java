@@ -23,6 +23,7 @@ import net.minecraft.tags.TagLoader;
 import net.minecraft.tags.TagNetworkSerialization;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.PositionMoveRotation;
+import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.phys.Vec3;
 
 import java.io.*;
@@ -58,13 +59,17 @@ public final class NativeProtocolClient {
     private volatile int compression = -1;
     private volatile boolean closed;
     private volatile boolean loaded;
+    private volatile boolean tickHeartbeat = true;
+    private volatile boolean expectedDisconnect;
+    private int positionReminder;
+    private Vec3 queuedMove;
     private boolean positioned;
     private volatile PositionMoveRotation position = new PositionMoveRotation(Vec3.ZERO, Vec3.ZERO, 0, 0);
     private static final Set<String> DECODE = Set.of(
         "add_entity", "player_info_update", "player_info_remove", "remove_entities",
-        "entity_position_sync", "teleport_entity", "player_position", "system_chat",
+        "entity_position_sync", "teleport_entity", "player_position", "system_chat", "respawn",
         "keep_alive", "ping", "disconnect", "chunk_batch_finished", "set_entity_data",
-        "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head");
+        "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health");
 
     private NativeProtocolClient(int port, String username) throws Exception {
         this.username = username;
@@ -142,7 +147,7 @@ public final class NativeProtocolClient {
             try {
                 while (!client.closed) {
                     Thread.sleep(50);
-                    if (client.loaded) client.send(ServerboundClientTickEndPacket.INSTANCE);
+                    client.tick();
                 }
             } catch (Throwable error) { if (!client.closed) client.fail(error); }
         });
@@ -155,6 +160,27 @@ public final class NativeProtocolClient {
         try { client.readLoop(); }
         catch (Throwable error) { if (!client.closed) client.fail(error); }
         finally { client.close(); }
+    }
+
+    private synchronized void tick() throws Exception {
+        if (!loaded || !tickHeartbeat) return;
+        // Exact 26.3 LocalPlayer.sendPosition sends a position reminder every 20
+        // client ticks even when stationary. Use only acknowledged coordinates.
+        // Serialize with teleport ACKs and reset their timer: 26.3 permits one
+        // hasPosition movement packet per client tick.
+        if (queuedMove != null) {
+            Vec3 feet = queuedMove; queuedMove = null;
+            position = new PositionMoveRotation(feet, Vec3.ZERO, position.yRot(), position.xRot());
+            send(new ServerboundMovePlayerPacket.Pos(feet, true, false));
+            positionReminder = 0;
+            event("movement_sent", "x", feet.x, "y", feet.y, "z", feet.z);
+        } else if (++positionReminder >= 20) {
+            Vec3 feet = position.position();
+            send(new ServerboundMovePlayerPacket.Pos(feet, true, false));
+            positionReminder = 0;
+            event("position_reminder", "x", feet.x, "y", feet.y, "z", feet.z);
+        }
+        send(ServerboundClientTickEndPacket.INSTANCE);
     }
 
     private void readLoop() throws Exception {
@@ -181,6 +207,7 @@ public final class NativeProtocolClient {
                     int id = new FriendlyByteBuf(buffer).readVarInt();
                     String type = gameNames.get(id);
                     if (type == null) throw new IOException("Unknown exact-version packet ID " + id);
+                    if (type.startsWith("chunk_batch")) event("chunk_batch", "type", type);
                     if (!DECODE.contains(type)) continue;
                     buffer.readerIndex(0);
                 }
@@ -213,17 +240,27 @@ public final class NativeProtocolClient {
         } else if (packet instanceof ClientboundKeepAlivePacket p) send(new ServerboundKeepAlivePacket(p.getId()));
         else if (packet instanceof ClientboundPingPacket p) send(new ServerboundPongPacket(p.getId()));
         else if (packet instanceof ClientboundChunkBatchFinishedPacket) send(new ServerboundChunkBatchReceivedPacket(10));
+        else if (packet instanceof ClientboundRespawnPacket p) {
+            synchronized (this) { loaded = false; positionReminder = 0; queuedMove = null; }
+            event("respawn", "dimension", p.commonPlayerSpawnInfo().dimension().toString());
+        }
         else if (packet instanceof ClientboundPlayerPositionPacket p) {
             // The headless observer can finish login before the server has run
             // the joining player's first tick. Allow that initial tick before
             // acknowledging; a graphical client naturally waits on world load.
             if (!positioned) { Thread.sleep(200); positioned = true; }
-            position = PositionMoveRotation.calculateAbsolute(position, p.change(), p.relatives());
-            Vec3 v = position.position();
-            for (Packet<?> acknowledgment : ProtocolRevision.acknowledgments(p.id(), position)) send(acknowledgment);
-            if (!loaded) { loaded = true; send(new ServerboundPlayerLoadedPacket()); }
-            event("position", "x", v.x, "y", v.y, "z", v.z, "yaw", position.yRot(), "pitch", position.xRot());
+            PositionMoveRotation accepted;
+            synchronized (this) {
+                position = PositionMoveRotation.calculateAbsolute(position, p.change(), p.relatives()); accepted = position;
+                queuedMove = null;
+                positionReminder = 0;
+                for (Packet<?> acknowledgment : ProtocolRevision.acknowledgments(p.id(), position)) send(acknowledgment);
+                if (!loaded) { send(new ServerboundPlayerLoadedPacket()); loaded = true; }
+            }
+            Vec3 v = accepted.position();
+            event("position", "x", v.x, "y", v.y, "z", v.z, "yaw", accepted.yRot(), "pitch", accepted.xRot());
         } else if (packet instanceof ClientboundSystemChatPacket p) event("chat", "text", p.content().getString());
+        else if (packet instanceof ClientboundSetHealthPacket p) event("health", "health", p.getHealth(), "food", p.getFood(), "saturation", p.getSaturation());
         else if (packet instanceof ClientboundAddEntityPacket p) event("spawn", "id", p.getId(), "uuid", p.getUUID().toString(), "type", BuiltInRegistries.ENTITY_TYPE.getKey(p.getType()).toString(), "x", p.getX(), "y", p.getY(), "z", p.getZ());
         else if (packet instanceof ClientboundPlayerInfoUpdatePacket p) {
             for (var entry : p.entries()) {
@@ -235,7 +272,7 @@ public final class NativeProtocolClient {
                     if (property.signature() != null) summary.put("signatureSha256", sha256(property.signature()));
                     textures.add(summary);
                 }
-                event("player_info", "uuid", entry.profileId().toString(), "actions", p.actions().stream().map(Enum::name).toList(), "textures", textures);
+                event("player_info", "uuid", entry.profileId().toString(), "name", entry.profile() == null ? null : entry.profile().name(), "actions", p.actions().stream().map(Enum::name).toList(), "textures", textures);
             }
         } else if (packet instanceof ClientboundPlayerInfoRemovePacket p) event("player_info_remove", "uuids", p.profileIds().stream().map(UUID::toString).toList());
         else if (packet instanceof ClientboundRemoveEntitiesPacket p) event("remove", "ids", ProtocolRevision.removed(p));
@@ -252,7 +289,10 @@ public final class NativeProtocolClient {
             }
             event("metadata", "id", p.id(), "entries", p.packedItems().size(), "fields", fields);
         }
-        else if (packet instanceof ClientboundDisconnectPacket p) throw new IOException("Disconnected: " + p.reason().getString());
+        else if (packet instanceof ClientboundDisconnectPacket p) {
+            if (!expectedDisconnect) throw new IOException("Disconnected: " + p.reason().getString());
+            event("expected_disconnect","reason",p.reason().getString());close();
+        }
         else if (packet instanceof ClientboundLoginDisconnectPacket p) throw new IOException("Login disconnected: " + p.reason().getString());
     }
 
@@ -261,7 +301,13 @@ public final class NativeProtocolClient {
     private void control(JsonObject command) throws Exception {
         switch (command.get("op").getAsString()) {
             case "command" -> send(new ServerboundChatCommandPacket(command.get("text").getAsString().replaceFirst("^/", "")));
+            case "respawn" -> {
+                if (!loaded) throw new IllegalStateException("Respawn requires an active game connection");
+                send(new ServerboundClientCommandPacket(ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
+                event("respawn_request");
+            }
             case "look" -> {
+                synchronized (this) {
                 Vec3 feet = position.position();
                 double dx = command.get("x").getAsDouble() - feet.x;
                 double dy = command.get("y").getAsDouble() - (feet.y + 1.62);
@@ -271,12 +317,60 @@ public final class NativeProtocolClient {
                 position = position.withRotation(yaw, pitch);
                 send(new ServerboundMovePlayerPacket.Rot(yaw, pitch, true, false));
                 event("look", "yaw", yaw, "pitch", pitch);
+                }
             }
-            case "attack" -> send(new ServerboundAttackPacket(command.get("id").getAsInt()));
-            case "use" -> send(new ServerboundInteractPacket(command.get("id").getAsInt(), InteractionHand.MAIN_HAND, Vec3.ZERO, false));
+            case "move" -> {
+                synchronized (this) {
+                    if (!loaded || !tickHeartbeat || queuedMove != null) throw new IllegalStateException("Movement requires a loaded ticking client with no pending move");
+                    Vec3 feet = new Vec3(coordinate(command,"x"),coordinate(command,"y"),coordinate(command,"z"));
+                    if (feet.distanceTo(position.position()) > .51) throw new IllegalArgumentException("QA movement is limited to 0.5 blocks per client tick");
+                    // Sent by tick(), never a second position packet within the same client tick.
+                    queuedMove = feet;
+                }
+            }
+            case "attack" -> {
+                int count=command.has("repeat")?command.get("repeat").getAsInt():1;
+                if(count<1||count>64)throw new IllegalArgumentException("QA attack repeat 1..64 required");
+                for(int i=0;i<count;i++)send(new ServerboundAttackPacket(command.get("id").getAsInt()));
+            }
+            case "use" -> {
+                Vec3 point=command.has("x")?new Vec3(coordinate(command,"x"),coordinate(command,"y"),coordinate(command,"z")):Vec3.ZERO;
+                send(new ServerboundInteractPacket(command.get("id").getAsInt(), InteractionHand.MAIN_HAND, point, false));
+                event("interaction_point","id",command.get("id").getAsInt(),"x",point.x,"y",point.y,"z",point.z);
+            }
+            case "input" -> {
+                if (!loaded) throw new IllegalStateException("Input requires an active game connection");
+                Input keys = new Input(flag(command, "forward"), flag(command, "backward"), flag(command, "left"),
+                        flag(command, "right"), flag(command, "jump"), flag(command, "shift"), flag(command, "sprint"));
+                int count = command.has("repeat") ? command.get("repeat").getAsInt() : 1;
+                if (count < 1 || count > 256 || (command.has("repeat") && command.get("repeat").getAsDouble() != count))
+                    throw new IllegalArgumentException("QA input repeat must be an integer from 1 to 256");
+                for (int i = 0; i < count; i++) send(new ServerboundPlayerInputPacket(keys));
+                event("input", "forward", keys.forward(), "backward", keys.backward(), "left", keys.left(), "right", keys.right(),
+                        "jump", keys.jump(), "shift", keys.shift(), "sprint", keys.sprint(), "packets", count);
+            }
+            case "heartbeat" -> {
+                if (!command.has("enabled")) throw new IllegalArgumentException("Heartbeat enabled flag required");
+                tickHeartbeat = flag(command, "enabled");
+                event("heartbeat", "enabled", tickHeartbeat);
+            }
+            case "expect_disconnect" -> { expectedDisconnect=true;event("disconnect_armed"); }
             case "close" -> close();
             default -> throw new IllegalArgumentException("Unknown QA operation");
         }
+    }
+
+    private static boolean flag(JsonObject command, String key) {
+        if (!command.has(key)) return false;
+        if (!command.get(key).isJsonPrimitive() || !command.getAsJsonPrimitive(key).isBoolean())
+            throw new IllegalArgumentException("QA input " + key + " must be a boolean");
+        return command.get(key).getAsBoolean();
+    }
+
+    private static double coordinate(JsonObject command,String key) {
+        double value=command.get(key).getAsDouble();
+        if(!Double.isFinite(value)||Math.abs(value)>30_000_000)throw new IllegalArgumentException("Finite bounded QA coordinate required");
+        return value;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

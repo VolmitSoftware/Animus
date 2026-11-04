@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "scope": "Explicit manual definition-bound behavior execution; no world operations, automatic triggers, previews or privileged grants",
+  "platforms": [
+    "PAPER",
+    "SPIGOT",
+    "FOLIA"
+  ],
+  "minecraftVersions": [
+    "26.1.2",
+    "26.2",
+    "26.3"
+  ],
+  "gates": [
+    {
+      "id": "cold-immediate-disable",
+      "requiredObservation": "First managed startup has no fixture modules, behavior sources or pre-disable commands; official plugin disable returns promptly, existing coordinator if any and startup catalog/module/file work reach actual quiescence with no behavior threads. Normal scheduler race is recorded; deterministic close-before-owner-start coverage remains separate.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "module-schema-staging",
+      "requiredObservation": "Three fixture modules active, bad schema module failed; eight capabilities; no partial bad-schema capabilities.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "readonly-file-validation",
+      "requiredObservation": "`behaviors validate/list/status` preserve exact bytes, report accepted revision/hash, and identify four intentional compiler failures.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "manual-dormant-start",
+      "requiredObservation": "Explicit run on an existing dormant synthetic definition returns execution UUID and captures its stable identity/revision. Physical NPC services stay disabled.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "one-active-execution-per-npc",
+      "requiredObservation": "A second run on the same NPC is BUSY without replacing its first execution.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "typed-arguments-and-conditions",
+      "requiredObservation": "Long/integer, decimal, boolean and Unicode values reach the handler exactly; false selects else and never enters the failing branch.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "sequence-repeat-routine-parallel",
+      "requiredObservation": "Exactly ten record entries/two conditions, three loop records; branch-local ordering and final join respected without imposing cross-branch order.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "logical-final-wait",
+      "requiredObservation": "Root/final wait remains running until the reported due logical tick and then completes.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "resolved-schema-refusal",
+      "requiredObservation": "Literal wrong type and typed binding to wrong property type fail before record handler entry; exact field diagnostics remain visible.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "unavailable-capability",
+      "requiredObservation": "Missing capability remains preserved/visible and unavailable; no handler or privileged operation occurs.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "execution-budgets",
+      "requiredObservation": "Recursive routine and bounded nested repetition reach explicit depth/step budgets; no leaked fibers/calls.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "parallel-write-conflict",
+      "requiredObservation": "Two branches writing one variable fail explicitly instead of choosing a winner.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "manual-cancel-raw-retention",
+      "requiredObservation": "Cancel returns terminal cancellation, captured token becomes true, raw future remains unfinished and engine retired-call/host capacity remains counted.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "explicit-release-quiescence",
+      "requiredObservation": "Independent controller release settles the actual raw future; engine and host counters drain to zero; cancelled execution never runs its following action.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "unchanged-reload-preserves-execution",
+      "requiredObservation": "Exact unchanged accepted behavior reload preserves running execution ID, source/revision and wait progress.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "invalid-reload-retains-program",
+      "requiredObservation": "Malformed edit keeps last accepted program/source authority; bytes stay invalid and diagnostics identify the field. It does not invent durable restart recovery.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "same-revision-conflict",
+      "requiredObservation": "Changed bytes at unchanged revision reject while retaining the accepted program and active execution.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "accepted-program-replacement",
+      "requiredObservation": "Higher accepted behavior revision cancels the prior execution and token; late completion cannot continue the old program; a new explicit run uses new source.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "source-removal-and-restore",
+      "requiredObservation": "Missing source revokes authority and cancels; restoration of exact accepted bytes restores lookup, without auto-resuming execution.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "definition-revision-cancellation",
+      "requiredObservation": "Administrator edit publishes a new definition revision/source; old execution cancels and old raw handler stays counted until release.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "definition-despawn-intent",
+      "requiredObservation": "Seed an owned definition `spawned=true` through file/reload while physical NPC service is disabled; real `despawn` publishes false/new revision and cancels execution. This is definition intent, not physical Folia despawn.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "definition-delete-cancellation",
+      "requiredObservation": "Delete owned source/checkpoint; execution cancels; separate surviving control definition releases its raw future.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "invocation-capacity-after-cancel",
+      "requiredObservation": "Recorded engine limits bound outstanding and retired calls; cancellation does not free capacity prematurely. Poll exact counts and release explicitly; no assumed timing SLA.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "actual-plugin-disable",
+      "requiredObservation": "Capture only pure diagnostic access before official disable; admission revokes immediately, executions cancel, trusted module hooks finish raw work, and actual host/engine quiescence is observed. No classloader-scan or background warmup stands in for cleanup.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "managed-restart-no-stack-resume",
+      "requiredObservation": "Real stop/restart retains valid source/definition files but does not resume an interrupted transient execution stack. Explicit manual run is required.",
+      "status": "unverified",
+      "mode": "live"
+    },
+    {
+      "id": "cleanup-and-provenance",
+      "requiredObservation": "Latest reports bind exact platform/version/artifact and all source/fixture hashes; owned synthetic files/pointers removed, all servers stopped, ports closed, no unexplained log failures.",
+      "status": "unverified",
+      "mode": "live"
+    }
+  ],
+  "requires": "New reviewed runtime11 artifact; all checks remain unverified until managed reports pass",
+  "liveRunsStarted": false
+}

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:bad-binding",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "qabehavior:record",
+      "arguments": {
+        "tag": "bound",
+        "longValue": null
+      },
+      "bindings": {
+        "/longValue": {
+          "variable": "wrong"
+        }
+      }
+    }
+  },
+  "variables": {
+    "wrong": {
+      "type": "string",
+      "initial": "wrong-type"
+    }
+  }
+}

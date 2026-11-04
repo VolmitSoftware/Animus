@@ -1,19 +1,19 @@
 name: '${projectName}'
 version: '${projectVersion}'
 main: ${projectGroup}.bukkit.AnimusPlugin
-description: 'NPCs that act alive instead of being fake players.'
+description: 'A Manager for all things NPC.'
 authors: [Volmit Software]
 api-version: '${apiVersion}'
 folia-supported: true
 commands:
   ${projectId}:
-    description: Manages definitions and staged Citizens imports.
-    usage: '/<command> [status|list|create|inspect|edit|clone|delete|validate|reload|import|rollback]'
+    description: Manages virtual NPCs, definitions and staged Citizens imports.
+    usage: '/<command> [status|list|create|select|inspect|edit|clone|delete|spawn|despawn|navigate|navigation|look|attack|target|combat|proof|modules|behaviors|validate|reload|import|rollback]'
 
 permissions:
   animus.status:
     description: View Animus status.
     default: true
   animus.admin:
-    description: Manage definitions, imports, and backups.
+    description: Manage NPCs, movement, combat, modules, behaviors, imports, and backups.
     default: op

@@ -7,7 +7,11 @@ import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 
-/** Fired after authoritative virtual hit validation; no Bukkit NPC entity is fabricated. */
+/**
+ * Fired after authoritative virtual hit validation; no Bukkit NPC entity is fabricated.
+ * On Folia this synchronous event runs on the viewer's region thread, not a global owner.
+ * Listeners must separately verify ownership of any other entities or terrain they access.
+ */
 public final class VirtualNpcInteractionEvent extends Event implements Cancellable {
     public enum Action { INTERACT, ATTACK }
     private static final HandlerList HANDLERS = new HandlerList();

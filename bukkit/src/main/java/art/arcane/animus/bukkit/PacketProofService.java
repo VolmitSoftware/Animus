@@ -4,6 +4,7 @@ import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.navigation.*;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.navigation.*;
+import art.arcane.animus.core.control.*;
 import art.arcane.animus.core.virtual.*;
 import java.util.*;
 import org.bukkit.*;
@@ -18,6 +19,7 @@ import org.bukkit.util.Vector;
 final class PacketProofService implements Listener, AutoCloseable {
     private static final int MAX_VIEWERS = 128;
     private static final int MAX_BODIES = 8;
+    private static final int MAX_CONTROLLERS = 8;
     private static final long LIFETIME_NANOS = 120_000_000_000L;
     private final JavaPlugin plugin;
     private final ReplyScheduler scheduler;
@@ -26,6 +28,7 @@ final class PacketProofService implements Listener, AutoCloseable {
     private final Map<UUID, ProofSession> sessions = new HashMap<>();
     private final Map<UUID, SkinRequest> skinRequests = new HashMap<>();
     private BukkitTask cleanup;
+    private BukkitTask controlTicker;
     private BukkitNavigationBridge navigation;
     private boolean closed;
 
@@ -77,7 +80,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 + " | viewer bodies=" + count + " | world-registered=" + registered
                 + " | accepted=" + (session == null ? 0 : session.accepted)
                 + " | rejected=" + (session == null ? 0 : session.rejected)
-                + " | viewer-only; production NPC activation remains unavailable";
+                + " | viewer-isolated preview";
     }
 
     void spawn(Player viewer, String type, String texture, String signature) {
@@ -132,6 +135,7 @@ final class PacketProofService implements Listener, AutoCloseable {
             throw new IllegalArgumentException("Proof move offsets must be finite and within ±8 blocks");
         ProofSession session = session(viewer);
         ProofBody body = body(session, id);
+        if (session.control != null) throw new IllegalStateException("Stop remote control before moving proof bodies manually");
         if (mounted(session, id) || session.mountPending.contains(id)) throw new IllegalStateException("Detach proof mounts before moving them");
         if (body.moving) throw new IllegalStateException("Movement update already pending");
         var old = body.pose;
@@ -152,6 +156,111 @@ final class PacketProofService implements Listener, AutoCloseable {
         }));
     }
 
+    void control(Player viewer, int id) {
+        requireAvailable();
+        if (!viewer.isOnline() || viewer.isDead() || !viewer.hasPermission("animus.admin") || viewer.isInsideVehicle())
+            throw new IllegalStateException("Remote control requires an active operator outside a real vehicle");
+        ProofSession session = session(viewer); ProofBody body = body(session, id);
+        if (session.control != null) throw new IllegalStateException("Stop the current remote control lease first");
+        if (sessions.values().stream().filter(value -> value.control != null).count() >= MAX_CONTROLLERS)
+            throw new IllegalStateException("Remote control capacity reached");
+        if (!body.body.typeKey().equals("minecraft:player") || mounted(session, id) || session.mountPending.contains(id)
+                || body.moving && !body.controlMove)
+            throw new IllegalStateException("Control requires a detached player proof body without a manual movement pending");
+        Vec3 point = body.state.snapshot().position().point();
+        if (!viewer.getWorld().getUID().equals(body.pose.world()) || point.distance(position(viewer.getLocation()).point()) > 32)
+            throw new IllegalStateException("Control body must be in this world within 32 blocks");
+        var terrain = LiveMovementProbe.check(viewer.getWorld(), point, point, body.body.width(), body.body.height(), MotionValidator.Medium.GROUND, true, 128);
+        if (!terrain.clear()) throw new IllegalStateException("Control requires supported flat loaded terrain: " + terrain.status());
+        cancelPlan(session);
+        ControlSession control = new ControlSession(body, packets.subscribeControl(viewer), point, System.nanoTime());
+        session.control = control; session.lastControl = control;
+        if (controlTicker == null) controlTicker = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tickControls, 1, 1);
+        viewer.sendMessage("Proof control started id=" + id + " generation=" + control.loop.generation()
+                + " speed=2.0 leash=8.0 lifetime-seconds=30 | unmounted remote control; awaiting fresh input");
+    }
+
+    void stopControl(Player viewer) {
+        requireAvailable();
+        ProofSession session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.control == null) { viewer.sendMessage("Proof control stopped reason=idle"); return; }
+        stopControl(session, "command", true);
+    }
+
+    String controlStatus(Player viewer) {
+        requireAvailable();
+        ProofSession session = sessions.get(viewer.getUniqueId());
+        ControlSession control = session == null ? null : session.lastControl;
+        if (control == null) return "Proof control idle | unmounted remote control";
+        Vec3 point = control.body.state.snapshot().position().point();
+        return "Proof control id=" + control.body.body.entityId() + " generation=" + control.loop.generation()
+                + " state=" + control.state + " x=" + point.x() + " y=" + point.y() + " z=" + point.z()
+                + " tick=" + control.loop.ticks() + " steps=" + control.steps + " input-sequence=" + control.sequence
+                + " reason=" + control.reason + " | unmounted remote control";
+    }
+
+    private void tickControls() {
+        for (ProofSession session : List.copyOf(sessions.values())) {
+            ControlSession control = session.control;
+            if (control == null) continue;
+            Player viewer = session.viewer; ProofBody body = control.body;
+            try {
+                if (body.controlDeliveryFailed) { clear(viewer); continue; }
+                if (!current(session) || viewer.isDead() || !viewer.hasPermission("animus.admin") || viewer.isInsideVehicle()
+                        || session.bodies.get(body.body.entityId()) != body || !body.state.snapshot().active()
+                        || mounted(session, body.body.entityId()) || session.mountPending.contains(body.body.entityId())
+                        || !viewer.getWorld().getUID().equals(body.pose.world())) {
+                    stopControl(session, "authority-retired", true); continue;
+                }
+                Vec3 point = body.state.snapshot().position().point();
+                if (point.distance(position(viewer.getLocation()).point()) > 32) { stopControl(session, "viewer-range", true); continue; }
+                var input = control.subscription.latest();
+                if (input.latest() != null) control.sequence = input.latest().sequence();
+                var proposed = control.loop.propose(System.nanoTime(), point, viewer.getLocation().getYaw(), input);
+                if (proposed.state() == ControlLoop.State.STOPPED) { stopControl(session, proposed.reason(), true); continue; }
+                if (proposed.state() == ControlLoop.State.THROTTLED) continue;
+                if (body.moving) { control.state = "PENDING"; continue; }
+                control.state = proposed.state().name(); control.reason = proposed.reason();
+                var terrain = LiveMovementProbe.check(viewer.getWorld(), point, proposed.position(), body.body.width(), body.body.height(),
+                        MotionValidator.Medium.GROUND, true, 128);
+                if (terrain.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) { stopControl(session, "terrain-unavailable", true); continue; }
+                if (!terrain.clear()) { control.state = "BLOCKED"; control.reason = terrain.status().name(); continue; }
+                if (proposed.state() != ControlLoop.State.PROPOSED) continue;
+                Vec3 next = proposed.position();
+                var pose = new NativePacketAdapter.Pose(body.pose.world(), next.x(), next.y(), next.z(), viewer.getLocation().getYaw(), 0, true);
+                // Publish the accepted step before egress. A completion never advances coordinates after a lease ends.
+                body.moving = true; body.controlMove = true; long movement = ++body.movementGeneration;
+                body.pose = pose;
+                session.guard.updateSnapshot(body.body.entityId(), body.state.move(new WorldPosition(pose.world().toString(), next)));
+                control.steps++; control.state = "PENDING"; control.reason = "packet-pending";
+                packets.move(viewer, body.body, pose).whenComplete((nothing, failure) -> {
+                    boolean delivered = scheduler.reply(viewer, () -> {
+                        if (!current(session) || session.bodies.get(body.body.entityId()) != body || body.movementGeneration != movement) return;
+                        body.moving = false; body.controlMove = false;
+                        if (failure != null) { fail(session, failure); return; }
+                        if (session.control == control) { control.state = "ACTIVE"; control.reason = "clear"; }
+                    });
+                    if (!delivered) body.controlDeliveryFailed = true;
+                });
+            } catch (RuntimeException failure) { fail(session, failure); }
+        }
+        stopControlTickerWhenIdle();
+    }
+
+    private void stopControl(ProofSession session, String reason, boolean notify) {
+        ControlSession control = session.control;
+        if (control == null) return;
+        session.control = null; control.loop.close(reason); control.subscription.close();
+        control.state = "STOPPED"; control.reason = reason;
+        if (notify && session.viewer.isOnline()) session.viewer.sendMessage("Proof control stopped reason=" + reason);
+        stopControlTickerWhenIdle();
+    }
+    private void stopControlTickerWhenIdle() {
+        if (controlTicker != null && sessions.values().stream().noneMatch(session -> session.control != null)) {
+            controlTicker.cancel(); controlTicker = null;
+        }
+    }
+
     /** Diagnostic only: captured terrain can change; executing a route requires live revalidation. */
     void path(Player viewer, int id, int dx, int dy, int dz) {
         requireAvailable();
@@ -159,6 +268,7 @@ final class PacketProofService implements Listener, AutoCloseable {
             throw new IllegalArgumentException("Proof path offsets must be within ±8 blocks");
         ProofSession session = session(viewer);
         ProofBody body = body(session, id);
+        if (session.control != null) throw new IllegalStateException("Stop remote control before planning a proof route");
         if (body.moving || mounted(session, id) || session.mountPending.contains(id))
             throw new IllegalStateException("Proof body must be stationary and detached for planning");
         if (body.body.width() > 5) throw new IllegalArgumentException("Body exceeds the voxel planner width limit");
@@ -199,6 +309,7 @@ final class PacketProofService implements Listener, AutoCloseable {
     void mount(Player viewer, int vehicleId, List<Integer> riderIds) {
         requireAvailable();
         ProofSession session = session(viewer);
+        if (session.control != null) throw new IllegalStateException("Stop remote control before mounting proof bodies");
         ProofBody vehicle = body(session, vehicleId);
         List<NativePacketAdapter.Body> riders = new ArrayList<>();
         Set<Integer> affected = new HashSet<>(riderIds); affected.add(vehicleId);
@@ -228,7 +339,7 @@ final class PacketProofService implements Listener, AutoCloseable {
     void clear(Player viewer) {
         skinRequests.remove(viewer.getUniqueId());
         ProofSession session = sessions.remove(viewer.getUniqueId());
-        if (session != null) { cancelPlan(session); session.guard.close(); session.bodies.values().forEach(body -> body.state.despawn()); session.bodies.clear(); }
+        if (session != null) { stopControl(session, "cleared", false); cancelPlan(session); session.guard.close(); session.bodies.values().forEach(body -> body.state.despawn()); session.bodies.clear(); }
         if (packets != null) packets.forget(viewer);
     }
 
@@ -271,6 +382,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         }
         viewer.sendMessage("Proof accepted id=" + body.body.entityId() + " action=" + action + " health=" + body.state.snapshot().health());
         if (!body.state.snapshot().active()) {
+            if (session.control != null && session.control.body == body) stopControl(session, "body-retired", true);
             session.bodies.remove(body.body.entityId());
             packets.despawn(viewer, body.body);
         }
@@ -281,6 +393,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         for (ProofSession session : List.copyOf(sessions.values())) {
             if (!session.viewer.isOnline() || session.viewer.isDead() || now - session.expiresAt >= 0) { clear(session.viewer); continue; }
             for (ProofBody body : List.copyOf(session.bodies.values())) {
+                if (body.controlDeliveryFailed) { clear(session.viewer); break; }
                 var pose = body.pose;
                 if (!session.viewer.getWorld().getUID().equals(pose.world())
                         || !session.viewer.getWorld().isChunkLoaded(((int) Math.floor(pose.x())) >> 4, ((int) Math.floor(pose.z())) >> 4)
@@ -292,6 +405,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                         break;
                     }
                     cancelPlan(session);
+                    if (session.control != null && session.control.body == body) stopControl(session, "body-retired", true);
                     session.bodies.remove(body.body.entityId()); session.guard.unbind(body.body.entityId()); body.state.despawn();
                     packets.despawn(session.viewer, body.body);
                 }
@@ -332,6 +446,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         skinRequests.clear();
         closed = true;
         if (cleanup != null) cleanup.cancel();
+        if (controlTicker != null) controlTicker.cancel();
         if (navigation != null) navigation.close();
         HandlerList.unregisterAll(this);
         if (packets != null) packets.close();
@@ -344,6 +459,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         final Map<Integer, Set<Integer>> mounts = new HashMap<>();
         final Set<Integer> mountPending = new HashSet<>();
         NavigationPlan plan;
+        ControlSession control, lastControl;
         int admittedBodies;
         long accepted, rejected;
         ProofSession(Player viewer) {
@@ -356,6 +472,19 @@ final class PacketProofService implements Listener, AutoCloseable {
         final VirtualNpcState state;
         NativePacketAdapter.Pose pose;
         boolean moving;
+        boolean controlMove;
+        volatile boolean controlDeliveryFailed;
+        long movementGeneration;
         ProofBody(NativePacketAdapter.Body body, VirtualNpcState state, NativePacketAdapter.Pose pose) { this.body = body; this.state = state; this.pose = pose; }
+    }
+    private static final class ControlSession {
+        final ProofBody body;
+        final NativePacketAdapter.ControlSubscription subscription;
+        final ControlLoop loop;
+        long steps, sequence;
+        String state = "WAITING_INPUT", reason = "fresh-input-required";
+        ControlSession(ProofBody body, NativePacketAdapter.ControlSubscription subscription, Vec3 anchor, long now) {
+            this.body = body; this.subscription = subscription; loop = new ControlLoop(anchor, now);
+        }
     }
 }

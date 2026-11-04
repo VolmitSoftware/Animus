@@ -138,7 +138,7 @@ class AnimusRuntimeTest {
     }
 
     @Test
-    void closeIsIdempotentAndRestartReadsCurrentConfiguration() throws IOException {
+    void closeIsIdempotentAndRestartReadsCurrentConfiguration() throws Exception {
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.FORGE, "26.2", directory));
         runtime.close();
         runtime.start();
@@ -149,6 +149,7 @@ class AnimusRuntimeTest {
         assertFalse(runtime.isRunning());
         assertThrows(IllegalStateException.class, runtime::status);
         Files.writeString(directory.resolve("config.toml"), "statusMessage = \"Restarted\"\n");
+        assertTrue(runtime.awaitFileQuiescence(java.time.Duration.ofSeconds(5)));
         runtime.start();
         assertTrue(runtime.isRunning());
         assertTrue(runtime.status().contains("Restarted"));

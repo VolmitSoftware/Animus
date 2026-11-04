@@ -7,6 +7,7 @@
 .DS_Store
 .qa/
 __pycache__/
+logs/
 
 # Private migration input and generated bundles
 saves.yml

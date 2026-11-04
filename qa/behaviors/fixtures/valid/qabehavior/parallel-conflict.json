@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:parallel-conflict",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "parallel",
+      "branches": [
+        {
+          "type": "set",
+          "variable": "count",
+          "value": 1
+        },
+        {
+          "type": "set",
+          "variable": "count",
+          "value": 2
+        }
+      ]
+    }
+  },
+  "variables": {
+    "count": {
+      "type": "integer",
+      "initial": 0
+    }
+  }
+}

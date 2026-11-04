@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:repeat-limit",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "repeat",
+      "count": 129,
+      "body": {
+        "type": "action",
+        "capability": "qabehavior:record",
+        "arguments": {
+          "tag": "loop"
+        }
+      }
+    }
+  }
+}
