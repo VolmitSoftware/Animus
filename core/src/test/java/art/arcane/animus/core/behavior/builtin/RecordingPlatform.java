@@ -6,6 +6,8 @@ import art.arcane.animus.core.virtual.Vec3;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
@@ -23,6 +25,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     volatile List<ChoiceOption> presentedOptions = List.of();
     volatile String presentedToken;
     private volatile Runnable tick;
+    private volatile CompletableFuture<Void> route;
     private volatile boolean onOwner;
 
     void pump() {
@@ -31,6 +34,11 @@ final class RecordingPlatform implements BehaviorPlatform {
         onOwner = true;
         try { current.run(); }
         finally { onOwner = false; }
+    }
+
+    /** Null reports arrival; a refusal reports how the route ended. */
+    void finishRoute(RuntimeException failure) {
+        if (failure == null) route.complete(null); else route.completeExceptionally(failure);
     }
 
     <T> T onOwner(Supplier<T> work) {
@@ -74,6 +82,12 @@ final class RecordingPlatform implements BehaviorPlatform {
         return "route-id";
     }
     @Override public void followRoute(NpcHandle npc, String route) { record("route:" + route); }
+    @Override public CompletionStage<Void> routeFinished(NpcHandle npc) {
+        record("await");
+        route = new CompletableFuture<>();
+        return route;
+    }
+    @Override public String navigationStatus(NpcHandle npc) { return "suspended somewhere"; }
     @Override public boolean stopNavigation(NpcHandle npc) { record("stop"); return true; }
     @Override public void look(NpcHandle npc, Vec3 target) { record("look-point"); }
     @Override public void lookAtPlayer(NpcHandle npc, UUID player) { record("look-player"); }

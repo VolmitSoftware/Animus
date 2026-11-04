@@ -47,10 +47,11 @@ public sealed interface TriggerEvent {
         public Waypoint { Objects.requireNonNull(npc); }
         @Override public TriggerKind kind() { return TriggerKind.WAYPOINT; }
     }
-    /** Contract for whatever presents dialogue: publish this after a viewer picks a choice. */
+    /** Published after a viewer's click passes validation. */
     record DialogueChoice(UUID npc, UUID viewer, String dialogue, String choice) implements TriggerEvent {
         public DialogueChoice { Objects.requireNonNull(npc); Objects.requireNonNull(viewer); Objects.requireNonNull(dialogue); Objects.requireNonNull(choice); }
         @Override public TriggerKind kind() { return TriggerKind.DIALOGUE_CHOICE; }
+        @Override public Optional<UUID> player() { return Optional.of(viewer); }
     }
     record Module(UUID npc, Optional<UUID> player, Capabilities.Key key) implements TriggerEvent {
         public Module { Objects.requireNonNull(npc); Objects.requireNonNull(player); Objects.requireNonNull(key); }

@@ -5,8 +5,8 @@ import java.util.List;
 
 /** Built-in action budgets and the privileged command allow-list. Empty lists deny every command. Requires restart. */
 public record BuiltinActionSettings(int actionsPerTick, int actionsPerNpcPerTick, int queuedActions, int pendingChoices,
-                                    int choiceLifetimeSeconds, List<String> commandBehaviors, List<String> commandNamespaces) {
-    public static final BuiltinActionSettings DEFAULT = new BuiltinActionSettings(32, 4, 256, 256, 60, List.of(), List.of());
+                                    int choiceLifetimeSeconds, List<String> commandBehaviors, List<String> commandNamespaces, int navigationWaits) {
+    public static final BuiltinActionSettings DEFAULT = new BuiltinActionSettings(32, 4, 256, 256, 60, List.of(), List.of(), 8);
     private static final int MAXIMUM_ALLOW_LIST = 256;
 
     public BuiltinActionSettings {
@@ -16,6 +16,7 @@ public record BuiltinActionSettings(int actionsPerTick, int actionsPerNpcPerTick
         if (queuedActions < 1 || queuedActions > 1024) throw new IllegalArgumentException("queuedActions must be within 1..1024");
         if (pendingChoices < 1 || pendingChoices > 4096) throw new IllegalArgumentException("pendingChoices must be within 1..4096");
         if (choiceLifetimeSeconds < 1 || choiceLifetimeSeconds > 600) throw new IllegalArgumentException("choiceLifetimeSeconds must be within 1..600");
+        if (navigationWaits < 1 || navigationWaits > 64) throw new IllegalArgumentException("navigationWaits must be within 1..64");
         commandBehaviors = List.copyOf(commandBehaviors);
         commandNamespaces = List.copyOf(commandNamespaces);
         if (commandBehaviors.size() > MAXIMUM_ALLOW_LIST || commandNamespaces.size() > MAXIMUM_ALLOW_LIST)
