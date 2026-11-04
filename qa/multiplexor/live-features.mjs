@@ -19,7 +19,7 @@ const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) 
 const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
-const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs')).split(',');
+const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs,appearance')).split(',');
 const name = `animus-live-${project}-${version.replaceAll('.', '-')}`;
 const instances = path.join(workspace, 'consumers/plugin-consumers/instances');
 const instance = path.join(instances, name), data = path.join(instance, 'plugins/Animus'), logFile = path.join(instance, 'logs/latest.log');
@@ -1192,54 +1192,141 @@ async function dragon() {
 }
 
 async function folia() {
-  server.behavior('live:folia', { routines: { main: seq(action('animus:set-flag', { name: 'folia', scope: 'global' }), { type: 'condition', capability: 'animus:flag-state', arguments: { name: 'folia', scope: 'global' }, then: action('animus:advance-quest-state', { name: 'folia', scope: 'global' }) }) }, triggers: [{ id: 't', event: 'timer', intervalTicks: 40 }] });
-  server.behavior('live:foliamixed', { routines: { main: action('animus:set-flag', { name: 'mixed', scope: 'global' }), speak: sayTo('no') } });
-  server.behavior('live:foliaworld', { routines: { main: action('animus:say', { text: 'hello', audience: 'nearby' }) } });
-  server.behavior('live:folianav', { routines: { main: action('animus:navigate', { x: 1, y: 64, z: 1, wait: true }) } });
+  server.behavior('live:folia', {
+    routines: { main: sayTo('manual'), up: say('f-spawn'), clicked: sayTo('f-click'), near: sayTo('f-near'), tick: action('animus:set-flag', { name: 'folia', scope: 'global' }) },
+    triggers: [
+      { id: 'up', event: 'spawn', routine: 'up', cooldownTicks: 0 }, { id: 'click', event: 'interaction', routine: 'clicked', cooldownTicks: 0 },
+      { id: 'near', event: 'proximity', phase: 'enter', radius: 6, routine: 'near', cooldownTicks: 0 }, { id: 't', event: 'timer', intervalTicks: 40, routine: 'tick' },
+    ],
+  });
   await server.reload();
-  await server.cmd('animus create fn minecraft:player world 0 64 0 live Folia', /Created dormant fn/);
-  await server.cmd('animus edit fn {"behaviors":["live:folia"],"modules":{"animus:riding":{"enabled":true},"animus:mount":{"vehicle":"nobody"}}}', /Saved/);
-  await check('status reports NPC runtime unavailable', async () => (await server.capture('animus status', /NPC runtime unavailable on Folia[^\n]*/)).match(/NPC runtime unavailable[^\n]*/)[0].slice(0, 200));
-  await check('triggers report unavailable with a reason', async () => { const text = await server.capture('animus behaviors triggers', /Behavior triggers: UNAVAILABLE[^\n]*/); return text.match(/Behavior triggers:[^\n]*/)[0].slice(0, 220); });
-  await check('manual state-only run still works', async () => {
-    const result = await server.finish(await server.runConsole('fn', 'live:folia'));
-    assert.equal(result.state, 'COMPLETED', result.text.slice(0, 300));
+  let owner = await join(OWNER.name);
+  // Folia skips the platform fills: everything stands on the flat world's own surface beside spawn.
+  const ground = Math.round(owner.position.y), sx = Math.floor(owner.position.x), sz = Math.floor(owner.position.z);
+  const at = (dx, dz) => [sx + dx + .5, ground, sz + dz + .5];
+  const statusLine = async () => plain(await server.capture('animus status', /NPC runtime[^\n]*/)).match(/NPC runtime[^\n]*/)[0];
+  let from = owner.events.length;
+  const uuid = await server.npc('fnpc', 'minecraft:player', ...at(0, 4), 'Folia', { behaviors: ['live:folia'] });
+  await check('NPC activates on its region and renders to the player', async () => {
+    const body = await owner.body(uuid);
+    const status = await statusLine();
+    const runtime = await inspect('fnpc');
+    assert(/active=1\b/.test(status), status);
+    assert(/: active/.test(runtime.line), runtime.line.slice(0, 200));
+    return `${status.slice(0, 160)}; body entity ${body.id}`;
+  });
+  await check('triggers: spawn, interaction, proximity and timer', async () => {
+    await owner.chat('Folia: f-spawn', from);
+    let clickAt = await click(owner, uuid);
+    await owner.chat('Folia: f-click', clickAt);
+    await owner.tp(...at(0, 24));
+    from = owner.events.length;
+    await owner.tp(...at(0, 1));
+    await owner.chat('Folia: f-near', from);
+    assert(await flagStored('global', 'live', 'folia'), 'timer never stored its flag');
+    return 'spawn, interaction, proximity enter and timer all fired';
+  });
+  await check('actions: say, look, equipment and sound', async () => {
+    from = owner.events.length;
+    const body = owner.current(uuid);
+    const result = await runDoc(owner, 'factions', seq(sayTo('f-said'), action('animus:look', { target: 'player' }),
+      action('animus:set-equipment', { slot: 'main_hand', item: 'minecraft:iron_sword' }), action('animus:play-sound', { sound: 'minecraft:entity.villager.yes' })), {}, 'fnpc');
+    assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
+    await owner.chat('Folia: f-said', from);
+    await owner.wait(e => e.event === 'equipment' && e.id === body.id && e.slots.mainhand === 'minecraft:iron_sword', from, 5000);
+    await owner.wait(e => e.event === 'sound' && e.sound === 'minecraft:entity.villager.yes', from, 5000);
+    await owner.wait(e => e.event === 'head' && e.id === body.id, from, 5000);
     return result.state;
   });
-  await check('behavior mixing state and world actions is unavailable as a whole', async () => {
-    const run = await server.capture('animus behaviors run fn live:foliamixed', /Behavior run: \w+[^\n]*/, 400);
-    return run.match(/Behavior run:[^\n]*/)[0] + ' ' + (run.match(/Behavior diagnostic:[^\n]*/)?.[0] ?? '').slice(0, 160);
+  await check('navigation completes on the region', async () => {
+    const result = await runDoc(owner, 'fwalk', action('animus:navigate', { x: sx + 6.5, y: ground, z: sz + 4.5, speed: 3, wait: true, timeoutTicks: 600 }), {}, 'fnpc');
+    const end = await inspect('fnpc');
+    assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
+    assert(Math.abs(end.x - (sx + 6.5)) < .7, end.line.slice(0, 200));
+    return `ended at ${end.x.toFixed(2)},${end.y},${end.z.toFixed(2)}`;
   });
-  await check('world action reports unavailable', async () => {
-    const text = await server.capture('animus behaviors validate', /Behaviors validate: \w+[^\n]*/);
-    note(text);
-    assert(/behavior-capability-unavailable/.test(text), text.slice(0, 400));
-    const run = await server.capture('animus behaviors run fn live:foliaworld', /Behavior run: \w+[^\n]*/, 400);
-    note(run);
-    const execution = run.match(/execution=([0-9a-f-]{36})/)?.[1];
-    if (execution) { const result = await server.finish(execution); assert.notEqual(result.state, 'COMPLETED', result.text.slice(0, 300)); return `${result.state} ${diagnosticOf(result.text).slice(0, 200)}`; }
-    assert(/UNAVAILABLE|unavailable/.test(run), run.slice(0, 300));
-    return run.match(/Behavior run:[^\n]*/)[0].slice(0, 200);
+  await check('patrol crosses chunk owners and keeps going', async () => {
+    // The owner stands midway so every chunk on the way stays loaded; each chunk crossed is an owner handoff.
+    await owner.tp(...at(20, 4));
+    const target = sx + 40.5;
+    const chunks = Math.floor(target / 16) - Math.floor((sx + 6.5) / 16);
+    // A route leg is at most 32 blocks, so the patrol goes out and back through a midpoint.
+    const leg = x => action('animus:navigate', { x, y: ground, z: sz + 4.5, speed: 4, wait: true, timeoutTicks: 1200 });
+    const result = await runDoc(owner, 'fpatrol', seq(leg(sx + 24.5), leg(target), leg(sx + 24.5), leg(sx + 6.5)), {}, 'fnpc');
+    const end = await inspect('fnpc');
+    assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
+    assert(chunks >= 2, `only ${chunks} chunk borders`);
+    assert(Math.abs(end.x - (sx + 6.5)) < .7, end.line.slice(0, 200));
+    return `out ${chunks} chunk borders to x=${target} and back; ${end.line.match(/owner=[^;]*/)?.[0]}`;
   });
-  await check('navigation action reports unavailable', async () => {
-    const run = await server.capture('animus behaviors run fn live:folianav', /Behavior run: \w+[^\n]*/, 400);
-    const execution = run.match(/execution=([0-9a-f-]{36})/)?.[1];
-    if (execution) { const result = await server.finish(execution); assert.notEqual(result.state, 'COMPLETED'); return `${result.state} ${diagnosticOf(result.text).slice(0, 200)}`; }
-    return run.match(/Behavior run:[^\n]*/)[0].slice(0, 200);
+  // Folia merges a player's loaded chunks with the NPC's, so a player in another region never has the NPC presented:
+  // the hit is dropped before the region check and only the absence of any effect can be observed.
+  await check('hit from a player in another region does nothing', async () => {
+    const body = owner.current(uuid);
+    const before = Number((await statusLine()).match(/accepted=(\d+)/)[1]);
+    const peer = await join(PEER.name, null);
+    await peer.tp(sx + 4000.5, ground, sz + 4000.5);
+    await delay(1500);
+    from = owner.events.length;
+    peer.send('attack', { id: body.id });
+    peer.send('use', { id: body.id });
+    await delay(1500);
+    const status = await statusLine();
+    const after = Number(status.match(/accepted=(\d+)/)[1]);
+    await peer.close();
+    await owner.noChat('Folia: f-click', from, 300);
+    assert.equal(after, before, status);
+    return `accepted stays ${after}, ${status.match(/rejected=\d+/)[0]}; no interaction trigger`;
   });
-  await check('ride and mount report unavailable', async () => {
-    const ride = await server.capture('animus ride status', /./, 300);
-    assert(/unavailable/i.test(ride), ride.slice(0, 300));
-    const spawn = await server.capture('animus spawn fn', /Cannot activate[^\n]*/, 200);
-    return `${ride.split('\n').find(line => /unavailable/i.test(line)).replace(/^.*?\]: /, '').slice(0, 160)} ; ${spawn.match(/Cannot activate[^\n]*/)[0].slice(0, 120)}`;
+  await check('riding, mounts and combat report unavailable', async () => {
+    await server.npc('fride', 'minecraft:horse', ...at(-4, 4), 'Steed', { modules: { 'animus:riding': { enabled: true }, 'animus:mount': { vehicle: 'fnpc' } } });
+    const runtime = await inspect('fride');
+    const ride = plain(await server.capture('animus ride status', /./, 300));
+    const combat = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/Combat \w+[^\n]*/)[0];
+    await server.cmd('animus delete fride', /Deleted/);
+    assert(/mount=mounted NPCs are unavailable on Folia/.test(runtime.line), runtime.line.slice(0, 300));
+    assert(/ride=riding is unavailable on Folia/.test(runtime.line), runtime.line.slice(0, 300));
+    assert(/unavailable/i.test(ride), ride.slice(0, 200));
+    assert(/Combat unavailable/.test(combat), combat);
+    return `${combat.slice(0, 90)}; ride status: ${ride.split('\n').find(line => /unavailable/i.test(line))?.replace(/^.*?\]: /, '').slice(0, 80)}`;
   });
-  await check('nothing fired while waiting', async () => {
-    await delay(3000);
-    const text = await server.capture('animus behaviors trace fn', /Behavior trace:[^\n]*/);
-    assert(!text.includes('trigger=t'), text.slice(0, 300));
+  await owner.close();
+  await server.cmd('animus delete fnpc', /Deleted/);
+}
+
+async function appearance() {
+  let owner = await join(OWNER.name);
+  await owner.tp(0, 61, 0);
+  const uuid = await server.npc('dressed', 'minecraft:player', 2.5, 61, 4.5, 'Dressed', {
+    name: 'Captain of the Northern Watch', pose: 'sitting',
+    equipment: { main_hand: { id: 'minecraft:iron_sword' }, head: { id: 'minecraft:iron_helmet' } },
+    hologram: { lines: ['&6Quest giver', 'Right-click to talk'] },
   });
-  await check('stored flag present', async () => { assert(await flagStored('global', 'live', 'folia')); });
-  await server.cmd('animus delete fn', /Deleted/);
+  // Packet level only: the long name and lines ride the body in a text display, and sitting rides a hidden armor stand.
+  const presented = async client => {
+    const body = await client.body(uuid);
+    const after = e => e.sequence >= body.sequence - 40;
+    const gear = await client.wait(e => e.event === 'equipment' && e.id === body.id && e.slots.mainhand === 'minecraft:iron_sword' && e.slots.head === 'minecraft:iron_helmet', 0, 8000);
+    const seat = await client.wait(e => e.event === 'passengers' && after(e) && e.ids.includes(body.id), 0, 8000);
+    const label = await client.wait(e => e.event === 'passengers' && after(e) && e.vehicle === body.id && e.ids.length > 0, 0, 8000);
+    const types = Object.fromEntries(client.events.filter(e => e.event === 'spawn' && after(e)).map(e => [e.id, e.type]));
+    assert.equal(types[seat.vehicle], 'minecraft:armor_stand', JSON.stringify(types));
+    assert.equal(types[label.ids[0]], 'minecraft:text_display', JSON.stringify(types));
+    return `body ${body.id} on armor stand ${seat.vehicle}, text display ${label.ids[0]} riding it, equipment ${JSON.stringify(gear.slots)}`;
+  };
+  await check('definition equipment, text lines, long name and sitting pose', async () => {
+    const runtime = await inspect('dressed');
+    assert(/pose=sitting/.test(runtime.line), runtime.line.slice(0, 300));
+    return `${await presented(owner)}; ${runtime.line.match(/pose=[^;]*/)?.[0]}`;
+  });
+  await owner.close(); await delay(300);
+  await server.stop();
+  await server.start();
+  owner = await join(OWNER.name);
+  await owner.tp(0, 61, 0);
+  await check('definition presentation survives restart', async () => presented(owner));
+  await owner.close();
+  await server.cmd('animus delete dressed', /Deleted/);
 }
 
 const plain = text => text.replace(/\x1b\[[0-9;]*m/g, '');
@@ -1760,7 +1847,7 @@ function copyTree(from, to, keep = () => true) {
   }
 }
 
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, folia };
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, folia };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line));
