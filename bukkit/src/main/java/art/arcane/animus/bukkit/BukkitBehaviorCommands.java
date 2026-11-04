@@ -4,11 +4,16 @@ import art.arcane.animus.api.*;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
+import art.arcane.animus.core.behavior.catalog.BehaviorCheckpoints;
+import art.arcane.animus.core.behavior.catalog.BehaviorPath;
+import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntime;
 import art.arcane.animus.core.config.BehaviorSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
+import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.storage.DocumentStore;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
@@ -21,12 +26,16 @@ import org.bukkit.entity.Player;
 /** Administrative manual execution only. File work shares the engine lane; no private owner accesses Bukkit objects. */
 final class BukkitBehaviorCommands implements AutoCloseable {
     enum State { DISABLED, WAITING_MODULES, LOADING, READY, FAILED, CLOSED }
-    static final List<String> OPERATIONS=List.of("status","list","validate","reload","run","inspect","cancel");
+    static final List<String> OPERATIONS=List.of("status","list","validate","reload","run","inspect","trace","cancel","state");
+    private static final List<String> STATE_OPERATIONS=List.of("status","purge");
+    private static final List<String> PURGE_TARGETS=List.of("behavior","npc","player","relationship","all");
     private static final int PAGE_SIZE=20,MAX_LINES=24,MAX_LINE_CHARS=2048;
     private static final BehaviorCatalog.Snapshot EMPTY_CATALOG=new BehaviorCatalog.Snapshot(0,Map.of(),Map.of(),List.of());
     private final Path dataDirectory;
     private final BehaviorSettings settings;
     private final NpcRepository repository;
+    private final DocumentStore documents;
+    private final BehaviorStateStore behaviorState;
     private final ExtensionRuntime extensions;
     private final Executor files;
     private final BiFunction<CommandSender,Runnable,Boolean> replies;
@@ -41,20 +50,20 @@ final class BukkitBehaviorCommands implements AutoCloseable {
     private volatile String failure="none";
 
     BukkitBehaviorCommands(Path dataDirectory,AnimusRuntime runtime,ExtensionRuntime extensions,ReplyScheduler replies,Consumer<String> report){
-        this(dataDirectory,runtime.behaviorSettings(),runtime.npcs(),extensions,runtime::fileExecutor,replies::reply,report);
+        this(dataDirectory,runtime.behaviorSettings(),runtime.npcs(),runtime.documents(),runtime.behaviorState(),extensions,runtime::fileExecutor,replies::reply,report);
     }
     // Engine-owned seams allow lifecycle/queue tests without creating a server or accessing world state.
-    BukkitBehaviorCommands(Path dataDirectory,BehaviorSettings settings,NpcRepository repository,ExtensionRuntime extensions,
+    BukkitBehaviorCommands(Path dataDirectory,BehaviorSettings settings,NpcRepository repository,DocumentStore documents,BehaviorStateStore behaviorState,ExtensionRuntime extensions,
                           Function<MutationLane.EngineTaskObserver,Executor> fileExecutor,
                           BiFunction<CommandSender,Runnable,Boolean> replies,Consumer<String> report){
         this.dataDirectory=Objects.requireNonNull(dataDirectory);this.settings=Objects.requireNonNull(settings);
-        this.repository=Objects.requireNonNull(repository);this.extensions=Objects.requireNonNull(extensions);
+        this.repository=Objects.requireNonNull(repository);this.documents=Objects.requireNonNull(documents);this.behaviorState=Objects.requireNonNull(behaviorState);this.extensions=Objects.requireNonNull(extensions);
         this.replies=Objects.requireNonNull(replies);this.report=Objects.requireNonNull(report);
         files=Objects.requireNonNull(fileExecutor.apply(this::fileEvent));state=settings.enabled()?State.WAITING_MODULES:State.DISABLED;
         // Own and resolve lifecycle classes while the plugin archive is open. Startup catalog I/O
         // remains asynchronous; the empty source snapshot cannot admit executions before READY.
         coordinator=settings.enabled()?new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(settings.maximumOperations(),settings.operationsPerTick(),settings.tickMillis(),settings.deliveryBudgetMillis()),
-                settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker()):null;
+                settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),behaviorState):null;
     }
     /** The one initialization observer only admits bounded file work; it never scans on module management. */
     void modulesInitialized(ExtensionRuntime.State terminal){
@@ -78,7 +87,24 @@ final class BukkitBehaviorCommands implements AutoCloseable {
                         else reply(sender,outcomeLines("Behavior run",outcome,outcome.value().map(id->"execution="+id+" | npc="+npc+" | behavior="+behavior).orElse("")));
                     });
                 }
-                case "inspect"->{arity(args,3,3,"behaviors inspect <execution-uuid>");ManualBehaviorRuntime runtime=coordinator;UUID id=UUID.fromString(args[2]);reply(sender,runtime==null?List.of("Behavior inspect: UNAVAILABLE | state="+state):runtime.inspect(id).map(BukkitBehaviorCommands::executionLines).orElse(List.of("Behavior inspect: NOT_FOUND | execution="+id)));}
+                case "trace"->{
+                    arity(args,3,3,"behaviors trace <npc-id-or-uuid>");ManualBehaviorRuntime runtime=ready(sender,"trace");if(runtime==null)return true;
+                    String npc=args[2];
+                    runtime.observeNpc(npc).whenComplete((outcome,error)->{
+                        if(error!=null)reply(sender,List.of("Behavior trace: FAILED | result-delivery"));
+                        else if(outcome.value().isEmpty())reply(sender,outcomeLines("Behavior trace",outcome,"npc="+npc));
+                        else reply(sender,traceLines(npc,outcome.value().orElseThrow()));
+                    });
+                }
+                case "state"->state(sender,args);
+                case "inspect"->{
+                    arity(args,3,3,"behaviors inspect <execution-uuid>");ManualBehaviorRuntime runtime=coordinator;UUID id=UUID.fromString(args[2]);
+                    if(runtime==null){reply(sender,List.of("Behavior inspect: UNAVAILABLE | state="+state));return true;}
+                    runtime.observe(id).whenComplete((outcome,error)->{
+                        if(error!=null)reply(sender,List.of("Behavior inspect: FAILED | result-delivery"));
+                        else reply(sender,outcome.value().map(BukkitBehaviorCommands::executionLines).orElse(List.of("Behavior inspect: "+outcome.status()+" | execution="+id)));
+                    });
+                }
                 case "cancel"->{
                     arity(args,3,3,"behaviors cancel <execution-uuid>");ManualBehaviorRuntime runtime=ready(sender,"cancel");if(runtime==null)return true;UUID id=UUID.fromString(args[2]);
                     runtime.cancel(id).whenComplete((outcome,error)->{
@@ -86,14 +112,80 @@ final class BukkitBehaviorCommands implements AutoCloseable {
                         else reply(sender,outcomeLines("Behavior cancel",outcome,"execution="+id+outcome.value().map(value->" | cancelled="+value).orElse("")));
                     });
                 }
-                default->throw new IllegalArgumentException("behaviors status|list [page]|validate|reload|run <npc-id> <behavior-id>|inspect <execution-uuid>|cancel <execution-uuid>");
+                default->throw new IllegalArgumentException("behaviors status|list [page]|validate|reload|run <npc-id> <behavior-id>|inspect <execution-uuid>|trace <npc-id-or-uuid>|cancel <execution-uuid>|state status|state purge <target>");
             }
         }catch(RuntimeException invalid){reply(sender,List.of("Animus behaviors: "+Objects.toString(invalid.getMessage(),invalid.getClass().getSimpleName())));}
         return true;
     }
+    private void state(CommandSender sender,String[] args){
+        String operation=args.length>2?args[2].toLowerCase(Locale.ROOT):"status";
+        switch(operation){
+            case "status"->{arity(args,2,3,"behaviors state status");reply(sender,stateLines());}
+            case "purge"->{
+                BehaviorStateStore.Purge selector=purgeSelector(args);
+                StateTask task=new StateTask(sender,selector);
+                try{files.execute(task);}
+                catch(RejectedExecutionException rejected){task.failed("file-queue-unavailable");}
+            }
+            default->throw new IllegalArgumentException("behaviors state status|purge behavior <id>|purge npc <id-or-uuid>|purge player <uuid>|purge relationship <npc-id-or-uuid> <player-uuid>|purge all confirm");
+        }
+    }
+    private BehaviorStateStore.Purge purgeSelector(String[] args){
+        String target=args.length>3?args[3].toLowerCase(Locale.ROOT):"";
+        return switch(target){
+            case "behavior"->{arity(args,5,5,"behaviors state purge behavior <behavior-id>");BehaviorPath.forId(args[4]);yield BehaviorStateStore.Purge.behavior(args[4]);}
+            case "npc"->{arity(args,5,5,"behaviors state purge npc <npc-id-or-uuid>");yield BehaviorStateStore.Purge.npc(npcIdentity(args[4]));}
+            case "player"->{arity(args,5,5,"behaviors state purge player <player-uuid>");yield BehaviorStateStore.Purge.player(UUID.fromString(args[4]));}
+            case "relationship"->{arity(args,6,6,"behaviors state purge relationship <npc-id-or-uuid> <player-uuid>");yield BehaviorStateStore.Purge.relationship(npcIdentity(args[4]),UUID.fromString(args[5]));}
+            case "all"->{
+                if(args.length!=5||!args[4].equals("confirm"))throw new IllegalArgumentException("behaviors state purge all confirm removes every stored behavior variable");
+                yield BehaviorStateStore.Purge.all();
+            }
+            default->throw new IllegalArgumentException("behaviors state purge behavior|npc|player|relationship|all");
+        };
+    }
+    /** A deleted NPC has no definition left; its stored state stays reachable through the UUID. */
+    private UUID npcIdentity(String npc){
+        NpcDefinition definition=repository.snapshot().get(npc);
+        return definition!=null?definition.uuid():UUID.fromString(npc);
+    }
+    private final class StateTask implements Runnable {
+        final CommandSender sender;final BehaviorStateStore.Purge selector;
+        StateTask(CommandSender sender,BehaviorStateStore.Purge selector){this.sender=sender;this.selector=selector;}
+        public void run(){
+            try{
+                BehaviorStateStore.PurgeResult result=behaviorState.purge(selector);
+                reply(sender,List.of("Behavior state purge: OK | documents="+result.documents()+" | keys="+result.keys()));
+            }catch(IOException | RuntimeException error){failed(error.getClass().getSimpleName()+": "+error.getMessage());}
+        }
+        void failed(String reason){reply(sender,List.of("Behavior state purge: FAILED | "+reason));}
+    }
+    List<String> stateLines(){
+        BehaviorStateStore.Status status=behaviorState.status();
+        List<String> rows=new ArrayList<>();
+        rows.add("Behavior state: persistent-keys="+status.persistentKeys()+"/"+settings.state().maximumKeys()+" | transient-keys="+status.transientKeys()+"/"+settings.state().maximumTransientKeys()+" | persistent-bytes="+status.persistentBytes()+"/"+settings.state().maximumBytes()+" | documents="+status.documents()+" | dirty="+status.dirtyDocuments()+" | flushes="+status.flushes()+" | flush-failures="+status.flushFailures()+" | invalid="+status.invalidDocuments()+(status.lastFailure().isEmpty()?"":" | last-failure="+status.lastFailure()));
+        for(BehaviorStateStore.Problem problem:behaviorState.problems()){
+            if(rows.size()>=17)break;
+            rows.add("Behavior state invalid: "+problem.path()+" | "+problem.message());
+        }
+        return rows;
+    }
+    static List<String> traceLines(String npc,ManualBehaviorRuntime.NpcTrace trace){
+        List<String> rows=new ArrayList<>();
+        rows.add("Behavior trace: npc="+npc+" | npc-uuid="+trace.npc()+" | active="+trace.active().map(execution->execution.report().id().toString()).orElse("none")+" | recent="+trace.recent().size());
+        trace.active().ifPresent(execution->rows.addAll(executionLines(execution)));
+        for(ManualBehaviorRuntime.Execution execution:trace.recent()){
+            BehaviorEngine.Report report=execution.report();
+            rows.add("Behavior recent: execution="+report.id()+" | behavior="+execution.behaviorId()+" | state="+report.state()+" | steps="+report.steps()+" | reason="+report.reason());
+        }
+        return rows;
+    }
     List<String> complete(String[] args){
         if(closed.get())return List.of();
         if(args.length==2)return matching(OPERATIONS,args[1].toLowerCase(Locale.ROOT));
+        if(args.length==3&&args[1].equalsIgnoreCase("state"))return matching(STATE_OPERATIONS,args[2].toLowerCase(Locale.ROOT));
+        if(args.length==4&&args[1].equalsIgnoreCase("state")&&args[2].equalsIgnoreCase("purge"))return matching(PURGE_TARGETS,args[3].toLowerCase(Locale.ROOT));
+        if(args.length==3&&args[1].equalsIgnoreCase("trace"))return matching(repository.snapshot().keySet(),args[2]);
         if(args.length==3&&args[1].equalsIgnoreCase("run"))return matching(repository.snapshot().keySet(),args[2]);
         BehaviorCatalog current=catalog;
         if(args.length==4&&args[1].equalsIgnoreCase("run")&&current!=null)return matching(current.snapshot().byId().keySet(),args[3]);
@@ -133,7 +225,7 @@ final class BukkitBehaviorCommands implements AutoCloseable {
             try{
                 if(closed.get())return;
                 BehaviorCatalog current=catalog;
-                if(current==null){current=new BehaviorCatalog(dataDirectory,settings.catalog(),requirement->new BehaviorCatalog.Capability(extensions.capabilityAvailable(requirement.key(),requirement.kind()),"module capability not ready or unavailable"));catalog=current;}
+                if(current==null){current=new BehaviorCatalog(dataDirectory,settings.catalog(),requirement->new BehaviorCatalog.Capability(extensions.capabilityAvailable(requirement.key(),requirement.kind()),"module capability not ready or unavailable"),new BehaviorCheckpoints(documents));catalog=current;}
                 List<String> messages;
                 if(validate){
                     var checked=current.validate(generation);messages=validationLines(checked);
@@ -148,7 +240,8 @@ final class BukkitBehaviorCommands implements AutoCloseable {
                     }
                 }
                 if(closed.get())return;
-                if(initial)report.accept(messages.getFirst());else reply(sender,messages);
+                // Startup reports every line: a malformed source kept on its last-valid program must name its exact errors.
+                if(initial)messages.forEach(report);else reply(sender,messages);
             }catch(IOException | RuntimeException | LinkageError | AssertionError error){failed("catalog-operation: "+error.getClass().getSimpleName());}
             finally{fileTask.compareAndSet(this,null);}
         }

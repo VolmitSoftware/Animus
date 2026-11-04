@@ -28,12 +28,18 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     public enum State { STARTING,RUNNING,STOPPING,STOPPED }
     public record Status(State state,int admittedOperations,int queuedOperations,int queuedDeliveries,
                          int activeDeliveries,int overBudgetDeliveries,long completedOverBudgetDeliveries,
-                         BehaviorEngine.Status engine,String failure) {}
+                         BehaviorEngine.Status engine,long viewPublications,String failure) {}
     public record Execution(String npcId,UUID npcUuid,long npcRevision,String behaviorId,long behaviorRevision,
                             String sourceHash,Optional<UUID> player,BehaviorEngine.Report report) {}
     public record Snapshot(Status status,Map<UUID,Execution> executions) {
         public Snapshot {executions=Map.copyOf(executions);}
     }
+    /** What one NPC is doing now and its newest finished runs, newest first. */
+    public record NpcTrace(UUID npc,Optional<Execution> active,List<Execution> recent) {
+        public NpcTrace {Objects.requireNonNull(npc);Objects.requireNonNull(active);recent=List.copyOf(recent);}
+    }
+    public static final int RECENT_PER_NPC=4;
+    private static final long OBSERVATION_NANOS=TimeUnit.SECONDS.toNanos(2);
     private enum Phase { QUEUED,RUNNING,DELIVERY_QUEUED,DELIVERING }
     private record Capture(String npcId,NpcDefinition definition,UUID npcUuid,long revision,
                            String behaviorId,BehaviorCatalog.Accepted accepted,Optional<UUID> player) {}
@@ -54,6 +60,11 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     private final Map<UUID,Lease> active=new LinkedHashMap<>(); // owner only
     private final Map<UUID,Lease> byNpc=new HashMap<>(); // one live execution per NPC
     private final LinkedHashMap<UUID,Execution> history=new LinkedHashMap<>(); // owner only, bounded
+    private final LinkedHashMap<UUID,ArrayDeque<Execution>> recentByNpc=new LinkedHashMap<>(16,0.75f,true); // owner only, bounded
+    private final BehaviorState state;
+    private volatile long observedUntil=System.nanoTime();
+    private volatile long viewPublications;
+    private boolean viewsChanged; // owner only
     private volatile Publication published=new Publication(EMPTY_ENGINE,Map.of());
     private volatile Thread owner;
     private volatile boolean closing,started,stopped;
@@ -64,15 +75,25 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     public ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
                                  Supplier<Map<String,NpcDefinition>> definitions,
                                  Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker) {
-        this(limits,engineLimits,definitions,catalog,invoker,daemonFactory("animus-behavior-owner"));
+        this(limits,engineLimits,definitions,catalog,invoker,BehaviorState.UNAVAILABLE,daemonFactory("animus-behavior-owner"));
+    }
+    public ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
+                                 Supplier<Map<String,NpcDefinition>> definitions,
+                                 Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,BehaviorState state) {
+        this(limits,engineLimits,definitions,catalog,invoker,state,daemonFactory("animus-behavior-owner"));
     }
     // Package-private deterministic owner-start seam; production always uses its private daemon owner.
     ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
                           Supplier<Map<String,NpcDefinition>> definitions,
                           Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,ThreadFactory ownerFactory) {
+        this(limits,engineLimits,definitions,catalog,invoker,BehaviorState.UNAVAILABLE,ownerFactory);
+    }
+    private ManualBehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
+                                  Supplier<Map<String,NpcDefinition>> definitions,
+                                  Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,BehaviorState state,ThreadFactory ownerFactory) {
         this.limits=Objects.requireNonNull(limits);this.engineLimits=Objects.requireNonNull(engineLimits);
         this.definitions=Objects.requireNonNull(definitions);this.catalog=Objects.requireNonNull(catalog);
-        this.invoker=Objects.requireNonNull(invoker);
+        this.invoker=Objects.requireNonNull(invoker);this.state=Objects.requireNonNull(state);
         LifecycleClasses.prepare();
         deliveries=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(limits.maximumOperations()),
                 daemonFactory("animus-behavior-result"),new ThreadPoolExecutor.AbortPolicy());
@@ -115,8 +136,23 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
         }
     }
     public Status status(){return status(published);}
-    public Snapshot snapshot(){Publication view=published;return new Snapshot(status(view),view.executions());}
-    public Optional<Execution> inspect(UUID execution){return Optional.ofNullable(published.executions().get(Objects.requireNonNull(execution)));}
+    /** The last published views. Asking keeps views publishing for a short window; use {@link #observe} for a current answer. */
+    public Snapshot snapshot(){observed();Publication view=published;return new Snapshot(status(view),view.executions());}
+    /** The last published view, as {@link #snapshot} describes. */
+    public Optional<Execution> inspect(UUID execution){observed();return Optional.ofNullable(published.executions().get(Objects.requireNonNull(execution)));}
+    /** One execution's current waits, conditions and recent steps, answered by the owner on its next turn. */
+    public CompletionStage<Outcome<Execution>> observe(UUID execution) {
+        if(execution==null)return rejected(Outcome.Status.INVALID,"execution-identity","Expected execution UUID");
+        if(Thread.currentThread()==owner)return rejected(Outcome.Status.BUSY,"owner-reentrant","Queue observation from outside the behavior owner");
+        return submit(new ObserveOperation(execution));
+    }
+    /** One NPC's active run and bounded recent runs. Accepts a definition identifier, or the UUID of an NPC since deleted. */
+    public CompletionStage<Outcome<NpcTrace>> observeNpc(String npc) {
+        if(npc==null||npc.length()>64)return rejected(Outcome.Status.INVALID,"npc-identity","Expected an NPC identifier or UUID");
+        if(Thread.currentThread()==owner)return rejected(Outcome.Status.BUSY,"owner-reentrant","Queue observation from outside the behavior owner");
+        return submit(new ObserveNpcOperation(npc));
+    }
+    private void observed(){observedUntil=System.nanoTime()+OBSERVATION_NANOS;}
     private Status status(Publication view) {
         synchronized(control){
             int queued=0,delivering=0,slow=0;long now=System.nanoTime();
@@ -125,7 +161,7 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
                 if(operation.phase==Phase.DELIVERING){delivering++;if(now-operation.deliveryStarted>=TimeUnit.MILLISECONDS.toNanos(limits.deliveryBudgetMillis()))slow++;}
             }
             return new Status(stopped?State.STOPPED:closing?State.STOPPING:started?State.RUNNING:State.STARTING,
-                    admitted.size(),requests.size(),queued,delivering,slow,slowDeliveries,view.engine(),failure);
+                    admitted.size(),requests.size(),queued,delivering,slow,slowDeliveries,view.engine(),viewPublications,failure);
         }
     }
     /** Revokes new requests immediately. Neither trusted handlers nor public result callbacks run here. */
@@ -141,7 +177,7 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     private void turn() {
         owner=Thread.currentThread();List<Operation<?>> completed=new ArrayList<>(limits.operationsPerTick());
         try {
-            if(engine==null){engine=new BehaviorEngine(engineLimits,new GuardedInvoker(),this::terminal);started=true;}
+            if(engine==null){engine=new BehaviorEngine(engineLimits,new GuardedInvoker(),this::terminal,state);started=true;}
             if(closing)engine.close();
             for(int count=0;count<limits.operationsPerTick();count++){
                 Operation<?> operation;
@@ -151,7 +187,7 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
             }
             if(closing)engine.close();
             else for(Lease lease:List.copyOf(active.values()))if(!current(lease.capture()))engine.cancel(lease.execution(),"captured-source-changed");
-            engine.tick();publish();
+            engine.tick();publish();state.maintain();
         } catch(RuntimeException | AssertionError | LinkageError fault) {
             fail(fault);
             if(engine!=null){try{engine.close();publish();}catch(RuntimeException | AssertionError | LinkageError ignored){/* retain the failure and all accounting */}}
@@ -174,8 +210,14 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
     private void terminal(BehaviorEngine.Report report) {
         Lease lease=active.remove(report.id());
         if(lease==null)throw new IllegalStateException("Terminal execution has no captured lease");
-        byNpc.remove(lease.capture().npcUuid(),lease);history.put(report.id(),view(lease,report));
+        Execution finished=view(lease,report);
+        byNpc.remove(lease.capture().npcUuid(),lease);history.put(report.id(),finished);viewsChanged=true;
         while(history.size()>engineLimits.historyEntries())history.remove(history.keySet().iterator().next());
+        // No lambda here: a run can end on the owner after the platform closed the plugin archive.
+        ArrayDeque<Execution> recent=recentByNpc.get(lease.capture().npcUuid());
+        if(recent==null){recent=new ArrayDeque<>(RECENT_PER_NPC);recentByNpc.put(lease.capture().npcUuid(),recent);}
+        recent.addFirst(finished);if(recent.size()>RECENT_PER_NPC)recent.removeLast();
+        if(recentByNpc.size()>engineLimits.historyEntries())recentByNpc.remove(recentByNpc.keySet().iterator().next());
     }
     private void publish() {
         BehaviorEngine.Status status=engine.status();
@@ -183,10 +225,13 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
             published=new Publication(status,published.executions());
             throw new IllegalStateException("Terminal lease observation failed");
         }
-        while(history.size()>engineLimits.historyEntries())history.remove(history.keySet().iterator().next());
+        // Reports copy traces and wait lists: rebuild them only when the set of runs changed or someone recently asked.
+        if(!viewsChanged&&observedUntil-System.nanoTime()<=0){published=new Publication(status,published.executions());return;}
+        viewsChanged=false;
         Map<UUID,Execution> views=new LinkedHashMap<>(history);
         for(Lease lease:active.values())views.put(lease.execution(),view(lease,engine.inspect(lease.execution()).orElseThrow()));
         published=new Publication(status,Map.copyOf(views));
+        viewPublications++;
     }
     private static Execution view(Lease lease,BehaviorEngine.Report report){Capture c=lease.capture();return new Execution(c.npcId(),c.npcUuid(),c.revision(),c.behaviorId(),c.accepted().revision(),c.accepted().sourceHash(),c.player(),report);}
     private void queueDelivery(Operation<?> operation) {
@@ -215,13 +260,35 @@ public final class ManualBehaviorRuntime implements AutoCloseable {
             if(!current(capture))return Outcome.rejected(Outcome.Status.CONFLICT,"captured-source-changed","NPC or accepted behavior changed after request admission");
             if(byNpc.containsKey(capture.npcUuid()))return Outcome.rejected(Outcome.Status.BUSY,"npc-execution-active","Only one manual execution per NPC may be active");
             Outcome<UUID> result=engine.start(capture.accepted().program(),new BehaviorEngine.Context(new NpcHandle(capture.npcUuid()),capture.player(),false));
-            result.value().ifPresent(id->{Lease lease=new Lease(id,capture);active.put(id,lease);byNpc.put(capture.npcUuid(),lease);});return result;
+            result.value().ifPresent(id->{Lease lease=new Lease(id,capture);active.put(id,lease);byNpc.put(capture.npcUuid(),lease);viewsChanged=true;});return result;
         }
     }
     private final class CancelOperation extends Operation<Boolean> {
         final UUID id;CancelOperation(UUID id){this.id=id;}
         Outcome<Boolean> execute(){return Outcome.ok(engine.cancel(id,"administrator-cancelled"));}
     }
+    private final class ObserveOperation extends Operation<Execution> {
+        final UUID id;ObserveOperation(UUID id){this.id=id;}
+        Outcome<Execution> execute(){
+            Lease lease=active.get(id);
+            if(lease!=null)return Outcome.ok(view(lease,engine.inspect(id).orElseThrow()));
+            Execution finished=history.get(id);
+            return finished==null?Outcome.rejected(Outcome.Status.NOT_FOUND,"execution-missing","No active or retained execution has this UUID"):Outcome.ok(finished);
+        }
+    }
+    private final class ObserveNpcOperation extends Operation<NpcTrace> {
+        final String npc;ObserveNpcOperation(String npc){this.npc=npc;}
+        Outcome<NpcTrace> execute(){
+            NpcDefinition definition=Objects.requireNonNull(definitions.get()).get(npc);
+            UUID identity=definition!=null?definition.uuid():uuid(npc);
+            if(identity==null)return Outcome.rejected(Outcome.Status.NOT_FOUND,"npc-missing","No NPC definition has this identifier");
+            Lease lease=byNpc.get(identity);
+            Optional<Execution> current=lease==null?Optional.empty():Optional.of(view(lease,engine.inspect(lease.execution()).orElseThrow()));
+            ArrayDeque<Execution> recent=recentByNpc.get(identity);
+            return Outcome.ok(new NpcTrace(identity,current,recent==null?List.of():List.copyOf(recent)));
+        }
+    }
+    private static UUID uuid(String text){try{return UUID.fromString(text);}catch(IllegalArgumentException notUuid){return null;}}
     private final class GuardedInvoker implements BehaviorInvoker {
         public boolean available(Capabilities.Key key,Capabilities.Kind kind){return !closing&&invoker.available(key,kind);}
         private Invocation guarded(Invocation invocation){

@@ -114,7 +114,7 @@ class BehaviorEngineTest {
     }
     @Test void invalidPreparedEntryIsRejectedBeforeAllocatingExecution(){
         var engine=new BehaviorEngine(Limits.defaults(),new Fake());
-        var program=new BehaviorProgram("example:bad","missing",Map.of(),Map.of("main",new BehaviorProgram.Wait("$",1)),1);
+        var program=new BehaviorProgram("example:bad","missing",Map.of(),Map.of(),Map.of("main",new BehaviorProgram.Wait("$",1)),1);
         assertEquals(Outcome.Status.INVALID,engine.start(program,context()).status());assertEquals(0,engine.status().activeExecutions());assertEquals(0,engine.status().fibers());engine.tick();engine.close();
     }
     @Test void completionObserverFailureCannotReleaseUnknownAdmittedWork(){

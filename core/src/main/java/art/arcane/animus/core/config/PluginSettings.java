@@ -3,6 +3,7 @@ package art.arcane.animus.core.config;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
+import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.storage.*;
 import art.arcane.volmlib.util.config.TomlCodec;
 import com.google.gson.*;
@@ -98,7 +99,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
 
     private static BehaviorSettings behaviors(JsonObject document) {
         BehaviorSettings defaults = BehaviorSettings.DEFAULT;
-        JsonObject engine = table(document, "engine"), catalog = table(document, "catalog");
+        JsonObject engine = table(document, "engine"), catalog = table(document, "catalog"), state = table(document, "state");
         BehaviorEngine.Limits execution = defaults.engine();
         BehaviorEngine.Limits engineLimits = new BehaviorEngine.Limits(
                 budget(engine, "executions", execution.executions(), 1, 128, "engine"),
@@ -118,11 +119,18 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 budget(catalog, "maximumDocumentBytes", sources.maximumDocumentBytes(), 1, 262144, "catalog"),
                 longBudget(catalog, "maximumAggregateBytes", sources.maximumAggregateBytes(), 1, 64L * 1024 * 1024, "catalog"),
                 budget(catalog, "maximumCapabilityChecks", sources.maximumCapabilityChecks(), 1, 16384, "catalog"));
+        BehaviorStateStore.Limits stored = defaults.state();
+        BehaviorStateStore.Limits stateLimits = new BehaviorStateStore.Limits(
+                budget(state, "maximumKeys", stored.maximumKeys(), 1, 1_048_576, "state"),
+                budget(state, "maximumTransientKeys", stored.maximumTransientKeys(), 1, 1_048_576, "state"),
+                budget(state, "maximumValueBytes", stored.maximumValueBytes(), 1, 4096, "state"),
+                longBudget(state, "maximumBytes", stored.maximumBytes(), 1, 256L * 1024 * 1024, "state"),
+                budget(state, "flushMillis", stored.flushMillis(), 100, 300_000, "state"));
         return new BehaviorSettings(bool(document, "enabled", defaults.enabled()),
                 integer(document, "maximumOperations", defaults.maximumOperations()),
                 integer(document, "operationsPerTick", defaults.operationsPerTick()),
                 integer(document, "tickMillis", defaults.tickMillis()),
-                integer(document, "deliveryBudgetMillis", defaults.deliveryBudgetMillis()), engineLimits, catalogLimits);
+                integer(document, "deliveryBudgetMillis", defaults.deliveryBudgetMillis()), engineLimits, catalogLimits, stateLimits);
     }
 
     private static int budget(JsonObject object, String field, int fallback, int minimum, int maximum, String table) {

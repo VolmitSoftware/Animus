@@ -12,6 +12,7 @@ public final class BehaviorCompiler {
     public static final int MAX_BYTES=256*1024,MAX_NODES=2048,MAX_DEPTH=32,MAX_ROUTINES=32,MAX_VARIABLES=32;
     public record Result(Optional<BehaviorProgram> program,List<Diagnostic> diagnostics){public Result{diagnostics=List.copyOf(diagnostics);}}
     private final Map<String,Value> variables=new LinkedHashMap<>();
+    private final Map<String,ScopedVariable> scoped=new LinkedHashMap<>();
     private final Map<String,Node> routines=new LinkedHashMap<>();
     private final List<Call> references=new ArrayList<>();
     private int nodes;
@@ -42,8 +43,8 @@ public final class BehaviorCompiler {
         if(object.has("variables")){
             JsonObject vars=object(object.get("variables"),"$.variables");if(vars.size()>MAX_VARIABLES)throw new Invalid("$.variables","at most 32 variables");
             for(var item:vars.entrySet()){
-                String path="$.variables."+item.getKey();identifier(item.getKey(),path);JsonObject var=object(item.getValue(),path);keys(var,path,"type","initial","scope");
-                if(var.has("scope")&&!text(var,"scope",path).equals("execution"))throw new Invalid(path+".scope","only transient execution scope is implemented");
+                String path="$.variables."+item.getKey();identifier(item.getKey(),path);JsonObject var=object(item.getValue(),path);keys(var,path,"type","initial","scope","lifetime");
+                ScopedVariable declaration=scope(var,path);if(declaration!=null)scoped.put(item.getKey(),declaration);
                 Type type;try{type=Type.valueOf(text(var,"type",path).toUpperCase(Locale.ROOT));}catch(IllegalArgumentException unsupported){throw new Invalid(path+".type","expected boolean, integer, decimal or string");}
                 variables.put(item.getKey(),value(var.get("initial"),type,path+".initial"));
             }
@@ -54,7 +55,30 @@ public final class BehaviorCompiler {
         }
         if(!routines.containsKey(entry))throw new Invalid("$.entry","unknown routine");
         for(Call call:references)if(!routines.containsKey(call.routine()))throw new Invalid(call.path()+".routine","unknown routine");
-        return new BehaviorProgram(id,entry,variables,routines,nodes);
+        return new BehaviorProgram(id,entry,variables,scoped,routines,nodes);
+    }
+    /** Null means the default execution scope. Scope and lifetime words are exact: no case folding or coercion. */
+    private static ScopedVariable scope(JsonObject variable,String path){
+        String name=variable.has("scope")?text(variable,"scope",path):"execution";
+        Scope scope=switch(name){
+            case "execution"->null;
+            case "npc"->Scope.NPC;
+            case "player"->Scope.PLAYER;
+            case "relationship"->Scope.RELATIONSHIP;
+            case "global"->Scope.GLOBAL;
+            default->throw new Invalid(path+".scope","expected execution, npc, player, relationship or global");
+        };
+        if(scope==null){
+            if(variable.has("lifetime"))throw new Invalid(path+".lifetime","execution variables end with their execution and declare no lifetime");
+            return null;
+        }
+        if(!variable.has("lifetime"))throw new Invalid(path+".lifetime","required for "+name+" scope: expected transient or persistent");
+        Lifetime lifetime=switch(text(variable,"lifetime",path)){
+            case "transient"->Lifetime.TRANSIENT;
+            case "persistent"->Lifetime.PERSISTENT;
+            default->throw new Invalid(path+".lifetime","expected transient or persistent");
+        };
+        return new ScopedVariable(scope,lifetime);
     }
     private Node node(JsonElement element,String path,int depth){
         if(depth>MAX_DEPTH)throw new Invalid(path,"node nesting exceeds 32");if(++nodes>MAX_NODES)throw new Invalid(path,"node budget exceeds 2048");

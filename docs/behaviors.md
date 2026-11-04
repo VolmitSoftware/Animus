@@ -1,6 +1,6 @@
 # JSON behaviors
 
-The core compiler, interpreter, typed argument binding, file catalog and module-schema checks are integrated. Manual commands and lifecycle wiring are integrated; their final shutdown review and new managed server acceptance run are pending. Runtime10's published server results cover the earlier artifact. Automatic triggers, durable quest state, dialogue UI and platform actions remain separate work.
+The core compiler, interpreter, typed argument binding, file catalog and module-schema checks are integrated. Manual commands and lifecycle wiring are integrated; their final shutdown review and new managed server acceptance run are pending. Runtime10's published server results cover the earlier artifact. Scoped variables, durable state and last-valid checkpoints are covered by local tests and have not run on a live server. Automatic triggers, dialogue UI and platform actions remain separate work.
 
 Behavior documents are JSON. Plugin-wide budgets are TOML. A behavior named `reference:module-sequence` lives at `plugins/Animus/behaviors/reference/module-sequence.json`:
 
@@ -32,7 +32,9 @@ Each namespace and path segment uses 1–64 lowercase ASCII letters, digits, `_`
 
 `revision` is a positive signed 64-bit document revision. Any changed bytes, including whitespace, require a revision greater than the last accepted one. Validation constructs a candidate without publishing it or changing files. Explicit reload publishes accepted programs. Invalid edits retain the last valid program in this process and report the rejected fields. Duplicate IDs select no winner; missing source disables that behavior. An explicit matching revision/hash removal token can forget an absent program. Files and missing-module data are never silently deleted.
 
-The catalog does not yet write durable last-valid behavior checkpoints. A fresh process cannot recover the preceding process's accepted program from a malformed source file. Execution stacks are transient and are not resumed after restart.
+Each accepted program also gets a generated last-valid checkpoint, so these rules hold across restarts. A malformed or stale source after a restart keeps the last accepted program and reports its exact field errors at startup, in the startup log and through `/animus behaviors validate`. A changed source still needs a higher revision than the checkpoint. A source deleted while the server is stopped stays deleted: its checkpoint is removed at the next catalog load, and a later malformed file at that path starts with nothing to fall back on. A source deleted while running makes the program unavailable and removes its checkpoint the same way. An unusable checkpoint is reported as a warning and ignored; it never stops startup, and a valid source replaces it. See [storage](storage.md) for the files.
+
+Restarts never resume work in progress. Declared persistent variables survive. Execution stacks, execution variables, transient variables, waits and terminal history do not, and an interrupted behavior simply does not continue.
 
 The implemented language is:
 
@@ -47,9 +49,35 @@ The implemented language is:
 | `call` | `routine`: a reusable routine in this document. |
 | `set` | `variable` and either a typed literal `value` or `{"variable":"source"}`. |
 
-Variables declare `type`, `initial` and optional `scope: "execution"`. Supported types are boolean, signed 64-bit integer, finite decimal and valid UTF-8 string up to 4 KiB. There is no coercion, arbitrary Java expression, string interpolation or implicit access to other players' variables. Persistent NPC/player/relationship/global scopes are not yet implemented.
+Variables declare `type`, `initial` and optional `scope`. Supported types are boolean, signed 64-bit integer, finite decimal and valid UTF-8 string up to 4 KiB. There is no coercion, arbitrary Java expression, string interpolation or implicit access to other players' variables.
 
-Parallel branches start with independent copies of the current variables. Nonoverlapping writes merge on join. Two branches writing the same variable fail with a conflict, including identical writes. Completed external side effects cannot be rolled back by that conflict.
+```json
+"variables": {
+  "attempts": {"type": "integer", "initial": 0},
+  "mood": {"type": "string", "initial": "calm", "scope": "npc", "lifetime": "transient"},
+  "introduced": {"type": "boolean", "initial": false, "scope": "player", "lifetime": "persistent"},
+  "trust": {"type": "decimal", "initial": 0.5, "scope": "relationship", "lifetime": "persistent"},
+  "phase": {"type": "integer", "initial": 1, "scope": "global", "lifetime": "persistent"}
+}
+```
+
+| `scope` | One value per | Needs a player |
+| --- | --- | --- |
+| `execution` (default) | Run of the behavior. Declares no `lifetime`. | No |
+| `npc` | Behavior and NPC UUID | No |
+| `player` | Behavior and player UUID | Yes |
+| `relationship` | Behavior, NPC UUID and player UUID | Yes |
+| `global` | Behavior | No |
+
+Every scope other than `execution` requires a `lifetime`: `transient` values last until the server stops, and `persistent` values are stored. Scope and lifetime words are exact, and the compiler names the field it rejects, such as `$.variables.trust.lifetime`. All scopes belong to one behavior ID, so two behaviors never share a variable by name. A variable keeps its `initial` value until something writes it, and an unwritten variable takes no storage.
+
+A run with no player cannot start a behavior declaring a `player` or `relationship` variable; it is refused with `behavior-state-player-required` and the variable's field. Reads see the most recent write from any run. There is no compare-and-set, so the last write wins when runs of the same behavior write the same key. A preview run reads stored values and never writes them.
+
+If a new revision changes a stored variable's type, the stored value is neither converted nor discarded. Runs for that subject are refused with `behavior-state-type-mismatch` until the declaration is restored or the state is purged. Removing a declaration leaves its stored value in place, still counting against the budgets below. Changing only the `lifetime` selects a different key.
+
+Parallel branches start with independent copies of the current variables, including scoped ones, and they keep those copies: a branch sees its own writes and no one else's until the join. Nonoverlapping writes merge on join. Two branches writing the same variable fail with a conflict, including identical writes. Completed external side effects cannot be rolled back by that conflict.
+
+Scoped writes follow the same rule. Outside a parallel node a `set` takes effect immediately. Inside one, it stays private to the branch and becomes visible to other runs only when the outermost join completes, when all the branches' scoped writes apply together or not at all. A conflict, a budget refusal at the join, a cancellation or a failure before the join discards the branches' scoped writes. Writes already applied outside the parallel node are not undone when the run later fails.
 
 Action and condition arguments can bind declared values into existing null placeholders:
 
@@ -83,11 +111,22 @@ The current administrative commands require `animus.admin`:
 | `/animus behaviors reload` | Publish validated source observations; preserve the preceding accepted program for invalid edits. |
 | `/animus behaviors run <npc-id> <behavior-id>` | Admit manual execution against the captured definition and accepted program. Returns an execution UUID. |
 | `/animus behaviors inspect <execution-uuid>` | Inspect active or retained terminal state, source identity, waits, diagnostics and recent traces. |
+| `/animus behaviors trace <npc-id-or-uuid>` | Show that NPC's active run with its waits and recent steps, plus its last four finished runs. A deleted NPC's UUID still works while its runs are retained. |
 | `/animus behaviors cancel <execution-uuid>` | Cancel that execution and revoke its pending calls. |
+| `/animus behaviors state status` | Stored and transient key counts against their budgets, documents waiting to be written, write failures, and each invalid stored file with its exact reason. |
+| `/animus behaviors state purge behavior <behavior-id>` | Remove every variable of that behavior. |
+| `/animus behaviors state purge npc <npc-id-or-uuid>` | Remove that NPC's `npc` and `relationship` variables across all behaviors. |
+| `/animus behaviors state purge player <player-uuid>` | Remove that player's `player` and `relationship` variables across all behaviors. |
+| `/animus behaviors state purge relationship <npc-id-or-uuid> <player-uuid>` | Remove the variables of that one pair. |
+| `/animus behaviors state purge all confirm` | Remove all stored and transient variables, including invalid or unrecognized stored files. |
 
 Catalog loading waits for module initialization and shares the existing bounded file worker. A successful scan may publish a catalog containing unavailable or invalid sources; inspect the reported counts and field diagnostics. Repeated catalog operations report busy while a scan is pending. Replies return through the sender's owning scheduler. Console execution carries no player identity; player execution captures only the sender UUID, with no implicit world, preview or privileged authority.
 
 Manual execution currently permits one active run per NPC, including a dormant definition. It captures the exact accepted definition and behavior. Definition replacement, deletion or despawn cancels that authority. A no-op NPC file reload also conservatively cancels because it publishes a new definition object. An unchanged accepted behavior retains its identity and continues. Edited behavior bytes require a higher revision; accepted replacement cancels runs using the earlier program. Missing or duplicate behavior sources make the program unavailable. A rejected edit can continue using the preceding valid program within the same process.
+
+Variables are never removed implicitly. Deleting or disabling a behavior, deleting an NPC, or losing a module leaves the state in place, so restoring the same behavior ID or NPC UUID finds it again. Cloning an NPC gives the clone a new UUID and no state. Removal happens only through `state purge`. A running behavior whose state is purged reads its `initial` values from then on and can write new ones.
+
+Each execution keeps a fixed ring of recent steps sized by `traceEntries`, and its report lists current waits, such as `condition:example:allowed@$.routines.main` or `tick:1200@$.routines.main.steps[1]`. `inspect` and `trace` are answered by the behavior owner on its next turn. Java callers use `ManualBehaviorRuntime.observe(uuid)` and `observeNpc(idOrUuid)`. Recording a step only fills ring slots; text and reports are built when someone asks. `inspect(uuid)` and `snapshot()` return the last published views, which are refreshed for two seconds after each such call and whenever a run starts or ends.
 
 Source authority is checked at admission, on owner ticks and immediately before a queued module handler starts. A held handler receives a cancellation token that also observes revocation. Cancellation cannot undo an action already performed or forcibly stop trusted Java code. Retired calls remain counted until their actual handler and delivery work finishes. Execution stacks and bounded terminal history are not resumed after restart.
 
@@ -119,6 +158,15 @@ maximumDepth = 8
 maximumDocumentBytes = 262144
 maximumAggregateBytes = 16777216
 maximumCapabilityChecks = 8192
+
+[behaviors.state]
+maximumKeys = 65536
+maximumTransientKeys = 65536
+maximumValueBytes = 4096
+maximumBytes = 16777216
+flushMillis = 5000
 ```
+
+`maximumKeys` and `maximumTransientKeys` cap the stored and transient variables that hold a written value, up to 1,048,576. `maximumValueBytes` caps one string value, up to 4,096 bytes. `maximumBytes` caps the logical size of each lifetime's values and names, up to 256 MiB. One behavior holds at most 128 keys per subject. A write over a budget fails that run with `behavior-state-key-budget`, `behavior-state-byte-budget` or `behavior-state-value-size` naming the variable, and writes nothing. Lowering a budget below existing data keeps the data: overwrites still work, and only growth is refused. `flushMillis` is the longest a changed value waits in memory, from 100 to 300,000.
 
 Wait durations count behavior-owner ticks, rather than platform world ticks. The owner schedules its next turn after the configured interval; work and scheduling delays can make wall-clock waits longer. Result callbacks retain their operation admission until they return; slow callbacks are counted and never moved into an unbounded overflow queue.

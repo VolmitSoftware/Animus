@@ -14,7 +14,7 @@ public final class ColdShutdownProbe {
         CountDownLatch ownerRelease=new CountDownLatch(1);
         NpcDefinition definition=NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\"c7ff1352-2c8c-46c5-8f8c-e662e2ccdc6a\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":false,\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");
         // No compiler, capability key, module installation or prior Outcome/Diagnostic construction.
-        BehaviorProgram program=new BehaviorProgram("example:manual","main",Map.of(),Map.of("main",new BehaviorProgram.Wait("$",100)),1);
+        BehaviorProgram program=new BehaviorProgram("example:manual","main",Map.of(),Map.of(),Map.of("main",new BehaviorProgram.Wait("$",100)),1);
         var accepted=new BehaviorCatalog.Accepted(1,"1".repeat(64),100,program,Set.of());
         var catalog=new BehaviorCatalog.Snapshot(1,Map.of(),Map.of("example:manual",new BehaviorCatalog.Resolution("example:manual",true,Optional.of(accepted),List.of())),List.of());
         BehaviorInvoker noModules=new BehaviorInvoker(){
