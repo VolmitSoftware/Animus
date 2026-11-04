@@ -148,7 +148,7 @@ The locally cached Mojang 26.1.2 and 26.3 classes expose `ServerboundInteractPac
 | Runtime-6 Folia unavailable-feature rejection + recovery |27 pass, stable8|27 pass, beta7|27 pass, alpha6|
 | Mounts, real riders and dragon presentation (Paper/Spigot) | Unit tests and exact-jar checks; not yet run on a live server | Same | Same |
 | Mounts, real riders and dragon presentation (Folia) | Unavailable with a diagnostic | Unavailable with a diagnostic | Unavailable with a diagnostic |
-| Fabric/Forge/NeoForge NPC runtime | Deferred | Deferred | Deferred |
+| Fabric, NeoForge and Forge NPC runtime, commands, behaviors, combat ([mod servers](mod-servers.md)) | Builds and unit tests; not yet run on a live server | Same | Same |
 
 The presentation codec audit runs `node qa/protocol-client/audit-presentation.mjs --version <version>` after a build. It feeds the plugin's own pose, armor stand, text display, seat and team packets through each exact vanilla server jar's codecs; the 26.1.2 and 26.2 runs used the 26.3 server libraries. It does not start a server or show anything on a client. Exact server and plugin hashes, commands, and machine-readable direct-test evidence are retained locally under `.qa/platform-tests/evidence-index.json`. Separate Multiplexor reports live under `.qa/multiplexor-workspace/animus-evidence/`; see the [runner guide](multiplexor.md). Reproduce with `qa/platform-smoke.py`; the selected release channel is explicit. Lifecycle checks use synthetic dormant definitions and are separate from gameplay checks. All six owned servers were shut down after verification.
 

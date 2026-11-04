@@ -4,6 +4,7 @@ import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.Platform;
 import art.arcane.animus.mod.AnimusModRuntime;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -16,7 +17,8 @@ public final class AnimusForge {
 
     public AnimusForge(FMLJavaModLoadingContext context) {
         RegisterCommandsEvent.BUS.addListener(event -> runtime.registerCommands(event.getDispatcher()));
-        ServerStartedEvent.BUS.addListener(event -> runtime.start());
+        ServerStartedEvent.BUS.addListener(event -> runtime.start(event.getServer()));
+        TickEvent.ServerTickEvent.Post.BUS.addListener(event -> runtime.tick());
         ServerStoppingEvent.BUS.addListener(event -> runtime.stop());
     }
 }

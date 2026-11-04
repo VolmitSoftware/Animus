@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.packet;
 
+import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.NpcPose;
 import io.netty.buffer.Unpooled;
@@ -46,7 +47,7 @@ public final class PresentationProtocolAudit {
             List<SynchedEntityData.DataValue<?>> values = roundTrip(registries, presentation.bodyValues(look(pose, Optional.empty())));
             Pose expected = switch (pose) { case SNEAKING -> Pose.CROUCHING; case SLEEPING -> Pose.SLEEPING; default -> Pose.SWIMMING; };
             check(values.stream().anyMatch(value -> value.value() == expected), "pose " + pose);
-            if (pose != NpcPose.SLEEPING) check(values.stream().anyMatch(value -> value.value() instanceof Byte flags && flags == NativePresentation.sharedFlags(pose, false)), "flags " + pose);
+            if (pose != NpcPose.SLEEPING) check(values.stream().anyMatch(value -> value.value() instanceof Byte flags && flags == BodyLook.sharedFlags(pose, false)), "flags " + pose);
         }
         check(presentation.bodyValues(look(NpcPose.STANDING, Optional.empty())).isEmpty(), "standing body sends no extra data");
         check(presentation.bodyValues(look(NpcPose.SITTING, Optional.empty())).isEmpty(), "sitting body rides its seat");
@@ -60,12 +61,12 @@ public final class PresentationProtocolAudit {
 
         List<SynchedEntityData.DataValue<?>> text = roundTrip(registries, presentation.textValues("§6Quest\nCaptain of the Northern Watch", 0.3));
         check(text.stream().anyMatch(value -> Component.literal("§6Quest\nCaptain of the Northern Watch").equals(value.value())), "text");
-        check(Display.BillboardConstraints.BY_ID.apply(NativePresentation.BILLBOARD_CENTER) == Display.BillboardConstraints.CENTER, "billboard id");
-        check(text.stream().anyMatch(value -> Byte.valueOf(NativePresentation.BILLBOARD_CENTER).equals(value.value())), "billboard");
-        check(text.stream().anyMatch(value -> Integer.valueOf(NativePresentation.LINE_WIDTH).equals(value.value())), "line width");
+        check(Display.BillboardConstraints.BY_ID.apply(BodyLook.BILLBOARD_CENTER) == Display.BillboardConstraints.CENTER, "billboard id");
+        check(text.stream().anyMatch(value -> Byte.valueOf(BodyLook.BILLBOARD_CENTER).equals(value.value())), "billboard");
+        check(text.stream().anyMatch(value -> Integer.valueOf(BodyLook.LINE_WIDTH).equals(value.value())), "line width");
         check(text.stream().anyMatch(value -> new Vector3f(0, 0.3f, 0).equals(value.value())), "lift");
         List<SynchedEntityData.DataValue<?>> seat = roundTrip(registries, presentation.seatValues());
-        check(seat.stream().anyMatch(value -> Byte.valueOf((byte) NativePresentation.SEAT_FLAGS).equals(value.value())), "seat marker");
+        check(seat.stream().anyMatch(value -> Byte.valueOf((byte) BodyLook.SEAT_FLAGS).equals(value.value())), "seat marker");
 
         Object[] team = presentation.hiddenNameTeam(42, "0a1b2c3d00004000");
         ClientboundSetPlayerTeamPacket added = teamRoundTrip(registries, (ClientboundSetPlayerTeamPacket) team[0]);
@@ -80,8 +81,8 @@ public final class PresentationProtocolAudit {
                 + ",\"payloadSequenceSha256\":\"" + HexFormat.of().formatHex(DIGEST.digest()) + "\"}");
     }
 
-    private static NativePresentation.Look look(NpcPose pose, Optional<ArmorStandLook> stand) {
-        return new NativePresentation.Look("Guard", Optional.empty(), false, false, pose, stand);
+    private static BodyLook look(NpcPose pose, Optional<ArmorStandLook> stand) {
+        return new BodyLook("Guard", Optional.empty(), false, false, pose, stand);
     }
 
     @SuppressWarnings("unchecked")

@@ -1,6 +1,6 @@
 # Combat
 
-An NPC fights when its definition enables `modules["animus:combat"]`. The NPC body stays virtual: it is never a world entity, it never becomes a fake attacker in Bukkit events, and only server-side rules decide what it does. Combat runs on Spigot and Paper 26.1.2, 26.2 and 26.3. On Folia the general NPC runtime is disabled, so `/animus combat status` reports combat as unavailable and nothing runs.
+An NPC fights when its definition enables `modules["animus:combat"]`. The NPC body stays virtual: it is never a world entity, it never becomes a fake attacker in Bukkit events, and only server-side rules decide what it does. Combat runs on Spigot and Paper 26.1.2, 26.2 and 26.3, and on Fabric, NeoForge and Forge servers, where no protection adapter is installed and mob control is unavailable; see [mod servers](mod-servers.md). On Folia the general NPC runtime is disabled, so `/animus combat status` reports combat as unavailable and nothing runs.
 
 ## Settings
 

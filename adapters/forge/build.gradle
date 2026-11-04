@@ -20,6 +20,9 @@ repositories {
 dependencies {
     implementation minecraft.dependency("net.minecraftforge:forge:${targetProperties.forge}")
 }
+tasks.named('shadowJar').configure {
+    manifest.attributes('MixinConfigs': 'animus.mixins.json')
+}
 
 if (targetProperties.forgeRuntimeMappings == 'srg') {
     apply plugin: 'net.minecraftforge.renamer'

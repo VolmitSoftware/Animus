@@ -38,9 +38,10 @@ public final class ModHooks {
         AnimusModRuntime active = runtime;
         if (active != null) active.tickEnd(player);
     }
-    public static void teleported(ServerPlayer player) {
+    /** The destination is absolute; relative axes are already added to the player's position. */
+    public static void teleported(ServerPlayer player, double x, double y, double z) {
         AnimusModRuntime active = runtime;
-        if (active != null) active.teleported(player);
+        if (active != null) active.teleported(player, x, y, z);
     }
     public static void joined(ServerPlayer player) {
         AnimusModRuntime active = runtime;
