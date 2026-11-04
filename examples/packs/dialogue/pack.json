@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "dialogue",
+  "name": "Branching dialogue",
+  "version": "1.0.0",
+  "description": "An innkeeper whose choices lead to further choices and change later conversations."
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "patrol",
+  "name": "Patrol",
+  "version": "1.0.0",
+  "description": "Walks a square route on a timer, waiting for each arrival."
+}

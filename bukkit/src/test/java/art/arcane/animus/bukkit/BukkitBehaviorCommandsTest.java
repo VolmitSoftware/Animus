@@ -249,6 +249,53 @@ class BukkitBehaviorCommandsTest {
             assertNull(harness.service.triggers());harness.service.execute(sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE"));
         }
     }
+    @Test void schemaWritesGeneratedFilesThroughTheFileLane()throws Exception{
+        source("example:wait",1,100);
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();CommandSender sender=sender(false,true);
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","schema"});
+            until(()->messages.stream().anyMatch(line->line.startsWith("Behavior schemas: WRITTEN")));
+            for(String file:List.of("behavior.schema.json","npc.schema.json","pack.schema.json","completions.json"))assertTrue(Files.isRegularFile(root.resolve("schemas/"+file)),file);
+            assertTrue(messages.stream().anyMatch(line->line.contains("capabilities="+harness.extensions.capabilities().size())),messages.toString());
+            assertTrue(Files.readString(root.resolve("schemas/behavior.schema.json")).startsWith("{"));
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","schema","extra"});pump();
+            assertTrue(messages.getFirst().contains("behaviors schema"),messages.toString());
+        }
+    }
+    @Test void validateCanNameOneBehaviorAndCompletionOffersIdentifiers()throws Exception{
+        source("example:wait",1,100);Files.writeString(root.resolve("behaviors/example/broken.json"),"{}");
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();CommandSender sender=sender(false,true);
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","validate","example:wait"});
+            until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate:")));
+            assertTrue(messages.stream().noneMatch(line->line.contains("broken.json")),messages.toString());
+            assertTrue(messages.getFirst().contains("behavior=example:wait"),messages.getFirst());
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","validate"});
+            until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: INVALID")));
+            assertTrue(messages.stream().anyMatch(line->line.contains("broken.json")),messages.toString());
+            assertEquals(List.of("example:wait"),harness.service.complete(new String[]{"behaviors","validate","example:w"}));
+            assertTrue(harness.service.complete(new String[]{"behaviors","state","purge","behavior","example:"}).contains("example:wait"));
+            assertEquals(List.of("test"),harness.service.complete(new String[]{"behaviors","state","purge","npc","te"}));
+            assertEquals(List.of("test"),harness.service.complete(new String[]{"behaviors","state","purge","relationship","t"}));
+            assertTrue(harness.service.complete(new String[]{"behaviors",""}).containsAll(List.of("schema","packs","validate")));
+            assertEquals(List.of("confirm"),harness.service.complete(new String[]{"behaviors","state","purge","all",""}));
+        }
+    }
+    @Test void packsReloadWithoutRestartAndReportMissingModules()throws Exception{
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();CommandSender sender=sender(false,true);
+            Path pack=root.resolve("packs/town");Files.createDirectories(pack.resolve("behaviors/town"));
+            Files.writeString(pack.resolve("pack.json"),"{\"schemaVersion\":1,\"id\":\"town\",\"modules\":{\"gatekeeper\":{\"configuration\":{\"openTicks\":200}}}}");
+            Files.writeString(pack.resolve("behaviors/town/greeter.json"),"{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:greeter\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"wait\",\"ticks\":1}}}");
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","reload"});
+            until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));
+            assertTrue(messages.stream().anyMatch(line->line.contains("pack-module-unavailable")),messages.toString());
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","packs"});pump();
+            assertTrue(messages.stream().anyMatch(line->line.startsWith("Behavior pack town")&&line.contains("manifest=valid")&&line.contains("missing-modules=gatekeeper")),messages.toString());
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","list"});pump();
+            assertTrue(messages.stream().anyMatch(line->line.contains("town:greeter")&&line.contains("available=false")),messages.toString());
+        }
+    }
     @Test void lineBoundDoesNotSplitUnicodeOrEmitEmbeddedNewlines(){
         String text="x".repeat(2045)+"🐉".repeat(30)+"\nsecret\rline";String bounded=BukkitBehaviorCommands.boundedLine(text);assertTrue(bounded.length()<=2048);assertTrue(StandardCharsets.UTF_8.newEncoder().canEncode(bounded));assertFalse(bounded.contains("\n"));assertFalse(bounded.contains("\r"));
     }

@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class ColdShutdownTest {
     private void run(boolean queued)throws Exception {
         Set<URL> urls=new LinkedHashSet<>();
-        for(Class<?> type:List.of(ManualBehaviorRuntime.class,ColdShutdownProbe.class,NpcDefinition.class,Outcome.class,Gson.class))
+        for(Class<?> type:List.of(BehaviorRuntime.class,ColdShutdownProbe.class,NpcDefinition.class,Outcome.class,Gson.class))
             urls.add(type.getProtectionDomain().getCodeSource().getLocation());
         Runnable finish;
         try(URLClassLoader loader=new URLClassLoader(urls.toArray(URL[]::new),ClassLoader.getPlatformClassLoader())){

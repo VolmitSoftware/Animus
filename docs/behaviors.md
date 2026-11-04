@@ -26,7 +26,7 @@ Behavior documents are JSON. Plugin-wide budgets are TOML. A behavior named `ref
 }
 ```
 
-This example requires the [reference Java module](../examples/modules/reference/README.md). Its action returns a JSON message to the engine; it does not send NPC dialogue to players. It is an example of module execution, not one of the planned release behavior packs. For actions that reach the world and players, see [built-in capabilities](#built-in-capabilities).
+This example requires the [reference Java module](../examples/modules/reference/README.md). Its action returns a JSON message to the engine; it does not send NPC dialogue to players. It is an example of module execution; the [example packs](../examples/packs/README.md) use built-in capabilities only. For actions that reach the world and players, see [built-in capabilities](#built-in-capabilities).
 
 Each namespace and path segment uses 1–64 lowercase ASCII letters, digits, `_` or `-`; the complete logical ID is limited to 256 characters. Nested paths are supported. Empty path segments, dots, backslashes and reserved Windows device names are rejected. IDs must exactly match their file paths. Secure catalog scanning currently requires a filesystem provider supporting Java `SecureDirectoryStream`; unsupported providers report unavailable rather than using an unsafe fallback.
 
@@ -332,6 +332,191 @@ World and player work waits in a bounded queue and runs on the server's owner th
 
 A preview run refuses `command`, `combat-control`, `navigate`, `stop-navigation`, `look`, `set-appearance`, `set-equipment`, `choices` and every flag or quest write. `say`, `play-sound` and `spawn-particle` work in a preview only for the viewer's own `trigger` audience. Conditions still read normally.
 
+## Packs
+
+A pack keeps related behaviors together under `packs/<pack-id>/`:
+
+```text
+packs/town/
+  pack.json
+  behaviors/town/greeter.json
+  behaviors/town/gate/open.json
+```
+
+A behavior in a pack follows the same rules as one under `behaviors/`: `town:greeter` lives at `packs/town/behaviors/town/greeter.json`, and its ID must match that path. An ID may live in one place only. The same ID in two packs, or in a pack and under `behaviors/`, selects no winner and both are unavailable. Moving a behavior from `behaviors/` into a pack, or between packs, keeps its ID and its stored state. The pack ID and its namespaces are separate names, so one pack can hold several namespaces.
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "town",
+  "name": "Town",
+  "version": "1.2.0",
+  "description": "Greeters and gate keepers for the town.",
+  "modules": {
+    "gatekeeper": {"required": true, "configuration": {"openTicks": 200}}
+  }
+}
+```
+
+`id` must match the directory name. `name`, `version` and `description` are for people. `modules` names the Java modules the pack uses; `required` is true unless set to false, and `configuration` is the module's own object, kept as written. Animus reads `pack.json` and never rewrites it.
+
+`/animus behaviors reload` loads new, changed and removed packs without a restart, under the revision rules above. A pack directory without `pack.json` is reported as `pack-manifest-missing`, and an unreadable or mismatched one as `pack-manifest-invalid`. Neither loads new behaviors from that pack, while behaviors it had already accepted keep their last valid program, as with any invalid edit.
+
+When a required module is not installed or not active, every behavior in the pack stays accepted but is unavailable, reported as `pack-module-unavailable`, and its manifest, configuration, sources and stored state stay untouched. Installing the module and reloading makes them available again with no edits. An optional module only affects the behaviors that call its capabilities, which are unavailable on their own. Only `pack.json` and `behaviors/` are read; anything else in a pack, such as example NPC definitions, is left alone. See the [example packs](../examples/packs/README.md).
+
+## Schemas and editor support
+
+`/animus behaviors schema` writes generated files under `plugins/Animus/schemas/`:
+
+| File | Contents |
+| --- | --- |
+| `behavior.schema.json` | JSON Schema 2020-12 for behavior documents, including every capability registered now, with its arguments. |
+| `npc.schema.json` | NPC definitions and their built-in `modules` settings. |
+| `pack.schema.json` | Pack manifests. |
+| `completions.json` | Capability IDs with kind, description and each argument's type, range, allowed values and whether it is required; trigger events and their fields; node types; variable types, scopes and lifetimes. |
+
+They are made from the same registry the server uses to validate, so they list built-in capabilities and those of the Java modules loaded now. Run the command again after adding a module. Each file is limited to 2 MiB and the set to 4 MiB; a larger result is refused and nothing is written. The converter's `schema` command writes the same files with built-in capabilities only.
+
+Point an editor at them by path. In Visual Studio Code, for example:
+
+```json
+"json.schemas": [
+  {"fileMatch": ["**/behaviors/**/*.json"], "url": "./schemas/behavior.schema.json"},
+  {"fileMatch": ["**/npcs/**/*.json"], "url": "./schemas/npc.schema.json"},
+  {"fileMatch": ["**/packs/*/pack.json"], "url": "./schemas/pack.schema.json"}
+]
+```
+
+The schema catches most mistakes as you type, and the compiler still decides. Some rules need the whole document or a capability's own checks and are left to `/animus behaviors validate`: that `entry`, `call` and trigger routines exist, that `set` names a declared variable of the same type, that trigger IDs are unique, a flag or quest `name`'s characters, a command's leading slash and repeated choice option IDs. Arguments filled by `bindings` are checked when the action runs.
+
+Diagnostics say what a position accepts. A misspelled field lists the allowed fields and suggests the nearest one, such as `unsupported field for action; allowed: type, capability, arguments, bindings; did you mean capability?`, and the same holds for node types, trigger events, routines, variables, argument names and capability IDs. Value problems name the expected type, range, choices or alternatives.
+
+## Checking behaviors offline
+
+The converter checks a directory without a server, using the same catalog, compiler and built-in capability checks:
+
+```sh
+converter/build/install/converter/bin/converter validate-behaviors /path/to/Animus
+converter/build/install/converter/bin/converter validate-behaviors examples/packs/shop
+converter/build/install/converter/bin/converter schema /path/to/output
+```
+
+The directory may be a data folder, with `behaviors/`, `packs/` and `npcs/`, or a single pack. It reads only: no checkpoints, locks or state are written. It reports each problem with its file, code and field, checks NPC definitions under `npcs/` and in packs, and exits with status 1 when anything is invalid. It cannot check:
+
+- Java module capabilities, their arguments and their triggers, since only built-in capabilities are known offline. Each one used is listed.
+- Whether a pack's required modules are installed.
+- The command allow-list, and the platform: on Folia most built-in actions are unavailable.
+- Revisions against programs a server already accepted. A changed file there still needs a higher revision.
+- Arguments filled from variables.
+- Worlds, coordinates, reusable routes, skins, permissions, sounds, particles, items and whether a player is present.
+
+## Moving imported flags and assignments
+
+Imported NPCs keep their Denizen flags, assignments and trigger records as preserved data, and Animus does not run or translate them. To bring that logic across, write a behavior and add it to the NPC's `behaviors` list. The concepts map like this:
+
+| Imported | Behavior |
+| --- | --- |
+| Assignment script | A behavior document listed in the NPC's `behaviors`. |
+| Click trigger | An `interaction` trigger. Damage, proximity and spawn triggers map to `damage`, `proximity` and `spawn`. |
+| Chat trigger | `animus:choices` with a `dialogue_choice` trigger per answer. Free-typed chat has no equivalent. |
+| Player flag, true or false | `animus:set-flag` and `animus:flag-state` with `"scope": "player"`. |
+| NPC flag | The same with `"scope": "npc"`. A flag about one player and one NPC uses `"scope": "relationship"`. |
+| Server flag | The same with `"scope": "global"`. |
+| Numbered quest step | `animus:set-quest-state`, `animus:advance-quest-state` and `animus:quest-state`. |
+| Other flag values | A declared variable with the same scope and `"lifetime": "persistent"`. |
+| `narrate` or `chat` | `animus:say`. |
+| `execute` | `animus:command`, behind the allow-list. |
+| Expiring flags, lists, maps, tags and arbitrary script commands | No equivalent. |
+
+Existing flag values are not copied into Animus state; behaviors start from unset flags. Flags and quest stages belong to the behavior's namespace, so every behavior of one pack shares them.
+
+A click-and-answer dialogue:
+
+```json
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "harbor:ferryman",
+  "entry": "main",
+  "routines": {
+    "main": {"type": "sequence", "steps": [
+      {"type": "action", "capability": "animus:look", "arguments": {"target": "player"}},
+      {"type": "action", "capability": "animus:choices", "arguments": {
+        "id": "ferry", "prompt": "Need a crossing?",
+        "options": [{"id": "yes", "text": "Yes, please"}, {"id": "no", "text": "No, thanks"}]
+      }}
+    ]},
+    "cross": {"type": "action", "capability": "animus:say", "arguments": {"text": "Climb aboard. We leave at dusk."}},
+    "decline": {"type": "action", "capability": "animus:say", "arguments": {"text": "Suit yourself."}}
+  },
+  "triggers": [
+    {"id": "click", "event": "interaction", "cooldownTicks": 40},
+    {"id": "yes", "event": "dialogue_choice", "dialogue": "ferry", "choice": "yes", "routine": "cross"},
+    {"id": "no", "event": "dialogue_choice", "dialogue": "ferry", "choice": "no", "routine": "decline"}
+  ]
+}
+```
+
+A quest whose step was a numbered player flag:
+
+```json
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "harbor:nets",
+  "entry": "main",
+  "routines": {
+    "main": {"type": "condition", "capability": "animus:quest-state", "arguments": {"name": "nets", "equals": 0},
+      "then": {"type": "sequence", "steps": [
+        {"type": "action", "capability": "animus:say", "arguments": {"text": "Bring me three nets from the shed, would you?"}},
+        {"type": "action", "capability": "animus:set-quest-state", "arguments": {"name": "nets", "value": 1}}
+      ]},
+      "else": {"type": "condition", "capability": "animus:quest-state", "arguments": {"name": "nets", "atMost": 1},
+        "then": {"type": "action", "capability": "animus:say", "arguments": {"text": "The shed is behind the inn."}},
+        "else": {"type": "action", "capability": "animus:say", "arguments": {"text": "Thanks again for the nets."}}
+      }
+    }
+  },
+  "triggers": [{"id": "click", "event": "interaction"}]
+}
+```
+
+Another behavior in the `harbor` namespace, such as the shed keeper's, can move the quest on with `{"type": "action", "capability": "animus:advance-quest-state", "arguments": {"name": "nets", "maximum": 2}}`.
+
+Player, NPC and server flags with a permission check, as a gate keeper:
+
+```json
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "harbor:gatekeeper",
+  "entry": "main",
+  "variables": {
+    "greeting": {"type": "string", "initial": "Halt.", "scope": "npc", "lifetime": "persistent"}
+  },
+  "routines": {
+    "main": {"type": "condition", "capability": "animus:flag-state", "arguments": {"name": "lockdown", "scope": "global"},
+      "then": {"type": "action", "capability": "animus:say", "arguments": {"text": "The harbor is closed."}},
+      "else": {"type": "condition", "capability": "animus:has-permission", "arguments": {"permission": "harbor.dock"},
+        "then": {"type": "sequence", "steps": [
+          {"type": "action", "capability": "animus:say", "arguments": {"text": null}, "bindings": {"/text": {"variable": "greeting"}}},
+          {"type": "action", "capability": "animus:set-flag", "arguments": {"name": "visited-harbor"}},
+          {"type": "action", "capability": "animus:set-flag", "arguments": {"name": "busy", "scope": "npc"}}
+        ]},
+        "else": {"type": "action", "capability": "animus:say", "arguments": {"text": "Dock workers only."}}
+      }
+    },
+    "lock": {"type": "action", "capability": "animus:set-flag", "arguments": {"name": "lockdown", "scope": "global"}}
+  },
+  "triggers": [
+    {"id": "click", "event": "interaction"},
+    {"id": "hit", "event": "damage", "routine": "lock", "cooldownTicks": 200}
+  ]
+}
+```
+
+`visited-harbor` uses the default player scope, `busy` belongs to this NPC, and `lockdown` is shared by the whole `harbor` namespace. The NPC-scoped `greeting` variable stands in for a flag holding text.
+
 ## Commands and settings
 
 The current administrative commands require `animus.admin`:
@@ -340,8 +525,10 @@ The current administrative commands require `animus.admin`:
 | --- | --- |
 | `/animus behaviors status` | Catalog state/generation, runtime work, retained calls, bounded delivery counts and failures. |
 | `/animus behaviors list [page]` | Up to 20 observed sources, availability, accepted/observed revisions and accepted hashes. |
-| `/animus behaviors validate` | Scan and compile a candidate without replacing accepted programs or changing source files. |
-| `/animus behaviors reload` | Publish validated source observations; preserve the preceding accepted program for invalid edits. |
+| `/animus behaviors validate [behavior-id]` | Scan and compile a candidate without replacing accepted programs or changing source files. With an ID, show only that behavior's problems. |
+| `/animus behaviors reload` | Publish validated source observations, including packs; preserve the preceding accepted program for invalid edits. |
+| `/animus behaviors schema` | Write the generated [schemas and completions](#schemas-and-editor-support) under `schemas/`. |
+| `/animus behaviors packs` | Each pack with its manifest state and any missing required modules. |
 | `/animus behaviors run <npc-id> <behavior-id>` | Admit manual execution against the captured definition and accepted program. Returns an execution UUID. |
 | `/animus behaviors inspect <execution-uuid>` | Inspect active or retained terminal state, source identity, waits, diagnostics and recent traces. |
 | `/animus behaviors trace <npc-id-or-uuid>` | Show each active run of that NPC, manual or trigger-started, with its origin, waits and last step, plus its last four finished runs. Use `inspect` for one run's full recent steps. A deleted NPC's UUID still works while its runs are retained. |
@@ -360,7 +547,7 @@ Manual execution permits one active manual run per NPC, including a dormant defi
 
 Variables are never removed implicitly. Deleting or disabling a behavior, deleting an NPC, or losing a module leaves the state in place, so restoring the same behavior ID or NPC UUID finds it again. Cloning an NPC gives the clone a new UUID and no state. Removal happens only through `state purge`. A running behavior whose state is purged reads its `initial` values from then on and can write new ones.
 
-Each execution keeps a fixed ring of recent steps sized by `traceEntries`, and its report lists current waits, such as `condition:example:allowed@$.routines.main` or `tick:1200@$.routines.main.steps[1]`. `inspect` and `trace` are answered by the behavior owner on its next turn. Java callers use `ManualBehaviorRuntime.observe(uuid)` and `observeNpc(idOrUuid)`. Recording a step only fills ring slots; text and reports are built when someone asks. `inspect(uuid)` and `snapshot()` return the last published views, which are refreshed for two seconds after each such call and whenever a run starts or ends.
+Each execution keeps a fixed ring of recent steps sized by `traceEntries`, and its report lists current waits, such as `condition:example:allowed@$.routines.main` or `tick:1200@$.routines.main.steps[1]`. `inspect` and `trace` are answered by the behavior owner on its next turn. Java callers use `BehaviorRuntime.observe(uuid)` and `observeNpc(idOrUuid)`. Recording a step only fills ring slots; text and reports are built when someone asks. `inspect(uuid)` and `snapshot()` return the last published views, which are refreshed for two seconds after each such call and whenever a run starts or ends.
 
 Source authority is checked at admission, on owner ticks and immediately before a queued module handler starts. A held handler receives a cancellation token that also observes revocation. Cancellation cannot undo an action already performed or forcibly stop trusted Java code. Retired calls remain counted until their actual handler and delivery work finishes. Execution stacks and bounded terminal history are not resumed after restart.
 

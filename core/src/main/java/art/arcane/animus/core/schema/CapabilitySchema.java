@@ -1,6 +1,7 @@
 package art.arcane.animus.core.schema;
 
 import art.arcane.animus.api.Diagnostic;
+import art.arcane.animus.core.behavior.schema.Suggestions;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.*;
 import java.io.IOException;
@@ -221,13 +222,13 @@ public final class CapabilitySchema {
             evaluation.step();
             if (!accepted) return evaluation.fail(report, "schema-false", path, "Value is prohibited by the schema");
             if (!types.isEmpty() && types.stream().noneMatch(type -> hasType(value, type)))
-                return evaluation.fail(report, "schema-type", path, "Value has an unexpected JSON type");
+                return evaluation.fail(report, "schema-type", path, "Value has an unexpected JSON type; expected " + String.join(" or ", new TreeSet<>(types)));
             boolean valid = true;
-            if (constant != null && !equal(value, constant, evaluation)) valid = evaluation.fail(report, "schema-const", path, "Value does not match the declared constant");
+            if (constant != null && !equal(value, constant, evaluation)) valid = evaluation.fail(report, "schema-const", path, "Value does not match the declared constant; expected " + shown(constant));
             if (allowed != null) {
                 boolean found = false;
                 for (JsonElement option : allowed) if (equal(value, option, evaluation)) { found = true; break; }
-                if (!found) valid = evaluation.fail(report, "schema-enum", path, "Value is not one of the permitted choices");
+                if (!found) valid = evaluation.fail(report, "schema-enum", path, "Value is not one of the permitted choices: " + choices(allowed));
             }
             if (value.isJsonObject()) {
                 JsonObject object = value.getAsJsonObject();
@@ -239,7 +240,15 @@ public final class CapabilitySchema {
                 for (var property : object.entrySet()) {
                     evaluation.step();
                     Node propertySchema = properties.get(property.getKey());
-                    if (propertySchema == null) propertySchema = children.get("additionalProperties");
+                    if (propertySchema == null) {
+                        propertySchema = children.get("additionalProperties");
+                        if (propertySchema != null && !propertySchema.accepted) {
+                            List<String> names = List.copyOf(properties.keySet());
+                            valid = evaluation.fail(report, "schema-false", child(path, property.getKey()), names.isEmpty() ? "Unknown field; this takes no fields"
+                                    : "Unknown field; allowed: " + Suggestions.list(names) + Suggestions.didYouMean(property.getKey(), names));
+                            continue;
+                        }
+                    }
                     if (propertySchema != null) valid &= propertySchema.validate(property.getValue(), child(path, property.getKey()), evaluation, report);
                 }
             } else if (value.isJsonArray()) {
@@ -269,7 +278,7 @@ public final class CapabilitySchema {
                             case "multipleOf" -> number.remainder(limit.getValue()).signum() == 0;
                             default -> throw new AssertionError();
                         };
-                        if (!good) valid = evaluation.fail(report, "schema-" + limit.getKey(), path, "Number violates its declared constraint");
+                        if (!good) valid = evaluation.fail(report, "schema-" + limit.getKey(), path, "Number violates its declared constraint: " + bound(limit.getKey(), limit.getValue()));
                     }
                 }
             }
@@ -280,7 +289,8 @@ public final class CapabilitySchema {
                     if (option.validate(value, path, evaluation, false)) successes++;
                     if (kind.equals("anyOf") && successes > 0 || kind.equals("oneOf") && successes > 1) break;
                 }
-                if (successes != 1) valid = evaluation.fail(report, "schema-" + kind, path, "Value does not satisfy the required schema alternatives");
+                if (successes != 1) valid = evaluation.fail(report, "schema-" + kind, path, "Value does not satisfy the required schema alternatives; expected "
+                        + (kind.equals("anyOf") ? "at least one of: " : successes > 1 ? "only one of: " : "exactly one of: ") + alternatives(groups.get(kind)));
             }
             Node not = children.get("not");
             if (not != null && not.validate(value, path, evaluation, false)) valid = evaluation.fail(report, "schema-not", path, "Value matches a prohibited schema");
@@ -293,10 +303,34 @@ public final class CapabilitySchema {
         }
         boolean size(int size, String kind, String path, Evaluation evaluation, boolean report) {
             Integer min = counts.get("min" + kind), max = counts.get("max" + kind);
-            if (min != null && size < min || max != null && size > max)
-                return evaluation.fail(report, "schema-size", path, "Value violates its declared size constraint");
+            String unit = switch (kind) { case "Length" -> "characters"; case "Items" -> "items"; default -> "fields"; };
+            if (min != null && size < min) return evaluation.fail(report, "schema-size", path, "Value violates its declared size constraint; expected at least " + min + " " + unit);
+            if (max != null && size > max) return evaluation.fail(report, "schema-size", path, "Value violates its declared size constraint; expected at most " + max + " " + unit);
             return true;
         }
+    }
+    private static String shown(JsonElement value) {
+        return value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : value.toString();
+    }
+    private static String choices(List<JsonElement> options) {
+        List<String> shown = new ArrayList<>();
+        for (JsonElement option : options) { if (shown.size() == 16) { shown.add("..."); break; } shown.add(shown(option)); }
+        return Suggestions.list(shown);
+    }
+    private static String bound(String keyword, BigDecimal value) {
+        String number = value.stripTrailingZeros().toPlainString();
+        return switch (keyword) {
+            case "minimum" -> "minimum " + number;
+            case "maximum" -> "maximum " + number;
+            case "exclusiveMinimum" -> "above " + number;
+            case "exclusiveMaximum" -> "below " + number;
+            default -> "a multiple of " + number;
+        };
+    }
+    private static String alternatives(List<Node> options) {
+        List<String> forms = new ArrayList<>();
+        for (Node option : options) forms.add(option.required.isEmpty() ? "another form" : Suggestions.list(new ArrayList<>(new TreeSet<>(option.required))));
+        return String.join(" | ", forms);
     }
     private static boolean hasType(JsonElement value, String type) {
         return switch (type) {

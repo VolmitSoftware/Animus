@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "dadb7eac-eaf9-561a-8c23-2491e6aec8cf",
+  "id": "town-guard",
+  "group": "examples",
+  "name": "Town Guard",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": -15.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "town-guard:guard"
+  ]
+}
