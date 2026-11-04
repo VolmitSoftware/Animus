@@ -51,9 +51,9 @@ class BukkitBehaviorCommandsTest {
         final AnimusRuntime runtime;final ExtensionRuntime extensions;final BukkitBehaviorCommands service;final List<String> reports=new CopyOnWriteArrayList<>();
         Harness(BehaviorSettings settings,Function<MutationLane.EngineTaskObserver,Executor> supplied)throws Exception{
             runtime=new AnimusRuntime(RuntimeEnvironment.bukkit("26.3",root));runtime.start();
-            new Administration(runtime).execute(new String[]{"create","test","minecraft:player","world","0","64","0","default","Test"});
+            if(runtime.npcs().all().isEmpty())new Administration(runtime).execute(new String[]{"create","test","minecraft:player","world","0","64","0","default","Test"});
             AtomicReference<BukkitBehaviorCommands> ready=new AtomicReference<>();extensions=new ExtensionRuntime(root.resolve("modules"),art.arcane.animus.api.Platform.PAPER,runtime.definitionGateway(),new ModuleSettings(false,4,1000,250),reports::add,state->ready.get().modulesInitialized(state));
-            service=new BukkitBehaviorCommands(root,settings,runtime.npcs(),extensions,supplied==null?runtime::fileExecutor:supplied,(sender,task)->{replies.add(task);return true;},reports::add);ready.set(service);
+            service=new BukkitBehaviorCommands(root,settings,runtime.npcs(),runtime.documents(),runtime.behaviorState(),extensions,supplied==null?runtime::fileExecutor:supplied,(sender,task)->{replies.add(task);return true;},reports::add);ready.set(service);
         }
         void start()throws Exception{extensions.start();until(()->service.statusLines().getFirst().startsWith("Behaviors READY"));}
         UUID run(CommandSender sender,String id)throws Exception{
@@ -71,7 +71,7 @@ class BukkitBehaviorCommandsTest {
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             CommandSender sender=sender(true,true);harness.service.execute(sender,new String[]{"behaviors","run","test","example:wait"});pump();assertTrue(messages.getFirst().contains("WAITING_MODULES"));assertNotNull(harness.service.diagnosticRuntime());assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());
             harness.start();UUID execution=harness.run(sender,"example:wait");until(()->harness.service.diagnosticRuntime().inspect(execution).isPresent());assertEquals(Optional.of(playerId),harness.service.diagnosticRuntime().inspect(execution).orElseThrow().player());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","inspect",execution.toString()});pump();assertTrue(messages.getFirst().contains("npc-revision=1"));assertTrue(messages.getFirst().contains("behavior-revision=1"));assertTrue(messages.getFirst().contains("source-hash="));
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","inspect",execution.toString()});until(()->!messages.isEmpty());assertTrue(messages.getFirst().contains("npc-revision=1"));assertTrue(messages.getFirst().contains("behavior-revision=1"));assertTrue(messages.getFirst().contains("source-hash="));
             messages.clear();harness.service.execute(sender,new String[]{"behaviors","cancel",execution.toString()});until(()->messages.stream().anyMatch(line->line.contains("cancelled=true")));until(()->harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state()==BehaviorEngine.State.CANCELLED);
             assertEquals(List.of("example:wait"),harness.service.complete(new String[]{"behaviors","run","test","example:"}));
         }
@@ -108,7 +108,7 @@ class BukkitBehaviorCommandsTest {
         }
     }
     @Test void disabledBehaviorSettingsNeverQueueCatalogOrCreateOwner()throws Exception{
-        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog());AtomicInteger submitted=new AtomicInteger();
+        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.state());AtomicInteger submitted=new AtomicInteger();
         try(var harness=new Harness(disabled,observer->task->submitted.incrementAndGet())){
             harness.extensions.start();assertEquals(0,submitted.get());assertNull(harness.service.diagnosticRuntime());CommandSender sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
         }
@@ -120,6 +120,55 @@ class BukkitBehaviorCommandsTest {
             messages.clear();harness.service.execute(sender(false,false),new String[]{"behaviors","run","test","example:p0"});pump();assertEquals(List.of("You do not have permission to use this command."),messages);assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());
             for(int i=0;i<30;i++)Files.writeString(root.resolve("behaviors/example/p"+i+".json"),"malformed");messages.clear();harness.service.execute(sender,new String[]{"behaviors","validate"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: INVALID")));assertEquals(17,messages.size());
         }
+    }
+    private Path scopedSource(String id,long revision)throws Exception{
+        Path path=root.resolve("behaviors/"+id.replace(':','/')+".json");Files.createDirectories(path.getParent());
+        Files.writeString(path,"{\"schemaVersion\":1,\"revision\":"+revision+",\"id\":\""+id+"\",\"entry\":\"main\",\"variables\":{\"visits\":{\"type\":\"integer\",\"initial\":0,\"scope\":\"npc\",\"lifetime\":\"persistent\"}},\"routines\":{\"main\":{\"type\":\"set\",\"variable\":\"visits\",\"value\":5}}}");
+        return path;
+    }
+    private void command(Harness harness,CommandSender sender,String expected,String...args)throws Exception{
+        messages.clear();String[] full=new String[args.length+1];full[0]="behaviors";System.arraycopy(args,0,full,1,args.length);
+        harness.service.execute(sender,full);until(()->messages.stream().anyMatch(line->line.contains(expected)));
+    }
+    @Test void stateStatusTraceAndPurgeCommandsWorkThroughTheFileLane()throws Exception{
+        scopedSource("example:quest",1);
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            CommandSender sender=sender(false,true);harness.start();UUID execution=harness.run(sender,"example:quest");
+            until(()->harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state()==BehaviorEngine.State.COMPLETED);
+            command(harness,sender,"persistent-keys=1/65536","state","status");
+            assertTrue(messages.getFirst().contains("invalid=0"),messages.toString());
+            command(harness,sender,"state=COMPLETED","trace","test");
+            assertTrue(messages.getFirst().contains("active=none"),messages.toString());
+            assertTrue(messages.stream().anyMatch(line->line.startsWith("Behavior recent: execution="+execution)),messages.toString());
+            command(harness,sender,"NOT_FOUND","trace","nobody");
+            command(harness,sender,"purge all confirm","state","purge","all");
+            assertEquals(1,harness.runtime.behaviorState().status().persistentKeys(),"An unconfirmed full purge removes nothing");
+            command(harness,sender,"Invalid UUID","state","purge","player","not-a-uuid");
+            command(harness,sender,"Behavior state purge: OK | documents=1 | keys=1","state","purge","npc","test");
+            assertEquals(0,harness.runtime.behaviorState().status().persistentKeys());
+            assertEquals(List.of("state"),harness.service.complete(new String[]{"behaviors","sta"}).stream().filter("state"::equals).toList());
+            assertEquals(List.of("purge"),harness.service.complete(new String[]{"behaviors","state","pu"}));
+            assertEquals(List.of("relationship"),harness.service.complete(new String[]{"behaviors","state","purge","rel"}));
+        }
+    }
+    @Test void restartKeepsPersistentStateAndReportsMalformedSourceOnItsLastValidProgram()throws Exception{
+        Path file=scopedSource("example:quest",1);
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            CommandSender sender=sender(false,true);harness.start();UUID execution=harness.run(sender,"example:quest");
+            until(()->harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state()==BehaviorEngine.State.COMPLETED);
+        }
+        assertTrue(Files.exists(root.resolve("state/behavior-catalog/last-valid/behaviors/example/quest.json")));
+        Files.writeString(file,"{\"schemaVersion\":1,");
+        messages.clear();
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            CommandSender sender=sender(false,true);harness.start();
+            assertEquals(1,harness.runtime.behaviorState().status().persistentKeys());
+            assertTrue(harness.reports.stream().anyMatch(line->line.contains("behavior-json-invalid")&&line.contains("$")),harness.reports.toString());
+            UUID execution=harness.run(sender,"example:quest");
+            until(()->harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state()==BehaviorEngine.State.COMPLETED);
+            assertEquals(5L,harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().variables().get("visits").value());
+        }
+        assertEquals("{\"schemaVersion\":1,",Files.readString(file),"Invalid source bytes stay unchanged");
     }
     @Test void lineBoundDoesNotSplitUnicodeOrEmitEmbeddedNewlines(){
         String text="x".repeat(2045)+"🐉".repeat(30)+"\nsecret\rline";String bounded=BukkitBehaviorCommands.boundedLine(text);assertTrue(bounded.length()<=2048);assertTrue(StandardCharsets.UTF_8.newEncoder().canEncode(bounded));assertFalse(bounded.contains("\n"));assertFalse(bounded.contains("\r"));

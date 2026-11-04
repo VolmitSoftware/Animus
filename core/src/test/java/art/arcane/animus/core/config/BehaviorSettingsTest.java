@@ -41,7 +41,12 @@ class BehaviorSettingsTest {
             new Budget("behaviors.catalog","maximumDepth",2,16,s->s.catalog().maximumDepth()),
             new Budget("behaviors.catalog","maximumDocumentBytes",1,262144,s->s.catalog().maximumDocumentBytes()),
             new Budget("behaviors.catalog","maximumAggregateBytes",1,67108864,s->s.catalog().maximumAggregateBytes()),
-            new Budget("behaviors.catalog","maximumCapabilityChecks",1,16384,s->s.catalog().maximumCapabilityChecks()));}
+            new Budget("behaviors.catalog","maximumCapabilityChecks",1,16384,s->s.catalog().maximumCapabilityChecks()),
+            new Budget("behaviors.state","maximumKeys",1,1048576,s->s.state().maximumKeys()),
+            new Budget("behaviors.state","maximumTransientKeys",1,1048576,s->s.state().maximumTransientKeys()),
+            new Budget("behaviors.state","maximumValueBytes",1,4096,s->s.state().maximumValueBytes()),
+            new Budget("behaviors.state","maximumBytes",1,268435456,s->s.state().maximumBytes()),
+            new Budget("behaviors.state","flushMillis",100,300000,s->s.state().flushMillis()));}
     private static String config(Budget budget,String literal){
         Map<String,String> coordinator=new LinkedHashMap<>();coordinator.put("maximumOperations","256");coordinator.put("operationsPerTick","1");
         if(budget.table().equals("behaviors"))coordinator.put(budget.field(),literal);
