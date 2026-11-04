@@ -1,6 +1,6 @@
 # Editable JSON and recovery
 
-Plugin settings use `config.toml`. NPC definitions and generated recovery data use JSON. Each definition lives at `npcs/<group>/<id>.json` with a stable UUID and an increasing revision. Commands use the same definition validation and optimistic hash checks as reload.
+Plugin settings use `config.toml`. NPC definitions, behaviors and generated recovery and state data use JSON. Each definition lives at `npcs/<group>/<id>.json` with a stable UUID and an increasing revision. Commands use the same definition validation and optimistic hash checks as reload.
 
 Accepted definitions have a generated last-valid checkpoint under `state/npc-definitions/last-valid/`, referencing a hashed JSON object under `state/objects/npc-definitions/`. A command edit or deletion updates the source and checkpoint in one recoverable transaction. Checkpoints are internal recovery data; edit the source definition instead.
 
@@ -8,13 +8,49 @@ If an existing, previously accepted file has a malformed or stale edit at startu
 
 Live reload validates the entire candidate registry before publication. Known native navigation settings share core validation across commands, files and the converter; a malformed enabled waypoint module cannot replace its valid checkpoint. Unknown modules and disabled review data remain preserved. An invalid reload retains the active registry. `/animus validate` reports source errors, and status reports the number of files needing repair. Checkpoints preserve definitions, not live health, temporary routes or interrupted behavior stacks. Missing or invalid skin assets have their own presentation diagnostics; definition recovery is not a backup of all referenced assets.
 
+## Behavior checkpoints
+
+Accepted behavior programs follow the same design. A pointer under `state/behavior-catalog/last-valid/behaviors/<namespace>/<path>.json` records the path, revision and source hash, and names a copy of the accepted source under `state/objects/behavior-catalog/<hash>.json`. The catalog writes both on the shared file lane before publishing, and a failed write rejects the reload with `catalog-checkpoint-failed`, leaving the previous catalog active. Validation writes nothing. Pointers are removed when their source file is gone, which is why a deleted behavior does not return. Superseded objects stay on disk, as definition objects do.
+
+## Behavior state
+
+Persistent [behavior variables](behaviors.md) live under `state/behavior-state/`, one JSON document per behavior and subject:
+
+```text
+state/behavior-state/npc/<npc-uuid>/<namespace>/<path>.json
+state/behavior-state/player/<player-uuid>/<namespace>/<path>.json
+state/behavior-state/relationship/<npc-uuid>/<player-uuid>/<namespace>/<path>.json
+state/behavior-state/global/<namespace>/<path>.json
+```
+
+```json
+{
+  "schemaVersion": 1,
+  "behavior": "example:quest",
+  "scope": "relationship",
+  "npc": "00000000-0000-0000-0000-00000000000a",
+  "player": "00000000-0000-0000-0000-0000000000a1",
+  "values": {
+    "trust": {"type": "decimal", "value": 0.75}
+  }
+}
+```
+
+These files are generated. Do not edit them; use `/animus behaviors state purge` to remove state. Definitions and behavior sources never hold this data.
+
+All values are loaded at startup and held in memory, so reads and writes do no file work on the behavior thread. A `set` changes memory only. The first change after a quiet period starts a `flushMillis` timer, further changes join it, and when it expires one task on the shared file lane commits the changed documents. Large sets go out in several commits. If the lane is full or a commit fails, the values stay in memory, the failure shows in `/animus behaviors state status`, and the commit is retried on the next interval. Clean shutdown refuses new writes, then flushes everything still waiting before the store closes.
+
+Each commit uses the journal described below, so a crash during a write rolls forward at the next start and a document is never left half-written. State commits leave no rollback receipt under `backups/`, because frequent flushes would otherwise accumulate receipts indefinitely, so `/animus rollback` does not apply to them. A crash loses the changes since the last completed commit, up to `flushMillis`, and the previous values remain.
+
+A stored file that fails validation is left byte-for-byte in place and reported with its exact reason. Runs that need that one document are refused with `behavior-state-document-invalid`; everything else keeps working. A file whose path names no subject is reported and removed only by `state purge all confirm`. A purge removes matching keys from memory at once and from disk in the same operation.
+
 ## Transactions and rollback
 
 The process lock prevents simultaneous writable stores. A committed `state/pending.json` journal rolls forward before runtime loading; conflicts with outside edits stop recovery. Source writes, recovery pointers and inverse backup receipts use atomic replacement on the local filesystem. Newly created directory entries are synchronized through their parents before a dependent journal is published. Rollback refuses to overwrite intervening changes and creates another receipt so the rollback itself can be undone.
 
 Small transactions retain the original inline journal format. Larger transactions use schema2 metadata with SHA-256 references to raw before/after payloads under `state/objects/transaction-data/`. Those objects are written and synchronized before journal publication. Recovery validates every referenced object and conflict before changing any target; missing/corrupt payloads preserve the pending journal and stop recovery. Rollback reads both formats. Preserve backups together with their referenced objects, including original malformed JSON that a rollback must restore exactly.
 
-Raw document transactions, including import rollback, invalidate an existing source checkpoint in the same journal unless they explicitly update that pointer. This prevents a later malformed file at a deleted import path from resurrecting the old NPC. Accepted batch applications include an explicit pointer change even when its bytes are unchanged, preserving rollback after source reinsertion and restart. Callers that use the raw store must validate their replacement definitions first; the repository performs validation for ordinary commands. Immutable objects may remain unreferenced because older receipts can still need them. Automatic object/backup collection is not implemented.
+Generated state commits use this same journal without a receipt, and always inline. Raw document transactions, including import rollback, invalidate an existing source checkpoint in the same journal unless they explicitly update that pointer. This prevents a later malformed file at a deleted import path from resurrecting the old NPC. Accepted batch applications include an explicit pointer change even when its bytes are unchanged, preserving rollback after source reinsertion and restart. Callers that use the raw store must validate their replacement definitions first; the repository performs validation for ordinary commands. Immutable objects may remain unreferenced because older receipts can still need them. Automatic object/backup collection is not implemented.
 
 The converter's `validate` operation opens a read-only store: it does not create lock files, activate NPCs, write checkpoints or recover pending transactions. Pending recovery is reported as an error with files unchanged. An existing server lock prevents concurrent CLI validation; a never-opened export has no lock, so its validation describes the files observed rather than an atomic snapshot against an external editor.
 

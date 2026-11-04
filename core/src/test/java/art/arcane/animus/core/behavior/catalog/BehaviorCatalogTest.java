@@ -21,7 +21,7 @@ class BehaviorCatalogTest {
     private Path put(String id,long revision,String node)throws Exception{return write(BehaviorPath.forId(id),source(id,revision,node));}
     private Path write(String relative,String text)throws Exception{Path file=root.resolve(relative);Files.createDirectories(file.getParent());Files.writeString(file,text);return file;}
     private BehaviorCatalog catalog()throws Exception{return catalog(BehaviorCatalog.Limits.defaults(),r->BehaviorCatalog.Capability.present());}
-    private BehaviorCatalog catalog(BehaviorCatalog.Limits limits,BehaviorCatalog.CapabilityResolver resolver)throws Exception{return new BehaviorCatalog(root,limits,resolver);}
+    private BehaviorCatalog catalog(BehaviorCatalog.Limits limits,BehaviorCatalog.CapabilityResolver resolver)throws Exception{return new BehaviorCatalog(root,limits,resolver,BehaviorCheckpoints.disabled());}
     private static BehaviorCatalog.Reload reload(BehaviorCatalog catalog){return catalog.reload(catalog.snapshot().generation(),Set.of());}
     private static BehaviorCatalog.Entry entry(BehaviorCatalog catalog,String id){return catalog.snapshot().entries().get(BehaviorPath.forId(id));}
     private static BehaviorCatalog.Accepted accepted(BehaviorCatalog catalog,String id){return entry(catalog,id).accepted().orElseThrow();}
@@ -133,7 +133,7 @@ class BehaviorCatalogTest {
     @Test void symlinkLeavesDirectoriesAndDanglingNonJsonEntriesRejectWholeScan()throws Exception{
         put("sample:test",1,EMPTY);var catalog=catalog();reload(catalog);var before=catalog.snapshot();Path outside=Files.createDirectory(root.resolve("outside"));Files.writeString(outside.resolve("external.json"),source("outside:external",1,EMPTY));
         for(Path target:List.of(outside.resolve("external.json"),outside,root.resolve("missing"))){Path link=root.resolve("behaviors/link");Files.createSymbolicLink(link,target);assertFalse(reload(catalog).published());assertSame(before,catalog.snapshot());Files.delete(link);}
-        Path link=root.resolve("linked-root");Files.createSymbolicLink(link,outside);assertThrows(java.io.IOException.class,()->new BehaviorCatalog(link,BehaviorCatalog.Limits.defaults(),r->BehaviorCatalog.Capability.present()));
+        Path link=root.resolve("linked-root");Files.createSymbolicLink(link,outside);assertThrows(java.io.IOException.class,()->new BehaviorCatalog(link,BehaviorCatalog.Limits.defaults(),r->BehaviorCatalog.Capability.present(),BehaviorCheckpoints.disabled()));
     }
     @Test void pendingJournalIsNeverRecoveredOrModifiedByCatalog()throws Exception{
         put("sample:test",1,EMPTY);var catalog=catalog();reload(catalog);var previous=catalog.snapshot();Path pending=write("state/pending.json","unparsed pending journal");var before=tree(root);assertFalse(reload(catalog).published());assertSame(previous,catalog.snapshot());assertEquals(before,tree(root));Files.delete(pending);assertTrue(reload(catalog).published());
@@ -157,6 +157,6 @@ class BehaviorCatalogTest {
         var catalog=catalog(BehaviorCatalog.Limits.defaults(),r->{throw new AssertionError("synthetic registry failure");});assertTrue(reload(catalog).published());assertEquals(Set.of(new BehaviorCatalog.Requirement(new Capabilities.Key("sample","greet"),Capabilities.Kind.ACTION)),accepted(catalog,"sample:test").requirements());assertFalse(catalog.snapshot().find("sample:test").orElseThrow().available());assertTrue(entry(catalog,"sample:test").diagnostics().getFirst().message().contains("registry-check-failed"));
     }
     @Test void unsupportedFilesystemProvidersFailExplicitlyWithoutWritingCatalogState()throws Exception{
-        Path zip=root.resolve("unsupported.zip");try(var fs=FileSystems.newFileSystem(zip,Map.of("create","true"))){Path directory=fs.getPath("/");assertThrows(java.io.IOException.class,()->new BehaviorCatalog(directory,BehaviorCatalog.Limits.defaults(),r->BehaviorCatalog.Capability.present()));assertFalse(Files.exists(directory.resolve("state")));}
+        Path zip=root.resolve("unsupported.zip");try(var fs=FileSystems.newFileSystem(zip,Map.of("create","true"))){Path directory=fs.getPath("/");assertThrows(java.io.IOException.class,()->new BehaviorCatalog(directory,BehaviorCatalog.Limits.defaults(),r->BehaviorCatalog.Capability.present(),BehaviorCheckpoints.disabled()));assertFalse(Files.exists(directory.resolve("state")));}
     }
 }

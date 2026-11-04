@@ -2,6 +2,8 @@ package art.arcane.animus.core.extension;
 
 import art.arcane.animus.api.*;
 import art.arcane.animus.api.Capabilities.*;
+import art.arcane.animus.core.behavior.trigger.TriggerEvent;
+import art.arcane.animus.core.behavior.trigger.TriggerSink;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.schema.CapabilitySchema;
 import java.time.Duration;
@@ -57,6 +59,23 @@ public final class ModuleHost implements AutoCloseable {
         deliveries=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(maximumInvocations),job->{Thread t=new Thread(job,"Animus-module-delivery");t.setDaemon(true);return t;});
         deadlines=new ScheduledThreadPoolExecutor(1,job->{Thread t=new Thread(job,"Animus-module-deadline");t.setDaemon(true);return t;});deadlines.setRemoveOnCancelPolicy(true);
     }
+    private volatile TriggerSink triggerSink;
+    /** Registered triggers report unwired until this is connected. Connect before installing modules. */
+    public void connectTriggers(TriggerSink sink){triggerSink=Objects.requireNonNull(sink);}
+    private Outcome<Boolean> publishTrigger(Entry entry,Key key,NpcHandle npc,Optional<UUID> player){
+        Objects.requireNonNull(key);Objects.requireNonNull(npc);Objects.requireNonNull(player);
+        TriggerSink sink=triggerSink;
+        synchronized(this){
+            Registration registration=capabilities.get(key);
+            if(registration==null || registration.owner!=entry || registration.descriptor.kind()!=Kind.TRIGGER)
+                return Outcome.rejected(Outcome.Status.NOT_FOUND,"trigger-not-registered","This module has not registered trigger "+key);
+            if(admissionClosed || !available(entry) || !registration.descriptor.platforms().contains(platform))
+                return Outcome.rejected(Outcome.Status.UNAVAILABLE,"module-unavailable","Module or platform is unavailable: "+reason(entry));
+        }
+        if(sink==null)return Outcome.rejected(Outcome.Status.UNAVAILABLE,"trigger-dispatch-unavailable","Trigger dispatch is not connected");
+        if(!sink.available())return Outcome.rejected(Outcome.Status.UNAVAILABLE,"trigger-dispatch-unavailable",sink.availability());
+        return sink.publish(new TriggerEvent.Module(npc.uuid(),player,key));
+    }
     /** Lifecycle is serialized separately from the registry; callbacks never hold its monitor. */
     public Outcome<ModuleStatus> install(TrustedModule module) {return install(module,null);}
     /** Engine-owned capabilities use the same registry and schema path under the reserved namespace. Never for discovered archives. */
@@ -104,12 +123,20 @@ public final class ModuleHost implements AutoCloseable {
     /** Documentation/editor metadata and invocation availability use this same committed registry. */
     public synchronized List<Availability> capabilities(){
         return capabilities.values().stream().sorted(Comparator.comparing(r->r.descriptor.key().toString()))
-                .map(r->{Optional<String> reason=unavailableReason(r);return new Availability(r.descriptor,reason.isEmpty(),reason.orElse("available"));}).toList();
+                .map(r->{
+                    Optional<String> reason=unavailableReason(r);
+                    if(reason.isEmpty()&&r.descriptor.kind()==Kind.TRIGGER)reason=triggerSink==null?Optional.of("trigger-dispatch-unwired"):triggerSink.available()?Optional.empty():Optional.of(triggerSink.availability());
+                    return new Availability(r.descriptor,reason.isEmpty(),reason.orElse("available"));
+                }).toList();
     }
-    /** Engine-private single-key admission hint; actual invocation rechecks authority. No catalog copy/sort. */
+    /**
+     * Engine-private single-key admission hint; actual invocation rechecks authority. No catalog copy/sort.
+     * A trigger needs only connected dispatch here: behaviors naming it stay manually runnable where dispatch
+     * is unavailable, and publishing reports that separately.
+     */
     public synchronized boolean capabilityAvailable(Key key,Kind kind,boolean preview,boolean privilegedGranted){
         Registration registration=capabilities.get(Objects.requireNonNull(key));
-        if(registration==null || registration.descriptor.kind()!=Objects.requireNonNull(kind) || kind==Kind.TRIGGER)return false;
+        if(registration==null || registration.descriptor.kind()!=Objects.requireNonNull(kind) || kind==Kind.TRIGGER && triggerSink==null)return false;
         Descriptor descriptor=registration.descriptor;
         if(descriptor.privileged() && (kind==Kind.CONDITION || preview || !privilegedGranted))return false;
         return unavailableReason(registration).isEmpty();
@@ -118,6 +145,7 @@ public final class ModuleHost implements AutoCloseable {
     public synchronized Optional<String> unavailableReason(Key key,Kind kind){
         Registration registration=capabilities.get(Objects.requireNonNull(key));
         if(registration==null || registration.descriptor.kind()!=Objects.requireNonNull(kind))return Optional.of("capability-not-registered");
+        if(kind==Kind.TRIGGER&&triggerSink==null)return Optional.of("trigger-dispatch-unwired");
         return unavailableReason(registration);
     }
     public synchronized boolean privileged(Key key){
@@ -138,7 +166,6 @@ public final class ModuleHost implements AutoCloseable {
     }
     private Optional<String> unavailableReason(Registration registration){
         Descriptor descriptor=registration.descriptor;
-        if(descriptor.kind()==Kind.TRIGGER)return Optional.of("trigger-dispatch-unwired");
         if(!descriptor.platforms().contains(platform))return Optional.of("platform-unavailable");
         if(!available(registration.owner))return Optional.of(reason(registration.owner));
         return builtinRefusal(registration);
@@ -298,6 +325,7 @@ public final class ModuleHost implements AutoCloseable {
         synchronized List<AutoCloseable> takeResources(){List<AutoCloseable> copy=List.copyOf(resources);resources.clear();return copy;}
         public DefinitionService definitions(){return scopedDefinitions;}
         public Registrar registrations(){return this;}
+        public TriggerPublisher triggers(){return (key,npc,player)->publishTrigger(this,key,npc,player);}
         public ModuleScheduler scheduler(){return work->invoke(this,null,token->CompletableFuture.completedFuture(work.run(token)),true);}
         public synchronized void onClose(AutoCloseable resource){if(!staging || resources.size()>=64)throw new IllegalStateException("Startup resource registration closed/full");resources.add(Objects.requireNonNull(resource));}
         public void action(Descriptor descriptor,Action action){stage(descriptor,Kind.ACTION,Objects.requireNonNull(action),null);}

@@ -449,7 +449,7 @@ class BuiltinCapabilitiesTest {
         return compiled.program().orElseThrow();
     }
     private BehaviorEngine.Report run(BehaviorProgram program, boolean preview, java.util.function.Predicate<String> grants) throws Exception {
-        BehaviorEngine engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host, grants));
+        BehaviorEngine engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host, grants), ignored -> {}, art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
         UUID id = engine.start(program, new BehaviorEngine.Context(NPC, Optional.of(PLAYER), preview)).value().orElseThrow();
         for (int i = 0; i < 2000 && engine.inspect(id).orElseThrow().state() == BehaviorEngine.State.RUNNING; i++) { engine.tick(); platform.pump(); Thread.sleep(1); }
         BehaviorEngine.Report report = engine.inspect(id).orElseThrow();

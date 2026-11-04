@@ -186,6 +186,8 @@ public final class ExtensionRuntime implements AutoCloseable {
         };
     }
     private static String bounded(String reason) { return reason.length() > 200 ? reason.substring(0, 200) : reason; }
+    /** Connect before start so module startup and the behavior catalog observe dispatch. */
+    public void connectTriggers(art.arcane.animus.core.behavior.trigger.TriggerSink sink) { host.connectTriggers(sink); }
     /** Internal behavior bridge. Carries the execution's preview flag; a privileged grant comes only from the allow-list. */
     public BehaviorInvoker behaviorInvoker() { return behaviorInvoker; }
 
