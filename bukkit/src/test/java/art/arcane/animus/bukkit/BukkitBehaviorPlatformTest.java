@@ -32,14 +32,9 @@ class BukkitBehaviorPlatformTest {
         });
     }
 
-    @Test void foliaIsUnavailableBeforeTheRuntimeIsAsked() {
-        Optional<String> reason = BukkitBehaviorPlatform.unavailability(true, () -> { throw new AssertionError("Runtime must not be read on Folia"); }, () -> "unused");
-        assertTrue(reason.orElseThrow().contains("Folia"));
-    }
-
-    @Test void disabledRuntimeReportsItsOwnReason() {
-        assertEquals(Optional.of("NPC runtime disabled in config.toml"), BukkitBehaviorPlatform.unavailability(false, () -> false, () -> "NPC runtime disabled in config.toml"));
-        assertEquals(Optional.empty(), BukkitBehaviorPlatform.unavailability(false, () -> true, () -> { throw new AssertionError("A ready runtime must not format status off its owner"); }));
+    @Test void disabledRuntimeReportsItsOwnReasonOnEveryPlatform() {
+        assertEquals(Optional.of("NPC runtime disabled in config.toml"), BukkitBehaviorPlatform.unavailability(() -> false, () -> "NPC runtime disabled in config.toml"));
+        assertEquals(Optional.empty(), BukkitBehaviorPlatform.unavailability(() -> true, () -> { throw new AssertionError("A ready runtime must not format status off its owner"); }));
     }
 
     @Test void runtimeRejectionsKeepExpectedStatuses() {

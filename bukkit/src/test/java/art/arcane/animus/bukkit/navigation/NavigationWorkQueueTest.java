@@ -172,6 +172,23 @@ class NavigationWorkQueueTest {
         } finally { release.countDown(); queue.close(); }
     }
 
+    @Test void ownerPumpCapturesOnlyItsOwnJobWithinItsBudget() throws Exception {
+        UUID mine = UUID.randomUUID(), theirs = UUID.randomUUID();
+        try (var queue = new NavigationWorkQueue(new NavigationLimits(256, 2, 8192))) {
+            NavigationPlan own = submit(queue, mine), other = submit(queue, theirs);
+            var sampler = new Sampler();
+            assertEquals(5, queue.pump(own, sampler, 1, 5));
+            assertEquals(4, sampler.reads.get(mine), "one start step, then four voxels");
+            assertNull(sampler.reads.get(theirs), "another owner's capture is never read here");
+            for (int tick = 2; tick < 40 && !own.done(); tick++) queue.pump(own, sampler, tick, 8);
+            assertEquals(PathPlanner.Status.FOUND, await(own).status());
+            assertNull(sampler.reads.get(theirs));
+            assertEquals(0, queue.pump(own, sampler, 50, 8), "a finished job has nothing left to capture");
+            assertEquals(1, queue.outstandingJobs());
+            assertTrue(other.cancel());
+        }
+    }
+
     @Test void admissionChecksRejectOversizeCaptureBeforeAllocatingAJob() {
         try (var queue = new NavigationWorkQueue(new NavigationLimits(256, 8, 32))) {
             assertThrows(IllegalArgumentException.class, () -> submit(queue, UUID.randomUUID()));

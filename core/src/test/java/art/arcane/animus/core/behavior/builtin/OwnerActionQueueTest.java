@@ -23,7 +23,7 @@ class OwnerActionQueueTest {
     }
 
     @Test void workRunsOnlyWhenTheOwnerTicks() {
-        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 8));
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 8), OwnerActionQueue.Router.INLINE);
         List<String> ran = new ArrayList<>();
         CompletionStage<String> result = queue.submit(FIRST, () -> false, () -> { ran.add("work"); return "done"; });
         assertTrue(ran.isEmpty());
@@ -34,7 +34,7 @@ class OwnerActionQueueTest {
     }
 
     @Test void globalBudgetBoundsWorkPerTickAndPreservesOrder() {
-        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(2, 2, 8));
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(2, 2, 8), OwnerActionQueue.Router.INLINE);
         List<Integer> ran = new ArrayList<>();
         for (int i = 0; i < 5; i++) { int index = i; queue.submit(new NpcHandle(UUID.randomUUID()), () -> false, () -> { ran.add(index); return index; }); }
         queue.tick();
@@ -46,7 +46,7 @@ class OwnerActionQueueTest {
     }
 
     @Test void perNpcBudgetDefersOnlyThatNpc() {
-        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(8, 1, 8));
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(8, 1, 8), OwnerActionQueue.Router.INLINE);
         List<String> ran = new ArrayList<>();
         for (String name : List.of("a1", "a2", "a3")) queue.submit(FIRST, () -> false, () -> { ran.add(name); return name; });
         queue.submit(SECOND, () -> false, () -> { ran.add("b1"); return "b1"; });
@@ -59,7 +59,7 @@ class OwnerActionQueueTest {
     }
 
     @Test void fullQueueRejectsAsBusyWithoutRunning() {
-        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(1, 1, 1));
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(1, 1, 1), OwnerActionQueue.Router.INLINE);
         queue.submit(FIRST, () -> false, () -> "kept");
         AtomicBoolean ran = new AtomicBoolean();
         CapabilityRefusal refused = assertThrows(CapabilityRefusal.class, () -> queue.submit(FIRST, () -> false, () -> { ran.set(true); return "dropped"; }));
@@ -69,7 +69,7 @@ class OwnerActionQueueTest {
     }
 
     @Test void cancelledWorkIsDroppedBeforeItTouchesTheOwnerAndCostsNoBudget() {
-        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(1, 1, 4));
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(1, 1, 4), OwnerActionQueue.Router.INLINE);
         AtomicBoolean revoked = new AtomicBoolean(), ran = new AtomicBoolean(), other = new AtomicBoolean();
         CompletionStage<String> cancelled = queue.submit(FIRST, revoked::get, () -> { ran.set(true); return "no"; });
         queue.submit(FIRST, () -> false, () -> { other.set(true); return "yes"; });
@@ -81,7 +81,7 @@ class OwnerActionQueueTest {
     }
 
     @Test void workFailureFailsOnlyItsOwnStage() {
-        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 4));
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 4), OwnerActionQueue.Router.INLINE);
         CompletionStage<String> failed = queue.submit(FIRST, () -> false, () -> { throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "npc-inactive", "NPC is not active"); });
         CompletionStage<String> fine = queue.submit(SECOND, () -> false, () -> "fine");
         queue.tick();
@@ -90,7 +90,7 @@ class OwnerActionQueueTest {
     }
 
     @Test void closeRefusesPendingAndNewWork() {
-        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 4));
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 4), OwnerActionQueue.Router.INLINE);
         AtomicBoolean ran = new AtomicBoolean();
         CompletionStage<String> pending = queue.submit(FIRST, () -> false, () -> { ran.set(true); return "no"; });
         queue.close();
@@ -98,6 +98,42 @@ class OwnerActionQueueTest {
         assertFalse(ran.get());
         assertEquals(Outcome.Status.UNAVAILABLE, refusal(pending).status());
         assertThrows(CapabilityRefusal.class, () -> queue.submit(FIRST, () -> false, () -> "late"));
+    }
+
+    @Test void workRunsWhereTheRouterPlacesItForThatNpc() {
+        List<Runnable> owned = new ArrayList<>();
+        List<NpcHandle> routed = new ArrayList<>();
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 4), (npc, work, refused) -> { routed.add(npc); owned.add(work); return true; });
+        AtomicBoolean ran = new AtomicBoolean();
+        CompletionStage<String> result = queue.submit(FIRST, () -> false, () -> { ran.set(true); return "owned"; });
+        queue.tick();
+        assertEquals(List.of(FIRST), routed);
+        assertFalse(ran.get(), "routing alone must not run the work on the dispatching thread");
+        assertFalse(result.toCompletableFuture().isDone());
+        owned.getFirst().run();
+        assertEquals("owned", result.toCompletableFuture().join());
+    }
+
+    @Test void routerRefusalFailsTheWorkAsUnavailableWithoutRunningIt() {
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 4), (npc, work, refused) -> false);
+        AtomicBoolean ran = new AtomicBoolean();
+        CompletionStage<String> result = queue.submit(FIRST, () -> false, () -> { ran.set(true); return "no"; });
+        queue.tick();
+        assertFalse(ran.get());
+        CapabilityRefusal refused = refusal(result);
+        assertEquals(Outcome.Status.UNAVAILABLE, refused.status());
+        assertEquals("npc-owner-unavailable", refused.diagnostics().getFirst().code());
+    }
+
+    @Test void ownerThatDropsAcceptedWorkReportsItsReason() {
+        List<java.util.function.Consumer<String>> refusals = new ArrayList<>();
+        OwnerActionQueue queue = new OwnerActionQueue(new OwnerActionQueue.Limits(4, 4, 4), (npc, work, refused) -> { refusals.add(refused); return true; });
+        CompletionStage<String> result = queue.submit(FIRST, () -> false, () -> "never");
+        queue.tick();
+        refusals.getFirst().accept("NPC went dormant: its chunk unloaded");
+        CapabilityRefusal refused = refusal(result);
+        assertEquals(Outcome.Status.UNAVAILABLE, refused.status());
+        assertTrue(refused.getMessage().contains("chunk unloaded"), refused.getMessage());
     }
 
     @Test void limitsAreBounded() {

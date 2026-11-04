@@ -132,7 +132,7 @@ The locally cached Mojang 26.1.2 and 26.3 classes expose `ServerboundInteractPac
 | Native descriptor probe (30 checks) | Pass | Pass | Pass |
 | Paper startup, packet binding, commands, restart | Stable74 pass | Stable135 pass | Stable240 pass |
 | Folia startup, commands, restart | Stable8 pass | Beta7 pass | Alpha6 pass |
-| Folia general NPC runtime and region movement | Disabled | Disabled | Disabled |
+| Folia general NPC runtime and region movement | Source and unit tests only; live check pending | Source and unit tests only; live check pending | Source and unit tests only; live check pending |
 | Runtime-8 Folia stationary player preview |50 checks pass, stable8|50 checks pass, beta7|50 checks pass, alpha6|
 | Multiplexor baseline lifecycle/restart | Paper/Folia/Spigot pass | Paper/Folia/Spigot pass | Paper/Folia/Spigot pass |
 | Native client attached to managed Paper/Spigot | 38 checks each pass | 38 checks each pass | 38 checks each pass |
@@ -151,7 +151,7 @@ Supplemental Leaf26.3-17/af63114 coverage includes console administration, inval
 
 Benchmark Animus against a reproducible server baseline with the same world and clients. Record visible work, simulation and exact configurations; no architecture-only performance claim is justified.
 
-Mounts, riding and dragon presentation bind to the same exact-version adapter. On Folia the NPC runtime reports them unavailable through `/animus status`, `/animus ride status` and activation errors, and any other Minecraft version refuses to bind. If one of the server methods riding needs is missing, only riding reports unavailable and the rest of the runtime keeps working. `NativeSignatureProbe` checks the native members they use against an exact server jar.
+Mounts, riding and dragon presentation bind to the same exact-version adapter. On Folia the NPC runtime reports mounts and riding unavailable through `/animus status`, `/animus ride status` and `/animus inspect`, and dragons keep the hovering pose, and any other Minecraft version refuses to bind. If one of the server methods riding needs is missing, only riding reports unavailable and the rest of the runtime keeps working. `NativeSignatureProbe` checks the native members they use against an exact server jar.
 
 Current runtime details are in [runtime.md](runtime.md); combat settings, protection and limits are in [combat.md](combat.md). [Spigot provenance](spigot-verification.md) records official server builds and prior proof artifact hashes. Do not mix baseline proof evidence with later production artifact results.
 

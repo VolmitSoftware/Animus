@@ -98,7 +98,7 @@ Compiler bounds include 256 KiB of source, 2,048 syntax nodes, depth 32, 32 rout
 
 Execution budgets independently bound active runs, branches, calls, instructions, lifetime, routine depth, history and trace retention. Reports preserve waits, the failed node's trace and up to 16 field diagnostics. A delivered timeout/cancellation result does not prove a Java handler stopped: its call remains counted until actual handler and result-delivery quiescence. Engine shutdown must keep bounded drain maintenance running for those retired calls. Noncooperative trusted Java work can remain unavailable until restart.
 
-The behavior runtime uses its own engine thread and immutable definition/catalog observations. The owner itself grants no world access: built-in actions reach the world only through their bounded owner-thread queue. General Folia NPC rendering/navigation/combat and automatic triggers remain outside this manual module/data gate.
+The behavior runtime uses its own engine thread and immutable definition/catalog observations. The owner itself grants no world access: built-in actions reach the world only through their bounded owner-thread queue. On Folia that queue hands each action to the region that owns its NPC; Folia combat stays unavailable.
 
 ## Automatic triggers
 
@@ -148,7 +148,7 @@ Timers, cooldowns and queue lifetimes count behavior-owner ticks, which are abou
 
 Proximity follows viewers through the spatial NPC index. A pass does no scanning when no active NPC has a proximity trigger, and an NPC with no viewer in range is never visited.
 
-Triggers need the general NPC runtime. Where it is unavailable, as on Folia, or when `behaviors.triggers.enabled` is false, `/animus behaviors triggers` shows `UNAVAILABLE` with the reason, nothing runs and module publishes return `UNAVAILABLE` with the same reason. Manual runs still work there.
+Triggers need the general NPC runtime. On Folia they run on each NPC's region; damage and death triggers need combat, which Folia lacks. Where the runtime is unavailable, or when `behaviors.triggers.enabled` is false, `/animus behaviors triggers` shows `UNAVAILABLE` with the reason, nothing runs and module publishes return `UNAVAILABLE` with the same reason. Manual runs still work there.
 
 These defaults live under `[behaviors.triggers]` in `config.toml` and require restart:
 
@@ -292,7 +292,7 @@ These are reported differently, so a problem with the file is not confused with 
 - **Invalid**: literal arguments fail the capability's checks, and `/animus behaviors validate` reports `behavior-arguments-invalid`. An invalid edit retains the previous accepted program. Arguments filled from variables are checked when the action runs.
 - **Unavailable**: the program is accepted but cannot run here, reported as `behavior-capability-unavailable` with the reason. This covers a missing module, a server without the NPC runtime, and a command without a grant.
 
-General NPC runtime is disabled on Folia. The capabilities still appear there, but everything that touches the world or a player reports as unavailable and nothing is scheduled. `animus:flag-state`, `animus:quest-state` and the flag and quest actions keep working.
+On Folia, actions run on the region that owns the NPC; an NPC waiting for its chunk to load refuses them as unavailable. Messages, sounds, particles, choices and commands for a player another region owns are handed to that player's scheduler and not awaited, so a rejected player command is not reported there. `nearby` audiences include only players on the NPC's region, and `animus:has-permission` and looking at a player fail with `player-in-other-region` for a player on another region. `animus:combat` is unavailable. See [persisted NPCs on Folia](folia-runtime.md).
 
 ### Dialogue choices
 
@@ -405,7 +405,7 @@ The directory may be a data folder, with `behaviors/`, `packs/` and `npcs/`, or 
 
 - Java module capabilities, their arguments and their triggers, since only built-in capabilities are known offline. Each one used is listed.
 - Whether a pack's required modules are installed.
-- The command allow-list, and the platform: on Folia most built-in actions are unavailable.
+- The command allow-list, and the platform: on Folia combat is unavailable and some player actions depend on which region owns the player.
 - Revisions against programs a server already accepted. A changed file there still needs a higher revision.
 - Arguments filled from variables.
 - Worlds, coordinates, reusable routes, skins, permissions, sounds, particles, items and whether a player is present.

@@ -107,7 +107,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         this.state = Objects.requireNonNull(state);
         this.settings = Objects.requireNonNull(settings);
         this.log = Objects.requireNonNull(log);
-        queue = new OwnerActionQueue(new OwnerActionQueue.Limits(settings.actionsPerTick(), settings.actionsPerNpcPerTick(), settings.queuedActions()));
+        queue = new OwnerActionQueue(new OwnerActionQueue.Limits(settings.actionsPerTick(), settings.actionsPerNpcPerTick(), settings.queuedActions()), platform::onNpcOwner);
         waits = new NavigationWaits(settings.navigationWaits(), platform);
         choices = new PendingChoices(settings.pendingChoices(), choiceSink, System::nanoTime,
                 failure -> this.log.accept("Dialogue choice listener failed: " + failure.getClass().getSimpleName()));

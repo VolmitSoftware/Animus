@@ -24,7 +24,7 @@ import org.bukkit.util.Vector;
 /**
  * Explicit main-thread combat authority. It never constructs an NPC body or a fake Bukkit attacker.
  * The caller owns permission/import-review policy and must close registrations when their runtime retires.
- * Folia is unavailable until cross-owner world/entity validation has been implemented.
+ * Unavailable on Folia: see {@link #FOLIA_UNAVAILABLE}.
  */
 public final class BukkitCombatBridge implements Listener, AutoCloseable {
     public enum Action { NPC_ATTACK, MOB_CONTROL, MOB_ATTACK }
@@ -63,10 +63,11 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
     private int remainingPlans;
     private boolean closed;
 
+    public static final String FOLIA_UNAVAILABLE = "unavailable on Folia: combat damages and retargets real players and mobs that other regions own, and its target scan, damage and mob control have no region handoff yet";
     public BukkitCombatBridge(Plugin plugin, String exactVersion, boolean folia, CombatLimits limits, Protection protection, Defense defense) {
         this.plugin = Objects.requireNonNull(plugin); this.limits = Objects.requireNonNull(limits); this.protection = Objects.requireNonNull(protection);
         this.defense = Objects.requireNonNull(defense);
-        String unavailable = folia || foliaPresent() ? "Combat unavailable on Folia until region-safe world/entity ownership is proven" :
+        String unavailable = folia || foliaPresent() ? "Combat " + FOLIA_UNAVAILABLE :
                 !Set.of("26.1.2", "26.2", "26.3").contains(exactVersion) ? "Combat is not validated for " + exactVersion : null;
         NativeMobController adapter = null;
         String mobUnavailable = unavailable;
