@@ -21,6 +21,13 @@ class PassengerRosterTest {
         assertEquals(16, NativePacketAdapter.passengerRoster(sixteen, NativePacketAdapter.NO_REAL_RIDER).length);
         assertThrows(IllegalArgumentException.class, () -> NativePacketAdapter.passengerRoster(sixteen, 77));
     }
+    @Test void aBodysTextDisplayRidesAfterEveryOtherPassenger() {
+        assertArrayEquals(new int[]{4, 77, 12}, NativePacketAdapter.withText(new int[]{4, 77}, 12));
+        assertArrayEquals(new int[]{12}, NativePacketAdapter.withText(new int[0], 12));
+        assertArrayEquals(new int[]{4}, NativePacketAdapter.withText(new int[]{4}, -1));
+        int[] sixteen = new int[16];
+        assertThrows(IllegalArgumentException.class, () -> NativePacketAdapter.withText(sixteen, 99));
+    }
     @Test void multipartBodiesReserveTheirNativeRange() {
         assertEquals(9, NativePacketAdapter.reservedIds("minecraft:ender_dragon"));
         assertEquals(1, NativePacketAdapter.reservedIds("minecraft:horse"));

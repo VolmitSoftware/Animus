@@ -2,24 +2,25 @@ package art.arcane.animus.core.behavior.builtin;
 
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.navigation.MovementProfile;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 
 /**
- * World and player work for built-in capabilities. {@link #unavailable()} and {@link #ownerTicks(Runnable)}
- * may be called from any thread. Every other method runs only inside the owner tick, so a port implements
- * ownership once by choosing where that tick runs. Implementations reject with
+ * World and player work for built-in capabilities. {@link #unavailable()}, {@link #ownerTicks(Runnable)} and
+ * {@link #onNpcOwner} may be called from any thread. Every other method runs only inside work that
+ * {@link #onNpcOwner} placed on the NPC's owner. A single-owner port runs that work inline in the owner tick;
+ * a regionized port places it on the region that owns the NPC. Implementations reject with
  * {@link art.arcane.animus.core.extension.CapabilityRefusal} to keep an expected failure distinct from a fault.
  */
 public interface BehaviorPlatform {
     enum CommandSource { CONSOLE, PLAYER }
     enum CombatOperation { ENABLE, DISABLE, TARGET, RELEASE, GUARD }
-    enum EquipmentSlot { MAIN_HAND, OFF_HAND, HEAD, CHEST, LEGS, FEET, BODY }
-
     record NpcStatus(boolean spawned, double health) {}
     /** A present player addresses only that viewer. An empty player addresses every viewer within the radius. */
     record Audience(Optional<UUID> player, double radius) {
@@ -42,6 +43,11 @@ public interface BehaviorPlatform {
     Optional<String> unavailable();
     /** Runs the tick once per owner tick until the returned handle closes. Called only while available. */
     AutoCloseable ownerTicks(Runnable tick);
+    /**
+     * Places work where the NPC is owned. Returns false when it cannot be accepted now. Accepted work runs exactly
+     * once, or {@code refused} receives a reason when its owner later drops it. The default is a single owner.
+     */
+    default boolean onNpcOwner(NpcHandle npc, Runnable work, Consumer<String> refused) { work.run(); return true; }
 
     boolean hasPermission(UUID player, String node);
     NpcStatus npcStatus(NpcHandle npc);

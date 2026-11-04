@@ -22,13 +22,13 @@ import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.Audience;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.ChoiceOption;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.CombatOperation;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.CommandSource;
-import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.EquipmentSlot;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.NpcStatus;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.ParticleEffect;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.SoundEffect;
 import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.extension.BuiltinPolicy;
 import art.arcane.animus.core.extension.CapabilityRefusal;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.virtual.Vec3;
@@ -107,7 +107,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         this.state = Objects.requireNonNull(state);
         this.settings = Objects.requireNonNull(settings);
         this.log = Objects.requireNonNull(log);
-        queue = new OwnerActionQueue(new OwnerActionQueue.Limits(settings.actionsPerTick(), settings.actionsPerNpcPerTick(), settings.queuedActions()));
+        queue = new OwnerActionQueue(new OwnerActionQueue.Limits(settings.actionsPerTick(), settings.actionsPerNpcPerTick(), settings.queuedActions()), platform::onNpcOwner);
         waits = new NavigationWaits(settings.navigationWaits(), platform);
         choices = new PendingChoices(settings.pendingChoices(), choiceSink, System::nanoTime,
                 failure -> this.log.accept("Dialogue choice listener failed: " + failure.getClass().getSimpleName()));

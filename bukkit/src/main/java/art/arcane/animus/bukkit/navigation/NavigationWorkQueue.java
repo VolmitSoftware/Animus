@@ -78,6 +78,29 @@ final class NavigationWorkQueue implements AutoCloseable {
         return work;
     }
 
+    /** Region owners capture only their own job, within their own region budget. Other jobs are never read here. */
+    int pump(NavigationPlan plan, Sampler sampler, long tick, int budget) {
+        Objects.requireNonNull(plan, "plan"); Objects.requireNonNull(sampler, "sampler");
+        int work = 0;
+        while (work < budget) {
+            Runnable completion = null;
+            synchronized (this) {
+                Job job = jobs.get(plan.id());
+                if (closed || job == null || job.handle != plan || job.phase == Phase.PLANNING) break;
+                if (job.handle.cancelled()) { captures.remove(job); jobs.remove(job.handle.id()); break; }
+                try { completion = captureOne(job, sampler, tick); }
+                catch (RuntimeException failure) {
+                    captures.remove(job); jobs.remove(job.handle.id());
+                    completion = () -> job.handle.fail(failure);
+                }
+                work++;
+                if (job.phase == Phase.PLANNING) captures.remove(job);
+            }
+            if (completion != null) { completion.run(); break; }
+        }
+        return work;
+    }
+
     private Runnable captureOne(Job job, Sampler sampler, long tick) {
         if (job.phase == Phase.START) {
             job.firstTick = tick; job.firstNanos = clock.getAsLong();

@@ -24,7 +24,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
     private final String version, unavailable;
     private final DocumentStore documents;
     private final Executor io;
-    private final FoliaOwner owner;
+    private final FoliaRegions owner;
     private final NativeViewerEpoch epochs;
     private final StationaryTerrain terrain;
     private final ConcurrentMap<UUID, Lease> sessions=new ConcurrentHashMap<>();
@@ -38,10 +38,10 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
     public FoliaStationaryProofService(JavaPlugin plugin, String version, boolean enabled, DocumentStore documents, Executor io) {
         this.plugin=Objects.requireNonNull(plugin); this.version=version;
         this.documents=Objects.requireNonNull(documents); this.io=Objects.requireNonNull(io);
-        FoliaOwner bound=null; NativeViewerEpoch epochBinding=null; String reason=null;
+        FoliaRegions bound=null; NativeViewerEpoch epochBinding=null; String reason=null;
         if (!enabled) reason="disabled; packetProofEnabled must be true in config.toml";
         else if (!Set.of("26.1.2","26.2","26.3").contains(version)) reason="no exact adapter for "+version;
-        else try { bound=new FoliaOwner(plugin); epochBinding=NativeViewerEpoch.bind(plugin,version); }
+        else try { bound=new FoliaRegions(plugin); epochBinding=NativeViewerEpoch.bind(plugin,version); }
         catch (ReflectiveOperationException | RuntimeException | LinkageError failure) { bound=null; reason="Folia ownership/epoch API unavailable: "+failure.getClass().getSimpleName(); }
         owner=bound; epochs=epochBinding; unavailable=reason; terrain=bound==null?null:new StationaryTerrain(bound);
         if (owner!=null) plugin.getServer().getPluginManager().registerEvents(this,plugin);

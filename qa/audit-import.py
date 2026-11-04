@@ -21,7 +21,7 @@ traits = collections.Counter()
 fields = collections.Counter()
 leaves = 0
 version = summary.get('converterVersion', 1)
-assert version in (1, 2), 'Unsupported converter version'
+assert version in (1, 2, 3, 4), 'Unsupported converter version'
 remapped_locations = 0
 resolved_references = 0
 unresolved_references = 0

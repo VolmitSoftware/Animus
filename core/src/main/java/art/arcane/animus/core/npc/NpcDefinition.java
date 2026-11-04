@@ -40,7 +40,8 @@ public final class NpcDefinition {
             if (!string(object, key, errors).matches("[a-z0-9][a-z0-9_-]{0,63}"))
                 errors.add("$." + key + ": expected 1–64 lowercase letters, digits, _ or -");
         }
-        string(object, "name", errors);
+        if (!NpcAppearance.displayText(string(object, "name", errors)))
+            errors.add("$.name: expected at most " + NpcAppearance.MAX_TEXT + " characters without control characters");
         if (!string(object, "type", errors).matches("[a-z0-9_]+:[a-z0-9_/]+"))
             errors.add("$.type: expected namespace:type");
         if (!object.has("spawned") || !object.get("spawned").isJsonPrimitive() || !object.getAsJsonPrimitive("spawned").isBoolean())
@@ -67,6 +68,14 @@ public final class NpcDefinition {
                     errors.add("$.behaviors: expected namespace:id references");
             }
         }
+        if (object.has("owner")) {
+            JsonElement owner = object.get("owner");
+            String text = owner.isJsonPrimitive() && owner.getAsJsonPrimitive().isString() ? owner.getAsString() : "";
+            try { if (!UUID.fromString(text).toString().equals(text)) throw new IllegalArgumentException(); }
+            catch (IllegalArgumentException e) { errors.add("$.owner: expected canonical player UUID"); }
+        }
+        errors.addAll(NpcAppearance.validate(object));
+        errors.addAll(NpcInventory.validate(object));
         if (object.has("modules") && !object.get("modules").isJsonObject()) errors.add("$.modules: expected object");
         else {
             try { WaypointSettings.parse(object); }
@@ -102,6 +111,8 @@ public final class NpcDefinition {
     public String id() { return data.get("id").getAsString(); }
     public String group() { return data.get("group").getAsString(); }
     public String name() { return data.get("name").getAsString(); }
+    /** The owning player, when one is recorded. Plugins and modules may use it for their own permission rules. */
+    public Optional<UUID> owner() { return data.has("owner") ? Optional.of(UUID.fromString(data.get("owner").getAsString())) : Optional.empty(); }
     public long revision() { return data.get("revision").getAsLong(); }
     public String path() { return "npcs/" + group() + "/" + id() + ".json"; }
     public boolean spawned() { return spawned; }
