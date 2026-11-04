@@ -5,6 +5,7 @@ import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.behavior.BehaviorProgram.*;
 import art.arcane.animus.core.behavior.trigger.TriggerBinding;
 import art.arcane.animus.core.behavior.trigger.TriggerCompiler;
+import art.arcane.animus.core.behavior.trigger.TriggerKind;
 import com.google.gson.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -13,6 +14,7 @@ import java.util.*;
 public final class BehaviorCompiler {
     public static final int MAX_BYTES=256*1024,MAX_NODES=2048,MAX_DEPTH=32,MAX_ROUTINES=32,MAX_VARIABLES=32;
     public record Result(Optional<BehaviorProgram> program,List<Diagnostic> diagnostics){public Result{diagnostics=List.copyOf(diagnostics);}}
+    private static final Set<TriggerKind> PLAYERLESS=EnumSet.of(TriggerKind.SPAWN,TriggerKind.DESPAWN,TriggerKind.DAMAGE,TriggerKind.DEATH,TriggerKind.WAYPOINT,TriggerKind.TIMER);
     private final Map<String,Value> variables=new LinkedHashMap<>();
     private final Map<String,ScopedVariable> scoped=new LinkedHashMap<>();
     private final Map<String,Node> routines=new LinkedHashMap<>();
@@ -23,9 +25,24 @@ public final class BehaviorCompiler {
         try{
             if(source==null || source.length()>MAX_BYTES || !StandardCharsets.UTF_8.newEncoder().canEncode(source) || source.getBytes(StandardCharsets.UTF_8).length>MAX_BYTES)
                 throw new Invalid("$","expected valid UTF-8 JSON within 262144 bytes");
-            return new Result(Optional.of(new BehaviorCompiler().program(JsonDocuments.object(source))),List.of());
+            BehaviorProgram program=new BehaviorCompiler().program(JsonDocuments.object(source));
+            return new Result(Optional.of(program),warnings(program));
         }catch(Invalid invalid){return rejected(invalid.path,invalid.getMessage());}
         catch(java.io.IOException invalid){return rejected("$","invalid strict JSON object");}
+    }
+    /** A player-less trigger cannot start a behavior declaring player variables: the runtime refuses every such firing. Exact and repeatable for retained programs. */
+    public static List<Diagnostic> warnings(BehaviorProgram program){
+        String variable=null;
+        for(Map.Entry<String,ScopedVariable> declared:new TreeMap<>(program.scoped()).entrySet())if(declared.getValue().scope().requiresPlayer()){variable=declared.getKey();break;}
+        if(variable==null)return List.of();
+        List<Diagnostic> warnings=new ArrayList<>();
+        for(int index=0;index<program.triggers().size();index++){
+            TriggerKind kind=program.triggers().get(index).spec().kind();
+            if(!PLAYERLESS.contains(kind))continue;
+            warnings.add(new Diagnostic(Diagnostic.Severity.WARNING,"behavior-trigger-needs-player","$.triggers["+index+"]",
+                    "A "+kind.name().toLowerCase(Locale.ROOT)+" trigger has no player, and this behavior declares the player variable "+variable+", so every firing will be refused"));
+        }
+        return List.copyOf(warnings);
     }
     private static Result rejected(String path,String message){return new Result(Optional.empty(),List.of(new Diagnostic(Diagnostic.Severity.ERROR,"behavior-invalid",diagnosticPath(path),message)));}
     private static String diagnosticPath(String path){
@@ -41,6 +58,7 @@ public final class BehaviorCompiler {
         keys(object,"$","schemaVersion","id","entry","variables","routines","triggers");integer(object,"schemaVersion","$",1,1);
         String id=text(object,"id","$");
         if(id.length()>256||!id.matches("[a-z0-9_-]+:[a-z0-9_/-]+"))throw new Invalid("$.id","expected a lowercase namespace:path behavior reference within 256 characters");
+        if(id.matches("animus:(flags|quests)(/.*)?"))throw new Invalid("$.id","reserved for built-in flag and quest state");
         String entry=identifier(text(object,"entry","$"),"$.entry");
         if(object.has("variables")){
             JsonObject vars=object(object.get("variables"),"$.variables");if(vars.size()>MAX_VARIABLES)throw new Invalid("$.variables","at most 32 variables");

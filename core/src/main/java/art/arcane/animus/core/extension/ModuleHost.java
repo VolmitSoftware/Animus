@@ -77,7 +77,10 @@ public final class ModuleHost implements AutoCloseable {
         return sink.publish(new TriggerEvent.Module(npc.uuid(),player,key));
     }
     /** Lifecycle is serialized separately from the registry; callbacks never hold its monitor. */
-    public Outcome<ModuleStatus> install(TrustedModule module) {
+    public Outcome<ModuleStatus> install(TrustedModule module) {return install(module,null);}
+    /** Engine-owned capabilities use the same registry and schema path under the reserved namespace. Never for discovered archives. */
+    public Outcome<ModuleStatus> installBuiltin(TrustedModule module,BuiltinPolicy policy) {return install(module,Objects.requireNonNull(policy));}
+    private Outcome<ModuleStatus> install(TrustedModule module,BuiltinPolicy policy) {
         synchronized(this){if(admissionClosed)return rejected(Outcome.Status.UNAVAILABLE,"host-admission-closed");}
         lifecycle.lock();
         try {
@@ -88,9 +91,9 @@ public final class ModuleHost implements AutoCloseable {
             Entry entry;
             synchronized(this){
                 if(admissionClosed)return rejected(Outcome.Status.UNAVAILABLE,"host-admission-closed");
-                if(modules.size()>=64)return rejected(Outcome.Status.BUSY,"module-capacity");
-                if(manifest.id().equals("animus") || modules.containsKey(manifest.id()))return rejected(Outcome.Status.INVALID,"module-identity-reserved-or-duplicate");
-                entry=new Entry(module,manifest);modules.put(manifest.id(),entry);
+                if(policy==null && modules.values().stream().filter(existing->existing.policy==null).count()>=64)return rejected(Outcome.Status.BUSY,"module-capacity");
+                if(manifest.id().equals("animus")&&policy==null || modules.containsKey(manifest.id()))return rejected(Outcome.Status.INVALID,"module-identity-reserved-or-duplicate");
+                entry=new Entry(module,manifest,policy);modules.put(manifest.id(),entry);
                 if(!manifest.api().accepts(AnimusApi.API_VERSION))return unavailable(entry,"api-version-incompatible");
                 if(!manifest.platforms().contains(platform))return unavailable(entry,"platform-unavailable");
                 for(ModuleManifest.Dependency dependency:manifest.dependencies()){
@@ -115,15 +118,15 @@ public final class ModuleHost implements AutoCloseable {
             }
         } finally {lifecycle.unlock();}
     }
-    public synchronized List<ModuleStatus> modules(){return modules.values().stream().map(this::status).toList();}
+    /** Trusted Java modules only; built-in capabilities appear in the capability list instead. */
+    public synchronized List<ModuleStatus> modules(){return modules.values().stream().filter(entry->entry.policy==null).map(this::status).toList();}
     /** Documentation/editor metadata and invocation availability use this same committed registry. */
     public synchronized List<Availability> capabilities(){
         return capabilities.values().stream().sorted(Comparator.comparing(r->r.descriptor.key().toString()))
                 .map(r->{
-                    boolean dispatch=r.descriptor.kind()!=Kind.TRIGGER || triggerSink!=null && triggerSink.available();
-                    String reason=!r.descriptor.platforms().contains(platform)?"platform-unavailable":!available(r.owner)?reason(r.owner)
-                            :r.descriptor.kind()!=Kind.TRIGGER?reason(r.owner):triggerSink==null?"trigger-dispatch-unwired":triggerSink.available()?reason(r.owner):triggerSink.availability();
-                    return new Availability(r.descriptor,dispatch && available(r.owner) && r.descriptor.platforms().contains(platform),reason);
+                    Optional<String> reason=unavailableReason(r);
+                    if(reason.isEmpty()&&r.descriptor.kind()==Kind.TRIGGER)reason=triggerSink==null?Optional.of("trigger-dispatch-unwired"):triggerSink.available()?Optional.empty():Optional.of(triggerSink.availability());
+                    return new Availability(r.descriptor,reason.isEmpty(),reason.orElse("available"));
                 }).toList();
     }
     /**
@@ -136,7 +139,40 @@ public final class ModuleHost implements AutoCloseable {
         if(registration==null || registration.descriptor.kind()!=Objects.requireNonNull(kind) || kind==Kind.TRIGGER && triggerSink==null)return false;
         Descriptor descriptor=registration.descriptor;
         if(descriptor.privileged() && (kind==Kind.CONDITION || preview || !privilegedGranted))return false;
-        return descriptor.platforms().contains(platform) && available(registration.owner);
+        return unavailableReason(registration).isEmpty();
+    }
+    /** Why this registered capability cannot run on this platform now. A privileged grant is checked separately. */
+    public synchronized Optional<String> unavailableReason(Key key,Kind kind){
+        Registration registration=capabilities.get(Objects.requireNonNull(key));
+        if(registration==null || registration.descriptor.kind()!=Objects.requireNonNull(kind))return Optional.of("capability-not-registered");
+        if(kind==Kind.TRIGGER&&triggerSink==null)return Optional.of("trigger-dispatch-unwired");
+        return unavailableReason(registration);
+    }
+    public synchronized boolean privileged(Key key){
+        Registration registration=capabilities.get(Objects.requireNonNull(key));
+        return registration!=null && registration.descriptor.privileged();
+    }
+    /** Schema and built-in checks without entering a handler. An unregistered capability has nothing to check. */
+    public List<Diagnostic> validateArguments(Key key,Kind kind,String argumentsJson){
+        Registration registration;
+        synchronized(this){registration=capabilities.get(Objects.requireNonNull(key));}
+        if(registration==null || registration.descriptor.kind()!=Objects.requireNonNull(kind))return List.of();
+        return argumentProblems(registration,argumentsJson);
+    }
+    private List<Diagnostic> argumentProblems(Registration registration,String argumentsJson){
+        List<Diagnostic> errors=registration.schema.validate(argumentsJson);
+        if(!errors.isEmpty() || registration.owner.policy==null)return errors;
+        return registration.owner.policy.validate(registration.descriptor.key(),argumentsJson);
+    }
+    private Optional<String> unavailableReason(Registration registration){
+        Descriptor descriptor=registration.descriptor;
+        if(!descriptor.platforms().contains(platform))return Optional.of("platform-unavailable");
+        if(!available(registration.owner))return Optional.of(reason(registration.owner));
+        return builtinRefusal(registration);
+    }
+    private static Optional<String> builtinRefusal(Registration registration){
+        if(registration.owner.policy==null)return Optional.empty();
+        return registration.owner.policy.unavailable(registration.descriptor.key()).map(reason->"platform-unavailable: "+reason);
     }
     public synchronized int outstandingInvocations(){return calls.size();}
     /** Slow public continuations are observed, never preempted or mistaken for handler termination. */
@@ -157,12 +193,19 @@ public final class ModuleHost implements AutoCloseable {
     }
     /** Source observation is engine-owned, quick and thread-safe; never a module callback or world read. */
     public InvocationHandle<String> actionHandle(Key key,NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview,boolean privilegedGranted,BooleanSupplier sourceCurrent){
-        Objects.requireNonNull(sourceCurrent);
+        return actionHandle(key,npc,player,argumentsJson,preview,privilegedGranted,sourceCurrent,Optional.empty());
+    }
+    /** A behavior call carries its accepted program identity into the handler. */
+    public InvocationHandle<String> actionHandle(Key key,NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview,boolean privilegedGranted,BooleanSupplier sourceCurrent,Optional<String> behavior){
+        Objects.requireNonNull(sourceCurrent);Objects.requireNonNull(behavior);
         Registration registration;
         synchronized(this){registration=capabilities.get(key);}
         if(registration==null || registration.descriptor.kind()!=Kind.ACTION)return completedHandle(Outcome.Status.UNAVAILABLE,"action-unavailable");
         if(registration.descriptor.privileged() && (preview || !privilegedGranted))return completedHandle(Outcome.Status.UNAVAILABLE,"privileged-capability-not-granted");
-        return invokeHandle(registration.owner,registration.descriptor,token->registration.action.run(invocation(registration,npc,player,argumentsJson,preview,token)),true,sourceCurrent);
+        Optional<String> refused=builtinRefusal(registration);
+        if(refused.isPresent())return completedHandle(Outcome.Status.UNAVAILABLE,refused.get());
+        long deadline=registration.owner.policy==null?deadlineNanos:registration.owner.policy.deadlineMillis(key,argumentsJson).stream().map(millis->TimeUnit.MILLISECONDS.toNanos(millis)).findFirst().orElse(deadlineNanos);
+        return invokeHandle(registration.owner,registration.descriptor,token->registration.action.run(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),true,sourceCurrent,deadline);
     }
     public CompletionStage<Outcome<Boolean>> condition(Key key,NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview){
         return conditionHandle(key,npc,player,argumentsJson,preview).result();
@@ -172,20 +215,25 @@ public final class ModuleHost implements AutoCloseable {
     }
     /** Same source fence and cooperative cancellation contract as actionHandle. */
     public InvocationHandle<Boolean> conditionHandle(Key key,NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview,BooleanSupplier sourceCurrent){
-        Objects.requireNonNull(sourceCurrent);
+        return conditionHandle(key,npc,player,argumentsJson,preview,sourceCurrent,Optional.empty());
+    }
+    public InvocationHandle<Boolean> conditionHandle(Key key,NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview,BooleanSupplier sourceCurrent,Optional<String> behavior){
+        Objects.requireNonNull(sourceCurrent);Objects.requireNonNull(behavior);
         Registration registration;
         synchronized(this){registration=capabilities.get(key);}
         if(registration==null || registration.descriptor.kind()!=Kind.CONDITION)return completedHandle(Outcome.Status.UNAVAILABLE,"condition-unavailable");
         if(registration.descriptor.privileged())return completedHandle(Outcome.Status.UNAVAILABLE,"privileged-condition-not-granted");
-        return invokeHandle(registration.owner,registration.descriptor,token->registration.condition.test(invocation(registration,npc,player,argumentsJson,preview,token)),false,sourceCurrent);
+        Optional<String> refused=builtinRefusal(registration);
+        if(refused.isPresent())return completedHandle(Outcome.Status.UNAVAILABLE,refused.get());
+        return invokeHandle(registration.owner,registration.descriptor,token->registration.condition.test(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),false,sourceCurrent);
     }
-    private Invocation invocation(Registration registration,NpcHandle npc,Optional<UUID> player,String json,boolean preview,Cancellation token){
-        List<Diagnostic> errors=registration.schema.validate(json);
+    private Invocation invocation(Registration registration,NpcHandle npc,Optional<UUID> player,String json,boolean preview,Cancellation token,Optional<String> behavior){
+        List<Diagnostic> errors=argumentProblems(registration,json);
         if(!errors.isEmpty())throw new InvalidArguments(errors);
         // Validation is bounded preparation, not authority to enter trusted code. Recheck at the
         // callback admission boundary; a callback already admitted remains cooperative work.
         if(token.cancelled() || !available(registration.owner))throw new CancellationException("Module admission revoked before callback");
-        return new Invocation(npc,player,json,preview,token);
+        return new Invocation(npc,player,json,preview,token,behavior);
     }
     private static final class InvalidArguments extends IllegalArgumentException {
         final List<Diagnostic> diagnostics;
@@ -204,12 +252,15 @@ public final class ModuleHost implements AutoCloseable {
         return invokeHandle(entry,descriptor,operation,jsonResult,()->true);
     }
     private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,boolean jsonResult,BooleanSupplier sourceCurrent){
+        return invokeHandle(entry,descriptor,operation,jsonResult,sourceCurrent,deadlineNanos);
+    }
+    private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,boolean jsonResult,BooleanSupplier sourceCurrent,long deadline){
         Call<T> call;
         synchronized(this){
             if(!available(entry) || descriptor!=null && !descriptor.platforms().contains(platform))return completedHandle(Outcome.Status.UNAVAILABLE,reason(entry));
             if(calls.size()>=maximumInvocations)return completedHandle(Outcome.Status.BUSY,"invocation-capacity");
             call=new Call<>(entry,operation,jsonResult,sourceCurrent);calls.add(call);
-            call.deadline=deadlines.schedule(call::timeout,deadlineNanos,TimeUnit.NANOSECONDS);
+            call.deadline=deadlines.schedule(call::timeout,deadline,TimeUnit.NANOSECONDS);
             workers.execute(call);
         }
         return new InvocationHandle<>(call.result.minimalCompletionStage(),()->call.cancel("invocation-cancelled"),call::quiescent);
@@ -271,9 +322,9 @@ public final class ModuleHost implements AutoCloseable {
         if(admissionClosed && calls.stream().allMatch(call->call.deliveryPhase!=0))deliveries.shutdown();
     }
     private final class Entry implements ModuleContext,Registrar {
-        final TrustedModule module;final ModuleManifest manifest;final DefinitionService scopedDefinitions;final Map<Key,Registration> staged=new LinkedHashMap<>();final List<AutoCloseable> resources=new ArrayList<>();
+        final TrustedModule module;final ModuleManifest manifest;final BuiltinPolicy policy;final DefinitionService scopedDefinitions;final Map<Key,Registration> staged=new LinkedHashMap<>();final List<AutoCloseable> resources=new ArrayList<>();
         volatile State state=State.STARTING;volatile String reason="starting";boolean staging=true,cleaned;
-        Entry(TrustedModule module,ModuleManifest manifest){this.module=module;this.manifest=manifest;scopedDefinitions=definitions.scoped(()->available(this));}
+        Entry(TrustedModule module,ModuleManifest manifest,BuiltinPolicy policy){this.module=module;this.manifest=manifest;this.policy=policy;scopedDefinitions=definitions.scoped(()->available(this));}
         synchronized Map<Key,Registration> seal(){staging=false;return Map.copyOf(staged);}
         synchronized List<AutoCloseable> takeResources(){List<AutoCloseable> copy=List.copyOf(resources);resources.clear();return copy;}
         public DefinitionService definitions(){return scopedDefinitions;}
@@ -330,7 +381,8 @@ public final class ModuleHost implements AutoCloseable {
         void timeout(){
             if(!terminal.compareAndSet(0,1))return;
             cancelled.set(true);
-            synchronized(ModuleHost.this){if(entry.state==State.ACTIVE){entry.state=State.SUSPENDED;entry.reason="invocation-deadline-exceeded";}}
+            // A slow platform owner delays built-in work without proving it hung, so only that call times out.
+            synchronized(ModuleHost.this){if(entry.policy==null && entry.state==State.ACTIVE){entry.state=State.SUSPENDED;entry.reason="invocation-deadline-exceeded";}}
             publish(rejected(Outcome.Status.TIMED_OUT,"invocation-deadline-exceeded"));
             // A running/returned trusted stage retains its slot until it actually terminates. No preemption is claimed.
             if(workers.remove(this))finish(null,null);
@@ -349,6 +401,8 @@ public final class ModuleHost implements AutoCloseable {
             Outcome<T> outcome;
             if(isCancelled() || !available(entry))outcome=rejected(Outcome.Status.CANCELLED,sourceRevoked.get()?"source-authority-revoked":"module-unavailable-after-callback");
             else if(failure instanceof InvalidArguments invalid)outcome=new Outcome<>(Outcome.Status.INVALID,Optional.empty(),invalid.diagnostics);
+            else if(failure instanceof CapabilityRefusal refusal)outcome=refusal.outcome();
+            else if(failure instanceof CompletionException wrapped && wrapped.getCause() instanceof CapabilityRefusal refusal)outcome=refusal.outcome();
             else if(failure!=null)outcome=rejected(failure instanceof InvalidPayload?Outcome.Status.INVALID:Outcome.Status.FAILED,"handler-failed: "+failure.getClass().getSimpleName());
             else if(value==null)outcome=rejected(Outcome.Status.FAILED,"handler-returned-null");
             else {

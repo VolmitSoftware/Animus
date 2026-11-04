@@ -26,4 +26,33 @@
 - Initial kinematic route execution, conservative live collision checks, look commands and reusable JSON waypoint routes; exact managed verification recorded separately.
 - Bounded unmounted preview control using semantic native input and heartbeat expiry.
 
-Partial-block movement, mounted riding, Folia rendering, behaviors, the full combat module, extension modules, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
+- Automatic behavior triggers for interaction, proximity, spawn, despawn, damage, death, waypoint, timer, dialogue choice and module events, with cooldown, queue and concurrency budgets under `[behaviors.triggers]`.
+- `ModuleContext.triggers()` lets modules publish triggers they registered.
+- `/animus behaviors triggers [page]` lists bindings, last fired, dropped counts and the most recent start refusal.
+- Behavior variables can use `npc`, `player`, `relationship` and `global` scopes with `transient` or `persistent` lifetimes.
+- Persistent behavior state under `state/behavior-state/` with coalesced journaled writes, flush on clean shutdown, and `[behaviors.state]` budgets.
+- Accepted behaviors keep last-valid checkpoints across restarts, and deleted sources do not return.
+- `/animus behaviors trace`, `/animus behaviors state status` and `/animus behaviors state purge`.
+- Persisted NPC-on-NPC mounts from native and imported definitions, with cycle and bound validation and exact field diagnostics.
+- Opt-in real-player riding through validated interaction, with semantic steering and server-side movement checks.
+- Packet-only ender dragon presentation with facing, synced phases and part-based hit validation.
+- Built-in `animus:` behavior conditions and actions for dialogue, clickable choices, navigation, look, appearance, equipment, sound, particles, combat control, and flag and quest state.
+- Privileged `animus:command`, denied by default, enabled by a TOML allow-list of behavior IDs or namespaces, with every run logged.
+- `[behaviors.actions]` settings for action budgets, the queue, pending choices and navigation waits.
+- `animus:navigate` can wait for arrival, with a timeout and cancellation.
+- Durable flags and quest stages per behavior namespace, covered by `[behaviors.state]` budgets and `state purge`.
+- Dialogue clicks start `dialogue_choice` triggers and fire `VirtualNpcDialogueChoiceEvent`, through the player-facing `/animus choice` click target.
+- `Capabilities.Invocation.behavior()` in the module API.
+- `behavior-trigger-needs-player` validation warning.
+
+### Changed
+
+- Manual runs stay limited to one per NPC; trigger-started executions are counted separately and use scoped variables, resolving player and relationship variables from the triggering player.
+- `/animus behaviors inspect` answers with current waits, conditions and recent steps, and `/animus behaviors trace` lists every active run with its origin. Startup logs every behavior catalog diagnostic.
+- Behavior validation rejects invalid literal capability arguments and reports unavailable capabilities separately.
+- `/animus modules status` and `capabilities` count built-ins apart from module capabilities.
+- Preview executions carry their preview flag through to capabilities.
+
+### Notes
+
+Partial-block movement, Folia rendering, the full combat module, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.

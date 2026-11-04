@@ -32,7 +32,13 @@ public final class BehaviorCatalog {
         public static Capability present(){return new Capability(true,"available");}
     }
     /** Engine-owned, quick registry observation only. Actual invocations must recheck capability authority. */
-    @FunctionalInterface public interface CapabilityResolver {Capability resolve(Requirement requirement);}
+    @FunctionalInterface public interface CapabilityResolver {
+        Capability resolve(Requirement requirement);
+        /** Per-behavior grant for a registered capability, such as a privileged allow-list. Not cached across behaviors. */
+        default Capability authorize(Requirement requirement,String behavior){return Capability.present();}
+        /** Literal argument problems. An unknown capability has nothing to check and returns no diagnostics. */
+        default List<Diagnostic> validate(Requirement requirement,String argumentsJson){return List.of();}
+    }
     public enum SourceState { VALID, INVALID, CONFLICT, DUPLICATE, MISSING }
     public record Accepted(long revision,String sourceHash,long sourceBytes,BehaviorProgram program,Set<Requirement> requirements){
         public Accepted{if(revision<1||sourceBytes<1||!sourceHash.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid accepted behavior token");Objects.requireNonNull(program);requirements=Set.copyOf(requirements);}
@@ -163,8 +169,13 @@ public final class BehaviorCatalog {
                         catch(RuntimeException | AssertionError | LinkageError failure){capability=new Capability(false,"registry-check-failed");}
                         capabilities.put(requirement,capability);
                     }
-                    if(!capability.available()){available=false;owner.add(error("behavior-capability-unavailable",requirement.kind()==Kind.TRIGGER?"$.triggers":"$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+capability.reason()));}
+                    if(!capability.available()){available=false;owner.add(error("behavior-capability-unavailable",requirement.kind()==Kind.TRIGGER?"$.triggers":"$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+capability.reason()));continue;}
+                    Capability granted;
+                    try{granted=Objects.requireNonNull(resolver.authorize(requirement,id));}
+                    catch(RuntimeException | AssertionError | LinkageError failure){granted=new Capability(false,"registry-check-failed");}
+                    if(!granted.available()){available=false;owner.add(error("behavior-capability-unavailable","$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+granted.reason()));}
                 }
+                BehaviorCompiler.warnings(owner.accepted.program()).forEach(owner::add);
                 resolutions.put(id,new Resolution(id,available,Optional.of(owner.accepted),owner.diagnostics()));
             }
             BehaviorSourceReader.Scan checked=reader.scan(false);
@@ -216,6 +227,8 @@ public final class BehaviorCatalog {
         candidate.object.remove("revision");BehaviorCompiler.Result result=BehaviorCompiler.compile(candidate.object.toString());
         if(result.program().isEmpty()){result.diagnostics().forEach(candidate::add);return;}
         BehaviorProgram program=result.program().orElseThrow();
+        List<Diagnostic> invalidArguments=argumentProblems(program);
+        if(!invalidArguments.isEmpty()){invalidArguments.forEach(candidate::add);return;}
         candidate.accepted=new Accepted(candidate.revision,candidate.source.hash(),candidate.source.bytes(),program,requirements(program));candidate.state=SourceState.VALID;
     }
     private static Set<Requirement> requirements(BehaviorProgram program){
@@ -231,6 +244,26 @@ public final class BehaviorCatalog {
         for(art.arcane.animus.core.behavior.trigger.TriggerBinding trigger:program.triggers())
             if(trigger.spec() instanceof art.arcane.animus.core.behavior.trigger.TriggerBinding.ModuleEvent module)result.add(new Requirement(module.key(),Kind.TRIGGER));
         return Set.copyOf(result);
+    }
+    /** Bound templates hold placeholders until execution, so only fully literal arguments are checked here. */
+    private List<Diagnostic> argumentProblems(BehaviorProgram program){
+        List<Diagnostic> problems=new ArrayList<>();ArrayDeque<Node> pending=new ArrayDeque<>(program.routines().values());
+        while(!pending.isEmpty())switch(pending.removeFirst()){
+            case Action action->checkArguments(action.path(),new Requirement(action.capability(),Kind.ACTION),action.arguments(),problems);
+            case Condition condition->{checkArguments(condition.path(),new Requirement(condition.capability(),Kind.CONDITION),condition.arguments(),problems);pending.add(condition.thenNode());pending.add(condition.elseNode());}
+            case Sequence sequence->pending.addAll(sequence.steps());
+            case Repeat repeat->pending.add(repeat.body());
+            case Parallel parallel->pending.addAll(parallel.branches());
+            default->{}
+        }
+        return List.copyOf(problems);
+    }
+    private void checkArguments(String path,Requirement requirement,ArgumentTemplate arguments,List<Diagnostic> problems){
+        if(arguments.bindings()>0)return;
+        List<Diagnostic> found;
+        try{found=Objects.requireNonNull(resolver.validate(requirement,arguments.resolve(Map.of())));}
+        catch(RuntimeException | AssertionError | LinkageError failure){found=List.of(error("registry-check-failed","$","Argument validation failed"));}
+        for(Diagnostic problem:found)problems.add(error("behavior-arguments-invalid",safe(path+".arguments"+problem.field().substring(Math.min(1,problem.field().length())),512),requirement.key()+": "+problem.code()+": "+problem.message()));
     }
     private static Reload rejected(String code,String message,Snapshot unchanged){return new Reload(false,unchanged,List.of(error(code,"behaviors",message)),0,0);}
     private static Diagnostic error(String code,String field,String message){return new Diagnostic(Diagnostic.Severity.ERROR,code,field,safe(message,800));}

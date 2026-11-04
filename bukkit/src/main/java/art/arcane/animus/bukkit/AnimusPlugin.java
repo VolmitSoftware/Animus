@@ -35,6 +35,11 @@ public final class AnimusPlugin extends JavaPlugin {
     private RuntimeCombatService combat;
     private art.arcane.animus.core.extension.ExtensionRuntime extensions;
     private volatile BukkitBehaviorCommands behaviors;
+    private art.arcane.animus.core.behavior.builtin.BuiltinCapabilities builtins;
+    private final art.arcane.animus.core.behavior.builtin.DialogueTriggers dialogueTriggers = new art.arcane.animus.core.behavior.builtin.DialogueTriggers(() -> {
+        BukkitBehaviorCommands current = behaviors;
+        return current == null ? null : current.triggers();
+    });
     private volatile boolean stopping;
 
 
@@ -66,11 +71,14 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(combat.status());
             getLogger().info(proof.status(null));
             var modulePlatform = modulePlatform();
+            builtins = new art.arcane.animus.core.behavior.builtin.BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, replies.isFolia()),
+                    runtime.behaviorState(), this::publishChoice,
+                    runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new art.arcane.animus.core.extension.ExtensionRuntime(runtime.documents().resolve("modules"),
                     modulePlatform, runtime.definitionGateway(), runtime.moduleSettings(), message -> getLogger().info(message), initialized -> {
                         BukkitBehaviorCommands current = behaviors;
                         if (current != null) current.modulesInitialized(initialized);
-                    });
+                    }, builtins);
             behaviors = new BukkitBehaviorCommands(getDataFolder().toPath(), runtime, extensions, replies, message -> getLogger().info(message));
             var triggers = behaviors.triggers();
             if (triggers != null) {
@@ -92,6 +100,7 @@ public final class AnimusPlugin extends JavaPlugin {
     public void onDisable() {
         stopping = true;
         if (behaviors != null) behaviors.close();
+        if (builtins != null) builtins.close();
         if (extensions != null) extensions.close();
         if (combat != null) combat.close();
         if (living != null) living.close();
@@ -106,6 +115,11 @@ public final class AnimusPlugin extends JavaPlugin {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] arguments) {
         AnimusRuntime activeRuntime = runtime;
         if (stopping || activeRuntime == null) { sender.sendMessage("Animus is not running."); return true; }
+        // A dialogue click comes from ordinary players. Only its single-use token grants anything.
+        if (arguments.length > 0 && arguments[0].equalsIgnoreCase("choice") && builtins != null) {
+            BukkitChoiceCommand.execute(sender, arguments, builtins::selectChoice);
+            return true;
+        }
         boolean status = arguments.length == 0 || arguments[0].equalsIgnoreCase("status");
         if (!sender.hasPermission(status ? "animus.status" : "animus.admin")) {
             sender.sendMessage("You do not have permission to use this command."); return true;
@@ -127,6 +141,14 @@ public final class AnimusPlugin extends JavaPlugin {
             String[] combatArgs = arguments.clone(); combatArgs[0] = combatArgs[0].toLowerCase(Locale.ROOT);
             try { sender.sendMessage(combat.execute(combatArgs)); }
             catch (RuntimeException e) { sender.sendMessage("Animus combat: " + e.getMessage()); }
+            return true;
+        }
+        if (arguments.length > 0 && arguments[0].equalsIgnoreCase("ride")) {
+            try {
+                if (arguments.length == 3 && arguments[1].equalsIgnoreCase("stop")) sender.sendMessage(living.stopRider(arguments[2]) ? "Dismounted " + arguments[2] : arguments[2] + " is not riding");
+                else if (arguments.length == 1 || (arguments.length == 2 && arguments[1].equalsIgnoreCase("status"))) sender.sendMessage(living.rideStatus());
+                else sender.sendMessage("ride [status] | ride stop <player>");
+            } catch (RuntimeException e) { sender.sendMessage("Animus ride: " + e.getMessage()); }
             return true;
         }
         if (arguments.length > 0 && arguments[0].equalsIgnoreCase("select")) {
@@ -176,7 +198,7 @@ public final class AnimusPlugin extends JavaPlugin {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] arguments) {
         if (arguments.length == 1) {
             List<String> available = sender.hasPermission("animus.admin") ? new ArrayList<>(Administration.COMMANDS) : new ArrayList<>(List.of("status"));
-            if (sender.hasPermission("animus.admin")) available.addAll(List.of("proof", "select", "attack", "target", "combat", "navigate", "navigation", "look", "modules", "behaviors"));
+            if (sender.hasPermission("animus.admin")) available.addAll(List.of("proof", "select", "attack", "target", "combat", "navigate", "navigation", "look", "ride", "modules", "behaviors"));
             if (sender.hasPermission("animus.admin") && foliaProof != null) available.add("foliaproof");
             return available.stream().filter(c -> c.startsWith(arguments[0].toLowerCase(Locale.ROOT))).toList();
         }
@@ -198,6 +220,8 @@ public final class AnimusPlugin extends JavaPlugin {
                         .map(c -> c.descriptor().key().toString()).filter(s -> s.startsWith(arguments[2])).limit(100).toList();
             if (arguments.length == 6 && arguments[0].equalsIgnoreCase("navigate"))
                 return List.of("walk", "swim", "fly").stream().filter(s -> s.startsWith(arguments[5].toLowerCase(Locale.ROOT))).toList();
+            if (arguments.length == 2 && arguments[0].equalsIgnoreCase("ride"))
+                return List.of("status", "stop").stream().filter(s -> s.startsWith(arguments[1].toLowerCase(Locale.ROOT))).toList();
             if (arguments.length == 3 && arguments[0].equalsIgnoreCase("navigation"))
                 return List.of("status", "stop").stream().filter(s -> s.startsWith(arguments[2].toLowerCase(Locale.ROOT))).toList();
             if (arguments.length == 2 && arguments[0].equalsIgnoreCase("foliaproof"))
@@ -216,7 +240,7 @@ public final class AnimusPlugin extends JavaPlugin {
                 if (args.length > 2) throw new IllegalArgumentException("modules status");
                 var snapshot = extensions.status();
                 sender.sendMessage("Modules " + snapshot.state() + " | startup=" + extensions.startupStatuses().size()
-                        + " | capabilities=" + extensions.capabilities().size() + " | failure=" + snapshot.failure());
+                        + " | " + ModuleCapabilityListing.of(extensions.capabilities()).counts() + " | failure=" + snapshot.failure());
                 sender.sendMessage("Module invocations: " + snapshot.invocations());
                 if (snapshot.lifecycle() != null) sender.sendMessage("Module lifecycle: " + snapshot.lifecycle());
                 if (snapshot.cleanup() != null) sender.sendMessage("Module cleanup: " + snapshot.cleanup());
@@ -233,9 +257,12 @@ public final class AnimusPlugin extends JavaPlugin {
                         return s.id() + " [" + s.archive() + "] | " + (current == null ? s.state() : current.state())
                                 + " | " + (current == null ? s.reason() : current.reason());
                     }).toList();
-                } else rows = extensions.capabilities().stream().map(c -> c.descriptor().key() + " | " + c.descriptor().kind()
-                        + " | available=" + c.available() + " | " + c.reason()).toList();
-                sender.sendMessage("Module " + operation + ": " + rows.size() + "; page " + page);
+                    sender.sendMessage("Module list: " + rows.size() + "; page " + page);
+                } else {
+                    ModuleCapabilityListing listing = ModuleCapabilityListing.of(extensions.capabilities());
+                    rows = listing.rows();
+                    sender.sendMessage(listing.header(page));
+                }
                 rows.stream().skip((page - 1L) * 20).limit(20).forEach(sender::sendMessage);
             } else if (operation.equals("action") || operation.equals("condition")) {
                 if (args.length < 5) throw new IllegalArgumentException("modules " + operation + " <namespace:name> <npc-id> <JSON object>");
@@ -256,6 +283,13 @@ public final class AnimusPlugin extends JavaPlugin {
             } else throw new IllegalArgumentException("modules status|list|capabilities|action|condition");
         } catch (RuntimeException failure) { sender.sendMessage("Animus modules: " + failure.getMessage()); }
         return true;
+    }
+
+    private void publishChoice(art.arcane.animus.core.behavior.builtin.DialogueChoice choice) {
+        dialogueTriggers.publish(choice);
+        Player player = getServer().getPlayer(choice.player());
+        if (player != null) getServer().getPluginManager().callEvent(new art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent(
+                player, choice.npc().uuid(), choice.behavior(), choice.prompt(), choice.option()));
     }
 
     private art.arcane.animus.api.Platform modulePlatform() {

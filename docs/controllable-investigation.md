@@ -1,6 +1,6 @@
 # Controllable NPC investigation
 
-Investigated on 2026-11-04 using the cached exact Minecraft server and client jars, Java 25 `javap -p -c`, and the current packet/passenger adapter. No production source changed and no servers were started for this investigation. These are verified packet/code paths and proposed proofs, not a claim that riding or controllable movement works today.
+Investigated on 2026-11-04 using the cached exact Minecraft server and client jars, Java 25 `javap -p -c`, and the current packet/passenger adapter. No servers were started. The findings below are verified packet and code paths. [What was built from them](#real-rider-implementation) is described at the end; it has unit tests and exact-jar checks and has not yet run with a graphical client.
 
 Implementation follow-up: the unmounted proof below is now present in source, with focused core tests and Bukkit compilation passing. Exact-version live control scenarios remain the acceptance gate. `ControlInput`, `ControlInbox` and `ControlLoop` separate semantic keys, a bounded latest-value mailbox and the authoritative proposal clock. The adapter reads keys and client-tick-end heartbeats without scheduling a callback for every packet; the owner polls at most eight active leases. Only tick-end heartbeats renew the two-second liveness deadline. An input rate above 80 packets per admission-aligned one-second window closes that lease; a coalesced shift still closes it.
 
@@ -33,7 +33,7 @@ Verified behavior in all three versions:
 
 ## Existing implementation boundary
 
-`NativePacketAdapter.passengers(Player, Body, List<Body>)` currently accepts only visible virtual bodies owned by that viewer's adapter session. Its small passenger graph rejects duplicate parents, cycles and lists over 16 passengers. It cannot attach the real viewer. `PacketProofService` rejects movement of mounted proof bodies and revokes their hit authority; clearing an involved body clears the mount presentation. The existing wire test establishes a static virtual-to-virtual passenger relationship only.
+`NativePacketAdapter.passengers` accepts visible virtual bodies owned by that viewer's adapter session, plus optionally one real player by its own server entity. Its small passenger graph rejects duplicate parents, cycles and lists over 16 passengers. `PacketProofService` rejects movement of mounted proof bodies and revokes their hit authority; clearing an involved body clears the mount presentation.
 
 ## Smallest useful next proof
 
@@ -49,15 +49,22 @@ The implementation design was:
 
 The exact native test clients can construct `Input` and `ServerboundPlayerInputPacket` on all three versions. Test held input, release, diagonal normalization, opposite flags, wall/leash limits, flooding without increased speed, another viewer's input, stale reconnect input, cancellation and teardown. Assert authoritative virtual coordinates as well as wire coordinates, and assert zero world-registered NPC bodies. A graphical client still has to demonstrate ordinary keyboard behavior and presentation.
 
-## Separate riding gate
+## Real rider implementation
 
-After remote control works, add a separate, initially stationary **real-viewer passenger presentation** proof. Introduce an explicit owner-viewer passenger reference; do not manufacture a virtual `Body` for the real player or expose arbitrary passenger IDs. A real player already exists in the world; no helper vehicle or surrogate NPC entity is required or permitted by this proof.
+No helper vehicle or surrogate entity exists. The roster packet names the real player by its own entity ID, so a virtual `Body` is never made for it. Further exact findings on all three versions shaped the design:
 
-Attach/detach must be a generation-bound operation. Send an empty passenger list before retiring the virtual vehicle, restore a validated safe real-player position through the platform, and preserve any real vehicle relationship created externally. Record both client attachment and actual server position. Disconnect/world transitions must retire the control lease even if the detach packet cannot be delivered.
+- A client rides passively. `isLocalClientAuthoritative` needs a controlling passenger, which a non-saddled virtual body never has, so the client follows server position packets for the vehicle and sends only rotation and input, never move-vehicle.
+- The server does not know the player is a passenger, so its rotation packets run the ordinary movement path. That path sets `clientIsFloating` when no block is near the player's box, and `tick()` kicks after the flying limit. The rider's server position is therefore the NPC's supported feet, never its seat. Admission requires ground and every step keeps it.
+- `Entity.setPos` plus `ServerChunkCache.move` moves the server player and its chunk view with no client teleport. `tick()` snaps back to the movement baseline, and a rotation packet is measured against it, so `resetPosition()` follows at once. No acknowledgment is awaited or rewritten, and normal movement validation stays on.
+- A move packet from before the client mounted can still arrive. The rider is put back at the NPC's feet every tick, so such a packet cannot move the ride.
+- A detach is written ahead of an ordinary Bukkit teleport from the owner thread. Netty runs tasks in order, so the client stops riding, and only then applies the position, which it would otherwise ignore. That restores agreement with no special handling, including at shutdown.
+- A foreign teleport fires its event before the packet goes out, so ending the ride in that handler orders the detach ahead of it too.
+- Shift is in `Input` and reaches `ControlInbox`, which already closes on it, so it needs no special case. Other viewers need the roster again whenever vanilla starts tracking the rider, and nothing announces that, so it repeats once a second to them.
+- `ServerboundMoveVehiclePacket` needs no handling: vanilla requires a real root vehicle and ignores it.
 
-Only then attempt one bounded movement step with the real rider. This requires a distinct server-side player movement bridge, validated collision/seat offsets, ordered vehicle corrections, normal teleport acknowledgment handling, and agreement between the real player's authoritative location and the presented seat. Cancel if that agreement cannot be maintained. Do not disable normal movement validation, trust vehicle coordinates, rewrite acknowledgments, or advertise riding based on a decoded passenger packet. Graphical-client tests are required for dismount keys, local prediction, corrections and camera behavior.
+`RideSession`, `RideLedger` and `RideSteering` hold the decisions: attaching, riding and closed states, one-time attach completion, bounds, leash and terrain outcomes. `RiderService` applies them on the owner thread, and `MountRuntime` keeps them with viewer state. The vanilla-style support rule, in which any one full block under the body is enough, lives in `RideSteering` because `MotionValidator`'s every-cell rule would leave a wide body stuck at any ledge. Clearance still comes from `MotionValidator`.
 
-Currently unavailable: controlled real riders, moving passenger assemblies, mount inventory/jump semantics, flying/swimming control, arbitrary entity-type steering, region transfer on Folia, camera possession, and production control permissions/integrations. These remain separate acceptance items.
+Still unavailable: mount inventory and jump semantics, flying and swimming control, region transfer on Folia, camera possession, integrations with region or anti-cheat plugins, and persisting a ride across a restart. Reach from the seat is not simulated. Graphical-client behaviour still has to be confirmed for dismount keys, camera, seat placement and motion smoothing.
 
 ## Reproduction evidence
 
