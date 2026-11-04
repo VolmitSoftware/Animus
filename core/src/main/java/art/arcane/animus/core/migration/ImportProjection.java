@@ -88,6 +88,7 @@ final class ImportProjection {
             if(target==null || !string(reference,"npcId").equals(target.id()) || !string(reference,"npcUuid").equals(target.uuid().toString()))
                 throw new IOException("Resolved migration reference does not match the source identity map");
             reference.addProperty("npcId",ids.get(target.id()));reference.addProperty("npcUuid",uuids.get(target.uuid()).toString());
+            SentinelMapping.remapGuard(data,reference);
         }
     }
     private static void dormant(JsonObject data) throws IOException {

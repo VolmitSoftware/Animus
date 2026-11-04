@@ -65,6 +65,16 @@ public final class VirtualNpcState {
         return snapshot();
     }
 
+    /** Restores at most this much health to a living NPC, never above its maximum. */
+    public synchronized Snapshot heal(double amount) {
+        if (!Double.isFinite(amount) || amount <= 0) throw new IllegalArgumentException("Healing must be finite and positive");
+        if (active && health < maximumHealth) {
+            advance();
+            health = Math.min(maximumHealth, health + amount);
+        }
+        return snapshot();
+    }
+
     public synchronized Snapshot respawn(WorldPosition spawn) {
         Objects.requireNonNull(spawn, "spawn");
         advance(); position = spawn; health = maximumHealth; active = true;
@@ -73,9 +83,14 @@ public final class VirtualNpcState {
 
     /** A definition replacement may change geometry/position without healing or reviving this NPC. */
     public synchronized VirtualNpcState reconfigured(WorldPosition next, double width, double height) {
+        return reconfigured(next, width, height, maximumHealth);
+    }
+
+    /** As above, with a new maximum. Current health never rises, and falls only to fit the new maximum. */
+    public synchronized VirtualNpcState reconfigured(WorldPosition next, double width, double height, double newMaximumHealth) {
         if (revision == Long.MAX_VALUE) throw new IllegalStateException("Runtime revision exhausted");
-        VirtualNpcState copy = new VirtualNpcState(npcId, next, width, height, maximumHealth);
-        copy.health = health;
+        VirtualNpcState copy = new VirtualNpcState(npcId, next, width, height, newMaximumHealth);
+        copy.health = Math.min(health, newMaximumHealth);
         copy.active = active;
         copy.revision = revision + 1;
         return copy;
