@@ -1,6 +1,6 @@
 # Folia stationary preview
 
-The experimental Folia proof renders one stationary player-shaped NPC privately to an administrator. It has its own command and does not activate saved NPC definitions. General Folia NPC rendering, navigation, remote control and combat remain unavailable.
+The experimental Folia proof renders one stationary player-shaped NPC privately to an administrator. It has its own command and does not activate saved NPC definitions. Saved NPCs run separately through the [Folia runtime](folia-runtime.md); remote control, riding and combat remain unavailable on Folia.
 
 Enable `packetProofEnabled = true` in `config.toml` and restart the isolated test server. An administrator with `animus.admin` can use:
 
@@ -27,6 +27,6 @@ Interactions use the server's eye position, direction, virtual hitbox, reach and
 | Interaction rate / reach | 10 per second / 4.5 blocks |
 | Body/support / line-of-sight samples | 128 / 512 |
 
-The lifetime ceiling also bounds retired network cleanup when a connection is stalled. Clearing a proof releases its concurrent slot but does not reset that ceiling. Invalid skin or transport completion can consume an admitted attempt. A general reusable Folia runtime will need a different transport and NPC ownership lifecycle before this restriction can be removed.
+The lifetime ceiling also bounds retired network cleanup when a connection is stalled. Clearing a proof releases its concurrent slot but does not reset that ceiling. Invalid skin or transport completion can consume an admitted attempt. The [Folia runtime](folia-runtime.md) uses its own transport and NPC ownership lifecycle and does not share these preview limits.
 
 This proof uses no world-registered NPC body, vehicle or helper entity. It does not establish multi-viewer production ownership, cross-region NPC transfer, mounted riding, complex entity presentation, graphical fidelity or performance improvement. Exact source/build and live verification status are recorded in [implementation evidence](implementation.md); protocol evidence remains distinct from graphical-client testing.

@@ -1,6 +1,6 @@
 # Folia ownership investigation
 
-Investigated on 2026-11-04 against the exact cached Folia API and expanded server jars, with Java 25 `javap -p -c`. This document proposes the next implementation; it does not enable Folia NPC rendering, movement or combat. No server was started and no production source changed during this investigation. Existing Folia evidence covers startup, file commands, restart and explicit runtime-disable diagnostics only.
+Investigated on 2026-11-04 against the exact cached Folia API and expanded server jars, with Java 25 `javap -p -c`. The general runtime now follows this design; [persisted NPCs on Folia](folia-runtime.md) describes what was built and what differs from the proposal below. No server was started and no production source changed during this investigation. Existing Folia evidence covers startup, file commands, restart and explicit runtime-disable diagnostics only.
 
 ## Verified APIs and current boundaries
 

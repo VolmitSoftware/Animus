@@ -7,7 +7,10 @@ import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
-/** Main-thread capture followed by bounded asynchronous planning. Folia is explicitly unsupported until region capture exists. */
+/**
+ * Owner-thread capture followed by bounded asynchronous planning. On Bukkit and Paper one main-thread pump captures
+ * every job. On Folia each NPC's region owner captures only its own job and reads only chunks it owns.
+ */
 public final class BukkitNavigationBridge implements AutoCloseable {
     private final JavaPlugin plugin;
     private final NavigationWorkQueue work;
@@ -19,11 +22,37 @@ public final class BukkitNavigationBridge implements AutoCloseable {
     public BukkitNavigationBridge(JavaPlugin plugin, NavigationLimits limits) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         Objects.requireNonNull(limits, "limits");
-        if (isFolia(plugin)) throw new UnsupportedOperationException("Navigation snapshot capture is unavailable on Folia until region-aware capture is implemented");
+        if (isFolia(plugin)) throw new UnsupportedOperationException("Folia captures on each region owner; use regionOwned");
         if (!Bukkit.isPrimaryThread()) throw new IllegalStateException("Construct navigation bridge on the Bukkit owner thread");
         work = new NavigationWorkQueue(limits);
         try { pump = plugin.getServer().getScheduler().runTaskTimer(plugin, this::captureTick, 1, 1); }
         catch (RuntimeException failure) { work.close(); throw failure; }
+    }
+    private BukkitNavigationBridge(NavigationLimits limits) {
+        plugin = null; work = new NavigationWorkQueue(Objects.requireNonNull(limits, "limits")); pump = null;
+    }
+    /** Folia: no shared pump. Each region owner calls {@link #capture} for its own plan. */
+    public static BukkitNavigationBridge regionOwned(NavigationLimits limits) { return new BukkitNavigationBridge(limits); }
+
+    /**
+     * Region owner only: advances this plan's capture by at most {@code budget} units. Every voxel and chunk check
+     * first asks {@code owned}; an unowned or unloaded chunk is captured as unavailable, never read.
+     */
+    public int capture(NavigationPlan plan, World world, ChunkOwnership owned, long tick, int budget) {
+        if (closed || pump != null) throw new IllegalStateException(closed ? "Navigation bridge is closed" : "This bridge captures on the main thread");
+        Objects.requireNonNull(world, "world"); Objects.requireNonNull(owned, "owned");
+        return work.pump(plan, new NavigationWorkQueue.Sampler() {
+            @Override public boolean worldAvailable(UUID id) { return world.getUID().equals(id); }
+            @Override public boolean chunkAvailable(UUID id, int x, int z) {
+                return world.getUID().equals(id) && owned.owns(x, z) && world.isChunkLoaded(x, z);
+            }
+            @Override public VoxelSnapshot.Cell sample(UUID id, int x, int y, int z) {
+                int chunkX = Math.floorDiv(x, 16), chunkZ = Math.floorDiv(z, 16);
+                if (!world.getUID().equals(id) || y < world.getMinHeight() || y >= world.getMaxHeight()
+                        || !owned.owns(chunkX, chunkZ) || !world.isChunkLoaded(chunkX, chunkZ)) return VoxelSnapshot.Cell.UNAVAILABLE;
+                return CollisionCells.of(world.getBlockAt(x, y, z));
+            }
+        }, tick, budget);
     }
 
     /** May be requested from any thread; completion is not a permission to perform off-thread Bukkit work. */
@@ -70,7 +99,7 @@ public final class BukkitNavigationBridge implements AutoCloseable {
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
-        try { pump.cancel(); }
+        try { if (pump != null) pump.cancel(); }
         finally { work.close(); }
     }
 }

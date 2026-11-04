@@ -66,7 +66,7 @@ final class NavigationWaits implements AutoCloseable {
         wait.result.completeExceptionally(failure instanceof CompletionException wrapped && wrapped.getCause() != null ? wrapped.getCause() : failure);
     }
 
-    /** Owner only. The result settles before the route stops, so the route's own cancellation report cannot replace it. */
+    /** Owner tick only. The result settles before the route stops, so the route's own cancellation report cannot replace it. A regionized port answers navigationStatus here from published state and stops the route on the NPC's owner. */
     void tick() {
         List<Wait> snapshot;
         long now;
@@ -87,8 +87,12 @@ final class NavigationWaits implements AutoCloseable {
         synchronized (this) { if (!active.remove(wait)) return; }
         wait.result.completeExceptionally(refusal);
         if (!stopRoute) return;
-        try { platform.stopNavigation(wait.npc); }
-        catch (RuntimeException | LinkageError gone) { /* An NPC that left the runtime has no route to stop. */ }
+        try {
+            platform.onNpcOwner(wait.npc, () -> {
+                try { platform.stopNavigation(wait.npc); }
+                catch (RuntimeException | LinkageError gone) { /* An NPC that left the runtime has no route to stop. */ }
+            }, ignored -> { /* An owner that cannot accept the stop has no route left to stop. */ });
+        } catch (RuntimeException | LinkageError gone) { /* An NPC that left the runtime has no route to stop. */ }
     }
 
     private String status(NpcHandle npc) {

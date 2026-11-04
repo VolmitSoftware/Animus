@@ -3,7 +3,6 @@ package art.arcane.animus.bukkit.runtime;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.navigation.*;
-import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.navigation.*;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
@@ -13,6 +12,7 @@ import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountReference;
 import art.arcane.animus.core.mount.SeatGeometry;
+import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.*;
 import art.arcane.animus.core.virtual.*;
@@ -31,8 +31,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
-/** Persisted virtual NPCs. All world/presentation and movement authority belongs to the Bukkit owner thread. */
-public final class PersistedNpcService implements Listener, AutoCloseable {
+/** Persisted virtual NPCs on Bukkit and Paper. All world/presentation and movement authority belongs to the main thread. */
+public final class PersistedNpcService implements NpcRuntime, Listener {
     public record Settings(boolean enabled, double viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick) {
         public static final Settings DEFAULT = new Settings(true, 48, 64, 256, 16);
         public Settings {
@@ -43,8 +43,6 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     }
     /** Internal trusted integration lease; replacement/deletion revokes it. Access only on the owning scheduler. */
     public record CombatBinding(VirtualNpcState state, BooleanSupplier current, Consumer<VirtualNpcState.Snapshot> changed) {}
-    /** Owner-thread view of an applied NPC body for behavior actions. */
-    public record ActiveNpc(String id, String name, VirtualNpcState.Snapshot state) {}
     private record Geometry(double width, double height, int ids, SeatGeometry seat) {}
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
     private static final int RECONCILE_WORK = 64, PACKET_WORK = 32, MAX_PENDING_PER_VIEWER = 8, MAX_ISSUED_IDS = 8192;
@@ -87,6 +85,28 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     private volatile boolean closed;
     private long accepted, rejected;
     long tickNumber;
+    private final PlayerAccess players = new PlayerAccess() {
+        @Override public boolean online(UUID player) { owner(); return plugin.getServer().getPlayer(player) != null; }
+        @Override public Optional<Player> owned(UUID player) { owner(); return Optional.ofNullable(plugin.getServer().getPlayer(player)); }
+        @Override public List<Player> ownedNear(WorldPosition at, double radius, int limit) {
+            owner();
+            World world = plugin.getServer().getWorld(UUID.fromString(at.world()));
+            List<Player> result = new ArrayList<>();
+            if (world == null) return result;
+            Location center = new Location(world, at.point().x(), at.point().y(), at.point().z());
+            for (Player candidate : world.getPlayers()) {
+                if (result.size() >= limit) break;
+                if (candidate.getLocation().distanceSquared(center) <= radius * radius) result.add(candidate);
+            }
+            return result;
+        }
+        @Override public boolean deliver(UUID player, Consumer<Player> action) {
+            owner(); Player online = plugin.getServer().getPlayer(player);
+            if (online == null) return false;
+            action.accept(online); return true;
+        }
+        @Override public boolean console(Runnable action) { owner(); action.run(); return true; }
+    };
 
     public PersistedNpcService(JavaPlugin plugin, AnimusRuntime runtime, String minecraftVersion, Executor io,
                                Settings settings, NativePacketAdapter.Scheduler scheduler) {
@@ -94,8 +114,6 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         this.io = Objects.requireNonNull(io); this.settings = Objects.requireNonNull(settings); this.scheduler = Objects.requireNonNull(scheduler);
         completions = new ArrayBlockingQueue<>(settings.maximumViewers() * (MAX_PENDING_PER_VIEWER + 2));
         if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
-        try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); unavailable = "unavailable on Folia until region-safe ownership and snapshots are proven"; return; }
-        catch (ClassNotFoundException absent) { /* ordinary Bukkit/Paper owner thread */ }
         owner();
         try {
             chunks = ChunkDelivery.bind(plugin, minecraftVersion);
@@ -149,10 +167,11 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                 + (entry.value == null ? "" : "; health=" + entry.value.state.snapshot().health())
                 + (entry.value == null ? "" : "; position=" + entry.value.state.snapshot().position().point() + "; navigation=" + entry.value.navigationStatus)
                 + (entry.value == null || entry.value.routeError == null ? "" : "; route-error=" + entry.value.routeError)
-                + (entry.value == null || entry.value.spec.type().equals("minecraft:player") ? "" : "; nameplate=unavailable for non-player bodies")
+                + (entry.value == null ? "" : appearance(entry.value))
                 + (entry.value == null ? "" : mountRuntime.summary(entry.value))
                 + (entry.error == null ? "" : "; last-valid-retained=" + (entry.value != null) + "; " + entry.error);
     }
+    private String appearance(Value value) { return NpcPresentation.describe(value.spec, value.equipment.size(), packets.presentationAvailable()); }
     public List<String> validateActivation(NpcDefinition definition) {
         if (!available()) return List.of("NPC runtime " + (closed ? "closed" : unavailable));
         owner(); Objects.requireNonNull(definition);
@@ -183,6 +202,16 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         selections.put(viewer, id);
     }
     public void refresh() { refresh.set(true); }
+    /** One owner: work already on the main thread runs now; anything else is scheduled there. */
+    @Override public boolean onOwner(UUID npc, Runnable work, Consumer<String> refused) { return onMain(work, refused); }
+    @Override public boolean onOwner(String id, Runnable work, Consumer<String> refused) { return onMain(work, refused); }
+    private boolean onMain(Runnable work, Consumer<String> refused) {
+        if (!available()) return false;
+        if (Bukkit.isPrimaryThread()) { work.run(); return true; }
+        try { plugin.getServer().getScheduler().runTask(plugin, () -> { if (available()) work.run(); else refused.accept("NPC runtime " + (closed ? "closed" : unavailable)); }); return true; }
+        catch (RuntimeException rejected) { return false; }
+    }
+    @Override public PlayerAccess players() { return players; }
     public WorldPosition navigationOrigin(String id) { return navigable(id).state.snapshot().position(); }
     public UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond) {
         Value value = navigable(id); Objects.requireNonNull(destination); Objects.requireNonNull(mode);
@@ -231,7 +260,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         return Optional.of(new ActiveNpc(entry.id, value.displayName, value.state.snapshot()));
     }
     /** Combat lookup that, unlike active(), also finds a dead NPC whose definition is still spawned. */
-    public Optional<ActiveNpc> combatant(UUID npc) {
+    @Override public Optional<ActiveNpc> combatant(UUID npc) {
         if (!available()) return Optional.empty();
         owner();
         Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
@@ -309,9 +338,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     /** Runtime-only override. Restart or a definition change restores the definition's own appearance. */
     public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) {
         Value value = navigable(id);
-        boolean player = value.spec.type().equals("minecraft:player");
-        if ((name.isPresent() || skin.isPresent()) && !player) throw new IllegalArgumentException("Names and skins display only on player bodies");
-        if (name.isPresent()) NativePacketAdapter.validateProfileName(name.get());
+        NpcPresentation.validateChange(value.spec, name, skin);
         cancelAppearanceRead(value);
         if (reset) {
             value.displayName = value.spec.name();
@@ -323,7 +350,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         representBody(value);
     }
     /** An empty stack clears the slot. Runtime-only, like appearance. */
-    public void setEquipment(String id, BehaviorPlatform.EquipmentSlot slot, ItemStack item) {
+    public void setEquipment(String id, EquipmentSlot slot, ItemStack item) {
         Value value = navigable(id);
         if (!packets.equipmentAvailable()) throw new IllegalStateException("Equipment packets are unavailable on this server version");
         value.equipment.put(slot, item);
@@ -374,14 +401,24 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     private static double bodyWidth(Value value) { var box = value.state.snapshot().bounds(); return box.max().x() - box.min().x(); }
     private static double bodyHeight(Value value) { var box = value.state.snapshot().bounds(); return box.max().y() - box.min().y(); }
     /** Terrain checks use a central hull. A dragon's outstretched wings and tail are presentation, so they may overhang terrain. */
-    static double moveWidth(Value value) { return Math.min(HULL_WIDTH_LIMIT, bodyWidth(value)); }
-    static double moveHeight(Value value) { return Math.min(HULL_HEIGHT_LIMIT, bodyHeight(value)); }
+    static double moveWidth(Value value) { return hullWidth(bodyWidth(value)); }
+    static double moveHeight(Value value) { return hullHeight(bodyHeight(value)); }
+    static double hullWidth(double bodyWidth) { return Math.min(HULL_WIDTH_LIMIT, bodyWidth); }
+    static double hullHeight(double bodyHeight) { return Math.min(HULL_HEIGHT_LIMIT, bodyHeight); }
     /** A small body keeps the flat per-move budget; a large hull gets the most its sweep can read, which stays bounded by the hull limits. */
-    static int motionCells(Value value, double distance) {
-        return Math.max(MOTION_CELLS, MotionValidator.cellBudget(moveWidth(value), moveHeight(value), distance));
+    static int motionCells(Value value, double distance) { return motionCells(moveWidth(value), moveHeight(value), distance); }
+    static int motionCells(double hullWidth, double hullHeight, double distance) {
+        return Math.max(MOTION_CELLS, MotionValidator.cellBudget(hullWidth, hullHeight, distance));
     }
     private void validateDestination(Value value, WorldPosition destination, MovementProfile.Mode mode, double speed) {
-        WorldPosition origin = value.state.snapshot().position(); Vec3 delta = destination.point().subtract(origin.point());
+        validateLeg(value.state.snapshot().position(), destination, mode, speed, moveWidth(value), moveHeight(value));
+    }
+    private CaptureBounds captureBounds(Value value, WorldPosition destination) {
+        return captureBounds(value.state.snapshot().position(), destination, moveWidth(value), moveHeight(value));
+    }
+    /** Shared by both runtimes: one bounded route leg in the NPC's own world. */
+    static void validateLeg(WorldPosition origin, WorldPosition destination, MovementProfile.Mode mode, double speed, double hullWidth, double hullHeight) {
+        Vec3 delta = destination.point().subtract(origin.point());
         if (!Double.isFinite(speed) || speed < 1 || speed > 5) throw new IllegalArgumentException("Navigation speed must be1..5 blocks/second");
         if (!origin.world().equals(destination.world())) throw new IllegalArgumentException("Navigation requires the same world");
         if (Math.abs(delta.x()) > 32 || Math.abs(delta.z()) > 32 || Math.abs(delta.y()) > 8)
@@ -389,13 +426,13 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         if (mode == MovementProfile.Mode.WALK && (Math.abs(origin.point().y() - Math.rint(origin.point().y())) > .000001
                 || destination.point().y() != Math.rint(destination.point().y())))
             throw new IllegalArgumentException("Walking requires integer feet height; partial-block support is unavailable");
-        captureBounds(value, destination);
+        captureBounds(origin, destination, hullWidth, hullHeight);
     }
-    private CaptureBounds captureBounds(Value value, WorldPosition destination) {
-        BlockPos from = BlockPos.containing(value.state.snapshot().position().point()), to = BlockPos.containing(destination.point());
-        int margin = Math.max(0, (int) Math.ceil((moveWidth(value) - 1) / 2)) + 2;
+    static CaptureBounds captureBounds(WorldPosition origin, WorldPosition destination, double hullWidth, double hullHeight) {
+        BlockPos from = BlockPos.containing(origin.point()), to = BlockPos.containing(destination.point());
+        int margin = Math.max(0, (int) Math.ceil((hullWidth - 1) / 2)) + 2;
         int minX = Math.min(from.x(), to.x()) - margin, minZ = Math.min(from.z(), to.z()) - margin;
-        int minY = Math.min(from.y(), to.y()) - 4, maxY = Math.max(from.y(), to.y()) + (int) Math.ceil(moveHeight(value)) + 3;
+        int minY = Math.min(from.y(), to.y()) - 4, maxY = Math.max(from.y(), to.y()) + (int) Math.ceil(hullHeight) + 3;
         return new CaptureBounds(minX, minY, minZ, Math.max(from.x(), to.x()) + margin - minX + 1,
                 maxY - minY + 1, Math.max(from.z(), to.z()) + margin - minZ + 1);
     }
@@ -711,7 +748,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         if (entry.value.waypoints != null) beginWaypoint(entry.value, 0);
         else requestRouteRead(entry.value);
     }
-    private static double maximumHealth(DefinitionSpec spec) {
+    static double maximumHealth(DefinitionSpec spec) {
         return CombatSettings.active(spec.definition()).map((CombatSettings combat) -> combat.defense().maximumHealth()).orElse(20.0);
     }
     private void remove(Entry entry) {
@@ -796,7 +833,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
             if (capacity == 0) break;
             Entry entry = byUuid.get(snapshot.npcId()); Value value = entry == null ? null : entry.value;
             if (value == null || viewer.visible.containsKey(snapshot.npcId()) || viewer.retiring.containsKey(snapshot.npcId())
-                    || viewer.nativeIds + value.ids > 256 || !eligible(value, at, visibleChunk)) continue;
+                    || viewer.nativeIds + nativeIds(value) > 256 || !eligible(value, at, visibleChunk)) continue;
             spawn(viewer, value); sent++; capacity--;
             if (!current(viewer)) break;
         }
@@ -810,10 +847,10 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     }
     private void spawn(Viewer viewer, Value value) {
         try {
-            var body = packets.createBody(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.displaySkin);
+            NativePacketAdapter.Body body = NpcPresentation.body(packets, value.spec, value.displayName, value.displaySkin);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented);
             viewer.presentationOrder.addLast(presented);
-            viewer.nativeIds += value.ids; viewer.pendingSpawns++;
+            viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
             presented.deliveredPoseRevision = value.poseRevision;
             var pose = pose(value);
             packets.spawn(viewer.player, body, pose).whenComplete((nothing, failure) -> enqueue(viewer, () -> {
@@ -827,6 +864,10 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                 catch (RuntimeException invalid) { fail(viewer, concise(invalid)); }
             }));
         } catch (ReflectiveOperationException | RuntimeException failure) { fail(viewer, concise(failure)); }
+    }
+    /** Native IDs a body of this NPC reserves, including its text display and seat. */
+    private int nativeIds(Value value) {
+        return NpcPresentation.nativeIds(packets, value.spec, value.displayName, value.ids);
     }
     private static NativePacketAdapter.Pose pose(Value value) {
         WorldPosition position = value.state.snapshot().position(); Vec3 p = position.point();
@@ -874,7 +915,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         viewer.retiring.put(body.body.uuid(), body); viewer.retirements.addLast(body);
     }
     private void releaseRetired(Viewer viewer, Presented body) {
-        if (body.spawnFinished && body.despawnFinished && viewer.retiring.remove(body.body.uuid(), body)) viewer.nativeIds -= body.value.ids;
+        if (body.spawnFinished && body.despawnFinished && viewer.retiring.remove(body.body.uuid(), body)) viewer.nativeIds -= body.body.entityIds().length;
     }
 
     private void interact(Viewer viewer, NativePacketAdapter.Interaction input) {
@@ -1016,11 +1057,12 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         Vec3 restingPoint; long lastMotionTick; int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; NativePacketAdapter.Skin displaySkin; AppearanceTask appearanceTask;
-        final Map<BehaviorPlatform.EquipmentSlot, ItemStack> equipment = new EnumMap<>(BehaviorPlatform.EquipmentSlot.class);
+        final Map<EquipmentSlot, ItemStack> equipment = new EnumMap<>(EquipmentSlot.class);
         long equipmentRevision;
         Value(DefinitionSpec spec, NativePacketAdapter.Skin skin, VirtualNpcState state, int ids, SeatGeometry seat) {
             this.spec = spec; this.skin = skin; this.state = state; this.ids = ids; this.seat = seat; yaw = spec.yaw(); pitch = spec.pitch();
             displayName = spec.name(); displaySkin = skin;
+            equipment.putAll(NpcPresentation.equipment(spec)); equipmentRevision = equipment.isEmpty() ? 0 : 1;
             mountReference = MountDeclaration.parse(spec.definition().json()).orElse(null);
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
             routeSource = WaypointSettings.reference(spec.definition());

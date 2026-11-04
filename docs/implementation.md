@@ -12,7 +12,7 @@ Implemented source:
 - `core/virtual`: independent mutable runtime state with immutable snapshots, ray/hit validation, viewer sessions, spatial index and bounded subscription deltas.
 - `core/navigation`: immutable voxel snapshots, bounded/cancellable path searches, kinematic route execution and live clearance/support validation contracts.
 - `bukkit/packet`: native semantic packet adapter with unique IDs, no native entity bodies, bounded queues, presentation leases, signed skins, passengers, head rotation and inbound interception.
-- `bukkit/runtime`: persisted activation, delivered-chunk visibility, fair bounded viewer reconciliation, shared virtual health, selection and production interaction events. Folia disabled explicitly.
+- `bukkit/runtime`: persisted activation, delivered-chunk visibility, fair bounded viewer reconciliation, shared virtual health, selection and production interaction events. On Folia, `RegionNpcRuntime` gives each NPC to its chunk's region through `RegionOwner`; riding, mounts and combat stay disabled there.
 - `core/combat`, `bukkit/combat`, `bukkit/RuntimeCombatService`: the [combat module](combat.md) (target rules, state machine, squads, guards, melee and tracked arrows, defense, death and respawn, fail-closed protection with a WorldGuard adapter, bounded work) plus the manual hit and ordinary-zombie adapter. `core/migration/SentinelMapping` converts imported settings.
 - `bukkit/PacketProofService`: opt-in viewer-isolated proof, lifecycle teardown, virtual health and cancellable third-party preview events.
 - `bukkit/navigation`, `bukkit/runtime`: bounded owner-thread capture of loaded terrain, one planner worker, live movement checks, manual routes, inline/reusable JSON waypoints and cancellation. Partial-block physics and Folia ownership remain open.
@@ -130,7 +130,7 @@ Runtime11 Multiplexor capture/build and the new26-gate manual behavior suite on 
 ## Remaining executable work
 
 1. Run mounts, real riders and dragon presentation on live exact targets and a graphical client, then continue graphical validation and actual benchmark runs. The exact Paper/Spigot persisted-runtime and initial combat matrix now passes; full combat workflows remain incomplete.
-2. Extend Folia-safe capture, multi-viewer NPC ownership and transfer beyond the verified stationary preview. The [Folia investigation](folia-ownership-investigation.md) records proposed interfaces; keep unsupported features disabled.
+2. Run the [Folia runtime](folia-runtime.md) live on all three exact Folia builds: separate-region viewers, chunk-crossing patrols, unload during movement, viewer lifecycle and shutdown. Region-safe riding, mounts and combat remain unbuilt.
 3. Freeze and build the integrated manual behavior implementation through Multiplexor, run the new nine-target behavior gate and affected module/native/Folia/import regressions, and independently audit source/artifact/receipt/cleanup bindings. Continue automatic triggers, durable scopes, platform actions and schema generation after this gate. Automatic definition schema migration and behavior translation remain open.
 4. Continue navigation, versioned public API/modules, bounded JSON behaviors and examples, combat/protection, benchmark evidence, additional platforms, and then the arcane_jaspr/Firebase editor.
 

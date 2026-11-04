@@ -8,8 +8,8 @@ import org.bukkit.entity.Player;
 
 /** Preview geometry from owned, sent voxels and their collision shapes. No rayTraceBlocks or unowned live reads. */
 final class StationaryTerrain {
-    private final FoliaOwner owner;
-    StationaryTerrain(FoliaOwner owner) { this.owner = owner; }
+    private final FoliaRegions owner;
+    StationaryTerrain(FoliaRegions owner) { this.owner = owner; }
     record Bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
         long cells() { return (long) (maxX-minX+1)*(maxY-minY+1)*(maxZ-minZ+1); }
     }

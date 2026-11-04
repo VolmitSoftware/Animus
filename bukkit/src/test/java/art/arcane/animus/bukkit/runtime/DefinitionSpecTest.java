@@ -27,11 +27,35 @@ class DefinitionSpecTest {
                  "skin":"%s","position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":91}}
                 """.formatted("a".repeat(64)));
         List<String> errors = DefinitionSpec.validate(definition, TYPES, ignored -> null);
-        assertEquals(5, errors.size());
-        for (String field : List.of("$.name", "$.type", "$.position.world", "$.position.pitch", "$.skin"))
+        assertEquals(4, errors.size());
+        for (String field : List.of("$.type", "$.position.world", "$.position.pitch", "$.skin"))
             assertTrue(errors.stream().anyMatch(error -> error.startsWith(field)), field);
         assertEquals("NameLongerThanSixteen", definition.name());
         assertTrue(DefinitionSpec.spawned(definition)); assertFalse(DefinitionSpec.spawned(null));
+    }
+
+    @Test void namesLongerThanAProfileActivateAndKeepTheirAppearance() throws Exception {
+        var definition = NpcDefinition.parse("""
+                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
+                 "group":"test","name":"Captain of the Northern Watch","type":"minecraft:player","spawned":true,
+                 "hologram":{"lines":["Quest"]},"pose":"sneaking",
+                 "position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
+                """);
+        assertEquals(List.of(), DefinitionSpec.validate(definition, TYPES, ignored -> WORLD));
+        var spec = DefinitionSpec.parse(definition, TYPES, ignored -> WORLD);
+        assertEquals(List.of("Quest"), spec.appearance().hologram());
+        assertEquals(art.arcane.animus.core.npc.NpcPose.SNEAKING, spec.appearance().pose());
+        assertTrue(spec.equipment().isEmpty());
+    }
+
+    @Test void aSittingBodyCannotAlsoRideAnotherNpc() throws Exception {
+        var definition = NpcDefinition.parse("""
+                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"guard",
+                 "group":"test","name":"Guard","type":"minecraft:player","spawned":true,"pose":"sitting",
+                 "modules":{"animus:mount":{"vehicle":"horse"}},
+                 "position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
+                """);
+        assertEquals(List.of("$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount"), DefinitionSpec.validate(definition, TYPES, ignored -> WORLD));
     }
 
     @Test void deliveredChunkKeysPreserveNegativeCoordinatesWithoutAliasing() {
