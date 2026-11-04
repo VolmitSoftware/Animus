@@ -11,7 +11,7 @@ dependencies {
 }
 
 tasks.named('shadowJar').configure {
-    addMultiReleaseAttribute.set(false)
+    addMultiReleaseAttribute.set(true)
     configurations = [project.configurations.bundle]
     filesMatching('META-INF/services/**') { duplicatesStrategy = DuplicatesStrategy.INCLUDE }
     mergeServiceFiles()
@@ -19,6 +19,7 @@ tasks.named('shadowJar').configure {
         relocate('art.arcane.animus', animus.projectGroup)
     }
     relocate('art.arcane.volmlib', "${animus.projectGroup}.internal.volmlib")
+    relocate('org.yaml.snakeyaml', "${animus.projectGroup}.internal.snakeyaml")
     relocate('com.google.gson', "${animus.projectGroup}.internal.gson")
     relocate('net.kyori', "${animus.projectGroup}.internal.kyori")
     relocate('com.moandjiezana.toml', "${animus.projectGroup}.internal.toml")

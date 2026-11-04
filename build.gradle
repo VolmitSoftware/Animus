@@ -10,7 +10,7 @@ apply from: 'gradle/identity.gradle'
 
 tasks.register('targets') {
     group = 'help'
-    description = 'Lists the supported Minecraft and mod loader versions.'
+    description = 'Lists configured Minecraft and mod loader versions (runtime validation is tracked separately).'
     doLast {
         minecraftTargets.each { String target, Map<String, Object> loaders ->
             println("${target}: Fabric ${loaders.fabricLoader}, Forge ${loaders.forge}, NeoForge ${loaders.neoforgeUsesForge ? 'shares the Forge jar' : loaders.neoforge}")
@@ -18,6 +18,7 @@ tasks.register('targets') {
     }
 }
 
+boolean includeMods = providers.gradleProperty('includeModDistributions').getOrElse('false').toBoolean()
 List<TaskProvider<Exec>> matrixBuilds = []
 ['fabric', 'forge', 'neoforge'].each { String loader ->
     List<TaskProvider<Exec>> loaderBuilds = []
@@ -80,9 +81,10 @@ matrixBuilds.eachWithIndex { TaskProvider<Exec> targetBuild, int index ->
 tasks.register('distributions', Sync) {
     group = 'build'
     description = 'Builds all supported distributions into build/distributions.'
-    dependsOn(matrixBuilds, ':bukkit:build')
+    dependsOn(':bukkit:build', ':converter:build')
+    if (includeMods) dependsOn(matrixBuilds)
     from(project(':bukkit').tasks.named('shadowJar'))
-    ['fabric', 'forge', 'neoforge'].each { String loader ->
+    (includeMods ? ['fabric', 'forge', 'neoforge'] : []).each { String loader ->
         minecraftTargets.keySet().each { String target ->
             if (loader == 'neoforge' && minecraftTargets[target].neoforgeUsesForge) {
                 return
@@ -107,7 +109,7 @@ tasks.register('verifyDistributions') {
     outputs.file(layout.buildDirectory.file('artifacts.json'))
     doLast {
         List<File> artifacts = fileTree(layout.buildDirectory.dir('distributions')) { include('*.jar') }.files.sort { File artifact -> artifact.name }
-        int expected = 1 + matrixBuilds.size()
+        int expected = 1 + (includeMods ? matrixBuilds.size() : 0)
         if (artifacts.size() != expected) {
             throw new GradleException("Expected ${expected} distributions, found ${artifacts.size()}")
         }

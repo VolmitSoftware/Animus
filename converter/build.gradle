@@ -1,0 +1,6 @@
+plugins { id 'application' }
+ext.animusRoot = projectDir.parentFile
+apply from: '../gradle/identity.gradle'
+apply from: '../gradle/java.gradle'
+dependencies { implementation project(':core') }
+application { mainClass = 'art.arcane.animus.converter.ConverterMain' }

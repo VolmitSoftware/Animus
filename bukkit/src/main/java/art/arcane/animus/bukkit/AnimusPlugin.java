@@ -1,6 +1,8 @@
 package art.arcane.animus.bukkit;
 
 import art.arcane.animus.core.BuildIdentity;
+import art.arcane.animus.core.admin.Administration;
+import java.util.concurrent.*;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.AnimusSplash;
 import art.arcane.animus.core.RuntimeEnvironment;
@@ -15,6 +17,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class AnimusPlugin extends JavaPlugin {
     private volatile AnimusRuntime runtime;
+    private ThreadPoolExecutor commands;
+    private ReplyScheduler replies;
+    private volatile boolean stopping;
+
 
     @Override
     public void onEnable() {
@@ -23,8 +29,17 @@ public final class AnimusPlugin extends JavaPlugin {
                     getServer().getBukkitVersion(), getDataFolder().toPath());
             runtime = new AnimusRuntime(environment);
             runtime.start();
+            replies = new ReplyScheduler(this);
+            AnimusRuntime ownedRuntime = runtime;
+            commands = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32), runnable -> {
+                Thread thread = new Thread(runnable, "Animus-files");
+                thread.setDaemon(true);
+                return thread;
+            }) {
+                @Override protected void terminated() { ownedRuntime.close(); }
+            };
             printSplash(AnimusSplash.render(environment, getServer().getVersion(), true));
-        } catch (IOException | RuntimeException | LinkageError exception) {
+        } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {
             getLogger().log(Level.SEVERE, "Failed to start " + BuildIdentity.NAME, exception);
             getServer().getPluginManager().disablePlugin(this);
         }
@@ -32,33 +47,57 @@ public final class AnimusPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        stopping = true;
         AnimusRuntime activeRuntime = runtime;
         runtime = null;
-        if (activeRuntime == null) {
-            return;
-        }
-        try {
-            activeRuntime.close();
-        } catch (RuntimeException | LinkageError exception) {
-            getLogger().log(Level.SEVERE, "Failed to stop " + BuildIdentity.NAME, exception);
-        }
+        if (commands != null) {
+            commands.shutdownNow();
+            try {
+                if (!commands.awaitTermination(5, TimeUnit.SECONDS))
+                    getLogger().warning("File worker is finishing; a pending transaction will recover on the next startup.");
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        } else if (activeRuntime != null) activeRuntime.close();
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] arguments) {
-        if (arguments.length > 1 || (arguments.length == 1 && !arguments[0].equalsIgnoreCase("status"))) {
-            return false;
-        }
         AnimusRuntime activeRuntime = runtime;
-        sender.sendMessage(activeRuntime == null ? BuildIdentity.NAME + " is not running." : activeRuntime.status());
+        if (stopping || activeRuntime == null) { sender.sendMessage("Animus is not running."); return true; }
+        boolean status = arguments.length == 0 || arguments[0].equalsIgnoreCase("status");
+        if (!sender.hasPermission(status ? "animus.status" : "animus.admin")) {
+            sender.sendMessage("You do not have permission to use this command."); return true;
+        }
+        String[] args = arguments.clone();
+        if (args.length > 0) args[0] = args[0].toLowerCase(Locale.ROOT);
+        try {
+            commands.execute(() -> {
+                List<String> result;
+                try { result = new Administration(activeRuntime).execute(args); }
+                catch (IOException | RuntimeException e) { result = List.of("Animus: " + e.getMessage()); }
+                List<String> messages = result;
+                if (!stopping) replies.reply(sender, () -> {
+                    if (!stopping) {
+                        messages.stream().limit(30).map(message -> message.length() > 2048 ? message.substring(0, 2048) + " … (truncated; inspect the JSON file for full details)" : message).forEach(sender::sendMessage);
+                        if (messages.size() > 30) sender.sendMessage("Showing 30 of " + messages.size() + " results; inspect the files for the complete report.");
+                    }
+                });
+            });
+        } catch (RejectedExecutionException e) { sender.sendMessage("Animus file queue is full; retry shortly."); }
         return true;
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] arguments) {
-        if (arguments.length == 1 && "status".startsWith(arguments[0].toLowerCase(Locale.ROOT))) {
-            return List.of("status");
+        if (arguments.length == 1) {
+            List<String> available = sender.hasPermission("animus.admin") ? Administration.COMMANDS : List.of("status");
+            return available.stream().filter(c -> c.startsWith(arguments[0].toLowerCase(Locale.ROOT))).toList();
         }
+        AnimusRuntime activeRuntime = runtime;
+        if (arguments.length == 2 && activeRuntime != null && sender.hasPermission("animus.admin")
+                && List.of("inspect", "edit", "clone", "delete").contains(arguments[0]))
+            return activeRuntime.npcs().all().stream().map(d -> d.id()).filter(id -> id.startsWith(arguments[1])).limit(100).toList();
+        if (arguments.length == 2 && arguments[0].equals("import") && sender.hasPermission("animus.admin"))
+            return List.of("preview", "apply").stream().filter(s -> s.startsWith(arguments[1])).toList();
         return List.of();
     }
 

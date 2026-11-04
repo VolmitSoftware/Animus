@@ -31,7 +31,7 @@ class AnimusRuntimeTest {
         assertAll(
                 () -> assertTrue(runtime.isRunning()),
                 () -> assertTrue(runtime.status().contains("Hello from " + BuildIdentity.NAME)),
-                () -> assertTrue(Files.readString(dataDirectory.resolve("config.json")).contains("Hello from " + BuildIdentity.NAME))
+                () -> assertTrue(Files.readString(dataDirectory.resolve("config.toml")).contains("Hello from " + BuildIdentity.NAME))
         );
     }
 
@@ -52,7 +52,7 @@ class AnimusRuntimeTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"1.20.1", "1.21.1", "26.1.2", "26.2", "26.3"})
+    @ValueSource(strings = {"26.1.2", "26.2", "26.3"})
     void acceptsSupportedMinecraftVersions(String minecraftVersion) throws IOException {
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.FABRIC, minecraftVersion, directory));
 
@@ -63,7 +63,7 @@ class AnimusRuntimeTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"1.20", "1.20.2", "1.21", "1.21.2", "26.1", "26.1.1", "26.2.1", "26.3.1", "26.4", "1.21.11"})
+    @ValueSource(strings = {"1.20.1", "1.21.1", "1.20", "1.20.2", "1.21", "1.21.2", "26.1", "26.1.1", "26.2.1", "26.3.1", "26.4", "1.21.11"})
     void rejectsUnsupportedMinecraftBeforeWriting(String minecraftVersion) {
         Path dataDirectory = directory.resolve("unsupported");
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.FORGE, minecraftVersion, dataDirectory));
@@ -79,8 +79,8 @@ class AnimusRuntimeTest {
 
     @Test
     void preservesExistingSettingsAndCachesStatus() throws IOException {
-        Path config = directory.resolve("config.json");
-        String original = "{\n  \"statusMessage\": \"Configured message\"\n}\n";
+        Path config = directory.resolve("config.toml");
+        String original = "# Keep my comments\nstatusMessage = \"Configured message\"\n";
         Files.writeString(config, original);
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.NEOFORGE, "26.3", directory));
 
@@ -148,7 +148,7 @@ class AnimusRuntimeTest {
 
         assertFalse(runtime.isRunning());
         assertThrows(IllegalStateException.class, runtime::status);
-        Files.writeString(directory.resolve("config.json"), "{\"statusMessage\":\"Restarted\"}");
+        Files.writeString(directory.resolve("config.toml"), "statusMessage = \"Restarted\"\n");
         runtime.start();
         assertTrue(runtime.isRunning());
         assertTrue(runtime.status().contains("Restarted"));

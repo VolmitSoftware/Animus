@@ -7,5 +7,13 @@ api-version: '${apiVersion}'
 folia-supported: true
 commands:
   ${projectId}:
-    description: Shows the runtime status.
-    usage: '/<command> [status]'
+    description: Manages definitions and staged Citizens imports.
+    usage: '/<command> [status|list|create|inspect|edit|clone|delete|validate|reload|import|rollback]'
+
+permissions:
+  animus.status:
+    description: View Animus status.
+    default: true
+  animus.admin:
+    description: Manage definitions, imports, and backups.
+    default: op
