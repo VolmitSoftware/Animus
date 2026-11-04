@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "greeter:greeter",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:flag-state",
+          "arguments": {
+            "name": "met",
+            "scope": "relationship"
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Good to see you again."
+            }
+          },
+          "else": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:say",
+                "arguments": {
+                  "text": "Welcome, traveller. The market is to the north."
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:play-sound",
+                "arguments": {
+                  "sound": "minecraft:entity.villager.ambient"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:set-flag",
+                "arguments": {
+                  "name": "met",
+                  "scope": "relationship"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "wave": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:spawn-particle",
+          "arguments": {
+            "particle": "minecraft:happy_villager",
+            "count": 8,
+            "spread": 0.5
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40
+    },
+    {
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 6,
+      "routine": "wave",
+      "cooldownTicks": 200
+    }
+  ]
+}

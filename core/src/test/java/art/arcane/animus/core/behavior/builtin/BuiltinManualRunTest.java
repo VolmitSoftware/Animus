@@ -10,7 +10,7 @@ import art.arcane.animus.api.Platform;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.catalog.BehaviorPath;
-import art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntime;
+import art.arcane.animus.core.behavior.runtime.BehaviorRuntime;
 import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.config.ModuleSettings;
 import art.arcane.animus.core.extension.DefinitionGateway;
@@ -49,7 +49,7 @@ class BuiltinManualRunTest {
     private Path root;
     private ExtensionRuntime extensions;
     private BehaviorCatalog catalog;
-    private ManualBehaviorRuntime runtime;
+    private BehaviorRuntime runtime;
     private Map<String, NpcDefinition> npcs;
 
     @BeforeEach void start() throws Exception {
@@ -67,7 +67,7 @@ class BuiltinManualRunTest {
         while (extensions.status().state() != ExtensionRuntime.State.READY && System.nanoTime() < until) Thread.sleep(2);
         assertEquals(ExtensionRuntime.State.READY, extensions.status().state());
         catalog = new BehaviorCatalog(root, BehaviorCatalog.Limits.defaults(), extensions.catalogResolver(), art.arcane.animus.core.behavior.catalog.BehaviorCheckpoints.disabled());
-        runtime = new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(), BehaviorEngine.Limits.defaults(), () -> npcs, catalog::snapshot, extensions.behaviorInvoker(), null, art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
+        runtime = new BehaviorRuntime(BehaviorRuntime.Limits.defaults(), BehaviorEngine.Limits.defaults(), () -> npcs, catalog::snapshot, extensions.behaviorInvoker(), null, art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
     }
     @AfterEach void stop() throws Exception {
         if (runtime != null) { runtime.close(); assertTrue(runtime.awaitStopped(Duration.ofSeconds(4))); }
@@ -84,7 +84,7 @@ class BuiltinManualRunTest {
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
         while (System.nanoTime() < until) {
             platform.pump();
-            Optional<ManualBehaviorRuntime.Execution> found = runtime.inspect(execution);
+            Optional<BehaviorRuntime.Execution> found = runtime.inspect(execution);
             if (found.isPresent() && found.get().report().state() != BehaviorEngine.State.RUNNING) return found.get().report();
             Thread.sleep(2);
         }

@@ -1,5 +1,8 @@
 package art.arcane.animus.converter;
 
+import art.arcane.animus.core.behavior.schema.BehaviorSchemaGenerator;
+import art.arcane.animus.core.behavior.schema.OfflineBehaviorValidation;
+import art.arcane.animus.core.behavior.schema.OfflineCapabilities;
 import art.arcane.animus.core.migration.CitizensImporter;
 import art.arcane.animus.core.migration.ImportApplications;
 import art.arcane.animus.core.npc.NpcRepository;
@@ -14,7 +17,9 @@ public final class ConverterMain {
         catch (Exception e) { System.err.println("Animus: " + e.getMessage()); System.exit(1); }
     }
     static String run(String[] args) throws Exception {
-        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir>");
+        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir>");
+        if (args[0].equals("validate-behaviors")) { require(args, 2); return validateBehaviors(Path.of(args[1])); }
+        if (args[0].equals("schema")) { require(args, 2); return schema(Path.of(args[1])); }
         CitizensImporter importer = new CitizensImporter();
         if (args[0].equals("preview")) {
             if (args.length < 3) throw new IllegalArgumentException("preview requires input and output paths");
@@ -49,6 +54,23 @@ public final class ConverterMain {
                 }
                 default -> throw new IllegalArgumentException("Unknown operation: " + args[0]);
             };
+        }
+    }
+    /** Offline check of a data directory or pack. An invalid result is an error, so the process exits with status 1. */
+    private static String validateBehaviors(Path directory) throws Exception {
+        try (OfflineCapabilities capabilities = new OfflineCapabilities()) {
+            OfflineBehaviorValidation.Report report = OfflineBehaviorValidation.validate(directory, capabilities);
+            String text = String.join("\n", report.lines());
+            if (!report.valid()) throw new IllegalArgumentException(text);
+            return text;
+        }
+    }
+    /** The generated schemas with built-in capabilities only; the server's own command adds installed modules. */
+    private static String schema(Path output) throws Exception {
+        try (OfflineCapabilities capabilities = new OfflineCapabilities()) {
+            Map<String, String> documents = BehaviorSchemaGenerator.generate(capabilities.capabilities());
+            for (Map.Entry<String, String> document : documents.entrySet()) DocumentStore.atomic(output.resolve(document.getKey()), document.getValue());
+            return "Wrote " + documents.size() + " files under " + output.resolve("schemas") + " for " + capabilities.capabilities().size() + " built-in capabilities. Java module capabilities are not included.";
         }
     }
     private static void require(String[] args, int count) { if (args.length != count) throw new IllegalArgumentException("Incorrect argument count"); }

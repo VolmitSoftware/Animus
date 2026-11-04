@@ -48,6 +48,12 @@
 - WorldGuard protection for combat (`pvp`, `invincible`, `damage-animals`, `mob-damage`). Combat damage is denied when no decision can be made.
 - `guard` operation for `animus:combat-control`, and `/animus combat <npc-id> status|engage|disengage|release|target|guard`.
 - `[combat]` work limits in `config.toml`.
+- Generated JSON Schemas for behaviors, NPC definitions and pack manifests, plus editor completion data, from the live capability registry (`/animus behaviors schema`).
+- Behavior packs under `packs/<pack-id>/` with `pack.json`, module requirements, reload without restart and preserved module configuration.
+- `/animus behaviors packs`, `/animus behaviors validate [behavior-id]` and tab completion for behavior commands.
+- Converter `validate-behaviors` and `schema` commands for offline checks.
+- Seven example packs: greeter, patrol, branching dialogue, quest giver, shop, town guard and personal guard.
+- Guide for moving imported Denizen flags and assignments to behaviors.
 
 ### Changed
 
@@ -59,6 +65,8 @@
 - Citizens import (converter version 3) converts Sentinel settings into a disabled `animus:combat` module, keeping unsupported settings and statistics separately.
 - `animus:combat-control` drives the combat module instead of the manual adapter, and WorldGuard no longer disables combat.
 - The ordinary-zombie adapter's hits respect the NPC's combat defense.
+- Renamed `ManualBehaviorRuntime` to `BehaviorRuntime`.
+- Diagnostics name the allowed fields and values and suggest the nearest match.
 
 ### Notes
 

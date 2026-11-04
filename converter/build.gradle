@@ -2,5 +2,9 @@ plugins { id 'application' }
 ext.animusRoot = projectDir.parentFile
 apply from: '../gradle/identity.gradle'
 apply from: '../gradle/java.gradle'
-dependencies { implementation project(':core') }
+dependencies {
+    implementation project(':core')
+    testImplementation('org.junit.jupiter:junit-jupiter:5.10.2')
+    testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
+}
 application { mainClass = 'art.arcane.animus.converter.ConverterMain' }

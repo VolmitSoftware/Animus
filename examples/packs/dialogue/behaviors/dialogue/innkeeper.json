@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "dialogue:innkeeper",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:flag-state",
+          "arguments": {
+            "name": "heard-rumour",
+            "scope": "relationship"
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:choices",
+            "arguments": {
+              "id": "topic",
+              "prompt": "Back again? What will it be?",
+              "options": [
+                {
+                  "id": "room",
+                  "text": "A room for the night"
+                },
+                {
+                  "id": "leave",
+                  "text": "Nothing, thanks"
+                }
+              ]
+            }
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:choices",
+            "arguments": {
+              "id": "topic",
+              "prompt": "Welcome to the Crooked Lantern. What will it be?",
+              "options": [
+                {
+                  "id": "rumours",
+                  "text": "Heard any rumours?"
+                },
+                {
+                  "id": "room",
+                  "text": "A room for the night"
+                },
+                {
+                  "id": "leave",
+                  "text": "Nothing, thanks"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "rumours": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Lights in the old mine, three nights running."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:choices",
+          "arguments": {
+            "id": "mine",
+            "prompt": "Want to know more?",
+            "options": [
+              {
+                "id": "yes",
+                "text": "Tell me more"
+              },
+              {
+                "id": "no",
+                "text": "That is enough"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "mine-yes": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "The miners left in a hurry. Their tools are still down there."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "heard-rumour",
+            "scope": "relationship"
+          }
+        }
+      ]
+    },
+    "mine-no": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Suit yourself. Few people ask twice."
+      }
+    },
+    "room": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Upstairs, second door. Mind the step."
+      }
+    },
+    "leave": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Safe roads."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40
+    },
+    {
+      "id": "ask-rumours",
+      "event": "dialogue_choice",
+      "dialogue": "topic",
+      "choice": "rumours",
+      "routine": "rumours"
+    },
+    {
+      "id": "ask-room",
+      "event": "dialogue_choice",
+      "dialogue": "topic",
+      "choice": "room",
+      "routine": "room"
+    },
+    {
+      "id": "say-goodbye",
+      "event": "dialogue_choice",
+      "dialogue": "topic",
+      "choice": "leave",
+      "routine": "leave"
+    },
+    {
+      "id": "mine-more",
+      "event": "dialogue_choice",
+      "dialogue": "mine",
+      "choice": "yes",
+      "routine": "mine-yes"
+    },
+    {
+      "id": "mine-enough",
+      "event": "dialogue_choice",
+      "dialogue": "mine",
+      "choice": "no",
+      "routine": "mine-no"
+    }
+  ]
+}

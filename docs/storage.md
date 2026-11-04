@@ -1,6 +1,6 @@
 # Editable JSON and recovery
 
-Plugin settings use `config.toml`. NPC definitions, behaviors and generated recovery and state data use JSON. Each definition lives at `npcs/<group>/<id>.json` with a stable UUID and an increasing revision. Commands use the same definition validation and optimistic hash checks as reload.
+Plugin settings use `config.toml`. NPC definitions, behaviors, behavior packs under `packs/<pack-id>/` and generated recovery and state data use JSON. Each definition lives at `npcs/<group>/<id>.json` with a stable UUID and an increasing revision. Commands use the same definition validation and optimistic hash checks as reload.
 
 Accepted definitions have a generated last-valid checkpoint under `state/npc-definitions/last-valid/`, referencing a hashed JSON object under `state/objects/npc-definitions/`. A command edit or deletion updates the source and checkpoint in one recoverable transaction. Checkpoints are internal recovery data; edit the source definition instead.
 
@@ -10,7 +10,7 @@ Live reload validates the entire candidate registry before publication. Known na
 
 ## Behavior checkpoints
 
-Accepted behavior programs follow the same design. A pointer under `state/behavior-catalog/last-valid/behaviors/<namespace>/<path>.json` records the path, revision and source hash, and names a copy of the accepted source under `state/objects/behavior-catalog/<hash>.json`. The catalog writes both on the shared file lane before publishing, and a failed write rejects the reload with `catalog-checkpoint-failed`, leaving the previous catalog active. Validation writes nothing. Pointers are removed when their source file is gone, which is why a deleted behavior does not return. Superseded objects stay on disk, as definition objects do.
+Accepted behavior programs follow the same design. A pointer under `state/behavior-catalog/last-valid/behaviors/<namespace>/<path>.json`, or `state/behavior-catalog/last-valid/packs/<pack>/behaviors/<namespace>/<path>.json` for a behavior in a [pack](behaviors.md#packs), records the path, revision and source hash, and names a copy of the accepted source under `state/objects/behavior-catalog/<hash>.json`. The catalog writes both on the shared file lane before publishing, and a failed write rejects the reload with `catalog-checkpoint-failed`, leaving the previous catalog active. Validation writes nothing. Pointers are removed when their source file is gone, which is why a deleted behavior does not return. Superseded objects stay on disk, as definition objects do.
 
 ## Behavior state
 

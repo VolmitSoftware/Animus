@@ -15,7 +15,7 @@ import art.arcane.animus.core.behavior.BehaviorProgram.Type;
 import art.arcane.animus.core.behavior.BehaviorProgram.Value;
 import art.arcane.animus.core.behavior.BehaviorState;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
-import art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntime;
+import art.arcane.animus.core.behavior.runtime.BehaviorRuntime;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.DocumentStore;
@@ -50,7 +50,7 @@ class TriggerScopedStateTest {
     private DocumentStore documents;
     private BehaviorStateStore state;
     private TriggerDispatcher dispatcher;
-    private ManualBehaviorRuntime runtime;
+    private BehaviorRuntime runtime;
 
     private static void eventually(BooleanSupplier check) throws Exception {
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
@@ -74,7 +74,7 @@ class TriggerScopedStateTest {
             @Override public Call<String> action(Invocation invocation) { return new Call<>(CompletableFuture.completedFuture(Outcome.ok("{}")), () -> {}); }
             @Override public Call<Boolean> condition(Invocation invocation) { return new Call<>(CompletableFuture.completedFuture(Outcome.ok(true)), () -> {}); }
         };
-        runtime = new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8, 8, 50, 20), BehaviorEngine.Limits.defaults(), definitions::get, catalog::get, invoker, dispatcher, state);
+        runtime = new BehaviorRuntime(new BehaviorRuntime.Limits(8, 8, 50, 20), BehaviorEngine.Limits.defaults(), definitions::get, catalog::get, invoker, dispatcher, state);
         dispatcher.activated(npc);
         eventually(() -> dispatcher.snapshot().bindings() > 0);
     }
@@ -152,12 +152,12 @@ class TriggerScopedStateTest {
         interact(firstPlayer);
         interact(secondPlayer);
         eventually(() -> dispatcher.snapshot().started() == 2);
-        ManualBehaviorRuntime.NpcTrace trace = runtime.observeNpc("test").toCompletableFuture().get(4, TimeUnit.SECONDS).value().orElseThrow();
+        BehaviorRuntime.NpcTrace trace = runtime.observeNpc("test").toCompletableFuture().get(4, TimeUnit.SECONDS).value().orElseThrow();
         assertEquals(2, trace.active().size());
-        for (ManualBehaviorRuntime.Execution execution : trace.active()) {
+        for (BehaviorRuntime.Execution execution : trace.active()) {
             assertEquals(Optional.of(BEHAVIOR + "#click"), execution.trigger());
             assertTrue(execution.report().waits().getFirst().startsWith("tick:"), execution.report().waits().toString());
-            ManualBehaviorRuntime.Execution observed = runtime.observe(execution.report().id()).toCompletableFuture().get(4, TimeUnit.SECONDS).value().orElseThrow();
+            BehaviorRuntime.Execution observed = runtime.observe(execution.report().id()).toCompletableFuture().get(4, TimeUnit.SECONDS).value().orElseThrow();
             assertEquals(Optional.of(BEHAVIOR + "#click"), observed.trigger());
         }
         assertEquals(Set.of(firstPlayer, secondPlayer), Set.of(trace.active().getFirst().player().orElseThrow(), trace.active().getLast().player().orElseThrow()));
