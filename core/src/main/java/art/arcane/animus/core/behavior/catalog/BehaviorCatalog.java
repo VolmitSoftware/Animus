@@ -38,6 +38,8 @@ public final class BehaviorCatalog {
         default Capability authorize(Requirement requirement,String behavior){return Capability.present();}
         /** Literal argument problems. An unknown capability has nothing to check and returns no diagnostics. */
         default List<Diagnostic> validate(Requirement requirement,String argumentsJson){return List.of();}
+        /** Whether a module a pack requires is installed and active. */
+        default Capability module(String id){return Capability.present();}
     }
     public enum SourceState { VALID, INVALID, CONFLICT, DUPLICATE, MISSING }
     public record Accepted(long revision,String sourceHash,long sourceBytes,BehaviorProgram program,Set<Requirement> requirements){
@@ -50,8 +52,13 @@ public final class BehaviorCatalog {
     public record Resolution(String id,boolean available,Optional<Accepted> accepted,List<Diagnostic> diagnostics){
         public Resolution{Objects.requireNonNull(id);Objects.requireNonNull(accepted);diagnostics=List.copyOf(diagnostics);}
     }
-    public record Snapshot(long generation,Map<String,Entry> entries,Map<String,Resolution> byId,List<Diagnostic> diagnostics){
-        public Snapshot{entries=Collections.unmodifiableMap(new TreeMap<>(entries));byId=Collections.unmodifiableMap(new TreeMap<>(byId));diagnostics=List.copyOf(diagnostics);}
+    /** One {@code packs/<pack>/} directory. {@code manifest} is the last valid one; {@code missingModules} lists required modules that are not active. */
+    public record PackStatus(String id,Optional<PackManifest> manifest,List<String> missingModules,List<Diagnostic> diagnostics){
+        public PackStatus{Objects.requireNonNull(id);Objects.requireNonNull(manifest);missingModules=List.copyOf(missingModules);diagnostics=List.copyOf(diagnostics);}
+    }
+    public record Snapshot(long generation,Map<String,Entry> entries,Map<String,Resolution> byId,List<Diagnostic> diagnostics,Map<String,PackStatus> packs){
+        public Snapshot{entries=Collections.unmodifiableMap(new TreeMap<>(entries));byId=Collections.unmodifiableMap(new TreeMap<>(byId));diagnostics=List.copyOf(diagnostics);packs=Collections.unmodifiableMap(new TreeMap<>(packs));}
+        public Snapshot(long generation,Map<String,Entry> entries,Map<String,Resolution> byId,List<Diagnostic> diagnostics){this(generation,entries,byId,diagnostics,Map.of());}
         public Optional<Resolution> find(String id){return Optional.ofNullable(byId.get(id));}
     }
     /** A checked candidate observation; it never replaces this catalog's accepted snapshot. */
@@ -96,7 +103,7 @@ public final class BehaviorCatalog {
         object.remove("revision");
         BehaviorCompiler.Result result=BehaviorCompiler.compile(object.toString());
         BehaviorProgram program=result.program().orElseThrow(()->new IllegalArgumentException("Checkpoint no longer compiles: "+result.diagnostics().getFirst().field()));
-        if(!BehaviorPath.forId(program.id()).equals(source))throw new IllegalArgumentException("Checkpoint identity does not match its source path");
+        if(!BehaviorPath.matches(program.id(),source))throw new IllegalArgumentException("Checkpoint identity does not match its source path");
         long bytes=saved.source().getBytes(StandardCharsets.UTF_8).length;
         Accepted accepted=new Accepted(saved.revision(),saved.sourceHash(),bytes,program,requirements(program));
         return new Entry(source,Optional.of(program.id()),Optional.empty(),OptionalLong.empty(),SourceState.VALID,Optional.of(accepted),List.of());
@@ -113,9 +120,10 @@ public final class BehaviorCatalog {
         try{
             Reload checked=new BehaviorCatalog(reader,limits,resolver,before).reload(expectedGeneration,Set.of());
             if(!checked.published())return new Validation(false,false,before,checked.diagnostics(),checked.scannedDocuments(),checked.scannedBytes());
-            Snapshot candidate=new Snapshot(before.generation(),checked.snapshot().entries(),checked.snapshot().byId(),checked.snapshot().diagnostics());
+            Snapshot candidate=new Snapshot(before.generation(),checked.snapshot().entries(),checked.snapshot().byId(),checked.snapshot().diagnostics(),checked.snapshot().packs());
             boolean valid=candidate.entries().values().stream().allMatch(entry->entry.state()==SourceState.VALID
-                    &&entry.diagnostics().stream().noneMatch(problem->problem.severity()==Diagnostic.Severity.ERROR));
+                    &&entry.diagnostics().stream().noneMatch(problem->problem.severity()==Diagnostic.Severity.ERROR))
+                    &&candidate.diagnostics().stream().noneMatch(problem->problem.severity()==Diagnostic.Severity.ERROR);
             return new Validation(true,valid,candidate,checked.diagnostics(),checked.scannedDocuments(),checked.scannedBytes());
         }finally{reloading=false;}
     }
@@ -136,7 +144,13 @@ public final class BehaviorCatalog {
             for(String path:removed)if(scan.sources().containsKey(path))return rejected("catalog-removal-source-present","Removal requires the source to be absent",before);
             Map<String,Candidate> candidates=new TreeMap<>();
             for(BehaviorSourceReader.Source source:scan.sources().values())candidates.put(source.path(),parse(source,before.entries().get(source.path())));
-            for(Entry previous:before.entries().values())if(previous.accepted().isPresent()&&!candidates.containsKey(previous.path())&&!removed.contains(previous.path()))candidates.put(previous.path(),Candidate.missing(previous));
+            Map<String,PackStatus> packs=packs(scan,before);
+            for(Candidate candidate:candidates.values())BehaviorPath.pack(candidate.path).ifPresent(pack->packProblem(packs.get(pack),pack).ifPresent(candidate::add));
+            // A present source at a valid location for an ID supersedes that ID's retained missing program, so moving a behavior into a pack is not a duplicate.
+            Set<String> placed=new HashSet<>();
+            for(Candidate candidate:candidates.values())if(candidate.declaredId!=null&&BehaviorPath.matches(candidate.declaredId,candidate.path))placed.add(candidate.declaredId);
+            for(Entry previous:before.entries().values())if(previous.accepted().isPresent()&&!candidates.containsKey(previous.path())&&!removed.contains(previous.path())
+                    &&!placed.contains(previous.accepted().orElseThrow().program().id()))candidates.put(previous.path(),Candidate.missing(previous));
             if(candidates.size()>limits.maximumDocuments())return rejected("catalog-retained-document-budget","Observed and retained entries exceed document budget; explicitly remove missing accepted programs",before);
             Map<String,Set<String>> claims=new TreeMap<>();
             for(Candidate candidate:candidates.values()){
@@ -175,13 +189,19 @@ public final class BehaviorCatalog {
                     catch(RuntimeException | AssertionError | LinkageError failure){granted=new Capability(false,"registry-check-failed");}
                     if(!granted.available()){available=false;owner.add(error("behavior-capability-unavailable","$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+granted.reason()));}
                 }
+                Optional<String> pack=BehaviorPath.pack(owner.path);
+                if(pack.isPresent()&&packs.containsKey(pack.get())&&!packs.get(pack.get()).missingModules().isEmpty()){
+                    available=false;owner.add(error("pack-module-unavailable","$","Pack "+pack.get()+" requires modules that are not active: "+String.join(", ",packs.get(pack.get()).missingModules())+"; its configuration is kept"));
+                }
                 BehaviorCompiler.warnings(owner.accepted.program()).forEach(owner::add);
                 resolutions.put(id,new Resolution(id,available,Optional.of(owner.accepted),owner.diagnostics()));
             }
             BehaviorSourceReader.Scan checked=reader.scan(false);
             if(!scan.manifest().equals(checked.manifest()))return rejected("catalog-source-changed","Behavior source tree changed during reload; retry after edits settle",before);
             Map<String,Entry> entries=new TreeMap<>();candidates.forEach((path,candidate)->entries.put(path,candidate.entry()));
-            List<Diagnostic> global=removed.isEmpty()?List.of():List.of(new Diagnostic(Diagnostic.Severity.INFO,"catalog-programs-removed","behaviors","Explicitly removed "+removed.size()+" absent accepted programs; no files written"));
+            List<Diagnostic> global=new ArrayList<>();
+            if(!removed.isEmpty())global.add(new Diagnostic(Diagnostic.Severity.INFO,"catalog-programs-removed","behaviors","Explicitly removed "+removed.size()+" absent accepted programs; no files written"));
+            for(PackStatus pack:packs.values())global.addAll(pack.diagnostics());
             Map<String,BehaviorCheckpoints.Pending> durable=new TreeMap<>();Set<String> present=new HashSet<>();
             for(Candidate candidate:candidates.values()){
                 if(candidate.source!=null)present.add(candidate.path);
@@ -192,10 +212,42 @@ public final class BehaviorCatalog {
             try{checkpoints.update(durable,present);}
             catch(IOException | RuntimeException failure){return rejected("catalog-checkpoint-failed",safe(failure.getClass().getSimpleName()+": "+failure.getMessage(),240),before);}
             checkpointProblems.clear();
-            published=new Snapshot(Math.incrementExact(before.generation()),entries,resolutions,global);
+            published=new Snapshot(Math.incrementExact(before.generation()),entries,resolutions,global,packs);
             return new Reload(true,published,global,scan.sources().size(),scan.bytes());
         }catch(IOException invalid){return rejected("catalog-scan-unavailable",safe(invalid.getMessage(),240),before);}
         finally{reloading=false;}
+    }
+    /** Manifest and module state of every pack directory. An invalid manifest keeps the last valid one for module checks. */
+    private Map<String,PackStatus> packs(BehaviorSourceReader.Scan scan,Snapshot before){
+        Map<String,PackStatus> result=new TreeMap<>();Map<String,Capability> modules=new HashMap<>();
+        for(Map.Entry<String,BehaviorSourceReader.Source> item:scan.manifests().entrySet()){
+            String id=item.getKey();BehaviorSourceReader.Source source=item.getValue();String field="packs/"+id+"/"+BehaviorSourceReader.MANIFEST;
+            Optional<PackManifest> previous=Optional.ofNullable(before.packs().get(id)).flatMap(PackStatus::manifest);
+            Optional<PackManifest> manifest=Optional.empty();List<Diagnostic> problems=new ArrayList<>();
+            if(source==null)problems.add(error("pack-manifest-missing",field,"Pack "+id+" has no "+BehaviorSourceReader.MANIFEST+"; its behaviors are not loaded until one is added"));
+            else if(source.error()!=null||source.text()==null)problems.add(error("pack-manifest-invalid",field,"Manifest is unreadable under document/UTF-8 limits"));
+            else try{manifest=Optional.of(PackManifest.parse(source.text(),id));}
+            catch(IllegalArgumentException invalid){problems.add(error("pack-manifest-invalid",field,invalid.getMessage()));}
+            if(manifest.isEmpty()&&source!=null)manifest=previous;
+            List<String> missing=new ArrayList<>();
+            if(manifest.isPresent())for(Map.Entry<String,PackManifest.Module> module:manifest.get().modules().entrySet()){
+                if(!module.getValue().required())continue;
+                Capability state=modules.get(module.getKey());
+                if(state==null){
+                    try{state=Objects.requireNonNull(resolver.module(module.getKey()));}
+                    catch(RuntimeException | AssertionError | LinkageError failure){state=new Capability(false,"registry-check-failed");}
+                    modules.put(module.getKey(),state);
+                }
+                if(!state.available()){missing.add(module.getKey());problems.add(new Diagnostic(Diagnostic.Severity.WARNING,"pack-module-unavailable",field+"#modules."+module.getKey(),"Required module "+module.getKey()+" is not active ("+state.reason()+"); behaviors in this pack are unavailable and its configuration is kept"));}
+            }
+            result.put(id,new PackStatus(id,manifest,missing,problems));
+        }
+        return result;
+    }
+    private static Optional<Diagnostic> packProblem(PackStatus pack,String id){
+        if(pack==null)return Optional.of(error("pack-manifest-missing","$","Pack "+id+" has no readable directory entry"));
+        return pack.diagnostics().stream().filter(problem->problem.code().startsWith("pack-manifest-")).findFirst()
+                .map(problem->error(problem.code(),"$","Pack "+id+": "+problem.message()));
     }
     private Candidate parse(BehaviorSourceReader.Source source,Entry previous){
         Candidate candidate=new Candidate(source.path(),source,previous==null?null:previous.accepted().orElse(null));
@@ -206,7 +258,7 @@ public final class BehaviorCatalog {
             JsonElement id=object.get("id");
             if(id!=null&&id.isJsonPrimitive()&&id.getAsJsonPrimitive().isString()&&id.getAsString().length()<=256){
                 candidate.declaredId=id.getAsString();
-                try{String expectedPath=BehaviorPath.forId(candidate.declaredId);candidate.identitySafe=true;if(!expectedPath.equals(source.path()))candidate.add(error("behavior-path-mismatch","$.id","Logical ID does not exactly match its source path"));}
+                try{BehaviorPath.forId(candidate.declaredId);candidate.identitySafe=true;if(!BehaviorPath.matches(candidate.declaredId,source.path()))candidate.add(error("behavior-path-mismatch","$.id","Logical ID does not exactly match its source path"));}
                 catch(IllegalArgumentException invalid){candidate.add(error("behavior-id-path-invalid","$.id",invalid.getMessage()));}
             }else candidate.add(error("behavior-id-invalid","$.id","Expected bounded namespace:path identity"));
             JsonElement revision=object.get("revision");

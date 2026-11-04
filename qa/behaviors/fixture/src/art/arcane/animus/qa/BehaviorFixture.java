@@ -49,7 +49,7 @@ public final class BehaviorFixture extends JavaPlugin implements CommandExecutor
         core=field(target,"runtime",type(base+".core.AnimusRuntime"));
         extensions=field(target,"extensions",type(base+".core.extension.ExtensionRuntime"));
         serviceClosed=(AtomicBoolean)field(service,"closed",AtomicBoolean.class);
-        coordinator=field(service,"coordinator",type(base+".core.behavior.runtime.ManualBehaviorRuntime"));
+        coordinator=field(service,"coordinator",type(base+".core.behavior.runtime.BehaviorRuntime"));
         catalogTask=(AtomicReference<?>)field(service,"fileTask",AtomicReference.class);
         lane=field(core,"fileWork",type(base+".core.extension.MutationLane"));
         // ZERO never waits. Observe the lane directly so the runtime's storage-close

@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
-import static art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntimeTest.*;
+import static art.arcane.animus.core.behavior.runtime.BehaviorRuntimeTest.*;
 
 class HostCoordinatorTest {
     private static final DefinitionGateway DEFINITIONS=new DefinitionGateway(){
@@ -27,7 +27,7 @@ class HostCoordinatorTest {
         Sources sources=new Sources(ACTION);CompletableFuture<String> raw=new CompletableFuture<>();AtomicReference<Cancellation> token=new AtomicReference<>();AtomicReference<Thread> handlerThread=new AtomicReference<>();AtomicReference<Invocation> invocation=new AtomicReference<>();
         try(ModuleHost host=new ModuleHost(Platform.FOLIA,DEFINITIONS,2,Duration.ofSeconds(3))){
             assertEquals(Outcome.Status.OK,host.install(module(context->context.registrations().action(new Descriptor(new Key("sample","act"),Kind.ACTION,"Test","{}",Set.of(Platform.FOLIA),false),call->{token.set(call.cancellation());handlerThread.set(Thread.currentThread());invocation.set(call);return raw;}))).status());
-            UUID player=UUID.randomUUID();var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,new HostBehaviorInvoker(host),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
+            UUID player=UUID.randomUUID();var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,new HostBehaviorInvoker(host),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
             try{
                 UUID id=await(runtime.run("test","example:manual",Optional.of(player))).value().orElseThrow();eventually(()->token.get()!=null);
                 assertNotEquals("animus-behavior-owner",handlerThread.get().getName());assertFalse(invocation.get().preview());assertEquals(Optional.of(player),invocation.get().player());
@@ -42,7 +42,7 @@ class HostCoordinatorTest {
         Sources sources=new Sources(ACTION);AtomicInteger entered=new AtomicInteger();
         try(ModuleHost host=new ModuleHost(Platform.FOLIA,DEFINITIONS,2,Duration.ofSeconds(3))){
             host.install(module(context->context.registrations().action(new Descriptor(new Key("sample","act"),Kind.ACTION,"Privileged","{}",Set.of(Platform.FOLIA),true),call->{entered.incrementAndGet();return CompletableFuture.completedFuture("{}");})));
-            var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,new HostBehaviorInvoker(host),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
+            var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,new HostBehaviorInvoker(host),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
             try{UUID id=await(runtime.run("test","example:manual")).value().orElseThrow();eventually(()->runtime.inspect(id).orElseThrow().report().state()==BehaviorEngine.State.UNAVAILABLE);assertEquals(0,entered.get());}
             finally{stop(runtime);}
         }
@@ -57,7 +57,7 @@ class HostCoordinatorTest {
                 }));
                 NpcHandle npc=new NpcHandle(sources.npcs.get().get("test").uuid());
                 var first=host.action(new Key("sample","block"),npc,Optional.empty(),"{}",false,false);var second=host.action(new Key("sample","block"),npc,Optional.empty(),"{}",false,false);latch(held);
-                var runtime=new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),()->{
+                var runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),()->{
                     if(Thread.currentThread().getName().equals("animus-behavior-owner")&&holdOwner.compareAndSet(true,false)){ownerHeld.countDown();latch(ownerRelease);}return sources.npcs.get();
                 },sources.catalog::get,new HostBehaviorInvoker(host),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
                 try{
@@ -74,7 +74,7 @@ class HostCoordinatorTest {
         Sources sources=new Sources(ACTION);CompletableFuture<String> raw=new CompletableFuture<>();AtomicReference<Cancellation> token=new AtomicReference<>();AtomicBoolean holdOwner=new AtomicBoolean();CountDownLatch ownerHeld=new CountDownLatch(1),ownerRelease=new CountDownLatch(1);
         try(ModuleHost host=new ModuleHost(Platform.FOLIA,DEFINITIONS,2,Duration.ofMillis(500))){
             host.install(module(context->context.registrations().action(new Descriptor(new Key("sample","act"),Kind.ACTION,"Held","{}",Set.of(Platform.FOLIA),false),call->{token.set(call.cancellation());return raw;})));
-            var runtime=new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),()->{
+            var runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),()->{
                 if(Thread.currentThread().getName().equals("animus-behavior-owner")&&holdOwner.compareAndSet(true,false)){ownerHeld.countDown();latch(ownerRelease);}return sources.npcs.get();
             },sources.catalog::get,new HostBehaviorInvoker(host),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
             try{

@@ -183,6 +183,15 @@ public final class ExtensionRuntime implements AutoCloseable {
             @Override public List<Diagnostic> validate(BehaviorCatalog.Requirement requirement, String argumentsJson) {
                 return host.validateArguments(requirement.key(), requirement.kind(), argumentsJson);
             }
+            @Override public BehaviorCatalog.Capability module(String id) {
+                if (!admitting()) return new BehaviorCatalog.Capability(false, "modules-not-ready");
+                for (ModuleHost.ModuleStatus module : host.modules()) {
+                    if (!module.manifest().id().equals(id)) continue;
+                    return module.state() == ModuleHost.State.ACTIVE ? BehaviorCatalog.Capability.present()
+                            : new BehaviorCatalog.Capability(false, bounded("module-" + module.state().name().toLowerCase(java.util.Locale.ROOT) + ": " + module.reason()));
+                }
+                return new BehaviorCatalog.Capability(false, "module-not-installed");
+            }
         };
     }
     private static String bounded(String reason) { return reason.length() > 200 ? reason.substring(0, 200) : reason; }

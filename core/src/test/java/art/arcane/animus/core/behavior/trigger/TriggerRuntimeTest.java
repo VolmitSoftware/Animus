@@ -3,7 +3,7 @@ package art.arcane.animus.core.behavior.trigger;
 import art.arcane.animus.api.*;
 import art.arcane.animus.core.behavior.*;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
-import art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntime;
+import art.arcane.animus.core.behavior.runtime.BehaviorRuntime;
 import art.arcane.animus.core.npc.NpcDefinition;
 import java.time.Duration;
 import java.util.*;
@@ -24,7 +24,7 @@ class TriggerRuntimeTest {
     private final AtomicReference<BehaviorCatalog.Snapshot> catalog=new AtomicReference<>();
     private final List<BehaviorInvoker.Invocation> invocations=new CopyOnWriteArrayList<>();
     private TriggerDispatcher dispatcher;
-    private ManualBehaviorRuntime runtime;
+    private BehaviorRuntime runtime;
     private long revision;
 
     private void behavior(String routine,String triggers){
@@ -44,10 +44,10 @@ class TriggerRuntimeTest {
             public Call<String> action(Invocation invocation){invocations.add(invocation);return new Call<>(CompletableFuture.completedFuture(Outcome.ok("{}")),()->{});}
             public Call<Boolean> condition(Invocation invocation){return new Call<>(CompletableFuture.completedFuture(Outcome.ok(true)),()->{});}
         };
-        runtime=new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),definitions::get,catalog::get,invoker,dispatcher,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
+        runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),definitions::get,catalog::get,invoker,dispatcher,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
     }
     private static void eventually(BooleanSupplier check)throws Exception{long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean());}
-    private List<ManualBehaviorRuntime.Execution> running(){return runtime.snapshot().executions().values().stream().filter(item->item.report().state()==BehaviorEngine.State.RUNNING).toList();}
+    private List<BehaviorRuntime.Execution> running(){return runtime.snapshot().executions().values().stream().filter(item->item.report().state()==BehaviorEngine.State.RUNNING).toList();}
     private void click()throws Exception{
         eventually(()->dispatcher.snapshot().bindings()>0);assertEquals(Outcome.Status.OK,dispatcher.publish(new TriggerEvent.Interaction(npc,viewer,TriggerEvent.Action.INTERACT)).status());
     }
@@ -63,7 +63,7 @@ class TriggerRuntimeTest {
         assertTrue(invocations.getFirst().sourceCurrent().getAsBoolean());
         eventually(()->dispatcher.snapshot().active()==0);
         eventually(()->!runtime.snapshot().executions().isEmpty()&&running().isEmpty());
-        ManualBehaviorRuntime.Execution execution=runtime.snapshot().executions().values().iterator().next();
+        BehaviorRuntime.Execution execution=runtime.snapshot().executions().values().iterator().next();
         assertEquals(Optional.of("example:greeter#click"),execution.trigger());assertEquals(BehaviorEngine.State.COMPLETED,execution.report().state());
     }
     @Test void replacingTheBehaviorCancelsRunningTriggeredExecutions()throws Exception{

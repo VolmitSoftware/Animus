@@ -15,7 +15,7 @@ import java.util.List;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
-                             FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors) {
+                             FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -36,6 +36,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("files", new Gson().toJsonTree(FileWorkSettings.DEFAULT));
             document.add("modules", new Gson().toJsonTree(ModuleSettings.DEFAULT));
             document.add("behaviors", new Gson().toJsonTree(BehaviorSettings.DEFAULT));
+            document.add("combat", new Gson().toJsonTree(CombatBudgets.DEFAULT));
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -97,7 +98,27 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         BehaviorSettings behaviorSettings;
         try { behaviorSettings = behaviors(table(data.getAsJsonObject(), "behaviors")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": behaviors: " + e.getMessage(), e); }
-        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings);
+        CombatBudgets combatBudgets;
+        try { combatBudgets = combat(table(data.getAsJsonObject(), "combat")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": combat: " + e.getMessage(), e); }
+        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets);
+    }
+
+    private static CombatBudgets combat(JsonObject document) {
+        CombatBudgets defaults = CombatBudgets.DEFAULT;
+        return new CombatBudgets(bool(document, "enabled", defaults.enabled()),
+                integer(document, "maximumNpcs", defaults.maximumNpcs()),
+                integer(document, "brainsPerTick", defaults.brainsPerTick()),
+                integer(document, "targetScansPerTick", defaults.targetScansPerTick()),
+                integer(document, "scanCandidates", defaults.scanCandidates()),
+                integer(document, "scanCells", defaults.scanCells()),
+                integer(document, "squadAlertsPerTick", defaults.squadAlertsPerTick()),
+                integer(document, "pathRequestsPerTick", defaults.pathRequestsPerTick()),
+                integer(document, "maximumHelpers", defaults.maximumHelpers()),
+                integer(document, "helpersPerNpc", defaults.helpersPerNpc()),
+                integer(document, "helperUpdatesPerTick", defaults.helperUpdatesPerTick()),
+                integer(document, "helperLifetimeTicks", defaults.helperLifetimeTicks()),
+                integer(document, "idleSleepTicks", defaults.idleSleepTicks()));
     }
 
     private static BehaviorSettings behaviors(JsonObject document) {

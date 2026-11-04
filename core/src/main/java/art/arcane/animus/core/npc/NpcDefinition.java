@@ -1,5 +1,6 @@
 package art.arcane.animus.core.npc;
 
+import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
@@ -69,6 +70,8 @@ public final class NpcDefinition {
         if (object.has("modules") && !object.get("modules").isJsonObject()) errors.add("$.modules: expected object");
         else {
             try { WaypointSettings.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { CombatSettings.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { MountDeclaration.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }

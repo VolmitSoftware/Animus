@@ -4,6 +4,7 @@ import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.config.ModuleSettings;
 import art.arcane.animus.core.config.BehaviorSettings;
+import art.arcane.animus.core.config.CombatBudgets;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.MutationLane;
@@ -158,6 +159,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized NpcRuntimeSettings npcSettings() { return settings().npcs(); }
     public synchronized ModuleSettings moduleSettings() { return settings().modules(); }
     public synchronized BehaviorSettings behaviorSettings() { return settings().behaviors(); }
+    public synchronized CombatBudgets combatBudgets() { return settings().combat(); }
     private PluginSettings settings() {
         if (!isRunning()) throw new IllegalStateException("Animus is not running");
         return settings;
