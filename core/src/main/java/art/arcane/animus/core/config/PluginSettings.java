@@ -10,6 +10,8 @@ import art.arcane.volmlib.util.config.TomlCodec;
 import com.google.gson.*;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
@@ -153,7 +155,32 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 integer(document, "maximumOperations", defaults.maximumOperations()),
                 integer(document, "operationsPerTick", defaults.operationsPerTick()),
                 integer(document, "tickMillis", defaults.tickMillis()),
-                integer(document, "deliveryBudgetMillis", defaults.deliveryBudgetMillis()), engineLimits, catalogLimits, triggerBudgets, stateLimits);
+                integer(document, "deliveryBudgetMillis", defaults.deliveryBudgetMillis()), engineLimits, catalogLimits, triggerBudgets, stateLimits,
+                actions(table(document, "actions"), defaults.actions()));
+    }
+
+    private static BuiltinActionSettings actions(JsonObject actions, BuiltinActionSettings defaults) {
+        return new BuiltinActionSettings(integer(actions, "actionsPerTick", defaults.actionsPerTick()),
+                integer(actions, "actionsPerNpcPerTick", defaults.actionsPerNpcPerTick()),
+                integer(actions, "queuedActions", defaults.queuedActions()),
+                integer(actions, "pendingChoices", defaults.pendingChoices()),
+                integer(actions, "choiceLifetimeSeconds", defaults.choiceLifetimeSeconds()),
+                strings(actions, "commandBehaviors", defaults.commandBehaviors()),
+                strings(actions, "commandNamespaces", defaults.commandNamespaces()),
+                integer(actions, "navigationWaits", defaults.navigationWaits()));
+    }
+
+    private static List<String> strings(JsonObject document, String key, List<String> fallback) {
+        if (!document.has(key)) return fallback;
+        if (!document.get(key).isJsonArray()) throw new IllegalArgumentException(key + " must be an array of strings");
+        JsonArray source = document.getAsJsonArray(key);
+        if (source.size() > 1024) throw new IllegalArgumentException(key + " has too many entries");
+        List<String> values = new ArrayList<>(source.size());
+        for (JsonElement value : source) {
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) throw new IllegalArgumentException(key + " must be an array of strings");
+            values.add(value.getAsString());
+        }
+        return values;
     }
 
     private static int budget(JsonObject object, String field, int fallback, int minimum, int maximum, String table) {

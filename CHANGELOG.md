@@ -36,12 +36,23 @@
 - Persisted NPC-on-NPC mounts from native and imported definitions, with cycle and bound validation and exact field diagnostics.
 - Opt-in real-player riding through validated interaction, with semantic steering and server-side movement checks.
 - Packet-only ender dragon presentation with facing, synced phases and part-based hit validation.
+- Built-in `animus:` behavior conditions and actions for dialogue, clickable choices, navigation, look, appearance, equipment, sound, particles, combat control, and flag and quest state.
+- Privileged `animus:command`, denied by default, enabled by a TOML allow-list of behavior IDs or namespaces, with every run logged.
+- `[behaviors.actions]` settings for action budgets, the queue, pending choices and navigation waits.
+- `animus:navigate` can wait for arrival, with a timeout and cancellation.
+- Durable flags and quest stages per behavior namespace, covered by `[behaviors.state]` budgets and `state purge`.
+- Dialogue clicks start `dialogue_choice` triggers and fire `VirtualNpcDialogueChoiceEvent`, through the player-facing `/animus choice` click target.
+- `Capabilities.Invocation.behavior()` in the module API.
+- `behavior-trigger-needs-player` validation warning.
 
 ### Changed
 
 - Manual runs stay limited to one per NPC; trigger-started executions are counted separately and use scoped variables, resolving player and relationship variables from the triggering player.
 - `/animus behaviors inspect` answers with current waits, conditions and recent steps, and `/animus behaviors trace` lists every active run with its origin. Startup logs every behavior catalog diagnostic.
+- Behavior validation rejects invalid literal capability arguments and reports unavailable capabilities separately.
+- `/animus modules status` and `capabilities` count built-ins apart from module capabilities.
+- Preview executions carry their preview flag through to capabilities.
 
 ### Notes
 
-Partial-block movement, Folia rendering, behaviors, the full combat module, extension modules, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
+Partial-block movement, Folia rendering, the full combat module, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.

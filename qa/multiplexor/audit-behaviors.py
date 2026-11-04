@@ -14,7 +14,7 @@ spec = importlib.util.spec_from_file_location('behavior_import_audit', Path(__fi
 imports = importlib.util.module_from_spec(spec); spec.loader.exec_module(imports)
 base = imports.base
 require, read, digest = base.require, base.read_json, base.digest
-SCOPE = 'explicit manual definition-bound JSON behavior execution; no world actions, automatic triggers, preview, privileged grants or durable execution stacks'
+SCOPE = 'explicit manual definition-bound JSON behavior execution of module capabilities; built-in world actions, automatic triggers, preview, privileged grants and durable execution stacks are not exercised'
 PHASES = ['cold-disable', 'manual', 'restart-and-disable']
 CHECKS = ['cold-immediate-disable', 'module-schema-staging', 'readonly-file-validation', 'manual-dormant-start',
           'typed-arguments-and-conditions', 'sequence-repeat-routine-parallel', 'logical-final-wait',
@@ -24,7 +24,7 @@ CHECKS = ['cold-immediate-disable', 'module-schema-staging', 'readonly-file-vali
           'accepted-program-replacement', 'source-removal-and-restore', 'definition-revision-cancellation',
           'definition-despawn-intent', 'definition-delete-cancellation', 'invocation-capacity-after-cancel',
           'managed-restart-no-stack-resume', 'actual-plugin-disable', 'cleanup-and-provenance']
-FROZEN_WRAPPER = '0765524f8773507c8246a11ae15b8e1139c248778c2f9eb58a608d08b028a499'
+FROZEN_WRAPPER = '72d33c176a349aeebe306276328d92304eff1aa505215baf54139c3e678985b7'
 DIAGNOSTIC_STATUS_GATES = {'logical-final-wait', 'manual-cancel-raw-retention', 'explicit-release-quiescence', 'invocation-capacity-after-cancel'}
 ANSI = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 UUID = re.compile(r'[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}')
@@ -354,7 +354,7 @@ class BehaviorAuditor(imports.ImportAuditor):
         for item in modules['modules']:
             require(item['id'] + ' [' + item['file'] + '] | ' + item['expectedStartup'] + ' |' in listing, 'Actual module state differs: ' + item['id'])
         capabilities = ledger.find('animus modules capabilities')[0]['output']
-        require('Module capabilities: 8;' in capabilities and 'qabehaviorbad:staged' not in capabilities and 'qabehaviorbad:unsupported' not in capabilities, 'Failed schema registration leaked')
+        require('Module capabilities: 8; built-in: 19;' in capabilities and 'qabehaviorbad:staged' not in capabilities and 'qabehaviorbad:unsupported' not in capabilities, 'Failed schema registration leaked')
         original = json.loads(snapshots['initial-definition'][source]); require(original['spawned'] is False and original['uuid'] == report['npcUuid'] and original['revision'] == report['initialRevision'], 'Initial dormant definition differs')
         validation = ledger.find('animus behaviors validate')[0]
         require('Behaviors validate: INVALID |' in validation['receipt'] and 'published=false' in validation['receipt'], 'Validation applied or accepted invalid files')

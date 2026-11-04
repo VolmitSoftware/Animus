@@ -1,6 +1,6 @@
 # JSON behaviors
 
-The core compiler, interpreter, typed argument binding, file catalog and module-schema checks are integrated. Manual commands, automatic triggers and lifecycle wiring are integrated; their final shutdown review and new managed server acceptance run are pending. Runtime10's published server results cover the earlier artifact. Scoped variables, durable state and last-valid checkpoints are covered by local tests and have not run on a live server. Dialogue UI and platform actions remain separate work.
+The core compiler, interpreter, typed argument binding, file catalog and module-schema checks are integrated. Manual commands, automatic triggers and lifecycle wiring are integrated; their final shutdown review and new managed server acceptance run are pending. Runtime10's published server results cover the earlier artifact. Scoped variables, durable state, last-valid checkpoints and [built-in capabilities](#built-in-capabilities) are covered by local tests and have not run on a live server.
 
 Behavior documents are JSON. Plugin-wide budgets are TOML. A behavior named `reference:module-sequence` lives at `plugins/Animus/behaviors/reference/module-sequence.json`:
 
@@ -26,7 +26,7 @@ Behavior documents are JSON. Plugin-wide budgets are TOML. A behavior named `ref
 }
 ```
 
-This example requires the [reference Java module](../examples/modules/reference/README.md). Its action returns a JSON message to the engine; it does not send NPC dialogue to players. It is an example of module execution, not one of the planned release behavior packs.
+This example requires the [reference Java module](../examples/modules/reference/README.md). Its action returns a JSON message to the engine; it does not send NPC dialogue to players. It is an example of module execution, not one of the planned release behavior packs. For actions that reach the world and players, see [built-in capabilities](#built-in-capabilities).
 
 Each namespace and path segment uses 1–64 lowercase ASCII letters, digits, `_` or `-`; the complete logical ID is limited to 256 characters. Nested paths are supported. Empty path segments, dots, backslashes and reserved Windows device names are rejected. IDs must exactly match their file paths. Secure catalog scanning currently requires a filesystem provider supporting Java `SecureDirectoryStream`; unsupported providers report unavailable rather than using an unsafe fallback.
 
@@ -98,7 +98,7 @@ Compiler bounds include 256 KiB of source, 2,048 syntax nodes, depth 32, 32 rout
 
 Execution budgets independently bound active runs, branches, calls, instructions, lifetime, routine depth, history and trace retention. Reports preserve waits, the failed node's trace and up to 16 field diagnostics. A delivered timeout/cancellation result does not prove a Java handler stopped: its call remains counted until actual handler and result-delivery quiescence. Engine shutdown must keep bounded drain maintenance running for those retired calls. Noncooperative trusted Java work can remain unavailable until restart.
 
-The behavior runtime uses its own engine thread and immutable definition/catalog observations. It grants no Bukkit/Folia world ownership, preview permission or privileged command capability. General Folia NPC rendering/navigation/combat and automatic triggers remain outside this manual module/data gate.
+The behavior runtime uses its own engine thread and immutable definition/catalog observations. The owner itself grants no world access: built-in actions reach the world only through their bounded owner-thread queue. General Folia NPC rendering/navigation/combat and automatic triggers remain outside this manual module/data gate.
 
 ## Automatic triggers
 
@@ -135,10 +135,10 @@ This example requires a module providing `example:wave` and `example:bow`. Every
 | `death` | None. | Authoritative NPC health reaches zero. No despawn trigger follows a death. |
 | `waypoint` | Optional `waypoint`: -1 to 4,095. | The NPC arrives at a route point; -1 is a manually requested destination. Without the field, any arrival fires. |
 | `timer` | `intervalTicks`: 1 to 72,000. | The interval passes while the NPC is active. |
-| `dialogue_choice` | `dialogue`. Optional `choice`. | Something publishes `TriggerEvent.DialogueChoice` for this NPC. |
+| `dialogue_choice` | `dialogue`. Optional `choice`. | A viewer's click on that prompt from this NPC passes validation. |
 | `module` | `key`: a `namespace:name` trigger. | The owning module publishes that trigger. |
 
-Interaction, proximity and dialogue executions carry the viewer's UUID, and module executions carry the UUID the module supplied. The other events carry no player. Triggers pass no other event data to the routine. Trigger-started runs use the same scoped variables as manual runs, and `player` and `relationship` variables resolve from the triggering player. Every routine a behavior's triggers start shares that behavior's variables. A trigger with no player cannot start a behavior declaring such a variable: that start is counted under `START_FAILED`, and `/animus behaviors triggers` shows the most recent refusal with its exact field.
+Interaction, proximity and dialogue executions carry the viewer's UUID, and module executions carry the UUID the module supplied. The other events carry no player. Triggers pass no other event data to the routine. Trigger-started runs use the same scoped variables as manual runs, and `player` and `relationship` variables resolve from the triggering player. Every routine a behavior's triggers start shares that behavior's variables. A trigger with no player cannot start a behavior declaring such a variable: that start is counted under `START_FAILED`, and `/animus behaviors triggers` shows the most recent refusal with its exact field. Spawn, despawn, damage, death, waypoint and timer triggers never have a player, so `/animus behaviors validate` warns with `behavior-trigger-needs-player` on each such trigger in that behavior. The behavior is still accepted, since its other triggers may work. A `module` trigger depends on what its module supplies and is not flagged.
 
 Only active NPCs fire. Dormant NPCs, which includes applied imports until they are spawned, hold no bindings and fire nothing. Preview presentations never fire triggers. Editing an active NPC's definition is neither a despawn nor a spawn. A player disconnecting fires no `leave`. Deleting an NPC fires no `despawn`, because no definition remains to run against. Stopping the server fires nothing.
 
@@ -179,8 +179,160 @@ proximityTrackedPerViewer = 64
 
 An event that finds its cooldown running is suppressed. An event that finds a full queue is dropped. A start waiting on a concurrency limit stays queued until `queueLifetimeTicks`, then is dropped. All of these are counted and never queue without limit. A timer below `minimumTimerTicks`, a radius above `maximumProximityRadius`, and bindings or timers beyond their maximums stay unbound and are listed as diagnostics. `concurrentTotal` also leaves engine capacity for manual runs when it is below `behaviors.engine.executions`.
 
-Dialogue is a contract for now: nothing in Animus publishes `TriggerEvent.DialogueChoice` yet.
+A valid click on [`animus:choices`](#dialogue-choices) publishes the dialogue event. `dialogue` matches the prompt's `id` and `choice` matches the option's `id`.
 
+
+## Built-in capabilities
+
+Behaviors can use the `animus:` capabilities below as soon as the plugin starts, with no Java module installed. They share the registry and schema checks used for modules. `/animus modules capabilities` lists them after any module capabilities, and it and `/animus modules status` count the two separately. Unknown argument fields are rejected. Coordinates are absolute and use the NPC's current world.
+
+This greeter faces the player who started it, asks a question, and records that they met:
+
+```json
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:greeter",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "condition",
+      "capability": "animus:player-in-range",
+      "arguments": {"radius": 8},
+      "then": {
+        "type": "sequence",
+        "steps": [
+          {"type": "action", "capability": "animus:look", "arguments": {"target": "player"}},
+          {"type": "action", "capability": "animus:say", "arguments": {"text": "Welcome to town."}},
+          {"type": "action", "capability": "animus:choices", "arguments": {
+            "id": "greeting",
+            "prompt": "Do you need directions?",
+            "options": [{"id": "yes", "text": "Yes, please"}, {"id": "no", "text": "No, thanks"}]
+          }},
+          {"type": "action", "capability": "animus:set-flag", "arguments": {"name": "met-guard", "scope": "relationship"}}
+        ]
+      }
+    }
+  }
+}
+```
+
+### Conditions
+
+| Capability | Arguments | True when |
+| --- | --- | --- |
+| `animus:has-permission` | `permission` | The triggering player holds the permission. False with no triggering player. |
+| `animus:npc-state` | At least one of `spawned`, `minimumHealth`, `maximumHealth` | The NPC matches all of them. A dormant or removed NPC has `spawned` false and health 0. |
+| `animus:player-in-range` | `radius` (1-64), optional `anyPlayer` | The triggering player, or any player with `anyPlayer`, is within the radius in the NPC's world. |
+| `animus:flag-state` | `name`, optional `scope`, optional `value` (default true) | The flag has that value. An unset flag is false. |
+| `animus:quest-state` | `name`, optional `scope`, at least one of `equals`, `atLeast`, `atMost` | The stage matches all of them. An unset quest is stage 0. |
+
+### Actions
+
+| Capability | Arguments | Result |
+| --- | --- | --- |
+| `animus:say` | `text` (up to 1,024 characters), optional `audience`, `radius` | Sends `Name: text`. |
+| `animus:choices` | `id`, `prompt`, `options` (1-8 of `id` and `text`), optional `lifetimeSeconds` (1-600) | Shows clickable options to the triggering player. Completes when shown and does not wait for the answer. |
+| `animus:command` | `command` (no leading slash), optional `as`: `console` (default) or `player` | Runs the command. Requires the allow-list below. |
+| `animus:navigate` | Either `x`, `y`, `z` with optional `mode` (`walk`, `swim`, `fly`) and `speed` (1-5), or `route`. Optional `wait`, and with it `timeoutTicks` (20-12,000, default 1,200). | Starts a route or follows `behaviors/routes/<route>.json`. Completes when requested unless `wait` is true; see [walking a patrol](#walking-a-patrol). The limits in [the runtime guide](runtime.md) apply. |
+| `animus:stop-navigation` | None | Stops any route. Reports `stopped`. |
+| `animus:look` | Either `x`, `y`, `z`, or `"target": "player"` | Turns the NPC. The target must be within 64 blocks in the same world. |
+| `animus:set-appearance` | Any of `name` (up to 16 characters) and `skin` (a skin file hash), or `"reset": true` | Shows a new name or skin on a player body. Viewers receive a fresh body. |
+| `animus:set-equipment` | `slot` (`main_hand`, `off_hand`, `head`, `chest`, `legs`, `feet`, `body`), optional `item` | Shows the item, such as `minecraft:iron_sword`. Without `item`, clears the slot. |
+| `animus:play-sound` | `sound`, optional `volume` (0-4), `pitch` (0.5-2), `audience`, `radius` | Plays the sound at the NPC for its audience only. |
+| `animus:spawn-particle` | `particle`, optional `count` (1-64), `spread` (0-8), `audience`, `radius` | Shows the particle at the NPC to its audience only. Particles that need extra data are rejected. |
+| `animus:combat-control` | `operation` (`enable`, `disable`, `target`, `release`), `target` (an entity UUID) for `target` only | Uses the same manual combat adapter as `/animus target`. Combat policy, review flags and protection checks still apply. |
+| `animus:set-flag` | `name`, optional `scope`, optional `value` (default true) | Sets the flag. |
+| `animus:set-quest-state` | `name`, `value`, optional `scope` | Sets the stage. |
+| `animus:advance-quest-state` | `name`, optional `scope`, `by` (default 1), `maximum` | Adds to the stage without passing `maximum`. Reports `value`. |
+
+`audience` is `trigger` (default) or `nearby`; `radius` applies to `nearby`, from 1 to 64 with a default of 16. `scope` is `player` (default), `npc`, `relationship` or `global`. A capability that addresses the triggering player fails with `no-triggering-player` when a behavior has none, as with a console `/animus behaviors run`.
+
+Appearance and equipment changes last until restart or until the NPC's definition changes, and they do not edit the definition. Changing the definition during a run cancels that run, which is why these actions stay out of the file.
+
+### Flags and quests
+
+Flags and quest stages are durable behavior state. `scope` defaults to `player`, so a quest follows the player from NPC to NPC. Use `relationship` for a value between one player and one NPC, `npc` for one NPC, and `global` for the whole pack.
+
+They belong to the behavior's namespace rather than to one behavior: `town:greeter` and `town:quest/gatekeeper` see the same `main` quest, and `harbor:greeter` sees its own. A `name` uses lowercase letters, digits, `_` or `-`, up to 64 characters. Flags and quests have separate names, and calling one directly with `/animus modules action` is refused with `no-behavior-namespace`.
+
+`[behaviors.state]` budgets apply, and a write over a budget fails its run with the same diagnostics as a variable. One namespace holds at most 128 flags and 128 quests per subject. Values are stored as `animus:flags/<namespace>` and `animus:quests/<namespace>`, which behaviors cannot use as their own IDs. To remove them, use `/animus behaviors state purge`, for example `state purge behavior animus:quests/town`; the `npc`, `player`, `relationship` and `all` forms reach them too.
+
+### Walking a patrol
+
+With `"wait": true`, `animus:navigate` completes on arrival, so steps run one after another:
+
+```json
+{"type": "repeat", "count": 8, "body": {"type": "sequence", "steps": [
+  {"type": "action", "capability": "animus:navigate", "arguments": {"x": 10, "y": 64, "z": 4, "wait": true}},
+  {"type": "wait", "ticks": 40},
+  {"type": "action", "capability": "animus:navigate", "arguments": {"x": 16, "y": 64, "z": 4, "wait": true}},
+  {"type": "wait", "ticks": 40}
+]}}
+```
+
+The run fails with a diagnostic if the route ends any other way:
+
+| Code | Cause |
+| --- | --- |
+| `navigation-blocked`, `navigation-failed` | Something blocks the path, or no path exists. |
+| `navigation-unavailable` | Terrain is not loaded. A waiting route stops rather than retrying, and the same applies to a failed route read. |
+| `navigation-cancelled` | Another route replaced this one, the route was stopped, or the NPC was despawned or replaced. |
+| `navigation-timeout` | `timeoutTicks` passed; the route stops and the message gives its last status. Ticks are server ticks. |
+| `navigation-invalid` | A reusable route point is out of range, or the route has `loop` set, which never finishes. |
+
+Cancelling the run stops the route. With a reusable `route`, it completes at the last point.
+
+A waiting action holds one of `behaviors.engine.inFlight` and one of `modules.maximumInvocations` while the NPC walks, and other actions wait when `inFlight` is used up. `behaviors.actions.navigationWaits` caps waiting actions at 8 by default so walkers cannot starve everything else; past that, the action fails as `navigation-wait-capacity`. Raise it along with `inFlight` for more walkers.
+
+### Unavailable and invalid
+
+These are reported differently, so a problem with the file is not confused with a problem with the server:
+
+- **Invalid**: literal arguments fail the capability's checks, and `/animus behaviors validate` reports `behavior-arguments-invalid`. An invalid edit retains the previous accepted program. Arguments filled from variables are checked when the action runs.
+- **Unavailable**: the program is accepted but cannot run here, reported as `behavior-capability-unavailable` with the reason. This covers a missing module, a server without the NPC runtime, and a command without a grant.
+
+General NPC runtime is disabled on Folia. The capabilities still appear there, but everything that touches the world or a player reports as unavailable and nothing is scheduled. `animus:flag-state`, `animus:quest-state` and the flag and quest actions keep working.
+
+### Dialogue choices
+
+Each prompt has a random single-use token. A click runs `/animus choice <token> <option>`, which any player may send and which does nothing without a matching prompt. A click is rejected unless the token is live, it comes from the player who was asked, the option exists, the NPC is still spawned and the player is within 64 blocks. Every rejection shows the same message and publishes nothing. A rejected click from the wrong player, on an unknown option or from too far away leaves the prompt open for its rightful answer. A new prompt from the same NPC to the same player replaces the earlier one.
+
+An accepted click starts any matching [`dialogue_choice` trigger](#automatic-triggers) with the clicking player, then fires `VirtualNpcDialogueChoiceEvent`. An NPC needs the behavior in its `behaviors` list, and the trigger's cooldown and queue limits apply. This pairs a question with its answers:
+
+```json
+"routines": {
+  "main": {"type": "action", "capability": "animus:choices", "arguments": {"id": "greeting", "prompt": "Need directions?", "options": [{"id": "yes", "text": "Yes"}, {"id": "no", "text": "No"}]}},
+  "directions": {"type": "action", "capability": "animus:say", "arguments": {"text": "The market is north."}}
+},
+"triggers": [{"id": "asked", "event": "dialogue_choice", "dialogue": "greeting", "choice": "yes", "routine": "directions"}]
+```
+
+### Commands
+
+Commands are denied by default. A behavior can use `animus:command` only when its exact ID or its namespace is listed in `config.toml`. Each run logs the behavior ID, the NPC UUID, the sender and the command. Commands never run in a preview, and `/animus modules action` cannot reach them. Anyone who can edit an allow-listed behavior can run console commands, so grant as narrowly as you can.
+
+```toml
+[behaviors.actions]
+actionsPerTick = 32
+actionsPerNpcPerTick = 4
+queuedActions = 256
+pendingChoices = 256
+choiceLifetimeSeconds = 60
+commandBehaviors = ["town:gate/open"]
+commandNamespaces = []
+navigationWaits = 8
+```
+
+Accepted ranges are 1-256 actions per tick, 1-64 per NPC per tick and no more than the tick budget, 1-1,024 queued actions, 1-4,096 pending choices and a lifetime of 1-600 seconds. Each list holds at most 256 entries, and `navigationWaits` accepts 1-64. The listed values other than the example allow-list are the defaults. Restart after changing them.
+
+### Limits and previews
+
+World and player work waits in a bounded queue and runs on the server's owner thread. Past the per-tick or per-NPC budget, an action waits for a later tick. A full queue fails the action as `BUSY`, which ends that run. Waiting is included in the module invocation deadline (`modules.invocationTimeoutMillis`), except for a navigate with `wait`, which has its own timeout. An action that misses the deadline fails its run and is dropped without running, and unlike a Java module the built-in capabilities are not suspended.
+
+A preview run refuses `command`, `combat-control`, `navigate`, `stop-navigation`, `look`, `set-appearance`, `set-equipment`, `choices` and every flag or quest write. `say`, `play-sound` and `spawn-particle` work in a preview only for the viewer's own `trigger` audience. Conditions still read normally.
+
+## Commands and settings
 
 The current administrative commands require `animus.admin`:
 
@@ -202,7 +354,7 @@ The current administrative commands require `animus.admin`:
 | `/animus behaviors state purge relationship <npc-id-or-uuid> <player-uuid>` | Remove the variables of that one pair. |
 | `/animus behaviors state purge all confirm` | Remove all stored and transient variables, including invalid or unrecognized stored files. |
 
-Catalog loading waits for module initialization and shares the existing bounded file worker. A successful scan may publish a catalog containing unavailable or invalid sources; inspect the reported counts and field diagnostics. Repeated catalog operations report busy while a scan is pending. Replies return through the sender's owning scheduler. Console execution carries no player identity; player execution captures only the sender UUID, with no implicit world, preview or privileged authority.
+Catalog loading waits for module initialization and shares the existing bounded file worker. A successful scan may publish a catalog containing unavailable or invalid sources; inspect the reported counts and field diagnostics. Repeated catalog operations report busy while a scan is pending. Replies return through the sender's owning scheduler. Console execution carries no player identity. Player execution captures only the sender UUID, which identifies the triggering player and grants no privileged authority.
 
 Manual execution permits one active manual run per NPC, including a dormant definition. Trigger-started executions are counted separately under their own budgets. It captures the exact accepted definition and behavior. Definition replacement, deletion or despawn cancels that authority. A no-op NPC file reload also conservatively cancels because it publishes a new definition object. An unchanged accepted behavior retains its identity and continues. Edited behavior bytes require a higher revision; accepted replacement cancels runs using the earlier program. Missing or duplicate behavior sources make the program unavailable. A rejected edit can continue using the preceding valid program within the same process.
 

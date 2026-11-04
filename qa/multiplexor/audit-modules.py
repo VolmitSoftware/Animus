@@ -136,7 +136,7 @@ class ModuleAuditor(imports.ImportAuditor):
                 require(identity + ' [' + item['file'] + '] | FAILED | enable-failed: ' + expected_failure in listing, 'Synthetic startup failure reason changed')
             if item['expectedStartup'] in ('REJECTED', 'UNAVAILABLE'): require('Animus module QA initialized ' + identity not in logs['prepare'], 'Rejected module initialized')
         catalog = find('prepare', 'animus modules capabilities')[0]['output']
-        require('Module capabilities: 13;' in catalog and 'qabroken:partial' not in catalog and 'reference:stolen' not in catalog, 'Partial/foreign registry publication')
+        require('Module capabilities: 13; built-in: 19;' in catalog and 'qabroken:partial' not in catalog and 'reference:stolen' not in catalog, 'Partial/foreign registry publication')
         require(action('reference:hello', statuses=['OK', 'OK']) == [('OK', {'message': 'Hello from a trusted external module'})] * 2, 'Binary reloaded before restart')
         require(action('reference:hello', 'restart-and-disable', statuses=['OK'])[0][1] == {'message': 'Replacement reference after restart'}, 'Replacement absent after restart')
         require(action('qalink:linked', statuses=['OK'])[0][1] == {'linked': True}, 'Dependency linkage missing')
@@ -168,7 +168,7 @@ class ModuleAuditor(imports.ImportAuditor):
         require('enabled=false admission-closed=true' in disabled and int(re.search(r'duration-ms=(\d+)', disabled)[1]) == report['checks'][10]['disableMillis'], 'Official disable receipt mismatch')
         require('Module QA post-disable action=UNAVAILABLE' in logs['restart-and-disable'] and
                 'state=STOPPED admission-closed=true admitted=0 retained=0 released=true' in logs['restart-and-disable'], 'Late work/archive cleanup incomplete')
-        require('Modules DISABLED | startup=0 | capabilities=0' in logs['disabled-start'] and 'Module list: 0; page 1' in logs['disabled-start']
+        require('Modules DISABLED | startup=0 | capabilities=0 | built-in=19' in logs['disabled-start'] and 'Module list: 0; page 1' in logs['disabled-start']
                 and 'Animus module QA initialized ' not in logs['disabled-start'], 'Disabled setting initialized modules')
         # Reconstruct every actual persisted transition; invalid drafts cannot hide a mutation.
         journals = []
