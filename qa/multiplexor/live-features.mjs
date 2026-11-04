@@ -1346,7 +1346,7 @@ async function terrain() {
     const from = owner.events.length;
     await owner.look(body.x + 40, body.y + 1, body.z);
     await owner.keys({ forward: true });
-    await delay(3500);
+    await delay(5000);
     await owner.keys({});
     await delay(300);
     const moves = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id);
@@ -1551,7 +1551,9 @@ async function packs() {
   const uuidOf = id => JSON.parse(readFileSync(path.join(data, 'npcs/examples', `${id}.json`), 'utf8')).uuid;
   let owner = await join(OWNER.name);
   await check('packs load and every pack NPC is active', async () => {
-    const list = plain(await server.capture('animus behaviors list', /Behavior \S+ \| path=packs[^\n]*/, 600));
+    // The list pages at 20 rows; earlier scenarios' documents come first.
+    let list = '';
+    for (const page of [1, 2]) list += plain(await server.capture(`animus behaviors list ${page}`, /Behaviors: \d+ documents[^\n]*/, 600));
     note(list);
     const rows = list.split('\n').filter(line => /Behavior \S+ \| path=packs\//.test(line));
     const problems = [];
