@@ -20,6 +20,7 @@ dependencies {
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
 }
 
+evaluationDependsOn(':animus-api')
 def moduleContractJar = project(':animus-api').tasks.named('jar', Jar)
 tasks.withType(Test).configureEach {
     javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
