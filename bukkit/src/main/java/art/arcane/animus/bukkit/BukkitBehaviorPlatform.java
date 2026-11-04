@@ -197,12 +197,7 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
 
     @Override public void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target) {
         PersistedNpcService.ActiveNpc active = require(npc);
-        mapped(() -> switch (operation) {
-            case ENABLE -> combat.enable(active.id());
-            case DISABLE -> combat.disable(active.id());
-            case TARGET -> combat.execute(new String[]{"target", active.id(), target.orElseThrow().toString()});
-            case RELEASE -> combat.execute(new String[]{"target", active.id(), "stop"});
-        });
+        mapped(() -> combat.operate(active.state().npcId(), operation, target));
     }
 
     private PersistedNpcService.ActiveNpc require(NpcHandle npc) {

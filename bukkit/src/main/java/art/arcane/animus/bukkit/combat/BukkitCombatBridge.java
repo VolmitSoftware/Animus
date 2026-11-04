@@ -34,6 +34,16 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
         /** Fail closed on exceptions. Called again after cancellable events, on the owning main thread. */
         boolean allows(Action action, VirtualNpcState.Snapshot npc, LivingEntity realEntity);
     }
+    /** Lets the combat module apply an NPC's defense to controlled-mob hits and learn of the result. Owner thread only. */
+    public interface Defense {
+        Defense NONE = new Defense() {
+            @Override public double mitigate(UUID npc, LivingEntity attacker, double amount) { return amount; }
+            @Override public void damaged(UUID npc, LivingEntity attacker, VirtualNpcState.Snapshot after) {}
+        };
+        /** The damage left after defense, or 0 for none. */
+        double mitigate(UUID npc, LivingEntity attacker, double amount);
+        void damaged(UUID npc, LivingEntity attacker, VirtualNpcState.Snapshot after);
+    }
     /** Health values are absent on rejected attempts; appliedDamage includes absorption consumed by Bukkit. */
     public record AttackResult(Status status, double appliedDamage, Double healthBefore, Double healthAfter, String detail) {}
     public record Capabilities(boolean realDamage, Set<String> controlledMobTypes, String unavailableReason, String mobControlUnavailableReason) {
@@ -42,6 +52,7 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
     private final Plugin plugin;
     private final CombatLimits limits;
     private final Protection protection;
+    private final Defense defense;
     private final NativeMobController nativeMobs;
     private final Capabilities capabilities;
     private final Map<UUID, Combatant> combatants = new HashMap<>();
@@ -52,8 +63,9 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
     private int remainingPlans;
     private boolean closed;
 
-    public BukkitCombatBridge(Plugin plugin, String exactVersion, boolean folia, CombatLimits limits, Protection protection) {
+    public BukkitCombatBridge(Plugin plugin, String exactVersion, boolean folia, CombatLimits limits, Protection protection, Defense defense) {
         this.plugin = Objects.requireNonNull(plugin); this.limits = Objects.requireNonNull(limits); this.protection = Objects.requireNonNull(protection);
+        this.defense = Objects.requireNonNull(defense);
         String unavailable = folia || foliaPresent() ? "Combat unavailable on Folia until region-safe world/entity ownership is proven" :
                 !Set.of("26.1.2", "26.2", "26.3").contains(exactVersion) ? "Combat is not validated for " + exactVersion : null;
         NativeMobController adapter = null;
@@ -223,10 +235,13 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
                 if (!active() || !unchanged(npc, before) || !nativeLease.owned()) { lastStatus = Status.STALE; return; }
                 Status validation = validate(npc, before, mob, profile.attack().reach(), true);
                 if (validation != null) { lastStatus = validation; return; }
-                VirtualNpcState.Snapshot after = npc.state.damage(event.getDamage());
+                double amount = defense.mitigate(npc.npcId(), mob, event.getDamage());
+                if (!(amount > 0)) { lastStatus = Status.NO_CHANGE; return; }
+                VirtualNpcState.Snapshot after = npc.state.damage(amount);
                 lastStatus = Status.APPLIED;
                 mob.swingMainHand();
                 npc.onChange.accept(after);
+                defense.damaged(npc.npcId(), mob, after);
                 if (!after.active() || !npc.active()) close();
             } finally { attacks.release(); }
         }

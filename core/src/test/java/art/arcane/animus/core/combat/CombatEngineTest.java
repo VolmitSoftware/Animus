@@ -265,6 +265,14 @@ class CombatEngineTest {
         run(1);
         assertEquals(mob(attacker), status(npc).target().orElseThrow());
     }
+    @Test void aGuardDefendsItsChargeAgainstAnNpc() {
+        UUID charge = world.player("Alice", 4, 0);
+        UUID guard = combatant(0, 0, "{\"guard\":{\"player\":\"" + charge + "\"},\"targeting\":{\"scanIntervalTicks\":200}}");
+        UUID bandit = combatant(6, 0, "{\"targets\":{\"players\":[\"alice\"]},\"targeting\":{\"scanIntervalTicks\":1},\"melee\":{\"reach\":3}}");
+        run(3);
+        assertTrue(world.realDamage.containsKey(charge));
+        assertEquals(new TargetRef(TargetKind.NPC, bandit), status(guard).target().orElseThrow());
+    }
     @Test void aGuardDoesNotTargetItsChargeEvenWhenTheRulesMatch() {
         UUID charge = world.player("Alice", 2, 0);
         UUID npc = combatant(0, 0, "{\"targets\":{\"categories\":[\"players\"]},\"guard\":{\"player\":\"" + charge + "\"},\"targeting\":{\"scanIntervalTicks\":1}}");

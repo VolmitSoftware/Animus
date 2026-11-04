@@ -42,7 +42,7 @@ class CombatSettingsTest {
                  "pursuit":{"closeChase":true,"rangedChase":true,"speed":4,"giveUpRange":40,"leashRange":64,"returnToPost":true,"teleportWhenStuck":true,"replanTicks":20},
                  "melee":{"damage":4,"reach":3,"cooldownTicks":20,"knockback":0.4},
                  "ranged":{"enabled":true,"weapon":"arrow","damage":3,"range":24,"minimumRange":4,"cooldownTicks":40,"velocity":1.6,"inaccuracy":3,"safeShot":true,"knockback":0.2},
-                 "defense":{"maximumHealth":40,"armor":0.2,"invincible":false,"knockback":true,"protectedFromIgnored":true,"protectFromRange":30,"healRateTicks":100,"invulnerableTicks":10,"mobRetaliation":true},
+                 "defense":{"maximumHealth":40,"armor":0.2,"invincible":false,"knockback":true,"protectedFromIgnored":true,"protectFromRange":30,"healRateTicks":100,"invulnerableTicks":10},
                  "death":{"drops":[{"item":"minecraft:iron_ingot","amount":2,"chance":0.5}],"experience":5,"victimDrops":false},
                  "respawn":{"delayTicks":100,"locations":[{"world":"world","x":0,"y":64,"z":0}]}}"""));
         assertEquals(CombatSettings.LineOfSight.FIELD_OF_VIEW, settings.targeting().lineOfSight());
