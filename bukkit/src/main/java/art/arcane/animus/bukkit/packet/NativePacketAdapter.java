@@ -1,0 +1,546 @@
+package art.arcane.animus.bukkit.packet;
+
+import io.netty.channel.*;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.util.ReferenceCountUtil;
+import org.bukkit.Location;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.Plugin;
+
+import java.lang.reflect.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
+import java.util.function.Consumer;
+
+/**
+ * Experimental exact-version transport. No method constructs an NMS Entity or registers a body in a world.
+ * Call watch/spawn/move/despawn/forget on the viewer's owning scheduler. All native details stay here.
+ * Inbound messages are only ownership/rate filtered; the consumer MUST validate authoritative reach,
+ * world/chunk visibility, line of sight and current NPC state before doing anything with an interaction.
+ */
+public final class NativePacketAdapter implements AutoCloseable {
+    public enum Action { ATTACK, INTERACT }
+    public record Skin(String textureValue, String signature) {
+        public Skin {
+            if (textureValue == null || textureValue.isBlank() || textureValue.length() > 32768)
+                throw new IllegalArgumentException("Skin texture must contain 1..32768 characters");
+            Base64.getDecoder().decode(textureValue);
+            if (signature != null) {
+                if (signature.isBlank() || signature.length() > 8192) throw new IllegalArgumentException("Invalid skin signature size");
+                Base64.getDecoder().decode(signature);
+            }
+        }
+    }
+    public record Pose(UUID world, double x, double y, double z, float yaw, float pitch, boolean onGround) {
+        public Pose {
+            Objects.requireNonNull(world, "world");
+            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                    || Math.abs(x) > 30_000_000 || Math.abs(y) > 30_000_000 || Math.abs(z) > 30_000_000
+                    || !Float.isFinite(yaw) || !Float.isFinite(pitch) || Math.abs(pitch) > 90)
+                throw new IllegalArgumentException("Invalid virtual body position/rotation");
+        }
+        public static Pose at(Location location, boolean onGround) {
+            return new Pose(Objects.requireNonNull(location.getWorld()).getUID(), location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch(), onGround);
+        }
+    }
+    public record Capabilities(String minecraftVersion, Set<String> entityTypes, Set<String> operations, String implementation) {
+        public Capabilities { entityTypes = Set.copyOf(entityTypes); operations = Set.copyOf(operations); }
+    }
+    public record Interaction(Body body, Action action, String hand, boolean secondaryAction, long receivedAtNanos) {}
+    @FunctionalInterface public interface Scheduler {
+        /** Return false when the viewer retired or the scheduler cannot accept the callback. Never run inline on Netty. */
+        boolean execute(Player viewer, Runnable callback);
+    }
+    public static final class Body {
+        private final NativePacketAdapter owner;
+        private final int entityId;
+        private final int reservedIds;
+        private final UUID uuid;
+        private final String typeKey;
+        private final double width, height;
+        private final Object nativeType, playerInfo;
+        private Body(NativePacketAdapter owner, int entityId, int reservedIds, UUID uuid, String typeKey,
+                     double width, double height, Object nativeType, Object playerInfo) {
+            this.owner = owner; this.entityId = entityId; this.reservedIds = reservedIds; this.uuid = uuid;
+            this.typeKey = typeKey; this.width = width; this.height = height; this.nativeType = nativeType; this.playerInfo = playerInfo;
+        }
+        public int entityId() { return entityId; }
+        public UUID uuid() { return uuid; }
+        public String typeKey() { return typeKey; }
+        public double width() { return width; }
+        public double height() { return height; }
+        public int[] entityIds() { return java.util.stream.IntStream.range(0, reservedIds).map(offset -> entityId + offset).toArray(); }
+    }
+    private static final Set<String> TYPES = Set.of("minecraft:player", "minecraft:armor_stand", "minecraft:horse", "minecraft:turtle", "minecraft:frog", "minecraft:llama", "minecraft:armadillo", "minecraft:ender_dragon");
+    private static final int MAX_OPERATIONS = 32;
+    private static final int MAX_BODIES_PER_VIEWER = 256;
+    private static final long MIN_INPUT_INTERVAL_NANOS = 100_000_000L;
+    private final Plugin plugin;
+    private final NativeBindings nativeApi;
+    private final Capabilities capabilities;
+    private final ConcurrentMap<UUID, Session> sessions = new ConcurrentHashMap<>();
+    private final String handlerName = "animus_virtual_" + UUID.randomUUID().toString().replace("-", "");
+    private volatile boolean closed;
+
+    private NativePacketAdapter(Plugin plugin, String version) throws ReflectiveOperationException {
+        this.plugin = Objects.requireNonNull(plugin);
+        nativeApi = new NativeBindings(plugin, version);
+        capabilities = new Capabilities(version, TYPES, Set.of("spawn", "despawn", "move", "signed-player-textures", "attack-interception", "use-interception", "head-rotation", "passengers"), "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
+    }
+    public static NativePacketAdapter bind(Plugin plugin, String exactMinecraftVersion) throws ReflectiveOperationException {
+        if (!Set.of("26.1.2", "26.2", "26.3").contains(exactMinecraftVersion)) throw new IllegalArgumentException("No packet adapter for " + exactMinecraftVersion);
+        return new NativePacketAdapter(plugin, exactMinecraftVersion);
+    }
+    public Capabilities capabilities() { return capabilities; }
+
+    public Body createBody(UUID uuid, String typeKey, String profileName, Skin skin) throws ReflectiveOperationException {
+        ensureOpen();
+        Objects.requireNonNull(uuid);
+        if (!TYPES.contains(typeKey)) throw new IllegalArgumentException("Body type is not enabled by the proof adapter: " + typeKey);
+        if (typeKey.equals("minecraft:player") && (profileName == null || !profileName.matches("[A-Za-z0-9_]{1,16}")))
+            throw new IllegalArgumentException("Player profile name must be 1..16 ASCII letters, digits or underscores");
+        if (!typeKey.equals("minecraft:player") && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
+        Object type = nativeApi.entityType(typeKey);
+        int reserved = typeKey.equals("minecraft:ender_dragon") ? 9 : 1;
+        Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, profileName, skin) : null;
+        return new Body(this, nativeApi.ids.reserve(reserved), reserved, uuid, typeKey,
+                ((Number) nativeApi.typeWidth.invoke(type)).doubleValue(), ((Number) nativeApi.typeHeight.invoke(type)).doubleValue(), type, playerInfo);
+    }
+
+    /** Installing a new watch invalidates the previous session and every pending callback for that UUID. */
+    public CompletionStage<Void> watch(Player viewer, Scheduler scheduler, Consumer<Interaction> interaction) throws ReflectiveOperationException {
+        ensureOpen();
+        Objects.requireNonNull(scheduler); Objects.requireNonNull(interaction);
+        Channel channel = nativeApi.channel(viewer);
+        Session session = new Session(viewer, channel, scheduler, interaction);
+        Session previous = sessions.put(viewer.getUniqueId(), session);
+        if (previous != null) retire(previous);
+        try {
+            channel.eventLoop().execute(() -> {
+                if (!current(session) || !channel.isActive()) { session.ready.completeExceptionally(new CancellationException("Viewer session retired")); return; }
+                try {
+                    if (channel.pipeline().get(handlerName) != null) channel.pipeline().remove(handlerName);
+                    if (channel.pipeline().get("packet_handler") == null) throw new IllegalStateException("Vanilla packet_handler is unavailable");
+                    channel.pipeline().addBefore("packet_handler", handlerName, new InputHandler(session));
+                    session.ready.complete(null);
+                } catch (RuntimeException e) { sessions.remove(session.viewerId, session); retire(session); session.ready.completeExceptionally(e); }
+            });
+        } catch (RejectedExecutionException e) { sessions.remove(session.viewerId, session); retire(session); session.ready.completeExceptionally(e); }
+        return session.ready;
+    }
+
+    public CompletionStage<Void> spawn(Player viewer, Body body, Pose pose) {
+        checkBody(body);
+        Session session = session(viewer, pose);
+        Presentation presentation = new Presentation(body);
+        synchronized (session) {
+            int pendingIds = session.spawning.values().stream().mapToInt(value -> value.body.reservedIds).sum();
+            if (session.visible.size() + pendingIds + body.reservedIds > MAX_BODIES_PER_VIEWER) return failed("Viewer presentation ID limit reached");
+            if (session.visible.values().stream().anyMatch(value -> value.body.uuid.equals(body.uuid))
+                    || session.spawning.values().stream().anyMatch(value -> value.body.uuid.equals(body.uuid))) return failed("A body with this UUID is already presented to the viewer");
+            if (session.visible.containsKey(body.entityId) || session.spawning.putIfAbsent(body.entityId, presentation) != null) return failed("Body is already visible or spawning");
+        }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, () -> {
+            if (session.spawning.get(body.entityId) != presentation) throw new CancellationException("Body spawn was cancelled");
+            List<Object> packets = new ArrayList<>();
+            if (body.playerInfo != null) packets.add(body.playerInfo);
+            packets.add(nativeApi.spawn(body, pose));
+            packets.add(nativeApi.rotateHead(body.entityId, pose.yaw));
+            if (body.playerInfo != null) packets.add(nativeApi.playerMetadata(body.entityId));
+            write(session, packets).whenComplete((nothing, failure) -> {
+                boolean published = false;
+                synchronized (session) {
+                    boolean stillSpawning = session.spawning.remove(body.entityId, presentation);
+                    if (failure == null && current(session) && stillSpawning) {
+                        for (int id : body.entityIds()) session.visible.put(id, presentation);
+                        published = true;
+                    }
+                }
+                if (published) result.complete(null);
+                else {
+                    // A delayed failure from an older presentation must not remove a newer one of the same body.
+                    if (!hasNewerPresentation(session, presentation)) removePackets(session, body);
+                    result.completeExceptionally(failure != null ? failure : new CancellationException("Viewer retired during spawn"));
+                }
+            });
+        });
+        result.whenComplete((nothing, failure) -> { if (failure != null) session.spawning.remove(body.entityId, presentation); });
+        return result;
+    }
+
+    public CompletionStage<Void> move(Player viewer, Body body, Pose pose) {
+        checkBody(body);
+        Session session = session(viewer, pose);
+        Presentation presentation = session.visible.get(body.entityId);
+        if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, () -> {
+            if (session.visible.get(body.entityId) != presentation) throw new IllegalStateException("Body was despawned before movement");
+            write(session, List.of(nativeApi.move(body, pose), nativeApi.rotateHead(body.entityId, pose.yaw))).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
+    /** Viewer-local mount presentation only; this does not grant control or mount a real server entity. */
+    public CompletionStage<Void> passengers(Player viewer, Body vehicle, List<Body> passengers) {
+        checkBody(vehicle);
+        List<Body> requested = List.copyOf(passengers);
+        requested.forEach(this::checkBody);
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        List<Presentation> presentations = new ArrayList<>();
+        synchronized (session) {
+            Presentation mount = session.visible.get(vehicle.entityId);
+            if (mount == null || mount.body != vehicle) return failed("Vehicle is not visible to this viewer");
+            presentations.add(mount);
+            for (Body passenger : requested) {
+                Presentation rider = session.visible.get(passenger.entityId);
+                if (rider == null || rider.body != passenger) return failed("Passenger is not visible to this viewer");
+                presentations.add(rider);
+            }
+        }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, () -> {
+            List<Integer> passengerIds = requested.stream().map(Body::entityId).toList();
+            Object packet = nativeApi.passengers(vehicle.entityId, passengerIds.stream().mapToInt(Integer::intValue).toArray());
+            synchronized (session) {
+                for (Presentation presentation : presentations)
+                    if (session.visible.get(presentation.body.entityId) != presentation) throw new CancellationException("Mount presentation retired");
+                session.passengers.replace(vehicle.entityId, passengerIds);
+            }
+            write(session, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
+    /** Despawn is authoritative: it bypasses the cosmetic/normal outgoing operation admission limit. */
+    public CompletionStage<Void> despawn(Player viewer, Body body) {
+        checkBody(body);
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer) return CompletableFuture.completedFuture(null);
+        boolean present;
+        synchronized (session) {
+            Presentation visible = session.visible.get(body.entityId);
+            Presentation spawning = session.spawning.get(body.entityId);
+            present = (visible != null && visible.body == body) || (spawning != null && spawning.body == body);
+            for (int id : body.entityIds()) session.visible.computeIfPresent(id, (key, value) -> value.body == body ? null : value);
+            session.spawning.computeIfPresent(body.entityId, (key, value) -> value.body == body ? null : value);
+            session.passengers.remove(body.entityId);
+        }
+        if (!present) return CompletableFuture.completedFuture(null);
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        try { session.channel.eventLoop().execute(() -> removePackets(session, body).whenComplete((nothing, failure) -> complete(result, failure))); }
+        catch (RejectedExecutionException e) { result.completeExceptionally(e); }
+        return result;
+    }
+
+    public void forget(Player viewer) {
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session != null && session.viewer == viewer && sessions.remove(session.viewerId, session)) retire(session);
+    }
+    @Override public void close() {
+        if (closed) return;
+        closed = true;
+        for (Session session : sessions.values()) if (sessions.remove(session.viewerId, session)) retire(session);
+    }
+
+    private Session session(Player viewer, Pose pose) {
+        ensureOpen();
+        if (!viewer.getWorld().getUID().equals(pose.world())) throw new IllegalArgumentException("Viewer and body world differ");
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) throw new IllegalStateException("Viewer must be watched before sending body packets");
+        return session;
+    }
+    private void checkBody(Body body) { ensureOpen(); if (body == null || body.owner != this) throw new IllegalArgumentException("Body belongs to another adapter"); }
+    private void ensureOpen() { if (closed) throw new IllegalStateException("Packet adapter is closed"); }
+    private boolean current(Session session) { return !closed && session.active.get() && sessions.get(session.viewerId) == session; }
+    private static CompletionStage<Void> failed(String reason) { return CompletableFuture.failedFuture(new IllegalStateException(reason)); }
+    private static void complete(CompletableFuture<Void> result, Throwable failure) { if (failure == null) result.complete(null); else result.completeExceptionally(failure); }
+    @FunctionalInterface private interface Operation { void run() throws ReflectiveOperationException; }
+
+    private void submit(Session session, CompletableFuture<Void> result, Operation operation) {
+        if (session.pendingOperations.incrementAndGet() > MAX_OPERATIONS) {
+            session.pendingOperations.decrementAndGet(); result.completeExceptionally(new IllegalStateException("Viewer packet queue is full")); return;
+        }
+        result.whenComplete((nothing, failure) -> session.pendingOperations.decrementAndGet());
+        session.ready.whenComplete((nothing, failure) -> {
+            if (failure != null) { result.completeExceptionally(failure); return; }
+            try {
+                session.channel.eventLoop().execute(() -> {
+                    if (!current(session)) { result.completeExceptionally(new CancellationException("Viewer session retired")); return; }
+                    try { operation.run(); }
+                    catch (ReflectiveOperationException | RuntimeException e) { result.completeExceptionally(e); }
+                });
+            } catch (RejectedExecutionException e) { result.completeExceptionally(e); }
+        });
+    }
+
+    private CompletionStage<Void> write(Session session, List<Object> packets) {
+        if (!session.channel.isActive()) return failed("Viewer connection is closed");
+        List<CompletableFuture<Void>> results = new ArrayList<>(packets.size());
+        try {
+            for (Object packet : packets) {
+                CompletableFuture<Void> future = new CompletableFuture<>(); results.add(future);
+                session.channel.write(packet).addListener(sent -> { if (sent.isSuccess()) future.complete(null); else future.completeExceptionally(sent.cause()); });
+            }
+            session.channel.flush();
+        } catch (RuntimeException e) { return CompletableFuture.failedFuture(e); }
+        return CompletableFuture.allOf(results.toArray(CompletableFuture[]::new));
+    }
+    private CompletionStage<Void> removePackets(Session session, Body body) {
+        try {
+            List<Object> packets = new ArrayList<>();
+            packets.add(nativeApi.removeEntities.newInstance((Object) body.entityIds()));
+            if (body.playerInfo != null) packets.add(nativeApi.removePlayerInfo.newInstance(List.of(body.uuid)));
+            return write(session, packets);
+        } catch (ReflectiveOperationException e) { return CompletableFuture.failedFuture(e); }
+    }
+    private boolean hasNewerPresentation(Session original, Presentation presentation) {
+        Session current = sessions.get(original.viewerId);
+        if (current == null || current.channel != original.channel) return false;
+        synchronized (current) {
+            Presentation visible = current.visible.get(presentation.body.entityId);
+            Presentation spawning = current.spawning.get(presentation.body.entityId);
+            return (visible != null && visible != presentation) || (spawning != null && spawning != presentation);
+        }
+    }
+    private void retire(Session session) {
+        Set<Body> bodies = new HashSet<>();
+        synchronized (session) {
+            if (!session.active.compareAndSet(true, false)) return;
+            session.visible.values().forEach(value -> bodies.add(value.body));
+            session.spawning.values().forEach(value -> bodies.add(value.body));
+            session.visible.clear(); session.spawning.clear(); session.passengers.clear();
+        }
+        session.ready.completeExceptionally(new CancellationException("Viewer session retired"));
+        try {
+            session.channel.eventLoop().execute(() -> {
+                for (Body body : bodies) removePackets(session, body);
+                ChannelHandler handler = session.channel.pipeline().get(handlerName);
+                if (handler instanceof InputHandler input && input.session == session) session.channel.pipeline().remove(handler);
+            });
+        } catch (RejectedExecutionException ignored) { /* Closed channels have already discarded their client presentation. */ }
+    }
+
+    private final class InputHandler extends ChannelInboundHandlerAdapter {
+        private final Session session;
+        private InputHandler(Session session) { this.session = session; }
+        @Override public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
+            boolean attack = nativeApi.attackPacket.isInstance(message);
+            if (!attack && !nativeApi.interactPacket.isInstance(message)) { context.fireChannelRead(message); return; }
+            int entityId = ((Number) (attack ? nativeApi.attackId : nativeApi.interactId).invoke(message)).intValue();
+            Presentation presentation = session.visible.get(entityId);
+            if (presentation == null || !current(session)) { context.fireChannelRead(message); return; }
+            Body body = presentation.body;
+            try {
+                long now = System.nanoTime();
+                if (now - session.lastInputNanos < MIN_INPUT_INTERVAL_NANOS || !session.inputScheduled.compareAndSet(false, true)) return;
+                session.lastInputNanos = now;
+                String hand = attack ? "none" : String.valueOf(nativeApi.interactHand.invoke(message));
+                boolean secondary = !attack && (boolean) nativeApi.interactSecondary.invoke(message);
+                Interaction event = new Interaction(body, attack ? Action.ATTACK : Action.INTERACT, hand, secondary, now);
+                try {
+                    boolean accepted = session.scheduler.execute(session.viewer, () -> {
+                        try {
+                            if (current(session) && session.visible.get(entityId) == presentation) session.interactions.accept(event);
+                        } catch (RuntimeException e) { reportInputFailure(session, e); }
+                        finally { session.inputScheduled.set(false); }
+                    });
+                    if (!accepted) session.inputScheduled.set(false);
+                } catch (RuntimeException e) { session.inputScheduled.set(false); reportInputFailure(session, e); }
+            } finally { ReferenceCountUtil.release(message); }
+        }
+        @Override public void channelInactive(ChannelHandlerContext context) throws Exception {
+            if (sessions.remove(session.viewerId, session)) retire(session);
+            context.fireChannelInactive();
+        }
+    }
+    private void reportInputFailure(Session session, RuntimeException e) {
+        if (session.reportedFailure.compareAndSet(false, true)) plugin.getLogger().warning("Virtual interaction callback failed: " + e.getClass().getSimpleName());
+    }
+    private static final class Presentation {
+        private final Body body;
+        private Presentation(Body body) { this.body = body; }
+    }
+    private static final class Session {
+        private final UUID viewerId;
+        private final Player viewer;
+        private final Channel channel;
+        private final Scheduler scheduler;
+        private final Consumer<Interaction> interactions;
+        private final CompletableFuture<Void> ready = new CompletableFuture<>();
+        private final ConcurrentMap<Integer, Presentation> visible = new ConcurrentHashMap<>(), spawning = new ConcurrentHashMap<>();
+        private final AtomicBoolean active = new AtomicBoolean(true), inputScheduled = new AtomicBoolean(), reportedFailure = new AtomicBoolean();
+        private final AtomicInteger pendingOperations = new AtomicInteger();
+        private final PassengerGraph passengers = new PassengerGraph();
+        private long lastInputNanos = Long.MIN_VALUE / 2; // Accessed exclusively by the channel event loop.
+        private Session(Player viewer, Channel channel, Scheduler scheduler, Consumer<Interaction> interactions) {
+            this.viewerId = viewer.getUniqueId(); this.viewer = viewer; this.channel = channel; this.scheduler = scheduler; this.interactions = interactions;
+        }
+    }
+
+    private static final class NativeBindings {
+        private final NativeEntityIds ids;
+        private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
+        private final Method identifierParse, registryContains, registryValue, typeWidth, typeHeight;
+        private final Constructor<?> addEntity, removeEntities, removePlayerInfo, vector, movement, positionValues;
+        private final Method positionPath;
+        private final Constructor<?> friendlyBuffer, rotateHead, setPassengers;
+        private final Method writeVarInt, writeVarIntArray;
+        private final Constructor<?> profile, property, propertyMap, playerInfoEntry, playerInfoPacket, metadataPacket;
+        private final Method multimapCreate, multimapPut, dataValueCreate;
+        private final Field playerInfoEntries;
+        private final Class<? extends Enum> playerInfoAction;
+        private final Method craftPlayerHandle;
+        private final Field playerConnection, networkConnection, channel;
+        private final Class<?> attackPacket, interactPacket;
+        private final Method attackId, interactId, interactHand, interactSecondary;
+        private final boolean steppedMovement;
+
+        @SuppressWarnings("unchecked")
+        private NativeBindings(Plugin plugin, String version) throws ReflectiveOperationException {
+            Class<?> entityType = type("net.minecraft.world.entity.EntityType");
+            Class<?> identifier = type("net.minecraft.resources.Identifier");
+            Class<?> registry = type("net.minecraft.core.Registry");
+            entityRegistry = type("net.minecraft.core.registries.BuiltInRegistries").getField("ENTITY_TYPE").get(null);
+            identifierParse = identifier.getMethod("parse", String.class);
+            registryContains = registry.getMethod("containsKey", identifier);
+            registryValue = registry.getMethod("getValue", identifier);
+            typeWidth = entityType.getMethod("getWidth"); typeHeight = entityType.getMethod("getHeight");
+            Class<?> allocatorOwner = type(version.equals("26.1.2") ? "net.minecraft.world.entity.Entity" : "net.minecraft.server.level.ServerLevel");
+            Field counter = field(allocatorOwner, "ENTITY_COUNTER");
+            ids = new NativeEntityIds((AtomicInteger) counter.get(null));
+            Class<?> vec3 = type("net.minecraft.world.phys.Vec3");
+            vector = vec3.getConstructor(double.class, double.class, double.class); zeroVelocity = vec3.getField("ZERO").get(null);
+            addEntity = type("net.minecraft.network.protocol.game.ClientboundAddEntityPacket").getConstructor(int.class, UUID.class, double.class, double.class, double.class, float.class, float.class, entityType, int.class, vec3, double.class);
+            removeEntities = type("net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket").getConstructor(int[].class);
+            removePlayerInfo = type("net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket").getConstructor(List.class);
+            Class<?> friendly = type("net.minecraft.network.FriendlyByteBuf");
+            friendlyBuffer = friendly.getConstructor(ByteBuf.class);
+            writeVarInt = friendly.getMethod("writeVarInt", int.class);
+            writeVarIntArray = friendly.getMethod("writeVarIntArray", int[].class);
+            rotateHead = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundRotateHeadPacket", friendly);
+            setPassengers = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundSetPassengersPacket", friendly);
+            Class<?> positionSync = type("net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket");
+            steppedMovement = version.equals("26.3");
+            if (steppedMovement) {
+                Class<?> path = type("net.minecraft.world.entity.PositionPath");
+                positionPath = path.getMethod("of", vec3); positionValues = null;
+                movement = positionSync.getConstructor(int.class, path, float.class, float.class, boolean.class);
+            } else {
+                Class<?> values = type("net.minecraft.world.entity.PositionMoveRotation");
+                positionValues = values.getConstructor(vec3, vec3, float.class, float.class); positionPath = null;
+                movement = positionSync.getConstructor(int.class, values, boolean.class);
+            }
+            Class<?> gameProfile = type("com.mojang.authlib.GameProfile");
+            Class<?> properties = type("com.mojang.authlib.properties.PropertyMap");
+            Class<?> multimap = type("com.google.common.collect.Multimap");
+            profile = gameProfile.getConstructor(UUID.class, String.class, properties);
+            property = type("com.mojang.authlib.properties.Property").getConstructor(String.class, String.class, String.class);
+            propertyMap = properties.getConstructor(multimap);
+            multimapCreate = type("com.google.common.collect.ArrayListMultimap").getMethod("create");
+            multimapPut = multimap.getMethod("put", Object.class, Object.class);
+            Class<?> gameType = type("net.minecraft.world.level.GameType");
+            survival = Enum.valueOf((Class<Enum>) gameType, "SURVIVAL");
+            Class<?> info = type("net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket");
+            playerInfoAction = (Class<? extends Enum>) type("net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket$Action");
+            playerInfoEntry = type("net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket$Entry").getConstructor(UUID.class, gameProfile, boolean.class, int.class, gameType,
+                    type("net.minecraft.network.chat.Component"), boolean.class, int.class, type("net.minecraft.network.chat.RemoteChatSession$Data"));
+            Constructor<?> packetConstructor;
+            Field entriesField = null;
+            try { packetConstructor = info.getConstructor(EnumSet.class, List.class); }
+            catch (NoSuchMethodException e) {
+                // Vanilla/Spigot expose the collection-of-ServerPlayer overload only. Build an empty packet,
+                // then supply immutable explicit entries; no ServerPlayer surrogate is constructed.
+                packetConstructor = info.getConstructor(EnumSet.class, Collection.class);
+                entriesField = field(info, "entries");
+                if (entriesField.getType() != List.class || Modifier.isStatic(entriesField.getModifiers())) throw new NoSuchFieldException("Unexpected player-info entries field");
+            }
+            playerInfoPacket = packetConstructor; playerInfoEntries = entriesField;
+            Class<?> dataAccessor = type("net.minecraft.network.syncher.EntityDataAccessor");
+            dataValueCreate = type("net.minecraft.network.syncher.SynchedEntityData$DataValue").getMethod("create", dataAccessor, Object.class);
+            playerSkinAccessor = field(type("net.minecraft.world.entity.Avatar"), "DATA_PLAYER_MODE_CUSTOMISATION").get(null);
+            metadataPacket = type("net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket").getConstructor(int.class, List.class);
+            String craftPackage = plugin.getServer().getClass().getPackageName();
+            if (!craftPackage.startsWith("org.bukkit.craftbukkit")) throw new ClassNotFoundException("CraftBukkit implementation unavailable");
+            craftPlayerHandle = type(craftPackage + ".entity.CraftPlayer").getMethod("getHandle");
+            playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
+            networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
+            channel = field(type("net.minecraft.network.Connection"), "channel");
+            attackPacket = type("net.minecraft.network.protocol.game.ServerboundAttackPacket");
+            interactPacket = type("net.minecraft.network.protocol.game.ServerboundInteractPacket");
+            attackId = attackPacket.getMethod("entityId"); interactId = interactPacket.getMethod("entityId");
+            interactHand = interactPacket.getMethod("hand"); interactSecondary = interactPacket.getMethod("usingSecondaryAction");
+        }
+        private Object entityType(String key) throws ReflectiveOperationException {
+            Object identifier = identifierParse.invoke(null, key);
+            if (!(boolean) registryContains.invoke(entityRegistry, identifier)) throw new IllegalArgumentException("Native entity type is unavailable: " + key);
+            return registryValue.invoke(entityRegistry, identifier);
+        }
+        private Channel channel(Player viewer) throws ReflectiveOperationException {
+            Object handle = craftPlayerHandle.invoke(viewer);
+            Object connection = networkConnection.get(playerConnection.get(handle));
+            Channel result = (Channel) channel.get(connection);
+            if (result == null || !result.isActive()) throw new IllegalStateException("Viewer is not connected");
+            return result;
+        }
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        private Object playerInfo(UUID uuid, String name, Skin skin) throws ReflectiveOperationException {
+            Object values = multimapCreate.invoke(null);
+            if (skin != null) multimapPut.invoke(values, "textures", property.newInstance("textures", skin.textureValue(), skin.signature()));
+            Object gameProfile = profile.newInstance(uuid, name, propertyMap.newInstance(values));
+            Object entry = playerInfoEntry.newInstance(uuid, gameProfile, false, 0, survival, null, true, 0, null);
+            EnumSet actions = EnumSet.noneOf(playerInfoAction);
+            for (String action : List.of("ADD_PLAYER", "UPDATE_GAME_MODE", "UPDATE_LISTED", "UPDATE_LATENCY", "UPDATE_DISPLAY_NAME", "UPDATE_HAT", "UPDATE_LIST_ORDER"))
+                actions.add(Enum.valueOf(playerInfoAction, action));
+            if (playerInfoEntries == null) return playerInfoPacket.newInstance(actions, List.of(entry));
+            Object packet = playerInfoPacket.newInstance(actions, Collections.emptyList());
+            playerInfoEntries.set(packet, List.of(entry));
+            return packet;
+        }
+        private Object spawn(Body body, Pose pose) throws ReflectiveOperationException {
+            return addEntity.newInstance(body.entityId, body.uuid, pose.x, pose.y, pose.z, pose.pitch, pose.yaw, body.nativeType, 0, zeroVelocity, (double) pose.yaw);
+        }
+        private Object move(Body body, Pose pose) throws ReflectiveOperationException {
+            Object position = vector.newInstance(pose.x, pose.y, pose.z);
+            if (steppedMovement) return movement.newInstance(body.entityId, positionPath.invoke(null, position), pose.yaw, pose.pitch, pose.onGround);
+            return movement.newInstance(body.entityId, positionValues.newInstance(position, zeroVelocity, pose.yaw, pose.pitch), pose.onGround);
+        }
+        private Object rotateHead(int id, float yaw) throws ReflectiveOperationException {
+            ByteBuf bytes = Unpooled.buffer(8);
+            try {
+                Object buffer = friendlyBuffer.newInstance(bytes);
+                writeVarInt.invoke(buffer, id);
+                bytes.writeByte((byte) (int) Math.floor((yaw % 360.0) * 256.0 / 360.0));
+                return rotateHead.newInstance(buffer);
+            } finally { bytes.release(); }
+        }
+        private Object passengers(int vehicle, int[] passengers) throws ReflectiveOperationException {
+            ByteBuf bytes = Unpooled.buffer(128);
+            try {
+                Object buffer = friendlyBuffer.newInstance(bytes);
+                writeVarInt.invoke(buffer, vehicle);
+                writeVarIntArray.invoke(buffer, (Object) passengers);
+                return setPassengers.newInstance(buffer);
+            } finally { bytes.release(); }
+        }
+        private static Constructor<?> decodedPacketConstructor(String className, Class<?> buffer) throws ReflectiveOperationException {
+            Constructor<?> constructor = type(className).getDeclaredConstructor(buffer);
+            if (!constructor.trySetAccessible()) throw new NoSuchMethodException("Cannot access explicit packet decoder " + className);
+            return constructor;
+        }
+        private Object playerMetadata(int id) throws ReflectiveOperationException {
+            Object value = dataValueCreate.invoke(null, playerSkinAccessor, (byte) 0x7f);
+            return metadataPacket.newInstance(id, List.of(value));
+        }
+        private static Class<?> type(String name) throws ClassNotFoundException { return Class.forName(name); }
+        private static Field field(Class<?> owner, String name) throws NoSuchFieldException {
+            Field result = owner.getDeclaredField(name);
+            if (!result.trySetAccessible()) throw new NoSuchFieldException("Cannot access " + owner.getName() + "." + name);
+            return result;
+        }
+    }
+}

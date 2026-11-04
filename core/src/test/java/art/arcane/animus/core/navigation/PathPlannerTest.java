@@ -1,0 +1,145 @@
+package art.arcane.animus.core.navigation;
+
+import org.junit.jupiter.api.Test;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import static art.arcane.animus.core.navigation.PathPlanner.Status.*;
+import static art.arcane.animus.core.navigation.PathPlanner.Motion.STEP;
+import static art.arcane.animus.core.navigation.PathPlanner.Motion.JUMP;
+import static art.arcane.animus.core.navigation.PathPlanner.Motion.FALL;
+import static art.arcane.animus.core.navigation.MovementProfile.Mode.*;
+import static art.arcane.animus.core.navigation.VoxelSnapshot.Cell.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+class PathPlannerTest {
+    private static final PathPlanner.Limits NORMAL = new PathPlanner.Limits(5000, 5000, 500);
+    private static final MovementProfile FLAT = new MovementProfile(Set.of(WALK), 2, 0, 0, 0, 0, true);
+    private static final BlockPos START = new BlockPos(2, 1, 2);
+    private final PathPlanner planner = new PathPlanner();
+
+    private static VoxelSnapshot.Builder room(int width, int height, int depth) {
+        var builder = new VoxelSnapshot.Builder("world", 0, 0, 0, width, height, depth).fill(AIR);
+        for (int cx = 0; cx <= (width - 1) / 16; cx++) for (int cz = 0; cz <= (depth - 1) / 16; cz++) builder.availableChunk(cx, cz);
+        for (int x = 0; x < width; x++) for (int y = 0; y < height; y++) for (int z = 0; z < depth; z++)
+            if (x == 0 || x == width - 1 || z == 0 || z == depth - 1 || y == 0 || y == height - 1) builder.set(x, y, z, SOLID);
+        return builder;
+    }
+    private PathPlanner.Result plan(VoxelSnapshot snapshot, BlockPos start, BlockPos goal, MovementProfile profile) {
+        return planner.plan(snapshot, start, goal, profile, NORMAL, () -> false);
+    }
+    @Test void findsClearWalkingPathWithFiniteVoxelWaypoints() {
+        var result = plan(room(10, 5, 10).build(), START, new BlockPos(7, 1, 7), FLAT);
+        assertEquals(FOUND, result.status()); assertEquals(6, result.path().size());
+        assertEquals(START, result.path().getFirst().feet()); assertEquals(PathPlanner.Motion.START, result.path().getFirst().motion());
+        assertEquals(new BlockPos(7, 1, 7), result.path().getLast().feet());
+        assertTrue(result.path().stream().skip(1).allMatch(s -> s.motion() == PathPlanner.Motion.WALK));
+        assertEquals(7.5, result.path().getLast().position("world").point().x());
+    }
+    @Test void sealedBlockedRouteAndInsufficientHeadroomAreUnreachable() {
+        var builder = room(9, 5, 7);
+        for (int y = 1; y < 4; y++) for (int z = 1; z < 6; z++) builder.set(4, y, z, SOLID);
+        var result = plan(builder.build(), START, new BlockPos(6, 1, 2), FLAT);
+        assertEquals(UNREACHABLE, result.status()); assertTrue(result.path().isEmpty()); assertFalse(result.encounteredUnavailableTerrain());
+        builder = room(7, 5, 7); builder.set(5, 2, 2, SOLID);
+        assertEquals(UNREACHABLE, plan(builder.build(), START, new BlockPos(5, 1, 2), FLAT).status());
+    }
+    @Test void walkingDiagonalCannotCutSolidCorners() {
+        var builder = room(5, 5, 5);
+        builder.set(2, 1, 1, SOLID).set(2, 2, 1, SOLID).set(1, 1, 2, SOLID).set(1, 2, 2, SOLID);
+        assertEquals(UNREACHABLE, plan(builder.build(), new BlockPos(1, 1, 1), new BlockPos(2, 1, 2), FLAT).status());
+    }
+    @Test void stepAndJumpCapabilitiesAreDistinctAndRequireVerticalClearance() {
+        var builder = room(8, 7, 5); builder.set(3, 1, 2, SOLID);
+        BlockPos goal = new BlockPos(3, 2, 2);
+        var stepper = new MovementProfile(Set.of(WALK), 2, 0, 1, 0, 0, false);
+        var jumper = new MovementProfile(Set.of(WALK), 2, 0, 0, 1, 0, false);
+        assertEquals(STEP, plan(builder.build(), START, goal, stepper).path().getLast().motion());
+        assertEquals(JUMP, plan(builder.build(), START, goal, jumper).path().getLast().motion());
+        assertEquals(UNREACHABLE, plan(builder.build(), START, goal, FLAT).status());
+        // Seal a single-cell corridor and put a low roof above the start of the ascent.
+        for (int x = 1; x < 7; x++) for (int y = 1; y < 6; y++) { builder.set(x, y, 1, SOLID); builder.set(x, y, 3, SOLID); }
+        builder.set(2, 3, 2, SOLID);
+        assertEquals(UNREACHABLE, plan(builder.build(), START, goal, jumper).status());
+    }
+    @Test void fallingIsBoundedAndMustFindAClearLanding() {
+        var builder = room(7, 8, 5);
+        builder.set(2, 1, 2, SOLID).set(2, 2, 2, SOLID).set(2, 3, 2, SOLID);
+        BlockPos from = new BlockPos(2, 4, 2), goal = new BlockPos(3, 1, 2);
+        var faller = new MovementProfile(Set.of(WALK), 2, 0, 0, 0, 3, false);
+        var safe = new MovementProfile(Set.of(WALK), 2, 0, 0, 0, 2, false);
+        var result = plan(builder.build(), from, goal, faller);
+        assertEquals(FOUND, result.status()); assertEquals(2, result.path().size()); assertEquals(FALL, result.path().getLast().motion());
+        assertEquals(UNREACHABLE, plan(builder.build(), from, goal, safe).status());
+    }
+    @Test void unknownChunksOrUncapturedCellsSuspendInsteadOfBecomingAir() {
+        var builder = new VoxelSnapshot.Builder("world", 0, 0, 0, 32, 5, 5).fill(AIR).availableChunk(0, 0);
+        for (int x = 0; x < 32; x++) for (int z = 0; z < 5; z++) builder.set(x, 0, z, SOLID);
+        var result = plan(builder.build(), new BlockPos(14, 1, 2), new BlockPos(17, 1, 2), FLAT);
+        assertEquals(UNAVAILABLE_TERRAIN, result.status()); assertEquals(0, result.visitedNodes());
+        var unknown = new VoxelSnapshot.Builder("world", 0, 0, 0, 5, 5, 5).availableChunk(0, 0).build();
+        assertEquals(UNAVAILABLE_TERRAIN, plan(unknown, START, new BlockPos(3, 1, 2), FLAT).status());
+    }
+    @Test void partialSnapshotBoundaryProducesUnavailableRatherThanProvenUnreachable() {
+        var builder = new VoxelSnapshot.Builder("world", 0, 0, 0, 7, 5, 5).fill(AIR).availableChunk(0, 0);
+        for (int x = 0; x < 7; x++) for (int z = 0; z < 5; z++) builder.set(x, 0, z, SOLID);
+        for (int y = 1; y < 5; y++) for (int z = 0; z < 5; z++) builder.set(4, y, z, SOLID);
+        assertEquals(UNAVAILABLE_TERRAIN, plan(builder.build(), START, new BlockPos(5, 1, 2), FLAT).status());
+    }
+    @Test void narrowGapRequiresEnoughFootprintClearance() {
+        var builder = room(11, 5, 11);
+        for (int y = 1; y < 4; y++) for (int z = 1; z < 10; z++) if (z != 5) builder.set(5, y, z, SOLID);
+        BlockPos from = new BlockPos(2, 1, 5), goal = new BlockPos(8, 1, 5);
+        assertEquals(FOUND, plan(builder.build(), from, goal, FLAT).status());
+        var wide = new MovementProfile(Set.of(WALK), 2, 1, 0, 0, 0, true);
+        assertEquals(UNREACHABLE, plan(builder.build(), from, goal, wide).status());
+    }
+    @Test void swimmingAndFlightAreExplicitAndLavaRemainsBlocked() {
+        var builder = room(8, 7, 5);
+        for (int x = 1; x < 7; x++) for (int y = 1; y < 5; y++) builder.set(x, y, 2, WATER);
+        var swimmer = new MovementProfile(Set.of(SWIM), 2, 0, 0, 0, 0, false);
+        var swim = plan(builder.build(), START, new BlockPos(5, 3, 2), swimmer);
+        assertEquals(FOUND, swim.status()); assertTrue(swim.path().stream().skip(1).allMatch(s -> s.motion() == PathPlanner.Motion.SWIM));
+        assertEquals(UNREACHABLE, plan(builder.build(), START, new BlockPos(5, 1, 2), FLAT).status());
+        builder.set(5, 3, 2, LAVA);
+        assertEquals(UNREACHABLE, plan(builder.build(), START, new BlockPos(5, 3, 2), swimmer).status());
+        var flyer = new MovementProfile(Set.of(FLY), 2, 0, 0, 0, 0, true);
+        var fly = plan(room(8, 8, 8).build(), START, new BlockPos(5, 4, 5), flyer);
+        assertEquals(FOUND, fly.status()); assertTrue(fly.path().stream().skip(1).allMatch(s -> s.motion() == PathPlanner.Motion.FLY));
+    }
+    @Test void flyingDiagonalCannotPassBetweenTouchingObstacles() {
+        var builder = room(5, 5, 5);
+        builder.set(2, 1, 1, SOLID).set(1, 2, 1, SOLID).set(1, 1, 2, SOLID);
+        var flyer = new MovementProfile(Set.of(FLY), 1, 0, 0, 0, 0, true);
+        assertEquals(UNREACHABLE, plan(builder.build(), new BlockPos(1, 1, 1), new BlockPos(2, 2, 2), flyer).status());
+    }
+    @Test void allSearchBudgetsAndCancellationAreObservable() {
+        var snapshot = room(20, 5, 20).build(); BlockPos goal = new BlockPos(17, 1, 17);
+        var visits = planner.plan(snapshot, START, goal, FLAT, new PathPlanner.Limits(1, 100, 100), () -> false);
+        assertEquals(BUDGET_EXHAUSTED, visits.status()); assertEquals(1, visits.visitedNodes());
+        var frontier = planner.plan(snapshot, START, goal, FLAT, new PathPlanner.Limits(100, 1, 100), () -> false);
+        assertEquals(BUDGET_EXHAUSTED, frontier.status()); assertEquals(1, frontier.peakFrontier());
+        var length = planner.plan(snapshot, START, goal, FLAT, new PathPlanner.Limits(1000, 1000, 2), () -> false);
+        assertEquals(BUDGET_EXHAUSTED, length.status()); assertTrue(length.path().isEmpty());
+        assertEquals(CANCELLED, planner.plan(snapshot, START, goal, FLAT, NORMAL, () -> true).status());
+        AtomicInteger checks = new AtomicInteger();
+        assertEquals(CANCELLED, planner.plan(snapshot, START, goal, FLAT, NORMAL, () -> checks.incrementAndGet() > 30).status());
+    }
+    @Test void cancellationDuringTheLastExpansionDoesNotBecomeUnreachable() {
+        AtomicInteger checks = new AtomicInteger();
+        var result = planner.plan(room(8, 5, 8).build(), START, new BlockPos(5, 1, 5), FLAT, NORMAL,
+                () -> checks.incrementAndGet() > 3);
+        assertEquals(CANCELLED, result.status()); assertTrue(result.path().isEmpty());
+    }
+    @Test void independentPlansCanShareOneImmutableSnapshotAcrossWorkers() throws Exception {
+        var snapshot = room(20, 5, 20).build(); BlockPos goal = new BlockPos(17, 1, 17);
+        List<PathPlanner.Step> expected = plan(snapshot, START, goal, FLAT).path();
+        try (ExecutorService executor = Executors.newFixedThreadPool(4)) {
+            List<Callable<PathPlanner.Result>> tasks = new ArrayList<>();
+            for (int i = 0; i < 20; i++) tasks.add(() -> plan(snapshot, START, goal, FLAT));
+            for (Future<PathPlanner.Result> result : executor.invokeAll(tasks)) {
+                assertEquals(FOUND, result.get().status()); assertEquals(expected, result.get().path());
+            }
+        }
+    }
+}

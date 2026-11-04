@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "features": [
+    {"id":"animus.definitions.commands","scenario":"animus-definitions","match":{"animus.phase":"prepare"}},
+    {"id":"animus.definitions.restart","scenario":"animus-definitions","match":{"animus.phase":"verify"}},
+    {"id":"animus.native-packet-proof","unsupported":"Native-codec client reports are separate from this Mineflayer coverage matrix; see managed native result.json evidence."},
+    {"id":"animus.folia-packet-proof","unsupported":"Folia packet proof is deliberately disabled pending region-safe snapshots."},
+    {"id":"animus.client-visual-fidelity","unsupported":"Neither Mineflayer nor native wire assertions establish graphical fidelity."}
+  ],
+  "scope": "Milestone 0 mechanical proof and durable definitions, not NPC feature parity",
+  "buildTargets": ["animus:core", "animus:bukkit", "animus:converter", "animus:bukkit-api-26.1.2", "animus:bukkit-api-26.2", "animus:bukkit-api-26.3"],
+  "serverTargets": [
+    {"platform":"paper","minecraftVersion":"26.1.2","channel":"STABLE","build":74},
+    {"platform":"paper","minecraftVersion":"26.2","channel":"STABLE","build":135},
+    {"platform":"paper","minecraftVersion":"26.3","channel":"STABLE","build":240},
+    {"platform":"folia","minecraftVersion":"26.1.2","channel":"STABLE","build":8},
+    {"platform":"folia","minecraftVersion":"26.2","channel":"BETA","build":7},
+    {"platform":"folia","minecraftVersion":"26.3","channel":"ALPHA","build":6}
+  ],
+  "scenarios": [
+    {"source":"qa/multiplexor/managed-runtime.py","runner":"Multiplexor projects deploy + runtime console","checks":["exact-version startup","explicit capability status","JSON persistence across restart","validation","deletion","clean managed shutdown"]},
+    {"source":"qa/multiplexor/definitions.mjs","runner":"Multiplexor gameplay run","phases":["prepare","verify"],"requires":"Mineflayer codec support; currently 26.1.2 only"},
+    {"source":"qa/packet-client.mjs","runner":"external native-codec client attached to Multiplexor-managed server","requires":"exact matching native Minecraft codec jars","checks":["packet bodies","movement","attack/use","signed skins","reach and visibility authority","cleanup","viewer isolation"]}
+  ],
+  "limitations": ["Folia packet proof is intentionally disabled pending region-safe world snapshots.","Spigot is API-compiled but has no managed runtime evidence yet.","Fabric, Forge and NeoForge remain deferred.","Protocol assertions do not prove visual rendering quality."]
+}

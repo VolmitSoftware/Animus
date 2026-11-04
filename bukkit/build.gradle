@@ -12,8 +12,15 @@ apply from: '../gradle/verify-artifact.gradle'
 repositories {
     maven { url = uri('https://hub.spigotmc.org/nexus/content/repositories/snapshots/') }
 }
+configurations { packetApi }
+configurations.compileOnly.extendsFrom(configurations.packetApi)
 dependencies {
     compileOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
+    packetApi('io.netty:netty-transport:4.2.16.Final')
+    testImplementation('org.junit.jupiter:junit-jupiter:5.10.2')
+    testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
+    testRuntimeOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
+    testRuntimeOnly('io.netty:netty-transport:4.2.16.Final')
 }
 tasks.named('processResources').configure {
     inputs.properties(animus + [apiVersion: '26.1.2'])
@@ -29,7 +36,7 @@ minecraftTargets.keySet().each { String target ->
     dependencies.add(targetApi.name, "org.spigotmc:spigot-api:${target}-R0.1-SNAPSHOT")
     TaskProvider<JavaCompile> compatibility = tasks.register("compileSpigot${suffix}", JavaCompile) {
         source = sourceSets.main.java
-        classpath = targetApi + configurations.bundle
+        classpath = targetApi + configurations.bundle + configurations.packetApi
         destinationDirectory.set(layout.buildDirectory.dir("compatibility/${target}"))
         dependsOn(':core:jar')
     }

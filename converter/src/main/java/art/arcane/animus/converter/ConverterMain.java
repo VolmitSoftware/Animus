@@ -24,7 +24,8 @@ public final class ConverterMain {
                     throw new IllegalArgumentException("Invalid or duplicate world mapping: " + args[i]);
             }
             CitizensImporter.Preview preview = importer.preview(Path.of(args[1]), Path.of(args[2]), worlds);
-            return "Preview " + preview.id() + "\nRecords: " + preview.records() + ", valid: " + preview.valid() + ", unique skins: " + preview.skins()
+            return "Preview " + preview.id() + " (converter v" + preview.converterVersion() + ")" + "\nRecords: " + preview.records() + ", valid: " + preview.valid() + ", unique skins: " + preview.skins()
+                    + "\nMigration warnings: " + preview.warningCount()
                     + "\nReport: " + preview.directory().resolve("report.json") + "\nNo NPCs activated. Inspect reports before explicit apply.";
         }
         try (DocumentStore store = new DocumentStore(Path.of(args[1]))) {

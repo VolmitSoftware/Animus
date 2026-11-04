@@ -26,14 +26,18 @@ final class ReplyScheduler {
                     .getMethod("execute", Plugin.class, Runnable.class);
         } else { entityScheduler = null; entityExecute = null; globalScheduler = null; globalExecute = null; }
     }
-    void reply(CommandSender sender, Runnable action) {
-        if (!plugin.isEnabled()) return;
+    boolean isFolia() { return folia; }
+
+    boolean reply(CommandSender sender, Runnable action) {
+        if (!plugin.isEnabled()) return false;
         try {
             if (!folia) plugin.getServer().getScheduler().runTask(plugin, action);
-            else if (sender instanceof Player player) entityExecute.invoke(entityScheduler.invoke(player), plugin, action, (Runnable) () -> {}, 1L);
+            else if (sender instanceof Player player) return (Boolean) entityExecute.invoke(entityScheduler.invoke(player), plugin, action, (Runnable) () -> {}, 1L);
             else globalExecute.invoke(globalScheduler.invoke(plugin.getServer()), plugin, action);
+            return true;
         } catch (ReflectiveOperationException | RuntimeException e) {
             if (plugin.isEnabled()) plugin.getLogger().warning("Cannot deliver command response: " + e.getClass().getSimpleName());
+            return false;
         }
     }
 }

@@ -11,3 +11,6 @@ __pycache__/
 # Private migration input and generated bundles
 saves.yml
 private-migration/
+
+# Deployment credentials are stored in GitHub Actions secrets, never in source.
+service-account*.json

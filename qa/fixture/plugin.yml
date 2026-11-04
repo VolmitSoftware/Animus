@@ -1,0 +1,9 @@
+name: AnimusProofFixture
+version: 1.0.0
+main: art.arcane.animus.qa.ProofFixture
+api-version: '26.1.2'
+depend: [Animus]
+commands:
+  animusqa:
+    usage: '/<command> <cancel|clear|allow>'
+    description: QA-only control for preview interaction events.
