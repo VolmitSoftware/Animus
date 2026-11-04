@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "id": "personal-guard:bodyguard",
   "entry": "main",
   "routines": {
@@ -18,58 +18,58 @@
           "type": "condition",
           "capability": "animus:flag-state",
           "arguments": {
-            "name": "hired",
-            "scope": "relationship"
+            "name": "taken",
+            "scope": "npc"
           },
           "then": {
-            "type": "action",
-            "capability": "animus:choices",
-            "arguments": {
-              "id": "service",
-              "prompt": "Yes, boss?",
-              "options": [
-                {
-                  "id": "dismiss",
-                  "text": "You are dismissed"
-                },
-                {
-                  "id": "stay",
-                  "text": "Carry on"
-                }
-              ]
-            }
-          },
-          "else": {
             "type": "condition",
             "capability": "animus:flag-state",
             "arguments": {
-              "name": "taken",
-              "scope": "npc"
+              "name": "hired",
+              "scope": "relationship"
             },
             "then": {
+              "type": "action",
+              "capability": "animus:choices",
+              "arguments": {
+                "id": "service",
+                "prompt": "Yes, boss?",
+                "options": [
+                  {
+                    "id": "dismiss",
+                    "text": "You are dismissed"
+                  },
+                  {
+                    "id": "stay",
+                    "text": "Carry on"
+                  }
+                ]
+              }
+            },
+            "else": {
               "type": "action",
               "capability": "animus:say",
               "arguments": {
                 "text": "I already have a client."
               }
-            },
-            "else": {
-              "type": "action",
-              "capability": "animus:choices",
-              "arguments": {
-                "id": "hire",
-                "prompt": "Looking for protection?",
-                "options": [
-                  {
-                    "id": "hire",
-                    "text": "You are hired"
-                  },
-                  {
-                    "id": "pass",
-                    "text": "Not now"
-                  }
-                ]
-              }
+            }
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:choices",
+            "arguments": {
+              "id": "hire",
+              "prompt": "Looking for protection?",
+              "options": [
+                {
+                  "id": "hire",
+                  "text": "You are hired"
+                },
+                {
+                  "id": "pass",
+                  "text": "Not now"
+                }
+              ]
             }
           }
         }
@@ -117,6 +117,14 @@
           },
           {
             "type": "action",
+            "capability": "animus:combat-control",
+            "arguments": {
+              "operation": "guard",
+              "target": "player"
+            }
+          },
+          {
+            "type": "action",
             "capability": "animus:set-equipment",
             "arguments": {
               "slot": "main_hand",
@@ -127,7 +135,7 @@
             "type": "action",
             "capability": "animus:say",
             "arguments": {
-              "text": "Then I will stand ready."
+              "text": "Then I will stand ready. Lead the way."
             }
           }
         ]
@@ -158,14 +166,14 @@
           "type": "action",
           "capability": "animus:combat-control",
           "arguments": {
-            "operation": "release"
+            "operation": "guard"
           }
         },
         {
           "type": "action",
           "capability": "animus:combat-control",
           "arguments": {
-            "operation": "disable"
+            "operation": "release"
           }
         },
         {
@@ -197,9 +205,23 @@
       "arguments": {
         "text": "You know where to find me."
       }
+    },
+    "reset": {
+      "type": "action",
+      "capability": "animus:set-flag",
+      "arguments": {
+        "name": "taken",
+        "scope": "npc",
+        "value": false
+      }
     }
   },
   "triggers": [
+    {
+      "id": "ready",
+      "event": "spawn",
+      "routine": "reset"
+    },
     {
       "id": "click",
       "event": "interaction",

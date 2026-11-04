@@ -3,5 +3,5 @@
   "id": "town-guard",
   "name": "Town guard",
   "version": "1.0.0",
-  "description": "Challenges strangers and raises an alarm when hit, using today's manual combat control."
+  "description": "Fights hostile mobs and attackers from its post, challenges strangers and raises an alarm when hit."
 }
