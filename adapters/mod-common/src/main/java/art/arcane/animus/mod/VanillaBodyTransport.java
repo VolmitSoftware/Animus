@@ -1,0 +1,464 @@
+package art.arcane.animus.mod;
+
+import art.arcane.animus.core.control.ControlInbox;
+import art.arcane.animus.core.control.ControlInput;
+import art.arcane.animus.core.mount.SeatGeometry;
+import art.arcane.animus.core.npc.ArmorStandLook;
+import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.npc.NpcAppearance;
+import art.arcane.animus.core.npc.NpcPose;
+import art.arcane.animus.core.presentation.BodyLook;
+import art.arcane.animus.core.presentation.BodyPose;
+import art.arcane.animus.core.presentation.BodyRules;
+import art.arcane.animus.core.presentation.BodySkin;
+import art.arcane.animus.core.presentation.BodyTransport;
+import art.arcane.animus.core.presentation.NativeEntityIds;
+import art.arcane.animus.core.presentation.PassengerGraph;
+import art.arcane.animus.mod.mixin.AvatarDataAccess;
+import art.arcane.animus.mod.mixin.DisplayDataAccess;
+import art.arcane.animus.mod.mixin.EntityCounterAccessor;
+import art.arcane.animus.mod.mixin.EntityDataAccess;
+import art.arcane.animus.mod.mixin.PlayerInfoUpdateAccess;
+import art.arcane.animus.mod.mixin.TextDisplayDataAccess;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
+import com.mojang.authlib.GameProfile;
+import com.mojang.authlib.properties.Property;
+import com.mojang.authlib.properties.PropertyMap;
+import com.mojang.datafixers.util.Pair;
+import io.netty.buffer.Unpooled;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
+import java.util.stream.IntStream;
+import net.minecraft.core.Rotations;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
+import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
+import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket;
+import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
+import net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EntityAttachment;
+import net.minecraft.world.entity.EntityAttachments;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.scores.Scoreboard;
+import net.minecraft.world.scores.Team;
+import org.joml.Vector3f;
+
+/**
+ * Packet presentation built from vanilla classes on the server thread. Packets are written straight to each viewer's
+ * connection, so every operation settles before it returns. No server entity is constructed or registered.
+ */
+final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStack> {
+    static final class Body implements BodyTransport.Body {
+        private final VanillaBodyTransport owner;
+        private final int entityId, reservedIds, displayId, seatId;
+        private final UUID uuid, displayUuid = UUID.randomUUID(), seatUuid = UUID.randomUUID();
+        private final String typeKey;
+        private final double width, height;
+        private final SeatGeometry seat;
+        private final EntityType<?> type;
+        private final ClientboundPlayerInfoUpdatePacket playerInfo;
+        private final BodyLook look;
+        private final List<Packet<ClientGamePacketListener>> nameTeam;
+
+        private Body(VanillaBodyTransport owner, int entityId, int baseIds, UUID uuid, String typeKey, EntityType<?> type, SeatGeometry seat,
+                     ClientboundPlayerInfoUpdatePacket playerInfo, BodyLook look, List<Packet<ClientGamePacketListener>> nameTeam) {
+            this.owner = owner; this.entityId = entityId; this.reservedIds = baseIds + look.extraIds(); this.uuid = uuid; this.typeKey = typeKey;
+            this.type = type; this.width = type.getWidth(); this.height = type.getHeight(); this.seat = seat; this.playerInfo = playerInfo;
+            this.look = look; this.nameTeam = nameTeam;
+            displayId = look.text().isPresent() ? entityId + baseIds : -1;
+            seatId = look.seated() ? entityId + baseIds + (look.text().isPresent() ? 1 : 0) : -1;
+        }
+        @Override public int entityId() { return entityId; }
+        @Override public UUID uuid() { return uuid; }
+        @Override public String typeKey() { return typeKey; }
+        @Override public double width() { return width; }
+        @Override public double height() { return height; }
+        @Override public SeatGeometry seat() { return seat; }
+        @Override public int[] entityIds() { return IntStream.range(0, reservedIds).map((int offset) -> entityId + offset).toArray(); }
+    }
+
+    private final class Session {
+        final ServerPlayer viewer;
+        final Consumer<Interaction> interactions;
+        final Map<Integer, Body> visible = new HashMap<>();
+        final PassengerGraph passengers = new PassengerGraph();
+        ControlSubscription control;
+        long lastInputNanos = Long.MIN_VALUE / 2;
+        boolean reportedFailure;
+        Session(ServerPlayer viewer, Consumer<Interaction> interactions) { this.viewer = viewer; this.interactions = interactions; }
+    }
+
+    final class ControlSubscription implements BodyTransport.ControlSubscription {
+        private final Session session;
+        private final ControlInbox inbox = new ControlInbox(System.nanoTime());
+        private ControlSubscription(Session session) { this.session = session; }
+        @Override public ControlInbox.Snapshot latest() {
+            if (!current(session) || session.control != this) inbox.close("session-retired");
+            return inbox.snapshot();
+        }
+        @Override public void close() { inbox.close("subscription-closed"); if (session.control == this) session.control = null; }
+    }
+
+    private final NativeEntityIds ids = new NativeEntityIds(EntityCounterAccessor.animus$counter());
+    private final Map<UUID, Session> sessions = new HashMap<>();
+    private final Set<String> types;
+    private final EntityType<?> textDisplayType, seatType;
+    private final java.util.function.Consumer<String> warnings;
+    private boolean closed;
+
+    VanillaBodyTransport(java.util.function.Consumer<String> warnings) {
+        this.warnings = Objects.requireNonNull(warnings);
+        Set<String> available = new HashSet<>();
+        for (String key : BodyRules.TYPES) if (BuiltInRegistries.ENTITY_TYPE.containsKey(Identifier.parse(key))) available.add(key);
+        types = Set.copyOf(available);
+        textDisplayType = entityType("minecraft:text_display");
+        seatType = entityType("minecraft:armor_stand");
+    }
+
+    private static EntityType<?> entityType(String key) {
+        Identifier id = Identifier.parse(key);
+        if (!BuiltInRegistries.ENTITY_TYPE.containsKey(id)) throw new IllegalArgumentException("Native entity type is unavailable: " + key);
+        return BuiltInRegistries.ENTITY_TYPE.getValue(id);
+    }
+
+    @Override public Set<String> entityTypes() { return types; }
+    @Override public String riderUnavailable() { return null; }
+    @Override public boolean presentationAvailable() { return true; }
+    @Override public boolean equipmentAvailable() { return true; }
+
+    @Override public Body createBody(UUID uuid, String typeKey, String profileName, BodySkin skin) {
+        return createBody(uuid, typeKey, BodyLook.named(profileName), skin);
+    }
+    @Override public Body createBody(UUID uuid, String typeKey, String name, NpcAppearance appearance, BodySkin skin) {
+        return createBody(uuid, typeKey, BodyLook.of(uuid, typeKey, name, appearance), skin);
+    }
+    @Override public int presentationIds(UUID uuid, String typeKey, String name, NpcAppearance appearance) {
+        return BodyLook.of(uuid, typeKey, name, appearance).extraIds();
+    }
+    private Body createBody(UUID uuid, String typeKey, BodyLook look, BodySkin skin) {
+        ensureOpen();
+        Objects.requireNonNull(uuid);
+        if (!types.contains(typeKey)) throw new IllegalArgumentException("Body type is not available: " + typeKey);
+        boolean player = typeKey.equals(BodyRules.PLAYER);
+        if (player) BodyRules.validateProfileName(look.profileName());
+        if (!player && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
+        EntityType<?> type = entityType(typeKey);
+        int reserved = BodyRules.reservedIds(typeKey);
+        ClientboundPlayerInfoUpdatePacket info = player ? playerInfo(uuid, look.profileName(), skin) : null;
+        int entityId = ids.reserve(reserved + look.extraIds());
+        List<Packet<ClientGamePacketListener>> team = look.hideProfileName() ? hiddenNameTeam(entityId, look.profileName()) : null;
+        return new Body(this, entityId, reserved, uuid, typeKey, type, seat(type), info, look, team);
+    }
+    private static SeatGeometry seat(EntityType<?> type) {
+        EntityAttachments points = type.getDimensions().attachments();
+        Vec3 seat = points.getClamped(EntityAttachment.PASSENGER, 0, 0f), attached = points.getClamped(EntityAttachment.VEHICLE, 0, 0f);
+        return new SeatGeometry(seat.x(), seat.y(), seat.z(), attached.y());
+    }
+    private static ClientboundPlayerInfoUpdatePacket playerInfo(UUID uuid, String name, BodySkin skin) {
+        Multimap<String, Property> values = ArrayListMultimap.create();
+        if (skin != null) values.put("textures", new Property("textures", skin.textureValue(), skin.signature()));
+        GameProfile profile = new GameProfile(uuid, name, new PropertyMap(values));
+        ClientboundPlayerInfoUpdatePacket.Entry entry = new ClientboundPlayerInfoUpdatePacket.Entry(uuid, profile, false, 0, GameType.SURVIVAL, null, true, 0, null);
+        EnumSet<ClientboundPlayerInfoUpdatePacket.Action> actions = EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER,
+                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED,
+                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LATENCY, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME,
+                ClientboundPlayerInfoUpdatePacket.Action.UPDATE_HAT, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LIST_ORDER);
+        ClientboundPlayerInfoUpdatePacket packet = new ClientboundPlayerInfoUpdatePacket(actions, List.of());
+        ((PlayerInfoUpdateAccess) packet).animus$entries(List.of(entry));
+        return packet;
+    }
+    /** A team that hides one profile name tag; its own name never collides with a real team. */
+    private static List<Packet<ClientGamePacketListener>> hiddenNameTeam(int entityId, String profileName) {
+        Scoreboard board = new Scoreboard();
+        PlayerTeam hidden = new PlayerTeam(board, "animus-" + Integer.toHexString(entityId));
+        hidden.setNameTagVisibility(Team.Visibility.NEVER);
+        hidden.setCollisionRule(Team.CollisionRule.NEVER);
+        board.addPlayerToTeam(profileName, hidden);
+        return List.of(ClientboundSetPlayerTeamPacket.createAddOrModifyPacket(hidden, true), ClientboundSetPlayerTeamPacket.createRemovePacket(hidden));
+    }
+
+    @Override public CompletionStage<Void> watch(ServerPlayer viewer, Consumer<Interaction> interactions) {
+        ensureOpen();
+        Objects.requireNonNull(interactions);
+        if (!viewer.connection.isAcceptingMessages()) return failed("Viewer is not connected");
+        Session previous = sessions.put(viewer.getUUID(), new Session(viewer, interactions));
+        if (previous != null) retire(previous);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> spawn(ServerPlayer viewer, BodyTransport.Body presented, BodyPose pose) {
+        Body body = checkBody(presented);
+        Session session = session(viewer, pose);
+        int visibleIds = session.visible.size();
+        if (visibleIds + body.reservedIds > BodyRules.MAX_BODIES_PER_VIEWER) return failed("Viewer presentation ID limit reached");
+        if (session.visible.values().stream().anyMatch((Body other) -> other.uuid.equals(body.uuid))) return failed("A body with this UUID is already presented to the viewer");
+        if (session.visible.containsKey(body.entityId)) return failed("Body is already visible");
+        send(session, spawnPackets(body, pose));
+        for (int id : body.entityIds()) session.visible.put(id, body);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> move(ServerPlayer viewer, BodyTransport.Body presented, BodyPose pose) {
+        Body body = checkBody(presented);
+        Session session = session(viewer, pose);
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        float yaw = BodyRules.wireYaw(body.typeKey, pose.yaw());
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(3);
+        // A seated body follows its seat on the client, so the seat carries the movement.
+        if (body.seatId >= 0) packets.add(BodyMotion.move(body.seatId, pose.x(), pose.y(), pose.z(), yaw, 0f, pose.onGround()));
+        packets.add(BodyMotion.move(body.entityId, pose.x(), pose.y(), pose.z(), yaw, pose.pitch(), pose.onGround()));
+        packets.add(rotateHead(body.entityId, yaw));
+        send(session, packets);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> passengers(ServerPlayer viewer, BodyTransport.Body carrier, List<? extends BodyTransport.Body> riders, ServerPlayer realRider, boolean authoritative) {
+        Body vehicle = checkBody(carrier);
+        List<Body> requested = riders.stream().map(this::checkBody).toList();
+        Session session = existing(viewer);
+        if (session == null) return failed("Viewer is not watched");
+        if (session.visible.get(vehicle.entityId) != vehicle) return failed("Vehicle is not visible to this viewer");
+        for (Body passenger : requested) if (session.visible.get(passenger.entityId) != passenger) return failed("Passenger is not visible to this viewer");
+        List<Integer> passengerIds = requested.stream().map((Body passenger) -> passenger.entityId).toList();
+        int realRiderId = realRider == null ? BodyRules.NO_REAL_RIDER : realRider.getId();
+        int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayId);
+        try { session.passengers.replace(vehicle.entityId, passengerIds); }
+        catch (IllegalArgumentException invalid) { return CompletableFuture.failedFuture(invalid); }
+        send(session, List.of(passengersPacket(vehicle.entityId, roster)));
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> dragonPhase(ServerPlayer viewer, BodyTransport.Body presented, int phase) {
+        Body dragon = checkBody(presented);
+        if (!dragon.typeKey.equals("minecraft:ender_dragon")) return failed("Phase applies only to dragon bodies");
+        Session session = existing(viewer);
+        if (session == null) return failed("Viewer is not watched");
+        if (session.visible.get(dragon.entityId) != dragon) return failed("Dragon is not visible to this viewer");
+        send(session, List.of(new ClientboundSetEntityDataPacket(dragon.entityId, List.of(SynchedEntityData.DataValue.create(EnderDragon.DATA_PHASE, phase)))));
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> equipment(ServerPlayer viewer, BodyTransport.Body presented, Map<EquipmentSlot, ItemStack> items) {
+        Body body = checkBody(presented);
+        Session session = existing(viewer);
+        if (session == null) return failed("Viewer is not watched");
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        List<Pair<net.minecraft.world.entity.EquipmentSlot, ItemStack>> entries = new ArrayList<>(items.size());
+        for (Map.Entry<EquipmentSlot, ItemStack> item : items.entrySet())
+            entries.add(Pair.of(net.minecraft.world.entity.EquipmentSlot.valueOf(BodyRules.nativeSlot(item.getKey())), item.getValue().copy()));
+        if (entries.isEmpty()) return CompletableFuture.completedFuture(null);
+        send(session, List.of(new ClientboundSetEquipmentPacket(body.entityId, entries)));
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> despawn(ServerPlayer viewer, BodyTransport.Body presented) {
+        Body body = checkBody(presented);
+        Session session = sessions.get(viewer.getUUID());
+        if (session == null || session.viewer != viewer || session.visible.get(body.entityId) != body) return CompletableFuture.completedFuture(null);
+        for (int id : body.entityIds()) session.visible.remove(id, body);
+        session.passengers.remove(body.entityId);
+        if (viewer.connection.isAcceptingMessages()) send(session, removePackets(body));
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public void forget(ServerPlayer viewer) {
+        Session session = sessions.get(viewer.getUUID());
+        if (session != null && session.viewer == viewer) { sessions.remove(viewer.getUUID()); retire(session); }
+    }
+
+    @Override public ControlSubscription subscribeControl(ServerPlayer viewer) {
+        ensureOpen();
+        Session session = existing(viewer);
+        if (session == null) throw new IllegalStateException("Viewer is not watched");
+        if (session.control != null) throw new IllegalStateException("Viewer already has a control subscription");
+        ControlSubscription subscription = new ControlSubscription(session);
+        session.control = subscription;
+        return subscription;
+    }
+
+    @Override public void placeRider(ServerPlayer rider, double x, double y, double z) {
+        ensureOpen();
+        // A client that believes it is a passenger ignores position packets, so only the server side moves.
+        rider.setPos(x, y, z);
+        rider.connection.resetPosition();
+        rider.level().getChunkSource().move(rider);
+    }
+
+    @Override public void close() {
+        if (closed) return;
+        closed = true;
+        for (Session session : List.copyOf(sessions.values())) retire(session);
+        sessions.clear();
+    }
+
+    /** Server thread: a use or attack aimed at an ID this viewer sees. True consumes the packet. */
+    boolean interact(ServerPlayer viewer, int entityId, boolean attack, String hand, boolean secondary) {
+        if (closed) return false;
+        Session session = existing(viewer);
+        Body body = session == null ? null : session.visible.get(entityId);
+        if (body == null) return false;
+        long now = System.nanoTime();
+        if (now - session.lastInputNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS) return true;
+        session.lastInputNanos = now;
+        try { session.interactions.accept(new Interaction(body, attack ? Action.ATTACK : Action.INTERACT, hand, secondary, now)); }
+        catch (RuntimeException failure) {
+            if (!session.reportedFailure) { session.reportedFailure = true; warnings.accept("Virtual interaction callback failed: " + failure.getClass().getSimpleName()); }
+        }
+        return true;
+    }
+    void input(ServerPlayer viewer, Input input) {
+        Session session = existing(viewer);
+        ControlSubscription control = session == null ? null : session.control;
+        if (control == null || !control.inbox.active()) return;
+        control.inbox.offer(new ControlInput(input.forward(), input.backward(), input.left(), input.right(), input.jump(), input.shift(), input.sprint()), System.nanoTime());
+    }
+    void tickEnd(ServerPlayer viewer) {
+        Session session = existing(viewer);
+        ControlSubscription control = session == null ? null : session.control;
+        if (control != null && control.inbox.active()) control.inbox.heartbeat(System.nanoTime());
+    }
+
+    private List<Packet<ClientGamePacketListener>> spawnPackets(Body body, BodyPose pose) {
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>();
+        BodyLook look = body.look;
+        if (body.playerInfo != null) packets.add(body.playerInfo);
+        if (body.nameTeam != null) packets.add(body.nameTeam.get(0));
+        float yaw = BodyRules.wireYaw(body.typeKey, pose.yaw());
+        if (body.seatId >= 0) {
+            packets.add(new ClientboundAddEntityPacket(body.seatId, body.seatUuid, pose.x(), pose.y(), pose.z(), 0f, yaw, seatType, 0, Vec3.ZERO, yaw));
+            packets.add(new ClientboundSetEntityDataPacket(body.seatId, seatValues()));
+        }
+        packets.add(new ClientboundAddEntityPacket(body.entityId, body.uuid, pose.x(), pose.y(), pose.z(), pose.pitch(), yaw, body.type, 0, Vec3.ZERO, yaw));
+        packets.add(rotateHead(body.entityId, yaw));
+        List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
+        if (body.playerInfo != null) values.add(SynchedEntityData.DataValue.create(AvatarDataAccess.animus$skinLayers(), (byte) 0x7f));
+        values.addAll(bodyValues(look));
+        if (!values.isEmpty()) packets.add(new ClientboundSetEntityDataPacket(body.entityId, values));
+        if (body.displayId >= 0) {
+            packets.add(new ClientboundAddEntityPacket(body.displayId, body.displayUuid, pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, Vec3.ZERO, 0d));
+            double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate());
+            packets.add(new ClientboundSetEntityDataPacket(body.displayId, textValues(look.text().orElseThrow(), lift)));
+            packets.add(passengersPacket(body.entityId, new int[]{body.displayId}));
+        }
+        if (body.seatId >= 0) packets.add(passengersPacket(body.seatId, new int[]{body.entityId}));
+        return packets;
+    }
+    private static List<SynchedEntityData.DataValue<?>> bodyValues(BodyLook look) {
+        List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
+        boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
+        byte flags = BodyLook.sharedFlags(look.pose(), invisible);
+        if (flags != 0) values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), flags));
+        if (look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING)
+            values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), Pose.valueOf(BodyLook.nativePose(look.pose()))));
+        if (look.armorStand().isPresent()) {
+            ArmorStandLook stand = look.armorStand().get();
+            values.add(SynchedEntityData.DataValue.create(ArmorStand.DATA_CLIENT_FLAGS, BodyLook.armorStandFlags(stand)));
+            for (Map.Entry<ArmorStandLook.Part, ArmorStandLook.Angles> angle : stand.angles().entrySet()) {
+                Rotations rotation = new Rotations(angle.getValue().x(), angle.getValue().y(), angle.getValue().z());
+                values.add(switch (angle.getKey()) {
+                    case HEAD -> SynchedEntityData.DataValue.create(ArmorStand.DATA_HEAD_POSE, rotation);
+                    case BODY -> SynchedEntityData.DataValue.create(ArmorStand.DATA_BODY_POSE, rotation);
+                    case LEFT_ARM -> SynchedEntityData.DataValue.create(ArmorStand.DATA_LEFT_ARM_POSE, rotation);
+                    case RIGHT_ARM -> SynchedEntityData.DataValue.create(ArmorStand.DATA_RIGHT_ARM_POSE, rotation);
+                    case LEFT_LEG -> SynchedEntityData.DataValue.create(ArmorStand.DATA_LEFT_LEG_POSE, rotation);
+                    case RIGHT_LEG -> SynchedEntityData.DataValue.create(ArmorStand.DATA_RIGHT_LEG_POSE, rotation);
+                });
+            }
+        }
+        return values;
+    }
+    private static List<SynchedEntityData.DataValue<?>> textValues(String content, double lift) {
+        return List.of(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), Component.literal(content)),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$billboard(), BodyLook.BILLBOARD_CENTER),
+                SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$lineWidth(), BodyLook.LINE_WIDTH),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$translation(), new Vector3f(0f, (float) lift, 0f)));
+    }
+    private static List<SynchedEntityData.DataValue<?>> seatValues() {
+        return List.of(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), (byte) 0x20),
+                SynchedEntityData.DataValue.create(ArmorStand.DATA_CLIENT_FLAGS, (byte) BodyLook.SEAT_FLAGS));
+    }
+    private static Packet<ClientGamePacketListener> rotateHead(int id, float yaw) {
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(8));
+        try {
+            buffer.writeVarInt(id);
+            buffer.writeByte((byte) (int) Math.floor((yaw % 360.0) * 256.0 / 360.0));
+            return ClientboundRotateHeadPacket.STREAM_CODEC.decode(buffer);
+        } finally { buffer.release(); }
+    }
+    private static Packet<ClientGamePacketListener> passengersPacket(int vehicle, int[] passengers) {
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(128));
+        try {
+            buffer.writeVarInt(vehicle);
+            buffer.writeVarIntArray(passengers);
+            return ClientboundSetPassengersPacket.STREAM_CODEC.decode(buffer);
+        } finally { buffer.release(); }
+    }
+    private static List<Packet<ClientGamePacketListener>> removePackets(Body body) {
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(3);
+        packets.add(new ClientboundRemoveEntitiesPacket(body.entityIds()));
+        if (body.playerInfo != null) packets.add(new ClientboundPlayerInfoRemovePacket(List.of(body.uuid)));
+        if (body.nameTeam != null) packets.add(body.nameTeam.get(1));
+        return packets;
+    }
+
+    private void send(Session session, List<Packet<ClientGamePacketListener>> packets) {
+        if (!session.viewer.connection.isAcceptingMessages()) throw new IllegalStateException("Viewer connection is closed");
+        for (Packet<ClientGamePacketListener> packet : packets) session.viewer.connection.send(packet);
+    }
+    private void retire(Session session) {
+        if (session.control != null) { session.control.inbox.close("session-retired"); session.control = null; }
+        Set<Body> bodies = new HashSet<>(session.visible.values());
+        session.visible.clear(); session.passengers.clear();
+        if (!session.viewer.connection.isAcceptingMessages()) return;
+        for (Body body : bodies) send(session, removePackets(body));
+    }
+    private Session session(ServerPlayer viewer, BodyPose pose) {
+        ensureOpen();
+        if (!ModWorldKeys.key(viewer.level()).equals(pose.world())) throw new IllegalArgumentException("Viewer and body world differ");
+        Session session = existing(viewer);
+        if (session == null) throw new IllegalStateException("Viewer must be watched before sending body packets");
+        return session;
+    }
+    private Session existing(ServerPlayer viewer) {
+        Session session = sessions.get(viewer.getUUID());
+        return session != null && current(session) && session.viewer == viewer ? session : null;
+    }
+    private boolean current(Session session) { return !closed && sessions.get(session.viewer.getUUID()) == session; }
+    private Body checkBody(BodyTransport.Body presented) {
+        ensureOpen();
+        if (!(presented instanceof Body body) || body.owner != this) throw new IllegalArgumentException("Body belongs to another transport");
+        return body;
+    }
+    private void ensureOpen() { if (closed) throw new IllegalStateException("Packet transport is closed"); }
+    private static CompletionStage<Void> failed(String reason) { return CompletableFuture.failedFuture(new IllegalStateException(reason)); }
+}
