@@ -241,7 +241,7 @@ This greeter faces the player who started it, asks a question, and records that 
 | `animus:set-equipment` | `slot` (`main_hand`, `off_hand`, `head`, `chest`, `legs`, `feet`, `body`), optional `item` | Shows the item, such as `minecraft:iron_sword`. Without `item`, clears the slot. |
 | `animus:play-sound` | `sound`, optional `volume` (0-4), `pitch` (0.5-2), `audience`, `radius` | Plays the sound at the NPC for its audience only. |
 | `animus:spawn-particle` | `particle`, optional `count` (1-64), `spread` (0-8), `audience`, `radius` | Shows the particle at the NPC to its audience only. Particles that need extra data are rejected. |
-| `animus:combat-control` | `operation` (`enable`, `disable`, `target`, `release`), `target` (an entity UUID) for `target` only | Uses the same manual combat adapter as `/animus target`. Combat policy, review flags and protection checks still apply. |
+| `animus:combat-control` | `operation` (`enable`, `disable`, `target`, `release`, `guard`), `target` (an entity or NPC UUID): required for `target`, optional for `guard`, refused otherwise | Drives the [combat module](combat.md#behaviors-and-commands). Needs enabled combat settings; protection still applies. |
 | `animus:set-flag` | `name`, optional `scope`, optional `value` (default true) | Sets the flag. |
 | `animus:set-quest-state` | `name`, `value`, optional `scope` | Sets the stage. |
 | `animus:advance-quest-state` | `name`, optional `scope`, `by` (default 1), `maximum` | Adds to the stage without passing `maximum`. Reports `value`. |

@@ -8,6 +8,7 @@ import art.arcane.animus.core.navigation.*;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
+import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.mount.MountReference;
@@ -228,6 +229,44 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
         if (value == null || !value.state.snapshot().active()) return Optional.empty();
         return Optional.of(new ActiveNpc(entry.id, value.displayName, value.state.snapshot()));
+    }
+    /** Combat lookup that, unlike active(), also finds a dead NPC whose definition is still spawned. */
+    public Optional<ActiveNpc> combatant(UUID npc) {
+        if (!available()) return Optional.empty();
+        owner();
+        Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
+        if (value == null || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(entry.id))) return Optional.empty();
+        return Optional.of(new ActiveNpc(entry.id, value.displayName, value.state.snapshot()));
+    }
+    public float yaw(UUID npc) {
+        owner(); Entry entry = byUuid.get(npc);
+        return entry == null || entry.value == null ? 0 : entry.value.yaw;
+    }
+    /** Active NPCs near a point, from loaded chunks only, within the caller's scan budget. */
+    public SpatialNpcIndex.Scan scanNpcs(WorldPosition center, double radius, SpatialNpcIndex.Cursor cursor, SpatialNpcIndex.Budget budget) {
+        owner();
+        World world = plugin.getServer().getWorld(UUID.fromString(center.world()));
+        if (world == null) return new SpatialNpcIndex.Scan(List.of(), Optional.empty(), 0, 0);
+        return index.scan(new SpatialNpcIndex.Query(center, radius), cursor, budget, (ChunkPosition chunk) -> world.isChunkLoaded(chunk.x(), chunk.z()));
+    }
+    /** Brings a dead NPC back at the given point. Fires its spawn trigger again. */
+    public boolean revive(UUID npc, WorldPosition at) {
+        if (!available()) return false;
+        owner();
+        Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
+        if (value == null || value.state.snapshot().health() > 0 || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(entry.id))) return false;
+        index.upsert(value.state.respawn(at));
+        value.poseRevision++;
+        if (triggers != null) triggers.activated(npc);
+        return true;
+    }
+    /** Restarts the definition's own waypoint patrol from its first point, if it declares one and nothing else moves the NPC. */
+    public void resumePatrol(String id) {
+        Value value = navigable(id);
+        if (value.route != null || value.routeTask != null || value.routeReadQueued) return;
+        value.waypoints = WaypointSettings.parse(value.spec.definition()).map(WaypointProgress::new).orElse(null);
+        if (value.waypoints != null) beginWaypoint(value, 0);
+        else requestRouteRead(value);
     }
     /** Replaces the current route with a reusable route; its read and any read failure are reported in navigation status. */
     public void followRoute(String id, String route) {
@@ -652,9 +691,9 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         VirtualNpcState state;
         if (previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid())) {
             WorldPosition next = previous.spec.position().equals(spec.position()) ? previous.state.snapshot().position() : spec.position();
-            state = previous.state.reconfigured(next, geometry.width, geometry.height);
+            state = previous.state.reconfigured(next, geometry.width, geometry.height, maximumHealth(spec));
         } else {
-            state = new VirtualNpcState(spec.definition().uuid(), spec.position(), geometry.width, geometry.height, 20);
+            state = new VirtualNpcState(spec.definition().uuid(), spec.position(), geometry.width, geometry.height, maximumHealth(spec));
             state.spawn();
         }
         boolean sameNpc = previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid());
@@ -667,6 +706,9 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         entry.value.waypoints = WaypointSettings.parse(spec.definition()).map(WaypointProgress::new).orElse(null);
         if (entry.value.waypoints != null) beginWaypoint(entry.value, 0);
         else requestRouteRead(entry.value);
+    }
+    private static double maximumHealth(DefinitionSpec spec) {
+        return CombatSettings.active(spec.definition()).map((CombatSettings combat) -> combat.defense().maximumHealth()).orElse(20.0);
     }
     private void remove(Entry entry) {
         if (entry.task != null) { entry.task.cancelled = true; entry.task = null; }

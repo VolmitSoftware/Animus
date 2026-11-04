@@ -60,6 +60,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     public long protectionFailures() { return protection.failures(); }
     public ProtectionGate protection() { return protection; }
     public boolean registered(UUID npc) { return brains.containsKey(npc); }
+    public Set<UUID> npcs() { return Set.copyOf(brains.keySet()); }
     public boolean ownsHelper(UUID helper) { return helpers.tracks(helper); }
 
     public Optional<Status> status(UUID npc) {
@@ -191,8 +192,11 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         };
         if (!protection.allows(new ProtectionAdapter.Request(action, attacker, from, target.ref(), target.position(), target.categories())))
             return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.PROTECTED, 0, false);
-        if (target.ref().kind() != TargetKind.NPC)
-            return world.damageReal(attacker.id(), target, amount, kind, reach, knockback, victimDrops);
+        if (target.ref().kind() != TargetKind.NPC) {
+            CombatWorld.DamageOutcome outcome = world.damageReal(attacker.id(), target, amount, kind, reach, knockback, victimDrops);
+            if (outcome.status() == CombatWorld.DamageStatus.APPLIED) realDamaged(target.ref(), attacker);
+            return outcome;
+        }
         CombatBrain defender = brains.get(target.ref().id());
         if (defender == null) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
         double mitigated = defender.mitigate(attacker, from, amount, resolve(attacker));

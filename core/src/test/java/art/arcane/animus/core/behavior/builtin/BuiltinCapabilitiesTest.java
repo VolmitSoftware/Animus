@@ -188,6 +188,15 @@ class BuiltinCapabilitiesTest {
                 "sound:minecraft:entity.villager.yes", "particle:minecraft:flame:8", "combat:TARGET:true"), platform.calls);
     }
 
+    @Test void combatControlGuardsAParticipantOrStopsGuarding() throws Exception {
+        start();
+        String charge = UUID.randomUUID().toString();
+        assertEquals(Outcome.Status.OK, action("combat-control", "{\"operation\":\"guard\",\"target\":\"" + charge + "\"}").status());
+        assertEquals(Outcome.Status.OK, action("combat-control", "{\"operation\":\"guard\"}").status());
+        assertEquals(Outcome.Status.INVALID, action("combat-control", "{\"operation\":\"release\",\"target\":\"" + charge + "\"}").status());
+        assertEquals(List.of("combat:GUARD:true", "combat:GUARD:false"), platform.calls);
+    }
+
     @Test void navigateFollowsReusableRoutesAndLookFacesTheTriggeringPlayer() throws Exception {
         start();
         assertEquals(Outcome.Status.OK, action("navigate", "{\"route\":\"town-patrol\"}").status());

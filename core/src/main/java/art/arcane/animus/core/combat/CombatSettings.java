@@ -33,7 +33,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
     public record Pursuit(boolean closeChase, boolean rangedChase, double speed, double giveUpRange, double leashRange, boolean returnToPost, boolean teleportWhenStuck, int replanTicks) {}
     public record Melee(boolean enabled, double damage, double reach, int cooldownTicks, double knockback) {}
     public record Ranged(boolean enabled, String weapon, double damage, double range, double minimumRange, int cooldownTicks, double velocity, double inaccuracy, boolean safeShot, double knockback) {}
-    public record Defense(double maximumHealth, double armor, boolean invincible, boolean knockback, boolean protectedFromIgnored, double protectFromRange, int healRateTicks, int invulnerableTicks, boolean mobRetaliation) {}
+    public record Defense(double maximumHealth, double armor, boolean invincible, boolean knockback, boolean protectedFromIgnored, double protectFromRange, int healRateTicks, int invulnerableTicks) {}
     public record DropRule(String item, int amount, double chance) {}
     public record Death(List<DropRule> drops, int experience, boolean victimDrops) {
         public Death { drops = List.copyOf(drops); }
@@ -132,10 +132,10 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
                 reader.integer("cooldownTicks", 40, 1, 1200), reader.number("velocity", 1.6, .5, 4), reader.number("inaccuracy", 0, 0, 16), reader.bool("safeShot", true), reader.number("knockback", .2, 0, 4));
     }
     private static Defense defense(Reader reader) {
-        reader.known("maximumHealth", "armor", "invincible", "knockback", "protectedFromIgnored", "protectFromRange", "healRateTicks", "invulnerableTicks", "mobRetaliation");
+        reader.known("maximumHealth", "armor", "invincible", "knockback", "protectedFromIgnored", "protectFromRange", "healRateTicks", "invulnerableTicks");
         return new Defense(reader.number("maximumHealth", 20, 1, 2048), reader.number("armor", 0, 0, 1), reader.bool("invincible", false), reader.bool("knockback", true),
                 reader.bool("protectedFromIgnored", false), reader.number("protectFromRange", 0, 0, 256), reader.integer("healRateTicks", 0, 0, 72000),
-                reader.integer("invulnerableTicks", 10, 0, 100), reader.bool("mobRetaliation", false));
+                reader.integer("invulnerableTicks", 10, 0, 100));
     }
     private static Death death(Reader reader) {
         reader.known("drops", "experience", "victimDrops");
