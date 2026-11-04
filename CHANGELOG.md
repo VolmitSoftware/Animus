@@ -79,6 +79,11 @@
 - Per-tick runtime limits apply per Folia region tick.
 - Riding, mounts and combat on Folia report precise reasons for staying unavailable.
 
+### Fixed
+
+- A player who logs out while riding is saved at the NPC's feet instead of beside it.
+- Death-trigger routines can speak, play sounds and show particles for the NPC that died.
+
 ### Notes
 
 Riding, mounts and combat on Folia, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
