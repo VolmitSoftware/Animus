@@ -19,7 +19,7 @@ All management operations require `animus.admin`; `animus.status` remains availa
 
 Live definitions use shared authoritative health and position. Valid appearance-only edits preserve that health and runtime position; an explicit definition position change updates the position. Despawn followed by a new activation creates fresh runtime state. Health and cooldowns are not written into hand-edited definitions.
 
-Player profile names accept printable Unicode and spaces, with at most16 UTF-16 code units because of the native profile codec. Longer names and control characters are rejected explicitly; extended nameplates are pending. The initial non-player types are armor stand, horse, turtle, frog, llama, armadillo and ender dragon. Non-player nameplate rendering, equipment, inventories, poses and type-specific behavior remain incomplete.
+Player profile names accept printable Unicode and spaces, with at most16 UTF-16 code units because of the native profile codec. Longer names and control characters are rejected explicitly; extended nameplates are pending. The initial non-player types are armor stand, horse, turtle, frog, llama, armadillo and ender dragon. Non-player nameplate rendering, equipment, inventories, poses and type-specific behavior other than the [dragon presentation](#ender-dragon-presentation) remain incomplete.
 
 Skin references identify content-hashed JSON documents in `skins/`. Reads use the bounded file worker and preserve texture/signature data. An invalid or missing live replacement retains the last valid active presentation and reports the field error. Accepted definitions also have durable recovery checkpoints: a known invalid source edit at restart retains its previous definition and reports the error without changing the edited file. Missing sources remain deleted. Referenced skin files are not included in that definition checkpoint. See [storage and recovery](storage.md).
 
@@ -52,7 +52,7 @@ Source and local tests cover the following commands. Their managed server result
 
 Navigation uses the active NPC's current world and runtime position. Each leg permits at most32 blocks on each horizontal axis and8 vertically, speed1–5 blocks/second, and a bounded terrain capture of at most8192 voxels. Capture and live collision/support reads run on the Bukkit owner thread; path planning uses an immutable snapshot on one worker. Missing terrain suspends navigation without loading chunks. World changes, replacement, despawn, death, shutdown and conflicting authoritative movement cancel the route. Navigation status includes the current server position, route identity and arrival count.
 
-Movement is conservative and kinematic: full-block walking, explicit step/jump/fall segments, swimming and flying have clearance checks on every committed step. Walking requires integer feet heights; partial-block support and vanilla ballistic physics are unavailable. Unknown block shapes are rejected, including their neighboring overhang area. Bodies wider than4 or taller than8 blocks cannot navigate. Busy work budgets may reduce movement rate. Folia movement remains unavailable.
+Movement is conservative and kinematic: full-block walking, explicit step/jump/fall segments, swimming and flying have clearance checks on every committed step. Walking requires integer feet heights; partial-block support and vanilla ballistic physics are unavailable. Unknown block shapes are rejected, including their neighboring overhang area. Terrain checks use a central hull of at most 4 wide and 8 tall, so an ender dragon's wings and tail may overhang terrain. Busy work budgets may reduce movement rate. Folia movement remains unavailable.
 
 For native waypoints, an NPC can use this JSON module:
 
@@ -77,9 +77,69 @@ The reusable route lives at `behaviors/routes/town-patrol.json`:
 
 Routes allow1–64 points in the NPC's world and at most64 KiB per reusable file. Mode, speed, loop, waitTicks and points may instead appear directly in the module; a referenced route keeps those fields in the route document. Reload replaces a valid changed route and reports an invalid replacement while retaining the active route in memory. Restart begins declared routes from their first point; it does not resume an interrupted route stack. A manual navigation or stop command overrides the current waypoint workflow until it is explicitly reapplied. Preserved import traits never execute automatically; a native navigation module on an imported definition also requires literal `reviewAccepted: true`.
 
+## Mounted NPCs
+
+An NPC rides another NPC through its definition:
+
+```json
+"modules": {
+  "animus:mount": {"vehicle": "town-horse"}
+}
+```
+
+`vehicle` is the other NPC's id. An imported Citizens `mountedon` reference applies the same way from `migration.references`, using the identity recorded at import. A native module takes priority, and `{"enabled": false}` turns an imported relation off without touching the preserved data.
+
+Relations are worked out again whenever active definitions change, so they return after a restart. Each viewer's passenger list is built from what that viewer currently has, so relations return after a join, a world change or a chunk leaving and re-entering view. A passenger's authoritative position follows its vehicle's seat, taken from the exact native entity type, so hits land where the client draws it. A chain can be 8 deep and a vehicle can carry 16 passengers. A mounted NPC cannot navigate. When a relation ends, the NPC returns to the position in its definition.
+
+A relation that cannot be honoured leaves the NPC standing at its own position. The definition is not changed. `/animus inspect <id>` shows `mount-problem=` with the exact field, `/animus status` counts them and the server log reports new ones.
+
+| Problem | Effect |
+|---|---|
+| Vehicle missing or dormant, or an imported reference recorded as missing, ambiguous or invalid | Reported; activation still allowed. It attaches by itself once the vehicle becomes active |
+| An imported vehicle id now belongs to a different NPC | Reported; never attached |
+| Riding itself, a cycle, chain too deep or vehicle full | Refused by `/animus spawn` and by `/animus edit` of a spawned NPC. A hand-edited file that creates one is reported, and every member of a cycle stays unattached |
+
+## Riding an NPC
+
+A real player can ride an NPC whose definition opts in:
+
+```json
+"modules": {
+  "animus:riding": {"enabled": true, "permission": "animus.ride.town", "speed": 4, "leash": 64, "lifetimeSeconds": 600}
+}
+```
+
+| Field | Default | Range |
+|---|---:|---:|
+| `permission` | `animus.ride` (operators by default) | Lowercase permission node |
+| `speed` | 4 | 0.5–8 blocks/second |
+| `leash` | 64 | 4–256 blocks from where the ride began, horizontally |
+| `lifetimeSeconds` | 600 | 30–3600 |
+
+Imported definitions also need literal `"reviewAccepted": true`. An imported Citizens `controllable` trait stays preserved and does not turn this on.
+
+The player mounts with an ordinary right-click on the NPC. It passes the same reach, line-of-sight and rate checks as any interaction, and a listener can stop it by cancelling `VirtualNpcInteractionEvent`. Sneak-right-click keeps its usual meaning, so an administrator can still select a rideable NPC. The NPC must stand on full-block ground. One player rides one NPC, one real player rides each NPC, and at most 8 players ride at once. Mounting cancels the NPC's route or waypoints until the definition is reapplied.
+
+Press a movement key after mounting to start moving; a key already held while mounting does not count. Steering follows the player's look direction. Sprint and jump give no extra speed. The body steps up one full block and down at most three. Movement only happens on the server, through the same clearance check as navigation; the client's coordinates are never used. The check closes on any block shape it does not recognize, so plants, slabs, stairs and fences stop the ride next to them. Reaching the leash holds the NPC in place without ending the ride. The NPC stays where the ride ended. Flying and swimming control are unavailable.
+
+Sneak dismounts. A ride also ends on excess input, a stale connection, expiry, losing permission, entering a real vehicle, sleeping, spectator mode, unavailable terrain, the NPC's despawn, death or definition change, and plugin shutdown. The player is placed beside the NPC, or at its feet when nothing beside it is clear, and is told the reason unless they chose to sneak off. Death, logout, an outside teleport and a world change end the ride without moving the player further. Rides do not survive a restart, and a player who logs out or crashes while riding is saved at the NPC's feet.
+
+While riding, the player's server position is the NPC's feet, not its seat. Vanilla would otherwise treat the rider as flying and kick them. Block reach, other players' hits and anything else measured from the server position therefore use the ground, which is most noticeable high on a tall body. Plugins do not see `PlayerMoveEvent` for the ride's motion, so region plugins and movement-checking plugins may need an exemption.
+
+```text
+/animus ride status
+/animus ride stop <player>
+```
+
+## Ender dragon presentation
+
+A `minecraft:ender_dragon` definition is presented with packets only: no world entity, no boss bar and no dragon AI. Its model faces the opposite way from its rotation field, so Animus mirrors the rotation it sends and `yaw`, `/animus look` and route facing all mean the direction its head points. It sits with folded wings when resting on solid ground, flies in place when resting in the air and flaps while moving. Clients may play its normal wing and growl sounds.
+
+Clients strike one of eight child parts rather than the dragon itself. Animus reserves those part IDs and measures each hit against part positions it works out from the authoritative position and facing, with a small allowance for client animation. The part a client claims to have hit is not trusted, and the broad 16-wide bounds do not count as a hit.
+
 ## Preview remote control
 
-With the proof enabled, an administrator may use `/animus proof control <entity-id>`, `status` or `stop` for their own player-shaped preview. This is an unmounted remote-control experiment: the administrator remains a normal player, and mounted riding is a separate open capability. No persisted route, command behavior or real combat is activated by this preview.
+With the proof enabled, an administrator may use `/animus proof control <entity-id>`, `status` or `stop` for their own player-shaped preview. This is an unmounted remote-control experiment: the administrator remains a normal player. [Riding](#riding-an-npc) is a separate feature on persisted NPCs. No persisted route, command behavior or real combat is activated by this preview.
 
 Control requires a fresh key transition after admission and native tick-end heartbeats. It bounds motion to0.1 block per eligible50 ms step, with an8-block anchor leash and30-second lease. Release stops movement; shift, excessive input, stale heartbeats, lifecycle changes or unavailable terrain revoke control. Sprint and jump keys do not grant extra speed or flight. There are at most8 controllers globally and one controlled body per viewer session. Exact live client assertions remain artifact-specific.
 

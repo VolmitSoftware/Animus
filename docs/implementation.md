@@ -16,7 +16,7 @@ Implemented source:
 - `core/combat`, `bukkit/combat`, `bukkit/RuntimeCombatService`: supported real damage with cancellation/revalidation, strict import review policy, bounded ordinary-zombie targeting and restoration; manual commands only. No helper NPC entity or full Sentinel module.
 - `bukkit/PacketProofService`: opt-in viewer-isolated proof, lifecycle teardown, virtual health and cancellable third-party preview events.
 - `bukkit/navigation`, `bukkit/runtime`: bounded owner-thread capture of loaded terrain, one planner worker, live movement checks, manual routes, inline/reusable JSON waypoints and cancellation. Partial-block physics and Folia ownership remain open.
-- `core/control`, packet/proof adapters: bounded semantic input, native heartbeat leases and unmounted preview control. Authoritative mounted riding remains open.
+- `core/control`, packet/proof adapters: bounded semantic input, native heartbeat leases, unmounted preview control and authoritative real-player rider sessions.
 - `converter`: local preview/apply/validate/rollback commands using the same core.
 - `gradle`: Java 25, exactly three 26.x targets, Bukkit-first default distributions and relocated YAML dependency.
 - `docs/upstream-inventory.md`: pinned import source inventory, all observed traits mapped, persisted combat fields and gaps in translating imported behavior.
@@ -129,7 +129,7 @@ Runtime11 Multiplexor capture/build and the new26-gate manual behavior suite on 
 
 ## Remaining executable work
 
-1. Continue Milestone0 controllable bodies, mount/dragon gameplay, graphical validation and actual benchmark runs. The exact Paper/Spigot persisted-runtime and initial combat matrix now passes; full combat workflows remain incomplete.
+1. Run mounts, real riders and dragon presentation on live exact targets and a graphical client, then continue graphical validation and actual benchmark runs. The exact Paper/Spigot persisted-runtime and initial combat matrix now passes; full combat workflows remain incomplete.
 2. Extend Folia-safe capture, multi-viewer NPC ownership and transfer beyond the verified stationary preview. The [Folia investigation](folia-ownership-investigation.md) records proposed interfaces; keep unsupported features disabled.
 3. Freeze and build the integrated manual behavior implementation through Multiplexor, run the new nine-target behavior gate and affected module/native/Folia/import regressions, and independently audit source/artifact/receipt/cleanup bindings. Continue automatic triggers, durable scopes, platform actions and schema generation after this gate. Automatic definition schema migration and behavior translation remain open.
 4. Continue navigation, versioned public API/modules, bounded JSON behaviors and examples, combat/protection, benchmark evidence, additional platforms, and then the arcane_jaspr/Firebase editor.

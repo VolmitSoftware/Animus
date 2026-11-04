@@ -21,6 +21,10 @@ public record Hitbox(Vec3 min, Vec3 max) {
     }
 
     public Hitbox translated(Vec3 offset) { return new Hitbox(min.add(offset), max.add(offset)); }
+    public Hitbox inflated(double amount) {
+        Vec3 by = new Vec3(amount, amount, amount);
+        return new Hitbox(min.subtract(by), max.add(by));
+    }
 
     public OptionalDouble rayDistance(Vec3 origin, Vec3 direction, double maxReach) {
         Objects.requireNonNull(origin, "origin");
