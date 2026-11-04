@@ -17,8 +17,9 @@ const workspace = path.resolve(args.get('workspace') ?? path.join(root, '.qa', '
 const binary = path.resolve(args.get('binary'));
 const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) : null;
 const plugin = path.resolve(args.get('plugin'));
+const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
-const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon')).split(',');
+const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs')).split(',');
 const name = `animus-live-${project}-${version.replaceAll('.', '-')}`;
 const instances = path.join(workspace, 'consumers/plugin-consumers/instances');
 const instance = path.join(instances, name), data = path.join(instance, 'plugins/Animus'), logFile = path.join(instance, 'logs/latest.log');
@@ -66,6 +67,8 @@ class Server {
   port = 0;
   logs = 0;
   revisions = new Map();
+  // Terrain a scenario keeps across restarts; start() clears the test area and then rebuilds this.
+  floor = null;
   provision() {
     const template = path.join(instances, `animus-${project}-${version.replaceAll('.', '-')}`);
     if (!existsSync(instance)) {
@@ -84,6 +87,8 @@ class Server {
     mkdirSync(data, { recursive: true });
     for (const entry of readdirSync(plugins)) if (/^Animus.*\.jar$/.test(entry)) unlinkSync(path.join(plugins, entry));
     copyFileSync(plugin, path.join(plugins, path.basename(plugin)));
+    // The QA event fixture adds animusqa commands that qa/combat-client.mjs needs.
+    if (fixture) copyFileSync(fixture, path.join(plugins, path.basename(fixture)));
     const cached = path.join(process.env.HOME, '.gradle/caches/fabric-loom', version, 'minecraft-server.jar');
     mkdirSync(path.join(instance, 'cache'), { recursive: true });
     if (existsSync(cached)) copyFileSync(cached, path.join(instance, 'cache', `mojang_${version}.jar`));
@@ -115,6 +120,7 @@ class Server {
     await delay(1000);
     await this.cmd('fill -40 60 -40 40 60 40 stone', /Successfully filled|No blocks were filled|No blocks/);
     for (const [low, high] of [[61, 64], [65, 68]]) await this.cmd(`fill -40 ${low} -40 40 ${high} 40 air`, /Successfully filled|No blocks were filled|No blocks/);
+    if (this.floor) await this.cmd(this.floor, /Successfully filled|No blocks were filled/);
     await this.cmd('setworldspawn 0 61 0', /world spawn/i);
   }
   waitLog(pattern, from = 0, timeout = 20_000) {
@@ -518,10 +524,10 @@ async function state() {
   await server.cmd('animus delete st', /Deleted/);
 }
 
-async function runDoc(owner, id, routine, extra = {}) {
+async function runDoc(owner, id, routine, extra = {}, npc = 'act') {
   server.behavior(`live:${id}`, { routines: { main: routine }, ...extra });
   await server.reload();
-  const execution = await owner.run('act', `live:${id}`);
+  const execution = await owner.run(npc, `live:${id}`);
   return { execution, ...(await server.finish(execution)) };
 }
 const diagnosticOf = text => text.match(/Behavior diagnostic:[^\n]*/)?.[0] ?? text.match(/reason=[^\n]*/)?.[0] ?? text.slice(0, 300);
@@ -769,28 +775,6 @@ async function actions() {
     assert(existsSync(file), `${file} missing`);
     return readFileSync(file, 'utf8').replace(/\s+/g, ' ').slice(0, 120);
   });
-  await check('combat-control', async () => {
-    await server.cmd('difficulty easy', /difficulty/i);
-    const zombie = '00000001-0000-0002-0000-000300000004';
-    await server.cmd('summon minecraft:zombie 3 61 8 {UUID:[I;1,2,3,4],PersistenceRequired:1b}', /Summoned/);
-    const enabled = await runDoc(owner, 'combat', action('animus:combat-control', { operation: 'enable' }));
-    assert.equal(enabled.state, 'COMPLETED', diagnosticOf(enabled.text));
-    const status = await server.capture('animus combat status', /Combat \w+[^\n]*/);
-    assert(/registered=1/.test(status), status.slice(0, 200));
-    const targeted = await runDoc(owner, 'combat', action('animus:combat-control', { operation: 'target', target: zombie }));
-    assert.equal(targeted.state, 'COMPLETED', diagnosticOf(targeted.text));
-    const leased = await server.capture('animus combat status', /Combat \w+[^\n]*/);
-    assert(/controlled-mobs=1/.test(leased), leased.slice(0, 200));
-    const released = await runDoc(owner, 'combat', action('animus:combat-control', { operation: 'release' }));
-    assert.equal(released.state, 'COMPLETED', diagnosticOf(released.text));
-    const free = await server.capture('animus combat status', /Combat \w+[^\n]*/);
-    assert(/controlled-mobs=0/.test(free), free.slice(0, 200));
-    const off = await runDoc(owner, 'combat', action('animus:combat-control', { operation: 'disable' }));
-    assert.equal(off.state, 'COMPLETED', diagnosticOf(off.text));
-    await server.cmd(`kill ${zombie}`, /Killed/);
-    await server.cmd('difficulty peaceful', /difficulty/i);
-    return leased.match(/Combat[^\n]*/)[0].slice(0, 120);
-  });
   await check('command denied by default', async () => {
     server.behavior('live:cmd', { routines: { main: action('animus:command', { command: 'setblock 20 61 20 minecraft:gold_block' }) } });
     const reload = await server.capture('animus behaviors reload', /Behaviors reload: \w+[^\n]*/);
@@ -911,7 +895,8 @@ async function mounts() {
 
 const rideStatus = () => server.capture('animus ride status', /./, 200);
 const mounted = (client, vehicleId, from = 0) => client.wait(e => e.event === 'passengers' && e.vehicle === vehicleId && e.ids.includes(e.own), from, 6000);
-const dismounted = (client, vehicleId, from = 0) => client.wait(e => e.event === 'passengers' && e.vehicle === vehicleId && !e.ids.includes(e.own), from, 8000);
+// Removing the vehicle also dismounts a vanilla client; a presentation reset does that instead of a passenger list.
+const dismounted = (client, vehicleId, from = 0) => client.wait(e => (e.event === 'passengers' && e.vehicle === vehicleId && !e.ids.includes(e.own)) || (e.event === 'remove' && e.ids.includes(vehicleId)), from, 8000);
 async function mount(client, body) {
   await client.keys({});
   await client.look(body.x, body.y + 1, body.z);
@@ -1257,7 +1242,523 @@ async function folia() {
   await server.cmd('animus delete fn', /Deleted/);
 }
 
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, folia };
+const plain = text => text.replace(/\x1b\[[0-9;]*m/g, '');
+async function inspect(id) {
+  const pattern = new RegExp(`Runtime ${id}:[^\\n]*`);
+  const line = plain(await server.capture(`animus inspect ${id}`, pattern)).match(pattern)[0];
+  const at = line.match(/position=Vec3\[x=([-\dE.]+), y=([-\dE.]+), z=([-\dE.]+)\]/);
+  return { line, health: Number(line.match(/health=([-\d.]+)/)?.[1]), x: Number(at?.[1]), y: Number(at?.[2]), z: Number(at?.[3]) };
+}
+async function combatOf(id) {
+  const pattern = new RegExp(`Combat ${id}:[^\\n]*`);
+  return plain(await server.capture(`animus combat ${id} status`, pattern)).match(pattern)[0];
+}
+async function combatCommand(id, operation) {
+  const pattern = new RegExp(`Combat ${id}:[^\\n]*|Unknown NPC[^\\n]*|Usage[^\\n]*`);
+  return plain(await server.capture(`animus combat ${id} ${operation}`, pattern)).match(pattern)[0];
+}
+async function entityNumber(uuid, nbt) {
+  const text = plain(await server.capture(`data get entity ${uuid} ${nbt}`, /following entity data[^\n]*|No entity was found|Found no elements[^\n]*/));
+  const value = text.match(/following entity data: (-?[\d.]+)/);
+  return value ? Number(value[1]) : null;
+}
+async function entityCount(selector) {
+  const text = plain(await server.capture(`execute if entity ${selector}`, /Test (passed|failed)[^\n]*/));
+  return Number(text.match(/count: (\d+)/i)?.[1] ?? 0);
+}
+async function itemCount(player, item) {
+  const text = plain(await server.capture(`execute if items entity ${player} container.* ${item}`, /Test (passed|failed)[^\n]*/));
+  return Number(text.match(/count: (\d+)/i)?.[1] ?? 0);
+}
+async function until(test, timeout, label) {
+  const deadline = Date.now() + timeout;
+  let last;
+  while (Date.now() < deadline) {
+    last = await test();
+    if (last?.ok) return last;
+    await delay(250);
+  }
+  throw new Error(`${label}: ${JSON.stringify(last)?.slice(0, 400)}`);
+}
+// Fixed mob UUIDs keep commands exact: [I;n,0,0,1].
+const mobUuid = n => `${n.toString(16).padStart(8, '0')}-0000-0000-0000-000000000001`;
+async function summon(n, type, x, y, z, extra = '') {
+  await server.cmd(`summon ${type} ${x} ${y} ${z} {UUID:[I;${n},0,0,1],PersistenceRequired:1b${extra ? ',' + extra : ''}}`, /Summoned/);
+  return mobUuid(n);
+}
+const sturdy = (health, ai = false) => `${ai ? '' : 'NoAI:1b,'}attributes:[{id:"minecraft:max_health",base:${health}}],Health:${health}f`;
+async function click(client, uuid, op = 'use') {
+  const spawned = await client.body(uuid);
+  // Aim where the body is now: a moving NPC has left its spawn position.
+  const body = client.events.filter(e => e.event === 'move' && e.id === spawned.id && e.sequence > spawned.sequence).at(-1) ?? spawned;
+  await client.look(body.x, body.y + 1.4, body.z);
+  const from = client.events.length;
+  client.send(op, { id: body.id });
+  return from;
+}
+async function choose(client, from, option) {
+  const prompt = await client.wait(e => e.event === 'chat' && e.clicks?.some(c => c.endsWith(` ${option}`)), from);
+  const after = client.events.length;
+  await client.command(prompt.clicks.find(c => c.endsWith(` ${option}`)).replace(/^\//, ''));
+  return { prompt, after };
+}
+async function cells(client, points) {
+  if (!fixture) return;
+  for (const [x, y, z] of points) note(plain((await client.command(`animusqa motion cell ${x} ${y} ${z}`, 'QA cell')).text));
+}
+const combatNpc = (settings, behaviors = []) => ({ ...(behaviors.length ? { behaviors } : {}), modules: { 'animus:combat': { enabled: true, ...settings } } });
+
+async function terrain() {
+  const owner = await join(OWNER.name, 'survival');
+  await check('walking route over stairs', async () => {
+    await server.cmd('fill 4 61 -22 9 61 -18 stone', /filled/);
+    await server.cmd('fill 6 62 -22 9 62 -18 stone', /filled/);
+    await server.cmd('fill 3 61 -22 3 61 -18 minecraft:oak_stairs[facing=east]', /filled/);
+    await server.cmd('fill 5 62 -22 5 62 -18 minecraft:oak_stairs[facing=east]', /filled/);
+    await owner.tp(0, 61, -16);
+    await cells(owner, [[2, 61, -20], [3, 61, -20], [4, 61, -20], [5, 62, -20], [8, 62, -20], [8, 63, -20], [0, 60, -20]]);
+    const uuid = await server.npc('stairs', 'minecraft:player', 0.5, 61, -19.5, 'Climber');
+    const body = await owner.body(uuid);
+    const from = owner.events.length;
+    const result = await runDoc(owner, 'stairs', action('animus:navigate', { x: 8.5, y: 63, z: -19.5, speed: 3, wait: true, timeoutTicks: 400 }), {}, 'stairs');
+    const heights = [...new Set(owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).map(e => e.y))];
+    note(`stairs navigation: ${plain(await server.capture('animus navigation stairs status', /Navigation[^\n]*/))}`);
+    const end = await inspect('stairs');
+    await server.cmd('animus delete stairs', /Deleted/);
+    assert.equal(result.state, 'COMPLETED', `${diagnosticOf(result.text)} heights=${heights}`);
+    assert(Math.abs(end.y - 63) < .01 && Math.abs(end.x - 8.5) < .7, end.line.slice(0, 300));
+    // Each stair is climbed as a half-block step, never a jump: the body rises steadily through 61..63.
+    assert(heights.some(y => y > 61.1 && y < 61.9) && heights.some(y => y > 62.1 && y < 62.9), `no stepped climb: ${heights}`);
+    return `heights=${heights.map(y => y.toFixed(2)).join(',')}`;
+  });
+  await check('ride across grass, flowers and slabs', async () => {
+    await server.cmd('setblock 2 61 -30 minecraft:short_grass', /Changed/);
+    await server.cmd('setblock 3 61 -30 minecraft:poppy', /Changed/);
+    await server.cmd('fill 5 61 -31 6 61 -29 minecraft:stone_slab[type=bottom]', /filled/);
+    await server.cmd('setblock 8 61 -30 minecraft:dandelion', /Changed/);
+    await server.cmd('setblock 9 61 -29 minecraft:tall_grass[half=lower]', /Changed/);
+    await owner.tp(-1.5, 61, -30);
+    await cells(owner, [[2, 61, -30], [3, 61, -30], [4, 61, -30], [4, 61, -31], [4, 61, -29], [4, 60, -30], [5, 61, -30], [4, 62, -30]]);
+    const uuid = await server.npc('slabhorse', 'minecraft:horse', 0.5, 61, -29.5, 'Trotter', { modules: { 'animus:riding': { enabled: true, speed: 4, leash: 32, lifetimeSeconds: 600 } } });
+    const body = await owner.body(uuid);
+    const offset = logText().length;
+    await mount(owner, body);
+    const from = owner.events.length;
+    await owner.look(body.x + 40, body.y + 1, body.z);
+    await owner.keys({ forward: true });
+    await delay(3500);
+    await owner.keys({});
+    await delay(300);
+    const moves = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id);
+    const status = await rideStatus();
+    note(`slab ride moves: ${moves.map(e => `${e.x.toFixed(2)},${e.y}`).join(' ')}`);
+    const shiftFrom = owner.events.length;
+    await owner.keys({ shift: true });
+    await dismounted(owner, body.id, shiftFrom).catch(() => {});
+    await owner.keys({});
+    await server.cmd('animus delete slabhorse', /Deleted/);
+    const last = moves.at(-1);
+    const bad = logText().slice(offset).split('\n').filter(line => FORBIDDEN.test(line));
+    assert.deepEqual(bad, []);
+    assert(last && last.x > 9.5, `stopped at ${JSON.stringify(last)}; ${status.slice(0, 200)}`);
+    assert(moves.some(e => Math.abs(e.y - 61.5) < .01), `never on a slab: ${[...new Set(moves.map(e => e.y))]}`);
+    return `reached x=${last.x.toFixed(2)}; heights=${[...new Set(moves.map(e => e.y.toFixed(2)))].join(',')}`;
+  });
+  await check('NPC in shallow water', async () => {
+    await server.cmd('fill 10 59 -42 18 59 -34 stone', /filled/);
+    await server.cmd('fill 11 60 -41 17 60 -35 water', /filled/);
+    await owner.tp(14, 61, -32);
+    const uuid = await server.npc('wader', 'minecraft:player', 11.5, 60, -37.5, 'Wader');
+    const body = await owner.body(uuid);
+    const start = await inspect('wader');
+    const from = owner.events.length;
+    const result = await runDoc(owner, 'wade', action('animus:navigate', { x: 16.5, y: 60, z: -37.5, mode: 'swim', speed: 2, wait: true, timeoutTicks: 400 }), {}, 'wader');
+    const heights = [...new Set(owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).map(e => e.y.toFixed(2)))];
+    const end = await inspect('wader');
+    await server.cmd('animus delete wader', /Deleted/);
+    await server.cmd('fill 11 60 -41 17 60 -35 stone', /filled/);
+    assert(/active/.test(start.line), start.line.slice(0, 300));
+    assert.equal(result.state, 'COMPLETED', `${diagnosticOf(result.text)}; start=${start.line.slice(0, 200)}`);
+    assert(Math.abs(end.x - 16.5) < .7, end.line.slice(0, 300));
+    return `start y=${start.y}; end x=${end.x.toFixed(2)} y=${end.y}; heights=${heights.join(',')}`;
+  });
+  await owner.close();
+}
+
+async function combat() {
+  await server.cmd('difficulty easy', /difficulty/i);
+  server.behavior('live:fighter', {
+    routines: { main: sayTo('manual'), up: say('fighter-up'), down: say('fighter-down') },
+    triggers: [{ id: 'up', event: 'spawn', routine: 'up', cooldownTicks: 0 }, { id: 'down', event: 'death', routine: 'down', cooldownTicks: 0 }],
+  });
+  await server.reload();
+  let owner = await join(OWNER.name, 'survival');
+  await owner.tp(-20, 61, -20);
+  await check('melee hits a player for its configured damage', async () => {
+    await server.cmd(`effect give ${OWNER.name} minecraft:instant_health 1 5 true`, /Applied|effect/i);
+    await delay(500);
+    const from = owner.events.length;
+    await server.npc('cmelee', 'minecraft:player', -20.5, 61, -16.5, 'Brawler', combatNpc({
+      targets: { players: [OWNER.name] }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' },
+      melee: { damage: 4, reach: 3, cooldownTicks: 20 }, pursuit: { speed: 3, giveUpRange: 24, leashRange: 24 },
+    }));
+    const hit = await owner.wait(e => e.event === 'health' && e.health < 20, from, 15000);
+    await delay(2600);
+    const healths = owner.events.slice(from).filter(e => e.event === 'health').map(e => e.health);
+    const status = await combatOf('cmelee');
+    assert.equal(hit.health, 16, `first hit left ${hit.health}`);
+    const drops = healths.slice(1).map((h, i) => +(healths[i] - h).toFixed(3)).filter(d => d > 0);
+    assert(drops.every(d => Math.abs(d - 4) < .01), `hits ${drops}`);
+    assert(/target=PLAYER:/.test(status), status);
+    return `healths=${healths.join(',')}; ${status}`;
+  });
+  await check('combat commands', async () => {
+    const results = {};
+    results.global = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/Combat \w+[^\n]*/)[0];
+    assert(/Combat ready \| module npcs=1/.test(results.global), results.global);
+    results.disengage = await combatCommand('cmelee', 'disengage');
+    const before = owner.events.filter(e => e.event === 'health').at(-1).health;
+    await delay(2500);
+    const after = owner.events.filter(e => e.event === 'health').at(-1).health;
+    assert(after >= before, `still hit after disengage: ${before} -> ${after}`);
+    results.disengaged = await combatOf('cmelee');
+    assert(/disengaged/.test(results.disengaged) && /target=none/.test(results.disengaged), results.disengaged);
+    results.engage = await combatCommand('cmelee', 'engage');
+    await until(async () => { const s = await combatOf('cmelee'); return { ok: /target=PLAYER:/.test(s), s }; }, 6000, 'engage did not retarget');
+    results.release = await combatCommand('cmelee', 'release');
+    results.target = await combatCommand('cmelee', `target ${OWNER.uuid}`);
+    results.guard = await combatCommand('cmelee', `guard ${OWNER.uuid}`);
+    results.guardStop = await combatCommand('cmelee', 'guard stop');
+    results.unknown = plain(await server.capture('animus combat nobody status', /Unknown NPC[^\n]*|Combat[^\n]*/)).match(/Unknown NPC[^\n]*|Combat[^\n]*/)[0];
+    for (const key of ['disengage', 'engage', 'release', 'target', 'guard', 'guardStop']) assert(/: APPLIED/.test(results[key]), `${key}: ${results[key]}`);
+    assert(/Unknown NPC/.test(results.unknown), results.unknown);
+    await combatCommand('cmelee', 'disengage');
+    await server.cmd('animus delete cmelee', /Deleted/);
+    note(JSON.stringify(results));
+    return Object.entries(results).map(([k, v]) => `${k}=${v.replace(/^Combat [^:]*: /, '').slice(0, 60)}`).join('; ').slice(0, 300);
+  });
+  await check('melee kills a mob; victimDrops false drops nothing', async () => {
+    const holding = 'equipment:{mainhand:{id:"minecraft:diamond",count:1}},drop_chances:{mainhand:2.0f}';
+    const control = await summon(11, 'minecraft:zombie', -24, 61, -24, `NoAI:1b,${holding}`);
+    note(`control equipment: ${plain(await server.capture(`data get entity ${control} equipment`, /following entity data[^\n]*|No entity[^\n]*|Found no[^\n]*/))}`);
+    await server.cmd(`kill ${control}`, /Killed/);
+    await delay(600);
+    const controlDrops = await entityCount('@e[type=item,x=-24,y=61,z=-24,distance=..4]');
+    note(`mob drops gamerule: ${plain(await server.capture('gamerule minecraft:mob_drops', /mob_drops[^\n]*|Incorrect[^\n]*|Unknown[^\n]*/))}`);
+    await server.cmd('kill @e[type=item]', /Killed|No entity/);
+    const zombie = await summon(12, 'minecraft:zombie', -24, 61, -27, `NoAI:1b,${holding},Health:8f`);
+    await server.npc('cslayer', 'minecraft:player', -24.5, 61, -30.5, 'Slayer', combatNpc({
+      targets: { entityTypes: ['minecraft:zombie'] }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' },
+      melee: { damage: 5, reach: 3, cooldownTicks: 10 }, pursuit: { speed: 4 }, death: { victimDrops: false },
+    }));
+    await until(async () => ({ ok: await entityCount(`@e[type=zombie,nbt={UUID:[I;12,0,0,1]}]`) === 0 }), 20000, 'zombie survived');
+    await delay(800);
+    const drops = await entityCount('@e[type=item,x=-24,y=61,z=-27,distance=..6]');
+    const orbs = await entityCount('@e[type=experience_orb,x=-24,y=61,z=-27,distance=..6]');
+    await server.cmd('animus delete cslayer', /Deleted/);
+    assert(controlDrops >= 1, `control zombie dropped ${controlDrops}`);
+    assert.equal(drops, 0, `${drops} items near ${zombie}`);
+    assert.equal(orbs, 0);
+    return `control kill dropped ${controlDrops}; NPC kill dropped items=${drops} orbs=${orbs}`;
+  });
+  await check('arrows hit once each and are removed on disengage', async () => {
+    const target = await summon(13, 'minecraft:husk', -30, 61, -1, `${sturdy(100)}`);
+    await server.npc('carcher', 'minecraft:player', -30.5, 61, -22.5, 'Archer', combatNpc({
+      targets: { entityTypes: ['minecraft:husk'] }, targeting: { scanRange: 24, scanIntervalTicks: 5, lineOfSight: 'ignored' },
+      melee: { enabled: false }, pursuit: { closeChase: false, rangedChase: false },
+      ranged: { enabled: true, weapon: 'arrow', damage: 3, range: 24, minimumRange: 2, cooldownTicks: 40, velocity: 1.6, inaccuracy: 0, safeShot: true },
+    }));
+    const samples = [100];
+    await until(async () => { const h = await entityNumber(target, 'Health'); if (h !== samples.at(-1)) samples.push(h); return { ok: samples.length >= 4, samples }; }, 30000, 'fewer than three arrow hits');
+    const inFlight = (await until(async () => ({ ok: await entityCount('@e[type=arrow]') > 0 }), 8000, 'never saw an arrow in flight')).ok ? await entityCount('@e[type=arrow]') : 0;
+    const disengaged = await combatCommand('carcher', 'disengage');
+    await delay(200);
+    const left = await entityCount('@e[type=arrow]');
+    const status = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/helpers=\d+/)?.[0];
+    await server.cmd('animus delete carcher', /Deleted/);
+    await server.cmd(`kill ${target}`, /Killed/);
+    const hits = samples.slice(1).map((h, i) => +(samples[i] - h).toFixed(3));
+    // A husk has 2 armor points: vanilla reduces one 3-damage arrow by max(2/5, 2 - 3/2) / 25 to 2.94.
+    assert(hits.every(d => Math.abs(d - 2.94) < .01), `hits ${hits}`);
+    assert.equal(left, 0, `${left} arrows after disengage`);
+    assert.equal(status, 'helpers=0');
+    return `health ${samples.join(' -> ')}; arrows in flight before disengage=${inFlight}, after=${left}; ${disengaged}`;
+  });
+  await check('pursuit, leash and return to post', async () => {
+    const post = { x: -10.5, z: -30.5 };
+    const zombie = await summon(14, 'minecraft:zombie', -10, 61, -24, sturdy(200));
+    await server.npc('cchase', 'minecraft:player', post.x, 61, post.z, 'Chaser', combatNpc({
+      targets: { entityTypes: ['minecraft:zombie'] }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' },
+      melee: { damage: 1, reach: 3, cooldownTicks: 20 }, pursuit: { speed: 4, giveUpRange: 24, leashRange: 10, returnToPost: true },
+    }));
+    const chased = await until(async () => { const n = await inspect('cchase'); return { ok: Math.hypot(n.x - post.x, n.z - post.z) > 3, n: n.line.slice(0, 160) }; }, 15000, 'never pursued');
+    await server.cmd(`tp ${zombie} -10 61 -14`, /Teleported/);
+    const dropped = await until(async () => { const s = await combatOf('cchase'); return { ok: /target=none/.test(s), s }; }, 15000, 'kept target past leash');
+    const home = await until(async () => { const n = await inspect('cchase'); return { ok: Math.hypot(n.x - post.x, n.z - post.z) < 1, n: n.line.slice(0, 200) }; }, 20000, 'did not return to post');
+    await server.cmd('animus delete cchase', /Deleted/);
+    await server.cmd(`kill ${zombie}`, /Killed/);
+    return `pursued (${chased.n.match(/position=[^;]*/)?.[0]}); ${dropped.s}; back ${home.n.match(/position=[^;]*/)?.[0]}`;
+  });
+  await check('death and respawn refire the spawn trigger', async () => {
+    await gamemode('creative');
+    await owner.tp(-20, 61, -6);
+    const from = owner.events.length;
+    const uuid = await server.npc('cfrail', 'minecraft:player', -20.5, 61, -4.5, 'Frail', combatNpc({ targeting: { fightBack: false }, defense: { maximumHealth: 2, healRateTicks: 0, invulnerableTicks: 0 }, respawn: { delayTicks: 40 } }, ['live:fighter']));
+    await owner.chat('fighter-up', from);
+    const first = await owner.body(uuid);
+    for (let i = 0; i < 4 && !owner.has(e => e.event === 'chat' && e.text.includes('fighter-down'), from); i++) { await click(owner, uuid, 'attack'); await delay(700); }
+    await owner.chat('fighter-down', from).catch(async error => { throw new Error(`${error.message}; trace: ${plain(await server.capture('animus behaviors trace cfrail', /Behavior trace[^\n]*/, 400)).split('\n').filter(l => /recent|trace/.test(l)).join(' / ').slice(0, 900)}`); });
+    await owner.wait(e => e.event === 'remove' && e.ids.includes(first.id), from, 5000);
+    const downAt = owner.events.length;
+    await owner.chat('fighter-up', downAt, 8000);
+    const again = await owner.wait(e => e.event === 'spawn' && e.uuid === uuid, downAt, 8000);
+    const health = (await inspect('cfrail')).health;
+    await server.cmd('animus delete cfrail', /Deleted/);
+    assert.equal(health, 2);
+    return `died, respawned as entity ${again.id} with health ${health}; spawn trigger fired twice`;
+  });
+  await owner.close();
+  if (fixture) await check('qa/combat-client.mjs', async () => {
+    const done = spawnSync('node', [path.join(root, 'qa/combat-client.mjs'), '--version', version, '--port', String(server.port), '--libraries', path.join(instance, 'libraries'), '--results', results, '--event-fixture', '--id', 'combat-live'], { encoding: 'utf8', timeout: 300_000 });
+    writeFileSync(path.join(results, 'combat-client.out'), (done.stdout ?? '') + (done.stderr ?? ''));
+    const passed = (done.stdout ?? '').split('\n').filter(line => line.includes('"status":"passed"')).length;
+    assert.equal(done.status, 0, `exit ${done.status}; ${(done.stdout + done.stderr).split('\n').filter(Boolean).slice(-3).join(' | ').slice(0, 500)}`);
+    return `${passed} checks passed`;
+  });
+  await server.cmd('difficulty peaceful', /difficulty/i);
+}
+
+// Vanilla prints nothing when the player already has that mode.
+const gamemode = mode => server.cmd(`gamemode ${mode} ${OWNER.name}`, /game mode/i, 2000).catch(() => {});
+const PACKS = ['greeter', 'patrol', 'dialogue', 'quest', 'shop', 'town-guard', 'personal-guard'];
+async function packs() {
+  await server.cmd('difficulty easy', /difficulty/i);
+  server.floor = 'fill -30 61 -20 30 63 20 stone';
+  await server.cmd(server.floor, /filled/);
+  for (const pack of PACKS) {
+    const source = path.join(root, 'examples/packs', pack);
+    for (const entry of readdirSync(path.join(source, 'npcs/examples'))) {
+      mkdirSync(path.join(data, 'npcs/examples'), { recursive: true });
+      copyFileSync(path.join(source, 'npcs/examples', entry), path.join(data, 'npcs/examples', entry));
+    }
+    copyTree(source, path.join(data, 'packs', pack), name => name !== 'npcs');
+  }
+  server.config('[behaviors.actions]\ncommandNamespaces = ["shop"]\n');
+  await server.stop();
+  await server.start();
+  const startup = logText().split('\n').filter(line => /pack|Behaviors? (catalog|load)/i.test(line) && /Animus/.test(line)).slice(0, 4).map(plain).join(' / ');
+  note(`pack startup: ${startup}`);
+  const uuidOf = id => JSON.parse(readFileSync(path.join(data, 'npcs/examples', `${id}.json`), 'utf8')).uuid;
+  let owner = await join(OWNER.name);
+  await check('packs load and every pack NPC is active', async () => {
+    const list = plain(await server.capture('animus behaviors list', /Behavior \S+ \| path=packs[^\n]*/, 600));
+    note(list);
+    const rows = list.split('\n').filter(line => /Behavior \S+ \| path=packs\//.test(line));
+    const problems = [];
+    for (const id of ['greeter', 'patroller', 'innkeeper', 'quest-giver', 'harbour-master', 'shopkeeper', 'town-guard', 'bodyguard']) {
+      const runtime = await inspect(id);
+      if (!/: active/.test(runtime.line)) problems.push(runtime.line.slice(0, 160));
+    }
+    assert.deepEqual(problems, []);
+    const bad = rows.filter(line => !/state=VALID \| available=true/.test(line));
+    assert.deepEqual(bad, []);
+    assert.equal(rows.length, 8, list.slice(0, 600));
+    return `${rows.length} pack behaviors VALID and available; 8 pack NPCs active`;
+  });
+  const greeter = uuidOf('greeter');
+  await check('greeter waves on approach, greets once, then remembers', async () => {
+    await owner.tp(-7.5, 64, 12);
+    await owner.body(greeter);
+    const from = owner.events.length;
+    await owner.tp(-7.5, 64, 3);
+    const wave = await owner.wait(e => e.event === 'particle' && e.particle === 'minecraft:happy_villager', from, 6000);
+    const clickAt = await click(owner, greeter);
+    await owner.chat('Welcome, traveller. The market is to the north.', clickAt);
+    await owner.wait(e => e.event === 'sound' && e.sound === 'minecraft:entity.villager.ambient', clickAt, 3000);
+    await delay(2200);
+    const again = await click(owner, greeter);
+    await owner.chat('Good to see you again.', again);
+    return `wave particles=${wave.count}`;
+  });
+  const innkeeper = uuidOf('innkeeper');
+  await check('dialogue answers lead to more prompts and change the next one', async () => {
+    await owner.tp(-7.5, 64, 11);
+    let from = await click(owner, innkeeper);
+    const first = await choose(owner, from, 'rumours');
+    assert.equal(first.prompt.clicks.length, 3, JSON.stringify(first.prompt.clicks));
+    await owner.chat('Lights in the old mine, three nights running.', first.after);
+    const more = await choose(owner, first.after, 'yes');
+    await owner.chat('The miners left in a hurry.', more.after);
+    await delay(2200);
+    from = await click(owner, innkeeper);
+    const asked = await owner.chat('Back again?', from);
+    const back = await owner.wait(e => e.event === 'chat' && e.sequence > asked.sequence && e.clicks?.length, from);
+    assert.equal(back.clicks.length, 2, JSON.stringify(back.clicks));
+    const room = await choose(owner, from, 'room');
+    await owner.chat('Upstairs, second door.', room.after);
+    return `first prompt options=${first.prompt.clicks.length}, after rumour=${back.clicks.length}`;
+  });
+  const giver = uuidOf('quest-giver'), master = uuidOf('harbour-master');
+  await check('quest accepted, stage kept across restart', async () => {
+    await owner.tp(-7.5, 64, -4.5);
+    const from = await click(owner, giver);
+    const accepted = await choose(owner, from, 'accept');
+    await owner.chat('The harbour master is by the docks.', accepted.after);
+    await owner.close(); await delay(300);
+    await server.stop();
+    await server.start();
+    owner = await join(OWNER.name);
+    await owner.tp(-7.5, 64, -4.5);
+    const after = await click(owner, giver);
+    await owner.chat('still waiting for that letter', after);
+    const stored = readdirSync(path.join(data, 'state/behavior-state/player', OWNER.uuid), { recursive: true }).filter(name => String(name).endsWith('.json'));
+    return `stored ${stored.join(',')}`;
+  });
+  await check('quest delivered and completed', async () => {
+    await owner.tp(24.5, 64, -4.5);
+    let from = await click(owner, master);
+    await owner.chat('A letter for me?', from);
+    await owner.tp(-7.5, 64, -4.5);
+    await delay(2200);
+    from = await click(owner, giver);
+    await owner.chat('Delivered! Thank you.', from);
+    await owner.wait(e => e.event === 'sound' && e.sound === 'minecraft:entity.player.levelup', from, 3000);
+    await delay(2200);
+    from = await click(owner, giver);
+    await owner.chat('You have done enough for me, friend.', from);
+  });
+  await check('patrol walks its timed round while a pack reloads', async () => {
+    // The pack starts its round from a 1,200-tick timer; a manual run beside it would replace its route.
+    await owner.tp(4, 64, 4);
+    const from = owner.events.length;
+    await owner.chat('Starting my rounds.', from, 75_000);
+    const started = Date.now();
+    await delay(4000);
+    const file = path.join(data, 'packs/greeter/behaviors/greeter/greeter.json');
+    const document = JSON.parse(readFileSync(file, 'utf8'));
+    document.revision += 1;
+    writeFileSync(file, JSON.stringify(document, null, 2).replace('Good to see you again.', 'Back so soon?') + '\n');
+    const reload = await server.reload();
+    await owner.chat('All quiet.', from, 90_000);
+    const seconds = ((Date.now() - started) / 1000).toFixed(0);
+    const trace = plain(await server.capture('animus behaviors trace patroller', /Behavior trace[^\n]*/, 400));
+    const round = trace.split('\n').find(line => /trigger=patrol:route#rounds/.test(line)) ?? '';
+    const end = await inspect('patroller');
+    assert(/state=COMPLETED/.test(round), round || trace.slice(0, 400));
+    assert(Math.hypot(end.x - .5, end.z - .5) < .8, end.line.slice(0, 200));
+    await owner.tp(-7.5, 64, 3);
+    const clickAt = await click(owner, greeter);
+    await owner.chat('Back so soon?', clickAt);
+    return `${reload[0].slice(0, 70)}; round took ${seconds}s, COMPLETED, ended at ${end.x.toFixed(2)},${end.y},${end.z.toFixed(2)}`;
+  });
+  await check('malformed pack edit keeps last valid across restart', async () => {
+    await owner.close(); await delay(300);
+    await server.stop();
+    const file = path.join(data, 'packs/greeter/behaviors/greeter/greeter.json');
+    writeFileSync(file, readFileSync(file, 'utf8').replace('"routines"', '"routines" broken'));
+    await server.start();
+    const startup = logText().split('\n').filter(line => /greeter/.test(line) && /diagnostic|invalid/i.test(line)).slice(0, 2).map(plain).join(' / ');
+    owner = await join(OWNER.name);
+    await owner.tp(-7.5, 64, 3);
+    const clickAt = await click(owner, greeter);
+    await owner.chat('Back so soon?', clickAt);
+    assert(startup, 'startup did not report the broken pack document');
+    const document = readFileSync(file, 'utf8').replace('"routines" broken', '"routines"').replace(/"revision": (\d+)/, (all, n) => `"revision": ${Number(n) + 1}`);
+    writeFileSync(file, document);
+    assert.match((await server.reload())[0], /APPLIED/);
+    return startup.replace(/\[[^\]]*\]: /g, '').slice(0, 220);
+  });
+  const guard = uuidOf('town-guard');
+  // Every restart sets peaceful, which refuses hostile mobs.
+  await server.cmd('difficulty easy', /difficulty/i);
+  await check('town guard arms, challenges, fights a hostile mob and returns to post', async () => {
+    await owner.tp(-15.5, 64, 9);
+    await owner.body(guard);
+    // The owner first crossed the 12-block radius beside the greeter, so the 200-tick cooldown may still hold.
+    await owner.chat(/Evening, citizen\.|Stranger, state your business/, 0, 15000);
+    const greeting = owner.events.find(e => e.event === 'chat' && /citizen|Stranger/.test(e.text)).text;
+    let from = owner.events.length;
+    const armed = owner.events.find(e => e.event === 'equipment' && e.id === owner.current(guard)?.id && e.slots.mainhand === 'minecraft:iron_sword');
+    // The cooldown is per trigger on the NPC, not per player: let the owner's greeting expire first.
+    await delay(10_500);
+    const peer = await join(PEER.name, null);
+    await peer.tp(-15.5, 64, 9);
+    await peer.chat('Stranger, state your business', 0);
+    await peer.close();
+    const zombie = await summon(21, 'minecraft:zombie', -15.5, 64, -9.5, 'NoAI:1b');
+    from = owner.events.length;
+    const fought = await until(async () => { const s = await combatOf('town-guard'); return { ok: /target=MOB:/.test(s), s }; }, 10000, 'guard never targeted the zombie');
+    await until(async () => ({ ok: await entityCount('@e[type=zombie,nbt={UUID:[I;21,0,0,1]}]') === 0 }), 30000, 'zombie survived the guard');
+    const home = await until(async () => { const n = await inspect('town-guard'); return { ok: Math.hypot(n.x + 15.5, n.z - .5) < 1, n: n.line.slice(0, 200) }; }, 30000, 'guard did not return to post');
+    assert.equal(greeting.includes('Evening, citizen.'), true, greeting);
+    assert(armed, 'guard never showed an iron sword');
+    return `${greeting.slice(0, 40)}; ${fought.s}; back at ${home.n.match(/position=[^;]*/)?.[0]}`;
+  });
+  const bodyguard = uuidOf('bodyguard');
+  await check('bodyguard hired, follows, defends, then dismissed', async () => {
+    await gamemode('survival');
+    await owner.tp(-15.5, 64, 11.5);
+    let from = await click(owner, bodyguard);
+    const hired = await choose(owner, from, 'hire');
+    await owner.chat('Then I will stand ready. Lead the way.', hired.after);
+    await owner.tp(14, 64, 14);
+    const followed = await until(async () => { const n = await inspect('bodyguard'); return { ok: Math.hypot(n.x - 14, n.z - 14) < 6, n: n.line.slice(0, 160) }; }, 30000, 'bodyguard did not follow');
+    const attacker = await summon(22, 'minecraft:zombie', 18, 64, 14, sturdy(20, true));
+    const defended = await until(async () => ({ ok: await entityCount('@e[type=zombie,nbt={UUID:[I;22,0,0,1]}]') === 0 }), 40000, 'bodyguard did not kill the attacker');
+    await delay(2200);
+    const near = await inspect('bodyguard');
+    from = await click(owner, bodyguard);
+    const dismissed = await choose(owner, from, 'dismiss');
+    await owner.chat('Stay safe out there.', dismissed.after);
+    const status = await combatOf('bodyguard');
+    await owner.tp(25, 64, -15);
+    await delay(5000);
+    const stayed = await inspect('bodyguard');
+    await gamemode('creative');
+    assert(/target=none/.test(status), status);
+    assert(Math.hypot(stayed.x - near.x, stayed.z - near.z) < 2, `followed after dismissal: ${near.line.slice(0, 120)} -> ${stayed.line.slice(0, 120)}`);
+    return `followed to ${followed.n.match(/position=[^;]*/)?.[0]}; attacker killed=${defended.ok}; after dismiss ${status}`;
+  });
+  const shop = uuidOf('shopkeeper');
+  await check('shop charges one emerald for bread and gives nothing without one', async () => {
+    await gamemode('survival');
+    await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+    await owner.tp(16.5, 64, 4);
+    let from = await click(owner, shop);
+    let bought = await choose(owner, from, 'buy');
+    await owner.chat('Pleasure doing business.', bought.after);
+    await delay(500);
+    const breadWithout = await itemCount(OWNER.name, 'minecraft:bread');
+    await server.cmd(`give ${OWNER.name} minecraft:emerald 1`, /Gave/);
+    await delay(2200);
+    from = await click(owner, shop);
+    bought = await choose(owner, from, 'buy');
+    await owner.chat('Pleasure doing business.', bought.after);
+    await delay(500);
+    const bread = await itemCount(OWNER.name, 'minecraft:bread'), emeralds = await itemCount(OWNER.name, 'minecraft:emerald');
+    await gamemode('creative');
+    assert.equal(breadWithout, 0);
+    assert.equal(bread, 4);
+    assert.equal(emeralds, 0);
+    return `without emerald bread=${breadWithout}; with one: bread=${bread} emeralds=${emeralds}`;
+  });
+  await owner.close();
+  for (const id of ['greeter', 'patroller', 'innkeeper', 'quest-giver', 'harbour-master', 'shopkeeper', 'town-guard', 'bodyguard']) await server.cmd(`animus delete ${id}`, /Deleted|Unknown/);
+  await server.cmd('kill @e[type=!player]', /Killed|No entity/);
+  server.floor = null;
+  await server.cmd('fill -30 61 -20 30 63 20 air', /filled/);
+  await server.cmd('difficulty peaceful', /difficulty/i);
+}
+function copyTree(from, to, keep = () => true) {
+  mkdirSync(to, { recursive: true });
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    if (!keep(entry.name)) continue;
+    if (entry.isDirectory()) copyTree(path.join(from, entry.name), path.join(to, entry.name));
+    else copyFileSync(path.join(from, entry.name), path.join(to, entry.name));
+  }
+}
+
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, folia };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line));
