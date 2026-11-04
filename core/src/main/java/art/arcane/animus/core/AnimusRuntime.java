@@ -4,6 +4,7 @@ import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.config.ModuleSettings;
 import art.arcane.animus.core.config.BehaviorSettings;
+import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.extension.RepositoryDefinitions;
@@ -27,6 +28,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private NpcRepository npcs;
     private MutationLane fileWork;
     private RepositoryDefinitions definitions;
+    private BehaviorStateStore behaviorState;
 
     public AnimusRuntime(RuntimeEnvironment environment) {
         this(environment, failure -> System.getLogger("Animus").log(System.Logger.Level.ERROR,
@@ -53,14 +55,17 @@ public final class AnimusRuntime implements AutoCloseable {
             PluginSettings loaded = PluginSettings.load(opened);
             NpcRepository repository = new NpcRepository(opened);
             repository.loadForStartup();
+            BehaviorStateStore state = BehaviorStateStore.open(opened, loaded.behaviors().state());
             MutationLane lane = new MutationLane(loaded.files().maximumOperations(),
                     Duration.ofMillis(loaded.files().deliveryBudgetMillis()), this::closeStorage,
                     failure -> { cleanupFailure = failure; cleanupFailureObserver.accept(failure); });
             RepositoryDefinitions facade = new RepositoryDefinitions(repository, lane);
+            state.attach(lane.executor((task, event, failure) -> state.flushAbandoned()));
             documents = opened;
             npcs = repository;
             fileWork = lane;
             definitions = facade;
+            behaviorState = state;
             cleanupFailure = null;
             closing = false;
             settings = loaded;
@@ -94,9 +99,13 @@ public final class AnimusRuntime implements AutoCloseable {
     /** Only the lane invokes this hook, after mutation and internal cancellation work have ended. */
     private synchronized void closeStorage() {
         DocumentStore owned = documents;
-        try { if (owned != null) owned.close(); }
+        BehaviorStateStore state = behaviorState;
+        try {
+            try { if (state != null) state.close(); }
+            finally { if (owned != null) owned.close(); }
+        }
         catch (IOException failure) { throw new UncheckedIOException(failure); }
-        finally { documents = null; npcs = null; definitions = null; settings = null; }
+        finally { documents = null; npcs = null; definitions = null; settings = null; behaviorState = null; }
     }
 
     public synchronized Executor fileExecutor(MutationLane.EngineTaskObserver observer) {
@@ -138,6 +147,11 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized DocumentStore documents() {
         if (documents == null) throw new IllegalStateException("Animus is not running");
         return documents;
+    }
+
+    public synchronized BehaviorStateStore behaviorState() {
+        if (behaviorState == null) throw new IllegalStateException("Animus is not running");
+        return behaviorState;
     }
 
     public synchronized boolean packetProofEnabled() { return settings().packetProofEnabled(); }

@@ -10,6 +10,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MutationLaneTest {
     static <T> T await(CompletionStage<T> value) throws Exception{return value.toCompletableFuture().get(3,TimeUnit.SECONDS);}
+    /** A completed future precedes its delivery task's own accounting, so the count settles shortly afterward. */
+    static void awaitActiveDeliveries(MutationLane lane,int expected) throws InterruptedException{
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
+        while(lane.status().activeDeliveries()!=expected&&System.nanoTime()<deadline)Thread.sleep(10);
+        assertEquals(expected,lane.status().activeDeliveries());
+    }
     static void release(CountDownLatch latch){try{assertTrue(latch.await(3,TimeUnit.SECONDS));}catch(InterruptedException e){throw new AssertionError(e);}}
     static void eventually(java.util.function.BooleanSupplier check)throws Exception{
         long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean());
@@ -89,7 +95,7 @@ class MutationLaneTest {
             var queued=lane.submit(()->{fail("Cancelled mutation ran");return Outcome.ok("bad");});queued.thenRun(()->{callback.countDown();release(unblock);});
             var closed=CompletableFuture.runAsync(lane::close);release(callback);await(closed);
             assertFalse(lane.awaitMutations(Duration.ZERO));finish.countDown();assertTrue(lane.awaitMutations(Duration.ofSeconds(1)));
-            assertEquals("durable",await(running).value().orElseThrow());assertEquals(1,lane.status().activeDeliveries());
+            assertEquals("durable",await(running).value().orElseThrow());awaitActiveDeliveries(lane,1);
             unblock.countDown();assertEquals(Outcome.Status.CANCELLED,await(queued).status());
         }finally{finish.countDown();unblock.countDown();lane.close();}
     }

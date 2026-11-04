@@ -37,7 +37,7 @@ class CatalogCapabilityValidationTest {
                 validated.add(argumentsJson);
                 return invalid;
             }
-        });
+        }, BehaviorCheckpoints.disabled());
     }
     private static BehaviorCatalog.Entry entry(BehaviorCatalog catalog) { return catalog.snapshot().entries().get(BehaviorPath.forId("sample:test")); }
     private static BehaviorCatalog.Resolution resolution(BehaviorCatalog catalog) { return catalog.snapshot().byId().get("sample:test"); }
@@ -96,7 +96,7 @@ class CatalogCapabilityValidationTest {
         BehaviorCatalog catalog = new BehaviorCatalog(root, BehaviorCatalog.Limits.defaults(), new BehaviorCatalog.CapabilityResolver() {
             @Override public BehaviorCatalog.Capability resolve(BehaviorCatalog.Requirement requirement) { return BehaviorCatalog.Capability.present(); }
             @Override public List<Diagnostic> validate(BehaviorCatalog.Requirement requirement, String argumentsJson) { return List.copyOf(problems); }
-        });
+        }, BehaviorCheckpoints.disabled());
         reload(catalog);
         BehaviorCatalog.Accepted previous = entry(catalog).accepted().orElseThrow();
         problems.addAll(BAD);

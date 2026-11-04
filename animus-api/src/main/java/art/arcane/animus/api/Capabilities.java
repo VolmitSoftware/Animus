@@ -23,6 +23,12 @@ public final class Capabilities {
     @FunctionalInterface public interface Cancellation {boolean cancelled();}
     @FunctionalInterface public interface Action {CompletionStage<String> run(Invocation invocation) throws Exception;}
     @FunctionalInterface public interface Condition {CompletionStage<Boolean> test(Invocation invocation) throws Exception;}
+    /**
+     * Fires a trigger this module registered. Thread-safe and nonblocking: the result says whether the
+     * event was queued. OK(false) means the NPC is dormant or has no bound triggers. Overflow returns BUSY
+     * and is dropped. Other statuses carry a diagnostic. Publishing never grants world authority.
+     */
+    @FunctionalInterface public interface TriggerPublisher {Outcome<Boolean> publish(Key trigger,NpcHandle npc,Optional<UUID> player);}
     public interface Registrar {
         void action(Descriptor descriptor,Action action);
         void condition(Descriptor descriptor,Condition condition);

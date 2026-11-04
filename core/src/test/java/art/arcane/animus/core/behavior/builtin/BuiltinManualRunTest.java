@@ -66,8 +66,8 @@ class BuiltinManualRunTest {
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
         while (extensions.status().state() != ExtensionRuntime.State.READY && System.nanoTime() < until) Thread.sleep(2);
         assertEquals(ExtensionRuntime.State.READY, extensions.status().state());
-        catalog = new BehaviorCatalog(root, BehaviorCatalog.Limits.defaults(), extensions.catalogResolver());
-        runtime = new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(), BehaviorEngine.Limits.defaults(), () -> npcs, catalog::snapshot, extensions.behaviorInvoker());
+        catalog = new BehaviorCatalog(root, BehaviorCatalog.Limits.defaults(), extensions.catalogResolver(), art.arcane.animus.core.behavior.catalog.BehaviorCheckpoints.disabled());
+        runtime = new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(), BehaviorEngine.Limits.defaults(), () -> npcs, catalog::snapshot, extensions.behaviorInvoker(), null, art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
     }
     @AfterEach void stop() throws Exception {
         if (runtime != null) { runtime.close(); assertTrue(runtime.awaitStopped(Duration.ofSeconds(4))); }

@@ -21,7 +21,7 @@ class BehaviorCompilerTest {
         assertTrue(error(document("{\"type\":\"wait\",\"ticks\":0}")).endsWith(".ticks"));
     }
     @Test void declaredPersistenceAndUnsupportedFieldsAreExplicitDiagnostics(){
-        assertEquals("$.variables.count.scope",error(document("{\"count\":{\"type\":\"integer\",\"initial\":0,\"scope\":\"npc\"}}","\"main\":"+EMPTY)));
+        assertEquals("$.variables.count.lifetime",error(document("{\"count\":{\"type\":\"integer\",\"initial\":0,\"scope\":\"npc\"}}","\"main\":"+EMPTY)));
         assertTrue(error(document("{\"type\":\"wait\",\"ticks\":2,\"durable\":true}")).endsWith(".durable"));
         assertTrue(error(document("{\"type\":\"console-command\",\"command\":\"say hidden\"}")).endsWith(".type"));
     }

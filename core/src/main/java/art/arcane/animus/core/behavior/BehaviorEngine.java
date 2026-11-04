@@ -17,7 +17,10 @@ public final class BehaviorEngine implements AutoCloseable {
         private static void bound(int value,int maximum){if(value<1||value>maximum)throw new IllegalArgumentException("Invalid behavior budget");}
         public static Limits defaults(){return new Limits(64,128,16,256,4096,20000,8,64,64);}
     }
-    public record Context(NpcHandle npc,Optional<UUID> player,boolean preview){public Context{Objects.requireNonNull(npc);Objects.requireNonNull(player);}}
+    public record Context(NpcHandle npc,Optional<UUID> player,boolean preview,java.util.function.BooleanSupplier sourceCurrent){
+        public Context{Objects.requireNonNull(npc);Objects.requireNonNull(player);Objects.requireNonNull(sourceCurrent);}
+        public Context(NpcHandle npc,Optional<UUID> player,boolean preview){this(npc,player,preview,()->true);}
+    }
     public enum State { RUNNING, COMPLETED, CANCELLED, FAILED, UNAVAILABLE, BUDGET_EXHAUSTED }
     public record Trace(long tick,String path,String event){}
     public record Report(UUID id,String behavior,State state,String reason,long steps,Map<String,Value> variables,List<String> waits,List<Trace> trace,List<Diagnostic> diagnostics){
@@ -26,14 +29,13 @@ public final class BehaviorEngine implements AutoCloseable {
     public record Status(long tick,int activeExecutions,int fibers,int callsInFlight,int retiredCalls,int unobservedCalls,int history,long cancellationFailures,long quiescenceFailures,long terminalObserverFailures,boolean closed){}
     public record Tick(int work,int instructions,int completions,Status status){}
     private final Thread owner=Thread.currentThread();private final Limits limits;private final BehaviorInvoker invoker;
-    private final Consumer<Report> terminalObserver;
+    private final Consumer<Report> terminalObserver;private final BehaviorState state;
     private final Map<UUID,Execution> executions=new LinkedHashMap<>();private final Map<Long,Fiber> fibers=new LinkedHashMap<>();
     private final ArrayDeque<Fiber> order=new ArrayDeque<>();private final Set<Pending> calls=new LinkedHashSet<>();
     private final LinkedHashMap<UUID,Report> history=new LinkedHashMap<>();
     private long tick,nextFiber,cancellationFailures,quiescenceFailures,terminalObserverFailures;private boolean closed,advancing;private int lifecycleDepth;
-    public BehaviorEngine(Limits limits,BehaviorInvoker invoker){this(limits,invoker,report->{});}
     /** Engine-owned quick observation only; never a module callback or public completion listener. */
-    public BehaviorEngine(Limits limits,BehaviorInvoker invoker,Consumer<Report> terminalObserver){this.limits=Objects.requireNonNull(limits);this.invoker=Objects.requireNonNull(invoker);this.terminalObserver=Objects.requireNonNull(terminalObserver);}
+    public BehaviorEngine(Limits limits,BehaviorInvoker invoker,Consumer<Report> terminalObserver,BehaviorState state){this.limits=Objects.requireNonNull(limits);this.invoker=Objects.requireNonNull(invoker);this.terminalObserver=Objects.requireNonNull(terminalObserver);this.state=Objects.requireNonNull(state);}
     private void owner(){if(Thread.currentThread()!=owner)throw new IllegalStateException("Behavior engine requires its designated owner thread");}
     public Outcome<UUID> start(BehaviorProgram program,Context context){
         owner();Objects.requireNonNull(program);Objects.requireNonNull(context);
@@ -45,8 +47,25 @@ public final class BehaviorEngine implements AutoCloseable {
                 ||(root=program.routines().get(program.entry()))==null)
             return Outcome.rejected(Outcome.Status.INVALID,"program-invalid","Expected a compiled program with a valid entry and bounded declarations");
         if(executions.size()>=limits.executions()||fibers.size()>=limits.fibers())return Outcome.rejected(Outcome.Status.BUSY,"behavior-capacity","Execution/fiber capacity reached");
-        Execution execution=new Execution(UUID.randomUUID(),program,context);executions.put(execution.id,execution);
-        Fiber first=new Fiber(execution,program.initial(),null,-1);execution.root=first;push(first,root);add(first);trace(first,"$","started");return Outcome.ok(execution.id);
+        BehaviorState.Subject subject=program.scoped().isEmpty()?null:new BehaviorState.Subject(program.id(),context.npc().uuid(),context.player());
+        Map<String,Value> initial=program.initial();
+        if(subject!=null){
+            try{initial=scopedInitial(program,subject);}
+            catch(BehaviorState.Rejected rejected){return new Outcome<>(rejected.status(),Optional.empty(),List.of(rejected.diagnostic()));}
+        }
+        Execution execution=new Execution(UUID.randomUUID(),program,context,subject);executions.put(execution.id,execution);
+        Fiber first=new Fiber(execution,initial,null,-1);execution.root=first;push(first,root);add(first);trace(first,"$","started",null);return Outcome.ok(execution.id);
+    }
+    /** Admission refuses a missing player, an invalid stored document and a stored value of another type before any node runs. */
+    private Map<String,Value> scopedInitial(BehaviorProgram program,BehaviorState.Subject subject){
+        Map<String,Value> initial=new HashMap<>(program.initial());
+        for(Map.Entry<String,ScopedVariable> variable:program.scoped().entrySet()){
+            String name=variable.getKey();
+            if(variable.getValue().scope().requiresPlayer()&&subject.player().isEmpty())
+                throw new BehaviorState.Rejected(Outcome.Status.INVALID,"behavior-state-player-required","$.variables."+name+".scope","This variable belongs to a player, and this execution has none");
+            initial.put(name,state.read(subject,name,variable.getValue(),program.initial().get(name)));
+        }
+        return initial;
     }
     public Tick tick(){
         owner();if(advancing||lifecycleDepth>0)throw new IllegalStateException("Recursive behavior ticks/lifecycle entry are unavailable");advancing=true;
@@ -62,7 +81,7 @@ public final class BehaviorEngine implements AutoCloseable {
             if(!fibers.containsKey(fiber.id))continue;
             if(ready(fiber)){
                 if(fiber.execution.steps>=limits.totalSteps())terminate(fiber.execution,State.BUDGET_EXHAUSTED,"execution-step-budget");
-                else {fiber.execution.steps++;instructions++;try{step(fiber);}catch(RuntimeException | AssertionError | LinkageError failure){terminate(fiber.execution,State.FAILED,"engine-or-invoker: "+failure.getClass().getSimpleName());}}
+                else {fiber.execution.steps++;instructions++;try{step(fiber);}catch(BehaviorState.Rejected rejected){refused(fiber.execution,fiber.stack.isEmpty()?"$":fiber.stack.peek().node.path(),rejected);}catch(RuntimeException | AssertionError | LinkageError failure){terminate(fiber.execution,State.FAILED,"engine-or-invoker: "+failure.getClass().getSimpleName());}}
             }
             if(fibers.containsKey(fiber.id))order.addLast(fiber);
         }
@@ -79,21 +98,29 @@ public final class BehaviorEngine implements AutoCloseable {
         Frame frame=fiber.stack.peek();Node node=frame.node;
         switch(node){
             case Sequence sequence->{if(frame.index<sequence.steps().size())push(fiber,sequence.steps().get(frame.index++));else fiber.stack.pop();}
-            case Wait wait->{fiber.stack.pop();fiber.wakeTick=tick+wait.ticks();trace(fiber,node.path(),"wait-until:"+fiber.wakeTick);}
-            case SetValue set->{Value value=set.value() instanceof Literal literal?literal.value():fiber.variables.get(((Variable)set.value()).name());fiber.variables.put(set.variable(),value);fiber.writes.add(set.variable());fiber.stack.pop();trace(fiber,node.path(),"set:"+set.variable());}
+            case Wait wait->{fiber.stack.pop();fiber.wakeTick=tick+wait.ticks();fiber.waitPath=node.path();trace(fiber,node.path(),"wait-until:",fiber.wakeTick);}
+            case SetValue set->{
+                Value value=set.value() instanceof Literal literal?literal.value():current(fiber,((Variable)set.value()).name());
+                if(publishes(fiber,set.variable()))state.write(fiber.execution.subject,Map.of(set.variable(),value),fiber.execution.program.scoped());
+                fiber.variables.put(set.variable(),value);fiber.writes.add(set.variable());fiber.stack.pop();trace(fiber,node.path(),"set:",set.variable());
+            }
             case Repeat repeat->{if(frame.index<repeat.count()){frame.index++;push(fiber,repeat.body());}else fiber.stack.pop();}
-            case Call call->{if(frame.index==0){if(++fiber.callDepth>limits.callDepth()){terminate(fiber.execution,State.BUDGET_EXHAUSTED,"routine-depth");return;}frame.index=1;push(fiber,fiber.execution.program.routines().get(call.routine()));}else{fiber.callDepth--;fiber.stack.pop();}}
+            case Call call->{if(frame.index==0){if(++fiber.callDepth>limits.callDepth()){terminate(fiber.execution,State.BUDGET_EXHAUSTED,"routine-depth");return;}frame.index=1;trace(fiber,node.path(),"call:",call.routine());push(fiber,fiber.execution.program.routines().get(call.routine()));}else{fiber.callDepth--;fiber.stack.pop();}}
             case Action action->invoke(fiber,action.capability(),action.arguments(),false);
             case Condition condition->{if(frame.branch==null)invoke(fiber,condition.capability(),condition.arguments(),true);else{fiber.stack.pop();push(fiber,frame.branch?condition.thenNode():condition.elseNode());}}
             case Parallel parallel->{
                 if(frame.join==null){
                     if(fibers.size()+parallel.branches().size()>limits.fibers()){terminate(fiber.execution,State.BUDGET_EXHAUSTED,"parallel-fiber-budget");return;}
+                    refresh(fiber);
                     frame.join=new Join(fiber,parallel.branches().size());
-                    for(int i=0;i<parallel.branches().size();i++){Fiber child=new Fiber(fiber.execution,fiber.variables,frame.join,i);child.callDepth=fiber.callDepth;push(child,parallel.branches().get(i));add(child);}trace(fiber,node.path(),"parallel-start");
+                    for(int i=0;i<parallel.branches().size();i++){Fiber child=new Fiber(fiber.execution,fiber.variables,frame.join,i);child.callDepth=fiber.callDepth;push(child,parallel.branches().get(i));add(child);}trace(fiber,node.path(),"parallel-start",null);
                 }else{
                     Set<String> writes=new HashSet<>();for(Branch branch:frame.join.results)for(String name:branch.writes)if(!writes.add(name)){terminate(fiber.execution,State.FAILED,"parallel-write-conflict:"+name);return;}
+                    Map<String,Value> published=new HashMap<>();
+                    for(Branch branch:frame.join.results)for(String name:branch.writes)if(publishes(fiber,name))published.put(name,branch.variables.get(name));
+                    if(!published.isEmpty())state.write(fiber.execution.subject,published,fiber.execution.program.scoped());
                     for(Branch branch:frame.join.results)for(String name:branch.writes){fiber.variables.put(name,branch.variables.get(name));fiber.writes.add(name);}
-                    fiber.stack.pop();trace(fiber,node.path(),"parallel-joined");
+                    fiber.stack.pop();trace(fiber,node.path(),"parallel-joined",null);
                 }
             }
         }
@@ -103,13 +130,14 @@ public final class BehaviorEngine implements AutoCloseable {
         Capabilities.Kind kind=condition?Capabilities.Kind.CONDITION:Capabilities.Kind.ACTION;
         boolean available=invoker.available(key,kind,fiber.execution.program.id());if(!current(fiber))return;
         if(!available){terminate(fiber.execution,State.UNAVAILABLE,"capability-unavailable:"+key);return;}
+        refresh(fiber);
         String arguments;
         try{arguments=template.resolve(fiber.variables);}
         catch(ArgumentTemplate.Invalid invalid){terminate(fiber.execution,State.FAILED,"arguments-invalid:"+invalid.field()+":"+invalid.getMessage());return;}
-        BehaviorInvoker.Invocation invocation=new BehaviorInvoker.Invocation(key,fiber.execution.context.npc(),fiber.execution.context.player(),arguments,fiber.variables,fiber.execution.context.preview(),()->true,fiber.execution.program.id());
+        BehaviorInvoker.Invocation invocation=new BehaviorInvoker.Invocation(key,fiber.execution.context.npc(),fiber.execution.context.player(),arguments,fiber.variables,fiber.execution.context.preview(),fiber.execution.context.sourceCurrent(),fiber.execution.program.id());
         BehaviorInvoker.Call<?> call=condition?invoker.condition(invocation):invoker.action(invocation);
         Pending pending=new Pending(fiber.execution.id,fiber.id,condition,Objects.requireNonNull(call));calls.add(pending);fiber.awaiting=pending;
-        trace(fiber,fiber.stack.peek().node.path(),"invoking:"+key);
+        trace(fiber,fiber.stack.peek().node.path(),"invoking:",key);
         // No engine/variable/world mutation on completion threads. At most the admitted call count slots exist.
         try{call.result().whenComplete((value,failure)->pending.resolved.compareAndSet(null,new Resolved(value,failure)));}
         catch(RuntimeException | AssertionError | LinkageError failure){
@@ -139,15 +167,15 @@ public final class BehaviorEngine implements AutoCloseable {
         if(result.status()!=Outcome.Status.OK){
             // Preserve bounded field errors alongside the node trace, without retaining argument payloads.
             fiber.execution.diagnostics=List.copyOf(result.diagnostics().subList(0,Math.min(16,result.diagnostics().size())));
-            for(Diagnostic diagnostic:fiber.execution.diagnostics)trace(fiber,fiber.stack.peek().node.path(),"diagnostic:"+diagnostic.code());
+            for(Diagnostic diagnostic:fiber.execution.diagnostics)trace(fiber,fiber.stack.peek().node.path(),"diagnostic:",diagnostic.code());
             State state=switch(result.status()){case UNAVAILABLE->State.UNAVAILABLE;case CANCELLED->State.CANCELLED;default->State.FAILED;};
             terminate(fiber.execution,state,"invocation-"+result.status().name().toLowerCase(Locale.ROOT));return;
         }
         Object value=result.value().orElse(null);
-        if(pending.condition){if(!(value instanceof Boolean branch)){terminate(fiber.execution,State.FAILED,"condition-result-type");return;}fiber.stack.peek().branch=branch;}
+        if(pending.condition){if(!(value instanceof Boolean branch)){terminate(fiber.execution,State.FAILED,"condition-result-type");return;}fiber.stack.peek().branch=branch;trace(fiber,fiber.stack.peek().node.path(),"condition-result:",branch);}
         else{
             if(!(value instanceof String json)||!validResult(json)){terminate(fiber.execution,State.FAILED,"action-result-type");return;}
-            trace(fiber,fiber.stack.peek().node.path(),"action-complete");fiber.stack.pop();if(fiber.stack.isEmpty())finishFiber(fiber);
+            trace(fiber,fiber.stack.peek().node.path(),"action-complete",null);fiber.stack.pop();if(fiber.stack.isEmpty())finishFiber(fiber);
         }
     }
     private static boolean validResult(String json){
@@ -167,13 +195,13 @@ public final class BehaviorEngine implements AutoCloseable {
             for(long id:List.copyOf(execution.fibers)){Fiber fiber=fibers.remove(id);if(fiber!=null)order.remove(fiber);}
             execution.fibers.clear();
             if(state!=State.COMPLETED)for(Pending pending:List.copyOf(calls))if(pending.execution.equals(execution.id))cancelCall(pending,execution);
-            trace(execution,"$",state.name().toLowerCase(Locale.ROOT)+":"+bounded(reason));
+            trace(execution,"$",state.name().toLowerCase(Locale.ROOT)+":",bounded(reason));
             Report terminal=report(execution,state,bounded(reason));
             history.put(execution.id,terminal);while(history.size()>limits.historyEntries())history.remove(history.keySet().iterator().next());
             try{terminalObserver.accept(terminal);}catch(RuntimeException | AssertionError | LinkageError failure){terminalObserverFailures++;}
         }finally{lifecycleDepth--;}
     }
-    private void cancelCall(Pending pending,Execution execution){if(pending.cancelled)return;pending.cancelled=true;try{pending.call.cancel().run();}catch(RuntimeException | AssertionError | LinkageError failure){cancellationFailures++;trace(execution,"$","cancel-hook-failed:"+failure.getClass().getSimpleName());}}
+    private void cancelCall(Pending pending,Execution execution){if(pending.cancelled)return;pending.cancelled=true;try{pending.call.cancel().run();}catch(RuntimeException | AssertionError | LinkageError failure){cancellationFailures++;trace(execution,"$","cancel-hook-failed:",failure.getClass().getSimpleName());}}
     private void add(Fiber fiber){fibers.put(fiber.id,fiber);fiber.execution.fibers.add(fiber.id);order.addLast(fiber);}
     private void finishFiber(Fiber fiber){
         fibers.remove(fiber.id);fiber.execution.fibers.remove(fiber.id);order.remove(fiber);
@@ -181,30 +209,67 @@ public final class BehaviorEngine implements AutoCloseable {
         else{fiber.parent.results[fiber.branchIndex]=new Branch(Map.copyOf(fiber.variables),Set.copyOf(fiber.writes));fiber.parent.remaining--;}
     }
     private static void push(Fiber fiber,Node node){fiber.stack.push(new Frame(Objects.requireNonNull(node)));}
-    private void trace(Fiber fiber,String path,String event){trace(fiber.execution,path,event);}
-    private void trace(Execution execution,String path,String event){execution.trace.addLast(new Trace(tick,path,bounded(event)));while(execution.trace.size()>limits.traceEntries())execution.trace.removeFirst();}
+    private void trace(Fiber fiber,String path,String event,Object detail){trace(fiber.execution,path,event,detail);}
+    private void trace(Execution execution,String path,String event,Object detail){execution.trace.add(tick,path,event,detail);}
+    private void refused(Execution execution,String path,BehaviorState.Rejected rejected){
+        Diagnostic diagnostic=rejected.diagnostic();execution.diagnostics=List.of(diagnostic);
+        trace(execution,path,"diagnostic:",diagnostic.code());terminate(execution,State.FAILED,diagnostic.code());
+    }
+    /** Only the root fiber of a non-preview execution shares scoped state. Branches and previews work on private copies. */
+    private static boolean live(Fiber fiber){return fiber.parent==null&&fiber.execution.subject!=null&&!fiber.execution.context.preview();}
+    private static boolean publishes(Fiber fiber,String name){return live(fiber)&&fiber.execution.program.scoped().containsKey(name);}
+    private Value current(Fiber fiber,String name){
+        if(publishes(fiber,name))fiber.variables.put(name,state.read(fiber.execution.subject,name,fiber.execution.program.scoped().get(name),fiber.execution.program.initial().get(name)));
+        return fiber.variables.get(name);
+    }
+    private void refresh(Fiber fiber){if(live(fiber))for(String name:fiber.execution.program.scoped().keySet())current(fiber,name);}
     private static String bounded(String value){if(value==null)return "unspecified";return value.length()>256?value.substring(0,256):value;}
     private Report report(Execution execution,State state,String reason){
         List<String> waits=new ArrayList<>();for(long id:execution.fibers){
             Fiber fiber=fibers.get(id);
-            if(fiber.awaiting!=null)waits.add((fiber.awaiting.condition?"condition:":"action:")+fiber.stack.peek().node.path());
-            else if(fiber.wakeTick>tick)waits.add("tick:"+fiber.wakeTick);
+            if(fiber.awaiting!=null)waits.add(awaited(fiber.stack.peek().node));
+            else if(fiber.wakeTick>tick)waits.add("tick:"+fiber.wakeTick+"@"+fiber.waitPath);
             else if(!fiber.stack.isEmpty()){
                 Frame frame=fiber.stack.peek();
                 if(frame.join!=null&&frame.join.remaining>0)waits.add("parallel:"+fiber.id);
                 else if(calls.size()>=limits.inFlight()&&(frame.node instanceof Action||frame.node instanceof Condition&&frame.branch==null))waits.add("capacity:invocation");
             }
         }
-        return new Report(execution.id,execution.program.id(),state,reason,execution.steps,execution.root.variables,waits,List.copyOf(execution.trace),execution.diagnostics);
+        try{refresh(execution.root);}catch(BehaviorState.Rejected unreadable){/* The report keeps the root fiber's last read; the failing node reports the refusal. */}
+        return new Report(execution.id,execution.program.id(),state,reason,execution.steps,execution.root.variables,waits,execution.trace.snapshot(),execution.diagnostics);
+    }
+    private static String awaited(Node node){
+        return switch(node){
+            case Action action->"action:"+action.capability()+"@"+action.path();
+            case Condition condition->"condition:"+condition.capability()+"@"+condition.path();
+            default->"call:"+node.path();
+        };
     }
     private final class Execution {
-        final UUID id;final BehaviorProgram program;final Context context;final long started=tick;final Set<Long> fibers=new LinkedHashSet<>();final ArrayDeque<Trace> trace=new ArrayDeque<>();List<Diagnostic> diagnostics=List.of();Fiber root;long steps;
-        Execution(UUID id,BehaviorProgram program,Context context){this.id=id;this.program=program;this.context=context;}
+        final UUID id;final BehaviorProgram program;final Context context;final BehaviorState.Subject subject;final long started=tick;final Set<Long> fibers=new LinkedHashSet<>();final TraceRing trace=new TraceRing(limits.traceEntries());List<Diagnostic> diagnostics=List.of();Fiber root;long steps;
+        Execution(UUID id,BehaviorProgram program,Context context,BehaviorState.Subject subject){this.id=id;this.program=program;this.context=context;this.subject=subject;}
     }
     private final class Fiber {
         final long id=++nextFiber;final Execution execution;final Map<String,Value> variables;final Set<String> writes=new HashSet<>();final ArrayDeque<Frame> stack=new ArrayDeque<>();final Join parent;final int branchIndex;
-        int callDepth;long wakeTick;Pending awaiting;
+        int callDepth;long wakeTick;String waitPath;Pending awaiting;
         Fiber(Execution execution,Map<String,Value> variables,Join parent,int branchIndex){this.execution=execution;this.variables=new HashMap<>(variables);this.parent=parent;this.branchIndex=branchIndex;}
+    }
+    /** Fixed slots with text assembled only when someone reads the trace, so an unobserved step allocates almost nothing. */
+    private static final class TraceRing {
+        private final long[] ticks;private final String[] paths,events;private final Object[] details;private int next,size;
+        TraceRing(int capacity){ticks=new long[capacity];paths=new String[capacity];events=new String[capacity];details=new Object[capacity];}
+        void add(long tick,String path,String event,Object detail){
+            ticks[next]=tick;paths[next]=path;events[next]=event;details[next]=detail;
+            next=(next+1)%ticks.length;if(size<ticks.length)size++;
+        }
+        List<Trace> snapshot(){
+            List<Trace> result=new ArrayList<>(size);
+            for(int offset=size;offset>0;offset--){
+                int slot=Math.floorMod(next-offset,ticks.length);
+                result.add(new Trace(ticks[slot],paths[slot],bounded(details[slot]==null?events[slot]:events[slot]+details[slot])));
+            }
+            return List.copyOf(result);
+        }
     }
     private static final class Frame {final Node node;int index;Boolean branch;Join join;Frame(Node node){this.node=node;}}
     private static final class Join {final Fiber parent;final Branch[] results;int remaining;Join(Fiber parent,int count){this.parent=parent;results=new Branch[count];remaining=count;}}

@@ -6,6 +6,8 @@ import art.arcane.animus.bukkit.navigation.*;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.navigation.*;
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
+import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.*;
 import art.arcane.animus.core.virtual.*;
@@ -70,6 +72,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     private BukkitNavigationBridge navigation;
     private ChunkDelivery chunks;
     private BukkitTask ticker;
+    private TriggerBridge triggers;
     private volatile String unavailable;
     private String lastFailure;
     private volatile boolean closed;
@@ -106,6 +109,8 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
     }
 
     public boolean available() { return !closed && packets != null; }
+    /** Connect during plugin enable, before the first runtime tick can activate an NPC. */
+    public void bindTriggers(TriggerDispatcher dispatcher) { owner(); triggers = new TriggerBridge(dispatcher, index); }
     public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
         owner();
@@ -412,6 +417,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
         value.arrivals++;
         plugin.getServer().getPluginManager().callEvent(new VirtualNpcWaypointEvent(value.spec.definition().uuid(), value.spec.definition().id(),
                 route.id, route.waypoint, value.state.snapshot().position()));
+        if (triggers != null) triggers.waypoint(value.spec.definition().uuid(), route.waypoint);
         Entry entry = byUuid.get(value.spec.definition().uuid());
         if (!available() || entry == null || entry.value != value || value.route != null || value.waypoints != progress || progress == null
                 || !value.state.snapshot().active() || !value.authority.accepts(runtime.npcs().snapshot().get(entry.id))) return;
@@ -480,6 +486,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
             VirtualNpcState.Snapshot before = index.find(snapshot.npcId()).orElse(null);
             boolean moved = before != null && !before.position().equals(snapshot.position());
             index.upsert(snapshot);
+            if (triggers != null) triggers.changed(before, snapshot);
             if (!snapshot.active() || moved) stopRoute(value, "cancelled by combat lifecycle/position change");
             if (moved) value.poseRevision++;
             for (Viewer viewer : viewers.values()) {
@@ -527,6 +534,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
             tickNavigation();
             if (!available()) return; // Arrival listeners may disable the plugin or retire the entire runtime.
             admit();
+            if (triggers != null) triggers.proximity(viewers.keySet(), this::viewerPosition);
             FairViewerWork.run(viewerOrder, settings.updatesPerTick(), PACKET_WORK, this::current, (viewer, remaining) -> {
                 if (viewer.failed || !viewer.player.isOnline()) { fail(viewer, "Packet callback/connection unavailable"); return 0; }
                 if (viewer.player.isDead()) { disconnect(viewer.player); return 0; }
@@ -542,6 +550,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
             for (Viewer viewer : List.copyOf(viewers.values())) disconnect(viewer.player);
             plugin.getLogger().warning("NPC runtime tick failed: " + lastFailure);
             unavailable = "unavailable after runtime failure: " + lastFailure;
+            if (triggers != null) triggers.failed("NPC runtime " + unavailable);
             ticker.cancel(); packets.close(); packets = null;
             if (navigation != null) navigation.close();
             HandlerList.unregisterAll(this);
@@ -587,16 +596,23 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
             state = new VirtualNpcState(spec.definition().uuid(), spec.position(), geometry.width, geometry.height, 20);
             state.spawn();
         }
+        boolean sameNpc = previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid());
         if (previous != null) removeValue(entry);
+        if (previous != null && !sameNpc && triggers != null) triggers.removed(previous.spec.definition().uuid());
         entry.value = new Value(spec, skin, state, geometry.ids); entry.error = null;
         byUuid.put(spec.definition().uuid(), entry); index.upsert(state.snapshot());
+        if (!sameNpc && triggers != null) triggers.activated(spec.definition().uuid());
         entry.value.waypoints = WaypointSettings.parse(spec.definition()).map(WaypointProgress::new).orElse(null);
         if (entry.value.waypoints != null) beginWaypoint(entry.value, 0);
         else requestRouteRead(entry.value);
     }
     private void remove(Entry entry) {
         if (entry.task != null) { entry.task.cancelled = true; entry.task = null; }
-        if (entry.value != null) removeValue(entry);
+        if (entry.value != null) {
+            UUID uuid = entry.value.spec.definition().uuid();
+            removeValue(entry);
+            if (triggers != null) triggers.removed(uuid);
+        }
         entries.remove(entry.id);
     }
     private void removeValue(Entry entry) {
@@ -770,6 +786,8 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                 || body.value.state.snapshot().revision() != validated.npc().revision()
                 || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(body.value.spec.definition().id()))) return;
         accepted++;
+        if (triggers != null) triggers.interaction(body.body.uuid(), viewer.player.getUniqueId(),
+                action == VirtualNpcInteractionEvent.Action.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, event.isPreview());
         if (viewer.player.hasPermission("animus.admin")) {
             select(viewer.player.getUniqueId(), body.value.spec.definition().id());
             viewer.player.sendMessage("Selected " + body.value.spec.definition().id() + " via " + action);
@@ -778,6 +796,10 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
 
     private void enqueue(Viewer viewer, Runnable action) {
         if (!closed && !completions.offer(action)) viewer.failed = true;
+    }
+    private Optional<WorldPosition> viewerPosition(UUID id) {
+        Viewer viewer = viewers.get(id);
+        return viewer == null || !viewer.player.isOnline() || viewer.player.isDead() ? Optional.empty() : Optional.of(position(viewer.player.getLocation()));
     }
     private boolean current(Viewer viewer) { return !closed && viewers.get(viewer.player.getUniqueId()) == viewer; }
     private void fail(Viewer viewer, String error) {
@@ -809,7 +831,9 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
 
     @EventHandler public void join(PlayerJoinEvent event) { admissions = plugin.getServer().getOnlinePlayers().iterator(); }
     @EventHandler public void quit(PlayerQuitEvent event) {
-        disconnect(event.getPlayer()); selections.remove(event.getPlayer().getUniqueId()); viewerFailures.remove(event.getPlayer().getUniqueId());
+        disconnect(event.getPlayer()); selections.remove(event.getPlayer().getUniqueId());
+        if (triggers != null) triggers.forget(event.getPlayer().getUniqueId());
+        viewerFailures.remove(event.getPlayer().getUniqueId());
         admissions = plugin.getServer().getOnlinePlayers().iterator();
     }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void teleport(PlayerTeleportEvent event) { reset(event.getPlayer()); }

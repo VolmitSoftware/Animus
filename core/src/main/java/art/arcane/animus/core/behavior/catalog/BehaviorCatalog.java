@@ -12,7 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 
-/** Read-only, process-local accepted programs. Reload belongs on the shared engine I/O lane, never a platform owner thread. */
+/**
+ * Accepted programs with durable last-valid checkpoints. Sources stay read-only; checkpoints are generated data.
+ * Construction and reload belong on the shared engine I/O lane, never a platform owner thread.
+ */
 public final class BehaviorCatalog {
     public record Limits(int maximumDocuments,int maximumEntries,int maximumDepth,int maximumDocumentBytes,
                          long maximumAggregateBytes,int maximumCapabilityChecks){
@@ -63,14 +66,40 @@ public final class BehaviorCatalog {
     public record Reload(boolean published,Snapshot snapshot,List<Diagnostic> diagnostics,int scannedDocuments,long scannedBytes){
         public Reload{diagnostics=List.copyOf(diagnostics);}
     }
-    private final BehaviorSourceReader reader;private final Limits limits;private final CapabilityResolver resolver;
+    private final BehaviorSourceReader reader;private final Limits limits;private final CapabilityResolver resolver;private final BehaviorCheckpoints checkpoints;
+    private final Map<String,Diagnostic> checkpointProblems=new TreeMap<>();
     private boolean reloading;
     private volatile Snapshot published=new Snapshot(0,Map.of(),Map.of(),List.of());
-    public BehaviorCatalog(Path dataRoot,Limits limits,CapabilityResolver resolver)throws IOException{
-        this.limits=Objects.requireNonNull(limits);this.resolver=Objects.requireNonNull(resolver);reader=new BehaviorSourceReader(dataRoot,limits);
+    /** Last-valid programs join generation zero, so the first reload treats them exactly like programs accepted earlier in this process. */
+    public BehaviorCatalog(Path dataRoot,Limits limits,CapabilityResolver resolver,BehaviorCheckpoints checkpoints)throws IOException{
+        this.limits=Objects.requireNonNull(limits);this.resolver=Objects.requireNonNull(resolver);this.checkpoints=Objects.requireNonNull(checkpoints);reader=new BehaviorSourceReader(dataRoot,limits);
+        BehaviorCheckpoints.Loaded loaded=checkpoints.load();
+        Map<String,Entry> entries=new TreeMap<>();
+        loaded.problems().forEach((source,problem)->checkpointProblems.put(source,checkpointProblem(problem)));
+        loaded.saved().forEach((source,saved)->{
+            try{
+                entries.put(source,recovered(source,saved));
+            }catch(IOException | IllegalArgumentException invalid){
+                checkpointProblems.put(source,checkpointProblem(invalid.getMessage()));
+            }
+        });
+        published=new Snapshot(0,entries,Map.of(),List.of());
     }
     private BehaviorCatalog(BehaviorSourceReader reader,Limits limits,CapabilityResolver resolver,Snapshot accepted){
-        this.reader=reader;this.limits=limits;this.resolver=resolver;this.published=accepted;
+        this.reader=reader;this.limits=limits;this.resolver=resolver;this.published=accepted;checkpoints=BehaviorCheckpoints.disabled();
+    }
+    private static Diagnostic checkpointProblem(String problem){
+        return new Diagnostic(Diagnostic.Severity.WARNING,"behavior-checkpoint-invalid","$","Last-valid checkpoint is unusable and was ignored: "+safe(problem,600));
+    }
+    private static Entry recovered(String source,BehaviorCheckpoints.Saved saved)throws IOException{
+        JsonObject object=JsonDocuments.object(saved.source());
+        object.remove("revision");
+        BehaviorCompiler.Result result=BehaviorCompiler.compile(object.toString());
+        BehaviorProgram program=result.program().orElseThrow(()->new IllegalArgumentException("Checkpoint no longer compiles: "+result.diagnostics().getFirst().field()));
+        if(!BehaviorPath.forId(program.id()).equals(source))throw new IllegalArgumentException("Checkpoint identity does not match its source path");
+        long bytes=saved.source().getBytes(StandardCharsets.UTF_8).length;
+        Accepted accepted=new Accepted(saved.revision(),saved.sourceHash(),bytes,program,requirements(program));
+        return new Entry(source,Optional.of(program.id()),Optional.empty(),OptionalLong.empty(),SourceState.VALID,Optional.of(accepted),List.of());
     }
     public Snapshot snapshot(){return published;}
     /** Validate current files against accepted revision/hash state without publishing, writing or forgetting programs. */
@@ -119,6 +148,8 @@ public final class BehaviorCatalog {
                 boolean duplicate=candidate.declaredId!=null&&duplicateIds.contains(candidate.declaredId)||candidate.accepted!=null&&duplicateIds.contains(candidate.accepted.program().id());
                 if(duplicate){candidate.state=SourceState.DUPLICATE;candidate.add(error("behavior-id-duplicate","$.id","Duplicate identity; no file wins catalog resolution"));}
                 else accept(candidate);
+                Diagnostic checkpoint=checkpointProblems.get(candidate.path);
+                if(checkpoint!=null)candidate.add(checkpoint);
             }
             long retainedBytes=0;
             for(Candidate candidate:candidates.values())if(candidate.accepted!=null){retainedBytes+=candidate.accepted.sourceBytes();if(retainedBytes>limits.maximumAggregateBytes())return rejected("catalog-retained-byte-budget","Accepted and retained programs exceed aggregate source-byte budget",before);}
@@ -138,7 +169,7 @@ public final class BehaviorCatalog {
                         catch(RuntimeException | AssertionError | LinkageError failure){capability=new Capability(false,"registry-check-failed");}
                         capabilities.put(requirement,capability);
                     }
-                    if(!capability.available()){available=false;owner.add(error("behavior-capability-unavailable","$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+capability.reason()));continue;}
+                    if(!capability.available()){available=false;owner.add(error("behavior-capability-unavailable",requirement.kind()==Kind.TRIGGER?"$.triggers":"$.routines",requirement.kind().name().toLowerCase(Locale.ROOT)+" "+requirement.key()+": "+capability.reason()));continue;}
                     Capability granted;
                     try{granted=Objects.requireNonNull(resolver.authorize(requirement,id));}
                     catch(RuntimeException | AssertionError | LinkageError failure){granted=new Capability(false,"registry-check-failed");}
@@ -150,6 +181,16 @@ public final class BehaviorCatalog {
             if(!scan.manifest().equals(checked.manifest()))return rejected("catalog-source-changed","Behavior source tree changed during reload; retry after edits settle",before);
             Map<String,Entry> entries=new TreeMap<>();candidates.forEach((path,candidate)->entries.put(path,candidate.entry()));
             List<Diagnostic> global=removed.isEmpty()?List.of():List.of(new Diagnostic(Diagnostic.Severity.INFO,"catalog-programs-removed","behaviors","Explicitly removed "+removed.size()+" absent accepted programs; no files written"));
+            Map<String,BehaviorCheckpoints.Pending> durable=new TreeMap<>();Set<String> present=new HashSet<>();
+            for(Candidate candidate:candidates.values()){
+                if(candidate.source!=null)present.add(candidate.path);
+                if(candidate.source==null||candidate.accepted==null)continue;
+                boolean fresh=candidate.accepted.sourceHash().equals(candidate.source.hash());
+                durable.put(candidate.path,new BehaviorCheckpoints.Pending(candidate.accepted.revision(),candidate.accepted.sourceHash(),fresh?candidate.source.text():null));
+            }
+            try{checkpoints.update(durable,present);}
+            catch(IOException | RuntimeException failure){return rejected("catalog-checkpoint-failed",safe(failure.getClass().getSimpleName()+": "+failure.getMessage(),240),before);}
+            checkpointProblems.clear();
             published=new Snapshot(Math.incrementExact(before.generation()),entries,resolutions,global);
             return new Reload(true,published,global,scan.sources().size(),scan.bytes());
         }catch(IOException invalid){return rejected("catalog-scan-unavailable",safe(invalid.getMessage(),240),before);}
@@ -199,6 +240,8 @@ public final class BehaviorCatalog {
             case Parallel parallel->pending.addAll(parallel.branches());
             default->{} // Calls name routines already scanned once; do not recursively follow them.
         }
+        for(art.arcane.animus.core.behavior.trigger.TriggerBinding trigger:program.triggers())
+            if(trigger.spec() instanceof art.arcane.animus.core.behavior.trigger.TriggerBinding.ModuleEvent module)result.add(new Requirement(module.key(),Kind.TRIGGER));
         return Set.copyOf(result);
     }
     /** Bound templates hold placeholders until execution, so only fully literal arguments are checked here. */

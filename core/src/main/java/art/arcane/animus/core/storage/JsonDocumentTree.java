@@ -8,6 +8,8 @@ import java.util.*;
 public final class JsonDocumentTree {
     private JsonDocumentTree() {}
     public static List<Path> files(Path directory) throws IOException { return files(directory, 250_000, 100_000, 8); }
+    /** Generated trees mirror behavior identifiers, which nest deeper than definition directories. */
+    public static List<Path> files(Path directory, int depthLimit) throws IOException { return files(directory, 250_000, 100_000, depthLimit); }
 
     static List<Path> files(Path directory, int entryLimit, int documentLimit, int depthLimit) throws IOException {
         if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) return List.of();

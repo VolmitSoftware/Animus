@@ -46,7 +46,7 @@ class BehaviorSchemaIntegrationTest {
     @Test void boundTypedValuesAreValidatedAfterResolutionAndReachTheHandlerExactly() throws Exception {
         AtomicInteger calls = new AtomicInteger(); AtomicReference<String> received = new AtomicReference<>();
         try (var host = new ModuleHost(Platform.PAPER, DEFINITIONS, 4, Duration.ofSeconds(2));
-             var engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host))) {
+             var engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE)) {
             host.install(module(calls, received));
             var report = run(engine, program("integer", "9223372036854775807"));
             assertEquals(BehaviorEngine.State.COMPLETED, report.state()); assertEquals(1, calls.get());
@@ -57,7 +57,7 @@ class BehaviorSchemaIntegrationTest {
     @Test void schemaMismatchEndsExecutionWithoutEnteringTheModuleOrRetainingAHandler() throws Exception {
         AtomicInteger calls = new AtomicInteger(); AtomicReference<String> received = new AtomicReference<>();
         try (var host = new ModuleHost(Platform.PAPER, DEFINITIONS, 4, Duration.ofSeconds(2));
-             var engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host))) {
+             var engine = new BehaviorEngine(BehaviorEngine.Limits.defaults(), new HostBehaviorInvoker(host),ignored->{},art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE)) {
             host.install(module(calls, received));
             var report = run(engine, program("string", "\"123\""));
             assertEquals(BehaviorEngine.State.FAILED, report.state()); assertEquals("invocation-invalid", report.reason());

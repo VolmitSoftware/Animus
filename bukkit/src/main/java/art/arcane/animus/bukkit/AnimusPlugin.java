@@ -77,6 +77,14 @@ public final class AnimusPlugin extends JavaPlugin {
                         if (current != null) current.modulesInitialized(initialized);
                     }, builtins);
             behaviors = new BukkitBehaviorCommands(getDataFolder().toPath(), runtime, extensions, replies, message -> getLogger().info(message));
+            var triggers = behaviors.triggers();
+            if (triggers != null) {
+                if (living.available()) { triggers.connect(); living.bindTriggers(triggers); }
+                else {
+                    triggers.unavailable(living.status());
+                    getLogger().info("Behavior triggers unavailable: " + living.status());
+                }
+            }
             extensions.start();
             printSplash(AnimusSplash.render(environment, getServer().getVersion(), true));
         } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {

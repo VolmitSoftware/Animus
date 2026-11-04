@@ -12,6 +12,9 @@ import static java.nio.file.StandardOpenOption.*;
 /** Journaled file transactions. A committed journal is rolled forward before the runtime loads definitions. */
 public final class DocumentStore implements AutoCloseable {
     public record Change(String path, String expectedHash, String content) {}
+    /** A whole replacement of generated data, where null deletes it. Generated data has no editor, so nothing can conflict. */
+    public record Generated(String path, String content) {}
+    private static final String GENERATED_PATH = "state/behavior-state/[a-z0-9_/-]+\\.json|state/behavior-catalog/last-valid/behaviors/[a-z0-9_/-]+\\.json";
     private static final long MAX_TRANSACTION_BYTES = 256L * 1024 * 1024;
     private final Path root;
     private final FileChannel lockChannel;
@@ -91,7 +94,34 @@ public final class DocumentStore implements AutoCloseable {
     public synchronized String commit(List<Change> changes) throws IOException {
         ensureWritable();
         recover();
-        changes = invalidateDefinitionCheckpoints(changes);
+        return publish(invalidateDefinitionCheckpoints(changes), true);
+    }
+
+    /**
+     * Same journal and crash recovery as {@link #commit}, for frequently replaced generated state. It leaves no rollback
+     * receipt, so repeated flushes do not accumulate under backups/, and its journal must stay inline for the same reason.
+     */
+    public synchronized String commitGenerated(List<Generated> generated) throws IOException {
+        ensureWritable();
+        recover();
+        List<Change> changes = new ArrayList<>(generated.size());
+        for (Generated change : generated) {
+            if (!change.path().matches(GENERATED_PATH)) throw new IOException("Not a generated document path: " + change.path());
+            changes.add(new Change(change.path(), hash(change.path()), change.content()));
+        }
+        return publish(changes, false);
+    }
+
+    /** Removes one invalid generated file whose bytes a journal cannot carry. A single unlink is already atomic. */
+    public synchronized void deleteGenerated(String relative) throws IOException {
+        ensureWritable();
+        if (!relative.startsWith("state/behavior-state/") && !relative.startsWith("state/behavior-catalog/last-valid/"))
+            throw new IOException("Not a generated document path: " + relative);
+        Path target = resolve(relative);
+        if (Files.deleteIfExists(target)) syncDirectory(target.getParent());
+    }
+
+    private String publish(List<Change> changes, boolean receipt) throws IOException {
         if (changes.isEmpty() || changes.size() > 10000) throw new IOException("Transaction requires 1..10000 documents");
         JsonArray entries = new JsonArray();
         Set<Path> paths = new HashSet<>();
@@ -114,11 +144,13 @@ public final class DocumentStore implements AutoCloseable {
         String id = UUID.randomUUID().toString();
         JsonObject journal = new JsonObject();
         journal.addProperty("id", id);
+        if (!receipt) journal.addProperty("receipt", false);
         journal.add("entries", entries);
         // Large values live in durable content-addressed objects; metadata stays bounded and recoverable.
         // Avoid constructing a huge escaped inline string just to discover that it does not fit.
         String encoded = payloadBytes <= JsonDocuments.MAX_BYTES / 2 ? JsonDocuments.write(journal) : null;
         if (encoded == null || bytes(encoded) > JsonDocuments.MAX_BYTES) {
+            if (!receipt) throw new IOException("Generated transaction must fit an inline journal");
             JsonArray references = new JsonArray();
             for (JsonElement value : entries) {
                 JsonObject inline = value.getAsJsonObject(), reference = new JsonObject();
@@ -225,7 +257,9 @@ public final class DocumentStore implements AutoCloseable {
         }
         String id = journal.get("id").getAsString();
         if (!id.matches("[a-f0-9-]{36}")) throw new IOException("Invalid journal ID");
-        atomic(resolve("backups/" + id + ".json"), JsonDocuments.write(journal));
+        JsonElement receipt = journal.get("receipt");
+        if (receipt == null || !receipt.isJsonPrimitive() || !receipt.getAsJsonPrimitive().isBoolean() || receipt.getAsBoolean())
+            atomic(resolve("backups/" + id + ".json"), JsonDocuments.write(journal));
         Files.delete(resolve("state/pending.json"));
         syncDirectory(resolve("state"));
     }
@@ -267,7 +301,8 @@ public final class DocumentStore implements AutoCloseable {
     private void writable(String path) throws IOException {
         resolve(path);
         if (!path.matches("(?:npcs|skins|behaviors|packs|imports)/[a-zA-Z0-9_./-]+\\.json")
-                && !path.matches("state/npc-definitions/last-valid/npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json"))
+                && !path.matches("state/npc-definitions/last-valid/npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json")
+                && !path.matches(GENERATED_PATH))
             throw new IOException("Not a writable document path: " + path);
     }
 
