@@ -4,7 +4,7 @@ A Manager for all things NPC.
 
 Animus provides durable JSON NPC definitions, administration commands, staged imports, and a bounded virtual NPC runtime on the exact Spigot/Paper targets. Create and import leave NPCs dormant; explicit spawn activates a validated definition. Initial movement, reusable waypoint routes, manual real-target combat and ordinary-zombie targeting have explicit capability limits. Folia rendering, behavior workflows and the full combat module remain unfinished. See the [runtime guide](docs/runtime.md) for commands and [implementation evidence](docs/implementation.md) for the exact tested artifacts.
 
-The target releases are Minecraft **26.1.2, 26.2, and 26.3**, using **Java 25**. Spigot/Paper/Folia are first; the inherited Fabric/Forge/NeoForge entry points remain experimental until the server milestones are complete. API compilation is not gameplay certification. See [compatibility](docs/compatibility.md) and [implementation evidence](docs/implementation.md).
+The target releases are Minecraft **26.1.2, 26.2, and 26.3**, using **Java 25**. Fabric, NeoForge and Forge servers run the same runtime as a server-side mod; see [mod servers](docs/mod-servers.md). API compilation is not gameplay certification. See [compatibility](docs/compatibility.md) and [implementation evidence](docs/implementation.md).
 
 ## Build
 
@@ -13,7 +13,8 @@ The target releases are Minecraft **26.1.2, 26.2, and 26.3**, using **Java 25**.
 ./gradlew build                       # Core tests, Bukkit API matrix, artifact checks, converter archives
 ./gradlew :converter:installDist      # Runnable local converter
 ./gradlew targets                     # Exact configured releases/loaders
-./gradlew build -PincludeModDistributions=true  # Experimental mod scaffold builds
+./gradlew buildFabric buildNeoForge buildForge  # Mod jars for every loader and version
+./gradlew build -PincludeModDistributions=true  # Bukkit plus every mod jar in build/distributions
 ```
 
 On this development machine:

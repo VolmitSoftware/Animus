@@ -46,6 +46,8 @@ public abstract class GamePacketHooks {
 
     @Inject(method = "teleport(Lnet/minecraft/world/entity/PositionMoveRotation;Ljava/util/Set;)V", at = @At("HEAD"))
     private void animus$teleport(PositionMoveRotation destination, Set<Relative> relatives, CallbackInfo callback) {
-        ModHooks.teleported(player);
+        net.minecraft.world.phys.Vec3 at = player.position(), to = destination.position();
+        ModHooks.teleported(player, relatives.contains(Relative.X) ? at.x() + to.x() : to.x(),
+                relatives.contains(Relative.Y) ? at.y() + to.y() : to.y(), relatives.contains(Relative.Z) ? at.z() + to.z() : to.z());
     }
 }

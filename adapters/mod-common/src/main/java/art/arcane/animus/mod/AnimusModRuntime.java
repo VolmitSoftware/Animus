@@ -10,6 +10,7 @@ import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.BehaviorCommands;
+import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
@@ -49,6 +50,15 @@ import org.slf4j.LoggerFactory;
  */
 public final class AnimusModRuntime {
     private static final Logger LOGGER = LoggerFactory.getLogger(BuildIdentity.ID);
+    /** Packet previews read Bukkit's server internals and are not part of the mod runtime. */
+    private static final AnimusCommands.Extra BUKKIT_ONLY = new AnimusCommands.Extra() {
+        @Override public void execute(CommandActor actor, String[] arguments) {
+            actor.tell("Packet proof previews are available only on Bukkit and Paper servers.");
+        }
+        @Override public List<String> complete(CommandActor actor, String[] arguments) { return List.of(); }
+    };
+    /** A server correction moves a player less than this far; a real teleport moves it farther. */
+    private static final double CORRECTION_SQUARED = 1.0;
     private final Platform platform;
     private final Path dataDirectory;
     private volatile Running running;
@@ -112,7 +122,7 @@ public final class AnimusModRuntime {
                 }
             }
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
-                    next.builtins, next.combat::execute, Map.of(), () -> owner.stopping));
+                    next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY), () -> owner.stopping));
             next.extensions.start();
             running = next;
             ModHooks.attach(this);
@@ -158,24 +168,17 @@ public final class AnimusModRuntime {
     private int run(CommandSourceStack source, String text) {
         Running active = running;
         if (active == null || active.stopping) { source.sendFailure(Component.literal("Animus is not running.")); return 0; }
-        active.commands.execute(new ModActor(source, active.ticks), arguments(text));
+        active.commands.execute(new ModActor(source, active.ticks), ModCommandLine.words(text));
         return 1;
     }
     private CompletableFuture<Suggestions> suggest(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         Running active = running;
         if (active == null) return builder.buildFuture();
         String remaining = builder.getRemaining();
-        String[] words = remaining.split(" ", -1);
-        int start = builder.getStart() + remaining.lastIndexOf(' ') + 1;
-        SuggestionsBuilder last = builder.createOffset(start);
-        for (String option : active.commands.complete(new ModActor(context.getSource(), active.ticks), words)) last.suggest(option);
+        SuggestionsBuilder last = builder.createOffset(builder.getStart() + ModCommandLine.lastWordStart(remaining));
+        for (String option : active.commands.complete(new ModActor(context.getSource(), active.ticks), ModCommandLine.completionWords(remaining))) last.suggest(option);
         return last.buildFuture();
     }
-    /** Arguments split like a Bukkit command line, so every subcommand reads the same words. */
-    static String[] arguments(String text) {
-        return text.isEmpty() ? new String[0] : text.split(" ", -1);
-    }
-
     private art.arcane.animus.api.Platform modulePlatform() {
         return switch (platform) {
             case FABRIC -> art.arcane.animus.api.Platform.FABRIC;
@@ -206,7 +209,11 @@ public final class AnimusModRuntime {
         VanillaBodyTransport transport = active == null ? null : active.host.transport();
         if (transport != null) transport.tickEnd(player);
     }
-    void teleported(ServerPlayer player) { Running active = running; if (active != null) active.living.teleported(player); }
+    /** A server correction back to where the player already is keeps its presentation; any real teleport resets it. */
+    void teleported(ServerPlayer player, double x, double y, double z) {
+        Running active = running;
+        if (active != null && player.position().distanceToSqr(x, y, z) >= CORRECTION_SQUARED) active.living.teleported(player);
+    }
     void joined(ServerPlayer player) { Running active = running; if (active != null) active.living.joined(player); }
     void quit(ServerPlayer player) { Running active = running; if (active != null) active.living.quit(player); }
     void respawned(ServerPlayer player) { Running active = running; if (active != null) active.living.respawned(player); }
