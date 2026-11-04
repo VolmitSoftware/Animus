@@ -63,6 +63,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             new ApiRange(AnimusApi.API_VERSION.major(), AnimusApi.API_VERSION.major()), Set.of(Platform.values()), List.of());
     private static final double CHOICE_RANGE = 64;
     private static final int MAXIMUM_LOGGED_COMMAND = 1024;
+    private static final String PLAYER_TOKEN = "{player}";
     private static final String IDENTIFIER = "[a-z0-9][a-z0-9_-]*";
     private static final String FLAG_STATE = NAMESPACE + ":flags/", QUEST_STATE = NAMESPACE + ":quests/";
     private static final Key NAVIGATE = new Key(NAMESPACE, "navigate");
@@ -287,7 +288,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                                 + ",\"options\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":8,\"items\":" + schema(string("id", 32) + "," + string("text", 128), required("id", "text")) + "}",
                         required("id", "prompt", "options")),
                 BuiltinCapabilities::checkChoices, this::presentChoices);
-        action("command", Effect.PRIVILEGED, "Runs a console or player command. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+        action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
                 schema(string("command", 1024) + "," + choice("as", "console", "player"), required("command")),
                 BuiltinCapabilities::checkCommand, this::runCommand);
         action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
@@ -336,12 +337,14 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     ParticleEffect particle = new ParticleEffect(text(call.arguments, "particle").orElseThrow(), count, decimal(call.arguments, "spread").orElse(0));
                     return onOwner(call, () -> delivered(platform.spawnParticle(call.npc(), audience, particle)));
                 });
-        action("combat-control", Effect.WORLD, "Engages or disengages the NPC's combat, attacks or releases a target, or guards a participant (no target stops guarding). Needs enabled combat settings; protection still applies.",
+        action("combat-control", Effect.WORLD, "Engages or disengages the NPC's combat, attacks or releases a target, or guards a participant (no target stops guarding; player is the triggering player). Needs enabled combat settings; protection still applies.",
                 schema(choice("operation", "enable", "disable", "target", "release", "guard") + "," + string("target", 36), required("operation")),
                 BuiltinCapabilities::checkCombat,
                 call -> {
                     CombatOperation operation = CombatOperation.valueOf(text(call.arguments, "operation").orElseThrow().toUpperCase(Locale.ROOT));
-                    Optional<UUID> target = text(call.arguments, "target").map(UUID::fromString);
+                    Optional<String> named = text(call.arguments, "target");
+                    Optional<UUID> target = named.isEmpty() ? Optional.empty()
+                            : Optional.of(named.get().equals("player") ? requirePlayer(call) : UUID.fromString(named.get()));
                     return onOwner(call, () -> { platform.combat(call.npc(), operation, target); return "{}"; });
                 });
         action("set-flag", Effect.STATE_WRITE, "Sets a flag, true unless value says otherwise.",
@@ -388,7 +391,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "privileged-capability-not-granted", "This behavior is not on the command allow-list");
         CommandSource source = text(call.arguments, "as").orElse("console").equals("player") ? CommandSource.PLAYER : CommandSource.CONSOLE;
         Optional<UUID> player = source == CommandSource.PLAYER ? Optional.of(requirePlayer(call)) : Optional.empty();
-        String command = text(call.arguments, "command").orElseThrow();
+        String written = text(call.arguments, "command").orElseThrow();
+        String command = written.contains(PLAYER_TOKEN) ? written.replace(PLAYER_TOKEN, requirePlayer(call).toString()) : written;
         return onOwner(call, () -> {
             log.accept("Behavior command: behavior=" + behavior.get() + " npc=" + call.npc().uuid() + " as=" + source.name().toLowerCase(Locale.ROOT)
                     + player.map(id -> " player=" + id).orElse("") + " command=" + command.substring(0, Math.min(command.length(), MAXIMUM_LOGGED_COMMAND)));
@@ -480,8 +484,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         }
         if (!arguments.has("target")) return;
         String target = arguments.get("target").getAsString();
+        if (target.equals("player")) return;
         try { if (!UUID.fromString(target).toString().equals(target)) throw new IllegalArgumentException(); }
-        catch (IllegalArgumentException invalid) { problems.add(problem("$.target", "combat-target", "target must be an entity UUID")); }
+        catch (IllegalArgumentException invalid) { problems.add(problem("$.target", "combat-target", "target must be an entity UUID or player")); }
     }
 
     private static boolean npcStateMatches(NpcStatus status, JsonObject arguments) {

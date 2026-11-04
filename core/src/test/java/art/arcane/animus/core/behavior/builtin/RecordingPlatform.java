@@ -15,6 +15,7 @@ import java.util.function.Supplier;
 /** Platform double: records owner-side calls and asserts they are made from the owner tick. */
 final class RecordingPlatform implements BehaviorPlatform {
     final List<String> calls = new CopyOnWriteArrayList<>();
+    final List<String> targets = new CopyOnWriteArrayList<>();
     final AtomicInteger closedTicks = new AtomicInteger();
     volatile Optional<String> unavailable = Optional.empty();
     volatile NpcStatus status = new NpcStatus(true, 20);
@@ -95,5 +96,8 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) { record("equipment:" + slot + ":" + item.orElse("none")); }
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) { record("sound:" + sound.sound()); return delivered; }
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect particle) { record("particle:" + particle.particle() + ":" + particle.count()); return delivered; }
-    @Override public void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target) { record("combat:" + operation + ":" + target.isPresent()); }
+    @Override public void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target) {
+        record("combat:" + operation + ":" + target.isPresent());
+        target.ifPresent(id -> targets.add("combat:" + operation + ":" + id));
+    }
 }

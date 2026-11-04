@@ -3,5 +3,5 @@
   "id": "personal-guard",
   "name": "Personal guard",
   "version": "1.0.0",
-  "description": "A bodyguard a player can hire and dismiss, using today's manual combat control."
+  "description": "A bodyguard that follows and defends the player who hires it until dismissed."
 }

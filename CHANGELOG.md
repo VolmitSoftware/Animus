@@ -67,6 +67,7 @@
 - The ordinary-zombie adapter's hits respect the NPC's combat defense.
 - Renamed `ManualBehaviorRuntime` to `BehaviorRuntime`.
 - Diagnostics name the allowed fields and values and suggest the nearest match.
+- The town-guard and personal-guard example packs use `animus:combat`, and the shop charges the clicking player before giving goods. `animus:combat-control` accepts `"target": "player"`, and `animus:command` replaces `{player}` with the triggering player's UUID.
 
 ### Notes
 
