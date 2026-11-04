@@ -55,8 +55,8 @@ public final class BukkitNavigationBridge implements AutoCloseable {
                 World world = world(id);
                 if (world == null || y < world.getMinHeight() || y >= world.getMaxHeight()
                         || !world.isChunkLoaded(Math.floorDiv(x, 16), Math.floorDiv(z, 16))) return VoxelSnapshot.Cell.UNAVAILABLE;
-                // No isPassable(), collision shapes, neighboring-block queries, or chunk retrieval APIs.
-                return ConservativeVoxelClassifier.classify(world.getBlockAt(x, y, z).getType().name());
+                // Collision shapes of loaded blocks only; no neighboring-block queries or chunk retrieval.
+                return CollisionCells.of(world.getBlockAt(x, y, z));
             }
         }, ++tick);
     }

@@ -1,12 +1,12 @@
 package art.arcane.animus.bukkit.folia;
 
-import art.arcane.animus.bukkit.navigation.ConservativeVoxelClassifier;
+import art.arcane.animus.bukkit.navigation.CollisionCells;
 import art.arcane.animus.core.navigation.*;
 import art.arcane.animus.core.virtual.*;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
 
-/** Whole-voxel preview geometry. No collision-shape calls, rayTraceBlocks or unowned live reads. */
+/** Preview geometry from owned, sent voxels and their collision shapes. No rayTraceBlocks or unowned live reads. */
 final class StationaryTerrain {
     private final FoliaOwner owner;
     StationaryTerrain(FoliaOwner owner) { this.owner = owner; }
@@ -43,10 +43,10 @@ final class StationaryTerrain {
         Vec3 direction=distance<1e-7?new Vec3(0,0,1):end.subtract(start).normalized();
         for(int x=bounds.minX();x<=bounds.maxX();x++) for(int z=bounds.minZ();z<=bounds.maxZ();z++) for(int y=bounds.minY();y<=bounds.maxY();y++) {
             VoxelSnapshot.Cell cell=sample(viewer,world,x,y,z);
-            // Partial/unknown shapes can extend from neighboring voxels; deny the entire closed halo.
-            if (cell==VoxelSnapshot.Cell.UNAVAILABLE || cell==VoxelSnapshot.Cell.OBSTACLE) return false;
-            if (cell!=VoxelSnapshot.Cell.AIR && new Hitbox(new Vec3(x,y,z),new Vec3(x+1,y+1,z+1))
-                    .rayDistance(start,direction,Math.max(0,distance-1e-5)).isPresent()) return false;
+            if (cell.unavailable()) return false;
+            for (VoxelSnapshot.Cell.Box box : cell.boxes())
+                if (new Hitbox(new Vec3(x+box.minX(),y+box.minY(),z+box.minZ()),new Vec3(x+box.maxX(),y+box.maxY(),z+box.maxZ()))
+                        .rayDistance(start,direction,Math.max(0,distance-1e-5)).isPresent()) return false;
         }
         return true;
     }
@@ -54,7 +54,7 @@ final class StationaryTerrain {
         // Recheck before every live sample, in addition to the whole-footprint admission.
         if (!owner.owns(viewer) || !owner.owns(world,x>>4,z>>4,x>>4,z>>4)
                 || !world.isChunkLoaded(x>>4,z>>4) || !owner.sent(viewer,x>>4,z>>4)) return VoxelSnapshot.Cell.UNAVAILABLE;
-        return ConservativeVoxelClassifier.classify(world.getBlockAt(x,y,z).getType().name());
+        return CollisionCells.of(world.getBlockAt(x,y,z));
     }
     private static int floor(double value) {
         if (!Double.isFinite(value) || Math.abs(value)>30_000_000) throw new IllegalArgumentException("Coordinate outside bounds");

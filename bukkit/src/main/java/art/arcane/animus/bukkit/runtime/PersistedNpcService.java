@@ -400,9 +400,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                 maxY - minY + 1, Math.max(from.z(), to.z()) + margin - minZ + 1);
     }
     private static MovementProfile profile(Value value, MovementProfile.Mode mode) {
-        Set<MovementProfile.Mode> modes = mode == MovementProfile.Mode.SWIM ? Set.of(MovementProfile.Mode.WALK, mode) : Set.of(mode);
-        return new MovementProfile(modes, (int) Math.ceil(moveHeight(value)), Math.max(0, (int) Math.ceil((moveWidth(value) - 1) / 2)),
-                1, 2, 3, true);
+        return BodyMobility.forRoute(value.spec.type(), moveWidth(value), moveHeight(value), mode);
     }
     private boolean routeCurrent(Route route) {
         Value value = route.value; Entry entry = byUuid.get(value.spec.definition().uuid());
@@ -469,7 +467,7 @@ public final class PersistedNpcService implements Listener, AutoCloseable {
                         if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspend(route, "unavailable captured terrain");
                         else if (planned.status() != PathPlanner.Status.FOUND) stopRoute(value, "failed: " + planned.status());
                         else {
-                            route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), route.goal.point(), route.mode);
+                            route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), route.goal.point(), profile(value, route.mode));
                             routeStatus(route, "moving", "kinematic; live collision revalidation");
                         }
                     }
