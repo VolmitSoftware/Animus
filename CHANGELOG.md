@@ -26,4 +26,19 @@
 - Initial kinematic route execution, conservative live collision checks, look commands and reusable JSON waypoint routes; exact managed verification recorded separately.
 - Bounded unmounted preview control using semantic native input and heartbeat expiry.
 
+- Automatic behavior triggers for interaction, proximity, spawn, despawn, damage, death, waypoint, timer, dialogue choice and module events, with cooldown, queue and concurrency budgets under `[behaviors.triggers]`.
+- `ModuleContext.triggers()` lets modules publish triggers they registered.
+- `/animus behaviors triggers [page]` lists bindings, last fired, dropped counts and the most recent start refusal.
+- Behavior variables can use `npc`, `player`, `relationship` and `global` scopes with `transient` or `persistent` lifetimes.
+- Persistent behavior state under `state/behavior-state/` with coalesced journaled writes, flush on clean shutdown, and `[behaviors.state]` budgets.
+- Accepted behaviors keep last-valid checkpoints across restarts, and deleted sources do not return.
+- `/animus behaviors trace`, `/animus behaviors state status` and `/animus behaviors state purge`.
+
+### Changed
+
+- Manual runs stay limited to one per NPC; trigger-started executions are counted separately and use scoped variables, resolving player and relationship variables from the triggering player.
+- `/animus behaviors inspect` answers with current waits, conditions and recent steps, and `/animus behaviors trace` lists every active run with its origin. Startup logs every behavior catalog diagnostic.
+
+### Notes
+
 Partial-block movement, mounted riding, Folia rendering, behaviors, the full combat module, extension modules, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
