@@ -59,10 +59,15 @@ def target(args, source):
     evidence_dir = args.workspace / 'animus-evidence' / name
     evidence_dir.mkdir(parents=True, exist_ok=True)
     if (evidence_dir / 'runtime.json').exists():
+        previous = evidence_dir / 'lifecycle-history' / str(time.time_ns())
+        previous.mkdir(parents=True)
+        for pattern in ['runtime.json', 'commands.json', 'cycle-*.log', 'pre-start-*.log', 'recovery-*.json']:
+            for old in evidence_dir.glob(pattern): shutil.copy2(old, previous / old.name)
         shutil.copy2(evidence_dir / 'runtime.json', evidence_dir / f'prior-runtime-{time.time_ns()}.json')
+    npc_id = f'managed-{time.time_ns()}'
     report = {'runner': 'ServerMultiplexor', 'project': project, 'minecraftVersion': version, 'build': build,
               'channel': source['channel'], 'serverSha256': source['serverSha256'], 'buildRun': args.build_run,
-              'scope': 'managed runtime, artifact deployment and public console lifecycle; no gameplay certification', 'checks': [], 'status': 'running'}
+              'scope': 'managed runtime, artifact deployment and public console lifecycle; no gameplay certification', 'npcId':npc_id, 'checks': [], 'status': 'running'}
     owned = False
     try:
         instance = args.workspace / 'consumers/plugin-consumers/instances' / name
@@ -85,6 +90,8 @@ def target(args, source):
         shutil.copy2(args.accepted_eula, instance / 'eula.txt')
         data = instance / 'plugins/Animus'
         data.mkdir(parents=True, exist_ok=True)
+        definition = data/'npcs/qa'/f'{npc_id}.json'
+        assert not definition.exists(), 'Refusing an existing definition'
         (data / 'config.toml').write_text('statusMessage = "Multiplexor QA"\npacketProofEnabled = true\n')
         properties = instance / 'server.properties'
         existing = properties.read_text().splitlines()
@@ -109,23 +116,76 @@ def target(args, source):
             report['checks'].append(console(session, log, 'animus status', rf'.*Animus 0\.1\.0 \| BUKKIT \| Minecraft {re.escape(version)} \| Multiplexor QA.*'))
             expected = r'Packet proof unavailable on Folia' if project == 'folia' else rf'Packet proof ready \| Minecraft {re.escape(version)}'
             report['checks'].append(console(session, log, 'animus proof status', rf'.*{expected}.*'))
+            if project == 'folia':
+                report['checks'].append(console(session, log, 'animus status', r'.*NPC runtime unavailable on Folia.*'))
+                report['checks'].append(console(session, log, 'animus combat status', r'.*Combat unavailable: .*Folia.*'))
+                report['checks'].append(console(session, log, f'animus navigation {npc_id} status', r'.*Navigation .*unavailable on Folia.*'))
             if cycle == 0:
-                if (data/'npcs/qa/managed-runtime.json').exists():
-                    report['checks'].append(console(session, log, 'animus delete managed-runtime', r'.*Deleted; rollback transaction.*'))
-                report['checks'].append(console(session, log, 'animus create managed-runtime minecraft:player world 0 64 0 qa Managed Runtime', r'.*Created dormant managed-runtime;.*'))
-                saved = json.loads((data/'npcs/qa/managed-runtime.json').read_text())
+                report['checks'].append(console(session, log, f'animus create {npc_id} minecraft:player world 0 64 0 qa Managed Runtime', rf'.*Created dormant {npc_id};.*'))
+                saved = json.loads(definition.read_text())
                 report['persistedUuid'] = saved['uuid']
+                if project == 'folia':
+                    before = definition.read_bytes()
+                    report['checks'].append(console(session, log, f'animus spawn {npc_id}', r'.*Cannot activate: NPC runtime unavailable on Folia.*'))
+                    assert definition.read_bytes() == before, 'Unsupported Folia activation changed the persisted definition'
+                    report['checks'].append(console(session, log, f'animus edit {npc_id} {{"name":"Folia Dormant"}}', r'.*Saved; transaction.*'))
+                    edited = json.loads(definition.read_text())
+                    assert edited['name'] == 'Folia Dormant' and not edited['spawned'] and edited['uuid'] == saved['uuid']
+                    assert edited['revision'] == saved['revision'] + 1
+                    report['dormantEditRevision'] = edited['revision']
             else:
-                report['checks'].append(console(session, log, 'animus inspect managed-runtime', r'.*"name":"Managed Runtime".*'))
-                saved = json.loads((data/'npcs/qa/managed-runtime.json').read_text())
+                expected_name = 'Folia Dormant' if project == 'folia' else 'Managed Runtime'
+                inspection = console(session, log, f'animus inspect {npc_id}', rf'.*"name":"{expected_name}".*')
+                report['checks'].append(inspection)
+                saved = json.loads(re.search(r'\{.*\}', inspection).group(0))
                 assert saved['uuid'] == report['persistedUuid'] and not saved['spawned']
-                report['checks'].append(console(session, log, 'animus delete managed-runtime', r'.*Deleted; rollback transaction.*'))
+                if project == 'folia': assert saved['revision'] == report['dormantEditRevision']
+                if args.recovery:
+                    report['checks'].append(wait_log(log, rf'.*NPC definition recovery:.*{npc_id}.*{re.escape(report["recoveryField"])}.*original file unchanged.*'))
+                    assert sha(definition) == report['recoveryInvalidSha256'], 'Recovery overwrote invalid source bytes'
+                    report['checks'].append(console(session, log, 'animus status', r'.*Definition file problems: 1.*'))
+                    report['checks'].append(console(session, log, f'animus edit {npc_id} {{"name":"{expected_name}"}}', r'.*Conflict:.*'))
+                    assert sha(definition) == report['recoveryInvalidSha256']
+                    definition.write_bytes((evidence_dir/'recovery-valid.json').read_bytes())
+                    assert sha(definition) == report['recoveryValidSha256']
+                    report['checks'].append(console(session, log, 'animus reload', r'.*reload successful.*'))
+                    report['checks'].append(console(session, log, f'animus edit {npc_id} {{"name":"{expected_name}"}}', r'.*Saved; transaction.*'))
+                    repaired = json.loads(definition.read_text())
+                    assert repaired['uuid'] == saved['uuid'] and repaired['revision'] == saved['revision'] + 1 and not repaired['spawned']
+                    report['recoveryVerified'] = True
+                report['checks'].append(console(session, log, f'animus delete {npc_id}', r'.*Deleted; rollback transaction.*'))
             report['checks'].append(console(session, log, 'animus validate', r'.*validate successful;.*'))
+            if cycle == 0 and args.inline_recovery:
+                valid = definition.read_bytes(); before = json.loads(valid)
+                (evidence_dir/'recovery-valid.json').write_bytes(valid)
+                report['recoveryValidSha256'] = sha(definition)
+                invalid = dict(before)
+                invalid['modules'] = {**invalid.get('modules', {}), 'animus:navigation': {'enabled':True, 'mode':'walk', 'speed':'bad', 'points':[{'x':0, 'y':64, 'z':0}]}}
+                definition.write_text(json.dumps(invalid, indent=2)+'\n')
+                shutil.copy2(definition, evidence_dir/'recovery-invalid.json')
+                report['recoveryInvalidSha256'] = sha(definition)
+                report['recoveryField'] = '$.modules.animus:navigation'
+                report['checks'].append(console(session, log, 'animus reload', r'.*\$\.modules\.animus:navigation.*'))
+                inspection = console(session, log, f'animus inspect {npc_id}', rf'.*"id":"{npc_id}".*')
+                assert json.loads(re.search(r'\{.*\}', inspection).group(0)) == before
+                assert sha(definition) == report['recoveryInvalidSha256']
+                report['liveInlineRecoveryVerified'] = True
             run(args, 'runtime', 'stop', name, '--graceful')
             shutil.copy2(log, evidence_dir/f'cycle-{cycle+1}.log')
             report['checks'].append(run(args, 'runtime', 'status', name).strip())
             with socket.socket() as sock:
                 assert sock.connect_ex(('127.0.0.1',port)) != 0, 'Owned server is still listening'
+            if cycle == 0 and args.recovery and not args.inline_recovery:
+                shutil.copy2(definition, evidence_dir/'recovery-valid.json')
+                report['recoveryValidSha256'] = sha(definition)
+                invalid = json.loads(definition.read_text()); invalid['position']['x'] = 'invalid-qa-coordinate'
+                definition.write_text(json.dumps(invalid, indent=2)+'\n')
+                shutil.copy2(definition, evidence_dir/'recovery-invalid.json')
+                report['recoveryInvalidSha256'] = sha(definition)
+                report['recoveryField'] = '$.position.x'
+        assert not definition.exists()
+        assert not (data/'state/npc-definitions/last-valid/npcs/qa'/f'{npc_id}.json').exists()
+        report['ownedDefinitionAbsent'] = report['ownedCheckpointAbsent'] = True
         report['status'] = 'pass'
         print(f'PASS {name} {source["channel"]} build{build}', flush=True)
         return report
@@ -136,6 +196,20 @@ def target(args, source):
     finally:
         if owned:
             run(args, 'runtime', 'stop', name, '--graceful', allow_failure=True)
+            if report.get('port'):
+                with socket.socket() as sock:
+                    report['serverPortClosed'] = sock.connect_ex(('127.0.0.1', report['port'])) != 0
+                if not report['serverPortClosed']:
+                    report['status'] = 'failed'; report['cleanupError'] = 'Owned server port remains open'
+                else:
+                    owned_source = instance/'plugins/Animus/npcs/qa'/f'{npc_id}.json'
+                    owned_pointer = instance/'plugins/Animus/state/npc-definitions/last-valid/npcs/qa'/f'{npc_id}.json'
+                    for candidate, kind in [(owned_source, 'source'), (owned_pointer, 'checkpoint')]:
+                        if not candidate.exists(): continue
+                        value = json.loads(candidate.read_text())
+                        assert (value.get('id') == npc_id and value.get('group') == 'qa') if kind == 'source' else value.get('path') == f'npcs/qa/{npc_id}.json'
+                        shutil.copy2(candidate, evidence_dir/f'recovery-emergency-{kind}.json'); candidate.unlink()
+                        report['status'] = 'failed'; report.setdefault('emergencyCleanup', []).append(kind)
         (evidence_dir/'runtime.json').write_text(json.dumps(report,indent=2)+'\n')
         (evidence_dir/'commands.json').write_text(json.dumps(args.transcript,indent=2)+'\n')
         (args.workspace/'animus-evidence/commands.json').write_text(json.dumps(args.transcript,indent=2)+'\n')
@@ -153,7 +227,10 @@ def main():
     parser.add_argument('--server-root',type=Path,default=Path('.qa/platform-tests'),help='Find platform-smoke.py evidence.json files here')
     parser.add_argument('--versions',nargs='+',default=['26.1.2','26.2','26.3'])
     parser.add_argument('--projects',nargs='+',default=['paper','folia'])
+    parser.add_argument('--recovery',action='store_true',help='Verify durable last-valid recovery after an invalid offline definition edit')
+    parser.add_argument('--inline-recovery',action='store_true',help='Reject invalid inline navigation data live, then verify durable recovery after restart')
     args=parser.parse_args()
+    if args.inline_recovery: args.recovery = True
     args.binary=args.binary.resolve();args.workspace=args.workspace.resolve()
     if '.qa' not in args.workspace.parts: parser.error('Use a dedicated .qa workspace')
     if not re.search(r'(?m)^eula=true$',args.accepted_eula.read_text()):parser.error('Existing accepted EULA required')

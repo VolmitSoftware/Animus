@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:step-budget",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "repeat",
+      "count": 128,
+      "body": {
+        "type": "repeat",
+        "count": 128,
+        "body": {
+          "type": "sequence",
+          "steps": []
+        }
+      }
+    }
+  }
+}

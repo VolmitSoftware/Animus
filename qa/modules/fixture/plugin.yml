@@ -1,0 +1,13 @@
+name: AnimusModuleFixture
+version: 1.0.0
+main: art.arcane.animus.qa.ModuleFixture
+api-version: '26.1'
+folia-supported: true
+depend: [Animus]
+commands:
+  moduleqa:
+    description: Isolated module acceptance fixture
+    permission: animus.moduleqa
+permissions:
+  animus.moduleqa:
+    default: op

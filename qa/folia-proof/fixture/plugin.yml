@@ -1,0 +1,10 @@
+name: AnimusFoliaFixture
+version: 1.0.0
+main: art.arcane.animus.qa.FoliaFixture
+api-version: '26.1.2'
+folia-supported: true
+depend: [Animus]
+commands:
+  foliaqa:
+    description: Isolated Folia stationary-preview acceptance fixture
+    permission: animus.admin

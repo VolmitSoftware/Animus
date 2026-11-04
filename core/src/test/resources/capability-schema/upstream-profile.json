@@ -1,0 +1,49 @@
+{
+  "commit": "245a45abc90190c0bff04d97e6d2b541b4bb9f12",
+  "groups": 153,
+  "examples": 521,
+  "unsupportedGroups": [
+    {
+      "file": "properties.json",
+      "description": "properties, patternProperties, additionalProperties interaction",
+      "field": "$/properties/value/patternProperties",
+      "tests": 8
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "additionalProperties being false does not allow other properties",
+      "field": "$/properties/value/patternProperties",
+      "tests": 6
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "non-ASCII pattern with additionalProperties",
+      "field": "$/properties/value/patternProperties",
+      "tests": 2
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "additionalProperties with propertyNames",
+      "field": "$/properties/value/propertyNames",
+      "tests": 2
+    },
+    {
+      "file": "additionalProperties.json",
+      "description": "dependentSchemas with additionalProperties",
+      "field": "$/properties/value/dependentSchemas",
+      "tests": 3
+    },
+    {
+      "file": "items.json",
+      "description": "items and subitems",
+      "field": "$/properties/value/$defs",
+      "tests": 6
+    },
+    {
+      "file": "not.json",
+      "description": "collect annotations inside a 'not', even if collection is disabled",
+      "field": "$/properties/value/not/unevaluatedProperties",
+      "tests": 2
+    }
+  ]
+}

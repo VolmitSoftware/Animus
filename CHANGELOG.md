@@ -18,4 +18,12 @@
 - Bounded Bukkit terrain capture and asynchronous path diagnostics, with explicit cancellation and no forced chunk loading.
 - Exact-codec packet clients, third-party event fixtures, and real Multiplexor build, deployment, lifecycle and player scenarios.
 
-Production NPC activation, executed navigation, Folia rendering, behaviors, combat, extension modules, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
+- Persisted NPC spawn/despawn, delivered-chunk visibility, fair bounded viewer updates, selection, signed skins and shared virtual health on exact Spigot/Paper targets.
+- Manual supported Bukkit damage with cancellable Animus events and no fabricated real attacker; bounded ordinary-zombie targeting with restoration of its original goals, target and route.
+- Official exact Spigot builds and managed restart, production-runtime and combat verification scenarios.
+
+- Durable last-valid definition recovery across restart, atomic checkpoint invalidation on raw/import rollback, read-only converter validation and bounded document traversal.
+- Initial kinematic route execution, conservative live collision checks, look commands and reusable JSON waypoint routes; exact managed verification recorded separately.
+- Bounded unmounted preview control using semantic native input and heartbeat expiry.
+
+Partial-block movement, mounted riding, Folia rendering, behaviors, the full combat module, extension modules, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.

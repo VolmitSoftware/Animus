@@ -4,6 +4,7 @@ import art.arcane.animus.core.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.io.IOException;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,12 +22,32 @@ class AdministrationTest {
             admin.execute(new String[]{"clone", "guard", "deputy"});
             assertEquals(2, runtime.npcs().all().size());
             assertNotEquals(runtime.npcs().find("guard").orElseThrow().uuid(), runtime.npcs().find("deputy").orElseThrow().uuid());
-            assertThrows(IOException.class, () -> admin.execute(new String[]{"edit", "guard", "{\"spawned\":true}"}));
+            assertThrows(IOException.class, () -> admin.execute(new String[]{"edit", "guard", "{\"spawned\":\"true\"}"}));
             admin.execute(new String[]{"delete", "deputy"});
         }
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
             runtime.start(); assertEquals(1, runtime.npcs().all().size());
             assertEquals("Town Guard", runtime.npcs().find("guard").orElseThrow().name());
+        }
+    }
+    @Test void desiredSpawnStatePersistsAndClonesRemainDormant() throws Exception {
+        RuntimeEnvironment environment = new RuntimeEnvironment(Platform.BUKKIT, "26.3", root);
+        try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            admin.execute(new String[]{"create", "guard", "minecraft:player", "world", "1", "64", "2", "town", "Guard"});
+            assertFalse(runtime.npcs().find("guard").orElseThrow().json().get("spawned").getAsBoolean());
+            admin.execute(new String[]{"spawn", "guard"});
+            assertTrue(runtime.npcs().find("guard").orElseThrow().json().get("spawned").getAsBoolean());
+            admin.execute(new String[]{"clone", "guard", "copy"});
+            assertFalse(runtime.npcs().find("copy").orElseThrow().json().get("spawned").getAsBoolean());
+        }
+        try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            assertTrue(runtime.npcs().find("guard").orElseThrow().json().get("spawned").getAsBoolean());
+            admin.execute(new String[]{"despawn", "guard"});
+            assertEquals(3, runtime.npcs().find("guard").orElseThrow().revision());
+            assertFalse(runtime.npcs().find("guard").orElseThrow().json().get("spawned").getAsBoolean());
+            assertThrows(IOException.class, () -> admin.execute(new String[]{"spawn", "missing"}));
         }
     }
     @Test void commandImportCannotTraverseOutOfInbox() throws Exception {
@@ -35,4 +56,51 @@ class AdministrationTest {
             assertThrows(IOException.class, () -> admin.execute(new String[]{"import", "preview", "../../saves.yml"}));
         }
     }
+
+    @Test void reviewedImportCommandsApplyDuplicateReplaceRestartAndRollback() throws Exception {
+        RuntimeEnvironment environment = new RuntimeEnvironment(Platform.BUKKIT, "26.3", root);
+        String initialTransaction, copyTransaction, replacementTransaction;
+        String source = """
+                {"npc":{"1":{"uuid":"00000000-0000-0000-0000-000000000001","name":"Guard",
+                "traits":{"type":"PLAYER","location":{"world":"world","x":0,"y":64,"z":0},
+                "sentinel":{"health":40},"unknown":{"value":"preserved"}}}}}
+                """;
+        try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            Path input = runtime.documents().resolve("imports/inbox/sample.yml"); Files.createDirectories(input.getParent()); Files.writeString(input, source);
+            String original = admin.execute(new String[]{"import", "preview", "sample.yml"}).getFirst().substring("Preview ".length());
+            String application = admin.execute(new String[]{"import", "stage", original}).getFirst().substring("Application ".length());
+            assertTrue(runtime.npcs().all().isEmpty());
+            assertEquals("Application " + application, admin.execute(new String[]{"import", "stage", original}).getFirst());
+            initialTransaction = transaction(admin.execute(new String[]{"import", "apply-plan", original, application}).getFirst());
+            assertEquals("already-applied", transaction(admin.execute(new String[]{"import", "apply-plan", original, application}).getFirst()));
+            assertEquals(1, runtime.npcs().all().size());
+            assertFalse(runtime.npcs().find("citizens-1").orElseThrow().json().get("spawned").getAsBoolean());
+            String copy = admin.execute(new String[]{"import", "stage", original, "duplicate", "backup"}).getFirst().substring("Application ".length());
+            copyTransaction = transaction(admin.execute(new String[]{"import", "apply-plan", original, copy}).getFirst());
+            assertEquals(2, runtime.npcs().all().size());
+            assertNotEquals(runtime.npcs().find("citizens-1").orElseThrow().uuid(), runtime.npcs().find("citizens-1-backup").orElseThrow().uuid());
+            Files.writeString(input, source.replace("Guard", "Captain"));
+            String updated = admin.execute(new String[]{"import", "preview", "sample.yml"}).getFirst().substring("Preview ".length());
+            assertThrows(IOException.class, () -> admin.execute(new String[]{"import", "stage", updated}));
+            String replace = admin.execute(new String[]{"import", "stage", updated, "replace"}).getFirst().substring("Application ".length());
+            assertEquals("Guard", runtime.npcs().find("citizens-1").orElseThrow().name());
+            replacementTransaction = transaction(admin.execute(new String[]{"import", "apply-plan", updated, replace}).getFirst());
+            assertEquals("Captain", runtime.npcs().find("citizens-1").orElseThrow().name());
+            assertEquals(2, runtime.npcs().find("citizens-1").orElseThrow().revision());
+        }
+        try (AnimusRuntime runtime = new AnimusRuntime(environment)) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            assertEquals("Captain", runtime.npcs().find("citizens-1").orElseThrow().name());
+            admin.execute(new String[]{"rollback", replacementTransaction});
+            assertEquals("Guard", runtime.npcs().find("citizens-1").orElseThrow().name());
+            assertEquals(1, runtime.npcs().find("citizens-1").orElseThrow().revision());
+            admin.execute(new String[]{"rollback", copyTransaction});
+            admin.execute(new String[]{"rollback", initialTransaction});
+            assertTrue(runtime.npcs().all().isEmpty());
+        }
+        try (AnimusRuntime runtime = new AnimusRuntime(environment)) { runtime.start(); assertTrue(runtime.npcs().all().isEmpty()); }
+    }
+
+    private static String transaction(String receipt) { return receipt.substring(receipt.lastIndexOf(' ') + 1); }
 }

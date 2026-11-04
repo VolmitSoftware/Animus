@@ -71,6 +71,16 @@ public final class VirtualNpcState {
         return snapshot();
     }
 
+    /** A definition replacement may change geometry/position without healing or reviving this NPC. */
+    public synchronized VirtualNpcState reconfigured(WorldPosition next, double width, double height) {
+        if (revision == Long.MAX_VALUE) throw new IllegalStateException("Runtime revision exhausted");
+        VirtualNpcState copy = new VirtualNpcState(npcId, next, width, height, maximumHealth);
+        copy.health = health;
+        copy.active = active;
+        copy.revision = revision + 1;
+        return copy;
+    }
+
     private void advance() {
         if (revision == Long.MAX_VALUE) throw new IllegalStateException("Runtime revision exhausted");
         revision++;

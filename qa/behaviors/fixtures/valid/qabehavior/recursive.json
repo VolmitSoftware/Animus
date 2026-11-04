@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:recursive",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "call",
+      "routine": "main"
+    }
+  }
+}

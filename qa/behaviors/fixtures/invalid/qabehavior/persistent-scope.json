@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:persistent-scope",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "qabehavior:record",
+      "arguments": {
+        "tag": "start"
+      }
+    }
+  },
+  "variables": {
+    "durable": {
+      "type": "boolean",
+      "scope": "npc",
+      "initial": false
+    }
+  }
+}

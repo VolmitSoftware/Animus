@@ -1,0 +1,11 @@
+plugins { id 'java-library' }
+ext.animusRoot = projectDir.parentFile
+apply from: '../gradle/java.gradle'
+// API coordinates and Java identity remain stable when the plugin's custom group changes.
+group = 'art.arcane.animus'
+version = '1.0.0-SNAPSHOT'
+java { withSourcesJar(); withJavadocJar() }
+if (rootProject.projectDir != animusRoot) {
+    layout.buildDirectory.set(rootProject.layout.buildDirectory.dir('animus-api'))
+}
+// Deliberately no external runtime/compile dependencies or publication task.

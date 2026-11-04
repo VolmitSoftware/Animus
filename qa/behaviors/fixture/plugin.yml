@@ -1,0 +1,10 @@
+name: AnimusBehaviorFixture
+version: 1.0.0
+main: art.arcane.animus.qa.BehaviorFixture
+api-version: '26.1'
+folia-supported: true
+depend: [Animus]
+commands:
+  behaviorqa:
+    description: Synthetic behavior lifecycle diagnostics
+    usage: /behaviorqa status|observe|disable <npc-id> <behavior-id>

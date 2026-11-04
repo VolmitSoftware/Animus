@@ -1,15 +1,16 @@
 gradle.projectsEvaluated {
     Jar bukkitArchive = project(':bukkit').tasks.named('shadowJar', Jar).get()
+    Jar apiArchive = project(':animus-api').tasks.named('jar', Jar).get()
     // These are pure build/check targets. Managed-server scenarios live in qa/multiplexor/.
     List<Map<String, Object>> targets = [[
         id: 'core',
-        tasks: [':core:check'],
+        tasks: [':animus-api:build', ':core:check'],
         arguments: [],
         java: 25,
         memoryMiB: 4096,
         workers: 2,
         dependsOn: [],
-        artifacts: []
+        artifacts: [[path: relativePath(apiArchive.archiveFile.get().asFile), role: 'api', platforms: [], minecraftVersions: []]]
     ], [
         id: 'bukkit',
         tasks: [':bukkit:build'],

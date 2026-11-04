@@ -237,14 +237,12 @@ public final class CitizensImporter {
         Set<UUID> identities = new HashSet<>();
         Set<String> ids = new HashSet<>();
         Path active = store.resolve("npcs");
-        if (Files.exists(active)) try (var paths = Files.walk(active)) {
-            for (Path path : paths.filter(p -> p.toString().endsWith(".json")).toList()) {
-                if (Files.isSymbolicLink(path)) throw new IOException("Symlink in NPC directory");
-                NpcDefinition definition = NpcDefinition.parse(JsonDocuments.read(path));
-                if (!store.resolve(definition.path()).equals(path)) throw new IOException("Existing NPC path mismatch: " + path);
-                if (!identities.add(definition.uuid()) || !ids.add(definition.id())) throw new IOException("Existing NPC identity collision: " + path);
-            }
+        for (Path path : JsonDocumentTree.files(active)) {
+            NpcDefinition definition = NpcDefinition.parse(JsonDocuments.read(path));
+            if (!store.resolve(definition.path()).equals(path)) throw new IOException("Existing NPC path mismatch: " + path);
+            if (!identities.add(definition.uuid()) || !ids.add(definition.id())) throw new IOException("Existing NPC identity collision: " + path);
         }
+        if ((long) identities.size() + preview.records() > 100_000) throw new IOException("NPC definition limit exceeded: 100000");
         JsonObject documents = preview.summary().getAsJsonObject("documents");
         int npcCount = 0;
         Set<String> requiredSkins = new HashSet<>();

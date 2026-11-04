@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "reference:module-sequence",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "repeat",
+      "count": 3,
+      "body": {
+        "type": "sequence",
+        "steps": [
+          { "type": "action", "capability": "reference:hello", "arguments": {} },
+          { "type": "wait", "ticks": 20 }
+        ]
+      }
+    }
+  }
+}

@@ -6,7 +6,8 @@ pluginManagement {
     }
 }
 rootProject.name = 'animus-fabric'
-include(':core')
+include(':animus-api', ':core')
+project(':animus-api').projectDir = file('../../animus-api')
 project(':core').projectDir = file('../../core')
 ext.animusRoot = file('../..')
 apply from: '../../gradle/volmlib.settings.gradle'

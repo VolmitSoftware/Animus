@@ -103,7 +103,7 @@ public final class PathPlanner {
                     for (int y = position.y(); y < position.y() + profile.bodyHeight(); y++) {
                         var cell = sample(x, y, z);
                         if (cell == UNAVAILABLE) return Clearance.UNKNOWN;
-                        if (cell == SOLID || cell == LAVA || (cell == WATER && !profile.supports(SWIM))) return Clearance.BLOCKED;
+                        if (cell == SOLID || cell == OBSTACLE || cell == LAVA || (cell == WATER && !profile.supports(SWIM))) return Clearance.BLOCKED;
                     }
             return Clearance.CLEAR;
         }

@@ -19,7 +19,7 @@ dependencies {
     packetApi('io.netty:netty-transport:4.2.16.Final')
     testImplementation('org.junit.jupiter:junit-jupiter:5.10.2')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
-    testRuntimeOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
+    testImplementation('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
     testRuntimeOnly('io.netty:netty-transport:4.2.16.Final')
 }
 tasks.named('processResources').configure {

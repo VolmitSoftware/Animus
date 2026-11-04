@@ -5,7 +5,8 @@ import java.util.*;
 
 /** Immutable finite capture for asynchronous navigation. UNKNOWN never means air and never triggers chunk loading. */
 public final class VoxelSnapshot {
-    public enum Cell { AIR, SOLID, WATER, LAVA, UNAVAILABLE }
+    /** OBSTACLE blocks clearance but is not verified full-footprint support (plants, partial/unknown shapes). */
+    public enum Cell { AIR, SOLID, WATER, LAVA, UNAVAILABLE, OBSTACLE }
     public static final int MAX_CELLS = 16 * 1024 * 1024;
     private static final Cell[] CELL_TYPES = Cell.values();
     private final String world;

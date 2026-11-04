@@ -12,25 +12,51 @@ import static java.nio.file.StandardOpenOption.*;
 /** Journaled file transactions. A committed journal is rolled forward before the runtime loads definitions. */
 public final class DocumentStore implements AutoCloseable {
     public record Change(String path, String expectedHash, String content) {}
+    private static final long MAX_TRANSACTION_BYTES = 256L * 1024 * 1024;
     private final Path root;
     private final FileChannel lockChannel;
     private final FileLock lock;
+    private final boolean readOnly;
     private boolean closed;
 
     public DocumentStore(Path directory) throws IOException {
-        Files.createDirectories(directory);
+        this(directory, false);
+    }
+
+    /** Validation view: never creates files or rolls a pending journal forward. */
+    public static DocumentStore readOnly(Path directory) throws IOException { return new DocumentStore(directory, true); }
+
+    private DocumentStore(Path directory, boolean readOnly) throws IOException {
+        this.readOnly = readOnly;
+        if (!readOnly) createDirectoriesDurably(directory);
         root = directory.toRealPath();
+        if (!Files.isDirectory(root)) throw new IOException("Animus data root is not a directory");
         Path lockFile = resolve("state/store.lock");
-        Files.createDirectories(lockFile.getParent());
-        lockChannel = FileChannel.open(lockFile, CREATE, WRITE, LinkOption.NOFOLLOW_LINKS);
-        FileLock acquired;
+        if (readOnly && !Files.exists(lockFile, LinkOption.NOFOLLOW_LINKS)) {
+            // A never-opened export has no lock. This validates the files observed, not a concurrent external editor's snapshot.
+            lockChannel = null; lock = null;
+        } else {
+            if (!readOnly) createDirectoriesDurably(lockFile.getParent());
+            lockChannel = readOnly ? FileChannel.open(lockFile, READ, LinkOption.NOFOLLOW_LINKS)
+                    : FileChannel.open(lockFile, CREATE, WRITE, LinkOption.NOFOLLOW_LINKS);
+            FileLock acquired;
+            try {
+                acquired = lockChannel.tryLock(0, Long.MAX_VALUE, readOnly);
+                if (acquired == null) throw new IOException("Animus data directory is already open");
+            } catch (IOException | RuntimeException e) { lockChannel.close(); throw new IOException("Cannot lock Animus data directory", e); }
+            lock = acquired;
+        }
         try {
-            acquired = lockChannel.tryLock();
-            if (acquired == null) throw new IOException("Animus data directory is already open");
-        } catch (IOException | RuntimeException e) { lockChannel.close(); throw new IOException("Cannot lock Animus data directory", e); }
-        lock = acquired;
-        try { recover(); }
+            if (readOnly) verifyReadable(); else recover();
+        }
         catch (IOException | RuntimeException e) { close(); throw e; }
+    }
+
+    /** Check again after a read-only scan, since an uninitialized export may have no process lock. */
+    public synchronized void verifyReadable() throws IOException {
+        ensureOpen();
+        if (readOnly && Files.exists(resolve("state/pending.json"), LinkOption.NOFOLLOW_LINKS))
+            throw new IOException("Pending transaction requires recovery; read-only validation left all files unchanged");
     }
 
     public synchronized String read(String relative) throws IOException {
@@ -40,12 +66,36 @@ public final class DocumentStore implements AutoCloseable {
     }
     public synchronized String hash(String relative) throws IOException { return JsonDocuments.hash(read(relative)); }
 
-    public synchronized String commit(List<Change> changes) throws IOException {
+    /** Content-addressed generated JSON. Unreferenced objects are harmless; references publish in journaled transactions. */
+    public synchronized String putImmutableJson(String namespace, String content) throws IOException {
+        ensureWritable();
+        if (!namespace.matches("[a-z][a-z0-9-]{0,40}")) throw new IOException("Invalid object namespace");
+        if (content.getBytes(StandardCharsets.UTF_8).length > JsonDocuments.MAX_BYTES) throw new IOException("Generated object exceeds size limit");
+        JsonDocuments.object(content);
+        String hash = JsonDocuments.hash(content);
+        String relative = "state/objects/" + namespace + "/" + hash + ".json";
+        String existing = read(relative);
+        if (existing != null && !existing.equals(content)) throw new IOException("Generated object hash mismatch: " + relative);
+        if (existing == null) atomic(resolve(relative), content);
+        return hash;
+    }
+
+    public synchronized String immutableJson(String namespace, String hash) throws IOException {
         ensureOpen();
+        if (!namespace.matches("[a-z][a-z0-9-]{0,40}") || !hash.matches("[a-f0-9]{64}")) throw new IOException("Invalid generated object reference");
+        String content = read("state/objects/" + namespace + "/" + hash + ".json");
+        if (content == null || !JsonDocuments.hash(content).equals(hash)) throw new IOException("Generated object is missing or its hash changed");
+        return content;
+    }
+
+    public synchronized String commit(List<Change> changes) throws IOException {
+        ensureWritable();
         recover();
+        changes = invalidateDefinitionCheckpoints(changes);
         if (changes.isEmpty() || changes.size() > 10000) throw new IOException("Transaction requires 1..10000 documents");
         JsonArray entries = new JsonArray();
         Set<Path> paths = new HashSet<>();
+        long payloadBytes = 0;
         for (Change change : changes) {
             writable(change.path());
             if (!paths.add(resolve(change.path()))) throw new IOException("Duplicate transaction path: " + change.path());
@@ -53,6 +103,8 @@ public final class DocumentStore implements AutoCloseable {
             if (!JsonDocuments.hash(before).equals(change.expectedHash())) throw new IOException("Conflict: " + change.path());
             if (change.content() != null && change.content().getBytes(StandardCharsets.UTF_8).length > JsonDocuments.MAX_BYTES)
                 throw new IOException("Document exceeds size limit: " + change.path());
+            payloadBytes += bytes(before) + bytes(change.content());
+            if (payloadBytes > MAX_TRANSACTION_BYTES) throw new IOException("Transaction payload exceeds 256 MiB");
             JsonObject entry = new JsonObject();
             entry.addProperty("path", change.path());
             entry.addProperty("before", before);
@@ -63,23 +115,61 @@ public final class DocumentStore implements AutoCloseable {
         JsonObject journal = new JsonObject();
         journal.addProperty("id", id);
         journal.add("entries", entries);
-        String encoded = JsonDocuments.write(journal);
-        // A bound also applies to the journal so recovery never requires unbounded allocation.
-        if (encoded.getBytes(StandardCharsets.UTF_8).length > JsonDocuments.MAX_BYTES) throw new IOException("Transaction journal exceeds 16 MiB");
+        // Large values live in durable content-addressed objects; metadata stays bounded and recoverable.
+        // Avoid constructing a huge escaped inline string just to discover that it does not fit.
+        String encoded = payloadBytes <= JsonDocuments.MAX_BYTES / 2 ? JsonDocuments.write(journal) : null;
+        if (encoded == null || bytes(encoded) > JsonDocuments.MAX_BYTES) {
+            JsonArray references = new JsonArray();
+            for (JsonElement value : entries) {
+                JsonObject inline = value.getAsJsonObject(), reference = new JsonObject();
+                reference.addProperty("path", inline.get("path").getAsString());
+                reference.addProperty("beforeObject", putTransactionObject(nullable(inline, "before")));
+                reference.addProperty("afterObject", putTransactionObject(nullable(inline, "after")));
+                references.add(reference);
+            }
+            journal.addProperty("schemaVersion", 2);
+            journal.add("entries", references);
+            encoded = JsonDocuments.write(journal);
+        }
+        if (bytes(encoded) > JsonDocuments.MAX_BYTES) throw new IOException("Transaction journal exceeds 16 MiB");
         atomic(resolve("state/pending.json"), encoded);
         finish(journal);
         return id;
     }
 
+    /** Raw source changes (including converter rollback) invalidate stale recovery in the same journal. */
+    private List<Change> invalidateDefinitionCheckpoints(List<Change> changes) throws IOException {
+        if (changes.isEmpty() || changes.size() > 10000) throw new IOException("Transaction requires 1..10000 documents");
+        Set<String> explicit = new HashSet<>();
+        for (Change change : changes) explicit.add(root.relativize(resolve(change.path())).toString().replace('\\', '/'));
+        List<Change> result = new ArrayList<>(changes);
+        for (Change change : changes) {
+            String source = root.relativize(resolve(change.path())).toString().replace('\\', '/');
+            if (!source.matches("npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json")) continue;
+            String pointer = "state/npc-definitions/last-valid/" + source;
+            if (explicit.contains(pointer)) continue;
+            if (change.content() != null && Objects.equals(read(change.path()), change.content())) continue;
+            String before = read(pointer);
+            if (before != null) result.add(new Change(pointer, JsonDocuments.hash(before), null));
+        }
+        return result;
+    }
+
     public synchronized String rollback(String transaction) throws IOException {
+        ensureWritable();
         if (!transaction.matches("[a-f0-9-]{36}")) throw new IOException("Invalid transaction ID");
         String archive = read("backups/" + transaction + ".json");
         if (archive == null) throw new IOException("Unknown transaction: " + transaction);
         JsonObject journal = JsonDocuments.object(archive);
+        int version = validateJournal(journal);
         List<Change> inverse = new ArrayList<>();
+        long payloadBytes = 0;
         for (JsonElement element : journal.getAsJsonArray("entries")) {
             JsonObject entry = element.getAsJsonObject();
-            inverse.add(new Change(entry.get("path").getAsString(), JsonDocuments.hash(nullable(entry, "after")), nullable(entry, "before")));
+            String before = transactionValue(entry, "before", version), after = transactionValue(entry, "after", version);
+            payloadBytes += bytes(before) + bytes(after);
+            if (payloadBytes > MAX_TRANSACTION_BYTES) throw new IOException("Transaction payload exceeds 256 MiB");
+            inverse.add(new Change(entry.get("path").getAsString(), JsonDocuments.hash(after), before));
         }
         return commit(inverse);
     }
@@ -89,7 +179,9 @@ public final class DocumentStore implements AutoCloseable {
         if (pending != null) finish(JsonDocuments.object(pending));
     }
 
-    private void finish(JsonObject journal) throws IOException {
+    /** Reject structural/entry abuse before loading any referenced payloads. */
+    private int validateJournal(JsonObject journal) throws IOException {
+        int version = journalVersion(journal);
         if (!journal.has("id") || !journal.get("id").isJsonPrimitive()
                 || !journal.get("id").getAsString().matches("[a-f0-9-]{36}")
                 || !journal.has("entries") || !journal.get("entries").isJsonArray()
@@ -99,24 +191,34 @@ public final class DocumentStore implements AutoCloseable {
         for (JsonElement element : journal.getAsJsonArray("entries")) {
             if (!element.isJsonObject()) throw new IOException("Invalid journal entry");
             JsonObject entry = element.getAsJsonObject();
-            for (String key : List.of("path", "before", "after"))
+            for (String key : List.of("path", version == 2 ? "beforeObject" : "before", version == 2 ? "afterObject" : "after"))
                 if (!entry.has(key) || (!entry.get(key).isJsonNull() && (!entry.get(key).isJsonPrimitive() || !entry.getAsJsonPrimitive(key).isString())))
                     throw new IOException("Invalid journal field: " + key);
             if (entry.get("path").isJsonNull() || !paths.add(resolve(entry.get("path").getAsString()))) throw new IOException("Invalid or duplicate journal path");
+            writable(entry.get("path").getAsString());
         }
+        return version;
+    }
+
+    private void finish(JsonObject journal) throws IOException {
+        int version = validateJournal(journal);
         // Preflight all entries before modifying any. Outside edits block recovery instead of being overwritten.
+        long payloadBytes = 0;
         for (JsonElement element : journal.getAsJsonArray("entries")) {
             JsonObject entry = element.getAsJsonObject();
             String path = entry.get("path").getAsString();
             writable(path);
             String current = read(path);
-            if (!Objects.equals(current, nullable(entry, "before")) && !Objects.equals(current, nullable(entry, "after")))
+            String before = transactionValue(entry, "before", version), after = transactionValue(entry, "after", version);
+            payloadBytes += bytes(before) + bytes(after);
+            if (payloadBytes > MAX_TRANSACTION_BYTES) throw new IOException("Transaction payload exceeds 256 MiB");
+            if (!Objects.equals(current, before) && !Objects.equals(current, after))
                 throw new IOException("Recovery conflict: " + path + "; preserve state/pending.json and resolve the external edit");
         }
         for (JsonElement element : journal.getAsJsonArray("entries")) {
             JsonObject entry = element.getAsJsonObject();
             Path target = resolve(entry.get("path").getAsString());
-            String after = nullable(entry, "after");
+            String after = transactionValue(entry, "after", version);
             if (Objects.equals(read(entry.get("path").getAsString()), after)) continue;
             if (after == null) { Files.deleteIfExists(target); syncDirectory(target.getParent()); }
             else atomic(target, after);
@@ -132,9 +234,40 @@ public final class DocumentStore implements AutoCloseable {
         return object.get(key).isJsonNull() ? null : object.get(key).getAsString();
     }
 
+    private static long bytes(String value) { return value == null ? 0 : value.getBytes(StandardCharsets.UTF_8).length; }
+    private static int journalVersion(JsonObject journal) throws IOException {
+        if (!journal.has("schemaVersion")) return 1;
+        JsonElement value = journal.get("schemaVersion");
+        try {
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber() || value.getAsBigDecimal().intValueExact() != 2)
+                throw new ArithmeticException();
+            return 2;
+        } catch (ArithmeticException | NumberFormatException invalid) { throw new IOException("Unsupported transaction journal schema", invalid); }
+    }
+    private String putTransactionObject(String content) throws IOException {
+        if (content == null) return null;
+        if (bytes(content) > JsonDocuments.MAX_BYTES) throw new IOException("Transaction object exceeds 16 MiB");
+        String hash = JsonDocuments.hash(content), path = "state/objects/transaction-data/" + hash + ".json";
+        String existing = read(path);
+        if (existing != null && !existing.equals(content)) throw new IOException("Transaction object hash mismatch");
+        // Payload can contain malformed user JSON: rollback must preserve those original bytes too.
+        if (existing == null) atomic(resolve(path), content);
+        return hash;
+    }
+    private String transactionValue(JsonObject entry, String side, int version) throws IOException {
+        if (version == 1) return nullable(entry, side);
+        String hash = nullable(entry, side + "Object");
+        if (hash == null) return null;
+        if (!hash.matches("[a-f0-9]{64}")) throw new IOException("Invalid transaction object reference");
+        String content = read("state/objects/transaction-data/" + hash + ".json");
+        if (content == null || !JsonDocuments.hash(content).equals(hash)) throw new IOException("Transaction object missing or changed; preserve pending journal and immutable objects");
+        return content;
+    }
+
     private void writable(String path) throws IOException {
         resolve(path);
-        if (!path.matches("(?:npcs|skins|behaviors|packs|imports)/[a-zA-Z0-9_./-]+\\.json"))
+        if (!path.matches("(?:npcs|skins|behaviors|packs|imports)/[a-zA-Z0-9_./-]+\\.json")
+                && !path.matches("state/npc-definitions/last-valid/npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json"))
             throw new IOException("Not a writable document path: " + path);
     }
 
@@ -150,7 +283,7 @@ public final class DocumentStore implements AutoCloseable {
     }
 
     public static void atomic(Path path, String value) throws IOException {
-        Files.createDirectories(path.getParent());
+        createDirectoriesDurably(path.toAbsolutePath().getParent());
         Path temporary = Files.createTempFile(path.getParent(), ".animus-", ".tmp");
         try {
             try (FileChannel output = FileChannel.open(temporary, WRITE)) {
@@ -163,13 +296,34 @@ public final class DocumentStore implements AutoCloseable {
         } finally { Files.deleteIfExists(temporary); }
     }
 
+    /** Persist each newly created directory entry before a journal can reference files beneath it. */
+    private static void createDirectoriesDurably(Path directory) throws IOException {
+        Path absolute = directory.toAbsolutePath().normalize();
+        List<Path> missing = new ArrayList<>();
+        Path cursor = absolute;
+        while (cursor != null && !Files.exists(cursor, LinkOption.NOFOLLOW_LINKS)) {
+            missing.add(cursor); cursor = cursor.getParent();
+        }
+        if (cursor == null || !Files.isDirectory(cursor)) throw new IOException("Document ancestor is not a directory: " + directory);
+        Collections.reverse(missing);
+        for (Path path : missing) {
+            try { Files.createDirectory(path); }
+            catch (FileAlreadyExistsException concurrent) { if (!Files.isDirectory(path)) throw concurrent; }
+            syncDirectory(path.getParent());
+        }
+    }
+
     private static void syncDirectory(Path directory) throws IOException {
         try (FileChannel channel = FileChannel.open(directory, READ)) { channel.force(true); }
     }
     private void ensureOpen() { if (closed) throw new IllegalStateException("Document store is closed"); }
+    private void ensureWritable() throws IOException {
+        ensureOpen();
+        if (readOnly) throw new IOException("Document store is read-only");
+    }
     @Override public synchronized void close() throws IOException {
         if (closed) return;
         closed = true;
-        try { lock.release(); } finally { lockChannel.close(); }
+        try { if (lock != null) lock.release(); } finally { if (lockChannel != null) lockChannel.close(); }
     }
 }

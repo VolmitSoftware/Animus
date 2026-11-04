@@ -16,7 +16,9 @@ tasks.named('shadowJar').configure {
     filesMatching('META-INF/services/**') { duplicatesStrategy = DuplicatesStrategy.INCLUDE }
     mergeServiceFiles()
     if (animus.projectGroup != 'art.arcane.animus') {
-        relocate('art.arcane.animus', animus.projectGroup)
+        relocate('art.arcane.animus', animus.projectGroup) {
+            exclude('art.arcane.animus.api.**')
+        }
     }
     relocate('art.arcane.volmlib', "${animus.projectGroup}.internal.volmlib")
     relocate('org.yaml.snakeyaml', "${animus.projectGroup}.internal.snakeyaml")

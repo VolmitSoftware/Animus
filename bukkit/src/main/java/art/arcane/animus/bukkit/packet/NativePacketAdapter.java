@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.packet;
 
+import art.arcane.animus.core.control.ControlInput;
+import art.arcane.animus.core.control.ControlInbox;
 import io.netty.channel.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -87,7 +89,7 @@ public final class NativePacketAdapter implements AutoCloseable {
     private NativePacketAdapter(Plugin plugin, String version) throws ReflectiveOperationException {
         this.plugin = Objects.requireNonNull(plugin);
         nativeApi = new NativeBindings(plugin, version);
-        capabilities = new Capabilities(version, TYPES, Set.of("spawn", "despawn", "move", "signed-player-textures", "attack-interception", "use-interception", "head-rotation", "passengers"), "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
+        capabilities = new Capabilities(version, TYPES, Set.of("spawn", "despawn", "move", "signed-player-textures", "attack-interception", "use-interception", "head-rotation", "passengers", "control-input"), "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
     }
     public static NativePacketAdapter bind(Plugin plugin, String exactMinecraftVersion) throws ReflectiveOperationException {
         if (!Set.of("26.1.2", "26.2", "26.3").contains(exactMinecraftVersion)) throw new IllegalArgumentException("No packet adapter for " + exactMinecraftVersion);
@@ -95,18 +97,44 @@ public final class NativePacketAdapter implements AutoCloseable {
     }
     public Capabilities capabilities() { return capabilities; }
 
+    /** One latest-value semantic input subscription per existing viewer session. Poll on the owning scheduler. */
+    public ControlSubscription subscribeControl(Player viewer) {
+        ensureOpen();
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) throw new IllegalStateException("Viewer is not watched");
+        ControlSubscription subscription = new ControlSubscription(session);
+        if (!session.control.compareAndSet(null, subscription)) throw new IllegalStateException("Viewer already has a control subscription");
+        if (!current(session)) { subscription.close(); throw new IllegalStateException("Viewer session retired"); }
+        return subscription;
+    }
+    public final class ControlSubscription implements AutoCloseable {
+        private final Session session;
+        private final ControlInbox inbox = new ControlInbox(System.nanoTime());
+        private ControlSubscription(Session session) { this.session = session; }
+        public ControlInbox.Snapshot latest() {
+            if (!current(session) || session.control.get() != this) inbox.close("session-retired");
+            return inbox.snapshot();
+        }
+        @Override public void close() { inbox.close("subscription-closed"); session.control.compareAndSet(this, null); }
+    }
+
     public Body createBody(UUID uuid, String typeKey, String profileName, Skin skin) throws ReflectiveOperationException {
         ensureOpen();
         Objects.requireNonNull(uuid);
         if (!TYPES.contains(typeKey)) throw new IllegalArgumentException("Body type is not enabled by the proof adapter: " + typeKey);
-        if (typeKey.equals("minecraft:player") && (profileName == null || !profileName.matches("[A-Za-z0-9_]{1,16}")))
-            throw new IllegalArgumentException("Player profile name must be 1..16 ASCII letters, digits or underscores");
+        if (typeKey.equals("minecraft:player")) validateProfileName(profileName);
         if (!typeKey.equals("minecraft:player") && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
         Object type = nativeApi.entityType(typeKey);
         int reserved = typeKey.equals("minecraft:ender_dragon") ? 9 : 1;
         Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, profileName, skin) : null;
         return new Body(this, nativeApi.ids.reserve(reserved), reserved, uuid, typeKey,
                 ((Number) nativeApi.typeWidth.invoke(type)).doubleValue(), ((Number) nativeApi.typeHeight.invoke(type)).doubleValue(), type, playerInfo);
+    }
+
+    /** Native PLAYER_NAME uses stringUtf8(16), not the authenticated-login username policy. */
+    public static void validateProfileName(String name) {
+        if (name == null || name.isBlank() || name.length() > 16 || name.codePoints().anyMatch(Character::isISOControl))
+            throw new IllegalArgumentException("Player profile name must contain 1..16 characters without control characters");
     }
 
     /** Installing a new watch invalidates the previous session and every pending callback for that UUID. */
@@ -311,6 +339,8 @@ public final class NativePacketAdapter implements AutoCloseable {
         Set<Body> bodies = new HashSet<>();
         synchronized (session) {
             if (!session.active.compareAndSet(true, false)) return;
+            ControlSubscription control = session.control.getAndSet(null);
+            if (control != null) control.inbox.close("session-retired");
             session.visible.values().forEach(value -> bodies.add(value.body));
             session.spawning.values().forEach(value -> bodies.add(value.body));
             session.visible.clear(); session.spawning.clear(); session.passengers.clear();
@@ -329,6 +359,16 @@ public final class NativePacketAdapter implements AutoCloseable {
         private final Session session;
         private InputHandler(Session session) { this.session = session; }
         @Override public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
+            ControlSubscription control = session.control.get();
+            if (control != null && current(session) && control.inbox.active()) {
+                if (nativeApi.controlPacket.isInstance(message)) {
+                    try { control.inbox.offer(nativeApi.controlInput(message), System.nanoTime()); }
+                    catch (ReflectiveOperationException | RuntimeException error) {
+                        control.inbox.close("input-decode-failed");
+                        reportInputFailure(session, new IllegalStateException("Cannot decode semantic control input", error));
+                    }
+                } else if (nativeApi.clientTickEndPacket.isInstance(message)) control.inbox.heartbeat(System.nanoTime());
+            }
             boolean attack = nativeApi.attackPacket.isInstance(message);
             if (!attack && !nativeApi.interactPacket.isInstance(message)) { context.fireChannelRead(message); return; }
             int entityId = ((Number) (attack ? nativeApi.attackId : nativeApi.interactId).invoke(message)).intValue();
@@ -376,6 +416,7 @@ public final class NativePacketAdapter implements AutoCloseable {
         private final AtomicBoolean active = new AtomicBoolean(true), inputScheduled = new AtomicBoolean(), reportedFailure = new AtomicBoolean();
         private final AtomicInteger pendingOperations = new AtomicInteger();
         private final PassengerGraph passengers = new PassengerGraph();
+        private final AtomicReference<ControlSubscription> control = new AtomicReference<>();
         private long lastInputNanos = Long.MIN_VALUE / 2; // Accessed exclusively by the channel event loop.
         private Session(Player viewer, Channel channel, Scheduler scheduler, Consumer<Interaction> interactions) {
             this.viewerId = viewer.getUniqueId(); this.viewer = viewer; this.channel = channel; this.scheduler = scheduler; this.interactions = interactions;
@@ -396,8 +437,10 @@ public final class NativePacketAdapter implements AutoCloseable {
         private final Class<? extends Enum> playerInfoAction;
         private final Method craftPlayerHandle;
         private final Field playerConnection, networkConnection, channel;
-        private final Class<?> attackPacket, interactPacket;
+        private final Class<?> attackPacket, interactPacket, controlPacket, clientTickEndPacket;
         private final Method attackId, interactId, interactHand, interactSecondary;
+        private final Method controlValue;
+        private final Method[] controlFlags;
         private final boolean steppedMovement;
 
         @SuppressWarnings("unchecked")
@@ -474,6 +517,19 @@ public final class NativePacketAdapter implements AutoCloseable {
             interactPacket = type("net.minecraft.network.protocol.game.ServerboundInteractPacket");
             attackId = attackPacket.getMethod("entityId"); interactId = interactPacket.getMethod("entityId");
             interactHand = interactPacket.getMethod("hand"); interactSecondary = interactPacket.getMethod("usingSecondaryAction");
+            controlPacket = type("net.minecraft.network.protocol.game.ServerboundPlayerInputPacket");
+            clientTickEndPacket = type("net.minecraft.network.protocol.game.ServerboundClientTickEndPacket");
+            controlValue = controlPacket.getMethod("input");
+            Class<?> controlInput = type("net.minecraft.world.entity.player.Input");
+            String[] flagNames = {"forward", "backward", "left", "right", "jump", "shift", "sprint"};
+            controlFlags = new Method[flagNames.length];
+            for (int i = 0; i < flagNames.length; i++) controlFlags[i] = controlInput.getMethod(flagNames[i]);
+        }
+        private ControlInput controlInput(Object packet) throws ReflectiveOperationException {
+            Object value = controlValue.invoke(packet);
+            return new ControlInput((boolean) controlFlags[0].invoke(value), (boolean) controlFlags[1].invoke(value),
+                    (boolean) controlFlags[2].invoke(value), (boolean) controlFlags[3].invoke(value),
+                    (boolean) controlFlags[4].invoke(value), (boolean) controlFlags[5].invoke(value), (boolean) controlFlags[6].invoke(value));
         }
         private Object entityType(String key) throws ReflectiveOperationException {
             Object identifier = identifierParse.invoke(null, key);

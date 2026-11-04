@@ -1,119 +1,20 @@
 #!/usr/bin/env node
 // Exact-version live packet proof. Uses Mojang's vanilla codecs; no Prismarine
 // schema aliases. Run only against the dedicated offline loopback QA server.
-import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, createWriteStream } from 'node:fs';
-import { homedir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createInterface } from 'node:readline';
 import assert from 'node:assert/strict';
+import { NativeClient, prepareNative, parseArgs, delay } from './protocol-client/client.mjs';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const args = new Map();
-for (let i = 2; i < process.argv.length; i++) {
-  const arg = process.argv[i];
-  if (!arg.startsWith('--')) throw new Error(`Expected named option: ${arg}`);
-  args.set(arg.slice(2), process.argv[i + 1]?.startsWith('--') || i + 1 === process.argv.length ? true : process.argv[++i]);
-}
-const version = args.get('version') ?? '26.3';
-const port = Number(args.get('port') ?? 65490);
-assert(/^[0-9]+\.[0-9]+(?:\.[0-9]+)?$/.test(version), 'Use an exact release version');
-assert(['26.1.2', '26.2', '26.3'].includes(version), 'Native QA adapters must be validated before adding another exact version');
-assert(Number.isInteger(port) && port > 0 && port < 65536, 'Invalid loopback port');
-const cache = path.join(root, '.qa', 'protocol-cache');
-const classes = path.join(cache, 'client-classes', version);
-const resultDir = path.join(cache, 'results', `${new Date().toISOString().replaceAll(':', '-')}-${version}`);
-mkdirSync(classes, { recursive: true });
-mkdirSync(resultDir, { recursive: true });
-const jar = path.resolve(args.get('jar') ?? path.join(homedir(), '.gradle', 'caches', 'fabric-loom', version, 'minecraft-extracted_server.jar'));
-const libraries = path.resolve(args.get('libraries') ?? path.join(root, '.qa', `leaf-${version}`, 'libraries'));
-assert(existsSync(jar), `Exact ${version} vanilla server jar required: ${jar}`);
-assert(existsSync(libraries), `Server dependency directory required: ${libraries}`);
-const javaHome = args.get('java-home') ?? (existsSync('/opt/homebrew/opt/openjdk@25/bin/java') ? '/opt/homebrew/opt/openjdk@25' : process.env.JAVA_HOME);
-const java = javaHome ? path.join(javaHome, 'bin', 'java') : 'java';
-const javac = javaHome ? path.join(javaHome, 'bin', 'javac') : 'javac';
-function jars(directory) {
-  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-    const name = path.join(directory, entry.name);
-    return entry.isDirectory() ? jars(name) : entry.name.endsWith('.jar') ? [name] : [];
-  });
-}
-const classpath = [classes, jar, ...jars(libraries)].join(path.delimiter);
-const revision = version === '26.3' ? 'v26_3' : 'v26_1_26_2';
-const nativeSource = path.join(root, 'qa', 'protocol-client', 'NativeProtocolClient.java');
-const revisionSource = path.join(root, 'qa', 'protocol-client', revision, 'ProtocolRevision.java');
-const compile = spawnSync(javac, ['-cp', classpath, '-d', classes, nativeSource, revisionSource], { encoding: 'utf8' });
-if (compile.status !== 0) throw new Error(`Exact-version helper compilation failed; no schema fallback is permitted.\n${compile.stdout}\n${compile.stderr}`);
-const hashFile = file => createHash('sha256').update(readFileSync(file)).digest('hex');
-const nativeCodec = { adapter: revision, jarSha256: hashFile(jar), clientSourceSha256: hashFile(nativeSource), adapterSourceSha256: hashFile(revisionSource), scenarioSourceSha256: hashFile(fileURLToPath(import.meta.url)) };
-const wire = createWriteStream(path.join(resultDir, 'wire.ndjson'));
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const args = parseArgs();
+const harness = prepareNative(args, import.meta.url);
+const { version, port, resultDir, nativeCodec, wire, clients } = harness;
 const checks = [];
 function passed(name, detail = {}) { checks.push({ name, ...detail }); console.log(JSON.stringify({ event: 'check', status: 'passed', name, ...detail })); }
 function near(a, b) { assert(Math.abs(a - b) < 0.00001, `Coordinate mismatch ${a} != ${b}`); }
-const clients = [];
-
-class Client {
-  constructor(username) {
-    this.username = username;
-    this.events = [];
-    this.waiters = new Set();
-    this.lastCommand = 0;
-    this.closing = false;
-    this.stderr = createWriteStream(path.join(resultDir, `${username}-${clients.length}.stderr.log`));
-    this.process = spawn(java, ['-cp', classpath, 'NativeProtocolClient', String(port), username, version], { cwd: resultDir, stdio: ['pipe', 'pipe', 'pipe'] });
-    this.process.stderr.pipe(this.stderr);
-    createInterface({ input: this.process.stdout }).on('line', line => {
-      let event;
-      try { event = JSON.parse(line); } catch { this.fatal = new Error(`Unexpected native client output: ${line.slice(0, 200)}`); this.wake(); return; }
-      event.sequence = this.events.length;
-      this.events.push(event);
-      wire.write(JSON.stringify(event) + '\n');
-      if (event.event === 'error') this.fatal = new Error(`${username}: ${event.message}`);
-      this.wake();
-    });
-    this.process.on('error', error => { this.fatal = error; this.wake(); });
-    this.process.on('exit', (code, signal) => {
-      this.exited = true;
-      if (!this.closing) this.fatal ??= new Error(`${username} exited unexpectedly (${code}, ${signal})`);
-      this.wake();
-    });
-    clients.push(this);
-  }
-  wake() { for (const waiter of [...this.waiters]) waiter(); }
-  send(op, data = {}) {
-    if (this.fatal) throw this.fatal;
-    this.process.stdin.write(JSON.stringify({ op, ...data }) + '\n');
-  }
-  wait(test, from = 0, timeout = 15_000) {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.waiters.delete(check); reject(new Error(`${this.username}: timed out waiting for ${test}; recent chat: ${this.events.filter(e => e.event === 'chat').slice(-4).map(e => e.text).join(' | ')}`)); }, timeout);
-      const check = () => {
-        const found = this.events.slice(from).find(test);
-        if (found || this.fatal) { clearTimeout(timer); this.waiters.delete(check); found ? resolve(found) : reject(this.fatal); }
-      };
-      this.waiters.add(check); check();
-    });
-  }
-  async ready() {
-    const toolchain = await this.wait(e => e.event === 'toolchain');
-    assert.equal(toolchain.version, version);
-    const registries = await this.wait(e => e.event === 'registries');
-    assert(registries.count > 0 && registries.entries > 0, 'Server registry contents must be loaded before game packet decoding');
-    if (version === '26.3') assert(registries.keys.includes('minecraft:cow_sound_variant'));
-    await this.wait(e => e.event === 'position');
-    return toolchain;
-  }
-  async command(text, match, timeout = 15_000) {
-    // Bound synthetic command rate; ordinary client/server packet processing continues.
-    await delay(Math.max(0, 650 - (Date.now() - this.lastCommand)));
-    const start = this.events.length;
-    this.lastCommand = Date.now();
-    this.send('command', { text });
-    return match ? this.wait(e => e.event === 'chat' && (typeof match === 'string' ? e.text.includes(match) : match.test(e.text)), start, timeout) : start;
-  }
+class Client extends NativeClient {
+  constructor(username) { super(harness, username); }
   async status() { return (await this.command('animus proof status', 'Packet proof ready')).text; }
   async resetPosition() {
     const start = this.events.length;
@@ -162,16 +63,7 @@ class Client {
     body.x += dx; body.y += dy; body.z += dz;
     for (const axis of ['x', 'y', 'z']) near(packet[axis], body[axis]);
   }
-  async close() {
-    if (this.closing) return;
-    this.closing = true;
-    if (!this.exited) {
-      this.process.stdin.write('{"op":"close"}\n');
-      this.process.stdin.end();
-      for (let i = 0; i < 30 && !this.exited; i++) await delay(100);
-      if (!this.exited) this.process.kill('SIGKILL');
-    }
-  }
+
 }
 
 let owner;

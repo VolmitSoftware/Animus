@@ -1,6 +1,6 @@
-# Pinned upstream inventory
+# Pinned import source inventory
 
-Audit date: **2026-11-04 UTC**. This source inventory supplements [the compatibility matrix](compatibility.md). It records implementation scope, not release parity. Fixture comparisons use only its published aggregate counts: 495 records, 29 trait keys and 29 top-level Sentinel keys. No private names, positions, UUIDs, text, textures, scripts or raw records appear here.
+Audit date: **2026-11-04 UTC**. This source inventory documents Citizens import formats and Sentinel settings for [the migration compatibility matrix](compatibility.md). It records conversion coverage and gaps in translating imported behavior. Fixture comparisons use only its published aggregate counts: 495 records, 29 trait keys and 29 top-level Sentinel keys. No private names, positions, UUIDs, text, textures, scripts or raw records appear here.
 
 ## Source pins and inventory method
 
@@ -65,7 +65,7 @@ Waypoint scope includes three providers (`linear`, `wander`, `guided`) and arriv
 
 ## Capabilities the fixture does not exercise
 
-The 77 declarations below are absent as trait keys; this does not establish that their default behavior or related entity types are absent. For example, dragon/frog/llama/armadillo bodies occur without their corresponding versioned trait keys. Each family needs deliberate acceptance tests before any broad Citizens-capability claim.
+The 77 declarations below are absent as trait keys; this does not establish that their default behavior or related entity types are absent. For example, dragon/frog/llama/armadillo bodies occur without their corresponding versioned trait keys. Each imported behavior family needs deliberate acceptance tests before being reported as translated.
 
 | Capability family | Explicit remaining work |
 |---|---|
@@ -73,7 +73,7 @@ The 77 declarations below are absent as trait keys; this does not establish that
 | Visibility and presentation | Player filters, mirroring, disguises, display/text/item transforms, boss bars, skin layers and entity poses require per-viewer capability decisions and packet validation. |
 | Navigation and physical interactions | Follow/home/anchors, path pausing, leash, forcefield, configurable bounding boxes and chunk-ticket behavior need explicit virtual equivalents. Automatic terrain loading remains outside the agreed default. |
 | Entity variants and state | Species metadata, size, equipment-like modifiers, special animations and entity-specific interactions need adapters; merely spawning the correct entity type is insufficient. |
-| Lifecycle and integrations | Drops, scaled health, effects, shop providers and extension registrations need module contracts and failure/cleanup behavior. No binary Citizens API compatibility is claimed. |
+| Lifecycle and integrations | Drops, scaled health, effects, shop providers and extension registrations need module contracts and failure/cleanup behavior. |
 
 Concrete scope evidence: [behavior tree and memory lifecycle](https://github.com/CitizensDev/Citizens2/blob/62b9265d46c366ce6258b7ccc8a1018e38849d70/main/src/main/java/net/citizensnpcs/trait/BehaviorTrait.java), [command execution](https://github.com/CitizensDev/Citizens2/blob/62b9265d46c366ce6258b7ccc8a1018e38849d70/main/src/main/java/net/citizensnpcs/trait/CommandTrait.java), [shops and purchase state](https://github.com/CitizensDev/Citizens2/blob/62b9265d46c366ce6258b7ccc8a1018e38849d70/main/src/main/java/net/citizensnpcs/trait/ShopTrait.java), [viewer filtering](https://github.com/CitizensDev/CitizensAPI/blob/e7761413005f611e1f64a728864040204f80e566/src/main/java/net/citizensnpcs/api/trait/trait/PlayerFilter.java).
 
@@ -189,14 +189,6 @@ Nine additional historical keys: `stats_potionsThrow` (persisted spelling differ
 Integration source contains 14 classes: `SentinelCrackShot`, `SentinelFactions`, `SentinelHealth`, `SentinelNPCOwnedBy`, `SentinelPermissions`, `SentinelPotion`, `SentinelSBScore`, `SentinelSBTeams`, `SentinelSimpleClans`, `SentinelSimplePets`, `SentinelSquads`, `SentinelTowny`, `SentinelUUID`, `SentinelWar`. Vault groups and WorldGuard are handled separately. Implement only declared Animus adapters; availability of an upstream integration class does not mean its dependency is installed or working. [Integration classes](https://github.com/mcmonkeyprojects/Sentinel/tree/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/integration), [Conditional registration and Vault/WorldGuard discovery](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelPlugin.java).
 
 The WorldGuard helper examined here constrains path destinations to a configured region through `SentinelWantsToPathEvent`; that code alone does not prove a complete PvP/protection policy. Animus still needs independent damage/protection decisions. The event surface also includes attack, chase start/end, combat-state change and no-more-targets hooks, all requiring Animus equivalents or explicit integration limits. [WorldGuard helper](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/utilities/SentinelWorldGuardHelper.java), [Sentinel events](https://github.com/mcmonkeyprojects/Sentinel/tree/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/events).
-
-## Citizens packet mode is a separate benchmark baseline
-
-The pinned Citizens factory registers `packet` → `PacketNPC`. Its wrapper retains a Bukkit/native entity created by the underlying controller; its `spawn` method directly sets location and registers with `PlayerUpdateTask`, rather than calling the underlying controller spawn method. `onSpawn` creates an entity packet tracker, and `run` links nearby players and runs that tracker. This establishes the examined control flow, not a universal guarantee about every type, version, constructor or integration. [PacketNPC controller and lifecycle](https://github.com/CitizensDev/Citizens2/blob/62b9265d46c366ce6258b7ccc8a1018e38849d70/main/src/main/java/net/citizensnpcs/trait/PacketNPC.java).
-
-For packet-trait entries, `PlayerUpdateTask` schedules `AbstractNPC.update()`; its other player branch uses the native player ticker. Packet mode therefore still has Citizens-managed updates and an entity-backed API. This source inspection does not demonstrate measured registration/ticking behavior on any running server. [PlayerUpdateTask branches](https://github.com/CitizensDev/Citizens2/blob/62b9265d46c366ce6258b7ccc8a1018e38849d70/main/src/main/java/net/citizensnpcs/util/PlayerUpdateTask.java), [NPC entity contract](https://github.com/CitizensDev/CitizensAPI/blob/e7761413005f611e1f64a728864040204f80e566/src/main/java/net/citizensnpcs/api/npc/NPC.java).
-
-Benchmark three separately identified configurations: **Citizens default**, **Citizens packet trait**, and **Animus virtual runtime**. Use equivalent visible behavior, active simulation, entity types, skins, viewer counts and supported integrations; record exact versions and configurations. Verify world registration and tick work empirically, and report unsupported scenarios as unavailable rather than assigning them zero cost. No source-level architectural difference proves Animus is cheaper.
 
 ## Reproduction and acceptance follow-up
 

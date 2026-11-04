@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "qabehavior:final-wait",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "wait",
+      "ticks": 60
+    }
+  }
+}

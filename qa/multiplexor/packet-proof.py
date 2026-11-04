@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Attach Animus's exact-codec client to a real Multiplexor-managed Paper instance.
+"""Attach Animus's exact-codec client to a real Multiplexor-managed Bukkit-family instance.
 Multiplexor owns creation/deployment separately and owns start/stop here. The native
 client is external to Mineflayer; its results are recorded as that distinct test path.
 """
@@ -13,6 +13,7 @@ parser.add_argument('--binary',type=Path,required=True)
 parser.add_argument('--workspace',type=Path,required=True)
 parser.add_argument('--build-home',type=Path)
 parser.add_argument('--version',choices=['26.1.2','26.2','26.3'],required=True)
+parser.add_argument('--project',choices=['paper','spigot'],default='paper')
 parser.add_argument('--skin-file',type=Path)
 parser.add_argument('--fixture',type=Path)
 parser.add_argument('--navigation',action='store_true',help='Requires the proof path diagnostic in the deployed build')
@@ -21,7 +22,7 @@ args=parser.parse_args()
 args.binary=args.binary.resolve();args.workspace=args.workspace.resolve();args.transcript=[]
 assert '.qa' in args.workspace.parts,'Dedicated QA workspace required'
 repo=Path(__file__).resolve().parents[2]
-name=f'animus-paper-{args.version.replace(".","-")}'
+name=f'animus-{args.project}-{args.version.replace(".","-")}'
 instance=args.workspace/'consumers/plugin-consumers/instances'/name
 assert instance.is_dir(),'First create/deploy the exact instance with managed-runtime.py'
 assert run(args,'instance','isolated',name).strip()=='true','Refusing shared instance'
@@ -38,7 +39,7 @@ evidence=args.workspace/'animus-evidence'/name/f'native-{time.time_ns()}'
 evidence.mkdir(parents=True)
 log=instance/'logs/latest.log'
 if log.exists():shutil.copy2(log,evidence/'previous-server.log');log.unlink()
-report={'runner':'external Animus native-codec client on Multiplexor-managed runtime','minecraftVersion':args.version,'status':'running','plugins':[{'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in (instance/'plugins').glob('*.jar')]}
+report={'runner':'external Animus native-codec client on Multiplexor-managed runtime','project':args.project,'minecraftVersion':args.version,'status':'running','plugins':[{'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in (instance/'plugins').glob('*.jar')]}
 report['serverSha256']=hashlib.sha256((instance/'server.jar').read_bytes()).hexdigest()
 source=json.loads((args.workspace/'animus-evidence'/name/'runtime.json').read_text())
 assert report['serverSha256']==source['serverSha256'],'Managed server jar changed after exact-version lifecycle validation'
@@ -50,7 +51,7 @@ try:
     session=re.search(r'tmux session: (\S+)',output).group(1)
     wait_log(log,r'.*Done \([\d.]+s\)!.*')
     report['capability']=console(session,log,'animus proof status',r'.*Packet proof ready.*')
-    console(session,log,'forceload add -16 -16 16 16',r'.*(Marked|already marked|already forced).*')
+    console(session,log,'forceload add -16 -16 16 16',r'.*(Marked|already marked|already forced|No chunks were marked).*')
     arena=True
     time.sleep(1)
     console(session,log,'fill -8 60 -8 8 60 8 stone',r'.*(Successfully filled|No blocks were filled).*')
@@ -58,7 +59,8 @@ try:
     console(session,log,'setworldspawn 0 61 0',r'.*(Set the world spawn point|Set world spawn).*')
     props=dict(line.split('=',1) for line in (instance/'server.properties').read_text().splitlines() if '=' in line and not line.startswith('#'))
     port=props['server-port'];report['port']=int(port)
-    command=['node',str(repo/'qa/packet-client.mjs'),'--version',args.version,'--port',port,'--libraries',str(instance/'libraries')]
+    libraries=instance/('bundler/libraries' if args.project=='spigot' else 'libraries')
+    command=['node',str(repo/'qa/packet-client.mjs'),'--version',args.version,'--port',port,'--libraries',str(libraries)]
     if args.skin_file:command+=['--skin',args.skin_file.stem,'--skin-file',str(args.skin_file.resolve())]
     if args.fixture:command+=['--event-fixture']
     if args.navigation:command+=['--navigation']

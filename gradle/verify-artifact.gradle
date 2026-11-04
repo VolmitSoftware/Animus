@@ -35,6 +35,7 @@ TaskProvider verification = tasks.register('verifyArtifact') {
             require(archive.isMultiRelease() == versionedEntries, 'multi-release manifest must match versioned archive entries')
             List<String> required = [metadataPath, entrypoint.replace('.', '/') + '.class',
                 namespace + 'core/AnimusRuntime.class', namespace + 'core/BuildIdentity.class',
+                'art/arcane/animus/api/AnimusApi.class', 'art/arcane/animus/api/TrustedModule.class',
                 internal + 'volmlib/util/config/ConfigJson.class', internal + 'volmlib/util/io/AtomicFileIO.class',
                 internal + 'gson/Gson.class']
             if (platform != 'bukkit') {
@@ -42,6 +43,9 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 required.add(namespace + 'mod/MinecraftVersion.class')
             }
             required.each { String path -> require(archive.getEntry(path) != null, "missing ${path}") }
+            if (namespace != 'art/arcane/animus/') {
+                require(archive.entries().every { JarEntry entry -> !entry.name.startsWith(namespace + 'api/') }, 'public API must keep its stable package')
+            }
             (metadataPaths.values() + ['paper-plugin.yml']).findAll { String path -> path != metadataPath }.each { String path ->
                 require(archive.getEntry(path) == null, "contains foreign platform metadata ${path}")
             }

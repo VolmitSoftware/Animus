@@ -10,8 +10,10 @@ class ConservativeVoxelClassifierTest {
             assertEquals(VoxelSnapshot.Cell.AIR, ConservativeVoxelClassifier.classify(name));
         assertEquals(VoxelSnapshot.Cell.WATER, ConservativeVoxelClassifier.classify("WATER"));
         assertEquals(VoxelSnapshot.Cell.LAVA, ConservativeVoxelClassifier.classify("LAVA"));
-        for (String name : new String[]{"STONE", "SHORT_GRASS", "OAK_SLAB", "OAK_DOOR", "SEAGRASS", "SNOW", "OAK_FENCE", "FUTURE_BLOCK"})
+        for (String name : new String[]{"STONE", "GRASS_BLOCK", "OAK_PLANKS", "BLUE_CONCRETE"})
             assertEquals(VoxelSnapshot.Cell.SOLID, ConservativeVoxelClassifier.classify(name));
+        for (String name : new String[]{"SHORT_GRASS", "OAK_SLAB", "OAK_DOOR", "SEAGRASS", "SNOW", "OAK_FENCE", "FUTURE_BLOCK"})
+            assertEquals(VoxelSnapshot.Cell.OBSTACLE, ConservativeVoxelClassifier.classify(name));
         assertThrows(NullPointerException.class, () -> ConservativeVoxelClassifier.classify(null));
     }
 
