@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "quest",
+  "name": "Quest giver",
+  "version": "1.0.0",
+  "description": "A delivery quest shared between a giver and a recipient, stored per player."
+}

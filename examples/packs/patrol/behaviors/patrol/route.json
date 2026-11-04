@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "patrol:route",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Starting my rounds.",
+            "audience": "nearby",
+            "radius": 16
+          }
+        },
+        {
+          "type": "repeat",
+          "count": 2,
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "sequence",
+                "steps": [
+                  {
+                    "type": "action",
+                    "capability": "animus:navigate",
+                    "arguments": {
+                      "x": 8,
+                      "y": 64,
+                      "z": 0,
+                      "wait": true,
+                      "timeoutTicks": 1200
+                    }
+                  },
+                  {
+                    "type": "wait",
+                    "ticks": 40
+                  }
+                ]
+              },
+              {
+                "type": "sequence",
+                "steps": [
+                  {
+                    "type": "action",
+                    "capability": "animus:navigate",
+                    "arguments": {
+                      "x": 8,
+                      "y": 64,
+                      "z": 8,
+                      "wait": true,
+                      "timeoutTicks": 1200
+                    }
+                  },
+                  {
+                    "type": "wait",
+                    "ticks": 40
+                  }
+                ]
+              },
+              {
+                "type": "sequence",
+                "steps": [
+                  {
+                    "type": "action",
+                    "capability": "animus:navigate",
+                    "arguments": {
+                      "x": 0,
+                      "y": 64,
+                      "z": 8,
+                      "wait": true,
+                      "timeoutTicks": 1200
+                    }
+                  },
+                  {
+                    "type": "wait",
+                    "ticks": 40
+                  }
+                ]
+              },
+              {
+                "type": "sequence",
+                "steps": [
+                  {
+                    "type": "action",
+                    "capability": "animus:navigate",
+                    "arguments": {
+                      "x": 0,
+                      "y": 64,
+                      "z": 0,
+                      "wait": true,
+                      "timeoutTicks": 1200
+                    }
+                  },
+                  {
+                    "type": "wait",
+                    "ticks": 40
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "All quiet.",
+            "audience": "nearby",
+            "radius": 16
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "rounds",
+      "event": "timer",
+      "intervalTicks": 1200
+    }
+  ]
+}

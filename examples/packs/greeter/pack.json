@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "greeter",
+  "name": "Greeter",
+  "version": "1.0.0",
+  "description": "Greets players on click, remembers them, and reacts when they come close."
+}

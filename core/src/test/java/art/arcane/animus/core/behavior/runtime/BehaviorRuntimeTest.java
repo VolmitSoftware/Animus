@@ -12,7 +12,7 @@ import java.util.function.*;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
-class ManualBehaviorRuntimeTest {
+class BehaviorRuntimeTest {
     static final String ACTION="{\"type\":\"action\",\"capability\":\"sample:act\"}";
     static final String WAIT="{\"type\":\"wait\",\"ticks\":100}";
     static final String EMPTY="{\"type\":\"sequence\",\"steps\":[]}";
@@ -28,7 +28,7 @@ class ManualBehaviorRuntimeTest {
         void replaceProgram(String node,long revision){var accepted=new BehaviorCatalog.Accepted(revision,String.format("%064x",revision),100,program(node),Set.of());publish(accepted,true);}
         void publish(BehaviorCatalog.Accepted accepted,boolean available){catalog.set(new BehaviorCatalog.Snapshot(1,Map.of(),Map.of("example:manual",new BehaviorCatalog.Resolution("example:manual",available,Optional.ofNullable(accepted),List.of())),List.of()));}
         void add(String id)throws Exception{Map<String,NpcDefinition> copy=new HashMap<>(npcs.get());copy.put(id,npc(id,UUID.randomUUID(),1,false));npcs.set(Map.copyOf(copy));}
-        ManualBehaviorRuntime runtime(Fake fake){return new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),npcs::get,catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);}
+        BehaviorRuntime runtime(Fake fake){return new BehaviorRuntime(new BehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),npcs::get,catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);}
     }
     static final class Fake implements BehaviorInvoker {
         final List<Invocation> invocations=new CopyOnWriteArrayList<>();final AtomicInteger cancellations=new AtomicInteger();
@@ -39,7 +39,7 @@ class ManualBehaviorRuntimeTest {
         public Call<Boolean> condition(Invocation invocation){return new Call<>(CompletableFuture.completedFuture(Outcome.ok(true)),()->{});}
     }
     static ThreadFactory heldOwner(CountDownLatch release){return task->{Thread thread=new Thread(()->{latch(release);task.run();},"held-behavior-owner");thread.setDaemon(true);return thread;};}
-    static void stop(ManualBehaviorRuntime runtime)throws Exception{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(4)),runtime.status().toString());}
+    static void stop(BehaviorRuntime runtime)throws Exception{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(4)),runtime.status().toString());}
 
     @Test void dormantManualExecutionRunsOnPrivateOwnerWithoutPreviewAndPreservesSenderIdentity()throws Exception{
         Sources sources=new Sources(ACTION);Fake fake=new Fake();UUID player=UUID.randomUUID();var runtime=sources.runtime(fake);
@@ -62,7 +62,7 @@ class ManualBehaviorRuntimeTest {
     }
     @Test void queuedRunCannotBindToAnNpcRevisionPublishedAfterAdmission()throws Exception{
         Sources sources=new Sources(ACTION);CountDownLatch release=new CountDownLatch(1);Fake fake=new Fake();
-        var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
+        var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
         try{
             var request=runtime.run("test","example:manual");NpcDefinition old=sources.npcs.get().get("test");sources.npcs.set(Map.of("test",npc("test",old.uuid(),2,false)));release.countDown();
             assertEquals(Outcome.Status.CONFLICT,await(request).status());assertTrue(fake.invocations.isEmpty());assertTrue(runtime.snapshot().executions().isEmpty());
@@ -70,7 +70,7 @@ class ManualBehaviorRuntimeTest {
     }
     @Test void queuedRunCannotBindToAReplacedAcceptedProgram()throws Exception{
         Sources sources=new Sources(ACTION);CountDownLatch release=new CountDownLatch(1);Fake fake=new Fake();
-        var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
+        var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
         try{var request=runtime.run("test","example:manual");sources.replaceProgram(EMPTY,2);release.countDown();assertEquals(Outcome.Status.CONFLICT,await(request).status());assertTrue(fake.invocations.isEmpty());}
         finally{release.countDown();stop(runtime);}
     }
@@ -105,9 +105,9 @@ class ManualBehaviorRuntimeTest {
     }
     @Test void closeBeforeFirstOwnerTurnCancelsQueuedRequestsAndNeverInvokes()throws Exception{
         Sources sources=new Sources(ACTION);Fake fake=new Fake();CountDownLatch release=new CountDownLatch(1);
-        var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
+        var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
         try{
-            var queued=runtime.run("test","example:manual");runtime.close();assertEquals(ManualBehaviorRuntime.State.STOPPING,runtime.status().state());
+            var queued=runtime.run("test","example:manual");runtime.close();assertEquals(BehaviorRuntime.State.STOPPING,runtime.status().state());
             assertEquals(Outcome.Status.UNAVAILABLE,await(runtime.run("test","example:manual")).status());release.countDown();
             assertEquals(Outcome.Status.CANCELLED,await(queued).status());assertTrue(runtime.awaitStopped(Duration.ofSeconds(4)));assertTrue(fake.invocations.isEmpty());assertEquals(0,runtime.status().admittedOperations());
         }finally{release.countDown();stop(runtime);}
@@ -119,13 +119,13 @@ class ManualBehaviorRuntimeTest {
         try{
             UUID id=await(runtime.run("test","example:manual")).value().orElseThrow();eventually(()->fake.invocations.size()==1);runtime.close();
             eventually(()->fake.cancellations.get()==1);eventually(()->runtime.inspect(id).orElseThrow().report().state()==BehaviorEngine.State.CANCELLED);
-            assertFalse(runtime.awaitStopped(Duration.ofMillis(125)));assertEquals(ManualBehaviorRuntime.State.STOPPING,runtime.status().state());assertEquals(1,runtime.status().engine().retiredCalls());
+            assertFalse(runtime.awaitStopped(Duration.ofMillis(125)));assertEquals(BehaviorRuntime.State.STOPPING,runtime.status().state());assertEquals(1,runtime.status().engine().retiredCalls());
             quiet.set(true);assertTrue(runtime.awaitStopped(Duration.ofSeconds(4)));assertEquals(0,runtime.status().engine().callsInFlight());
         }finally{quiet.set(true);result.complete(Outcome.ok("{}"));stop(runtime);}
     }
     @Test void boundedResultWorkersCannotBlockTicksAndRetainAdmissionWhileListenersBlock()throws Exception{
         Sources sources=new Sources(WAIT);sources.add("second");Fake fake=new Fake();CountDownLatch ownerRelease=new CountDownLatch(1),listeners=new CountDownLatch(2),releaseListeners=new CountDownLatch(1);
-        var runtime=new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(3,3,50,1),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(ownerRelease));
+        var runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(3,3,50,1),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(ownerRelease));
         try{
             var one=runtime.run("test","example:manual");var two=runtime.run("second","example:manual");
             one.thenAccept(value->{listeners.countDown();latch(releaseListeners);});two.thenAccept(value->{listeners.countDown();latch(releaseListeners);});ownerRelease.countDown();latch(listeners);
@@ -139,7 +139,7 @@ class ManualBehaviorRuntimeTest {
     }
     @Test void callerFutureCopyCannotCancelOrForgeQueuedOperation()throws Exception{
         Sources sources=new Sources(EMPTY);CountDownLatch release=new CountDownLatch(1);
-        var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,new Fake(),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
+        var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,new Fake(),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
         try{
             var stage=runtime.run("test","example:manual");assertTrue(stage.toCompletableFuture().complete(Outcome.ok(UUID.randomUUID())));release.countDown();
             UUID actual=await(stage).value().orElseThrow();assertTrue(runtime.inspect(actual).isPresent());assertEquals(1,runtime.snapshot().executions().size());
@@ -148,7 +148,7 @@ class ManualBehaviorRuntimeTest {
     @Test void smallHistoryNeverStrandsNpcLeasesWhenManyExecutionsFinishInOneTick()throws Exception{
         Sources sources=new Sources(EMPTY);sources.add("second");sources.add("third");CountDownLatch release=new CountDownLatch(1);
         var budgets=new BehaviorEngine.Limits(4,8,4,32,100,100,4,8,1);
-        var runtime=new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(8,8,50,20),budgets,sources.npcs::get,sources.catalog::get,new Fake(),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
+        var runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(8,8,50,20),budgets,sources.npcs::get,sources.catalog::get,new Fake(),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(release));
         try{
             var first=runtime.run("test","example:manual");var second=runtime.run("second","example:manual");var third=runtime.run("third","example:manual");release.countDown();
             assertEquals(Outcome.Status.OK,await(first).status());assertEquals(Outcome.Status.OK,await(second).status());assertEquals(Outcome.Status.OK,await(third).status());
@@ -158,8 +158,8 @@ class ManualBehaviorRuntimeTest {
     }
     @Test void sourceObservationFailureClosesAdmissionAndCancelsExistingRuns()throws Exception{
         Sources sources=new Sources(WAIT);AtomicBoolean fail=new AtomicBoolean();
-        var runtime=new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),()->{if(fail.get())throw new IllegalStateException("synthetic source failure");return sources.npcs.get();},sources.catalog::get,new Fake(),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
-        try{UUID id=await(runtime.run("test","example:manual")).value().orElseThrow();fail.set(true);eventually(()->runtime.status().state()==ManualBehaviorRuntime.State.STOPPED);assertEquals("IllegalStateException",runtime.status().failure());assertEquals(BehaviorEngine.State.CANCELLED,runtime.inspect(id).orElseThrow().report().state());}
+        var runtime=new BehaviorRuntime(BehaviorRuntime.Limits.defaults(),BehaviorEngine.Limits.defaults(),()->{if(fail.get())throw new IllegalStateException("synthetic source failure");return sources.npcs.get();},sources.catalog::get,new Fake(),null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
+        try{UUID id=await(runtime.run("test","example:manual")).value().orElseThrow();fail.set(true);eventually(()->runtime.status().state()==BehaviorRuntime.State.STOPPED);assertEquals("IllegalStateException",runtime.status().failure());assertEquals(BehaviorEngine.State.CANCELLED,runtime.inspect(id).orElseThrow().report().state());}
         finally{stop(runtime);}
     }
     @Test void invalidIdentitiesMissingSourcesAndUnavailableCatalogAreExpectedRejections()throws Exception{
@@ -172,7 +172,7 @@ class ManualBehaviorRuntimeTest {
     }
     @Test void concurrentAdmissionAndCloseNeverExceedBoundsOrLoseAcceptedAcknowledgments()throws Exception{
         Sources sources=new Sources(ACTION);Fake fake=new Fake();CountDownLatch ownerRelease=new CountDownLatch(1),start=new CountDownLatch(1);
-        var runtime=new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(4,2,50,20),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(ownerRelease));
+        var runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(4,2,50,20),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(ownerRelease));
         List<CompletionStage<Outcome<UUID>>> results=new CopyOnWriteArrayList<>();
         try(var callers=Executors.newFixedThreadPool(8)){
             List<Future<?>> tasks=new ArrayList<>();
@@ -187,7 +187,7 @@ class ManualBehaviorRuntimeTest {
     @Test void closeRacingRequestAdmissionAlwaysAcknowledgesOrExplicitlyRejects()throws Exception{
         for(int attempt=0;attempt<12;attempt++){
             Sources sources=new Sources(ACTION);CountDownLatch ownerRelease=new CountDownLatch(1),start=new CountDownLatch(1);Fake fake=new Fake();
-            var runtime=new ManualBehaviorRuntime(new ManualBehaviorRuntime.Limits(2,2,50,20),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(ownerRelease));
+            var runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(2,2,50,20),BehaviorEngine.Limits.defaults(),sources.npcs::get,sources.catalog::get,fake,null,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE,heldOwner(ownerRelease));
             try(var callers=Executors.newFixedThreadPool(2)){
                 Future<CompletionStage<Outcome<UUID>>> request=callers.submit(()->{latch(start);return runtime.run("test","example:manual");});
                 Future<?> close=callers.submit(()->{latch(start);runtime.close();});start.countDown();close.get(2,TimeUnit.SECONDS);var result=request.get(2,TimeUnit.SECONDS);ownerRelease.countDown();
@@ -207,7 +207,7 @@ class ManualBehaviorRuntimeTest {
     }
     @Test void limitsRejectUnboundedOrOverTwentyHertzConfiguration(){
         for(int[] values:new int[][]{{0,1,50,1},{257,1,50,1},{1,0,50,1},{64,65,50,1},{1,2,50,1},{1,1,49,1},{1,1,1001,1},{1,1,50,0},{1,1,50,60001}})
-            assertThrows(IllegalArgumentException.class,()->new ManualBehaviorRuntime.Limits(values[0],values[1],values[2],values[3]));
-        assertEquals(50,ManualBehaviorRuntime.Limits.defaults().tickMillis());
+            assertThrows(IllegalArgumentException.class,()->new BehaviorRuntime.Limits(values[0],values[1],values[2],values[3]));
+        assertEquals(50,BehaviorRuntime.Limits.defaults().tickMillis());
     }
 }

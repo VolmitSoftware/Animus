@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "shop",
+  "name": "Shop interaction",
+  "version": "1.0.0",
+  "description": "Sells bread for emeralds through vanilla commands. Needs the command allow-list."
+}

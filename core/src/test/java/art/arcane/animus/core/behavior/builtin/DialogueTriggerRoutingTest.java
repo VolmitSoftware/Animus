@@ -11,7 +11,7 @@ import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.catalog.BehaviorCheckpoints;
 import art.arcane.animus.core.behavior.catalog.BehaviorPath;
-import art.arcane.animus.core.behavior.runtime.ManualBehaviorRuntime;
+import art.arcane.animus.core.behavior.runtime.BehaviorRuntime;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.behavior.trigger.TriggerSettings;
@@ -55,7 +55,7 @@ class DialogueTriggerRoutingTest {
     private BuiltinCapabilities builtins;
     private ExtensionRuntime extensions;
     private TriggerDispatcher dispatcher;
-    private ManualBehaviorRuntime runtime;
+    private BehaviorRuntime runtime;
 
     @BeforeEach void start() throws Exception {
         Path root = temporary.toRealPath();
@@ -87,7 +87,7 @@ class DialogueTriggerRoutingTest {
         dispatcher = new TriggerDispatcher(TriggerSettings.DEFAULT, () -> npcs, catalog::snapshot);
         dispatcher.connect();
         holder[0] = dispatcher;
-        runtime = new ManualBehaviorRuntime(ManualBehaviorRuntime.Limits.defaults(), BehaviorEngine.Limits.defaults(), () -> npcs, catalog::snapshot, extensions.behaviorInvoker(), dispatcher, new MemoryBehaviorState());
+        runtime = new BehaviorRuntime(BehaviorRuntime.Limits.defaults(), BehaviorEngine.Limits.defaults(), () -> npcs, catalog::snapshot, extensions.behaviorInvoker(), dispatcher, new MemoryBehaviorState());
         eventually(() -> dispatcher.snapshot().bindings() > 0);
         dispatcher.activated(NPC);
         assertEquals(Outcome.Status.OK, runtime.run("guard", "town:greeter", Optional.of(PLAYER)).toCompletableFuture().get(4, TimeUnit.SECONDS).status());

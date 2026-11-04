@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shop:keeper",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:choices",
+          "arguments": {
+            "id": "counter",
+            "prompt": "Four loaves for one emerald?",
+            "options": [
+              {
+                "id": "buy",
+                "text": "Buy four loaves"
+              },
+              {
+                "id": "leave",
+                "text": "Just looking"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "buy": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "execute positioned 16 64 0 as @p[distance=..6] if items entity @s container.* minecraft:emerald run give @s minecraft:bread 4"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "execute positioned 16 64 0 as @p[distance=..6] run clear @s minecraft:emerald 1"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Pleasure doing business. No emerald, no bread."
+          }
+        }
+      ]
+    },
+    "leave": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Come back when you are hungry."
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40
+    },
+    {
+      "id": "bought",
+      "event": "dialogue_choice",
+      "dialogue": "counter",
+      "choice": "buy",
+      "routine": "buy"
+    },
+    {
+      "id": "left",
+      "event": "dialogue_choice",
+      "dialogue": "counter",
+      "choice": "leave",
+      "routine": "leave"
+    }
+  ]
+}
