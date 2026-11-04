@@ -42,6 +42,13 @@ public final class RideSession {
     public long steps() { return steps; }
 
     /** The attach packet reached the rider's connection. Only the first completion of a live session counts. */
+    /**
+     * A ride ended by a lost connection leaves the rider where the server already holds it, at the vehicle's feet:
+     * the logout or timeout that follows saves that position, and nobody is there to see a dismount placement.
+     */
+    public static boolean leavesRiderInPlace(String reason) {
+        return ControlInbox.CONNECTION_CLOSED.equals(reason) || ControlLoop.CONNECTION_STALE.equals(reason);
+    }
     public boolean attached() {
         if (state != State.ATTACHING) return false;
         state = State.RIDING; reason = "riding";

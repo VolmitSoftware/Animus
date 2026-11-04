@@ -281,7 +281,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         return Optional.of(new ActiveNpc(entry.id, value.displayName, value.state.snapshot()));
     }
     /** Combat lookup that, unlike active(), also finds a dead NPC whose definition is still spawned. */
-    public Optional<ActiveNpc> combatant(UUID npc) {
+    @Override public Optional<ActiveNpc> combatant(UUID npc) {
         if (!available()) return Optional.empty();
         owner();
         Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;

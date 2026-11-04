@@ -132,7 +132,7 @@ This example requires a module providing `example:wave` and `example:bow`. Every
 | `spawn` | None. | The runtime first presents the NPC. It waits for the first behavior catalog at startup. |
 | `despawn` | None. | A spawned NPC is despawned. It runs against the new dormant definition. |
 | `damage` | None. | Authoritative NPC health falls. |
-| `death` | None. | Authoritative NPC health reaches zero. No despawn trigger follows a death. |
+| `death` | None. | Authoritative NPC health reaches zero. No despawn trigger follows a death. `say`, `play-sound` and `spawn-particle` still come from where the NPC fell; actions that need a living body are unavailable until it respawns. |
 | `waypoint` | Optional `waypoint`: -1 to 4,095. | The NPC arrives at a route point; -1 is a manually requested destination. Without the field, any arrival fires. |
 | `timer` | `intervalTicks`: 1 to 72,000. | The interval passes while the NPC is active. |
 | `dialogue_choice` | `dialogue`. Optional `choice`. | A viewer's click on that prompt from this NPC passes validation. |
