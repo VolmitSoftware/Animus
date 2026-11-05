@@ -1,0 +1,977 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/gui-inventory-v1.schema.json",
+  "title": "Animus chest GUI",
+  "description": "gui/inventories/<namespace>/<name>.json, a Gloss inventories document (schemaVersion 1) read by Animus. The id comes from the file location. Gloss-only actions, holographic menu components and presets are refused. The Java GuiDocument parser is authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "title": {
+      "$ref": "#/$defs/template"
+    },
+    "resolution": {
+      "enum": [
+        "9x1",
+        "9x2",
+        "9x3",
+        "9x4",
+        "9x5",
+        "9x6",
+        "5x1",
+        "3x3"
+      ]
+    },
+    "mask": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "string",
+        "maxLength": 9
+      }
+    },
+    "keys": {
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1,
+        "maxLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "slots": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[0-9]{1,2}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "list": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "area": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1
+        },
+        "var": {
+          "type": "string"
+        },
+        "source": true,
+        "pageSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "template": {
+          "$ref": "#/$defs/component"
+        },
+        "refreshTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        }
+      }
+    },
+    "refresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "dynamic",
+            "always"
+          ]
+        },
+        "titleTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "slotsTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "conditionsTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "listTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        }
+      }
+    },
+    "closeOnTeleport": {
+      "type": "boolean"
+    },
+    "show": {
+      "$ref": "#/$defs/condition"
+    },
+    "select": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "priority": {
+          "type": "integer"
+        },
+        "when": {
+          "type": "string"
+        }
+      }
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "when": {
+            "type": "string"
+          },
+          "presentation": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "$ref": "#/$defs/template"
+              },
+              "mask": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 9
+                }
+              },
+              "keys": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/component"
+                }
+              },
+              "slots": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/component"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "maxProperties": 256,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/actions"
+      }
+    },
+    "preset": {
+      "not": true,
+      "description": "Gloss presets are not available in Animus; inline the preset's fields."
+    }
+  },
+  "$defs": {
+    "template": {
+      "type": "string",
+      "maxLength": 4096,
+      "description": "Text with & codes, MiniMessage and {{ expr }} expressions."
+    },
+    "condition": {
+      "type": [
+        "boolean",
+        "string"
+      ],
+      "description": "A boolean or an expression string."
+    },
+    "icon": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "item",
+            "playerHead"
+          ],
+          "description": "Holographic icons (text, block, entity) and customItem are refused."
+        },
+        "style": true,
+        "item": {
+          "$ref": "#/$defs/template"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99
+        },
+        "customModelValue": {
+          "type": "integer"
+        },
+        "name": {
+          "$ref": "#/$defs/template"
+        },
+        "lore": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/template"
+          }
+        },
+        "countFormat": true,
+        "player": {
+          "$ref": "#/$defs/template"
+        },
+        "refreshTicks": true
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "button",
+            "decoration",
+            "toggle"
+          ],
+          "description": "list, slider, field and tabs are holographic menu components and are refused."
+        },
+        "show": {
+          "$ref": "#/$defs/condition"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "button"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "icon",
+              "actions"
+            ],
+            "propertyNames": {
+              "enum": [
+                "type",
+                "show",
+                "icon",
+                "actions",
+                "highlightModifier",
+                "hoverDurationTicks",
+                "hoverEasing",
+                "hitbox",
+                "tooltip"
+              ]
+            },
+            "properties": {
+              "icon": {
+                "$ref": "#/$defs/icon"
+              },
+              "actions": {
+                "$ref": "#/$defs/actions"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "decoration"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "icon"
+            ],
+            "propertyNames": {
+              "enum": [
+                "type",
+                "show",
+                "icon",
+                "highlightModifier",
+                "hoverDurationTicks",
+                "hoverEasing",
+                "hitbox",
+                "tooltip"
+              ]
+            },
+            "properties": {
+              "icon": {
+                "$ref": "#/$defs/icon"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "toggle"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "condition",
+              "trueActions",
+              "falseActions",
+              "trueIcon",
+              "falseIcon"
+            ],
+            "propertyNames": {
+              "enum": [
+                "type",
+                "show",
+                "condition",
+                "expectedValue",
+                "trueActions",
+                "falseActions",
+                "trueIcon",
+                "falseIcon",
+                "highlightModifier",
+                "hoverDurationTicks",
+                "hoverEasing",
+                "hitbox",
+                "tooltip"
+              ]
+            },
+            "properties": {
+              "trueIcon": {
+                "$ref": "#/$defs/icon"
+              },
+              "falseIcon": {
+                "$ref": "#/$defs/icon"
+              },
+              "trueActions": {
+                "$ref": "#/$defs/actions"
+              },
+              "falseActions": {
+                "$ref": "#/$defs/actions"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    },
+    "action": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "command",
+            "sound",
+            "message",
+            "title",
+            "actionbar",
+            "close",
+            "navigate",
+            "inventory",
+            "setSession",
+            "give",
+            "take",
+            "economy",
+            "delay",
+            "sequence",
+            "if",
+            "switch",
+            "chance",
+            "cooldown",
+            "stop",
+            "call",
+            "animus:open-shop"
+          ],
+          "description": "Gloss-only actions (camera, sky, bossbar and others) are refused at load."
+        },
+        "when": {
+          "type": "string"
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "command"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "type": "string",
+                "pattern": "^[^/]"
+              },
+              "cooldownTicks": true,
+              "source": {
+                "enum": [
+                  "server",
+                  "player"
+                ]
+              },
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "command"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sound"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "pitch": true,
+              "sound": true,
+              "source": true,
+              "trigger": true,
+              "type": true,
+              "volume": true,
+              "when": true
+            },
+            "required": [
+              "sound"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "message"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "message": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "message"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "title"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "fadeInTicks": true,
+              "fadeOutTicks": true,
+              "priority": true,
+              "stayTicks": true,
+              "subtitle": true,
+              "title": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "title"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "actionbar"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "priority": true,
+              "slots": true,
+              "text": true,
+              "ticks": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "text"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "close"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "navigate"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "list": true,
+              "mode": true,
+              "target": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "target"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "inventory"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "args": true,
+              "cooldownTicks": true,
+              "id": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "setSession"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "trigger": true,
+              "type": true,
+              "value": true,
+              "var": true,
+              "when": true
+            },
+            "required": [
+              "var"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "give"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": true,
+              "cooldownTicks": true,
+              "dropIfFull": true,
+              "item": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "item"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "take"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": true,
+              "cooldownTicks": true,
+              "denyMessage": true,
+              "item": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "item"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "economy"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": true,
+              "cooldownTicks": true,
+              "denyMessage": true,
+              "op": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "op",
+              "amount"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "delay"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "ticks": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1728000
+              },
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "ticks"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sequence"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "onSkip": {
+                "$ref": "#/$defs/actions"
+              },
+              "once": true,
+              "skippable": true,
+              "steps": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object"
+                }
+              },
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "steps"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "if"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "else": {
+                "$ref": "#/$defs/actions"
+              },
+              "then": {
+                "$ref": "#/$defs/actions"
+              },
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "when",
+              "then"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "switch"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cases": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/actions"
+                }
+              },
+              "cooldownTicks": true,
+              "default": {
+                "$ref": "#/$defs/actions"
+              },
+              "on": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "on",
+              "cases"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "chance"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "else": {
+                "$ref": "#/$defs/actions"
+              },
+              "percent": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "then": {
+                "$ref": "#/$defs/actions"
+              },
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "percent",
+              "then"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "cooldown"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "else": {
+                "$ref": "#/$defs/actions"
+              },
+              "key": true,
+              "then": {
+                "$ref": "#/$defs/actions"
+              },
+              "ticks": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "key",
+              "ticks"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "stop"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "call"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "action": true,
+              "cooldownTicks": true,
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "action"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "animus:open-shop"
+              }
+            }
+          },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "cooldownTicks": true,
+              "shop": {
+                "type": "string",
+                "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$"
+              },
+              "trigger": true,
+              "type": true,
+              "when": true
+            },
+            "required": [
+              "shop"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

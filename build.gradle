@@ -149,3 +149,8 @@ tasks.named('clean').configure {
 }
 
 apply from: 'gradle/multiplexor.gradle'
+tasks.register('syncEditorSchemas') {
+    group = 'build'
+    description = 'Regenerates schema/generated/ from the Java capability registry.'
+    dependsOn(':converter:syncEditorSchemas')
+}

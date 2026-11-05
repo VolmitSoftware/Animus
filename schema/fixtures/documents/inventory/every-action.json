@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "title": "Every action",
+  "resolution": "9x1",
+  "actions": {
+    "done": [
+      {
+        "type": "message",
+        "message": "done"
+      }
+    ]
+  },
+  "slots": {
+    "0": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:stone"
+      },
+      "actions": [
+        {
+          "type": "command",
+          "command": "say hi",
+          "source": "player"
+        },
+        {
+          "type": "sound",
+          "sound": "minecraft:ui.button.click",
+          "volume": 1,
+          "pitch": 1
+        },
+        {
+          "type": "message",
+          "message": "Hello {{ viewer.name }}"
+        },
+        {
+          "type": "title",
+          "title": "&6Hi",
+          "subtitle": "there"
+        },
+        {
+          "type": "actionbar",
+          "text": "bar"
+        },
+        {
+          "type": "navigate",
+          "target": "shop:counter"
+        },
+        {
+          "type": "setSession",
+          "var": "picked",
+          "value": "stone"
+        },
+        {
+          "type": "give",
+          "item": {
+            "type": "item",
+            "item": "minecraft:bread"
+          },
+          "amount": 1
+        },
+        {
+          "type": "take",
+          "item": {
+            "type": "item",
+            "item": "minecraft:bread"
+          },
+          "amount": 1
+        },
+        {
+          "type": "economy",
+          "op": "withdraw",
+          "amount": 5
+        },
+        {
+          "type": "sequence",
+          "steps": [
+            {
+              "type": "message",
+              "message": "one"
+            },
+            {
+              "atTicks": 10,
+              "type": "message",
+              "message": "two"
+            }
+          ]
+        },
+        {
+          "type": "if",
+          "when": "viewer.level > 1",
+          "then": [
+            {
+              "type": "message",
+              "message": "high"
+            }
+          ],
+          "else": [
+            {
+              "type": "message",
+              "message": "low"
+            }
+          ]
+        },
+        {
+          "type": "switch",
+          "on": "session.picked",
+          "cases": {
+            "stone": [
+              {
+                "type": "message",
+                "message": "stone"
+              }
+            ]
+          },
+          "default": [
+            {
+              "type": "stop"
+            }
+          ]
+        },
+        {
+          "type": "chance",
+          "percent": 50,
+          "then": [
+            {
+              "type": "message",
+              "message": "lucky"
+            }
+          ]
+        },
+        {
+          "type": "cooldown",
+          "key": "click",
+          "ticks": 20,
+          "then": [
+            {
+              "type": "message",
+              "message": "ok"
+            }
+          ]
+        },
+        {
+          "type": "delay",
+          "ticks": 5
+        },
+        {
+          "type": "call",
+          "action": "done"
+        },
+        {
+          "type": "animus:open-shop",
+          "shop": "shop:bakery"
+        },
+        {
+          "type": "close"
+        }
+      ]
+    },
+    "1": {
+      "type": "button",
+      "icon": {
+        "type": "playerHead",
+        "player": "{{ viewer.name }}"
+      },
+      "actions": [
+        {
+          "type": "inventory",
+          "id": "shop:counter"
+        }
+      ]
+    },
+    "2": {
+      "type": "toggle",
+      "condition": "session.picked == \"stone\"",
+      "trueActions": [
+        {
+          "type": "close"
+        }
+      ],
+      "falseActions": [
+        {
+          "type": "close"
+        }
+      ],
+      "trueIcon": {
+        "type": "item",
+        "item": "minecraft:lime_dye"
+      },
+      "falseIcon": {
+        "type": "item",
+        "item": "minecraft:gray_dye"
+      },
+      "expectedValue": "true"
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "revision": 3,
+  "id": "shop:keeper",
+  "entry": "greet",
+  "routines": {
+    "greet": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Fresh bread today. Right-click to browse, left-click for the counter."
+          }
+        }
+      ]
+    },
+    "counter": {
+      "type": "action",
+      "capability": "animus:open-gui",
+      "arguments": {
+        "gui": "shop:counter"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 6,
+      "cooldownTicks": 600
+    },
+    {
+      "id": "left-click",
+      "event": "interaction",
+      "action": "attack",
+      "routine": "counter",
+      "cooldownTicks": 10
+    }
+  ]
+}

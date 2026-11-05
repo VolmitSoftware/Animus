@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/animation-v1.schema.json",
+  "title": "Animus animation",
+  "description": "animations/<namespace>/<path>.json. Keyframe tracks over a rig's bones. Sampling is defined in docs/editor-contracts.md and pinned by schema/fixtures/animation/samples/. Validators also check that keyframe ticks strictly increase, stay within durationTicks, that track bones exist in the rig, and that values match the target.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "id", "rig", "durationTicks", "tracks"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"$ref": "#/$defs/documentId"},
+    "rig": {"$ref": "#/$defs/documentId", "description": "The rig whose bones the tracks name."},
+    "durationTicks": {"type": "integer", "minimum": 1, "maximum": 1200},
+    "loop": {"enum": ["once", "loop", "pingpong", "hold"], "description": "Defaults to once."},
+    "tracks": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/track"}},
+    "events": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/event"}}
+  },
+  "$defs": {
+    "documentId": {"type": "string", "maxLength": 256, "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$"},
+    "vector": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "minimum": -4096, "maximum": 4096}},
+    "easing": {
+      "anyOf": [
+        {"enum": ["linear", "hold", "ease_in", "ease_out", "ease_in_out", "back_out"]},
+        {"type": "string", "pattern": "^bezier\\(\\s*(0(\\.\\d+)?|1(\\.0+)?)\\s*,\\s*-?\\d+(\\.\\d+)?\\s*,\\s*(0(\\.\\d+)?|1(\\.0+)?)\\s*,\\s*-?\\d+(\\.\\d+)?\\s*\\)$"}
+      ],
+      "description": "The curve from this keyframe to the next. Defaults to linear. bezier x values are within 0..1."
+    },
+    "keyframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tick", "value"],
+      "properties": {
+        "tick": {"type": "number", "minimum": 0, "maximum": 1200},
+        "value": {"anyOf": [{"$ref": "#/$defs/vector"}, {"type": "boolean"}]},
+        "easing": {"$ref": "#/$defs/easing"}
+      }
+    },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bone", "target", "keyframes"],
+      "properties": {
+        "bone": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
+        "target": {"enum": ["rotation", "translation", "scale", "visible"]},
+        "blend": {"enum": ["replace", "add", "multiply"], "description": "Defaults to replace. visible tracks always replace."},
+        "keyframes": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/keyframe"}}
+      },
+      "allOf": [
+        {"if": {"properties": {"target": {"const": "visible"}}},
+         "then": {"properties": {"keyframes": {"items": {"properties": {"value": {"type": "boolean"}}}}, "blend": {"const": "replace"}}},
+         "else": {"properties": {"keyframes": {"items": {"properties": {"value": {"type": "array"}}}}}}}
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tick", "capability"],
+      "properties": {
+        "tick": {"type": "integer", "minimum": 0, "maximum": 1200},
+        "capability": {"enum": ["animus:play-sound", "animus:spawn-particle"], "description": "Only sound and particle capabilities run from animations."},
+        "arguments": {"type": "object"}
+      }
+    }
+  }
+}

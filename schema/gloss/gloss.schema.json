@@ -1,0 +1,3416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://volmit.com/gloss/schema.json",
+  "title": "Gloss Menu Config",
+  "description": "Defines a Gloss hologram menu and all its components. Documents live in plugins/Gloss/menus/ and are hot reloaded. Documentation grade only: the Java parser is the format's source of truth. See the Gloss docs pages /gloss/09-menus, /gloss/10-components-hitboxes, /gloss/11-icons and /gloss/12-actions in the central VolmitSoftware/docs repo.",
+  "type": "object",
+  "required": [
+    "offset",
+    "components"
+  ],
+  "properties": {
+    "offset": {
+      "description": "Offset from the player's feet location (Player#getLocation), which acts as the menu centre. Component rotation pivots on the eye; the X component is negated on load. Not scaled by uiScale.",
+      "$ref": "#/$defs/vector3"
+    },
+    "lockPosition": {
+      "description": "Defines whether the player is able to move while a menu is open, or will be frozen in place.",
+      "type": "boolean"
+    },
+    "followPlayer": {
+      "description": "Defines whether the menu follows the player, or will be frozen in place.",
+      "type": "boolean"
+    },
+    "maxDistance": {
+      "description": "Defines the maximum distance between the player and menu before it closes.",
+      "type": "number"
+    },
+    "closeOnDeath": {
+      "description": "Defines whether the menu closes when the player dies. Defaults to false.",
+      "type": "boolean"
+    },
+    "closeOnTeleport": {
+      "description": "Defines whether the menu closes when the player teleports. Defaults to false. A teleport that leaves the menu's world or its range closes the menu regardless.",
+      "type": "boolean"
+    },
+    "particleLayers": {
+      "description": "Viewer-targeted particle effects attached to this in-world menu projection.",
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/particleLayer"
+      }
+    },
+    "components": {
+      "description": "A list of menu components present in this menu.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/component"
+      }
+    },
+    "show": {
+      "description": "Boolean or expression controlling visibility of the menu.",
+      "$ref": "#/$defs/show"
+    },
+    "vars": {
+      "title": "Session Variable Defaults",
+      "description": "Starting values for session.<name>. Each value is a constant expression; anything that needs live state is ignored.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "actions": {
+      "type": "object",
+      "maxProperties": 256,
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/action"
+        }
+      },
+      "description": "Named action lists invoked with call. Cycles, more than 32 nested calls and expanded documents over 100000 JSON nodes are rejected."
+    }
+  },
+  "$defs": {
+    "particleLayer": {
+      "type": "object",
+      "required": [
+        "id",
+        "target",
+        "geometry",
+        "particle"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "target": {
+          "type": "object",
+          "required": [
+            "scope"
+          ],
+          "properties": {
+            "scope": {
+              "enum": [
+                "projection",
+                "component",
+                "text",
+                "line",
+                "span",
+                "label",
+                "model",
+                "local",
+                "world"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+            },
+            "component": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "geometry": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "point",
+                "line",
+                "polyline",
+                "outline",
+                "filledPlane",
+                "cuboid",
+                "letterBounds",
+                "glyphOutline",
+                "glyphFill"
+              ]
+            },
+            "from": {
+              "$ref": "#/$defs/particleAnchor"
+            },
+            "to": {
+              "$ref": "#/$defs/particleAnchor"
+            },
+            "points": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/particleAnchor"
+              }
+            },
+            "width": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 128
+            },
+            "height": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 128
+            },
+            "depth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 128
+            },
+            "padding": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 16
+            },
+            "spacing": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 16
+            }
+          }
+        },
+        "placement": {
+          "type": "object",
+          "properties": {
+            "layer": {
+              "enum": [
+                "behind",
+                "front",
+                "center"
+              ]
+            },
+            "depth": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 16
+            },
+            "offset": {
+              "$ref": "#/$defs/vector3"
+            }
+          }
+        },
+        "particle": {
+          "type": "object",
+          "required": [
+            "key"
+          ],
+          "properties": {
+            "key": {
+              "type": "string",
+              "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"
+            },
+            "color": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            },
+            "size": {
+              "type": "number",
+              "minimum": 0.01,
+              "maximum": 4
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64,
+              "default": 1,
+              "description": "Particles emitted at each sampled point; every particle counts against the emission budget."
+            },
+            "speed": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10,
+              "default": 0,
+              "description": "Particle velocity multiplier."
+            },
+            "spread": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 16,
+                "default": 0
+              },
+              "minItems": 3,
+              "maxItems": 3,
+              "default": [
+                0,
+                0,
+                0
+              ],
+              "description": "Random particle offsets along the x, y and z axes."
+            }
+          }
+        },
+        "emission": {
+          "type": "object",
+          "properties": {
+            "intervalTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "pattern": {
+              "enum": [
+                "steady",
+                "chase",
+                "pulse",
+                "twinkle",
+                "scan",
+                "corners"
+              ]
+            },
+            "periodTicks": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 72000
+            },
+            "seed": {
+              "type": "integer"
+            }
+          }
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": -1000,
+          "maximum": 1000
+        },
+        "viewDistance": {
+          "type": "number",
+          "minimum": 4,
+          "maximum": 128,
+          "default": 48,
+          "description": "Maximum distance in blocks at which this layer emits for a viewer."
+        },
+        "show": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": true,
+          "description": "Boolean or viewer condition controlling whether this layer emits."
+        }
+      }
+    },
+    "particleAnchor": {
+      "title": "Particle Anchor",
+      "description": "One end of a particle geometry: a coordinate in the target's frame, or, under the world scope only, the role name viewer or subject, or an object naming an entity to follow.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/vector3"
+        },
+        {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "subject"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "entity"
+          ],
+          "properties": {
+            "entity": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F-]{36}$"
+            }
+          }
+        }
+      ]
+    },
+    "vector3": {
+      "title": "3D Vector",
+      "description": "Represents a 3D floating-point vector.",
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "component": {
+      "title": "Gloss Component Object",
+      "description": "Defines the basic properties of a component.",
+      "type": "object",
+      "required": [
+        "id",
+        "offset",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "description": "A unique identifier for this menu option.",
+          "type": "string"
+        },
+        "offset": {
+          "description": "The offset relative to the menu's center point.",
+          "$ref": "#/$defs/vector3"
+        },
+        "data": {
+          "description": "The type and associated data of the object.",
+          "$ref": "#/$defs/componentData"
+        },
+        "show": {
+          "description": "Boolean or expression controlling visibility of this component.",
+          "$ref": "#/$defs/show"
+        },
+        "motion": {
+          "description": "Moves and resizes this component's existing displays without respawning them.",
+          "$ref": "#/$defs/componentMotion"
+        }
+      }
+    },
+    "componentMotion": {
+      "title": "Component Motion Object",
+      "description": "Numbers or expressions re-read every tick while the component is open. The viewer's client eases each change over ticks.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "description": "Added to the offset on this axis, in menu blocks before uiScale.",
+          "$ref": "#/$defs/motionValue"
+        },
+        "y": {
+          "description": "Added to the offset on this axis, in menu blocks before uiScale.",
+          "$ref": "#/$defs/motionValue"
+        },
+        "z": {
+          "description": "Added to the offset on this axis, in menu blocks before uiScale.",
+          "$ref": "#/$defs/motionValue"
+        },
+        "scale": {
+          "description": "Multiplies the icon's size and hitbox. Values below 0.001 use 0.001. Entity icons keep their size.",
+          "$ref": "#/$defs/motionValue"
+        },
+        "ticks": {
+          "description": "How long the client takes to ease to a new value. 0 jumps there at once. Accepted range: 0 through 59.",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 59
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 3
+        }
+      }
+    },
+    "motionValue": {
+      "oneOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "componentData": {
+      "title": "Component Data Object",
+      "description": "Defines the type and data of a component.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Defines the type of component.",
+          "enum": [
+            "button",
+            "decoration",
+            "toggle",
+            "list",
+            "slider",
+            "field",
+            "tabs"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "button"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/buttonComponent"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "decoration"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/decoComponent"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "toggle"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/toggleComponent"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/listComponent"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "slider"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/sliderComponent"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "field"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/fieldComponent"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tabs"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/tabsComponent"
+          }
+        }
+      ]
+    },
+    "action": {
+      "title": "Component Action Data Object",
+      "description": "Describes the actual effects of a interact-able component.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Defines the type of action.",
+          "enum": [
+            "command",
+            "sound",
+            "message",
+            "teleport",
+            "connect",
+            "navigate",
+            "title",
+            "actionbar",
+            "bossbar",
+            "surface",
+            "close",
+            "inventory",
+            "setSession",
+            "prompt",
+            "dialog",
+            "book",
+            "give",
+            "take",
+            "economy",
+            "delay",
+            "call",
+            "sequence",
+            "parallel",
+            "repeat",
+            "if",
+            "switch",
+            "chance",
+            "cooldown",
+            "emit",
+            "broadcast",
+            "effect",
+            "particle",
+            "stop",
+            "setState",
+            "addState",
+            "clearState",
+            "sky",
+            "camera",
+            "glow"
+          ]
+        },
+        "trigger": {
+          "description": "Optional click binding. Omitted or null matches every accepted main-hand click.",
+          "default": "any",
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "any",
+                "left_click",
+                "right_click",
+                "shift_left_click",
+                "shift_right_click"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "when": {
+          "description": "Optional condition evaluated for the clicking player each time the action would run; false skips this action and continues with the next. Same syntax as show conditions.",
+          "type": "string"
+        },
+        "cooldownTicks": {
+          "description": "Optional per-player cooldown in ticks after this action runs; while it is active the action is skipped and the list continues. Omitted or 0 means no cooldown.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "command"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/commandAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sound"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/soundAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "message"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/messageAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "teleport"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/teleportAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "connect"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/connectAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "navigate"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/navigationAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "title"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/titleAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "actionbar"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/actionBarAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "bossbar"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/bossBarAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "close"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/closeAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "inventory"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/inventoryAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "setSession"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/setSessionAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "prompt"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/promptAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "book"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/bookAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "give"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/giveAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "take"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/takeAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "economy"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/economyAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "delay"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/delayAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sequence"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/sequenceAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "parallel"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/parallelAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "repeat"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/repeatAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "if"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/ifAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "switch"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/switchAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "chance"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/chanceAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "cooldown"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/cooldownAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "emit"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/emitAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "broadcast"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/broadcastAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "effect"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/effectAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "particle"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/particleAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "stop"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/stopAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "setState"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/setStateAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "addState"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/addStateAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "clearState"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/clearStateAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sky"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/skyAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "camera"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/cameraAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "glow"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/glowAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "dialog"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/dialogAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "surface"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/surfaceAction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "call"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/callAction"
+          }
+        }
+      ]
+    },
+    "glowAction": {
+      "title": "Entity Glow Action Data Object",
+      "description": "Outlines an entity for the clicking player alone. Tags stack per purpose and the highest priority decides the colour shown.",
+      "type": "object",
+      "required": [
+        "color"
+      ],
+      "properties": {
+        "target": {
+          "description": "Whose outline: viewer, subject, or an entity uuid. Defaults to the clicking player.",
+          "type": "string"
+        },
+        "color": {
+          "description": "Named text colour applied to the outline and the team.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "ticks": {
+          "description": "Ticks the tag lives for. Zero keeps it until something untags it.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "purpose": {
+          "description": "Owner name for this tag, so two owners never clear each other.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "priority": {
+          "description": "Higher priority wins when several tags target the same entity for the same viewer.",
+          "type": "integer"
+        }
+      }
+    },
+    "cameraAction": {
+      "title": "Camera Ride Action Data Object",
+      "description": "Takes the clicking player on a spectator ride along a Catmull-Rom path. Terminates the action list: the ride owns the player until it ends.",
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "description": "Ordered camera nodes. Each node's durationTicks is the time spent travelling to the next one; the last node's is ignored.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "z"
+            ],
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "z": {
+                "type": "number"
+              },
+              "yaw": {
+                "type": "number"
+              },
+              "pitch": {
+                "type": "number",
+                "minimum": -90,
+                "maximum": 90
+              },
+              "durationTicks": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "skippable": {
+          "description": "Ends the ride when the rider sneaks. Defaults to true.",
+          "type": "boolean"
+        },
+        "letterbox": {
+          "description": "Asks for black bars while the ride runs. Ignored when no surface provider is installed, and never sent to Bedrock viewers.",
+          "type": "boolean"
+        }
+      }
+    },
+    "skyAction": {
+      "title": "Per-Viewer Sky Action Data Object",
+      "description": "Claims the clicking player's time, weather and world border under a purpose. Overrides stack by purpose and the newest wins; releasing one hands the sky back to the previous owner.",
+      "type": "object",
+      "required": [
+        "purpose"
+      ],
+      "properties": {
+        "purpose": {
+          "description": "Owner name for this claim. Releasing the same purpose restores what was showing before it.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "time": {
+          "description": "Day-clock tick shown to this viewer, or \"reset\" to release the purpose.",
+          "type": [
+            "integer",
+            "string"
+          ]
+        },
+        "weather": {
+          "description": "Weather shown to this viewer, or \"reset\" to release the purpose. Bukkit has no per-player thunder, so thunder renders as downfall.",
+          "type": "string",
+          "enum": [
+            "clear",
+            "rain",
+            "downfall",
+            "thunder",
+            "storm",
+            "reset"
+          ]
+        },
+        "border": {
+          "description": "Per-viewer world border. Sent through Paper's Bukkit-typed API when it exists and as border packets on Spigot.",
+          "type": "object",
+          "required": [
+            "centerX",
+            "centerZ",
+            "size"
+          ],
+          "properties": {
+            "centerX": {
+              "type": "number"
+            },
+            "centerZ": {
+              "type": "number"
+            },
+            "size": {
+              "type": "number",
+              "minimum": 1
+            },
+            "warningBlocks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 512
+            }
+          }
+        },
+        "fadeTicks": {
+          "description": "Ticks the time takes to walk from the world's own time to the override, along the shorter arc of the day clock. Zero jumps.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000
+        }
+      }
+    },
+    "iconDisplayStyle": {
+      "title": "Icon Display Style",
+      "description": "Optional display-entity metadata shared by text, image, item, block, and custom-item icons. Packet entity icons do not accept this object.",
+      "type": "object",
+      "dependentRequired": {
+        "blockLight": [
+          "skyLight"
+        ],
+        "skyLight": [
+          "blockLight"
+        ]
+      },
+      "properties": {
+        "billboard": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "vertical",
+            "horizontal",
+            "center"
+          ],
+          "default": "fixed"
+        },
+        "shadow": {
+          "type": "boolean",
+          "default": false
+        },
+        "seeThrough": {
+          "type": "boolean",
+          "default": false
+        },
+        "textAlignment": {
+          "type": "string",
+          "enum": [
+            "center",
+            "left",
+            "right"
+          ],
+          "default": "center"
+        },
+        "backgroundArgb": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{8}$",
+          "default": "#00000000"
+        },
+        "textOpacity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 255
+        },
+        "lineWidth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16384,
+          "default": 16384
+        },
+        "blockLight": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 15
+        },
+        "skyLight": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 15
+        },
+        "viewRange": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 64,
+          "default": 1
+        },
+        "shadowRadius": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 64,
+          "default": 0
+        },
+        "shadowStrength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 0
+        },
+        "cullingWidth": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4096,
+          "default": 0
+        },
+        "cullingHeight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4096,
+          "default": 0
+        },
+        "glowColor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^#[0-9A-Fa-f]{8}$"
+        },
+        "scaleX": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 64,
+          "default": 1
+        },
+        "scaleY": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 64,
+          "default": 1
+        },
+        "scaleZ": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 64,
+          "default": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "icon": {
+      "title": "Component Icon Data Object",
+      "description": "Defines the visual parts of a component.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Defines the type of icon.",
+          "enum": [
+            "text",
+            "textImage",
+            "animatedTextImage",
+            "item",
+            "block",
+            "customItem",
+            "entity",
+            "playerHead"
+          ]
+        },
+        "style": {
+          "description": "Optional display styling. Omitted uses fixed, fully visible, unlit-override defaults at uniform scale 1.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/iconDisplayStyle"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "text"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/textIcon"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "textImage"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/textImageIcon"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "animatedTextImage"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/animatedTextImageIcon"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "item"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/itemIcon"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "block"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/blockIcon"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "customItem"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/customItemIcon"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "entity"
+              }
+            }
+          },
+          "then": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/entityIcon"
+              },
+              {
+                "not": {
+                  "required": [
+                    "style"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "playerHead"
+              }
+            }
+          },
+          "then": {
+            "$ref": "#/$defs/playerHeadIcon"
+          }
+        }
+      ]
+    },
+    "hitbox": {
+      "title": "Clickable Hitbox",
+      "description": "Optional click-plane dimensions, anchor and displacement in blocks before uiScale is applied.",
+      "type": "object",
+      "minProperties": 1,
+      "dependentRequired": {
+        "width": [
+          "height"
+        ],
+        "height": [
+          "width"
+        ]
+      },
+      "properties": {
+        "width": {
+          "description": "Click-plane width in blocks at uiScale 1.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "description": "Click-plane height in blocks at uiScale 1.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "offset": {
+          "description": "Displacement from the selected anchor in right, up, forward blocks at uiScale 1.",
+          "$ref": "#/$defs/vector3"
+        },
+        "anchor": {
+          "description": "Whether offset is relative to the clickable component or the menu centre. Menu anchoring detaches icon and plane movement.",
+          "type": "string",
+          "enum": [
+            "button",
+            "menu"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "buttonComponent": {
+      "title": "Button Component Data Object",
+      "description": "Defines the data for a button component.",
+      "type": "object",
+      "required": [
+        "actions",
+        "icon"
+      ],
+      "properties": {
+        "highlightModifier": {
+          "description": "Menu-local travel toward the viewer at uiScale 1.",
+          "type": "number"
+        },
+        "hoverDurationTicks": {
+          "description": "Ticks used to enter and leave the hovered pose. Defaults to 4; zero is instant.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "hoverEasing": {
+          "description": "Easing curve used for hover entry and exit. Defaults to ease_out_cubic.",
+          "type": "string",
+          "enum": [
+            "linear",
+            "ease_out_cubic",
+            "ease_in_out_cubic",
+            "back_out"
+          ]
+        },
+        "actions": {
+          "description": "Defines what happens upon a interaction.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "icon": {
+          "description": "Defines the visual part of the component.",
+          "$ref": "#/$defs/icon"
+        },
+        "hitbox": {
+          "description": "Optional dimensions and displacement for the click plane. Omitted dimensions remain automatic; omitted offset remains icon-aligned.",
+          "$ref": "#/$defs/hitbox"
+        },
+        "tooltip": {
+          "description": "Secondary pane shown after the viewer has hovered this button for delayTicks.",
+          "type": "object",
+          "properties": {
+            "delayTicks": {
+              "description": "Hover ticks before the pane appears.",
+              "type": "integer",
+              "minimum": 0
+            },
+            "lines": {
+              "description": "Lines drawn in the pane.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": {
+              "$ref": "#/$defs/iconDisplayStyle"
+            },
+            "box": {
+              "$ref": "#/$defs/box"
+            }
+          }
+        }
+      }
+    },
+    "decoComponent": {
+      "title": "Decoration Component Data Object",
+      "description": "Defines the data for a decorative component.",
+      "type": "object",
+      "required": [
+        "icon"
+      ],
+      "properties": {
+        "icon": {
+          "description": "Defines the visual parts of a component.",
+          "$ref": "#/$defs/icon"
+        }
+      }
+    },
+    "toggleComponent": {
+      "title": "Toggle Component Data Object",
+      "description": "Defines the data for a toggle component.",
+      "type": "object",
+      "required": [
+        "condition",
+        "expectedValue",
+        "trueActions",
+        "falseActions",
+        "trueIcon",
+        "falseIcon"
+      ],
+      "properties": {
+        "highlightModifier": {
+          "description": "Menu-local travel toward the viewer at uiScale 1.",
+          "type": "number"
+        },
+        "hoverDurationTicks": {
+          "description": "Ticks used to enter and leave the hovered pose. Defaults to 4; zero is instant.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "hoverEasing": {
+          "description": "Easing curve used for hover entry and exit. Defaults to ease_out_cubic.",
+          "type": "string",
+          "enum": [
+            "linear",
+            "ease_out_cubic",
+            "ease_in_out_cubic",
+            "back_out"
+          ]
+        },
+        "condition": {
+          "description": "Defines what placeholder value is used to determine the toggles initial state.",
+          "type": "string"
+        },
+        "expectedValue": {
+          "description": "Defines what the condition is checked against to determine the toggles initial state.",
+          "type": "string"
+        },
+        "trueActions": {
+          "description": "Defines what happens upon a interaction that enters the true state, so upon a interaction while the toggle is false.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "falseActions": {
+          "description": "Defines what happens upon a interaction that enters the false state, so upon a interaction while the toggle is true.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "trueIcon": {
+          "description": "Defines the visual part of the component while the toggle is in the true state.",
+          "$ref": "#/$defs/icon"
+        },
+        "falseIcon": {
+          "description": "Defines the visual part of the component while the toggle is in the false state.",
+          "$ref": "#/$defs/icon"
+        },
+        "hitbox": {
+          "description": "Optional stable click plane shared by both toggle icon states.",
+          "$ref": "#/$defs/hitbox"
+        }
+      }
+    },
+    "commandAction": {
+      "title": "Command Action Data Object",
+      "description": "Defines the data for a command action.",
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "properties": {
+        "command": {
+          "description": "Defines the command run by this action. %player% and %player_name% become the clicking player's name before player or server dispatch.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "[^\\s/]"
+        },
+        "source": {
+          "description": "Defines the source of this command. Defaults to \"player\", so the command runs as the clicking player unless \"server\" is written explicitly.",
+          "type": "string",
+          "enum": [
+            "server",
+            "player"
+          ]
+        }
+      }
+    },
+    "soundAction": {
+      "title": "Sound Action Data Object",
+      "description": "Defines the data for a sound action.",
+      "type": "object",
+      "required": [
+        "sound"
+      ],
+      "properties": {
+        "sound": {
+          "description": "Defines the sound played by this action. An unknown sound key is logged when the component resolves its actions and the action is dropped.",
+          "type": "string"
+        },
+        "source": {
+          "description": "Defines the audio channel of this sound. Defaults to \"master\".",
+          "type": "string",
+          "enum": [
+            "master",
+            "music",
+            "record",
+            "weather",
+            "block",
+            "hostile",
+            "neutral",
+            "player",
+            "ambient",
+            "voice"
+          ]
+        },
+        "volume": {
+          "description": "Defines the volume modifier for this sound. Defaults to 1.0.",
+          "type": "number"
+        },
+        "pitch": {
+          "description": "Defines the pitch modifier for this sound. Defaults to 1.0.",
+          "type": "number"
+        }
+      }
+    },
+    "messageAction": {
+      "title": "Player Message Action Data Object",
+      "description": "Sends a MiniMessage-formatted message to the clicking player.",
+      "type": "object",
+      "required": [
+        "message"
+      ],
+      "properties": {
+        "message": {
+          "description": "MiniMessage text sent to the player. %player% and PlaceholderAPI placeholders are resolved for the clicking player before parsing.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "teleportAction": {
+      "title": "Player Teleport Action Data Object",
+      "description": "Teleports the clicking player asynchronously to an already-loaded namespaced world.",
+      "type": "object",
+      "required": [
+        "world",
+        "x",
+        "y",
+        "z",
+        "yaw",
+        "pitch"
+      ],
+      "properties": {
+        "world": {
+          "description": "Explicit lowercase namespace:key of an already-loaded Bukkit world.",
+          "type": "string",
+          "maxLength": 255,
+          "pattern": "^[a-z0-9._-]+:[a-z0-9/._-]+$"
+        },
+        "x": {
+          "description": "Finite destination X coordinate.",
+          "type": "number"
+        },
+        "y": {
+          "description": "Finite destination Y coordinate.",
+          "type": "number"
+        },
+        "z": {
+          "description": "Finite destination Z coordinate.",
+          "type": "number"
+        },
+        "yaw": {
+          "description": "Finite destination yaw in degrees.",
+          "type": "number"
+        },
+        "pitch": {
+          "description": "Finite destination pitch in degrees.",
+          "type": "number"
+        }
+      }
+    },
+    "connectAction": {
+      "title": "Proxy Server Connect Action Data Object",
+      "description": "Requests a BungeeCord-compatible proxy connection for the clicking player.",
+      "type": "object",
+      "required": [
+        "server"
+      ],
+      "properties": {
+        "server": {
+          "description": "Configured proxy server name. Only letters, numbers, dot, underscore, and hyphen are accepted.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        }
+      }
+    },
+    "titleAction": {
+      "title": "Title Action Data Object",
+      "description": "Shows a title and subtitle to the clicking player through the shared HUD compositor, so a higher-priority title from another plugin is not overwritten. Continues the action list.",
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "description": "Title text. Runs through the full text pipeline for the clicking player.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "subtitle": {
+          "description": "Optional subtitle text under the title. Omitted means no subtitle.",
+          "type": "string"
+        },
+        "fadeInTicks": {
+          "description": "Ticks the title fades in over. Defaults to 10.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "stayTicks": {
+          "description": "Ticks the title stays fully visible. Defaults to 40.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "fadeOutTicks": {
+          "description": "Ticks the title fades out over. Defaults to 10.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "priority": {
+          "description": "Compositor priority this title bids with. Defaults to notice.",
+          "type": "string",
+          "enum": [
+            "ambient",
+            "notice",
+            "status",
+            "progress",
+            "interactive",
+            "modal",
+            "pinned"
+          ]
+        }
+      }
+    },
+    "actionBarAction": {
+      "title": "Action Bar Action Data Object",
+      "description": "Publishes one action bar segment for the clicking player through the shared HUD compositor, which merges it with segments other plugins publish. Continues the action list.",
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "description": "Action bar text. Runs through the full text pipeline for the clicking player.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "ticks": {
+          "description": "Ticks the segment stays published before it expires. Defaults to 60.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1200
+        },
+        "slots": {
+          "description": "Compositor slots this segment may occupy. Defaults to center.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "left",
+              "center",
+              "right"
+            ]
+          }
+        },
+        "priority": {
+          "description": "Compositor priority this segment bids with. Defaults to notice.",
+          "type": "string",
+          "enum": [
+            "ambient",
+            "notice",
+            "status",
+            "progress",
+            "interactive",
+            "modal",
+            "pinned"
+          ]
+        }
+      }
+    },
+    "bossBarAction": {
+      "title": "Boss Bar Action Data Object",
+      "description": "Shows or hides one boss bar lane for the clicking player through the shared HUD compositor, which caps how many bars a viewer sees at once. Continues the action list.",
+      "type": "object",
+      "required": [
+        "id",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "description": "Lane id for this bar. Reusing the id replaces the bar instead of adding a second one.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "title": {
+          "description": "Bar title. Runs through the full text pipeline for the clicking player.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "progress": {
+          "description": "Fill from 0 to 1 as a literal number in a string. Defaults to 1.",
+          "type": "string"
+        },
+        "color": {
+          "description": "Bar color. Defaults to white.",
+          "type": "string",
+          "enum": [
+            "pink",
+            "blue",
+            "red",
+            "green",
+            "yellow",
+            "purple",
+            "white"
+          ]
+        },
+        "style": {
+          "description": "Bar segmentation. Defaults to solid.",
+          "type": "string",
+          "enum": [
+            "solid",
+            "segmented_6",
+            "segmented_10",
+            "segmented_12",
+            "segmented_20"
+          ]
+        },
+        "ticks": {
+          "description": "Ticks the bar stays asserted before it expires. 0 hides the lane instead of showing it. Defaults to 100.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200
+        },
+        "priority": {
+          "description": "Compositor priority this bar bids with. Defaults to notice.",
+          "type": "string",
+          "enum": [
+            "ambient",
+            "notice",
+            "status",
+            "progress",
+            "interactive",
+            "modal",
+            "pinned"
+          ]
+        }
+      }
+    },
+    "navigationAction": {
+      "title": "Navigation Action Data Object",
+      "description": "Changes the current viewer's native menu page stack. Navigation is terminal for actions matching the current click trigger.",
+      "type": "object",
+      "properties": {
+        "target": {
+          "description": "Exact menu id opened by push or replace navigation.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "mode": {
+          "description": "Page-stack operation. Defaults to push.",
+          "type": "string",
+          "enum": [
+            "push",
+            "replace",
+            "back",
+            "home",
+            "close"
+          ]
+        },
+        "list": {
+          "description": "Id of the list a page navigation targets. Menus name a list component; a chest menu has one list, so this may be omitted there.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "back",
+                  "home",
+                  "close"
+                ]
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "else": {
+            "required": [
+              "target"
+            ]
+          }
+        }
+      ]
+    },
+    "textIcon": {
+      "title": "Text Icon Data Object",
+      "description": "Defines the data for a text icon.",
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "description": "Defines the text displayed by this icon. Supports ampersand color codes, placeholders, and line breaks.",
+          "type": "string"
+        },
+        "refreshTicks": {
+          "description": "Ticks between live PlaceholderAPI updates. Omitted defaults to 10; 0 disables updates after the initial render.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200,
+          "default": 10
+        },
+        "box": {
+          "description": "Measured text panel and complete perimeter decoration.",
+          "$ref": "#/$defs/box"
+        }
+      }
+    },
+    "textImageIcon": {
+      "title": "Text Image Icon Data Object",
+      "description": "Defines the data for a text-image icon.",
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "description": "Defines the path to the image displayed, relative to the \"images\" directory.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "animatedTextImageIcon": {
+      "title": "Animated Text Image Icon Data Object",
+      "description": "Defines the data for an animated text-image icon.",
+      "type": "object",
+      "required": [
+        "source",
+        "speed"
+      ],
+      "properties": {
+        "source": {
+          "description": "Defines the paths to the animation frames, relative to the \"images\" directory. A single path is accepted in place of the array.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            }
+          ]
+        },
+        "speed": {
+          "description": "Defines the amount of ticks between frame advances.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 1200
+        }
+      }
+    },
+    "itemIcon": {
+      "title": "Item Icon Data Object",
+      "description": "Defines the data for an item icon.",
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "item": {
+          "description": "Defines the type of item displayed.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "count": {
+          "description": "Defines the count of the item stack constructed from the material.",
+          "type": "integer"
+        },
+        "customModelValue": {
+          "description": "Defines the custom model data property for use with resource packs.",
+          "type": "integer"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name for the inventory item. Supports expressions and colors."
+        },
+        "lore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Inventory item lore. Supports expressions and colors."
+        },
+        "countFormat": {
+          "type": "string",
+          "default": "&f&l{count}",
+          "description": "Stack badge text. Supports {count}, colors and expressions."
+        }
+      }
+    },
+    "customItemIcon": {
+      "title": "Custom Item Icon Data Object",
+      "description": "Defines the data for a custom-item icon resolved through an installed item-provider plugin.",
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "provider": {
+          "description": "Defines the item provider that resolves the item. Omitted, blank or \"auto\" tries every active provider in activation order.",
+          "type": "string"
+        },
+        "item": {
+          "description": "Defines the provider-specific item id, passed through verbatim.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "count": {
+          "description": "Defines the count of the resolved item stack. Zero and negative values become 1.",
+          "type": "integer"
+        },
+        "countFormat": {
+          "type": "string",
+          "default": "&f&l{count}",
+          "description": "Stack badge text. Supports {count}, colors and expressions."
+        }
+      }
+    },
+    "blockIcon": {
+      "title": "Block Icon Data Object",
+      "description": "Defines a packet-only block display using the material's default block state. It renders and receives an automatic click plane at 0.75 blocks square before UI and display-style scaling.",
+      "type": "object",
+      "required": [
+        "block"
+      ],
+      "properties": {
+        "block": {
+          "description": "Lowercase Bukkit material id. An omitted namespace defaults to minecraft. The resolved material must be a block.",
+          "type": "string",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name for the inventory item. Supports expressions and colors."
+        },
+        "lore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Inventory item lore. Supports expressions and colors."
+        }
+      }
+    },
+    "entityIcon": {
+      "title": "Entity Icon Data Object",
+      "description": "Defines a packet-only spawnable living entity. The component anchor is the entity's feet; width and height define its automatic click plane and editor footprint in blocks at uiScale 1.",
+      "type": "object",
+      "required": [
+        "entity"
+      ],
+      "properties": {
+        "entity": {
+          "description": "Lowercase Bukkit entity registry id. An omitted namespace defaults to minecraft; only spawnable living entity types are accepted.",
+          "type": "string",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
+        },
+        "width": {
+          "description": "Automatic click-plane width in blocks at uiScale 1. Omitted defaults to 1.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64,
+          "default": 1
+        },
+        "height": {
+          "description": "Automatic click-plane height in blocks at uiScale 1. Omitted defaults to 1 and the plane is centered half this height above the component anchor.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64,
+          "default": 1
+        }
+      }
+    },
+    "playerHeadIcon": {
+      "title": "Player Head Icon Data Object",
+      "description": "Defines a head rendered from a Minecraft account. The profile is resolved asynchronously and cached; until it lands the icon draws an unowned head, and a name that does not exist draws the configured fallback block instead.",
+      "type": "object",
+      "required": [
+        "player"
+      ],
+      "properties": {
+        "player": {
+          "description": "Defines whose head to draw: a literal Minecraft username, or a placeholder resolved per viewer. %player_name%, %player% and {{ player.name }} always mean the viewer and need no PlaceholderAPI; any other placeholder resolves through the text pipeline and needs whatever provides it.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "refreshTicks": {
+          "description": "Ticks between re-reading the name and the profile cache. Omitted defaults to 20. Zero never re-reads, which leaves a head whose lookup was still in flight as the unowned head.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1200,
+          "default": 20
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name for the inventory item. Supports expressions and colors."
+        },
+        "lore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Inventory item lore. Supports expressions and colors."
+        }
+      }
+    },
+    "box": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "padding": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 64,
+          "default": 4
+        },
+        "borderWidth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16,
+          "default": 1
+        },
+        "backgroundArgb": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{8}$",
+          "default": "#B31B1B22"
+        },
+        "borderArgb": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{8}$",
+          "default": "#FFAAAAAA"
+        }
+      }
+    },
+    "show": {
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "string",
+          "minLength": 1
+        }
+      ],
+      "description": "Boolean or Gloss boolean expression. Entity variables include entity.name, named, type, health, maxHealth, healthPercent (0..100), damage, damaged, attack, armor, stackCount, distance, and insight.active. Viewer, world, server, time, permissions, groups, regions and integration functions use the shared condition scope."
+    },
+    "closeAction": {
+      "title": "Close Action Data Object",
+      "description": "Closes the surface the click came from: a menu session or an inventory window. Terminal.",
+      "type": "object",
+      "properties": {}
+    },
+    "inventoryAction": {
+      "title": "Inventory Action Data Object",
+      "description": "Opens an inventories/ chest menu for the clicking player. Terminal: the window owns the flow from here.",
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "description": "Inventory document id, without the .json suffix.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "args": {
+          "description": "Values seeded into the window's args.* namespace for this open.",
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "setSessionAction": {
+      "title": "Set Session Variable Action Data Object",
+      "description": "Writes one session variable of the open surface. Continues the list; components whose text or show reads the variable re-render.",
+      "type": "object",
+      "required": [
+        "var",
+        "value"
+      ],
+      "properties": {
+        "var": {
+          "description": "Session variable name, matching [a-z][a-z0-9_]*.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "value": {
+          "description": "Expression evaluated in the clicking player's scope; its result is stored.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "listComponent": {
+      "title": "List Component Data Object",
+      "description": "Repeats one template per entry of a source expression, flowed on a grid. Capped by [menus] maxListEntries.",
+      "type": "object",
+      "required": [
+        "var",
+        "source",
+        "template"
+      ],
+      "properties": {
+        "var": {
+          "description": "Loop variable bound for each entry.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "source": {
+          "description": "Expression producing the list of entries.",
+          "type": "string",
+          "minLength": 1
+        },
+        "pageSize": {
+          "description": "Entries shown at once; navigate mode page moves between them.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "flow": {
+          "description": "Grid geometry in menu-local units.",
+          "type": "object",
+          "properties": {
+            "columns": {
+              "description": "Entries per row.",
+              "type": "integer",
+              "minimum": 1
+            },
+            "spacingX": {
+              "description": "Horizontal spacing between entries.",
+              "type": "number"
+            },
+            "spacingY": {
+              "description": "Vertical spacing between rows.",
+              "type": "number"
+            },
+            "x": {
+              "description": "Horizontal offset of the first entry.",
+              "type": "number"
+            },
+            "y": {
+              "description": "Vertical offset of the first entry.",
+              "type": "number"
+            }
+          }
+        },
+        "template": {
+          "description": "The component each entry becomes.",
+          "$ref": "#/$defs/componentData"
+        }
+      }
+    },
+    "sliderComponent": {
+      "title": "Slider Component Data Object",
+      "description": "A clickable value between two bounds. Left click adds a step, right click subtracts one, shift multiplies the step by five.",
+      "type": "object",
+      "required": [
+        "var"
+      ],
+      "properties": {
+        "var": {
+          "description": "Session variable written by this slider.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "min": {
+          "description": "Lowest value.",
+          "type": "number"
+        },
+        "max": {
+          "description": "Highest value; must be greater than min.",
+          "type": "number"
+        },
+        "step": {
+          "description": "Amount one click moves the value.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "width": {
+          "description": "Horizontal click-area width in menu-local units, scaled with the menu.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "label": {
+          "description": "Text drawn for the slider; usually reads session.<var>.",
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/$defs/iconDisplayStyle"
+        }
+      }
+    },
+    "fieldComponent": {
+      "title": "Field Component Data Object",
+      "description": "A button that opens a text prompt and writes the answer into a session variable.",
+      "type": "object",
+      "required": [
+        "var"
+      ],
+      "properties": {
+        "var": {
+          "description": "Session variable written with the answer.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "prompt": {
+          "description": "Which editor opens.",
+          "type": "string",
+          "enum": [
+            "sign",
+            "anvil",
+            "chat"
+          ]
+        },
+        "label": {
+          "description": "Text drawn for the field.",
+          "type": "string"
+        },
+        "initial": {
+          "description": "Value offered when the variable is unset.",
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/$defs/iconDisplayStyle"
+        }
+      }
+    },
+    "tabsComponent": {
+      "title": "Tabs Component Data Object",
+      "description": "A row of buttons writing one session variable; other components gate on it with show.",
+      "type": "object",
+      "required": [
+        "var",
+        "tabs"
+      ],
+      "properties": {
+        "var": {
+          "description": "Session variable written with the selected tab id.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "tabs": {
+          "description": "The tabs, in draw order.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "description": "Value written when this tab is clicked.",
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "description": "Text drawn for this tab.",
+                "type": "string"
+              }
+            }
+          }
+        },
+        "spacing": {
+          "description": "Horizontal spacing between tabs.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "style": {
+          "$ref": "#/$defs/iconDisplayStyle"
+        }
+      }
+    },
+    "promptAction": {
+      "title": "Prompt Action Data Object",
+      "description": "Asks the player for a line of text in a sign, anvil or chat editor. Terminal: the answer lands in the session variable and then runs, with input.value holding it.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "Which editor opens.",
+          "type": "string",
+          "enum": [
+            "sign",
+            "anvil",
+            "chat"
+          ]
+        },
+        "var": {
+          "description": "Session variable written with the answer.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "label": {
+          "description": "Text shown with the editor.",
+          "type": "string"
+        },
+        "initial": {
+          "description": "Text the editor opens with.",
+          "type": "string"
+        },
+        "timeoutTicks": {
+          "description": "Ticks before the prompt gives up.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "then": {
+          "description": "Actions run once the answer lands.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        }
+      }
+    },
+    "bookAction": {
+      "title": "Book Action Data Object",
+      "description": "Opens a written book for the clicking player. Continues the list.",
+      "type": "object",
+      "required": [
+        "pages"
+      ],
+      "properties": {
+        "title": {
+          "description": "Book title.",
+          "type": "string"
+        },
+        "author": {
+          "description": "Book author.",
+          "type": "string"
+        },
+        "pages": {
+          "description": "Page texts, run through the text pipeline.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        }
+      }
+    },
+    "giveAction": {
+      "title": "Give Action Data Object",
+      "description": "Gives the clicking player items. Continues the list; with dropIfFull false a full inventory stops it instead.",
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "item": {
+          "description": "The item to give, in icon form.",
+          "$ref": "#/$defs/icon"
+        },
+        "amount": {
+          "description": "Expression for how many to give.",
+          "type": "string"
+        },
+        "dropIfFull": {
+          "description": "Drops at the player's feet when the inventory is full. Default true.",
+          "type": "boolean"
+        }
+      }
+    },
+    "takeAction": {
+      "title": "Take Action Data Object",
+      "description": "Takes items from the clicking player, all or nothing. Terminal when they do not have them.",
+      "type": "object",
+      "required": [
+        "item"
+      ],
+      "properties": {
+        "item": {
+          "description": "The item to take, in icon form.",
+          "$ref": "#/$defs/icon"
+        },
+        "amount": {
+          "description": "Expression for how many to take.",
+          "type": "string"
+        },
+        "denyMessage": {
+          "description": "Message sent when the player does not have them.",
+          "type": "string"
+        }
+      }
+    },
+    "economyAction": {
+      "title": "Economy Action Data Object",
+      "description": "Moves or checks money through Vault. A failed has or withdraw is terminal; a deposit always continues.",
+      "type": "object",
+      "required": [
+        "op"
+      ],
+      "properties": {
+        "op": {
+          "description": "Which operation to run.",
+          "type": "string",
+          "enum": [
+            "withdraw",
+            "deposit",
+            "has"
+          ]
+        },
+        "amount": {
+          "description": "Expression for the amount of money.",
+          "type": "string"
+        },
+        "denyMessage": {
+          "description": "Message sent when the player cannot afford it.",
+          "type": "string"
+        }
+      }
+    },
+    "actionList": {
+      "title": "Action List",
+      "description": "An ordered list of actions. Control-flow actions nest their branches and steps through this definition.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    },
+    "delayAction": {
+      "title": "Delay Action Data Object",
+      "description": "Suspends the surrounding action list and resumes it after the given number of ticks on the player's region thread.",
+      "type": "object",
+      "required": [
+        "ticks"
+      ],
+      "properties": {
+        "ticks": {
+          "description": "Ticks to wait before the rest of the list runs.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1728000
+        }
+      }
+    },
+    "sequenceAction": {
+      "title": "Sequence Action Data Object",
+      "description": "A timed list of steps. Each step is an ordinary action that may carry atTicks, its cue measured from the start of the sequence; steps without a cue run with the previous one.",
+      "type": "object",
+      "required": [
+        "steps"
+      ],
+      "properties": {
+        "steps": {
+          "description": "The ordered steps. Each entry is an action object that may add an integer atTicks cue.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/action"
+              }
+            ],
+            "properties": {
+              "atTicks": {
+                "description": "Tick offset from the start of the sequence.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1728000
+              }
+            }
+          }
+        },
+        "skippable": {
+          "description": "When true the viewer ends the sequence by sneaking, which runs onSkip.",
+          "type": "boolean",
+          "default": false
+        },
+        "once": {
+          "description": "Player boolean state key set when the sequence completes; while it is true the sequence is skipped.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.]*$"
+        },
+        "onSkip": {
+          "$ref": "#/$defs/actionList",
+          "description": "Actions run when a skippable sequence is ended early."
+        }
+      }
+    },
+    "parallelAction": {
+      "title": "Parallel Action Data Object",
+      "description": "Starts every branch as its own program and continues with the rest of the list immediately.",
+      "type": "object",
+      "required": [
+        "branches"
+      ],
+      "properties": {
+        "branches": {
+          "description": "One action list per branch.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/actionList"
+          }
+        }
+      }
+    },
+    "repeatAction": {
+      "title": "Repeat Action Data Object",
+      "description": "Runs steps up to times iterations. With everyTicks the loop suspends between iterations; without it the whole loop runs in one tick and is capped at 1024 iterations.",
+      "type": "object",
+      "required": [
+        "times",
+        "steps"
+      ],
+      "properties": {
+        "times": {
+          "description": "Maximum number of iterations.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "everyTicks": {
+          "description": "Ticks between iterations. 0 or omitted runs every iteration in the same tick.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1728000,
+          "default": 0
+        },
+        "steps": {
+          "$ref": "#/$defs/actionList",
+          "description": "The actions run on each iteration."
+        },
+        "while": {
+          "description": "Boolean condition checked before each iteration; false ends the loop early.",
+          "type": "string"
+        }
+      }
+    },
+    "ifAction": {
+      "title": "If Action Data Object",
+      "description": "Evaluates when in the action's condition scope and runs then or else.",
+      "type": "object",
+      "required": [
+        "when"
+      ],
+      "properties": {
+        "when": {
+          "description": "Boolean condition. Same syntax as show conditions.",
+          "type": "string",
+          "minLength": 1
+        },
+        "then": {
+          "$ref": "#/$defs/actionList",
+          "description": "Actions run when the condition is true."
+        },
+        "else": {
+          "$ref": "#/$defs/actionList",
+          "description": "Actions run when the condition is false."
+        }
+      }
+    },
+    "switchAction": {
+      "title": "Switch Action Data Object",
+      "description": "Evaluates on, converts the result to text and runs the matching case, or default when nothing matches.",
+      "type": "object",
+      "required": [
+        "on",
+        "cases"
+      ],
+      "properties": {
+        "on": {
+          "description": "Expression whose value selects the case.",
+          "type": "string",
+          "minLength": 1
+        },
+        "cases": {
+          "description": "Case value to action list.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/actionList"
+          }
+        },
+        "default": {
+          "$ref": "#/$defs/actionList",
+          "description": "Actions run when no case matches."
+        }
+      }
+    },
+    "chanceAction": {
+      "title": "Chance Action Data Object",
+      "description": "Rolls a percentage and runs then or else.",
+      "type": "object",
+      "required": [
+        "percent"
+      ],
+      "properties": {
+        "percent": {
+          "description": "Chance of running then, from 0 to 100.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "then": {
+          "$ref": "#/$defs/actionList",
+          "description": "Actions run when the roll succeeds."
+        },
+        "else": {
+          "$ref": "#/$defs/actionList",
+          "description": "Actions run when the roll fails."
+        }
+      }
+    },
+    "cooldownAction": {
+      "title": "Cooldown Action Data Object",
+      "description": "Claims a named per-player cooldown. The first claim runs then; a claim inside the window runs else.",
+      "type": "object",
+      "required": [
+        "key",
+        "ticks"
+      ],
+      "properties": {
+        "key": {
+          "description": "Cooldown name, scoped to behaviors.",
+          "type": "string",
+          "minLength": 1
+        },
+        "ticks": {
+          "description": "Length of the cooldown window in ticks.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1728000
+        },
+        "then": {
+          "$ref": "#/$defs/actionList",
+          "description": "Actions run when the cooldown was free."
+        },
+        "else": {
+          "$ref": "#/$defs/actionList",
+          "description": "Actions run while the cooldown is active."
+        }
+      }
+    },
+    "emitAction": {
+      "title": "Emit Action Data Object",
+      "description": "Fires the emit trigger with this name. Emits nest at most eight deep before they are dropped with a warning.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "description": "Event name matched by an emit trigger.",
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "description": "Values readable as args.* in the entries that answer. A string wrapped in {{ }} is evaluated first.",
+          "type": "object"
+        }
+      }
+    },
+    "broadcastAction": {
+      "title": "Broadcast Action Data Object",
+      "description": "Sends one message to several players at once.",
+      "type": "object",
+      "required": [
+        "message"
+      ],
+      "properties": {
+        "message": {
+          "description": "MiniMessage text rendered for each recipient.",
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "description": "Who receives it. Defaults to the whole server.",
+          "type": "string",
+          "enum": [
+            "server",
+            "world",
+            "radius"
+          ],
+          "default": "server"
+        },
+        "radius": {
+          "description": "Block radius around the viewer; required when scope is radius.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "permission": {
+          "description": "Only players with this permission receive the message.",
+          "type": "string"
+        }
+      }
+    },
+    "effectAction": {
+      "title": "Potion Effect Action Data Object",
+      "description": "Applies a potion effect to one of the trigger's roles.",
+      "type": "object",
+      "required": [
+        "effect",
+        "ticks"
+      ],
+      "properties": {
+        "effect": {
+          "description": "Potion effect key, such as minecraft:speed.",
+          "type": "string",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
+        },
+        "ticks": {
+          "description": "Effect duration in ticks.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1728000
+        },
+        "amplifier": {
+          "description": "Effect amplifier; 0 is level one.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "target": {
+          "description": "Which role receives the effect.",
+          "type": "string",
+          "enum": [
+            "viewer",
+            "subject",
+            "source"
+          ],
+          "default": "viewer"
+        }
+      }
+    },
+    "particleAction": {
+      "title": "Particle Action Data Object",
+      "description": "Spawns particles at one of the trigger's roles or at its location.",
+      "type": "object",
+      "required": [
+        "particle"
+      ],
+      "properties": {
+        "particle": {
+          "description": "Particle key, such as minecraft:flame.",
+          "type": "string",
+          "pattern": "^([a-z0-9_.-]+:)?[a-z0-9_./-]+$"
+        },
+        "count": {
+          "description": "How many particles to spawn.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "offset": {
+          "description": "Random spread in blocks around the anchor.",
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        },
+        "at": {
+          "description": "Where to spawn them.",
+          "type": "string",
+          "enum": [
+            "viewer",
+            "subject",
+            "source",
+            "location"
+          ],
+          "default": "viewer"
+        }
+      }
+    },
+    "stopAction": {
+      "title": "Stop Action Data Object",
+      "description": "Ends the surrounding action list. Nothing after it runs.",
+      "type": "object",
+      "required": [],
+      "properties": {}
+    },
+    "setStateAction": {
+      "title": "Set State Action Data Object",
+      "description": "Writes one state value, coerced to the key's declared type.",
+      "type": "object",
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "description": "A state key declared by a behavior document.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.]*$"
+        },
+        "value": {
+          "description": "Expression evaluated in the action's condition scope; its result becomes the new value.",
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "description": "Whose value to write for a player-scoped or world-scoped key.",
+          "type": "string",
+          "enum": [
+            "viewer",
+            "subject",
+            "source"
+          ],
+          "default": "viewer"
+        }
+      }
+    },
+    "addStateAction": {
+      "title": "Add State Action Data Object",
+      "description": "Adds to one number state value.",
+      "type": "object",
+      "required": [
+        "key",
+        "value"
+      ],
+      "properties": {
+        "key": {
+          "description": "A state key declared by a behavior document.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.]*$"
+        },
+        "value": {
+          "description": "Expression evaluated in the action's condition scope; its number result is added to the current value.",
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "description": "Whose value to write for a player-scoped or world-scoped key.",
+          "type": "string",
+          "enum": [
+            "viewer",
+            "subject",
+            "source"
+          ],
+          "default": "viewer"
+        }
+      }
+    },
+    "clearStateAction": {
+      "title": "Clear State Action Data Object",
+      "description": "Returns one state value to the default its declaration gives.",
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "description": "A state key declared by a behavior document.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.]*$"
+        },
+        "target": {
+          "description": "Whose value to clear for a player-scoped or world-scoped key.",
+          "type": "string",
+          "enum": [
+            "viewer",
+            "subject",
+            "source"
+          ],
+          "default": "viewer"
+        }
+      }
+    },
+    "dialogAction": {
+      "type": "object",
+      "description": "A native Java 1.21.6+ dialog. Terminal; buttons run their own actions with input.<key> values. Unsupported clients run unsupported.",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "notice",
+            "confirmation",
+            "multi_action"
+          ],
+          "default": "notice"
+        },
+        "body": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1024,
+                "default": 200
+              }
+            }
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "required": [
+              "key"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_]{1,64}$"
+              },
+              "type": {
+                "enum": [
+                  "text",
+                  "boolean",
+                  "single_option",
+                  "number_range"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1024,
+                "default": 200
+              },
+              "labelVisible": {
+                "type": "boolean",
+                "default": true
+              },
+              "initial": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              "maxLength": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4096,
+                "default": 32
+              },
+              "maxLines": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4096
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 512
+              },
+              "options": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 64,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "start": {
+                "type": "number"
+              },
+              "end": {
+                "type": "number"
+              },
+              "step": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "labelFormat": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "buttons": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "tooltip": {
+                "type": "string"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1024,
+                "default": 150
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/action"
+                }
+              }
+            }
+          }
+        },
+        "exitButton": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "tooltip": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1024,
+              "default": 150
+            },
+            "actions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/action"
+              }
+            }
+          }
+        },
+        "escape": {
+          "type": "boolean",
+          "default": true
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "default": 2
+        },
+        "timeoutTicks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 72000,
+          "default": 1200
+        },
+        "unsupported": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        },
+        "onTimeout": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/action"
+          }
+        }
+      }
+    },
+    "surfaceAction": {
+      "type": "object",
+      "required": [
+        "surface"
+      ],
+      "properties": {
+        "surface": {
+          "type": "string"
+        },
+        "audience": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "enum": [
+                "viewer",
+                "server",
+                "world",
+                "radius"
+              ]
+            },
+            "radius": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 4096
+            },
+            "when": {
+              "type": [
+                "string",
+                "boolean"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "callAction": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        }
+      },
+      "description": "Runs a named action list from this menu or inventory document, preserving trigger, when and cooldownTicks."
+    }
+  }
+}

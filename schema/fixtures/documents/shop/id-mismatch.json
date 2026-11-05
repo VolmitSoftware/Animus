@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shop:other",
+  "title": "&6Bakery",
+  "modes": [
+    "trade",
+    "buy",
+    "sell"
+  ],
+  "defaultMode": "trade",
+  "pages": [
+    {
+      "name": "Bread",
+      "rows": 3,
+      "trade": {
+        "11": {
+          "id": "bread-for-emerald",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:bread",
+            "count": 4
+          },
+          "display": {
+            "name": "&eFour loaves",
+            "lore": [
+              "&7Baked this morning."
+            ]
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 1
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:bread"
+              },
+              "amount": 4
+            }
+          ]
+        },
+        "13": {
+          "id": "cake-for-emeralds",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:cake"
+          },
+          "display": {
+            "name": "&dCelebration cake",
+            "lore": [
+              "&7One per player each day."
+            ]
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 3
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:cake"
+              },
+              "amount": 1
+            }
+          ],
+          "limit": {
+            "perPlayer": 1,
+            "resetSeconds": 86400
+          }
+        },
+        "15": {
+          "id": "wheat-for-emerald",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:emerald"
+          },
+          "display": {
+            "name": "&aSell us wheat",
+            "lore": [
+              "&7Twenty wheat for one emerald."
+            ]
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:wheat"
+              },
+              "amount": 20
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:emerald"
+              },
+              "amount": 1
+            }
+          ],
+          "stock": {
+            "maximum": 64,
+            "restockSeconds": 3600
+          }
+        }
+      },
+      "buy": {
+        "11": {
+          "id": "bread",
+          "type": "buy",
+          "item": {
+            "id": "minecraft:bread",
+            "count": 4
+          },
+          "price": 12,
+          "allowStack": true
+        },
+        "13": {
+          "id": "cookies",
+          "type": "buy",
+          "item": {
+            "id": "minecraft:cookie",
+            "count": 8
+          },
+          "price": 5,
+          "discount": {
+            "price": 3,
+            "start": "2026-12-20T00:00:00Z",
+            "end": "2026-12-27T00:00:00Z"
+          }
+        }
+      },
+      "sell": {
+        "13": {
+          "id": "wheat",
+          "type": "sell",
+          "item": {
+            "id": "minecraft:wheat",
+            "count": 16
+          },
+          "price": 4,
+          "sellPartial": true
+        }
+      }
+    }
+  ]
+}

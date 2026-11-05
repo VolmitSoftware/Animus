@@ -1,0 +1,81 @@
+{
+  "protocol": 1,
+  "basePath": "/animus",
+  "schema": "editor-v1.schema.json",
+  "headers": {
+    "authorization": "Authorization: Bearer <token> on every request except hello and pair.",
+    "counter": "X-Animus-Counter: a strictly increasing integer per token on every mutating request (POST and DELETE except pair). A value at or below the last accepted one is refused with counter-replayed.",
+    "origin": "Origin must equal one of [editor] allowedOrigins exactly, or the request is refused with origin-not-allowed."
+  },
+  "endpoints": [
+    {"method": "GET", "path": "/v1/hello", "scope": null, "request": null, "responses": {"200": "hello-response"}},
+    {"method": "POST", "path": "/v1/pair", "scope": null, "auth": "pairing-secret", "request": "pair-request", "responses": {"200": "pair-response", "401": "error-response", "410": "error-response"}},
+    {"method": "GET", "path": "/v1/capabilities", "scope": "read", "request": null, "responses": {"200": "capabilities-response"}},
+    {"method": "GET", "path": "/v1/schemas", "scope": "read", "request": null, "responses": {"200": "schemas-response"}},
+    {"method": "GET", "path": "/v1/catalog", "scope": "read", "query": {"kind": "kind", "after": "string"}, "request": null, "responses": {"200": "catalog-response"}},
+    {"method": "GET", "path": "/v1/documents/{kind}/{id}", "scope": "read", "request": null, "responses": {"200": "document-response", "404": "error-response"}},
+    {"method": "GET", "path": "/v1/skins/{hash}/texture.png", "scope": "read", "request": null, "responses": {"200": "image/png", "404": "error-response"}},
+    {"method": "POST", "path": "/v1/validate", "scope": "validate", "request": "validate-request", "responses": {"200": "validate-response"}},
+    {"method": "POST", "path": "/v1/previews", "scope": "preview", "request": "preview-request", "responses": {"200": "preview-response", "409": "error-response", "422": "error-response"}},
+    {"method": "DELETE", "path": "/v1/previews/{previewId}", "scope": "preview", "request": null, "responses": {"204": null, "404": "error-response"}},
+    {"method": "POST", "path": "/v1/changes", "scope": "apply:*", "request": "change-set", "responses": {"200": "change-applied", "409": "change-conflict", "422": "change-invalid"}},
+    {"method": "GET", "path": "/v1/changes/{idempotencyKey}", "scope": "read", "request": null, "responses": {"200": "change-status-response"}},
+    {"method": "POST", "path": "/v1/changes/{changeId}/undo", "scope": "apply:*", "request": "undo-request", "responses": {"200": "change-applied", "409": "change-conflict"}},
+    {"method": "POST", "path": "/v1/imports", "scope": "import", "request": "application/octet-stream", "responses": {"200": "import-response", "413": "error-response"}},
+    {"method": "POST", "path": "/v1/imports/{importId}/apply", "scope": "import", "request": null, "responses": {"200": "change-applied", "409": "change-conflict"}},
+    {"method": "POST", "path": "/v1/npcs/{id}/spawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
+    {"method": "POST", "path": "/v1/npcs/{id}/despawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
+    {"method": "WS", "path": "/v1/events", "scope": "read", "request": "event-auth", "responses": {"frame": "event"}}
+  ],
+  "errorStatus": {
+    "unauthorized": 401, "token-expired": 401, "token-revoked": 401, "pairing-invalid": 401, "pairing-expired": 410,
+    "scope-missing": 403, "group-denied": 403, "origin-not-allowed": 403, "counter-replayed": 409,
+    "not-found": 404, "invalid-request": 400, "too-large": 413, "rate-limited": 429, "busy": 503,
+    "conflict": 409, "preview-refused": 422, "player-offline": 409, "gloss-unavailable": 422,
+    "unsupported-protocol": 400, "internal": 500
+  },
+  "kinds": {
+    "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
+    "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
+    "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
+    "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
+    "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
+    "shop": {"folder": "shops", "applyScope": "apply:gui", "schema": "shop-v1.schema.json"},
+    "inventory": {"folder": "gui/inventories", "applyScope": "apply:gui", "schema": "gui-inventory-v1.schema.json"},
+    "menu": {"folder": "gui/menus", "applyScope": "apply:gui", "schema": "gloss/gloss.schema.json"},
+    "hologram": {"folder": "gui/holograms", "applyScope": "apply:gui", "schema": "gloss/gloss-holograms.schema.json"},
+    "text-animation": {"folder": "gui/text-animations", "applyScope": "apply:gui", "schema": null},
+    "presets": {"folder": "gui", "applyScope": "apply:gui", "schema": "gloss/gloss-presets.schema.json"},
+    "rig": {"folder": "rigs", "applyScope": "apply:rigs", "schema": "rig-v1.schema.json"},
+    "animation": {"folder": "animations", "applyScope": "apply:rigs", "schema": "animation-v1.schema.json"}
+  },
+  "pairing": {
+    "prefix": "ANM1.",
+    "linkTemplate": "https://animus-editor.web.app/#/pair/{code}",
+    "secretMinutes": 10,
+    "defaultTokenDays": 7,
+    "defaultScopes": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs"],
+    "tokenRecheckSeconds": 60
+  },
+  "limits": {
+    "requestBodyBytes": 4194304,
+    "importBodyBytes": 16777216,
+    "changeSetDocuments": 512,
+    "catalogPageSize": 1000,
+    "concurrentRequestsPerToken": 8,
+    "openConnections": 64,
+    "eventFramesPerSecond": 20,
+    "eventAuthSeconds": 10,
+    "previewsPerServer": 4,
+    "npcsPerPreview": 64,
+    "previewMinutes": 15,
+    "idempotencyHours": 24,
+    "relayFrameBytes": 1048576,
+    "relayMessagesPerSecond": 120,
+    "relayPendingRequests": 64,
+    "relayTimeoutSeconds": 10,
+    "relayPingSeconds": 30
+  },
+  "previewRefusedCapabilities": ["animus:command", "animus:combat-control"],
+  "previewRefusedGuiActions": ["command", "give", "take", "economy", "animus:trade"]
+}
