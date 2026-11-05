@@ -53,11 +53,14 @@ The per-tick limits of the persisted runtime apply to each region tick rather th
 | Work per region tick | Limit |
 | --- | ---: |
 | Queued NPC actions run | 64 (8 per NPC) |
-| Route steps | 16 |
-| Live collision cells | 2048 |
+| Route turns | `[navigation] routesPerTick` (128) |
+| Live collision cells | `[navigation] motionCellsPerTick` (16384) |
+| New path plans | `[navigation] planningStartsPerTick` (16) |
 | Terrain capture units | 256 |
 | Viewer updates | `updatesPerTick`; with more viewers, they take turns |
 | Packet operations | 32, shared equally by the viewers updating |
 | NPC starts | 16 |
 
 `maximumViewers`, `viewDistance`, 10,000 active NPCs, 8 concurrent route and appearance reads, 8 definition skin reads and 8 path plans are server-wide. `maximumVisible` applies to each viewer, and each NPC queues at most 32 actions. Work over a limit waits for the next tick.
+
+A region runs its NPCs in the same order every tick, so route turns go to the NPCs that waited longest when a region is short of turns: no patrol waits for ever. Every player marks the NPCs within `viewDistance` once a second, also on other regions; a patrol that nobody marked for 3 seconds sleeps until a player comes near again. `/animus status` shows `routes-sleeping` and `navigation-pressure`, and the console logs once when regions start to run short of route turns and once when it ends.

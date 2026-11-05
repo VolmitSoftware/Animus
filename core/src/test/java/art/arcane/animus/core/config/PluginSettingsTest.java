@@ -57,6 +57,22 @@ class PluginSettingsTest {
             assertTrue(error.getMessage().contains("bones is not a rig setting"), error.getMessage());
         }
     }
+    @Test void navigationBudgetsAreReadFromTomlAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(NavigationSettings.DEFAULT, PluginSettings.load(store).navigation());
+            assertTrue(Files.readString(root.resolve("config.toml")).contains("[navigation]"));
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[navigation]\nroutesPerTick = 512\n");
+            NavigationSettings navigation = PluginSettings.load(store).navigation();
+            assertEquals(512, navigation.routesPerTick());
+            assertEquals(NavigationSettings.DEFAULT.motionCellsPerTick(), navigation.motionCellsPerTick());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[navigation]\nroutesPerTick = 0\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("navigation: routesPerTick must be within 1..4096"), error.getMessage());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[navigation]\nmaximumRoutes = 32\n");
+            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("maximumRoutes is not a navigation setting"), error.getMessage());
+        }
+    }
     @Test void buildLimitsAreReadFromTomlAndBounded() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             assertEquals(BuildSettings.DEFAULT, PluginSettings.load(store).builds());
