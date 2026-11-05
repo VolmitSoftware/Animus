@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.0.0-SNAPSHOT.jar')
+parser.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.1.0-SNAPSHOT.jar')
 parser.add_argument('--output',type=Path)
 parser.add_argument('--java-home',type=Path,default=Path('/opt/homebrew/opt/openjdk@25'))
 args=parser.parse_args();api=args.api_jar.resolve();output=(args.output or ROOT/'.qa/module-fixtures'/f'{time.time_ns()}-{os.getpid()}').resolve()

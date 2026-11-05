@@ -52,7 +52,7 @@ final class ModCombat implements AutoCloseable {
     ModCombat(MinecraftServer server, AnimusRuntime runtime, PersistedNpcService<ServerPlayer, ItemStack> living, VanillaTerrain terrain, Consumer<String> warnings) {
         this.runtime = Objects.requireNonNull(runtime); this.living = Objects.requireNonNull(living);
         world = living.available() ? new VanillaCombatWorld(server, living, terrain) : null;
-        module = new CombatModule(runtime, living, world, ProtectionAdapter.NONE, world == null ? "unavailable because the NPC runtime is: " + living.status() : null,
+        module = new CombatModule(runtime, living, world, runtime.moduleHooks().protection(ProtectionAdapter.NONE), world == null ? "unavailable because the NPC runtime is: " + living.status() : null,
                 warnings, (UUID id) -> server.getPlayerList().getPlayer(id) != null);
     }
 

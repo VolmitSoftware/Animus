@@ -131,7 +131,7 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(proof.status(null));
             Platform modulePlatform = modulePlatform();
             Function<Runnable, AutoCloseable> ownerTicks = regions != null ? regions::globalTicks : tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel;
-            Economy vault = BukkitScreens.vault(getServer());
+            Economy vault = runtime.moduleHooks().economy(BukkitScreens.vault(getServer()));
             screens = new BukkitScreens(this, (Player player, Runnable task) -> replies.reply(player == null ? getServer().getConsoleSender() : player, task),
                     () -> ShopService.economy(runtime.shopSettings(), vault));
             shops = new ShopService<>(runtime, screens, living, commands,
@@ -165,6 +165,11 @@ public final class AnimusPlugin extends JavaPlugin {
                         BehaviorCommands current = behaviors;
                         if (current != null) current.modulesInitialized(initialized);
                     }, builtins);
+            extensions.connectHooks(runtime.moduleHooks());
+            ExtensionRuntime modules = extensions;
+            living.observeInteractions(modules::interacted);
+            proof.observeInteractions(modules::interacted);
+            if (foliaProof != null) foliaProof.observeInteractions(modules::interacted);
             behaviors = new BehaviorCommands(getDataFolder().toPath(), runtime, extensions, message -> getLogger().info(message));
             runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, owners::refresh, () -> behaviors,
                     () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
@@ -299,7 +304,7 @@ public final class AnimusPlugin extends JavaPlugin {
                 name = reason;
             }
         }
-        builds = new BuildService<>(runtime, mainThread, commands, new BukkitBuildPlatform(getServer()), protection, name,
+        builds = new BuildService<>(runtime, mainThread, commands, new BukkitBuildPlatform(getServer()), runtime.moduleHooks().buildProtection(protection), name,
                 tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel,
                 () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); },
                 (String message) -> getLogger().info(message), null);

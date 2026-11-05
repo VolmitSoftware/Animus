@@ -24,6 +24,7 @@ final class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
 
     @Override public boolean available() { return true; }
     @Override public void interactions(InteractionListener<P> listener) {}
+    @Override public void observeInteractions(InteractionObserver observer) {}
     @Override public String status() { return "fake"; }
     boolean cosmetic = true;
     @Override public boolean cosmeticAllowed() { return cosmetic; }
