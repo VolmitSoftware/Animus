@@ -58,7 +58,8 @@ The per-tick limits of the persisted runtime apply to each region tick rather th
 | New path plans | `[navigation] planningStartsPerTick` (16) |
 | Terrain capture units | `[navigation] captureReadsPerTick` (2048) |
 | Viewer updates | `updatesPerTick`; with more viewers, they take turns |
-| Packet operations | 32, shared equally by the viewers updating |
+| Packet operations | `[npcs] packetsPerTick` (32), shared equally by the viewers updating |
+| Look-close turns | `[npcs] lookUpdatesPerTick` (32) |
 | NPC starts | 16 |
 
 `maximumViewers`, `viewDistance`, 10,000 active NPCs, 8 concurrent route and appearance reads, 8 definition skin reads and 8 path plans are server-wide. `maximumVisible` applies to each viewer, and each NPC queues at most 32 actions. Work over a limit waits for the next tick.

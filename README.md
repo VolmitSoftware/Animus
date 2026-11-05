@@ -131,6 +131,9 @@ viewDistance = 48
 maximumVisible = 64
 maximumViewers = 256
 updatesPerTick = 16
+packetsPerTick = 32
+pendingSpawnsPerViewer = 8
+lookUpdatesPerTick = 32
 
 [files]
 maximumOperations = 32
