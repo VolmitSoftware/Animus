@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -33,12 +34,16 @@ final class OwnerActionQueue implements AutoCloseable {
         }
     }
 
-    private final Limits limits;
+    private volatile Limits limits; // written by the dispatching owner only
+    private final AtomicReference<Limits> pendingLimits = new AtomicReference<>();
     private final Router router;
     private final Set<Item<?>> pending = new LinkedHashSet<>();
     private boolean closed;
 
     OwnerActionQueue(Limits limits, Router router) { this.limits = Objects.requireNonNull(limits); this.router = Objects.requireNonNull(router); }
+
+    /** New budgets, adopted on the next tick. A lowered queue keeps every accepted item and refuses new ones until it drains. */
+    void limits(Limits next) { pendingLimits.set(Objects.requireNonNull(next)); }
 
     <T> CompletionStage<T> submit(NpcHandle npc, Capabilities.Cancellation token, Supplier<T> work) {
         Item<T> item = new Item<>(Objects.requireNonNull(npc), Objects.requireNonNull(token), Objects.requireNonNull(work));
@@ -53,12 +58,15 @@ final class OwnerActionQueue implements AutoCloseable {
 
     /** Dispatching owner only. Work and cancellation observations run outside the queue lock. */
     void tick() {
+        Limits next = pendingLimits.getAndSet(null);
+        if (next != null) limits = next;
+        Limits budget = limits;
         List<Item<?>> snapshot;
         synchronized (this) {
             if (closed || pending.isEmpty()) return;
             snapshot = new ArrayList<>(pending);
         }
-        int remaining = limits.perTick();
+        int remaining = budget.perTick();
         Map<NpcHandle, Integer> used = new HashMap<>();
         for (Item<?> item : snapshot) {
             if (item.token.cancelled()) {
@@ -67,7 +75,7 @@ final class OwnerActionQueue implements AutoCloseable {
             }
             if (remaining == 0) break;
             int spent = used.getOrDefault(item.npc, 0);
-            if (spent >= limits.perNpc()) continue;
+            if (spent >= budget.perNpc()) continue;
             if (!remove(item)) continue;
             remaining--;
             used.put(item.npc, spent + 1);

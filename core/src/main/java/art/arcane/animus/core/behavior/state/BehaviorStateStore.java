@@ -94,9 +94,9 @@ public final class BehaviorStateStore implements BehaviorState {
     private record Pending(Document document,long version,Map<String,Value> values){}
 
     private final DocumentStore store;
-    private final Limits limits;
+    private Limits limits; // this monitor
     private final LongSupplier clock;
-    private final long flushNanos;
+    private volatile long flushNanos;
     private final Runnable flushTask=this::flushFromLane;
     private final Map<Key,Document> documents=new HashMap<>();
     private final Set<Document> dirty=new LinkedHashSet<>();
@@ -122,6 +122,17 @@ public final class BehaviorStateStore implements BehaviorState {
         state.load();
         state.prepareClosingClasses();
         return state;
+    }
+
+    /**
+     * A hotload of {@code [behaviors.state]}, applied on the file lane. Lowered caps keep every stored value: writes that add
+     * keys or bytes are refused until purges bring the store back under them. A shorter flush interval pulls the next flush in.
+     */
+    public void limits(Limits next){
+        Objects.requireNonNull(next);
+        synchronized(this){limits=next;}
+        long nanos=next.flushMillis()*1_000_000L;flushNanos=nanos;
+        if(dirtySignal&&notBefore-(clock.getAsLong()+nanos)>0)notBefore=clock.getAsLong()+nanos;
     }
 
     /** The executor must be the shared file lane. Until it is attached, values only reach disk through an explicit flush or close. */

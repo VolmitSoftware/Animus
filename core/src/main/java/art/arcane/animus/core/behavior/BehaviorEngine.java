@@ -28,7 +28,7 @@ public final class BehaviorEngine implements AutoCloseable {
     }
     public record Status(long tick,int activeExecutions,int fibers,int callsInFlight,int retiredCalls,int unobservedCalls,int history,long cancellationFailures,long quiescenceFailures,long terminalObserverFailures,boolean closed){}
     public record Tick(int work,int instructions,int completions,Status status){}
-    private final Thread owner=Thread.currentThread();private final Limits limits;private final BehaviorInvoker invoker;
+    private final Thread owner=Thread.currentThread();private Limits limits;private final BehaviorInvoker invoker;
     private final Consumer<Report> terminalObserver;private final BehaviorState state;
     private final Map<UUID,Execution> executions=new LinkedHashMap<>();private final Map<Long,Fiber> fibers=new LinkedHashMap<>();
     private final ArrayDeque<Fiber> order=new ArrayDeque<>();private final Set<Pending> calls=new LinkedHashSet<>();
@@ -36,6 +36,11 @@ public final class BehaviorEngine implements AutoCloseable {
     private long tick,nextFiber,cancellationFailures,quiescenceFailures,terminalObserverFailures;private boolean closed,advancing;private int lifecycleDepth;
     /** Engine-owned quick observation only; never a module callback or public completion listener. */
     public BehaviorEngine(Limits limits,BehaviorInvoker invoker,Consumer<Report> terminalObserver,BehaviorState state){this.limits=Objects.requireNonNull(limits);this.invoker=Objects.requireNonNull(invoker);this.terminalObserver=Objects.requireNonNull(terminalObserver);this.state=Objects.requireNonNull(state);}
+    /**
+     * Owner only. Admission, fiber, in-flight, work and history caps apply from the next tick. A running execution keeps the
+     * step, lifetime, call-depth and trace budgets it started with, so a lowered cap never cuts it short.
+     */
+    public void limits(Limits next){owner();limits=Objects.requireNonNull(next);}
     private void owner(){if(Thread.currentThread()!=owner)throw new IllegalStateException("Behavior engine requires its designated owner thread");}
     public Outcome<UUID> start(BehaviorProgram program,Context context){
         owner();Objects.requireNonNull(program);Objects.requireNonNull(context);
@@ -73,14 +78,14 @@ public final class BehaviorEngine implements AutoCloseable {
     }
     private Tick advance(){
         tick=Math.incrementExact(tick);int instructions=0,work=0;
-        for(Execution execution:List.copyOf(executions.values()))if(tick-execution.started>=limits.lifetimeTicks())terminate(execution,State.BUDGET_EXHAUSTED,"execution-lifetime");
+        for(Execution execution:List.copyOf(executions.values()))if(tick-execution.started>=execution.budget.lifetimeTicks())terminate(execution,State.BUDGET_EXHAUSTED,"execution-lifetime");
         int completions=resolveCalls();
         int visits=Math.min(order.size(),limits.workPerTick());
         for(int i=0;i<visits&&!order.isEmpty();i++){
             Fiber fiber=order.removeFirst();work++;
             if(!fibers.containsKey(fiber.id))continue;
             if(ready(fiber)){
-                if(fiber.execution.steps>=limits.totalSteps())terminate(fiber.execution,State.BUDGET_EXHAUSTED,"execution-step-budget");
+                if(fiber.execution.steps>=fiber.execution.budget.totalSteps())terminate(fiber.execution,State.BUDGET_EXHAUSTED,"execution-step-budget");
                 else {fiber.execution.steps++;instructions++;try{step(fiber);}catch(BehaviorState.Rejected rejected){refused(fiber.execution,fiber.stack.isEmpty()?"$":fiber.stack.peek().node.path(),rejected);}catch(RuntimeException | AssertionError | LinkageError failure){terminate(fiber.execution,State.FAILED,"engine-or-invoker: "+failure.getClass().getSimpleName());}}
             }
             if(fibers.containsKey(fiber.id))order.addLast(fiber);
@@ -105,7 +110,7 @@ public final class BehaviorEngine implements AutoCloseable {
                 fiber.variables.put(set.variable(),value);fiber.writes.add(set.variable());fiber.stack.pop();trace(fiber,node.path(),"set:",set.variable());
             }
             case Repeat repeat->{if(frame.index<repeat.count()){frame.index++;push(fiber,repeat.body());}else fiber.stack.pop();}
-            case Call call->{if(frame.index==0){if(++fiber.callDepth>limits.callDepth()){terminate(fiber.execution,State.BUDGET_EXHAUSTED,"routine-depth");return;}frame.index=1;trace(fiber,node.path(),"call:",call.routine());push(fiber,fiber.execution.program.routines().get(call.routine()));}else{fiber.callDepth--;fiber.stack.pop();}}
+            case Call call->{if(frame.index==0){if(++fiber.callDepth>fiber.execution.budget.callDepth()){terminate(fiber.execution,State.BUDGET_EXHAUSTED,"routine-depth");return;}frame.index=1;trace(fiber,node.path(),"call:",call.routine());push(fiber,fiber.execution.program.routines().get(call.routine()));}else{fiber.callDepth--;fiber.stack.pop();}}
             case Action action->invoke(fiber,action.capability(),action.arguments(),false);
             case Condition condition->{if(frame.branch==null)invoke(fiber,condition.capability(),condition.arguments(),true);else{fiber.stack.pop();push(fiber,frame.branch?condition.thenNode():condition.elseNode());}}
             case Parallel parallel->{
@@ -246,7 +251,7 @@ public final class BehaviorEngine implements AutoCloseable {
         };
     }
     private final class Execution {
-        final UUID id;final BehaviorProgram program;final Context context;final BehaviorState.Subject subject;final long started=tick;final Set<Long> fibers=new LinkedHashSet<>();final TraceRing trace=new TraceRing(limits.traceEntries());List<Diagnostic> diagnostics=List.of();Fiber root;long steps;
+        final UUID id;final BehaviorProgram program;final Context context;final BehaviorState.Subject subject;final long started=tick;final Limits budget=limits;final Set<Long> fibers=new LinkedHashSet<>();final TraceRing trace=new TraceRing(budget.traceEntries());List<Diagnostic> diagnostics=List.of();Fiber root;long steps;
         Execution(UUID id,BehaviorProgram program,Context context,BehaviorState.Subject subject){this.id=id;this.program=program;this.context=context;this.subject=subject;}
     }
     private final class Fiber {

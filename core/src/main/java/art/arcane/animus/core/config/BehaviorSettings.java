@@ -6,7 +6,10 @@ import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.behavior.trigger.TriggerSettings;
 import java.util.Objects;
 
-/** Plugin-wide behavior budgets are TOML; behavior sources and runtime data remain JSON. Requires restart. */
+/**
+ * Plugin-wide behavior budgets are TOML; behavior sources and runtime data remain JSON. Every key hotloads: each owner adopts
+ * new budgets on its next tick, and a lowered cap refuses new work until usage drains under it without stopping running work.
+ */
 public record BehaviorSettings(boolean enabled, int maximumOperations, int operationsPerTick, int tickMillis,
                                int deliveryBudgetMillis, BehaviorEngine.Limits engine, BehaviorCatalog.Limits catalog,
                                TriggerSettings triggers, BehaviorStateStore.Limits state, BuiltinActionSettings actions) {
