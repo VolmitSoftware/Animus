@@ -12,6 +12,7 @@ import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.runtime.BehaviorRuntime;
 import art.arcane.animus.core.config.BehaviorSettings;
+import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -24,7 +25,10 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.*;
 
-/** Administrative behavior commands and the owned execution runtime. File work shares the engine lane; no private owner touches a command actor. */
+/**
+ * Administrative behavior commands and the owned execution runtime. File work shares the engine lane; no private owner touches a command actor.
+ * Every {@code [behaviors]} key hotloads: budgets go to their owners, which adopt them on their next tick, and lowered caps drain.
+ */
 public final class BehaviorCommands implements AutoCloseable {
     public enum State { DISABLED, WAITING_MODULES, LOADING, READY, FAILED, CLOSED }
     public static final List<String> OPERATIONS=List.of("status","list","validate","reload","schema","packs","run","inspect","trace","cancel","triggers","state");
@@ -33,7 +37,8 @@ public final class BehaviorCommands implements AutoCloseable {
     private static final int PAGE_SIZE=20,MAX_LINES=24,MAX_LINE_CHARS=2048;
     private static final BehaviorCatalog.Snapshot EMPTY_CATALOG=new BehaviorCatalog.Snapshot(0,Map.of(),Map.of(),List.of());
     private final Path dataDirectory;
-    private final BehaviorSettings settings;
+    private volatile BehaviorSettings settings;
+    private volatile AutoCloseable subscription;
     private final NpcRepository repository;
     private final DocumentStore documents;
     private final BehaviorStateStore behaviorState;
@@ -55,6 +60,7 @@ public final class BehaviorCommands implements AutoCloseable {
 
     public BehaviorCommands(Path dataDirectory,AnimusRuntime runtime,ExtensionRuntime extensions,Consumer<String> report){
         this(dataDirectory,runtime.behaviorSettings(),runtime.npcs(),runtime.documents(),runtime.behaviorState(),extensions,runtime::fileExecutor,report);
+        subscription=runtime.onSettings((PluginSettings next)->settings(next.behaviors()));
     }
     // Engine-owned seams allow lifecycle/queue tests without creating a server or accessing world state.
     BehaviorCommands(Path dataDirectory,BehaviorSettings settings,NpcRepository repository,DocumentStore documents,BehaviorStateStore behaviorState,ExtensionRuntime extensions,
@@ -65,10 +71,38 @@ public final class BehaviorCommands implements AutoCloseable {
         files=Objects.requireNonNull(fileExecutor.apply(this::fileEvent));state=settings.enabled()?State.WAITING_MODULES:State.DISABLED;
         // Own and resolve lifecycle classes while the plugin archive is open. Startup catalog I/O
         // remains asynchronous; the empty source snapshot cannot admit executions before READY.
-        triggers=settings.enabled()?new TriggerDispatcher(settings.triggers(),repository::snapshot,this::catalogSnapshot):null;
-        if(triggers!=null)extensions.connectTriggers(triggers);
-        coordinator=settings.enabled()?new BehaviorRuntime(new BehaviorRuntime.Limits(settings.maximumOperations(),settings.operationsPerTick(),settings.tickMillis(),settings.deliveryBudgetMillis()),
-                settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers,behaviorState):null;
+        // Both exist while disabled too, so a hotload can enable behaviors and the platform bridge is already bound.
+        triggers=new TriggerDispatcher(settings.triggers(),repository::snapshot,this::catalogSnapshot);
+        triggers.behaviorsEnabled(settings.enabled());
+        extensions.connectTriggers(triggers);
+        coordinator=new BehaviorRuntime(runtimeLimits(settings),settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers,behaviorState);
+    }
+    private static BehaviorRuntime.Limits runtimeLimits(BehaviorSettings settings){
+        return new BehaviorRuntime.Limits(settings.maximumOperations(),settings.operationsPerTick(),settings.tickMillis(),settings.deliveryBudgetMillis());
+    }
+    /**
+     * A hotload of {@code [behaviors]}, on the file lane. Owners adopt the new budgets on their next tick; nothing running is
+     * stopped. Disabling refuses new runs and trigger events while running executions finish; enabling loads the catalog as
+     * startup does. Changed catalog budgets reload the catalog.
+     */
+    public void settings(BehaviorSettings next){
+        Objects.requireNonNull(next);
+        BehaviorSettings previous;boolean load=false;
+        synchronized(lifecycle){
+            if(closed.get())return;
+            previous=settings;settings=next;
+            if(previous.enabled()&&!next.enabled())state=State.DISABLED;
+            else if(!previous.enabled()&&next.enabled()){
+                if(!initializationSeen.get())state=State.WAITING_MODULES;
+                else{state=catalogSnapshot().generation()>0?State.READY:State.LOADING;load=true;}
+            }
+        }
+        triggers.settings(next.triggers());triggers.behaviorsEnabled(next.enabled());
+        coordinator.limits(runtimeLimits(next),next.engine());
+        behaviorState.limits(next.state());
+        BehaviorCatalog current=catalog;if(current!=null)current.limits(next.catalog());
+        if(next.enabled()&&initializationSeen.get()&&!previous.catalog().equals(next.catalog()))load=true;
+        if(load)submitCatalog(null,false,true,Optional.empty(),true);
     }
     /** The one initialization observer only admits bounded file work; it never scans on module management. */
     public void modulesInitialized(ExtensionRuntime.State terminal){
@@ -91,7 +125,7 @@ public final class BehaviorCommands implements AutoCloseable {
                 case "schema"->{arity(args,2,2,"behaviors schema");if(!catalogAdmission(sender,operation))return true;schema(sender);}
                 case "packs"->{arity(args,2,3,"behaviors packs [page]");int page=args.length==3?Integer.parseInt(args[2]):1;reply(sender,packLines(page));}
                 case "run"->{
-                    arity(args,4,4,"behaviors run <npc-id> <behavior-id>");BehaviorRuntime runtime=ready(sender,"run");if(runtime==null)return true;
+                    arity(args,4,4,"behaviors run <npc-id> <behavior-id>");BehaviorRuntime runtime=ready(sender,"run",false);if(runtime==null)return true;
                     String npc=args[2],behavior=args[3];Optional<UUID> player=sender.player();
                     runtime.run(npc,behavior,player).whenComplete((outcome,error)->{
                         if(error!=null)reply(sender,List.of("Behavior run: FAILED | result-delivery"));
@@ -99,7 +133,7 @@ public final class BehaviorCommands implements AutoCloseable {
                     });
                 }
                 case "trace"->{
-                    arity(args,3,3,"behaviors trace <npc-id-or-uuid>");BehaviorRuntime runtime=ready(sender,"trace");if(runtime==null)return true;
+                    arity(args,3,3,"behaviors trace <npc-id-or-uuid>");BehaviorRuntime runtime=ready(sender,"trace",true);if(runtime==null)return true;
                     String npc=args[2];
                     runtime.observeNpc(npc).whenComplete((outcome,error)->{
                         if(error!=null)reply(sender,List.of("Behavior trace: FAILED | result-delivery"));
@@ -117,7 +151,7 @@ public final class BehaviorCommands implements AutoCloseable {
                     });
                 }
                 case "cancel"->{
-                    arity(args,3,3,"behaviors cancel <execution-uuid>");BehaviorRuntime runtime=ready(sender,"cancel");if(runtime==null)return true;UUID id=UUID.fromString(args[2]);
+                    arity(args,3,3,"behaviors cancel <execution-uuid>");BehaviorRuntime runtime=ready(sender,"cancel",true);if(runtime==null)return true;UUID id=UUID.fromString(args[2]);
                     runtime.cancel(id).whenComplete((outcome,error)->{
                         if(error!=null)reply(sender,List.of("Behavior cancel: FAILED | result-delivery"));
                         else reply(sender,outcomeLines("Behavior cancel",outcome,"execution="+id+outcome.value().map(value->" | cancelled="+value).orElse("")));
@@ -233,9 +267,10 @@ public final class BehaviorCommands implements AutoCloseable {
         }
         return true;
     }
-    private BehaviorRuntime ready(CommandActor sender,String operation){
-        BehaviorRuntime runtime=coordinator;
-        if(closed.get()||state!=State.READY||runtime==null){reply(sender,List.of("Behavior "+operation+": UNAVAILABLE | state="+state));return null;}
+    /** Trace and cancel stay open while disabled, so executions still running can be watched or stopped. */
+    private BehaviorRuntime ready(CommandActor sender,String operation,boolean whileDisabled){
+        BehaviorRuntime runtime=coordinator;State current=state;
+        if(closed.get()||runtime==null||current!=State.READY&&!(whileDisabled&&current==State.DISABLED)){reply(sender,List.of("Behavior "+operation+": UNAVAILABLE | state="+state));return null;}
         return runtime;
     }
     /**
@@ -361,7 +396,7 @@ public final class BehaviorCommands implements AutoCloseable {
         BehaviorCatalog current=catalog;BehaviorCatalog.Snapshot snapshot=current==null?null:current.snapshot();BehaviorRuntime runtime=coordinator;
         List<String> result=new ArrayList<>();result.add("Behaviors "+state+" | catalog-generation="+(snapshot==null?0:snapshot.generation())+" | documents="+(snapshot==null?0:snapshot.entries().size())+" | available="+(snapshot==null?0:available(snapshot))+" | catalog-work="+(fileTask.get()==null?"idle":"pending")+" | unavailable-replies="+unavailableReplies.get()+" | failure="+failure);
         if(runtime!=null){var status=runtime.status();result.add("Behavior runtime: "+status.state()+" | admitted="+status.admittedOperations()+" | queued="+status.queuedOperations()+" | active="+status.engine().activeExecutions()+" | retained-calls="+status.engine().retiredCalls()+" | tick="+status.engine().tick()+" | delivery-queued="+status.queuedDeliveries()+" | delivery-active="+status.activeDeliveries()+" | delivery-over-budget="+status.overBudgetDeliveries()+" | failure="+status.failure());}
-        if(triggers!=null)result.add(triggerSummary(triggers.snapshot()));
+        result.add(triggerSummary(triggers.snapshot()));
         return List.copyOf(result);
     }
     private static String triggerSummary(TriggerDispatcher.Snapshot view){
@@ -370,7 +405,6 @@ public final class BehaviorCommands implements AutoCloseable {
     }
     private List<String> triggerLines(int page){
         if(page<1||page>1000)throw new IllegalArgumentException("Page must be 1..1000");
-        if(triggers==null)return List.of("Behavior triggers: UNAVAILABLE | state="+state);
         TriggerDispatcher.Snapshot view=triggers.snapshot();List<String> lines=new ArrayList<>();lines.add(triggerSummary(view)+" | page="+page);
         if(!view.dropped().isEmpty())lines.add("Trigger drops: "+new TreeMap<>(view.dropped()));
         view.diagnostics().stream().limit(2).forEach(diagnostic->lines.add(diagnosticLine("triggers",diagnostic)));
@@ -379,9 +413,9 @@ public final class BehaviorCommands implements AutoCloseable {
             lines.add("Trigger npc="+row.npcId()+" | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
         return lines;
     }
-    /** The dispatcher the platform bridge connects to; null only when behaviors are disabled. */
+    /** The dispatcher the platform bridge connects to. While behaviors are disabled it refuses every event. */
     public TriggerDispatcher triggers(){return triggers;}
-    /** Engine diagnostics only. Enabled services own this from construction; null only when disabled. */
+    /** Engine diagnostics only. Owned from construction, enabled or not. */
     public BehaviorRuntime diagnosticRuntime(){return coordinator;}
     private List<String> listLines(int page){
         if(page<1||page>1000)throw new IllegalArgumentException("Page must be 1..1000");BehaviorCatalog current=catalog;BehaviorCatalog.Snapshot snapshot=current==null?null:current.snapshot();List<String> lines=new ArrayList<>();
@@ -436,10 +470,12 @@ public final class BehaviorCommands implements AutoCloseable {
         if(sender==null||closed.get())return;List<String> bounded=lines.stream().limit(MAX_LINES).map(BehaviorCommands::boundedLine).toList();
         if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))bounded.forEach(sender::tell);}))unavailableReplies.incrementAndGet();
     }
-    private boolean publishState(State next){synchronized(lifecycle){if(closed.get())return false;state=next;return true;}}
+    private boolean publishState(State next){synchronized(lifecycle){if(closed.get())return false;state=settings.enabled()?next:State.DISABLED;return true;}}
     /** Admission ends immediately. Pending file work settles on its shared worker; coordinator drains cooperatively. */
     @Override public void close(){
         synchronized(lifecycle){if(!closed.compareAndSet(false,true))return;state=State.CLOSED;}
+        AutoCloseable listening=subscription;
+        if(listening!=null){try{listening.close();}catch(Exception ignored){/* The runtime's listener list is in memory; removal cannot fail. */}}
         BehaviorRuntime runtime=coordinator;if(runtime!=null)runtime.close();
     }
 }

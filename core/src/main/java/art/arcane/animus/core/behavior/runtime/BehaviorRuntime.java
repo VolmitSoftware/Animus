@@ -9,6 +9,7 @@ import art.arcane.animus.core.npc.NpcDefinition;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
@@ -49,8 +50,12 @@ public final class BehaviorRuntime implements AutoCloseable {
     private record Publication(BehaviorEngine.Status engine,Map<UUID,Execution> executions) {}
     private static final BehaviorEngine.Status EMPTY_ENGINE=new BehaviorEngine.Status(0,0,0,0,0,0,0,0,0,0,false);
 
-    private final Limits limits;
-    private final BehaviorEngine.Limits engineLimits;
+    /** The hard ceiling of {@code maximumOperations}; the delivery queue is sized to it so a raised cap never overflows. */
+    private static final int MAXIMUM_OPERATIONS=256;
+    private volatile Limits limits; // written by the owner only
+    private BehaviorEngine.Limits engineLimits; // owner only
+    private final AtomicReference<Limits> pendingLimits=new AtomicReference<>();
+    private final AtomicReference<BehaviorEngine.Limits> pendingEngine=new AtomicReference<>();
     private final Supplier<Map<String,NpcDefinition>> definitions;
     private final Supplier<BehaviorCatalog.Snapshot> catalog;
     private final BehaviorInvoker invoker;
@@ -89,7 +94,7 @@ public final class BehaviorRuntime implements AutoCloseable {
         this.definitions=Objects.requireNonNull(definitions);this.catalog=Objects.requireNonNull(catalog);
         this.invoker=Objects.requireNonNull(invoker);this.triggers=triggers;this.state=Objects.requireNonNull(state);
         LifecycleClasses.prepare();
-        deliveries=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(limits.maximumOperations()),
+        deliveries=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(MAXIMUM_OPERATIONS),
                 daemonFactory("animus-behavior-result"),new ThreadPoolExecutor.AbortPolicy());
         ownerExecutor=new ScheduledThreadPoolExecutor(1,Objects.requireNonNull(ownerFactory));
         ownerExecutor.setRemoveOnCancelPolicy(true);ownerExecutor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
@@ -98,6 +103,16 @@ public final class BehaviorRuntime implements AutoCloseable {
     }
     private static ThreadFactory daemonFactory(String name){return task->{Thread thread=new Thread(task,name);thread.setDaemon(true);return thread;};}
 
+    /**
+     * New budgets from a hotload, adopted by the owner at the start of its next turn. A lowered operation cap admits nothing
+     * new until admitted work drains under it; running executions keep the step, lifetime and depth budgets they started with.
+     */
+    public void limits(Limits next,BehaviorEngine.Limits engine){pendingLimits.set(Objects.requireNonNull(next));pendingEngine.set(Objects.requireNonNull(engine));}
+    private void adoptLimits(){
+        Limits next=pendingLimits.getAndSet(null);if(next!=null)limits=next;
+        BehaviorEngine.Limits nextEngine=pendingEngine.getAndSet(null);
+        if(nextEngine!=null){engineLimits=nextEngine;if(engine!=null)engine.limits(nextEngine);}
+    }
     public CompletionStage<Outcome<UUID>> run(String npcId,String behaviorId){return run(npcId,behaviorId,Optional.empty());}
     public CompletionStage<Outcome<UUID>> run(String npcId,String behaviorId,Optional<UUID> player) {
         if(Thread.currentThread()==owner)return rejected(Outcome.Status.BUSY,"owner-reentrant","Queue run requests from outside the behavior owner");
@@ -169,11 +184,12 @@ public final class BehaviorRuntime implements AutoCloseable {
     }
 
     private void turn() {
-        owner=Thread.currentThread();List<Operation<?>> completed=new ArrayList<>(limits.operationsPerTick());
+        owner=Thread.currentThread();List<Operation<?>> completed=new ArrayList<>();
         try {
+            adoptLimits();
             if(engine==null){engine=new BehaviorEngine(engineLimits,new GuardedInvoker(),this::terminal,state);started=true;}
             if(closing)engine.close();
-            for(int count=0;count<limits.operationsPerTick();count++){
+            for(int count=0,budget=limits.operationsPerTick();count<budget;count++){
                 Operation<?> operation;
                 synchronized(control){operation=requests.pollFirst();if(operation!=null)operation.phase=Phase.RUNNING;}
                 if(operation==null)break;

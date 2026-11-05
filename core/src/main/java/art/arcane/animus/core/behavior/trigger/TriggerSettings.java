@@ -1,6 +1,6 @@
 package art.arcane.animus.core.behavior.trigger;
 
-/** TOML budgets under {@code [behaviors.triggers]}. Ticks are behavior-owner ticks except where noted. Requires restart. */
+/** TOML budgets under {@code [behaviors.triggers]}. Ticks are behavior-owner ticks except where noted. Hotloads on the next owner tick. */
 public record TriggerSettings(boolean enabled, int eventQueue, int eventsPerTick, int startsPerTick, int maximumQueued,
                               int queuePerNpc, int queuePerTrigger, int queueLifetimeTicks, int concurrentTotal,
                               int concurrentPerNpc, int concurrentPerTrigger, int defaultCooldownTicks, int npcCooldownTicks,
