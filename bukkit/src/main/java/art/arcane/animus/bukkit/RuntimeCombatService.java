@@ -84,7 +84,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         }
         protectionName = name;
         world = folia ? null : new BukkitCombatWorld(plugin, living);
-        module = new CombatModule(runtime, living, world, adapter, folia ? BukkitCombatBridge.FOLIA_UNAVAILABLE : null,
+        module = new CombatModule(runtime, living, world, runtime.moduleHooks().protection(adapter), folia ? BukkitCombatBridge.FOLIA_UNAVAILABLE : null,
                 (String message) -> plugin.getLogger().warning(message), (UUID id) -> plugin.getServer().getPlayer(id) != null);
         bridge = new BukkitCombatBridge(plugin, version, folia, CombatLimits.DEFAULT, this::bridgeAllows,
                 module.active() ? new EngineDefense() : BukkitCombatBridge.Defense.NONE);

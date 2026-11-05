@@ -174,7 +174,7 @@ public final class ImportApplications {
             if(path.startsWith("npcs/")) {
                 NpcDefinition npc=NpcDefinition.parse(value);JsonObject data=npc.json();
                 if(!npc.path().equals(path))throw new IOException("Bundle NPC path mismatch");
-                int oldId=integer(object(data,"migration"),"citizensId");
+                int oldId=ModuleImports.sourceNumber(object(data,"migration"));
                 if(!npc.uuid().toString().equals(string(ids,Integer.toString(oldId))))throw new IOException("Import identity map mismatch");
                 if(data.has("skin"))required.add("skins/"+string(data,"skin")+".json");definitions.add(npc);
             } else if(path.startsWith("behaviors/")) behaviors.put(path,value);
