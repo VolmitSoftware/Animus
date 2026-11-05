@@ -55,23 +55,7 @@ public record GuiDocument(String id, long revision, GuiTemplate title, String re
                 case GuiModel.Decoration ignored -> {}
             }
         }
-        return commands(all);
-    }
-
-    private static boolean commands(List<Action> actions) {
-        for (Action action : actions) {
-            boolean found = switch (action) {
-                case GuiModel.Command ignored -> true;
-                case GuiModel.Sequence sequence -> commands(sequence.steps().stream().map(GuiModel.Step::action).toList());
-                case GuiModel.If branch -> commands(branch.then()) || commands(branch.otherwise());
-                case GuiModel.Switch choice -> choice.cases().values().stream().anyMatch(GuiDocument::commands) || commands(choice.fallback());
-                case GuiModel.Chance chance -> commands(chance.then()) || commands(chance.otherwise());
-                case GuiModel.Cooldown cooldown -> commands(cooldown.then()) || commands(cooldown.otherwise());
-                default -> false;
-            };
-            if (found) return true;
-        }
-        return false;
+        return GuiActions.commands(all);
     }
 
     public record Result(Optional<GuiDocument> document, List<String> problems) {

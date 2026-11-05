@@ -22,7 +22,7 @@ import java.util.function.Consumer;
 public interface BehaviorPlatform {
     enum CommandSource { CONSOLE, PLAYER }
     enum CombatOperation { ENABLE, DISABLE, TARGET, RELEASE, GUARD }
-    enum ScreenKind { SHOP, GUI }
+    enum ScreenKind { SHOP, GUI, MENU, GLOSS }
     enum BuildOperation { START, PAUSE, RESUME, CANCEL, UNDO }
     record NpcStatus(boolean spawned, double health) {}
     /** A present player addresses only that viewer. An empty player addresses every viewer within the radius. */

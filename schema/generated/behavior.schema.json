@@ -115,7 +115,7 @@
         },
         {
           "const": "animus:open-gui",
-          "description": "Opens a chest GUI for the triggering player."
+          "description": "Opens a chest GUI (kind inventory, the default), holographic menu, shop or, with Gloss installed, a Gloss menu for the triggering player."
         },
         {
           "const": "animus:open-shop",
@@ -1118,12 +1118,20 @@
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 256
+                    },
+                    "kind": {
+                      "enum": [
+                        "inventory",
+                        "menu",
+                        "shop",
+                        "gloss"
+                      ]
                     }
                   },
                   "required": [
                     "gui"
                   ],
-                  "description": "Opens a chest GUI for the triggering player."
+                  "description": "Opens a chest GUI (kind inventory, the default), holographic menu, shop or, with Gloss installed, a Gloss menu for the triggering player."
                 }
               },
               "required": [
