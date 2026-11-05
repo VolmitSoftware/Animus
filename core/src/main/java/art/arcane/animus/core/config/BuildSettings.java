@@ -1,6 +1,6 @@
 package art.arcane.animus.core.config;
 
-/** Plugin-wide build limits, read from the {@code [builds]} table of {@code config.toml}. Requires a restart. */
+/** Plugin-wide build limits, read from the {@code [builds]} table of {@code config.toml}. A hotload applies them live: a lower {@code maximumBuilds} or {@code maximumTeam} lets running builds finish and only refuses new ones. */
 public record BuildSettings(boolean enabled, int maximumBuilds, int maximumTeam, int placementsPerTick, int checksPerTick, int undoPerTick,
                             int maximumVolume, int maximumPalette, int maximumSide, int maximumFileBytes, int maximumUndoEntries, int saveSeconds) {
     public static final BuildSettings DEFAULT = new BuildSettings(true, 16, 8, 32, 512, 32, 1_000_000, 4096, 1024, 32 * 1024 * 1024, 250_000, 5);
