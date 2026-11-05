@@ -87,6 +87,8 @@
 - Editor: local-only browser Citizens converter, byte-identical to the Java converter.
 - Citizens waypoints convert to navigation routes (accepted with `/animus import citizens accept patrols`), look-close converts to `animus:look-close`, and Citizens text and commands convert to generated behaviors in `behaviors/citizens/` (commands stay denied until allow-listed).
 - Navigation routes take `order` (`sequence`, `pingpong`, `random`, `wander`), per-point `waitTicks`, `guides`, `linkDistance` and `wander`; `animus:set-quest-state` accepts `random`; `animus:say` and `animus:command` fill in `{player_name}`.
+- Shopkeepers `save.yml` import through `/animus import citizens`, with Citizens links resolved in either import order, mob shopkeepers as dormant NPCs, and a matching browser converter; `converter shopkeepers-preview` and `shopkeepers-apply`.
+- Owned container shops (`owner`, `containers`) with atomic, protection-checked item-for-item trades; shop messages `containerFull` and `containerUnavailable`.
 
 ### Changed
 
