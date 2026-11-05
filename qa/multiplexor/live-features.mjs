@@ -1689,9 +1689,9 @@ async function packs() {
       mkdirSync(path.join(data, 'npcs/examples'), { recursive: true });
       copyFileSync(path.join(source, 'npcs/examples', entry), path.join(data, 'npcs/examples', entry));
     }
-    copyTree(source, path.join(data, 'packs', pack), name => name !== 'npcs');
+    copyTree(source, path.join(data, 'packs', pack), name => name !== 'npcs' && name !== 'shops' && name !== 'gui');
+    for (const folder of ['shops', 'gui']) if (existsSync(path.join(source, folder))) copyTree(path.join(source, folder), path.join(data, folder), () => true);
   }
-  server.config('[behaviors.actions]\ncommandNamespaces = ["shop"]\n');
   await server.stop();
   await server.start();
   const startup = logText().split('\n').filter(line => /pack|Behaviors? (catalog|load)/i.test(line) && /Animus/.test(line)).slice(0, 4).map(plain).join(' / ');
@@ -1873,28 +1873,12 @@ async function packs() {
     assert(Math.hypot(stayed.x - near.x, stayed.z - near.z) < 2, `followed after dismissal: ${near.line.match(/position=[^;]*/)?.[0]} -> ${stayed.line.match(/position=[^;]*/)?.[0]}`);
     return `followed to ${followed.n.match(/position=[^;]*/)?.[0]}; attacker killed=${defended.ok}; after dismiss ${status}`;
   });
-  const shop = uuidOf('shopkeeper');
-  await check('shop charges one emerald for bread and gives nothing without one', async () => {
-    await gamemode('survival');
-    await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
-    await owner.tp(16.5, 64, 4);
-    let from = await click(owner, shop);
-    let bought = await choose(owner, from, 'buy');
-    await owner.chat('Pleasure doing business.', bought.after);
-    await delay(500);
-    const breadWithout = await itemCount(OWNER.name, 'minecraft:bread');
-    await server.cmd(`give ${OWNER.name} minecraft:emerald 1`, /Gave/);
-    await delay(2200);
-    from = await click(owner, shop);
-    bought = await choose(owner, from, 'buy');
-    await owner.chat('Pleasure doing business.', bought.after);
-    await delay(500);
-    const bread = await itemCount(OWNER.name, 'minecraft:bread'), emeralds = await itemCount(OWNER.name, 'minecraft:emerald');
-    await gamemode('creative');
-    assert.equal(breadWithout, 0);
-    assert.equal(bread, 4);
-    assert.equal(emeralds, 0);
-    return `without emerald bread=${breadWithout}; with one: bread=${bread} emeralds=${emeralds}`;
+  await check('the bakery shop and its counter GUI load from the shop pack', async () => {
+    const status = plain(await server.capture('animus shop status', /Shops [^\n]*/, 600));
+    assert(/shops=1\b/.test(status) && /guis=1\b/.test(status) && /problems=0\b/.test(status), status);
+    const listed = plain(await server.capture('animus shop list', /shop:bakery[^\n]*/, 600));
+    assert(/shop:bakery/.test(listed), listed);
+    return status;
   });
   await owner.close();
   for (const id of ['greeter', 'patroller', 'innkeeper', 'quest-giver', 'harbour-master', 'shopkeeper', 'town-guard', 'bodyguard']) await server.cmd(`animus delete ${id}`, /Deleted|Unknown/);

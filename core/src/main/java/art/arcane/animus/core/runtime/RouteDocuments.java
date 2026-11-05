@@ -12,7 +12,7 @@ public final class RouteDocuments {
     private RouteDocuments() {}
     public static WaypointSettings read(DocumentStore documents, String reference) throws IOException {
         if (reference == null || !reference.matches("[a-z0-9][a-z0-9_-]{0,63}")) throw new IllegalArgumentException("Invalid reusable route identifier");
-        Path path = documents.resolve("behaviors/routes/" + reference + ".json");
+        Path path = documents.resolve("routes/" + reference + ".json");
         byte[] bytes;
         try (var input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) { bytes = input.readNBytes(64 * 1024 + 1); }
         if (bytes.length > 64 * 1024) throw new IOException("Reusable route exceeds64 KiB");

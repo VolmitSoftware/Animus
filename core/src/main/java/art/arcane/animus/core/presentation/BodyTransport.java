@@ -62,6 +62,8 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     /** Viewer-local passenger list; the client replaces the whole roster. {@code realRider} may be null. */
     CompletionStage<Void> passengers(P viewer, Body vehicle, List<? extends Body> passengers, P realRider, boolean authoritative);
     CompletionStage<Void> dragonPhase(P viewer, Body dragon, int phase);
+    /** Swings the body's main arm once, as a player placing or breaking a block does. */
+    default CompletionStage<Void> swing(P viewer, Body body) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     /** An empty stack clears its slot. */
     CompletionStage<Void> equipment(P viewer, Body body, Map<EquipmentSlot, I> items);
     /** Authoritative: bypasses the ordinary operation limit. */

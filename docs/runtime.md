@@ -96,7 +96,7 @@ Source and local tests cover the following commands. Their managed server result
 
 Navigation uses the active NPC's current world and runtime position. Each leg permits at most32 blocks on each horizontal axis and8 vertically, speed1–5 blocks/second, and a bounded terrain capture of at most8192 voxels. Capture and live collision/support reads run on the Bukkit owner thread; path planning uses an immutable snapshot on one worker. Missing terrain suspends navigation without loading chunks. World changes, replacement, despawn, death, shutdown and conflicting authoritative movement cancel the route. Navigation status includes the current server position, route identity and arrival count.
 
-Movement is kinematic and uses real block collision shapes. Walking bodies stand on slabs, stairs, paths, snow layers and other partial surfaces, step and jump within their body's limits and fall at most 3 blocks. Ordinary bodies swim at the water surface, aquatic bodies dive and flying bodies fly. Every committed step is checked for clearance, support and hazards. Vanilla ballistic physics are not modelled. Terrain checks use a central hull of at most 4 wide and 8 tall, so an ender dragon's wings and tail may overhang terrain. The check budget for one step grows with the hull, so large bodies keep moving. Busy work budgets may reduce movement rate. On Folia, capture and collision reads run on the NPC's region and an NPC is handed to the next region's owner as it crosses chunks; see [moving between chunks](folia-runtime.md#moving-between-chunks).
+Movement is kinematic and uses real block collision shapes. Walking bodies stand on slabs, stairs, paths, snow layers and other partial surfaces, step and jump within their body's limits and fall at most 3 blocks. An NPC that is not following a route falls when a block under its feet is broken, burnt, blown up, pushed by a piston, taken by an entity, or changed by a build or its undo. It falls under gravity to the ground or water surface below and stays put over unloaded terrain. Flying and aquatic bodies do not fall. Only these changes are seen: a block that another plugin removes without an event leaves an idle NPC where it is. Ordinary bodies swim at the water surface, aquatic bodies dive and flying bodies fly. Every committed step is checked for clearance, support and hazards. Vanilla ballistic physics are not modelled. Terrain checks use a central hull of at most 4 wide and 8 tall, so an ender dragon's wings and tail may overhang terrain. The check budget for one step grows with the hull, so large bodies keep moving. Busy work budgets may reduce movement rate. On Folia, capture and collision reads run on the NPC's region and an NPC is handed to the next region's owner as it crosses chunks; see [moving between chunks](folia-runtime.md#moving-between-chunks).
 
 For native waypoints, an NPC can use this JSON module:
 
@@ -106,7 +106,7 @@ For native waypoints, an NPC can use this JSON module:
 }
 ```
 
-The reusable route lives at `behaviors/routes/town-patrol.json`:
+The reusable route lives at `routes/town-patrol.json` in the Animus data folder, next to `npcs/` and `behaviors/`. Routes are not behaviors, so behavior validation never reads them:
 
 ```json
 {

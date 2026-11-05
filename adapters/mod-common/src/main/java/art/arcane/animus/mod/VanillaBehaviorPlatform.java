@@ -4,6 +4,7 @@ import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.behavior.builtin.PlatformRefusals;
+import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.runtime.NpcRuntime;
@@ -44,10 +45,15 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     private final PersistedNpcService<ServerPlayer, ItemStack> living;
     private final ModCombat combat;
     private final ModTicks ticks;
+    private final BuildService<ServerPlayer, ItemStack> builds;
+    private final java.util.function.Supplier<art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack>> shops;
 
-    VanillaBehaviorPlatform(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, ModCombat combat, ModTicks ticks) {
+    VanillaBehaviorPlatform(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, ModCombat combat, BuildService<ServerPlayer, ItemStack> builds, ModTicks ticks,
+                            java.util.function.Supplier<art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack>> shops) {
+        this.shops = shops;
         this.server = Objects.requireNonNull(server); this.living = Objects.requireNonNull(living);
         this.combat = Objects.requireNonNull(combat); this.ticks = Objects.requireNonNull(ticks);
+        this.builds = Objects.requireNonNull(builds);
     }
 
     @Override public Optional<String> unavailable() { return PlatformRefusals.unavailability(living::available, living::status); }
@@ -183,6 +189,13 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         PlatformRefusals.mapped(() -> combat.operate(active.state().npcId(), operation, target));
     }
 
+    @Override public String build(NpcHandle npc, BuildOperation operation, Optional<String> schematic, Optional<Vec3> origin, java.util.Map<String, String> options) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        if (builds.unavailable().isPresent())
+            throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "build-unavailable", "Builds " + builds.unavailable().get());
+        return builds.behavior(active.id(), operation, schematic, origin, options);
+    }
+
     private NpcRuntime.ActiveNpc require(NpcHandle npc) { return living.active(npc.uuid()).orElseThrow(PlatformRefusals::inactive); }
     /** Dialogue, sounds and particles also come from a combat NPC that has just died, so its death routine can announce it. */
     private NpcRuntime.ActiveNpc requireVoice(NpcHandle npc) { return living.voice(npc.uuid()).orElseThrow(PlatformRefusals::inactive); }
@@ -203,5 +216,15 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         List<ServerPlayer> nearby = living.players().ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
         for (ServerPlayer viewer : nearby) action.accept(viewer);
         return nearby.size();
+    }
+
+    @Override public boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) {
+        art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> service = shops.get();
+        if (service == null || !service.enabled())
+            throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "screens-unavailable", "Shops and chest GUIs are disabled in config.toml");
+        return living.players().deliver(player, (ServerPlayer target) -> {
+            if (kind == ScreenKind.SHOP) service.openShop(target, id, Optional.of(npc.uuid()));
+            else service.openGui(target, id, java.util.Map.of(), Optional.of(npc.uuid()));
+        });
     }
 }

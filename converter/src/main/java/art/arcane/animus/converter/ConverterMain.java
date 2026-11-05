@@ -5,6 +5,7 @@ import art.arcane.animus.core.behavior.schema.OfflineBehaviorValidation;
 import art.arcane.animus.core.behavior.schema.OfflineCapabilities;
 import art.arcane.animus.core.migration.CitizensImporter;
 import art.arcane.animus.core.migration.ImportApplications;
+import art.arcane.animus.core.migration.ShopImporter;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import java.nio.file.Path;
@@ -17,9 +18,22 @@ public final class ConverterMain {
         catch (Exception e) { System.err.println("Animus: " + e.getMessage()); System.exit(1); }
     }
     static String run(String[] args) throws Exception {
-        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir>");
+        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir> | shops-preview <dtlTraders-folder> <data-dir> [saves.yml] | shops-apply <data-dir> <import-id>");
         if (args[0].equals("validate-behaviors")) { require(args, 2); return validateBehaviors(Path.of(args[1])); }
         if (args[0].equals("schema")) { require(args, 2); return schema(Path.of(args[1])); }
+        if (args[0].equals("shops-preview")) {
+            if (args.length < 3 || args.length > 4) throw new IllegalArgumentException("shops-preview <dtlTraders-folder> <data-dir> [saves.yml]");
+            try (DocumentStore store = new DocumentStore(Path.of(args[2]))) {
+                ShopImporter.Preview preview = new ShopImporter().preview(Path.of(args[1]), args.length == 4 ? Optional.of(Path.of(args[3])) : Optional.empty(), store);
+                return "Shop preview " + preview.id() + "\nShops: " + preview.shops() + ", entries: " + preview.entries()
+                        + "\nIssues: " + preview.issues() + "; limit data: " + preview.limitStatus()
+                        + "\nReport: " + preview.directory().resolve("report.json") + "\nNothing installed. Inspect the report before shops-apply.";
+            }
+        }
+        if (args[0].equals("shops-apply")) {
+            require(args, 3);
+            try (DocumentStore store = new DocumentStore(Path.of(args[1]))) { return "Shop import transaction: " + new ShopImporter().apply(store, args[2]); }
+        }
         CitizensImporter importer = new CitizensImporter();
         if (args[0].equals("preview")) {
             if (args.length < 3) throw new IllegalArgumentException("preview requires input and output paths");

@@ -25,7 +25,7 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 
 Use the supported Bukkit deliverable in `build/distributions/`: `Animus v0.1.0 [CraftBukkit] 26.1.2-26.3.jar`. The converter is in `converter/build/install/converter/`, with archives under `converter/build/distributions/`. `build/artifacts.json` records the distribution's exact platforms and versions (or all platform distributions when opted in).
 
-The Java extension API, sources and JavaDoc are prepared separately in `build/api/`. See [trusted modules](docs/modules.md) and the [reference module](examples/modules/reference/README.md). Startup module loading and canonical/custom-package verification are complete locally; the new Multiplexor server matrix is in progress.
+The Java extension API, sources and JavaDoc are prepared separately in `build/api/`. See [trusted modules](docs/modules.md) and the [reference module](examples/modules/reference/README.md). NPCs can open [shops](docs/shops.md) and [chest GUIs](docs/gui.md) written in Gloss's inventory format; a dtlTraders importer converts existing shops. Startup module loading and canonical/custom-package verification are complete locally; the new Multiplexor server matrix is in progress.
 
 For isolated builds, artifact delivery, managed server checks and client scenarios, follow the [Multiplexor verification guide](docs/multiplexor.md). [Benchmark preparation](docs/benchmark.md) supplies reproducible synthetic workloads; measurements are still pending. Native packet checks use exact-version clients attached to Multiplexor-managed servers where its standard client lacks protocol data.
 

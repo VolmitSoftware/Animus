@@ -9,6 +9,7 @@ import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.admin.Administration;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.builtin.PendingChoices;
+import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.navigation.MovementProfile;
@@ -67,6 +68,12 @@ public final class AnimusCommands {
         // A dialogue click comes from ordinary players. Only its single-use token grants anything.
         if (arguments.length > 0 && arguments[0].equalsIgnoreCase("choice") && services.builtins() != null) {
             choice(sender, arguments, services.builtins()::selectChoice);
+            return;
+        }
+        // Donating to a build is open to players with the donate node; the build itself decides what it accepts.
+        AnimusCommands.Extra builds = services.extras().get("build");
+        if (builds != null && BuildCommands.donation(arguments) && sender.permitted(BuildCommands.DONATE_PERMISSION)) {
+            builds.execute(sender, arguments);
             return;
         }
         boolean status = arguments.length == 0 || arguments[0].equalsIgnoreCase("status");
@@ -154,6 +161,8 @@ public final class AnimusCommands {
         AnimusRuntime activeRuntime = services.runtime();
         if (!admin || !activeRuntime.isRunning()) return List.of();
         String operation = arguments[0].toLowerCase(Locale.ROOT);
+        if (arguments.length == 3 && operation.equals("build") && arguments[1].equalsIgnoreCase("start"))
+            return activeRuntime.npcs().all().stream().map(NpcDefinition::id).filter((String id) -> id.startsWith(arguments[2])).limit(100).toList();
         if (arguments.length == 2 && List.of("inspect", "edit", "clone", "delete", "select", "spawn", "despawn", "attack", "target", "navigate", "navigation", "look").contains(operation))
             return activeRuntime.npcs().all().stream().map(NpcDefinition::id).filter((String id) -> id.startsWith(arguments[1])).limit(100).toList();
         if (arguments.length == 2 && operation.equals("import")) return matching(List.of("preview", "stage", "apply", "apply-plan"), arguments[1]);

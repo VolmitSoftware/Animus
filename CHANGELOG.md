@@ -62,6 +62,13 @@
 - Combat greetings and warnings; pattern, item, health, permission, group, effect, combined, fight-event and chat target rules; guard assist.
 - Trident, fireball, small fireball, snowball, egg, wither skull, llama spit, spectral arrow and potion weapons; healing potions; damage and armor from equipment; weapon damage map; ammunition.
 - WorldGuard pursuit regions; combat scan range up to 256 and speed up to 10, capped by `maximumScanRange` and `maximumSpeed`; `eventsPerTick`.
+- NPCs build Sponge `.schem` (v1-3) and structure `.nbt` schematics with `/animus build`, in phase order, with rotation, mirroring, patterns, layers and excavation; creative, donated and container materials; bounded undo; pause, resume, cancel; teams; resume after restart.
+- `animus:build` action, `build_finished` and `build_paused` triggers, `[builds]` settings and the `animus.build.donate` permission.
+- Builder trait import into `animus:builder`; Constructor traits kept and reported.
+- Chest GUIs in the Gloss inventory format, run natively without Gloss.
+- Shops with buy, sell and trade grids, limits, stock, discounts, command entries and confirmation, bound with the `animus:shop` module; `animus:open-shop` and `animus:open-gui` actions; `/animus shop` and `/animus gui`.
+- Vault economy on Bukkit; money prices fail closed elsewhere.
+- dtlTraders importer for shop files, `guis.yml`, trader traits, version 3 stock and `data.dat`.
 
 ### Changed
 
@@ -87,8 +94,16 @@
 
 - Sentinel import maps 51 of 69 fields (converter version 5).
 
+- Build changes ask WorldGuard on Bukkit; mod servers allow all build changes; builds are unavailable on Folia.
+
+- The example `shop` pack uses a shop and a chest GUI instead of commands.
+- Citizens converter version 6 maps the `trader` trait.
+
+- Reusable routes live in `routes/<id>.json` instead of `behaviors/routes/`, so route files are no longer reported as invalid behaviors.
+
 ### Fixed
 
+- Idle NPCs fall when the blocks under them are removed by players, explosions, pistons, builds or build undo, instead of floating.
 - Imported Sentinel NPCs with `respawnTime` 0 stay dead; a negative value deletes the NPC on death, undoable with `/animus rollback`; imported guards never target their owner.
 - A player who logs out while riding is saved at the NPC's feet instead of beside it.
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.

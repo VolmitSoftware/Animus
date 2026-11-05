@@ -8,6 +8,9 @@ import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetRules;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.shop.ShopBinding;
+import art.arcane.animus.core.shop.ShopCatalog;
+import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonObject;
 import java.nio.file.Files;
@@ -60,24 +63,24 @@ class ExamplePacksTest {
         }
     }
 
-    @Test void theShopNeedsTheAllowListAndSaysSo() throws Exception {
+    @Test void theShopRunsOnTheShopRuntimeWithoutCommands() throws Exception {
         Path shop = RepositoryFiles.packs().resolve("shop");
-        BehaviorCatalog catalog = new BehaviorCatalog(shop, BehaviorCatalog.Limits.defaults(), granting(false), BehaviorCheckpoints.disabled());
-        assertTrue(catalog.reload(0, Set.of()).published());
-        BehaviorCatalog.Resolution keeper = catalog.snapshot().find("shop:keeper").orElseThrow();
-        assertFalse(keeper.available());
-        assertTrue(keeper.accepted().isPresent());
-        assertTrue(keeper.diagnostics().stream().anyMatch(problem -> problem.message().contains("privileged-capability-not-granted")));
+        ShopCatalog catalog = ShopCatalog.load(shop, id -> false);
+        assertEquals(List.of(), catalog.problems());
+        ShopDocument bakery = catalog.shop("shop:bakery").orElseThrow();
+        assertEquals(ShopDocument.Mode.TRADE, bakery.defaultMode(), "the first mode a player sees needs no economy plugin");
+        assertFalse(bakery.hasCommands());
+        assertTrue(catalog.gui("shop:counter").isPresent());
+        NpcDefinition keeper = NpcDefinition.parse(Files.readString(shop.resolve("npcs/examples/shopkeeper.json")));
+        assertEquals("shop:bakery", ShopBinding.of(keeper).orElseThrow().shop());
         String readme = Files.readString(RepositoryFiles.packs().resolve("README.md"));
-        assertTrue(readme.contains("commandNamespaces = [\"shop\"]"));
+        assertTrue(readme.contains("examples/packs/shop/shops"), "the README says how to install the shop files");
     }
 
-    @Test void onlyTheShopUsesCommandsAndGuardsDocumentTheirLimits() throws Exception {
+    @Test void noPackUsesCommandsAndGuardsDocumentTheirLimits() throws Exception {
         for (Path pack : RepositoryFiles.packDirectories()) {
-            for (Path file : RepositoryFiles.jsonUnder(pack.resolve("behaviors"))) {
-                boolean usesCommand = Files.readString(file).contains("\"animus:command\"");
-                assertEquals(pack.getFileName().toString().equals("shop"), usesCommand, file.toString());
-            }
+            for (Path file : RepositoryFiles.jsonUnder(pack.resolve("behaviors")))
+                assertFalse(Files.readString(file).contains("\"animus:command\""), file.toString());
         }
         String readme = Files.readString(RepositoryFiles.packs().resolve("README.md"));
         assertTrue(readme.contains("animus:combat-control"));
@@ -109,23 +112,6 @@ class ExamplePacksTest {
         assertTrue(hire.contains("{\"operation\":\"guard\",\"target\":\"player\"}"), hire);
         String dismiss = behavior.getAsJsonObject("routines").get("dismiss").toString();
         assertTrue(dismiss.contains("{\"operation\":\"guard\"}"), dismiss);
-    }
-
-    @Test void theShopChargesTheClickerBeforeGivingAnything() throws Exception {
-        JsonObject behavior = JsonDocuments.object(Files.readString(RepositoryFiles.packs().resolve("shop/behaviors/shop/keeper.json")));
-        List<String> commands = new ArrayList<>();
-        for (com.google.gson.JsonElement step : behavior.getAsJsonObject("routines").getAsJsonObject("buy").getAsJsonArray("steps")) {
-            JsonObject action = step.getAsJsonObject();
-            if (action.get("capability").getAsString().equals("animus:command")) commands.add(action.getAsJsonObject("arguments").get("command").getAsString());
-        }
-        assertEquals(3, commands.size(), commands.toString());
-        for (String command : commands) {
-            assertTrue(command.contains("{player}"), command);
-            assertFalse(command.contains("@p"), command);
-        }
-        assertTrue(commands.get(0).contains("store success score @s animus_shop run clear @s minecraft:emerald 1"), commands.get(0));
-        assertTrue(commands.get(1).contains("if score @s animus_shop matches 1 run give"), commands.get(1));
-        assertTrue(commands.get(2).startsWith("scoreboard players reset"), commands.get(2));
     }
 
     @Test void everyExampleNpcReferencesABehaviorOfItsOwnPack() throws Exception {

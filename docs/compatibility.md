@@ -8,14 +8,16 @@ This is a development inventory, not a release-parity claim. Counts were produce
 | Name, type, main world/location | Converted; optional world mapping | Names up to 256 characters. Short plain player names use the player nameplate; longer or coloured player names and every non-player name show in a packet-only text display. See [appearance](runtime.md#appearance-text-and-inventory) |
 | Skins (489 traits, 409 unique complete documents) | Texture/signature/settings preserved and deduplicated | Signed textures in persisted runtime and opt-in proof; see artifact-specific evidence |
 | Equipment (123) | All eight slots convert to `equipment`; a cosmetic item replaces its slot. Item id, count and damage convert; other item data is kept in the item's `imported` field | Shown to every viewer from the definition, across restart. Kept item data (names, lore, enchantment glint, custom model data) is not shown. Equipment does not change combat damage or armor |
-| Inventory (121) | Slots 0–71 convert to `inventory` slot for slot, with the same item rules | Stored for behaviors and modules to read; never rendered, no inventory screen and no item transactions |
+| Inventory (121) | Slots 0–71 convert to `inventory` slot for slot, with the same item rules | Stored for behaviors and modules to read; never rendered. Shops and chest GUIs are separate documents ([shops](shops.md), [chest GUIs](gui.md)) and never read the NPC's inventory |
 | Waypoints (318), look behavior (495) | Preserved for review | Known locations remapped; native movement/look/JSON routes verified on exact Paper/Spigot targets; imported traits are not executed |
 | Holograms (91) | Lines convert to `hologram.lines` in order; at most 16 lines of 256 characters | One packet-only text display above the NPC for every viewer. Lines are evenly spaced; line margins, line height, view ranges, renderer settings and placeholders are kept for review and not applied |
 | Poses (3), sneak (1), sit (1), armor stand (3) | The default named pose sets the facing; `sneak` becomes `sneaking`, `sittrait` becomes `sitting`; armor stand parts and angles convert | Sneaking, sleeping, swimming and sitting on player bodies; other body types stand. Armor stand size, arms, base plate, visibility and limb angles are shown. Marker and gravity are kept for review. Other named poses are kept and not applied |
 | Non-player NPCs (12) | Type converted | Every observed type has a packet body; names and hologram lines show in a text display; armor stand parts show; horse armor and saddle use the `body` and `saddle` slots |
 | Text (2) | Preserved for review | Talk lines, ranges and speech bubbles are not run. Write them as a behavior with [`animus:say`](behaviors.md#actions) |
 | Ownership (388) | A player UUID converts to `owner`; a server owner records none | Exposed through `NpcDefinition.owner()`, the definition snapshot and `/animus inspect` for plugins and modules to use. Animus management commands still require `animus.admin` |
+| dtlTraders `trader` (not in the reference) | Converter version 6 and later: `guiName` converts to `modules["animus:shop"]` naming `dtltraders:<shop>`; an old version 3 trader names `dtltraders:converted-<npc>`. Shop files, version 3 stock and `data.dat` convert with the separate [shop importer](shops.md#importing-from-dtltraders) | Right click opens the shop once its shop file is installed; a missing shop says so to the player |
 | Sentinel (103) | Settings converted to `animus:combat`; unsupported settings and statistics kept separately; disabled pending review | [Combat module](combat.md) runs once the review is accepted; live gameplay checks pending |
+| Builder and Constructor (none in the reference) | Builder's `builder` trait converts to an `animus:builder` section, disabled pending review; Constructor's `constructor` trait is kept for review and its keys are reported | [Building](building.md) runs a reviewed section with `/animus build start <npc-id>`. Builder `.schematic` files must be saved again as `.schem` |
 | Denizen flags (24), assignment/trigger records (8 each) | Preserved; requires integration | External scripts required to translate behaviors |
 | Mounts (2) | Preserved; UUID references resolved | Resolved references apply from definitions on exact Paper/Spigot: passengers for every viewer, across restart. Unresolved ones stay preserved and reported. See [mounted NPCs](runtime.md#mounted-npcs) |
 | Controllable (1) | Preserved for review | Trait not executed. A definition opts in with `animus:riding`, with `reviewAccepted: true` when imported. See [riding](runtime.md#riding-an-npc) |
@@ -54,6 +56,7 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 | spawned | 11 | Requires review; candidate spawned=false |
 | targetable | 24 | Unsupported, preserved |
 | text | 2 | Requires review |
+| trader | 0 | `guiName` and `converted-to-v5` converted to `animus:shop`; version 3 stock requires the shop importer |
 | triggers | 8 | Requires integration |
 | type | 495 | Converted identifier; opt-in packet proof for all observed types |
 | waypoints | 318 | Requires review |

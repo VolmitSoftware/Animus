@@ -8,6 +8,9 @@ import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
+import art.arcane.animus.core.building.BuildCommands;
+import art.arcane.animus.core.building.BuildProtection;
+import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
@@ -26,6 +29,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -70,6 +74,9 @@ public final class AnimusModRuntime {
         VanillaRuntimeHost host;
         PersistedNpcService<ServerPlayer, ItemStack> living;
         ModCombat combat;
+        ModScreens screens;
+        volatile art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> shops;
+        BuildService<ServerPlayer, ItemStack> builds;
         BuiltinCapabilities builtins;
         ExtensionRuntime extensions;
         volatile BehaviorCommands behaviors;
@@ -104,8 +111,27 @@ public final class AnimusModRuntime {
             LOGGER.info(next.combat.status());
             next.ticks.every(next.combat::tick);
             Running owner = next;
+            next.screens = new ModScreens(server, next.ticks, art.arcane.animus.core.shop.ShopService.economy(next.runtime.shopSettings(),
+                    art.arcane.animus.core.inventory.Economy.none(ModScreens.NO_ECONOMY)));
+            next.shops = new art.arcane.animus.core.shop.ShopService<>(next.runtime, next.screens, next.living, files,
+                    (String name) -> Optional.ofNullable(server.getPlayerList().getPlayerByName(name)).map(ServerPlayer::getUUID), LOGGER::info);
+            next.screens.bind(next.shops.screens());
+            next.living.interactions(next.shops::interacted);
+            art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
+            next.ticks.every(() -> {
+                for (UUID viewer : screenService.screens().viewing()) {
+                    ServerPlayer online = server.getPlayerList().getPlayer(viewer);
+                    if (online != null) screenService.screens().tick(online);
+                }
+            });
+            next.shops.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {});
+            LOGGER.info(next.shops.status());
+            next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), BuildProtection.NONE,
+                    "none (mod servers have no standard protection API; every block change is allowed)", next.ticks::every,
+                    () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null);
+            LOGGER.info(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
-            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.ticks),
+            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.shops),
                     next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
             next.extensions = new ExtensionRuntime(next.runtime.documents().resolve("modules"), modulePlatform(), next.runtime.definitionGateway(),
                     next.runtime.moduleSettings(), LOGGER::info, (ExtensionRuntime.State initialized) -> {
@@ -122,7 +148,8 @@ public final class AnimusModRuntime {
                 }
             }
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
-                    next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY), () -> owner.stopping));
+                    next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
+                            "shop", next.shops.shopCommand(), "gui", next.shops.guiCommand()), () -> owner.stopping));
             next.extensions.start();
             running = next;
             ModHooks.attach(this);
@@ -144,7 +171,10 @@ public final class AnimusModRuntime {
         active.stopping = true;
         if (active.behaviors != null) active.behaviors.close();
         if (active.builtins != null) active.builtins.close();
+        if (active.screens != null) active.screens.closeAll();
+        if (active.shops != null) active.shops.close();
         if (active.extensions != null) active.extensions.close();
+        if (active.builds != null) active.builds.close();
         if (active.combat != null) active.combat.close();
         if (active.living != null) active.living.close();
         if (active.ticks != null) active.ticks.close();
@@ -212,12 +242,29 @@ public final class AnimusModRuntime {
     /** A server correction back to where the player already is keeps its presentation; any real teleport resets it. */
     void teleported(ServerPlayer player, double x, double y, double z) {
         Running active = running;
-        if (active != null && player.position().distanceToSqr(x, y, z) >= CORRECTION_SQUARED) active.living.teleported(player);
+        if (active == null || player.position().distanceToSqr(x, y, z) < CORRECTION_SQUARED) return;
+        if (active.shops != null) active.shops.screens().teleported(player);
+        active.living.teleported(player);
     }
     void joined(ServerPlayer player) { Running active = running; if (active != null) active.living.joined(player); }
-    void quit(ServerPlayer player) { Running active = running; if (active != null) active.living.quit(player); }
-    void respawned(ServerPlayer player) { Running active = running; if (active != null) active.living.respawned(player); }
-    void died(ServerPlayer player) { Running active = running; if (active != null) active.living.died(player); }
+    void quit(ServerPlayer player) {
+        Running active = running;
+        if (active == null) return;
+        if (active.shops != null) active.shops.screens().quit(player);
+        active.living.quit(player);
+    }
+    void respawned(ServerPlayer player) {
+        Running active = running;
+        if (active == null) return;
+        if (active.shops != null) active.shops.screens().worldChanged(player);
+        active.living.respawned(player);
+    }
+    void died(ServerPlayer player) {
+        Running active = running;
+        if (active == null) return;
+        if (active.shops != null) active.shops.screens().died(player);
+        active.living.died(player);
+    }
     void realDamaged(LivingEntity victim, DamageSource source) { Running active = running; if (active != null) active.combat.realDamaged(victim, source); }
     void chat(ServerPlayer player, String message) { Running active = running; if (active != null) active.combat.chat(player, message); }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }

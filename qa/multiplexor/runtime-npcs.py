@@ -261,7 +261,7 @@ finally:
                     item['emergencyCheckpointRemoved'] = True
                 except Exception as error: cleanup_errors.append(str(error))
         if report.get('movementNpcId'):
-            route_file = data/'behaviors/routes'/f'{report["movementNpcId"]}.json'
+            route_file = data/'routes'/f'{report["movementNpcId"]}.json'
             if route_file.exists():
                 cleanup_errors.append('Owned reusable route survived client cleanup')
                 shutil.copy2(route_file, evidence/'emergency-route.json'); route_file.unlink()

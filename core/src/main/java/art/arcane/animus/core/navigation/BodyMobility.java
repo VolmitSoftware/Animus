@@ -23,6 +23,11 @@ public final class BodyMobility {
                 : Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM);
         return profile(modes, width, height);
     }
+    /** Bodies that fall when nothing holds them up: flyers hover and aquatic bodies keep their depth. */
+    public static boolean falls(String type) {
+        Objects.requireNonNull(type, "type");
+        return !FLYERS.contains(type) && !AQUATIC.contains(type);
+    }
     /** A route's requested mode: walk stays on land, swim also crosses water at the surface (aquatic bodies dive), fly flies. */
     public static MovementProfile forRoute(String type, double width, double height, MovementProfile.Mode mode) {
         Objects.requireNonNull(type, "type"); Objects.requireNonNull(mode, "mode");

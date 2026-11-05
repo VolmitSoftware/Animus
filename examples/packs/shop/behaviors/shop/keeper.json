@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "revision": 2,
+  "revision": 3,
   "id": "shop:keeper",
-  "entry": "main",
+  "entry": "greet",
   "routines": {
-    "main": {
+    "greet": {
       "type": "sequence",
       "steps": [
         {
@@ -16,96 +16,35 @@
         },
         {
           "type": "action",
-          "capability": "animus:choices",
-          "arguments": {
-            "id": "counter",
-            "prompt": "Four loaves for one emerald?",
-            "options": [
-              {
-                "id": "buy",
-                "text": "Buy four loaves"
-              },
-              {
-                "id": "leave",
-                "text": "Just looking"
-              }
-            ]
-          }
-        }
-      ]
-    },
-    "buy": {
-      "type": "sequence",
-      "steps": [
-        {
-          "type": "action",
-          "capability": "animus:command",
-          "arguments": {
-            "command": "execute as {player} store success score @s animus_shop run clear @s minecraft:emerald 1"
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:command",
-          "arguments": {
-            "command": "execute as {player} if score @s animus_shop matches 1 run give @s minecraft:bread 4"
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:command",
-          "arguments": {
-            "command": "scoreboard players reset {player} animus_shop"
-          }
-        },
-        {
-          "type": "action",
           "capability": "animus:say",
           "arguments": {
-            "text": "Pleasure doing business. No emerald, no bread."
+            "text": "Fresh bread today. Right-click to browse, left-click for the counter."
           }
         }
       ]
     },
-    "leave": {
+    "counter": {
       "type": "action",
-      "capability": "animus:say",
+      "capability": "animus:open-gui",
       "arguments": {
-        "text": "Come back when you are hungry."
-      }
-    },
-    "setup": {
-      "type": "action",
-      "capability": "animus:command",
-      "arguments": {
-        "command": "scoreboard objectives add animus_shop dummy"
+        "gui": "shop:counter"
       }
     }
   },
   "triggers": [
     {
-      "id": "ready",
-      "event": "spawn",
-      "routine": "setup"
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 6,
+      "cooldownTicks": 600
     },
     {
-      "id": "click",
+      "id": "left-click",
       "event": "interaction",
-      "cooldownTicks": 40
-    },
-    {
-      "id": "bought",
-      "event": "dialogue_choice",
-      "dialogue": "counter",
-      "choice": "buy",
-      "routine": "buy"
-    },
-    {
-      "id": "left",
-      "event": "dialogue_choice",
-      "dialogue": "counter",
-      "choice": "leave",
-      "routine": "leave"
+      "action": "attack",
+      "routine": "counter",
+      "cooldownTicks": 10
     }
   ]
 }
