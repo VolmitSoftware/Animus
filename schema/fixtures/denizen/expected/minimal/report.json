@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 1,
-  "importId": "70bd709210d29537942a14544c1a50796e21cd97fcd955aae4958e12cc273411",
-  "notice": "Data conversion only. Generated behaviors are listed on no NPC until the denizen review is accepted, and commands stay denied until allow-listed.",
+  "converterVersion": 2,
+  "importId": "bc6a6736092bf627134b36dd9d33c5c7dbbcedfbd023e30537e9856f7f629da7",
+  "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/hello.yml": "9cbb647a2894c1e8bc0b731849ea11747520373965ffce4c263e963e5d96330b"
   },
@@ -53,10 +53,12 @@
   "commandBehaviors": [
     "denizen:task/hello_task"
   ],
+  "serverBehaviors": [],
+  "guis": [],
   "sounds": {},
   "issues": [],
   "preserved": [],
   "documents": {
-    "behaviors/denizen/task/hello_task.json": "a3d831edff9fc1a2b62fbcebb31e7556ec9c8536ac2acbae7e2f9a5e34e9acb1"
+    "behaviors/denizen/task/hello_task.json": "c0f1116cbdc8859195b18fe50fd582a056902b5ddbd9c9cebc5d18e605008b40"
   }
 }

@@ -4,9 +4,40 @@
   "scope": "player",
   "player": "00000000-0000-4000-8000-0000000000a1",
   "values": {
+    "boost": {
+      "type": "boolean",
+      "value": true,
+      "expires": 1893456000000
+    },
     "met_guard": {
       "type": "boolean",
       "value": true
+    },
+    "nickname": {
+      "type": "string",
+      "value": "Bob"
+    },
+    "pockets": {
+      "type": "map",
+      "value": {
+        "coins": 12,
+        "keys": [
+          "gate",
+          "cellar"
+        ]
+      }
+    },
+    "quest-stage": {
+      "type": "integer",
+      "value": 2
+    },
+    "reputation": {
+      "type": "decimal",
+      "value": 4.5
+    },
+    "visits": {
+      "type": "integer",
+      "value": 2
     }
   }
 }

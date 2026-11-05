@@ -1,2 +1,4 @@
 ticks:15
 event_open:true
+notice_board:li@Market on Friday|Gate closes at dusk|
+\exfestival:map@[__value=true;__expiration=time@2031/06/21_12:00:00:0000_+00:00]

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/tally_task",
+  "entry": "main",
+  "variables": {
+    "d_amount": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_number": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_who": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    }
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "marks",
+            "scope": "player",
+            "value": null,
+            "expireSeconds": 86400
+          },
+          "expressions": {
+            "/value": "(num(flag('player', 'marks', 0)) + num(d_amount))"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "names",
+            "scope": "player",
+            "value": null
+          },
+          "expressions": {
+            "/value": "append(flag('player', 'names', []), d_who)"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "(num(flag('player', 'marks', 0)) > 10 || (has_flag('player', 'names') && !(has_flag('player', 'banned'))))",
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "call",
+                "routine": "proc-double_proc",
+                "arguments": {
+                  "d_number": {
+                    "expression": "flag('player', 'marks', '')"
+                  }
+                },
+                "result": "t_1"
+              },
+              {
+                "type": "return",
+                "value": {
+                  "expression": "t_1"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "return",
+          "value": {
+            "expression": "flag('player', 'marks', '')"
+          }
+        }
+      ]
+    },
+    "proc-double_proc": {
+      "type": "return",
+      "value": {
+        "expression": "(num(d_number) * 2)"
+      }
+    }
+  }
+}
