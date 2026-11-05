@@ -112,7 +112,7 @@ class EditorPartsTest {
         try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) { port = socket.getLocalPort(); }
         Path data = directory.resolve("server");
         Files.createDirectories(data);
-        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nport = " + port + "\n");
+        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = " + port + "\n");
         art.arcane.animus.core.AnimusRuntime runtime = new art.arcane.animus.core.AnimusRuntime(
                 new art.arcane.animus.core.RuntimeEnvironment(art.arcane.animus.core.Platform.BUKKIT, "26.2", data));
         runtime.start();
@@ -124,7 +124,7 @@ class EditorPartsTest {
                 assertTrue(link.link().startsWith("https://animus-editor.web.app/#/pair/ANM1."));
                 PairingCode code = PairingCode.decode(link.link().substring(link.link().indexOf("ANM1.")));
                 assertEquals(Optional.of("http://127.0.0.1:" + port), code.directUrl());
-                assertEquals(Optional.empty(), code.relayUrl(), "the relay is off by default");
+                assertEquals(Optional.empty(), code.relayUrl(), "the relay is off in this config");
                 assertEquals(EditorIdentity.loadOrCreate(runtime.documents()).fingerprint(), code.fingerprint());
                 assertTrue(service.status().stream().anyMatch((String line) -> line.startsWith("Editor listener http://127.0.0.1:" + port)));
                 assertTrue(service.handler().isPresent());
