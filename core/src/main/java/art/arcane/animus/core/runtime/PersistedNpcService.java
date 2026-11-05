@@ -13,6 +13,7 @@ import art.arcane.animus.core.navigation.BodyMobility;
 import art.arcane.animus.core.navigation.CaptureBounds;
 import art.arcane.animus.core.navigation.CaptureProvenance;
 import art.arcane.animus.core.navigation.IdleFall;
+import art.arcane.animus.core.navigation.MovementSettings;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.NavigationPlan;
@@ -354,14 +355,44 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 Presented body = viewer.visible.get(value.spec.definition().uuid());
                 candidates.add(new LookClose.Candidate<>(viewer.player, host.eye(viewer.player), body != null && body.value == value && body.bound && !body.retired));
             }
+            boolean looked = false;
             for (LookClose.Candidate<P> candidate : look.ranked(eye, candidates)) {
                 double distance = candidate.eye().distance(eye);
                 if (look.lineOfSight() && distance > .000001
                         && !host.clearSight(candidate.player(), candidate.eye(), eye.subtract(candidate.eye()).normalized(), Math.max(0, distance - .0001))) continue;
                 LookClose.facing(eye, candidate.eye()).ifPresent((LookClose.Facing facing) -> setPose(value, facing.yaw(), facing.pitch(), value.onGround));
+                looked = true;
                 break;
             }
+            if (!looked && look.npcs()) looked = lookAtNpc(value, at, eye, look.range());
+            if (!looked && look.randomLook().isPresent() && look.randomLook().get().active() && tickNumber >= value.nextRandomLook) {
+                LookClose.RandomLook random = look.randomLook().get();
+                LookClose.Facing facing = random.pick(java.util.concurrent.ThreadLocalRandom.current());
+                setPose(value, facing.yaw(), facing.pitch(), value.onGround);
+                value.nextRandomLook = tickNumber + random.delayTicks();
+            }
         }
+    }
+
+    /** NPCs scanned for a look-close NPC target: a few nearby chunks and candidates at most. */
+    private static final SpatialNpcIndex.Budget NPC_LOOK_BUDGET = new SpatialNpcIndex.Budget(16, 32);
+
+    /** Turns toward the nearest other active NPC in range; false when there is none. */
+    private boolean lookAtNpc(Value value, WorldPosition at, Vec3 eye, double range) {
+        UUID self = value.spec.definition().uuid();
+        Vec3 nearest = null;
+        double best = range;
+        for (VirtualNpcState.Snapshot other : scanNpcs(at, range, null, NPC_LOOK_BUDGET).candidates()) {
+            if (other.npcId().equals(self) || !other.active() || !other.position().world().equals(at.world())) continue;
+            Entry entry = byUuid.get(other.npcId());
+            double height = entry == null || entry.value == null ? 1.8 : bodyHeight(entry.value);
+            Vec3 target = LookClose.eye(other.position().point(), height);
+            double distance = target.distance(eye);
+            if (distance <= best) { best = distance; nearest = target; }
+        }
+        if (nearest == null) return false;
+        LookClose.facing(eye, nearest).ifPresent((LookClose.Facing facing) -> setPose(value, facing.yaw(), facing.pitch(), value.onGround));
+        return true;
     }
 
     @Override public Optional<ActiveNpc> active(UUID npc) {
@@ -703,7 +734,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 maxY - minY + 1, Math.max(from.z(), to.z()) + margin - minZ + 1);
     }
     private MovementProfile profile(Value value, MovementProfile.Mode mode) {
-        return BodyMobility.forRoute(value.spec.type(), moveWidth(value), moveHeight(value), mode);
+        return value.movement.apply(BodyMobility.forRoute(value.spec.type(), moveWidth(value), moveHeight(value), mode), value.spec.type());
     }
     private boolean routeCurrent(Route route) {
         Value value = route.value; Entry entry = byUuid.get(value.spec.definition().uuid());
@@ -730,8 +761,19 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         WaypointSettings waypointSettings = progress.settings();
         WorldPosition at = value.state.snapshot().position();
         WorldPosition goal = leg.pause() ? at : new WorldPosition(at.world(), leg.goal());
+        double speed = value.movement.routeSpeed(value.routeSpeedDeclared, waypointSettings.speed());
+        if (!leg.pause() && value.movement.outOfRange(at.point(), goal.point())) {
+            Route unreachable = new Route(value, goal, waypointSettings.mode(), speed, leg);
+            value.route = unreachable;
+            if (teleportStuck(unreachable)) return;
+            value.route = null;
+            value.navigationStatus = "waypoint " + leg.arrival() + " is beyond the NPC's path range"; failWatch(value, value.navigationStatus);
+            Optional<WaypointProgress.Leg> retry = progress.failed(leg);
+            if (retry.isPresent()) beginLeg(value, retry);
+            return;
+        }
         if (!leg.pause()) {
-            try { validateDestination(value, goal, waypointSettings.mode(), waypointSettings.speed()); }
+            try { validateDestination(value, goal, waypointSettings.mode(), speed); }
             catch (IllegalArgumentException invalid) {
                 value.navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(value, value.navigationStatus);
                 Optional<WaypointProgress.Leg> retry = progress.failed(leg);
@@ -739,19 +781,36 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 return;
             }
         }
-        Route route = new Route(value, goal, waypointSettings.mode(), waypointSettings.speed(), leg);
+        Route route = new Route(value, goal, waypointSettings.mode(), speed, leg);
         route.nextAttempt = tickNumber + Math.max(1, leg.waitTicks());
         value.route = route; routeOrder.add(route, tickNumber); routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
     }
     /** A leg that cannot finish: random and wander routes pause and choose again, every other route halts. */
     private void failLeg(Route route, String reason) {
         Value value = route.value;
+        if (teleportStuck(route)) return;
         WaypointProgress progress = value.waypoints;
         stopRoute(value, reason);
         if (progress == null || route.leg == null || !progress.retries() || value.route != null || !valueCurrent(value)) return;
         String failure = value.navigationStatus;
         beginLeg(value, progress.failed(route.leg));
         if (value.route != null) routeStatus(value.route, "waiting to retry", "after " + failure);
+    }
+    /**
+     * A waypoint leg of an NPC whose movement teleports when stuck ends at its point, as Citizens' default stuck action
+     * does, and the route goes on. False when the NPC stops instead.
+     */
+    private boolean teleportStuck(Route route) {
+        Value value = route.value;
+        if (route.leg == null || route.leg.pause() || !value.movement.teleportsWhenStuck() || value.route != route || !routeCurrent(route)) return false;
+        if (route.plan != null) route.plan.cancel();
+        if (route.execution != null) route.execution.cancel();
+        route.plan = null; route.result = null; route.execution = null;
+        routeOrder.remove(route);
+        value.state.move(route.goal); index.upsert(value.state.snapshot());
+        value.poseRevision++; setPose(value, value.yaw, 0, true);
+        arrive(route);
+        return true;
     }
     private void routeStatus(Route route, String state, String detail) {
         route.value.navigationStatus = state + "; route=" + route.id + "; waypoint=" + route.waypoint + "; goal=" + route.goal.point()
@@ -775,7 +834,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 if (route.plan != null) route.plan.cancel(); route.plan = null; route.result = null;
                 routeStatus(route, "sleeping", "no player within " + (int) settings.viewDistance() + " blocks");
             }
-            @Override public void woke(Route route) { routeStatus(route, "queued", "a player is near"); }
+            @Override public void woke(Route route) { route.progressTick = tickNumber; routeStatus(route, "queued", "a player is near"); }
         });
         navigationPressure.observe(tickNumber, turn.deferred() + pathRefusals, "routesPerTick=" + navigationSettings.routesPerTick()
                 + ", motionCellsPerTick=" + navigationSettings.motionCellsPerTick() + ", planningStartsPerTick=" + navigationSettings.planningStartsPerTick()
@@ -804,6 +863,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         }
         String world = route.goal.world();
         if (!host.worldLoaded(world)) { stopRoute(value, "cancelled: world unavailable"); return RouteScheduler.Result.DONE; }
+        if (route.leg != null && value.movement.stuck(tickNumber - route.progressTick)) {
+            failLeg(route, "stuck: no progress for " + (tickNumber - route.progressTick) + " ticks");
+            return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
+        }
         try {
             if (route.execution == null) {
                 if (route.plan == null) {
@@ -858,8 +921,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                         float yaw = Math.hypot(delta.x(), delta.z()) > .000001 ? (float) Math.toDegrees(Math.atan2(-delta.x(), delta.z())) : value.yaw;
                         value.state.move(new WorldPosition(route.goal.world(), step.to())); index.upsert(value.state.snapshot());
                         value.poseRevision++; setPose(value, yaw, 0, step.onGround());
+                        route.progressTick = tickNumber;
                         routeStatus(route, "moving", "kinematic; live collision revalidation");
-                        if (route.execution.finished()) arrive(route);
+                        if (route.execution.finished() || value.movement.arrived(step.to(), route.goal.point())) arrive(route);
                     }
                 }
             }
@@ -873,7 +937,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
      */
     private boolean fallBeforeLeg(Route route) {
         Value value = route.value;
-        if (route.mode != MovementProfile.Mode.WALK || !BodyMobility.falls(value.spec.type()) || mountRuntime.vehicleOf(value.spec.definition().id()) != null
+        if (route.mode != MovementProfile.Mode.WALK || !value.falls || mountRuntime.vehicleOf(value.spec.definition().id()) != null
                 || riders.riderOf(value.spec.definition().uuid()) != null) return false;
         int wanted = IdleFall.cells(moveWidth(value), moveHeight(value));
         if (motionCells < wanted && motionCells < navigationSettings.motionCellsPerTick()) return false;
@@ -905,7 +969,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     }
     private boolean falls(Value value) {
         return valueCurrent(value) && value.state.snapshot().active() && value.route == null && value.routeTask == null
-                && BodyMobility.falls(value.spec.type()) && mountRuntime.vehicleOf(value.spec.definition().id()) == null
+                && value.falls && mountRuntime.vehicleOf(value.spec.definition().id()) == null
                 && riders.riderOf(value.spec.definition().uuid()) == null;
     }
     private void tickSupport() {
@@ -1501,7 +1565,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         RouteReadTask routeTask; boolean routeReadQueued;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
-        final LookClose lookClose; long nextLook;
+        final LookClose lookClose; long nextLook, nextRandomLook;
+        final MovementSettings movement; final boolean falls, routeSpeedDeclared;
         final DragonMotion dragonMotion = new DragonMotion(); int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; AppearanceTask appearanceTask;
@@ -1515,6 +1580,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             mountReference = MountDeclaration.parse(spec.definition().json()).orElse(null);
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
             lookClose = LookClose.parse(spec.definition().json()).orElse(null);
+            movement = MovementSettings.parse(spec.definition().json());
+            falls = MovementSettings.falls(spec.type(), spec.definition().json());
+            routeSpeedDeclared = MovementSettings.routeDeclaresSpeed(spec.definition().json());
             routeSource = WaypointSettings.reference(spec.definition());
             authority = new DefinitionAuthority(spec.definition());
             rigId = RigReference.parse(spec.definition().json()).orElse(null);
@@ -1524,10 +1592,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         final UUID id = UUID.randomUUID(); final Value value; final WorldPosition goal;
         final MovementProfile.Mode mode; final double speed; final int waypoint; final WaypointProgress.Leg leg;
         NavigationPlan plan; CompletableFuture<PathPlanner.Result> result; PathExecution execution; CaptureProvenance capture;
-        long nextAttempt, awakeChecked = Long.MIN_VALUE;
+        long nextAttempt, awakeChecked = Long.MIN_VALUE, progressTick;
         boolean awake = true;
         Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) {
             this.value = value; this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
+            progressTick = tickNumber;
         }
     }
     final class Presented {
