@@ -324,6 +324,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 schema(COORDINATES + ",\"target\":{\"const\":\"player\"}", "\"oneOf\":[{" + required("target") + "},{" + required("x", "y", "z") + "}]"),
                 (arguments, problems) -> {},
                 this::look);
+        action("pose", Effect.WORLD, "Turns the NPC to one of the named poses in its definition's poses.",
+                schema(string("pose", 32), required("pose")),
+                (arguments, problems) -> matches(arguments, "pose", art.arcane.animus.core.npc.NamedPoses.NAME, problems),
+                call -> {
+                    String pose = text(call.arguments, "pose").orElseThrow();
+                    return onOwner(call, () -> { platform.pose(call.npc(), pose); return "{}"; });
+                });
         action("set-appearance", Effect.WORLD, "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes.",
                 schema(string("name", 16) + "," + string("skin", 64) + "," + bool("reset"),
                         "\"anyOf\":[{" + required("name") + "},{" + required("skin") + "},{" + required("reset") + "}]"),

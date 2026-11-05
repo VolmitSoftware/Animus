@@ -17,8 +17,8 @@ public final class Integrations {
     }
 
     public enum Decision { ALLOW, DENY }
-    /** Combat actions and NPC build block changes. */
-    public enum ProtectionAction { NPC_ATTACK, PLAYER_ATTACK, MOB_ATTACK, MOB_CONTROL, BLOCK_PLACE, BLOCK_BREAK }
+    /** Combat actions, NPC build block changes and an NPC opening a door, fence gate or trapdoor on its route ({@code BLOCK_USE}). */
+    public enum ProtectionAction { NPC_ATTACK, PLAYER_ATTACK, MOB_ATTACK, MOB_CONTROL, BLOCK_PLACE, BLOCK_BREAK, BLOCK_USE }
     public enum PartyKind { PLAYER, MOB, NPC }
     public record Party(PartyKind kind,UUID uuid) {public Party {Objects.requireNonNull(kind);Objects.requireNonNull(uuid);}}
     public record Position(String world,double x,double y,double z) {
