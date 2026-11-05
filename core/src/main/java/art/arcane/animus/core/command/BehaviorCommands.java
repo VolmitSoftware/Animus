@@ -9,7 +9,13 @@ import art.arcane.animus.core.behavior.catalog.BehaviorPath;
 import art.arcane.animus.core.behavior.catalog.PackManifest;
 import art.arcane.animus.core.behavior.schema.BehaviorSchemaGenerator;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
+import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
+import art.arcane.animus.core.behavior.trigger.ServerEvent;
+import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
+import art.arcane.animus.core.behavior.trigger.TriggerEvent;
+import art.arcane.animus.core.behavior.trigger.TriggerSink;
+import art.arcane.animus.core.behavior.trigger.TriggerKind;
 import art.arcane.animus.core.behavior.runtime.BehaviorRuntime;
 import art.arcane.animus.core.config.BehaviorSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
@@ -48,6 +54,8 @@ public final class BehaviorCommands implements AutoCloseable {
     private final Set<String> removedSources=ConcurrentHashMap.newKeySet();
     private final BehaviorRuntime coordinator;
     private final TriggerDispatcher triggers;
+    private final ServerTriggerDispatcher servers;
+    private volatile ServerBehaviorList serverBehaviors=ServerBehaviorList.UNLOADED;
     private final AtomicLong unavailableReplies=new AtomicLong();
     private volatile BehaviorCatalog catalog;
     private volatile State state;
@@ -66,9 +74,10 @@ public final class BehaviorCommands implements AutoCloseable {
         // Own and resolve lifecycle classes while the plugin archive is open. Startup catalog I/O
         // remains asynchronous; the empty source snapshot cannot admit executions before READY.
         triggers=settings.enabled()?new TriggerDispatcher(settings.triggers(),repository::snapshot,this::catalogSnapshot):null;
-        if(triggers!=null)extensions.connectTriggers(triggers);
+        servers=settings.enabled()?new ServerTriggerDispatcher(settings.server(),this::catalogSnapshot,()->serverBehaviors):null;
+        if(triggers!=null)extensions.connectTriggers(new ModuleTriggers(triggers,servers));
         coordinator=settings.enabled()?new BehaviorRuntime(new BehaviorRuntime.Limits(settings.maximumOperations(),settings.operationsPerTick(),settings.tickMillis(),settings.deliveryBudgetMillis()),
-                settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers,behaviorState):null;
+                settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers,servers,behaviorState):null;
     }
     /** The one initialization observer only admits bounded file work; it never scans on module management. */
     public void modulesInitialized(ExtensionRuntime.State terminal){
@@ -272,6 +281,25 @@ public final class BehaviorCommands implements AutoCloseable {
         }
         return removals;
     }
+    /** Reads server-behaviors.json on the file lane after each published catalog. Reports listed ids that cannot run. */
+    private List<String> loadServerBehaviors(){
+        ServerBehaviorList next=ServerBehaviorList.read(dataDirectory,serverBehaviors.generation()+1);
+        serverBehaviors=next;
+        List<String> lines=new ArrayList<>();
+        for(Diagnostic diagnostic:next.problems())lines.add(diagnosticLine(ServerBehaviorList.PATH,diagnostic));
+        BehaviorCatalog.Snapshot snapshot=catalogSnapshot();int runnable=0;
+        for(String id:next.ids()){
+            BehaviorCatalog.Resolution resolution=snapshot.byId().get(id);
+            if(resolution==null)lines.add("Server behavior "+id+": not in the catalog; skipped");
+            else if(resolution.accepted().isEmpty()||!resolution.available())lines.add("Server behavior "+id+": unavailable; skipped");
+            else if(!resolution.accepted().orElseThrow().program().server())lines.add("Server behavior "+id+": not a server behavior (\"server\": true); skipped");
+            else runnable++;
+        }
+        if(!next.ids().isEmpty()||!next.problems().isEmpty())lines.addFirst("Server behaviors: enabled="+runnable+"/"+next.ids().size()+" | file="+ServerBehaviorList.PATH);
+        return lines;
+    }
+    /** The server behaviors enabled by the last read of server-behaviors.json. */
+    public ServerBehaviorList serverBehaviors(){return serverBehaviors;}
     private BehaviorCatalog.Snapshot catalogSnapshot(){BehaviorCatalog current=catalog;return current==null?EMPTY_CATALOG:current.snapshot();}
     private void failedState(){if(catalogSnapshot().generation()==0)publishState(State.FAILED);}
     private final class CatalogTask implements Runnable {
@@ -291,6 +319,7 @@ public final class BehaviorCommands implements AutoCloseable {
                     if(!changed.published())removedSources.addAll(forgotten);
                     if(changed.published()){
                         if(closed.get())return;
+                        messages=new ArrayList<>(messages);messages.addAll(loadServerBehaviors());
                         failure="none";publishState(State.READY);
                     }else{
                         failure=changed.diagnostics().isEmpty()?"catalog-reload-rejected":changed.diagnostics().getFirst().code();
@@ -362,11 +391,16 @@ public final class BehaviorCommands implements AutoCloseable {
         List<String> result=new ArrayList<>();result.add("Behaviors "+state+" | catalog-generation="+(snapshot==null?0:snapshot.generation())+" | documents="+(snapshot==null?0:snapshot.entries().size())+" | available="+(snapshot==null?0:available(snapshot))+" | catalog-work="+(fileTask.get()==null?"idle":"pending")+" | unavailable-replies="+unavailableReplies.get()+" | failure="+failure);
         if(runtime!=null){var status=runtime.status();result.add("Behavior runtime: "+status.state()+" | admitted="+status.admittedOperations()+" | queued="+status.queuedOperations()+" | active="+status.engine().activeExecutions()+" | retained-calls="+status.engine().retiredCalls()+" | tick="+status.engine().tick()+" | delivery-queued="+status.queuedDeliveries()+" | delivery-active="+status.activeDeliveries()+" | delivery-over-budget="+status.overBudgetDeliveries()+" | failure="+status.failure());}
         if(triggers!=null)result.add(triggerSummary(triggers.snapshot()));
+        if(servers!=null)result.add(serverSummary(servers.snapshot()));
         return List.copyOf(result);
     }
     private static String triggerSummary(TriggerDispatcher.Snapshot view){
         long dropped=view.dropped().values().stream().mapToLong(Long::longValue).sum();
         return "Behavior triggers: "+(view.available()?"AVAILABLE":"UNAVAILABLE | reason="+view.reason())+" | bindings="+view.bindings()+" | timers="+view.timers()+" | proximity-npcs="+view.proximityNpcs()+" | active="+view.active()+" | queued="+view.queued()+" | events="+view.events()+" | started="+view.started()+" | suppressed="+view.suppressed()+" | dropped="+dropped;
+    }
+    private static String serverSummary(ServerTriggerDispatcher.Snapshot view){
+        long dropped=view.dropped().values().stream().mapToLong(Long::longValue).sum();
+        return "Server triggers: "+(view.available()?"AVAILABLE":"UNAVAILABLE | reason="+view.reason())+" | behaviors="+view.behaviors()+" | bindings="+view.bindings()+" | timers="+view.timers()+" | commands="+view.commands()+" | active="+view.active()+" | queued="+view.queued()+" | events="+view.events()+" | started="+view.started()+" | suppressed="+view.suppressed()+" | dropped="+dropped;
     }
     private List<String> triggerLines(int page){
         if(page<1||page>1000)throw new IllegalArgumentException("Page must be 1..1000");
@@ -375,12 +409,29 @@ public final class BehaviorCommands implements AutoCloseable {
         if(!view.dropped().isEmpty())lines.add("Trigger drops: "+new TreeMap<>(view.dropped()));
         view.diagnostics().stream().limit(2).forEach(diagnostic->lines.add(diagnosticLine("triggers",diagnostic)));
         if(view.diagnostics().size()>2)lines.add("Trigger diagnostics: "+(view.diagnostics().size()-2)+" more");
-        for(TriggerDispatcher.Row row:triggers.rows((page-1)*PAGE_SIZE,PAGE_SIZE))
+        List<TriggerDispatcher.Row> npcRows=triggers.rows((page-1)*PAGE_SIZE,PAGE_SIZE);
+        for(TriggerDispatcher.Row row:npcRows)
             lines.add("Trigger npc="+row.npcId()+" | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
+        if(servers==null)return lines;
+        // Server rows follow the NPC rows on later pages: page numbering continues across both lists.
+        ServerTriggerDispatcher.Snapshot server=servers.snapshot();
+        int npcTotal=view.bindings(),skip=Math.max(0,(page-1)*PAGE_SIZE-npcTotal),room=PAGE_SIZE-npcRows.size();
+        if(page==1||room>0){
+            lines.add(serverSummary(server));
+            if(!server.dropped().isEmpty())lines.add("Server trigger drops: "+new TreeMap<>(server.dropped()));
+            server.diagnostics().stream().limit(2).forEach(diagnostic->lines.add(diagnosticLine("server-triggers",diagnostic)));
+            if(server.diagnostics().size()>2)lines.add("Server trigger diagnostics: "+(server.diagnostics().size()-2)+" more");
+        }
+        if(room>0)for(ServerTriggerDispatcher.Row row:servers.rows(skip,room))
+            lines.add("Trigger server | behavior="+row.behavior()+" | trigger="+row.trigger()+" | event="+row.event()+" | routine="+row.routine()+" | last-fired="+(row.lastFiredTicksAgo().isPresent()?row.lastFiredTicksAgo().getAsLong()+"t-ago":"never")+" | fired="+row.fired()+" | active="+row.active()+" | queued="+row.queued()+" | suppressed="+row.suppressed()+" | dropped="+row.dropped());
         return lines;
     }
     /** The dispatcher the platform bridge connects to; null only when behaviors are disabled. */
     public TriggerDispatcher triggers(){return triggers;}
+    /** The server-behavior dispatcher platforms publish server events to and read commands from; null only when behaviors are disabled. */
+    public ServerTriggerDispatcher servers(){return servers;}
+    /** Connects the platform's world facts to every behavior run. Ignored when behaviors are disabled. */
+    public void facts(art.arcane.animus.core.behavior.BehaviorFacts provider){BehaviorRuntime runtime=coordinator;if(runtime!=null)runtime.facts(provider);}
     /** Engine diagnostics only. Enabled services own this from construction; null only when disabled. */
     public BehaviorRuntime diagnosticRuntime(){return coordinator;}
     private List<String> listLines(int page){
@@ -437,6 +488,18 @@ public final class BehaviorCommands implements AutoCloseable {
         if(!sender.reply(()->{if(!closed.get()&&sender.permitted("animus.admin"))bounded.forEach(sender::tell);}))unavailableReplies.incrementAndGet();
     }
     private boolean publishState(State next){synchronized(lifecycle){if(closed.get())return false;state=next;return true;}}
+    /** Module triggers reach the NPC they name and every enabled server behavior listening for their key. */
+    private record ModuleTriggers(TriggerDispatcher npcs,ServerTriggerDispatcher servers) implements TriggerSink {
+        public boolean available(){return npcs.available()||servers.available();}
+        public String availability(){return npcs.available()?npcs.availability():servers.availability();}
+        public Outcome<Boolean> publish(TriggerEvent event){
+            Outcome<Boolean> npc=npcs.publish(event);
+            if(!(event instanceof TriggerEvent.Module module)||!servers.listens(TriggerKind.MODULE))return npc;
+            Outcome<Boolean> server=servers.publish(ServerEvent.module(module.player(),module.key()));
+            if(npc.value().orElse(false)||server.value().orElse(false))return Outcome.ok(true);
+            return npc.status()==Outcome.Status.OK?server:npc;
+        }
+    }
     /** Admission ends immediately. Pending file work settles on its shared worker; coordinator drains cooperatively. */
     @Override public void close(){
         synchronized(lifecycle){if(!closed.compareAndSet(false,true))return;state=State.CLOSED;}
