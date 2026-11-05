@@ -20,24 +20,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RouteFootingTest {
     @TempDir Path directory;
 
-    @Test
-    void aPatrolStandingInTheAirFallsToTheGroundBeforeItsFirstLeg() throws IOException {
+    private ViewerWatchRaceTest.Harness patrol(double y, boolean playersAway) throws IOException {
         Path npcs = directory.resolve("npcs/test");
         Files.createDirectories(npcs);
         AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", directory));
         runtime.start();
         ViewerWatchRaceTest.Harness harness = new ViewerWatchRaceTest.Harness(runtime, npcs);
-        harness.terrain = (int x, int y, int z) -> y < 64 ? Cell.SOLID : Cell.AIR;
+        harness.terrain = (int x, int y2, int z) -> y2 < 64 ? Cell.SOLID : Cell.AIR;
+        harness.playersAway = playersAway;
         harness.service = new PersistedNpcService<>(harness.host, runtime, Runnable::run, PersistedNpcService.Settings.DEFAULT);
         Files.writeString(npcs.resolve("floating-patrol.json"), """
                 {"schemaVersion": 1, "revision": 1, "uuid": "5b1f0c52-6f0e-4f43-a3a3-9d1f8f8a0c12", "id": "floating-patrol", "group": "test",
                  "name": "Patrol", "type": "minecraft:villager", "spawned": true,
-                 "position": {"world": "world", "x": 2.5, "y": 67, "z": 2.5, "yaw": 0, "pitch": 0},
+                 "position": {"world": "world", "x": 2.5, "y": %s, "z": 2.5, "yaw": 0, "pitch": 0},
                  "modules": {"animus:navigation": {"enabled": true, "reviewAccepted": true, "mode": "walk", "speed": 1.72, "order": "sequence",
                    "loop": true, "waitTicks": 0, "points": [{"x": 6.5, "y": 64, "z": 2.5}, {"x": 2.5, "y": 64, "z": 2.5}]}}}
-                """);
+                """.formatted(y));
         runtime.npcs().reload();
         harness.service.refresh();
+        return harness;
+    }
+
+    @Test
+    void aPatrolWithNoPlayerNearSleepsAndWakesWhenOneComes() throws IOException {
+        ViewerWatchRaceTest.Harness harness = patrol(64, true);
+        harness.tick(80);
+        assertTrue(harness.service.navigationStatus("floating-patrol").contains("sleeping"), harness.service.navigationStatus("floating-patrol"));
+        assertTrue(harness.service.status().contains("routes-sleeping=1"), harness.service.status());
+        harness.playersAway = false;
+        harness.tick(80);
+        assertTrue(harness.service.status().contains("routes-sleeping=0"), harness.service.status());
+        assertTrue(!harness.service.navigationStatus("floating-patrol").contains("sleeping"), harness.service.navigationStatus("floating-patrol"));
+    }
+
+    @Test
+    void aPatrolStandingInTheAirFallsToTheGroundBeforeItsFirstLeg() throws IOException {
+        ViewerWatchRaceTest.Harness harness = patrol(67, false);
         harness.tick(80);
 
         String navigation = harness.service.navigationStatus("floating-patrol");
