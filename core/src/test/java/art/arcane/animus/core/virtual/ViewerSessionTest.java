@@ -78,4 +78,21 @@ class ViewerSessionTest {
         ViewerSession session = session(3); session.bind(1, npc(3).snapshot());
         assertEquals(STATE_CHANGED, session.validate(request(1, 0), (a, b, c) -> { session.clear(); return true; }).rejection());
     }
+
+    @Test void hotloadedLimitsKeepVisibleBodiesAndGateOnlyNewBinds() {
+        ViewerSession session = session(64);
+        session.bind(1, npc(3).snapshot()); session.bind(2, npc(4).snapshot());
+        assertThrows(IllegalStateException.class, () -> session.bind(3, npc(5).snapshot()));
+        session.limits(new ViewerSession.Limits(4, 64, 100, 4));
+        session.bind(3, npc(5).snapshot()); session.bind(4, npc(6).snapshot());
+        assertEquals(4, session.visibleCount());
+        session.limits(new ViewerSession.Limits(1, 64, 100, 4));
+        assertEquals(4, session.visibleCount(), "lowering the limit retires nothing");
+        assertEquals(1, session.limits().maxVisible());
+        assertThrows(IllegalStateException.class, () -> session.bind(5, npc(7).snapshot()));
+        session.unbind(1); session.unbind(2); session.unbind(3);
+        assertThrows(IllegalStateException.class, () -> session.bind(5, npc(7).snapshot()), "still at the lowered limit");
+        session.unbind(4);
+        session.bind(5, npc(7).snapshot());
+    }
 }

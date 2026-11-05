@@ -1,6 +1,9 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.config.CombatBudgets;
 import art.arcane.animus.core.config.NavigationSettings;
+import art.arcane.animus.core.config.PluginSettings;
+import art.arcane.animus.core.config.RigSettings;
 import art.arcane.animus.core.runtime.NavigationPressure;
 import art.arcane.animus.core.runtime.NearbyPlayers;
 import art.arcane.animus.core.runtime.NpcPresentation;
@@ -49,7 +52,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -78,6 +80,11 @@ import org.bukkit.plugin.java.JavaPlugin;
  * live NPC state. A dormant NPC starts on its region when its chunk loads or a player nearby is on the same region.
  * A mounted group has one owner, the region of its root vehicle; a ride runs on the NPC's owner, which also holds the
  * rider standing at its feet.
+ * <p>
+ * A hotload of {@code config.toml} publishes the {@code [npcs]}, {@code [navigation]} and {@code [rigs]} tables; each
+ * region adopts them, with the region budgets they set, at its own next region tick. Lowered caps hold back only new
+ * work. {@code [npcs] enabled} needs a restart here: actors and viewers retire asynchronously on their own regions with
+ * no global barrier, so turning the runtime off and on again could race a retiring owner of the same NPC.
  */
 public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Listener {
     static final int MAX_ISSUED_IDS = 8192;
@@ -88,11 +95,15 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final JavaPlugin plugin;
     final AnimusRuntime runtime;
     final Executor io;
-    final PersistedNpcService.Settings settings;
+    /** The tables of config.toml a hotload may replace here. */
+    record Live(PersistedNpcService.Settings npcs, NavigationSettings navigation, RigSettings rigs) {}
     final FoliaRegions regions;
     final RegionBudget budget;
-    final art.arcane.animus.core.config.RigSettings rigs;
-    final NavigationSettings navigationSettings;
+    private final RegionPickup<Live> live;
+    private final CombatBudgets combatBudgets;
+    private final AutoCloseable settingsSubscription;
+    /** Global region thread only: the navigation limits last given to the shared planner. */
+    private NavigationSettings appliedNavigation;
     /** Global region thread only: whether route turns were refused for a while across regions. */
     private final NavigationPressure navigationPressure = new NavigationPressure();
     private volatile String navigationPressureStatus = "none";
@@ -126,7 +137,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private final Map<UUID, String> viewerFailures = new ConcurrentHashMap<>();
     private final Map<String, String> definitionErrors = new ConcurrentHashMap<>();
     private final ActivationWarnings activationWarnings = new ActivationWarnings(this::warnActivation);
-    private final Semaphore viewerSlots;
+    /** Admitted viewers; admission stops at {@code maximumViewers}, which a hotload may lower below this count. */
+    private final AtomicInteger viewerSlots = new AtomicInteger();
     private final AtomicInteger reads = new AtomicInteger();
     private final AtomicBoolean refresh = new AtomicBoolean(true);
     // Global region thread only.
@@ -143,27 +155,21 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     public RegionNpcRuntime(JavaPlugin plugin, AnimusRuntime runtime, String minecraftVersion, Executor io, PersistedNpcService.Settings settings, FoliaRegions regions) {
         this.plugin = Objects.requireNonNull(plugin); this.runtime = Objects.requireNonNull(runtime);
         failures = new RuntimeFailures(plugin.getLogger()::warning);
-        this.io = Objects.requireNonNull(io); this.settings = Objects.requireNonNull(settings); this.regions = Objects.requireNonNull(regions);
-        viewerSlots = new Semaphore(settings.maximumViewers());
+        this.io = Objects.requireNonNull(io); this.regions = Objects.requireNonNull(regions);
         previews = new ViewerPreviews(io, runtime.documents());
-        Map<RegionBudget.Kind, Integer> limits = new EnumMap<>(RegionBudget.Kind.class);
-        navigationSettings = runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT;
-        limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, navigationSettings.routesPerTick());
-        limits.put(RegionBudget.Kind.MOTION_CELLS, navigationSettings.motionCellsPerTick()); limits.put(RegionBudget.Kind.ROUTE_PLANS, navigationSettings.planningStartsPerTick());
-        limits.put(RegionBudget.Kind.CAPTURE, navigationSettings.captureReadsPerTick()); limits.put(RegionBudget.Kind.VIEWERS, settings.updatesPerTick());
-        limits.put(RegionBudget.Kind.PACKETS, settings.packetsPerTick()); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, settings.lookUpdatesPerTick());
-        rigs = runtime.isRunning() ? runtime.rigSettings() : art.arcane.animus.core.config.RigSettings.DEFAULT;
-        limits.put(RegionBudget.Kind.RIG_PLANS, rigs.plansPerTick());
-        art.arcane.animus.core.config.CombatBudgets combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : art.arcane.animus.core.config.CombatBudgets.DEFAULT;
-        limits.put(RegionBudget.Kind.COMBAT_BRAINS, combatBudgets.brainsPerTick()); limits.put(RegionBudget.Kind.COMBAT_SCANS, combatBudgets.targetScansPerTick());
-        limits.put(RegionBudget.Kind.COMBAT_PATHS, combatBudgets.pathRequestsPerTick()); limits.put(RegionBudget.Kind.COMBAT_ALERTS, combatBudgets.squadAlertsPerTick());
-        limits.put(RegionBudget.Kind.COMBAT_HELPERS, combatBudgets.helperUpdatesPerTick());
-        budget = new RegionBudget(regions, limits);
+        Live initial = new Live(Objects.requireNonNull(settings),
+                runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT,
+                runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT);
+        combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : CombatBudgets.DEFAULT;
+        live = new RegionPickup<>(regions, initial);
+        budget = new RegionBudget(regions, limits(initial));
+        appliedNavigation = initial.navigation();
+        settingsSubscription = runtime.onSettings(this::published);
         if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
         try {
             epochs = NativeViewerEpoch.bind(plugin, minecraftVersion);
             packets = NativePacketAdapter.bind(plugin, minecraftVersion);
-            navigation = BukkitNavigationBridge.regionOwned(navigationSettings.limits());
+            navigation = BukkitNavigationBridge.regionOwned(initial.navigation().limits());
             for (String type : packets.capabilities().entityTypes()) {
                 NativePacketAdapter.Body body = packets.createBody(UUID.randomUUID(), type, "Animus", null);
                 geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length, body.seat()));
@@ -186,6 +192,34 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
 
     @Override public boolean available() { return !closed && packets != null; }
+
+    /** The {@code [npcs]} budgets this region tick uses; any thread. */
+    PersistedNpcService.Settings settings() { return live.current().npcs(); }
+    NavigationSettings navigationSettings() { return live.current().navigation(); }
+    RigSettings rigs() { return live.current().rigs(); }
+
+    /** On the file lane after a hotload: publishes only; each region adopts the new settings at its next region tick. */
+    private void published(PluginSettings next) {
+        Live adopted = new Live(PersistedNpcService.Settings.from(next.npcs()), next.navigation(), next.rigs());
+        budget.limits(limits(adopted));
+        live.publish(adopted);
+    }
+
+    /** Region budgets from the live tables; combat budgets stay as they were at startup. */
+    private Map<RegionBudget.Kind, Integer> limits(Live settings) {
+        Map<RegionBudget.Kind, Integer> limits = new EnumMap<>(RegionBudget.Kind.class);
+        NavigationSettings navigation = settings.navigation();
+        PersistedNpcService.Settings npcs = settings.npcs();
+        limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, navigation.routesPerTick());
+        limits.put(RegionBudget.Kind.MOTION_CELLS, navigation.motionCellsPerTick()); limits.put(RegionBudget.Kind.ROUTE_PLANS, navigation.planningStartsPerTick());
+        limits.put(RegionBudget.Kind.CAPTURE, navigation.captureReadsPerTick()); limits.put(RegionBudget.Kind.VIEWERS, npcs.updatesPerTick());
+        limits.put(RegionBudget.Kind.PACKETS, npcs.packetsPerTick()); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, npcs.lookUpdatesPerTick());
+        limits.put(RegionBudget.Kind.RIG_PLANS, settings.rigs().plansPerTick());
+        limits.put(RegionBudget.Kind.COMBAT_BRAINS, combatBudgets.brainsPerTick()); limits.put(RegionBudget.Kind.COMBAT_SCANS, combatBudgets.targetScansPerTick());
+        limits.put(RegionBudget.Kind.COMBAT_PATHS, combatBudgets.pathRequestsPerTick()); limits.put(RegionBudget.Kind.COMBAT_ALERTS, combatBudgets.squadAlertsPerTick());
+        limits.put(RegionBudget.Kind.COMBAT_HELPERS, combatBudgets.helperUpdatesPerTick());
+        return limits;
+    }
     @Override public void interactions(InteractionListener<Player> listener) { interactions = listener; }
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(previews); triggers = dispatcher; }
@@ -198,7 +232,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     /** Per region: false while this region's NPC moves and despawns wait for packet budget. */
     @Override public boolean cosmeticAllowed() { return budget.cosmeticAllowed(); }
     @Override public String status() {
-        if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
+        if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable)
+                + (!closed && packets == null && settings().enabled() && "disabled in config.toml".equals(unavailable) ? "; enabling it on Folia needs a restart" : "");
         int visible = 0;
         for (RegionViewer viewer : viewers.values()) visible += viewer.shown.get();
         int sleeping = 0;
@@ -208,6 +243,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 + " | viewers=" + viewers.size() + " | visible=" + visible + " | handoffs=" + transfers.size() + " | file-reads=" + reads.get()
                 + " | accepted=" + accepted.get() + " | rejected=" + rejected.get() + " | path-jobs=" + navigation.outstandingJobs()
                 + " | mounted=" + mounts.vehicleOf().size() + " | mount-problems=" + mounts.diagnostics().size() + " | riders=" + rides.size()
+                + (settings().enabled() ? "" : " | enabled=false applies after a restart on Folia")
                 + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
 
@@ -328,7 +364,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void select(UUID viewer, String id) {
         if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
         if (!runtime.npcs().snapshot().containsKey(id)) throw new IllegalArgumentException("Unknown NPC: " + id);
-        if (!selections.containsKey(viewer) && selections.size() >= settings.maximumViewers()) throw new IllegalStateException("Selection capacity reached");
+        if (!selections.containsKey(viewer) && selections.size() >= settings().maximumViewers()) throw new IllegalStateException("Selection capacity reached");
         selections.put(viewer, id);
     }
     /**
@@ -496,7 +532,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
      */
     void wakeNear(Player player, WorldPosition at) {
         World world = player.getWorld();
-        int radius = (int) Math.ceil(settings.viewDistance() / 16), centerX = Math.floorDiv((int) Math.floor(at.point().x()), 16), centerZ = Math.floorDiv((int) Math.floor(at.point().z()), 16);
+        int radius = (int) Math.ceil(settings().viewDistance() / 16), centerX = Math.floorDiv((int) Math.floor(at.point().x()), 16), centerZ = Math.floorDiv((int) Math.floor(at.point().z()), 16);
         long now = System.nanoTime();
         for (int x = centerX - radius; x <= centerX + radius; x++) for (int z = centerZ - radius; z <= centerZ + radius; z++) {
             Set<RegionActor> active = anchored.get(new ChunkPosition(at.world(), x, z));
@@ -520,11 +556,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private void admit(Player player) {
         if (!available() || !regions.owns(player) || !player.isOnline() || player.isDead()) return;
         UUID id = player.getUniqueId();
-        if (viewers.containsKey(id) || viewerFailures.containsKey(id) || !viewerSlots.tryAcquire()) return;
+        if (viewers.containsKey(id) || viewerFailures.containsKey(id) || !takeViewerSlot()) return;
         RegionViewer viewer;
         try { viewer = new RegionViewer(this, player, epochs.capture(player)); }
-        catch (RuntimeException failure) { viewerSlots.release(); failures.record("viewer admission", "viewer=" + player.getName(), failure); return; }
-        if (viewers.putIfAbsent(id, viewer) != null) { viewerSlots.release(); return; }
+        catch (RuntimeException failure) { viewerSlots.decrementAndGet(); failures.record("viewer admission", "viewer=" + player.getName(), failure); return; }
+        if (viewers.putIfAbsent(id, viewer) != null) { viewerSlots.decrementAndGet(); return; }
         try {
             packets.watch(player, (target, callback) -> regions.execute(target, callback, () -> {}), viewer::interact)
                     .whenComplete((nothing, failure) -> viewer.enqueue(() -> {
@@ -534,6 +570,15 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         } catch (ReflectiveOperationException | RuntimeException failure) { watchFailed(viewer, failure); return; }
         viewer.task = regions.repeat(player, viewer::tick, () -> retire(viewer));
         if (!current(viewer)) viewer.close();
+    }
+    /** A viewer slot under the current {@code maximumViewers}; viewers above a lowered maximum keep theirs. */
+    private boolean takeViewerSlot() {
+        int maximum = settings().maximumViewers();
+        while (true) {
+            int used = viewerSlots.get();
+            if (used >= maximum) return false;
+            if (viewerSlots.compareAndSet(used, used + 1)) return true;
+        }
     }
     private static String context(RegionViewer viewer, RegionActor actor) {
         return "viewer=" + viewer.player.getName() + (actor == null ? "" : ", npc=" + actor.id);
@@ -547,7 +592,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     void fail(RegionViewer viewer, String operation, RegionActor actor, String error) {
         if (!current(viewer)) return;
         failures.record(operation, context(viewer, actor), error);
-        if (viewerFailures.size() < settings.maximumViewers()) viewerFailures.put(viewer.id, error);
+        if (viewerFailures.size() < settings().maximumViewers()) viewerFailures.put(viewer.id, error);
         disconnect(viewer);
     }
     /** Player owner only. Cosmetic work failed: an error is recorded and the viewer keeps its session. True when the watch had ended and the viewer was dropped. */
@@ -565,13 +610,13 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private void watchFailed(RegionViewer viewer, Throwable failure) {
         if (!current(viewer)) return;
         if (!RuntimeFailures.viewerGone(failure)) { fail(viewer, "watch", null, failure); return; }
-        if (viewerFailures.size() < settings.maximumViewers()) viewerFailures.put(viewer.id, "connection closed");
+        if (viewerFailures.size() < settings().maximumViewers()) viewerFailures.put(viewer.id, "connection closed");
         disconnect(viewer);
     }
     /** Network and pure state only, so a scheduler retirement callback may call it. */
     void disconnect(RegionViewer viewer) {
         if (!viewers.remove(viewer.id, viewer)) return;
-        viewerSlots.release();
+        viewerSlots.decrementAndGet();
         viewer.close();
         NativePacketAdapter adapter = packets;
         if (adapter != null) adapter.forget(viewer.player);
@@ -629,6 +674,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (!available()) return;
         controlTicks++;
         try {
+            NavigationSettings navigationSettings = navigationSettings();
+            if (navigationSettings != appliedNavigation) { appliedNavigation = navigationSettings; navigation.limits(navigationSettings.limits()); }
             navigationPressure.observe(controlTicks, budget.drainRefusedRoutes(), "routesPerTick=" + navigationSettings.routesPerTick()
                     + ", motionCellsPerTick=" + navigationSettings.motionCellsPerTick() + ", planningStartsPerTick=" + navigationSettings.planningStartsPerTick()
                     + " per region in [navigation] of config.toml").ifPresent(plugin.getLogger()::warning);
@@ -670,7 +717,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             if (controlTicks % 100 == 0) {
                 int admitted = 0;
                 for (Player player : online.values()) {
-                    if (admitted >= ADMISSIONS_PER_PASS || viewers.size() >= settings.maximumViewers()) break;
+                    if (admitted >= ADMISSIONS_PER_PASS || viewers.size() >= settings().maximumViewers()) break;
                     if (viewers.containsKey(player.getUniqueId()) || viewerFailures.containsKey(player.getUniqueId())) continue;
                     admitted++;
                     regions.execute(player, () -> admit(player), () -> {});
@@ -805,6 +852,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void close() {
         if (closed) return;
         closed = true;
+        try { settingsSubscription.close(); } catch (Exception ignored) { /* Removing a listener cannot fail. */ }
         previews.close();
         if (control != null) try { control.close(); } catch (Exception ignored) { /* The global scheduler already stopped. */ }
         HandlerList.unregisterAll(this);

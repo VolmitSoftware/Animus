@@ -6,7 +6,11 @@ import java.util.concurrent.*;
 import java.util.function.LongSupplier;
 import java.util.function.BooleanSupplier;
 
-/** Pure coordinator: the owner calls pump; the worker receives no Sampler or live world object. */
+/**
+ * Pure coordinator: the owner calls pump; the worker receives no Sampler or live world object. {@link #limits} applies
+ * new limits to the next admission and pump: a lowered job limit cancels nothing, it only refuses new plans until the
+ * jobs in progress fall under it.
+ */
 public final class NavigationWorkQueue implements AutoCloseable {
     public interface Sampler {
         boolean worldAvailable(String world);
@@ -20,7 +24,9 @@ public final class NavigationWorkQueue implements AutoCloseable {
     }
     private enum Phase { START, CAPTURE, VERIFY, PLANNING }
     private record Chunk(int x, int z) {}
-    private final NavigationLimits limits;
+    /** The most jobs any limits allow; the worker queue is sized for it so a raised limit never overflows. */
+    private static final int MAXIMUM_JOBS = 256;
+    private volatile NavigationLimits limits;
     private final LongSupplier clock;
     private final Planner planner;
     private final ThreadPoolExecutor executor;
@@ -35,7 +41,7 @@ public final class NavigationWorkQueue implements AutoCloseable {
     public NavigationWorkQueue(NavigationLimits limits, LongSupplier clock, Planner planner) {
         this.limits = Objects.requireNonNull(limits, "limits"); this.clock = Objects.requireNonNull(clock, "clock");
         this.planner = Objects.requireNonNull(planner, "planner");
-        executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(limits.maximumJobs()), task -> {
+        executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(MAXIMUM_JOBS), task -> {
             Thread worker = new Thread(task, "Animus-navigation"); worker.setDaemon(true); return worker;
         });
     }
@@ -45,19 +51,23 @@ public final class NavigationWorkQueue implements AutoCloseable {
         if (closed) throw new IllegalStateException("Navigation bridge is closed");
         Objects.requireNonNull(world, "world"); Objects.requireNonNull(bounds, "bounds"); Objects.requireNonNull(start, "start");
         Objects.requireNonNull(goal, "goal"); Objects.requireNonNull(profile, "profile"); Objects.requireNonNull(searchLimits, "searchLimits");
-        if (bounds.voxelCount() > limits.maximumCaptureVoxels()) throw new IllegalArgumentException("Capture exceeds configured voxel budget");
-        if (jobs.size() >= limits.maximumJobs()) throw new RejectedExecutionException("Navigation job limit reached");
+        NavigationLimits current = limits;
+        if (bounds.voxelCount() > current.maximumCaptureVoxels()) throw new IllegalArgumentException("Capture exceeds configured voxel budget");
+        if (jobs.size() >= current.maximumJobs()) throw new RejectedExecutionException("Navigation job limit reached");
         Job job = new Job(world, bounds, start, goal, profile, searchLimits);
         jobs.put(job.handle.id(), job); captures.addLast(job);
         return job.handle;
     }
     public synchronized int outstandingJobs() { return jobs.size(); }
+    /** Replaces the limits from any thread; queued and running jobs are kept. */
+    public void limits(NavigationLimits next) { limits = Objects.requireNonNull(next, "limits"); }
+    public NavigationLimits limits() { return limits; }
 
     /** One work unit is a world check, a voxel/chunk check, or a final chunk verification. */
     public int pump(Sampler sampler, long tick) {
         Objects.requireNonNull(sampler, "sampler");
-        int work = 0;
-        while (work < limits.captureWorkPerTick()) {
+        int work = 0, budget = limits.captureWorkPerTick();
+        while (work < budget) {
             Runnable completion = null;
             synchronized (this) {
                 if (closed) break;

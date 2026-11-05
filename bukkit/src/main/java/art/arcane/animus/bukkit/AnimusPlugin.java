@@ -119,9 +119,9 @@ public final class AnimusPlugin extends JavaPlugin {
                 if (event == MutationLane.EngineTaskEvent.FAILED)
                     getLogger().log(Level.WARNING, "Animus file task failed", failure);
             });
-            proof = new PacketProofService(this, replies, environment.minecraftVersion(), runtime.packetProofEnabled());
+            proof = new PacketProofService(this, replies, environment.minecraftVersion(), runtime);
             if (replies.isFolia()) {
-                foliaProof = new FoliaStationaryProofService(this, environment.minecraftVersion(), runtime.packetProofEnabled(), runtime.documents(), commands);
+                foliaProof = new FoliaStationaryProofService(this, environment.minecraftVersion(), runtime, runtime.documents(), commands);
                 getLogger().info(foliaProof.status());
             }
             NpcRuntimeSettings npcSettings = runtime.npcSettings();
