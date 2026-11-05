@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -9,10 +10,13 @@ import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
 import '../logic/npc/route_model.dart';
+import '../logic/offline/document_fixes.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../state/workspace_route.dart';
 import 'gui/gui_fields.dart';
+import 'offline/dry_run_panel.dart';
+import 'offline/offline_fields.dart';
 import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
@@ -36,7 +40,9 @@ class DocumentPane extends StatefulWidget {
     this.onJson,
     this.onRename,
     this.onDelete,
+    this.onDuplicate,
     this.skinDocument,
+    this.resources = const <String, Uint8List>{},
     this.editor,
     this.serverDiagnostics = const <Diagnostic>[],
     this.liveSchemas,
@@ -67,7 +73,15 @@ class DocumentPane extends StatefulWidget {
 
   /// Moves the document to a new id; returns a problem to show, or null.
   final Future<String?> Function(String id)? onRename;
+
+  /// Deletes the document after the user confirmed it.
   final Future<void> Function()? onDelete;
+
+  /// Copies the document to a new id; returns a problem to show, or null.
+  final Future<String?> Function(String id)? onDuplicate;
+
+  /// Workspace resources: rig textures and the PNGs of local skins.
+  final Map<String, Uint8List> resources;
 
   /// A structured editor (the rig editor) shown as Visual and Preview, and
   /// beside the code in Split.
@@ -90,6 +104,10 @@ class _DocumentPaneState extends State<DocumentPane> {
   String? _draftError;
   String? _renaming;
   String? _renameProblem;
+
+  /// True when the id field copies instead of moving.
+  bool _copying = false;
+  bool _confirmDelete = false;
 
   static const Map<ViewMode, String> _labels = <ViewMode, String>{
     ViewMode.visual: 'Visual',
@@ -129,7 +147,7 @@ class _DocumentPaneState extends State<DocumentPane> {
           dom.h2(<Widget>[Component.text(document.title)]),
           dom.code(classes: 'animus-muted', <Widget>[Component.text(document.path)]),
         ]),
-        if (component.onRename != null || component.onDelete != null) _manage(document),
+        if (component.onRename != null || component.onDelete != null || component.onDuplicate != null) _manage(document),
         dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'tablist'}, <Widget>[
           for (final ViewMode option in ViewMode.values)
             Button(
@@ -155,20 +173,40 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _manage(AnimusDocument document) {
     final String? renaming = _renaming;
+    if (_confirmDelete && component.onDelete != null) {
+      return ConfirmRow(
+        question: 'Delete ${document.id}?',
+        detail: 'Undo in the top bar brings it back.',
+        confirmLabel: 'Delete ${document.kind == DocumentKind.npc ? 'NPC' : 'document'}',
+        onConfirm: () {
+          setState(() => _confirmDelete = false);
+          component.onDelete!();
+        },
+        onCancel: () => setState(() => _confirmDelete = false),
+      );
+    }
     if (renaming == null) {
-      return dom.div(classes: 'animus-row', <Widget>[
+      return dom.div(classes: 'animus-row', attributes: const <String, String>{'role': 'group', 'aria-label': 'Manage document'}, <Widget>[
         if (component.onRename != null)
-          Button.ghost(label: 'Rename', size: ButtonSize.small, onPressed: () => setState(() => _renaming = document.id)),
-        if (component.onDelete != null) Button.ghost(label: 'Delete', size: ButtonSize.small, onPressed: component.onDelete),
+          Button.ghost(label: 'Rename', size: ButtonSize.small, onPressed: () => setState(() {
+            _renaming = document.id;
+            _copying = false;
+          })),
+        if (component.onDuplicate != null)
+          Button.ghost(label: 'Duplicate', size: ButtonSize.small, onPressed: () => setState(() {
+            _renaming = '${document.id}-copy';
+            _copying = true;
+          })),
+        if (component.onDelete != null) Button.ghost(label: 'Delete', size: ButtonSize.small, onPressed: () => setState(() => _confirmDelete = true)),
       ]);
     }
     return dom.div(classes: 'animus-row animus-rename', <Widget>[
-      GuiTextInput(value: renaming, label: 'New id', onChanged: (String value) => setState(() => _renaming = value)),
+      GuiTextInput(value: renaming, label: _copying ? 'Id of the copy' : 'New id', onChanged: (String value) => setState(() => _renaming = value)),
       Button.primary(
-        label: 'Move',
+        label: _copying ? 'Copy' : 'Move',
         size: ButtonSize.small,
         onPressed: () async {
-          final String? problem = await component.onRename!(renaming.trim());
+          final String? problem = await (_copying ? component.onDuplicate! : component.onRename!)(renaming.trim());
           if (!mounted) return;
           setState(() {
             _renameProblem = problem;
@@ -189,6 +227,28 @@ class _DocumentPaneState extends State<DocumentPane> {
     if (document.diagnostics.isEmpty && server.isEmpty) {
       return const dom.p(classes: 'animus-ok', <Widget>[Component.text('Valid against the shared schema.')]);
     }
+    final List<DocumentFix> fixes = fixesFor(document);
+    final Widget list = _diagnosticList(document, server);
+    if (fixes.isEmpty) return list;
+    Future<void> apply(Object? json) => component.onSource(prettyJson(json));
+    return dom.div(classes: 'animus-diagnostics-block', <Widget>[
+      list,
+      dom.div(classes: 'animus-fixes', attributes: const <String, String>{'role': 'group', 'aria-label': 'Fixes'}, <Widget>[
+        const dom.span(classes: 'animus-muted', <Widget>[Component.text('Fixes:')]),
+        for (final DocumentFix fix in fixes.take(8))
+          Button.secondary(
+            label: fix.label,
+            size: ButtonSize.small,
+            attributes: <String, String>{'title': fix.path},
+            onPressed: () => apply(fix.apply(document.json)),
+          ),
+        if (fixes.length > 1)
+          Button.primary(label: 'Fix all ${fixes.length}', size: ButtonSize.small, onPressed: () => apply(applyFixes(document.json, fixes))),
+      ]),
+    ]);
+  }
+
+  Widget _diagnosticList(AnimusDocument document, List<Diagnostic> server) {
     return dom.ul(classes: 'animus-diagnostics', <Widget>[
       for (final Diagnostic diagnostic in document.diagnostics.take(50))
         dom.li(classes: 'is-${diagnostic.severity.name}', <Widget>[
@@ -281,13 +341,39 @@ class _DocumentPaneState extends State<DocumentPane> {
   /// Kinds whose Preview is the 3D stage, which Split shows beside the code.
   bool _staged(AnimusDocument document) => document.kind == DocumentKind.npc && document.json is Map<String, Object?>;
 
+  /// The rig an NPC's `rig` names, with that rig's animations.
+  (AnimusDocument?, List<AnimusDocument>) _rigOf(AnimusDocument document) {
+    final String? id = asString(asMap(asMap(document.json)['rig'])['id']);
+    if (id == null) return (null, const <AnimusDocument>[]);
+    AnimusDocument? rig;
+    final List<AnimusDocument> animations = <AnimusDocument>[];
+    for (final AnimusDocument other in component.workspaceDocuments) {
+      if (other.kind == DocumentKind.rig && other.id == id) rig = other;
+      if (other.kind == DocumentKind.animation && asMap(other.json)['rig'] == id) animations.add(other);
+    }
+    return (rig, animations);
+  }
+
   Widget _preview(AnimusDocument document) {
     if (_staged(document)) {
+      final (AnimusDocument? rig, List<AnimusDocument> animations) = _rigOf(document);
       return NpcPreview(
         key: ValueKey<String>('npc-preview:${document.id}'),
         document: document,
         skinDocument: component.skinDocument,
         route: _routeOf(document),
+        rig: rig,
+        animations: animations,
+        resources: component.resources,
+      );
+    }
+    if (document.kind == DocumentKind.behavior && document.json is Map<String, Object?>) {
+      return DryRunPanel(
+        key: ValueKey<String>('dry-run:${document.id}'),
+        document: document,
+        workspaceDocuments: component.workspaceDocuments,
+        resources: component.resources,
+        onOpen: component.onOpen,
       );
     }
     final Object? json = document.json;
