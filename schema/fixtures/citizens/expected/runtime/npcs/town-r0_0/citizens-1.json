@@ -8,7 +8,7 @@
   "type": "minecraft:villager",
   "spawned": false,
   "migration": {
-    "importId": "16498f1ce9c5de7bf6865e1ff83d80657ec2be5ad0174acac90c9417e1fcec1a",
+    "importId": "efa03c8dd29a16d028f1825661077135240d3bc41f212ef466d6dc80879fd119",
     "citizensId": 1,
     "originalSpawned": null,
     "references": []
@@ -34,6 +34,12 @@
         "radius": 12,
         "height": 2
       }
+    },
+    "animus:look-close": {
+      "enabled": false,
+      "range": 10.0,
+      "lineOfSight": false,
+      "whileNavigating": false
     },
     "citizens:review": {
       "type": "VILLAGER",

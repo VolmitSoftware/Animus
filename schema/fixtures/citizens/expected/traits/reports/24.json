@@ -24,12 +24,23 @@
     "/traits/commandtrait/executionMode": "CONVERTED",
     "/traits/assignment/assignment": "REQUIRES_INTEGRATION",
     "/traits/denizen_flags/flags/greeted": "REQUIRES_INTEGRATION",
-    "/traits/denizenflags": "REQUIRES_INTEGRATION",
+    "/traits/denizenflags": "CONVERTED",
     "/traits/triggers/chat/enabled": "REQUIRES_INTEGRATION",
     "/traits/triggers/chat/cooldown": "REQUIRES_INTEGRATION",
     "/traits/constants/list/greeting": "REQUIRES_INTEGRATION",
-    "/traits/denizen": "REQUIRES_INTEGRATION",
+    "/traits/denizen": "CONVERTED",
     "/traits/denizenscript/name": "REQUIRES_INTEGRATION"
+  },
+  "reasons": {
+    "/traits/commandtrait/commands/0/n": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/commands/0/delay": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/cost": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/assignment/assignment": "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand",
+    "/traits/denizen_flags/flags/greeted": "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand",
+    "/traits/triggers/chat/enabled": "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand",
+    "/traits/triggers/chat/cooldown": "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand",
+    "/traits/constants/list/greeting": "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand",
+    "/traits/denizenscript/name": "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand"
   },
   "worldRemaps": [
     {

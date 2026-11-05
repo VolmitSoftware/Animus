@@ -321,7 +321,7 @@ class CitizensDropInTest {
         try (AnimusRuntime runtime = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root.resolve("plugins/Animus")))) {
             runtime.start();
             runtime.importHost(new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), citizens::get, () -> false, () -> false));
-            runtime.catalogs(reloads::add);
+            runtime.catalogs((CatalogChange change, java.util.function.Consumer<String> problems) -> reloads.add(change));
             Administration admin = new Administration(runtime);
             admin.execute(new String[]{"import", "citizens"});
             assertTrue(reloads.isEmpty(), "staging installs nothing");

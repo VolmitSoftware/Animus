@@ -38,6 +38,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private RigLibrary rigs;
     private final art.arcane.animus.core.extension.ModuleHooks moduleHooks = new art.arcane.animus.core.extension.ModuleHooks();
     private volatile CatalogReloads catalogs = CatalogReloads.NONE;
+    private final java.util.List<Consumer<PluginSettings>> settingsListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     public AnimusRuntime(RuntimeEnvironment environment) {
         this(environment, failure -> System.getLogger("Animus").log(System.Logger.Level.ERROR,
@@ -193,6 +194,27 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.NavigationSettings navigationSettings() { return settings().navigation(); }
     public synchronized art.arcane.animus.core.config.EditorSettings editorSettings() { return settings().editor(); }
     public synchronized art.arcane.animus.core.config.EditorRelaySettings editorRelaySettings() { return settings().relay(); }
+    public synchronized art.arcane.animus.core.config.HotloadSettings hotloadSettings() { return settings().hotload(); }
+
+    /**
+     * Replaces the running settings after a hotload of {@code config.toml}, then tells every listener. Values a service
+     * read when it started stay in effect until a restart; the hotload message marks those keys.
+     */
+    public void applySettings(PluginSettings next) {
+        Objects.requireNonNull(next, "next");
+        synchronized (this) {
+            if (!isRunning()) throw new IllegalStateException("Animus is not running");
+            settings = next;
+        }
+        for (Consumer<PluginSettings> listener : settingsListeners) listener.accept(next);
+    }
+
+    /** Hears {@link #applySettings}, on the thread that applied them, until the returned handle is closed. */
+    public AutoCloseable onSettings(Consumer<PluginSettings> listener) {
+        Consumer<PluginSettings> added = Objects.requireNonNull(listener, "listener");
+        settingsListeners.add(added);
+        return () -> settingsListeners.remove(added);
+    }
     public RuntimeEnvironment environment() { return environment; }
     /** Module protection, economy and import converter registrations; platforms wrap their adapters with it. */
     public art.arcane.animus.core.extension.ModuleHooks moduleHooks() { return moduleHooks; }

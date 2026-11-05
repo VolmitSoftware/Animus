@@ -11,10 +11,14 @@
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
-    "/traits/spawned": "REQUIRES_REVIEW",
+    "/traits/spawned": "CONVERTED",
     "/traits/owner/name": "REQUIRES_REVIEW",
     "/traits/equipment": "REQUIRES_REVIEW",
-    "/traits/inventory": "REQUIRES_REVIEW"
+    "/traits/inventory": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/owner/name": "not converted; check it in citizens:review",
+    "/traits/equipment": "not converted; check it in citizens:review"
   },
   "worldRemaps": [
     {

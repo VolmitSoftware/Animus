@@ -62,4 +62,27 @@ class LookCloseTest {
         assertEquals(List.of("closer-viewer", "viewer", "near-hidden"), ranked.stream().map(LookClose.Candidate::player).toList());
         assertTrue(settings.ranked(eye, List.of(new LookClose.Candidate<>("away", new Vec3(0, 0, 10.5), false))).isEmpty());
     }
+
+    @Test void randomLookAndNpcTargetsParse() {
+        LookClose look = LookClose.parse(definition("{\"npcs\":true,\"randomLook\":{\"enabled\":true,\"delayTicks\":60,\"yaw\":[0,360],\"pitch\":[-8,8]}}", false)).orElseThrow();
+        assertTrue(look.npcs());
+        assertEquals(new LookClose.RandomLook(true, 60, 0, 360, -8, 8), look.randomLook().orElseThrow());
+        assertEquals(java.util.Optional.empty(), new LookClose(10, false, false).randomLook());
+        assertTrue(failure("{\"randomLook\":{\"delayTicks\":0}}").startsWith("$.modules.animus:look-close.randomLook.delayTicks"));
+        assertTrue(failure("{\"randomLook\":{\"pitch\":[10,-10]}}").startsWith("$.modules.animus:look-close.randomLook.pitch"));
+        assertTrue(failure("{\"randomLook\":{\"yaw\":[0]}}").startsWith("$.modules.animus:look-close.randomLook.yaw"));
+        assertTrue(failure("{\"randomLook\":{\"spin\":1}}").startsWith("$.modules.animus:look-close.randomLook.spin"));
+        assertTrue(failure("{\"npcs\":\"yes\"}").startsWith("$.modules.animus:look-close.npcs"));
+    }
+    @Test void randomLookPicksAFacingInsideItsRangesOnlyWhenEnabled() {
+        LookClose.RandomLook random = new LookClose.RandomLook(true, 60, 90, 90, -8, 8);
+        java.util.random.RandomGenerator generator = new java.util.Random(7);
+        for (int i = 0; i < 50; i++) {
+            LookClose.Facing facing = random.pick(generator);
+            assertEquals(90f, facing.yaw());
+            assertTrue(facing.pitch() >= -8 && facing.pitch() <= 8);
+        }
+        assertFalse(new LookClose.RandomLook(false, 60, 0, 360, 0, 0).active());
+        assertTrue(random.active());
+    }
 }

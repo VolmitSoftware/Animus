@@ -15,6 +15,10 @@
     "/traits/owner/uuid": "REQUIRES_REVIEW",
     "/traits/metadata/nameplate-visible": "UNSUPPORTED_PRESERVED"
   },
+  "reasons": {
+    "/traits/owner/uuid": "not converted; check it in citizens:review",
+    "/traits/metadata/nameplate-visible": "trait metadata has no Animus equivalent; kept in citizens:review"
+  },
   "worldRemaps": [
     {
       "source": "/traits/location",

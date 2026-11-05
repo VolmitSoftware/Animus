@@ -1,0 +1,55 @@
+{
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000501",
+  "name": "Foal",
+  "metadata": {
+    "nameplate-visible": "false",
+    "protected": false,
+    "minecraft-ai": true,
+    "flyable": true
+  },
+  "traits": {
+    "type": "HORSE",
+    "location": {
+      "world": "town",
+      "x": 14.0,
+      "y": 64.0,
+      "z": 22.0,
+      "yaw": 0.0,
+      "pitch": 0.0
+    },
+    "age": {
+      "age": -1,
+      "locked": true
+    },
+    "gravity": {
+      "enabled": true
+    },
+    "horsemodifiers": {
+      "saddle": {
+        "type": "saddle",
+        "amount": 1
+      },
+      "color": "WHITE"
+    },
+    "targetable": {
+      "targetable": true
+    },
+    "spawned": false,
+    "controllable": {
+      "enabled": false
+    },
+    "mounttrait": {
+      "mountedon": "0a1b2c3d-0000-4000-8000-000000000500"
+    },
+    "poses": {
+      "list": [
+        "rest;90.0;0.0"
+      ]
+    },
+    "lookclose": {
+      "enabled": false,
+      "perplayer": true
+    },
+    "sneak": {}
+  }
+}

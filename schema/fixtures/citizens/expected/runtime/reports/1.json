@@ -18,6 +18,9 @@
     "/traits/waypoints/wander/xrange": "CONVERTED",
     "/traits/waypoints/wander/yrange": "CONVERTED"
   },
+  "reasons": {
+    "/traits/waypoints/wander/pathfind": "not converted; check it in citizens:review"
+  },
   "worldRemaps": [
     {
       "source": "/traits/location",

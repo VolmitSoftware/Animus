@@ -15,6 +15,7 @@
     "/traits/sentinel/guardingUpper": "CONVERTED",
     "/traits/sentinel/guardingLower": "CONVERTED"
   },
+  "reasons": {},
   "worldRemaps": [
     {
       "source": "/traits/location",
