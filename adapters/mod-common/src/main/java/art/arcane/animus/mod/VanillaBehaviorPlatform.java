@@ -1,5 +1,7 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.BuildIdentity;
@@ -56,7 +58,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     }
 
     @Override public Optional<String> unavailable() { return PlatformRefusals.unavailability(living::available, living::status); }
-    @Override public AutoCloseable ownerTicks(Runnable tick) { return ticks.every(tick); }
+    @Override public AutoCloseable ownerTicks(Runnable tick) { return ticks.every(AnimusMetrics.current().timed(Subsystem.BEHAVIORS, tick)); }
     @Override public boolean onNpcOwner(NpcHandle npc, Runnable work, Consumer<String> refused) { return living.onOwner(npc.uuid(), work, refused); }
 
     @Override public boolean hasPermission(UUID player, String node) {
