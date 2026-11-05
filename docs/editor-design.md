@@ -320,7 +320,7 @@ This follows React rather than Gloss. Gloss's long-poll snapshot relay suits who
 
 ### Relay path
 
-- The plugin opens an outbound WSS connection to `relayUrl` (off by default until the Volmit relay is deployed; the default URL is `wss://relay.animus.volmitsoftware.com`), so it works behind NAT and on hosts that allow no inbound ports. This is the path most servers will use.
+- The plugin opens an outbound WSS connection to `relayUrl` (on by default, using the Volmit relay at `wss://animus-relay-823521865655.us-central1.run.app`), so it works behind NAT and on hosts that allow no inbound ports. This is the path most servers will use.
 - Identity: the plugin keeps an Ed25519 key in `state/editor/identity.json` (`EditorIdentity`). The relay sends a challenge, the plugin signs `animus-relay/1 ` followed by the nonce, and the relay registers the server under `sha256:` and the hex SHA-256 of the raw public key, the same fingerprint as in pairing codes.
 - The browser subscribes by fingerprint and sends `relay-request` frames `{id, method, path, headers, body}`. The relay rewrites request ids so each response reaches only the browser that asked. `GET /v1/events` with the token in `Authorization` opens an event stream on the same connection; either side ends it with a `relay-close` frame. The relay writes `Origin` and `X-Forwarded-For` from the browser's connection, so the plugin's origin check and audit log work as on the direct path.
 - The relay keeps no documents and no state on disk. All state is in memory and lost on restart; both ends reconnect.
@@ -420,8 +420,8 @@ port = 9797
 advertisedUrl = ""
 tlsCertificate = ""
 tlsPrivateKey = ""
-relayEnabled = false
-relayUrl = "wss://relay.animus.volmitsoftware.com"
+relayEnabled = true
+relayUrl = "wss://animus-relay-823521865655.us-central1.run.app"
 relayReconnectMinSeconds = 1
 relayReconnectMaxSeconds = 60
 relayFrameBytes = 1048576

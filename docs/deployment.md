@@ -37,7 +37,7 @@ Run these from `animus-web/`. Dart 3.13 or newer and Node.js (for `npx`) are nee
 
 ## Relay (Cloud Run)
 
-The relay lets the editor reach servers that accept no inbound connections. Build and deploy it from `animus-web/relay` with the `gcloud` commands in [the relay README](../animus-web/relay/README.md#cloud-run). Keep exactly one instance, give it its own hostname (not a Firebase Hosting rewrite) and set `ALLOWED_APP_ORIGINS=https://animus-editor.web.app`. The relay operator can read the traffic it forwards, so run it yourself or use one you trust.
+The relay lets the editor reach servers that accept no inbound connections. The Volmit relay runs at `wss://animus-relay-823521865655.us-central1.run.app` (Cloud Run, project `animus-editor`, region us-central1, one instance). To run your own, build and deploy it from `animus-web/relay` with the `gcloud` commands in [the relay README](../animus-web/relay/README.md#cloud-run). Keep exactly one instance, give it its own hostname (not a Firebase Hosting rewrite) and set `ALLOWED_APP_ORIGINS=https://animus-editor.web.app`. The relay operator can read the traffic it forwards, so run it yourself or use one you trust.
 
 ## Server settings
 
@@ -48,10 +48,10 @@ To use the relay, set its `wss://` URL (the Cloud Run `run.app` URL or your doma
 ```toml
 [editor]
 relayEnabled = true
-relayUrl = "wss://animus-relay-example.a.run.app"
+relayUrl = "wss://animus-relay-823521865655.us-central1.run.app"
 ```
 
-`relayUrl` must be `wss://host[:port][/path]`; plain `ws://` is accepted only on `127.0.0.1` or `localhost`. The server connects to `<relayUrl>/agent`. `relayEnabled` is false by default, so set both keys.
+`relayUrl` must be `wss://host[:port][/path]`; plain `ws://` is accepted only on `127.0.0.1` or `localhost`. The server connects to `<relayUrl>/agent`. `relayEnabled` is true by default and points at the Volmit relay; set it to false to use only the direct listener.
 
 To use the direct listener instead of, or beside, the relay, set `listenerEnabled = true`. The listener serves plain HTTP only on a loopback `listenAddress`; on any other address set `tlsCertificate` and `tlsPrivateKey`, or put a TLS proxy in front of a loopback listener and set `advertisedUrl` to the public `https://` address. `allowedOrigins` must include `https://animus-editor.web.app`, as it does by default.
 
