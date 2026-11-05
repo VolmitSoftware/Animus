@@ -11,6 +11,10 @@ import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.BodySkin;
+import art.arcane.animus.core.presentation.BoneDisplay;
+import art.arcane.animus.core.rig.DisplayTransform;
+import art.arcane.animus.mod.mixin.BlockDisplayDataAccess;
+import art.arcane.animus.mod.mixin.ItemDisplayDataAccess;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.presentation.NativeEntityIds;
 import art.arcane.animus.core.presentation.PassengerGraph;
@@ -28,6 +32,7 @@ import com.mojang.authlib.properties.PropertyMap;
 import com.mojang.datafixers.util.Pair;
 import io.netty.buffer.Unpooled;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -72,6 +77,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.scores.Team;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 /**
@@ -108,11 +114,31 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         @Override public int[] entityIds() { return IntStream.range(0, reservedIds).map((int offset) -> entityId + offset).toArray(); }
     }
 
+    /** A rig's display bones on one body. */
+    static final class Bones implements BodyTransport.Bones {
+        private final VanillaBodyTransport owner;
+        private final Body body;
+        private final int[] ids;
+        private final UUID[] uuids;
+        private final EntityType<?>[] types;
+        private final List<List<SynchedEntityData.DataValue<?>>> content;
+        private Bones(VanillaBodyTransport owner, Body body, int[] ids, EntityType<?>[] types, List<List<SynchedEntityData.DataValue<?>>> content) {
+            this.owner = owner; this.body = body; this.ids = ids; this.types = types; this.content = List.copyOf(content);
+            uuids = new UUID[ids.length];
+            for (int i = 0; i < ids.length; i++) uuids[i] = UUID.randomUUID();
+        }
+        @Override public int count() { return ids.length; }
+        @Override public int[] entityIds() { return ids.clone(); }
+    }
+
     private final class Session {
         final ServerPlayer viewer;
         final Consumer<Interaction> interactions;
         final Map<Integer, Body> visible = new HashMap<>();
         final PassengerGraph passengers = new PassengerGraph();
+        /** Bones riding each vehicle, and the last roster sent without them; every roster write appends the bones. */
+        final Map<Integer, Bones> bones = new HashMap<>();
+        final Map<Integer, int[]> rosters = new HashMap<>();
         ControlSubscription control;
         long lastInputNanos = Long.MIN_VALUE / 2;
         boolean reportedFailure;
@@ -134,7 +160,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     private final NativeEntityIds ids = new NativeEntityIds(EntityCounterAccessor.animus$counter());
     private final Map<UUID, Session> sessions = new HashMap<>();
     private final Set<String> types;
-    private final EntityType<?> textDisplayType, seatType;
+    private final EntityType<?> textDisplayType, seatType, itemDisplayType, blockDisplayType;
+    static final int MAX_BONES_PER_VIEWER = 4096;
     private final java.util.function.Consumer<String> warnings;
     private boolean closed;
 
@@ -145,6 +172,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         types = Set.copyOf(available);
         textDisplayType = entityType("minecraft:text_display");
         seatType = entityType("minecraft:armor_stand");
+        itemDisplayType = entityType("minecraft:item_display");
+        blockDisplayType = entityType("minecraft:block_display");
     }
 
     private static EntityType<?> entityType(String key) {
@@ -257,7 +286,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (!connected(session)) return failed(CONNECTION_CLOSED);
         try { session.passengers.replace(vehicle.entityId, passengerIds); }
         catch (IllegalArgumentException invalid) { return CompletableFuture.failedFuture(invalid); }
-        return send(session, List.of(passengersPacket(vehicle.entityId, roster)));
+        session.rosters.put(vehicle.entityId, roster);
+        return send(session, List.of(passengersPacket(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId)))));
     }
 
     @Override public CompletionStage<Void> dragonPhase(ServerPlayer viewer, BodyTransport.Body presented, int phase) {
@@ -301,7 +331,10 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session == null || session.viewer != viewer || session.visible.get(body.entityId) != body) return CompletableFuture.completedFuture(null);
         for (int id : body.entityIds()) session.visible.remove(id, body);
         session.passengers.remove(body.entityId);
-        if (connected(session)) send(session, removePackets(body));
+        session.rosters.remove(body.entityId);
+        Bones attached = session.bones.get(body.entityId);
+        if (attached != null && attached.body == body) session.bones.remove(body.entityId); else attached = null;
+        if (connected(session)) send(session, removePackets(body, attached));
         return CompletableFuture.completedFuture(null);
     }
 
@@ -318,6 +351,129 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         ControlSubscription subscription = new ControlSubscription(session);
         session.control = subscription;
         return subscription;
+    }
+
+    @Override public boolean bonesAvailable() { return true; }
+
+    @Override public Bones createBones(BodyTransport.Body presented, List<BoneDisplay<ItemStack>> displays) {
+        Body body = checkBody(presented);
+        if (displays.isEmpty() || displays.size() > 64) throw new IllegalArgumentException("A rig shows 1..64 bones");
+        List<List<SynchedEntityData.DataValue<?>>> content = new ArrayList<>(displays.size());
+        EntityType<?>[] boneTypes = new EntityType<?>[displays.size()];
+        for (int i = 0; i < displays.size(); i++) {
+            BoneDisplay<ItemStack> bone = displays.get(i);
+            List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
+            switch (bone.kind()) {
+                case ITEM -> {
+                    boneTypes[i] = itemDisplayType;
+                    values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$stack(), bone.item().copy()));
+                    values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$context(), bone.itemContext()));
+                }
+                case BLOCK -> {
+                    boneTypes[i] = blockDisplayType;
+                    values.add(SynchedEntityData.DataValue.create(BlockDisplayDataAccess.animus$state(), blockState(bone.block())));
+                }
+                case TEXT -> {
+                    boneTypes[i] = textDisplayType;
+                    values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), (Component) ModText.component(bone.text())));
+                    values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$billboard(), bone.billboard()));
+                    values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$lineWidth(), bone.lineWidth()));
+                    values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$background(), bone.background()));
+                    if (bone.shadow()) values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$styleFlags(), (byte) 0x01));
+                }
+            }
+            content.add(values);
+        }
+        int[] boneIds = new int[displays.size()];
+        for (int start = 0; start < boneIds.length; start += 16) {
+            int count = Math.min(16, boneIds.length - start), first = ids.reserve(count);
+            for (int i = 0; i < count; i++) boneIds[start + i] = first + i;
+        }
+        return new Bones(this, body, boneIds, boneTypes, content);
+    }
+
+    private static net.minecraft.world.level.block.state.BlockState blockState(String text) {
+        try { return net.minecraft.commands.arguments.blocks.BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK, text, false).blockState(); }
+        catch (com.mojang.brigadier.exceptions.CommandSyntaxException invalid) { throw new IllegalArgumentException("Unknown block state for a rig bone: " + text); }
+    }
+
+    @Override public CompletionStage<Void> showBones(ServerPlayer viewer, BodyTransport.Body presented, BodyTransport.Bones created, BodyPose pose, List<DisplayTransform> transforms, boolean hideBody) {
+        Body body = checkBody(presented);
+        Bones bones = checkBones(created, body);
+        if (transforms.size() != bones.ids.length) return failed("Every bone needs a transform");
+        Session session = session(viewer, pose);
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        if (session.bones.containsKey(body.entityId)) return failed("The body already shows bones");
+        if (session.bones.values().stream().mapToInt((Bones value) -> value.ids.length).sum() + bones.ids.length > MAX_BONES_PER_VIEWER) return failed("Viewer rig bone limit reached");
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(bones.ids.length * 2 + 2);
+        for (int i = 0; i < bones.ids.length; i++) {
+            packets.add(new ClientboundAddEntityPacket(bones.ids[i], bones.uuids[i], pose.x(), pose.y(), pose.z(), 0f, 0f, bones.types[i], 0, Vec3.ZERO, 0d));
+            List<SynchedEntityData.DataValue<?>> values = new ArrayList<>(bones.content.get(i));
+            values.addAll(transformValues(transforms.get(i), 0));
+            packets.add(new ClientboundSetEntityDataPacket(bones.ids[i], values));
+        }
+        session.bones.put(body.entityId, bones);
+        int[] base = session.rosters.getOrDefault(body.entityId, body.displayId >= 0 ? new int[]{body.displayId} : new int[0]);
+        packets.add(passengersPacket(body.entityId, withBones(base, bones)));
+        if (hideBody) packets.add(new ClientboundSetEntityDataPacket(body.entityId, List.of(visibility(body.look, true))));
+        send(session, packets);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> moveBones(ServerPlayer viewer, BodyTransport.Bones moved, int[] indices, DisplayTransform[] transforms, int[] durations) {
+        Bones bones = checkBones(moved, null);
+        if (indices.length != transforms.length || indices.length != durations.length) return failed("Bone updates need a transform and duration each");
+        Session session = existing(viewer);
+        if (session == null) return failed("Viewer is not watched");
+        if (session.bones.get(bones.body.entityId) != bones) return failed("Bones are not shown to this viewer");
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(indices.length);
+        for (int i = 0; i < indices.length; i++) {
+            if (indices[i] < 0 || indices[i] >= bones.ids.length) return failed("Unknown bone index " + indices[i]);
+            packets.add(new ClientboundSetEntityDataPacket(bones.ids[indices[i]], transformValues(transforms[i], Math.max(0, durations[i]))));
+        }
+        send(session, packets);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> hideBones(ServerPlayer viewer, BodyTransport.Bones shown) {
+        Bones bones = checkBones(shown, null);
+        Session session = existing(viewer);
+        if (session == null || session.bones.get(bones.body.entityId) != bones) return CompletableFuture.completedFuture(null);
+        session.bones.remove(bones.body.entityId);
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(3);
+        packets.add(new ClientboundRemoveEntitiesPacket(bones.ids.clone()));
+        if (session.visible.get(bones.body.entityId) == bones.body) {
+            int[] base = session.rosters.getOrDefault(bones.body.entityId, bones.body.displayId >= 0 ? new int[]{bones.body.displayId} : new int[0]);
+            packets.add(passengersPacket(bones.body.entityId, base));
+            packets.add(new ClientboundSetEntityDataPacket(bones.body.entityId, List.of(visibility(bones.body.look, false))));
+        }
+        send(session, packets);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private Bones checkBones(BodyTransport.Bones presented, Body body) {
+        ensureOpen();
+        if (!(presented instanceof Bones bones) || bones.owner != this || (body != null && bones.body != body)) throw new IllegalArgumentException("Bones belong to another body or transport");
+        return bones;
+    }
+    private static int[] withBones(int[] roster, Bones bones) {
+        if (bones == null) return roster;
+        int[] result = Arrays.copyOf(roster, roster.length + bones.ids.length);
+        System.arraycopy(bones.ids, 0, result, roster.length, bones.ids.length);
+        return result;
+    }
+    private static List<SynchedEntityData.DataValue<?>> transformValues(DisplayTransform transform, int duration) {
+        return List.of(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$interpolationStart(), 0),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$transformInterpolation(), duration),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$translation(), new Vector3f(transform.tx(), transform.ty(), transform.tz())),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$leftRotation(), new Quaternionf(transform.lx(), transform.ly(), transform.lz(), transform.lw())),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$scale(), new Vector3f(transform.sx(), transform.sy(), transform.sz())),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$rightRotation(), new Quaternionf(transform.rx(), transform.ry(), transform.rz(), transform.rw())));
+    }
+    /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
+    private static SynchedEntityData.DataValue<Byte> visibility(BodyLook look, boolean hidden) {
+        boolean invisible = hidden || look.armorStand().map(ArmorStandLook::invisible).orElse(false);
+        return SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), BodyLook.sharedFlags(look.pose(), invisible));
     }
 
     @Override public void placeRider(ServerPlayer rider, double x, double y, double z) {
@@ -437,9 +593,15 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             return ClientboundSetPassengersPacket.STREAM_CODEC.decode(buffer);
         } finally { buffer.release(); }
     }
-    private static List<Packet<ClientGamePacketListener>> removePackets(Body body) {
+    private static List<Packet<ClientGamePacketListener>> removePackets(Body body, Bones bones) {
         List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(3);
-        packets.add(new ClientboundRemoveEntitiesPacket(body.entityIds()));
+        int[] removed = body.entityIds();
+        if (bones != null) {
+            int[] all = Arrays.copyOf(removed, removed.length + bones.ids.length);
+            System.arraycopy(bones.ids, 0, all, removed.length, bones.ids.length);
+            removed = all;
+        }
+        packets.add(new ClientboundRemoveEntitiesPacket(removed));
         if (body.playerInfo != null) packets.add(new ClientboundPlayerInfoRemovePacket(List.of(body.uuid)));
         if (body.nameTeam != null) packets.add(body.nameTeam.get(1));
         return packets;
@@ -456,9 +618,14 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         String reason = session.viewer.connection.isAcceptingMessages() ? "session-retired" : ControlInbox.CONNECTION_CLOSED;
         if (session.control != null) { session.control.inbox.close(reason); session.control = null; }
         Set<Body> bodies = new HashSet<>(session.visible.values());
-        session.visible.clear(); session.passengers.clear();
+        Map<Integer, Bones> attached = new HashMap<>(session.bones);
+        for (Bones bones : attached.values()) bodies.add(bones.body);
+        session.visible.clear(); session.passengers.clear(); session.bones.clear(); session.rosters.clear();
         if (!session.viewer.connection.isAcceptingMessages()) return;
-        for (Body body : bodies) send(session, removePackets(body));
+        for (Body body : bodies) {
+            Bones bones = attached.get(body.entityId);
+            send(session, removePackets(body, bones != null && bones.body == body ? bones : null));
+        }
     }
     private Session session(ServerPlayer viewer, BodyPose pose) {
         ensureOpen();

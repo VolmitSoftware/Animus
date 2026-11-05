@@ -62,6 +62,11 @@ public sealed interface TriggerEvent {
         public BuildPaused { Objects.requireNonNull(npc); }
         @Override public TriggerKind kind() { return TriggerKind.BUILD_PAUSED; }
     }
+    /** A played clip ended on a layer; looping clips never finish. */
+    record AnimationFinished(UUID npc, String animation, int layer) implements TriggerEvent {
+        public AnimationFinished { Objects.requireNonNull(npc); Objects.requireNonNull(animation); }
+        @Override public TriggerKind kind() { return TriggerKind.ANIMATION_FINISHED; }
+    }
     record Module(UUID npc, Optional<UUID> player, Capabilities.Key key) implements TriggerEvent {
         public Module { Objects.requireNonNull(npc); Objects.requireNonNull(player); Objects.requireNonNull(key); }
         @Override public TriggerKind kind() { return TriggerKind.MODULE; }

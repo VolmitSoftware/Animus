@@ -79,6 +79,18 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     CompletableFuture<Void> awaitRoute(String id);
     void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset);
     void setEquipment(String id, EquipmentSlot slot, I item);
+    /**
+     * Plays an animation of the NPC's rig on a layer (0-3) at a speed (0.25-4), optionally overriding its loop mode
+     * ({@code once}, {@code loop}, {@code pingpong} or {@code hold}). Throws {@link IllegalStateException} when the NPC
+     * has no rig and {@link IllegalArgumentException} for an unknown animation.
+     */
+    default void playAnimation(String id, String animation, double speed, java.util.Optional<String> loop, int layer) {
+        throw new IllegalStateException("Rig animation is not available on this runtime");
+    }
+    /** Stops one layer or every played layer, fading over 0-40 ticks; layer 0 returns to the rig's idle animation. */
+    default void stopAnimation(String id, java.util.OptionalInt layer, int fadeTicks) {
+        throw new IllegalStateException("Rig animation is not available on this runtime");
+    }
 
     @Override void close();
 }

@@ -40,6 +40,23 @@ class PluginSettingsTest {
             assertTrue(error.getMessage().contains("combat: targetScansPerTick must be within 1..64"), error.getMessage());
         }
     }
+    @Test void rigBudgetsAreReadFromTomlAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(RigSettings.DEFAULT, PluginSettings.load(store).rigs());
+            assertTrue(Files.readString(root.resolve("config.toml")).contains("[rigs]"));
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[rigs]\nenabled = false\nupdatesPerTick = 8\n");
+            RigSettings rigs = PluginSettings.load(store).rigs();
+            assertFalse(rigs.enabled());
+            assertEquals(8, rigs.updatesPerTick());
+            assertEquals(RigSettings.DEFAULT.maximumBones(), rigs.maximumBones());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[rigs]\nsampleTicks = 0\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("rigs: sampleTicks must be within 1..20"), error.getMessage());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[rigs]\nbones = 3\n");
+            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("bones is not a rig setting"), error.getMessage());
+        }
+    }
     @Test void buildLimitsAreReadFromTomlAndBounded() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             assertEquals(BuildSettings.DEFAULT, PluginSettings.load(store).builds());
