@@ -7,6 +7,7 @@ import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.runtime.DefinitionQueue;
 import art.arcane.animus.core.runtime.SkinDocuments;
+import art.arcane.animus.core.runtime.ViewerPreviews;
 
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.navigation.BukkitNavigationBridge;
@@ -90,6 +91,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final Set<RegionActor> transfers = ConcurrentHashMap.newKeySet();
     final Map<UUID, String> selections = new ConcurrentHashMap<>();
     final AtomicLong accepted = new AtomicLong(), rejected = new AtomicLong();
+    final ViewerPreviews previews;
     volatile NativePacketAdapter packets;
     volatile NativeViewerEpoch epochs;
     volatile BukkitNavigationBridge navigation;
@@ -121,6 +123,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         this.plugin = Objects.requireNonNull(plugin); this.runtime = Objects.requireNonNull(runtime);
         this.io = Objects.requireNonNull(io); this.settings = Objects.requireNonNull(settings); this.regions = Objects.requireNonNull(regions);
         viewerSlots = new Semaphore(settings.maximumViewers());
+        previews = new ViewerPreviews(io, runtime.documents());
         Map<RegionBudget.Kind, Integer> limits = new EnumMap<>(RegionBudget.Kind.class);
         limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, 16); limits.put(RegionBudget.Kind.MOTION_CELLS, 2048);
         limits.put(RegionBudget.Kind.CAPTURE, 256); limits.put(RegionBudget.Kind.VIEWERS, settings.updatesPerTick());
@@ -157,6 +160,9 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { triggers = Objects.requireNonNull(dispatcher); }
     @Override public void refresh() { refresh.set(true); }
     @Override public PlayerAccess<Player> players() { return players; }
+    @Override public ViewerPreviews previews() { return previews; }
+    /** A preview candidate checked against this server, on the viewer's region. */
+    DefinitionSpec<ItemStack> previewSpec(NpcDefinition definition) { return DefinitionSpec.parse(definition, geometries.keySet(), this::worldKey, DefinitionItems::stack); }
 
     @Override public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
@@ -547,6 +553,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @EventHandler public void quit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         online.remove(player.getUniqueId(), player);
+        previews.left(player.getUniqueId());
         RegionViewer viewer = viewers.get(player.getUniqueId());
         if (viewer != null && viewer.player == player) disconnect(viewer);
         selections.remove(player.getUniqueId());
@@ -574,6 +581,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void close() {
         if (closed) return;
         closed = true;
+        previews.close();
         if (control != null) try { control.close(); } catch (Exception ignored) { /* The global scheduler already stopped. */ }
         HandlerList.unregisterAll(this);
         for (RegionActor actor : actors.values()) actor.owner.shutdown();
