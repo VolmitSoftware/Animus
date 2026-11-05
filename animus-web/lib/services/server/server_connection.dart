@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'pairing.dart';
@@ -75,20 +76,35 @@ Duration reconnectDelay(int attempt, {Duration maximum = const Duration(seconds:
   return Duration(seconds: math.max(1, seconds));
 }
 
+/// Waits between direct-path probes while on the relay: the last one repeats.
+const List<Duration> defaultProbeIntervals = <Duration>[Duration(seconds: 15), Duration(seconds: 30), Duration(seconds: 60)];
+
 /// One server's connection. Tries every path of the profile (the last good
 /// one first, the other first after a loss), pins the fingerprint on every
-/// `hello`, keeps the event stream open, and reconnects with backoff.
+/// `hello`, keeps the event stream open, and reconnects with backoff. While
+/// online over the relay with a direct path paired, it probes the direct path
+/// every [probeIntervals] and moves back to it without going offline.
 class ServerConnection {
   ServerConnection({
     required this._profile,
     required this.open,
     this.token,
     this.delay = realDelay,
+    this.probeIntervals = defaultProbeIntervals,
+    this.overlap = const Duration(seconds: 2),
     DateTime Function()? now,
-  }) : _now = now ?? DateTime.now;
+  })  : assert(probeIntervals.isNotEmpty),
+        _now = now ?? DateTime.now;
 
   final TransportFactory open;
   final Delay delay;
+
+  /// Waits before each direct-path probe while on the relay; the last repeats.
+  final List<Duration> probeIntervals;
+
+  /// How long a recovered direct event stream runs beside the relay stream
+  /// before the switch commits.
+  final Duration overlap;
   final DateTime Function() _now;
   ServerToken? token;
 
@@ -103,6 +119,18 @@ class ServerConnection {
   Completer<void>? _wake;
   ConnectionPath? _lostPath;
   int _counter = 0;
+
+  /// Bumped whenever the online path changes or is lost; a probe that sees
+  /// another value than it started with gives up.
+  int _session = 0;
+  Completer<void>? _probeWake;
+  _EventOverlap? _overlap;
+
+  /// Requests still waiting for an answer, per transport.
+  final Map<ServerTransport, int> _inFlight = <ServerTransport, int>{};
+
+  /// Transports replaced by a switch, closed once their requests answered.
+  final Set<ServerTransport> _retired = <ServerTransport>{};
 
   final StreamController<ConnectionStatus> _statuses = StreamController<ConnectionStatus>.broadcast(sync: true);
   final StreamController<Map<String, Object?>> _events = StreamController<Map<String, Object?>>.broadcast(sync: true);
@@ -148,6 +176,19 @@ class ServerConnection {
     if (wake != null && !wake.isCompleted) wake.complete();
   }
 
+  /// Skips the wait before the next direct-path probe (the browser came back
+  /// online or the tab became visible). Does nothing unless on the relay.
+  void probeNow() {
+    final Completer<void>? wake = _probeWake;
+    if (wake != null && !wake.isCompleted) wake.complete();
+  }
+
+  void _endSession() {
+    _session++;
+    _overlap = null;
+    probeNow();
+  }
+
   Future<void> disconnect() async {
     _running = false;
     retryNow();
@@ -162,6 +203,7 @@ class ServerConnection {
     final ServerTransport? transport = _transport;
     _subscription = null;
     _transport = null;
+    _endSession();
     await subscription?.cancel();
     await transport?.close();
   }
@@ -257,21 +299,140 @@ class ServerConnection {
       _transport = transport;
       _subscription = subscription;
       _lost = Completer<void>();
+      _session++;
       subscription.events.listen(
-        _events.add,
+        (Map<String, Object?> event) => _deliver(path, event),
         onError: (Object _) {},
         onDone: () => _streamEnded(transport!, subscription),
       );
-      if (_profile.lastPath != path) {
-        _profile = _profile.copyWith(lastPath: path);
-        _profiles.add(_profile);
-      }
+      _rememberPath(path);
       _emit(ConnectionStatus(ConnectionPhase.online, path: path, hello: _hello));
+      if (path == ConnectionPath.relay && _profile.directUrl != null) unawaited(_probeLoop(_session, _profile.directUrl!));
       return null;
     } on TransportFailure catch (failure) {
       await transport?.close();
       return failure.toString();
     }
+  }
+
+  void _rememberPath(ConnectionPath path) {
+    if (_profile.lastPath == path) return;
+    _profile = _profile.copyWith(lastPath: path);
+    _profiles.add(_profile);
+  }
+
+  void _deliver(ConnectionPath from, Map<String, Object?> event) {
+    final _EventOverlap? overlap = _overlap;
+    if (overlap != null && !overlap.accept(from, event)) return;
+    _events.add(event);
+  }
+
+  /// Probes the direct path with backoff for as long as [session] is the
+  /// relay session, and switches to it once a probe succeeds.
+  Future<void> _probeLoop(int session, String url) async {
+    int failures = 0;
+    while (_running && _session == session) {
+      final Completer<void> wake = Completer<void>();
+      _probeWake = wake;
+      await Future.any(<Future<void>>[delay(probeIntervals[math.min(failures, probeIntervals.length - 1)]), wake.future]);
+      if (identical(_probeWake, wake)) _probeWake = null;
+      if (!_running || _session != session) return;
+      if (await _probe(session, url)) return;
+      failures++;
+    }
+  }
+
+  /// One probe of the direct path while the relay session [session] carries
+  /// everything. Nothing it does touches the relay session: a failure closes
+  /// only the probe's own transport. Returns whether the switch committed.
+  ///
+  /// The order keeps requests and events whole: hello must carry the pinned
+  /// fingerprint, capabilities must accept the token, then the direct event
+  /// stream opens beside the relay stream for [overlap]. Only when it is still
+  /// open after that (a refused event-auth closes it with 4000 + status) do
+  /// new requests go direct and the relay stream close. Requests already sent
+  /// over the relay keep their transport until they answer.
+  Future<bool> _probe(int session, String url) async {
+    ServerTransport? direct;
+    EventSubscription? stream;
+    bool committed = false;
+    final Completer<void> ended = Completer<void>();
+    bool stale() => !_running || _session != session || token == null;
+    try {
+      direct = await open(ConnectionPath.direct, url);
+      if (stale()) return false;
+      final ApiResponse hello = await direct.send(const ApiRequest('GET', '/v1/hello'));
+      final Object? body = hello.body;
+      if (stale() || !hello.ok || body is! Map<String, Object?> || body['fingerprint'] != _profile.fingerprint) return false;
+      if (body['protocol'] != 1 && !((body['protocols'] as List<Object?>?) ?? const <Object?>[]).contains(1)) return false;
+      final ApiResponse capabilities = await direct.send(_authorized(const ApiRequest('GET', '/v1/capabilities')));
+      if (stale() || !capabilities.ok) return false;
+      stream = await direct.subscribe(token!.token);
+      if (stale()) return false;
+      final ServerTransport opened = direct;
+      final EventSubscription subscription = stream;
+      final _EventOverlap overlapping = _EventOverlap();
+      _overlap = overlapping;
+      subscription.events.listen(
+        (Map<String, Object?> event) => _deliver(ConnectionPath.direct, event),
+        onError: (Object _) {},
+        onDone: () {
+          if (committed) {
+            _streamEnded(opened, subscription);
+          } else if (!ended.isCompleted) {
+            ended.complete();
+          }
+        },
+      );
+      final Completer<void> wake = Completer<void>();
+      _probeWake = wake;
+      await Future.any(<Future<void>>[delay(overlap), ended.future, wake.future]);
+      if (identical(_probeWake, wake)) _probeWake = null;
+      if (ended.isCompleted || stale()) {
+        if (identical(_overlap, overlapping)) _overlap = null;
+        return false;
+      }
+      committed = true;
+      _commit(opened, subscription, body, capabilities, overlapping);
+      return true;
+    } on TransportFailure {
+      return false;
+    } on StreamRefused {
+      return false;
+    } finally {
+      if (!committed) {
+        await stream?.cancel();
+        await direct?.close();
+      }
+    }
+  }
+
+  void _commit(ServerTransport direct, EventSubscription stream, Map<String, Object?> hello, ApiResponse capabilities,
+      _EventOverlap overlapping) {
+    final ServerTransport? relay = _transport;
+    final EventSubscription? relayStream = _subscription;
+    _transport = direct;
+    _subscription = stream;
+    _hello = hello;
+    if (capabilities.body is Map<String, Object?>) _capabilities = capabilities.body! as Map<String, Object?>;
+    _session++;
+    _rememberPath(ConnectionPath.direct);
+    _emit(ConnectionStatus(ConnectionPhase.online, path: ConnectionPath.direct, hello: _hello));
+    unawaited(relayStream?.cancel());
+    if (relay != null) {
+      _retired.add(relay);
+      _closeIfIdle(relay);
+    }
+    // Relay frames can trail the direct ones; keep matching them for one
+    // more overlap so a late direct copy of a relay event is still dropped.
+    unawaited(delay(overlap).then((void _) {
+      if (identical(_overlap, overlapping)) _overlap = null;
+    }));
+  }
+
+  void _closeIfIdle(ServerTransport transport) {
+    if ((_inFlight[transport] ?? 0) > 0 || !_retired.remove(transport)) return;
+    unawaited(transport.close());
   }
 
   void _streamEnded(ServerTransport transport, EventSubscription subscription) {
@@ -322,13 +483,22 @@ class ServerConnection {
   Future<ApiResponse> request(ApiRequest request) async {
     final ServerTransport? transport = _transport;
     if (transport == null || _status.phase != ConnectionPhase.online || token == null) throw NotConnected(_status);
+    _inFlight[transport] = (_inFlight[transport] ?? 0) + 1;
     try {
       final ApiResponse response = await transport.send(_authorized(request));
       _tokenRefused(response);
       return response;
     } on TransportFailure catch (failure) {
-      _connectionLost(transport.path, failure.message);
+      if (identical(_transport, transport)) _connectionLost(transport.path, failure.message);
       rethrow;
+    } finally {
+      final int left = _inFlight[transport]! - 1;
+      if (left == 0) {
+        _inFlight.remove(transport);
+      } else {
+        _inFlight[transport] = left;
+      }
+      _closeIfIdle(transport);
     }
   }
 
@@ -391,4 +561,44 @@ class PairingRefused implements Exception {
 
   @override
   String toString() => code == 'unreachable' ? 'The server could not be reached: $message' : '$message ($code)';
+}
+
+/// De-duplicates events while the relay and direct streams both run.
+///
+/// Event frames carry no sequence number or cursor (schema `event`), so the
+/// two copies of one event are matched by content: an event is delivered
+/// from whichever stream brings it first, and the other stream's identical
+/// copy is dropped when it arrives. Nothing is lost, because an event only
+/// one stream carries (published before the direct stream was registered) is
+/// delivered as it comes. The events are state notices (catalog versions,
+/// diagnostics, preview states, applied changes), so dropping a genuinely
+/// repeated identical one within the overlap changes nothing for listeners.
+class _EventOverlap {
+  static const int _limit = 256;
+
+  final Map<ConnectionPath, List<String>> _unmatched = <ConnectionPath, List<String>>{
+    ConnectionPath.direct: <String>[],
+    ConnectionPath.relay: <String>[],
+  };
+
+  /// Whether [event] from [from] is new to listeners.
+  bool accept(ConnectionPath from, Map<String, Object?> event) {
+    final String key = jsonEncode(_canonical(event));
+    final ConnectionPath other = from == ConnectionPath.direct ? ConnectionPath.relay : ConnectionPath.direct;
+    if (_unmatched[other]!.remove(key)) return false;
+    final List<String> mine = _unmatched[from]!;
+    mine.add(key);
+    if (mine.length > _limit) mine.removeAt(0);
+    return true;
+  }
+
+  /// [value] with object keys sorted, so key order does not matter.
+  static Object? _canonical(Object? value) {
+    if (value is Map<String, Object?>) {
+      final List<String> keys = value.keys.toList()..sort();
+      return <String, Object?>{for (final String key in keys) key: _canonical(value[key])};
+    }
+    if (value is List<Object?>) return <Object?>[for (final Object? item in value) _canonical(item)];
+    return value;
+  }
 }
