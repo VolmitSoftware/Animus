@@ -82,41 +82,58 @@ The offline converter does the same: `converter shopkeepers-preview <save.yml> <
 1. Remove the Denizen jar from `plugins/` and keep `plugins/Denizen/`. Animus refuses to apply or accept the converted scripts while Denizen is enabled, so no script runs twice.
 2. Leave `plugins/Denizen/` where it is, or copy its `scripts/` folder, `server_flags.dat` and `player_flags/` to `plugins/Animus/imports/denizen/` (`imports/inbox/denizen/` also works). Animus reads every `.dsc` and `.yml` file under `scripts/`.
 3. Run `/animus import citizens`. The preview counts the scripts, the behaviors made and the NPCs they belong to, the flag values imported and kept, and the items kept with a reason. The report is `imports/denizen/<import-id>/report.json`. It lists every script, command, tag and event as converted or kept, and every kept item with its file, line and reason.
-4. `/animus import citizens apply` installs the behaviors in `behaviors/denizen/` and the flag values as behavior state. Restart once so the imported flag values load. The behaviors run on no NPC yet.
-5. `review`, then `/animus import citizens accept denizen`, lists the behaviors on the NPCs that had the assignment.
+4. `/animus import citizens apply` installs the behaviors in `behaviors/denizen/`, the chest GUIs in `gui/inventories/denizen/` and the flag values as behavior state. Restart once so the imported flag values load. The behaviors run on no NPC yet, and the server behaviors are not enabled yet.
+5. `review`, then `/animus import citizens accept denizen`, lists the behaviors on the NPCs that had the assignment and enables the server behaviors the report lists in `serverBehaviors`.
 
-Rollback removes the behaviors, the imported state and the NPC bindings with the rest of the import. The converter does the same offline: `converter denizen-preview <Denizen-folder> <data-dir> [citizens=<saves.yml>]` prints counts and the output hash.
+Rollback removes the behaviors, the GUIs, the imported state and the NPC bindings with the rest of the import. The converter does the same offline: `converter denizen-preview <Denizen-folder> <data-dir> [citizens=<saves.yml>]` prints counts and the output hash.
 
 ### What converts
 
 | Denizen | Becomes |
 | --- | --- |
-| `assignment` script | `denizen:assignment/<name>`: `on click` becomes an `interaction` trigger, `on damage` an `interaction` trigger with `action: attack`, `on enter proximity` and `on exit proximity` `proximity` triggers, and `on spawn`, `on despawn` and `on death` the triggers of the same names. `on assignment` runs once in Denizen; its trigger settings come from the NPC's saved triggers |
+| `assignment` script | `denizen:assignment/<name>`: `on click` becomes an `interaction` trigger, `on damage` an `interaction` trigger with `action: attack`, `on enter proximity` and `on exit proximity` `proximity` triggers, and `on spawn`, `on despawn` and `on death` the triggers of the same names. The trigger lines of `on assignment` are read as settings; its other commands become the `on-assignment` routine, run by a `spawn` trigger once per NPC behind the NPC flag `assigned-<name>`. The import sets that flag on every NPC that already had the assignment, so those NPCs do not run it again |
 | `interact` script | `denizen:interact/<name>`. The step is a relationship quest stage, `interact-<name>`, 0 for the default step (marked `*`, or the first) and 1 onwards for the others in file order. Click and proximity triggers call the routine of the current step |
 | Chat trigger | An `animus:choices` button after the step's click, with a `dialogue_choice` trigger. A phrase with a regex, `*` or a tag is kept |
 | `task` script | A routine in each behavior that runs it, and the behavior `denizen:task/<name>` to run by hand. Other lists in the task become routines for `run <task> path:<key>` |
+| `procedure` script | A routine, `proc-<name>`, in each behavior that reads it. `determine` becomes `return` with the value |
+| `world` script | The server behavior `denizen:world/<name>`, with one routine and trigger per event: `player joins` is `player_join`, `player quits` `player_quit`, `player chats` `player_chat` (`message:` becomes its `pattern`), `player dies` `player_death`, `player respawns` `player_respawn`, `player changes world` `player_world_change` (with `from` and `to`), `server start` `server_start`, and `delta time secondly`, `minutely` or `hourly` with `every:` a `timer`. The switches `flagged:`, `server_flagged:`, `permission:` and `in:` (read as a world name) become conditions around the routine; `priority:` and `ignorecancelled:` are dropped |
+| `command` script | The server behavior `denizen:command/<name>` with a `command` trigger for its `name`, `aliases` (up to 8), `permission`, `description` and `usage`. `<context.args>` and `<context.raw_args>` read the typed arguments |
+| `book` script | The server behavior `denizen:book/<name>`, which gives the book with `animus:give-book`. `give <book>` and `adjust <player> show_book:<book>` give it in place |
+| `inventory` script | A chest GUI, `guis/denizen/<name>.json` in the preview and `denizen:<name>` once installed, with its `title`, its `size` or `inventory` type (`chest`, `hopper`, `dropper`) and the fixed items of `slots` as decoration keys. `inventory open d:<name>` becomes `animus:open-gui` |
+| `data` script | Its values are copied where they are read: text in place, lists as list values, maps through a temporary variable |
+| `item` script | Used by `give` and in GUI slots when it sets only `material`, `display name` and `lore` |
 | Trigger on or off, cooldown, radius | Read from the NPC's saved `triggers` (`CLICK`, `PROXIMITY` and so on). A trigger that is off on every NPC with the script is kept |
-| `narrate`, `chat` | `animus:say`; `chat` speaks to nearby players. Colour tags become `&` codes, `<&color[#hex]>` becomes `&#hex`, escapes such as `<&co>` and `<&chr[2764]>` become their characters, `<player.name>` becomes `{player_name}`, `<npc.name>` the NPC's name when every NPC with the script shares one, and `<script.data_key[...]>` its literal value |
-| `if`, `else if`, `else`, `choose` | `condition` nodes. `has_flag`, `flag` comparisons with whole numbers, `has_permission` and `npc.is_spawned` convert, joined by `&&` or by `\|\|`. A branch ending in `stop` takes the rest of the script into the other branches |
-| `flag player`, `flag npc`, `flag server` | `animus:set-flag` for true/false flags; `animus:set-quest-state` and `animus:advance-quest-state` for whole numbers (`:5`, `:++`, `:+:2`, `:!`). Scopes are `player`, `npc` and `global`; dots in names become dashes |
+| Tags | Expressions over the run's values. `<[name]>` is the execution variable `d_<name>` (dots inside walk map keys). `<player.name>`, `uuid`, `location`, `health`, `world`, `item_in_hand` and the like read player facts, `<npc.*>` NPC facts, `<player.flag[...]>`, `<player.has_flag[...]>`, `<server.flag[...]>` and the NPC forms the `denizen` flags, `<util.random.int[a].to[b]>` and its kin the random functions, `<context.*>` the event's values, and element, list and map attributes (`add`, `length`, `get`, `contains`, `replace`, `separated_by` and so on) the matching functions. In text a tag becomes a `{{ expression }}` hole. Colour tags become `&` codes, `<&color[#hex]>` becomes `&#hex`, and escapes such as `<&co>` and `<&chr[2764]>` become their characters |
+| `define` | `set` of the definition's variable to a literal, an expression or a template; `define x:++` and the other data actions compute the new value |
+| `if`, `else if`, `else`, `choose` | `condition` nodes with one expression. `==` and `!=` compare as Denizen does (numbers as numbers, other text ignoring case), `<`, `>`, `<=` and `>=` compare numbers, and `contains`, `in` and `matches` (alternatives with `\|` and `*` at either end) convert, joined by `&&`, `\|\|`, `!` and parentheses. `has_permission` stays an `animus:has-permission` condition. `choose` reads its value once and compares it with each `case` |
+| `foreach`, `repeat`, `while` | `foreach` over a list or map with `as:` and `key:`, `repeat` with a literal or computed count, and `while` with its condition. `<[loop_index]>` and `<[value]>` read the loop's pass. `foreach stop`, `repeat next` and the like become `break` and `continue` |
+| `stop`, `determine` | `return`. In a task or procedure `determine` returns its value |
+| `run`, `inject` | `call` of the task's routine. `def:`, `def.<name>:` and a literal `defmap:` set its definitions first; `save:` with `<entry[...].created_queue.determination>` reads its returned value. `<proc[...].context[...]>` runs the procedure in a `call` before the command that reads it |
+| `flag player`, `flag npc`, `flag server` | `animus:set-flag` on the `denizen` flag with its value: a literal, a tag, or the data actions `++`, `--`, `+:`, `-:`, `*:`, `/:`, `->:`, `<-:` and `\|:`. `:!` clears it and `expire:` sets `expireSeconds`. Scopes are `player`, `npc` and `global`; dots in names become dashes |
 | `zap` | `animus:set-quest-state` on the step stage |
-| `wait`, `repeat <n>` | `wait` and `repeat` nodes |
-| `run`, `inject` | `call` of the task's routine |
-| `execute`, `give`, `take`, `title`, `actionbar` | `animus:command` (`give {player} ...`, `clear {player} ...`, `title {player} ...`), denied until allow-listed. `as_player` runs as the player |
+| `wait` | `wait` |
+| `narrate`, `announce`, `chat` | `animus:message` to the player, or `to: all` for `targets:<server.online_players>` and for `announce` (`to_console` goes to the console); `chat` is `animus:say` to nearby players |
+| `title`, `actionbar` | `animus:title` with its timings, and `animus:actionbar` |
+| `give`, `take` | `animus:give-item` and `animus:take-item` with the material and `quantity:` |
+| `teleport` | `animus:teleport` of the player or the NPC to the other one or to a literal location |
+| `adjust` | `name` and `item_in_hand` of the NPC become `animus:set-appearance` and `animus:set-equipment` |
+| `execute` | `animus:command`, denied until allow-listed. `as_player` runs as the player |
 | `look`, `walk`, `equip` | `animus:look` at the player or a literal location, `animus:navigate` to a literal location, `animus:set-equipment` with plain materials |
-| `playsound`, `playeffect` | `animus:play-sound` and `animus:spawn-particle` at the NPC. Bukkit sound names become keys (`ENTITY_VILLAGER_YES` is `minecraft:entity.villager.yes`); the report's `sounds` lists every name read. Old particle names are renamed; particle speed and visibility are not carried |
-| Flag values | `true`/`false` values become `denizen` flags and whole numbers from 0 to 10^12 become `denizen` quest stages, for each player (`player_flags/`), NPC (`denizen_flags` in the Citizens save) and the server (`server_flags.dat`). A player's interact steps become the relationship stage with every NPC that has the script |
+| `playsound`, `playeffect` | `animus:play-sound` and `animus:spawn-particle` at the NPC or, for `<player>`, with `at: player`. Bukkit sound names become keys (`ENTITY_VILLAGER_YES` is `minecraft:entity.villager.yes`); the report's `sounds` lists every name read. Old particle names are renamed; particle speed and visibility are not carried |
+| Flag values | Every flag of each player (`player_flags/`), NPC (`denizen_flags` in the Citizens save) and the server (`server_flags.dat`) becomes a `denizen` flag with its typed value: `true`/`false` a boolean, a whole number an integer, a decimal number a decimal, `li@` a list, `map@` a map, anything else text. An expiring flag keeps its expiry time. A player's interact steps become the relationship stage with every NPC that has the script |
 
-Generated behaviors that use `animus:command` stay denied until listed, for example `commandNamespaces = ["denizen"]` under `[behaviors.actions]`; `review` names them. Read each command first.
+Server behaviors run with no NPC, so a command there that needs one (`chat`, `look`, `walk`, `equip`, `flag npc`, `zap`, `<npc.*>` tags, sounds and particles at the NPC) is kept. Generated behaviors that use `animus:command` stay denied until listed, for example `commandNamespaces = ["denizen"]` under `[behaviors.actions]`; `review` names them. Read each command first.
 
 ### Kept with a reason
 
-Each line below stays out of the behaviors and is listed in the report; a behavior missing some of its lines is marked `partial` in `behaviorStatus`.
+Each line below stays out of the behaviors and is listed in the report with its file, line and reason; a behavior missing some of its lines is marked `partial` in `behaviorStatus`.
 
-- `define`, definitions (`<[name]>`), `foreach`, `while`, `repeat` with a computed count, and any tag Animus has no placeholder for, such as `<player.location>` in text or `<util.random...>`. Behaviors have no expressions.
-- `world` scripts. Their events are server-wide (`on player joins`, `on delta time`, `on server start`), and Animus triggers belong to NPCs.
-- `procedure`, `command`, `data`, `book`, `inventory` and `item` scripts. Literal data values that converted text reads are copied into it.
-- Damage triggers in interact scripts (Animus damage triggers carry no player), proximity `move`, expiring flags, flags holding text, lists, maps or numbers that do not fit a quest stage, `teleport`, `adjust`, `animate`, `bossbar` and other commands with no Animus action.
+- Tags with no expression, such as `<server.online_players>` (a list of players; only its `size` is known), tags of another player or NPC, `||` fallbacks on anything but a flag, computed flag or definition names, and `matches` with regexes or a `*` in the middle.
+- `determine` in world events, assignments and interact scripts: it would cancel or change the event, which Animus triggers cannot. The routine still ends there. `determine passively` is kept everywhere.
+- World events without a server trigger, such as block, click and NPC events, and switches without an equivalent. Command script settings such as `tab completions` and `allowed help`.
+- `procedural items`, `gui: false` and items with properties other than `quantity` in inventory scripts; item scripts with enchantments, mechanisms or flags.
+- `format`, `economy`, `enchantment` and `map` scripts.
+- Damage triggers in interact scripts (Animus damage triggers carry no player), proximity `move`, flags whose expiry time cannot be read, values over the state limits (256 items, 8 levels, 4096 bytes), a `foreach stop` that would end an outer loop, `narrate` to other targets, other `adjust` mechanisms, `animate`, `bossbar` and other commands with no Animus action.
 
 ## Where the files go
 

@@ -205,10 +205,10 @@ final class DenizenArgs {
         return tags;
     }
 
-    /** A Denizen duration in ticks: {@code 20t}, {@code 2s}, {@code 1.5s}, {@code 3m}, {@code 1h}, or a bare number of seconds. */
+    /** A Denizen duration in ticks: {@code 20t}, {@code 2s}, {@code 1.5s}, {@code 3m}, {@code 1h}, {@code 2d}, or a bare number of seconds. */
     static OptionalLong ticks(String text) {
         String value = text.trim().toLowerCase(Locale.ROOT);
-        if (!value.matches("[0-9]{1,7}(?:\\.[0-9]{1,4})?[tsmh]?")) return OptionalLong.empty();
+        if (!value.matches("[0-9]{1,7}(?:\\.[0-9]{1,4})?[tsmhd]?")) return OptionalLong.empty();
         char unit = Character.isDigit(value.charAt(value.length() - 1)) ? 's' : value.charAt(value.length() - 1);
         String number = Character.isDigit(value.charAt(value.length() - 1)) ? value : value.substring(0, value.length() - 1);
         java.math.BigDecimal amount = new java.math.BigDecimal(number);
@@ -216,7 +216,8 @@ final class DenizenArgs {
             case 't' -> java.math.BigDecimal.ONE;
             case 's' -> java.math.BigDecimal.valueOf(20);
             case 'm' -> java.math.BigDecimal.valueOf(1200);
-            default -> java.math.BigDecimal.valueOf(72000);
+            case 'h' -> java.math.BigDecimal.valueOf(72000);
+            default -> java.math.BigDecimal.valueOf(1_728_000);
         };
         java.math.BigDecimal ticks = amount.multiply(factor).setScale(0, java.math.RoundingMode.HALF_UP);
         if (ticks.compareTo(java.math.BigDecimal.valueOf(10_000_000)) > 0) return OptionalLong.empty();

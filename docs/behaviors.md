@@ -559,16 +559,21 @@ Imported NPCs keep their Denizen flags, assignments and trigger records as prese
 | Assignment script | A behavior document listed in the NPC's `behaviors`. |
 | Click trigger | An `interaction` trigger. Damage, proximity and spawn triggers map to `damage`, `proximity` and `spawn`. |
 | Chat trigger | `animus:choices` with a `dialogue_choice` trigger per answer. Free-typed chat has no equivalent. |
-| Player flag, true or false | `animus:set-flag` and `animus:flag-state` with `"scope": "player"`. |
+| `on assignment` | A routine run by a `spawn` trigger behind an NPC flag, so it runs once per NPC. |
+| Player flag | `animus:set-flag` and `animus:flag-state` with `"scope": "player"`, or `flag('player', name, default)` and `has_flag('player', name)` in an expression. The value can be any JSON value, and `expireSeconds` makes it expire. |
 | NPC flag | The same with `"scope": "npc"`. A flag about one player and one NPC uses `"scope": "relationship"`. |
 | Server flag | The same with `"scope": "global"`. |
 | Numbered quest step | `animus:set-quest-state`, `animus:advance-quest-state` and `animus:quest-state`. |
-| Other flag values | A declared variable with the same scope and `"lifetime": "persistent"`. |
-| `narrate` or `chat` | `animus:say`. |
+| Definitions and tags | Execution variables and expressions; tags in text are `{{ expression }}` holes. |
+| `if`, `choose`, `foreach`, `while`, `repeat` | `condition` with an `expression`, `foreach`, `while` and `repeat`, with `break` and `continue`. |
+| Task with definitions, procedure | `call` with `arguments` and `result`; the routine ends with `return`. |
+| `world` and `command` scripts | A server behavior (`"server": true`) with server triggers such as `player_join`, `timer` and `command`. |
+| `inventory` script | A chest GUI opened by `animus:open-gui`. |
+| `narrate`, `announce` or `chat` | `animus:message`, or `animus:say` for the NPC speaking. |
 | `execute` | `animus:command`, behind the allow-list. |
-| Expiring flags, lists, maps, tags and arbitrary script commands | No equivalent. |
+| Cancelling or changing an event with `determine`, and other commands with no action | No equivalent. |
 
-The Denizen import copies true/false and whole-number flag values into the `denizen` namespace; a hand-written behavior in another namespace starts from unset flags. Flags and quest stages belong to the behavior's namespace, so every behavior of one pack shares them.
+The Denizen import copies every flag value, typed and with its expiry, into the `denizen` namespace; a hand-written behavior in another namespace starts from unset flags. Flags and quest stages belong to the behavior's namespace, so every behavior of one pack shares them.
 
 A click-and-answer dialogue:
 

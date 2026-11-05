@@ -4,9 +4,17 @@
   "scope": "npc",
   "npc": "00000000-0000-4000-8000-000000000001",
   "values": {
+    "assigned-guard_assignment": {
+      "type": "boolean",
+      "value": true
+    },
     "guard_post": {
       "type": "boolean",
       "value": true
+    },
+    "motto": {
+      "type": "string",
+      "value": "Keep the gate"
     }
   }
 }

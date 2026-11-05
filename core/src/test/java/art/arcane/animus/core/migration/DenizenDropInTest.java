@@ -53,7 +53,7 @@ class DenizenDropInTest {
             CitizensDropIn flow = dropIn(store, npcs);
             assertTrue(flow.startupNotice().orElseThrow().contains("plugins/Denizen/scripts"));
             String staged = joined(flow.execute(new String[0]));
-            assertTrue(staged.contains("Denizen plugins/Denizen: 8 scripts; 4 behaviors for 1 NPCs; 7 flag values imported, 4 kept"), staged);
+            assertTrue(staged.contains("Denizen plugins/Denizen: 13 scripts; 8 behaviors for 1 NPCs; 15 flag values imported, 2 kept"), staged);
             assertTrue(staged.contains("commandNamespaces = [\"denizen\"]"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
 
@@ -67,6 +67,8 @@ class DenizenDropInTest {
             assertTrue(applied.contains("Denizen behaviors installed in behaviors/denizen/"), applied);
             assertTrue(applied.contains("1 NPCs wait for accept denizen"), applied);
             assertNotNull(store.read("behaviors/denizen/interact/guard_quest.json"));
+            assertNotNull(store.read("behaviors/denizen/world/lantern_world.json"));
+            assertNotNull(store.read("gui/inventories/denizen/gate_menu.json"), "staged GUIs install in the chest GUI folder");
             assertNotNull(store.read(STATE));
             NpcDefinition guard = npcs.all().stream().filter((NpcDefinition npc) -> npc.id().equals("citizens-0")).findFirst().orElseThrow();
             assertTrue(guard.behaviors().stream().noneMatch((String id) -> id.startsWith("denizen:")), "behaviors stay off until accepted");
@@ -89,6 +91,7 @@ class DenizenDropInTest {
 
             flow.execute(new String[]{"rollback"});
             assertNull(store.read("behaviors/denizen/interact/guard_quest.json"));
+            assertNull(store.read("gui/inventories/denizen/gate_menu.json"));
             assertNull(store.read(STATE));
             assertTrue(npcs.all().isEmpty());
             assertEquals("rolled-back", flow.status().getAsJsonObject("denizen").get("state").getAsString());
