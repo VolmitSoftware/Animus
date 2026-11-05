@@ -51,6 +51,25 @@ class BehaviorSchemaGeneratorTest {
         assertFalse(schema.validate(JsonDocuments.object(action("mod:record", "{\"amount\":1,\"mode\":\"c\"}"))).isEmpty());
     }
 
+    @Test void schemaAcceptsTheLanguageAdditionsThatCompile() throws Exception {
+        JsonSchemaCheck schema = new JsonSchemaCheck(BehaviorSchemaGenerator.behaviorSchema(withModules()));
+        String vars = "\"variables\":{\"items\":{\"type\":\"list\",\"initial\":[1,2]},\"stats\":{\"type\":\"map\",\"initial\":{\"hp\":1}},\"item\":{\"type\":\"any\",\"initial\":0},\"i\":{\"type\":\"integer\",\"initial\":0},\"amount\":{\"type\":\"integer\",\"initial\":1}},";
+        String main = "{\"type\":\"sequence\",\"steps\":["
+                + "{\"type\":\"condition\",\"expression\":\"i < 3\",\"then\":{\"type\":\"set\",\"variable\":\"i\",\"value\":{\"expression\":\"i + 1\"}}},"
+                + "{\"type\":\"foreach\",\"list\":{\"variable\":\"items\"},\"as\":\"item\",\"index\":\"i\",\"maximum\":10,\"body\":{\"type\":\"continue\"}},"
+                + "{\"type\":\"while\",\"expression\":\"i > 0\",\"body\":{\"type\":\"break\"}},"
+                + "{\"type\":\"repeat\",\"count\":{\"variable\":\"amount\"},\"index\":\"i\",\"body\":{\"type\":\"sequence\",\"steps\":[]}},"
+                + "{\"type\":\"action\",\"capability\":\"mod:record\",\"arguments\":{\"amount\":null},\"expressions\":{\"/amount\":\"amount * 2\"}},"
+                + "{\"type\":\"call\",\"routine\":\"other\",\"arguments\":{\"amount\":3},\"result\":\"item\"}]}";
+        String source = "{\"schemaVersion\":1,\"revision\":1,\"id\":\"sample:test\",\"entry\":\"main\"," + vars + "\"routines\":{\"main\":" + main + ",\"other\":{\"type\":\"return\",\"value\":{\"template\":\"x{{ amount }}\"}}}}";
+        assertTrue(art.arcane.animus.core.behavior.BehaviorCompiler.compile(source.replace("\"revision\":1,", "")).program().isPresent());
+        assertEquals(List.of(), schema.validate(JsonDocuments.object(source)));
+        String both = source.replace("{\"type\":\"condition\",\"expression\"", "{\"type\":\"condition\",\"capability\":\"mod:allowed\",\"expression\"");
+        assertFalse(schema.validate(JsonDocuments.object(both)).isEmpty());
+        String neither = source.replace("\"expression\":\"i < 3\",", "");
+        assertFalse(schema.validate(JsonDocuments.object(neither)).isEmpty());
+    }
+
     @Test void completionsListEveryCapabilityArgumentEventNodeAndScope() {
         JsonObject completions = BehaviorSchemaGenerator.completions(withModules());
         Set<String> capabilities = new HashSet<>();
@@ -76,7 +95,7 @@ class BehaviorSchemaGeneratorTest {
         for (TriggerKind kind : TriggerKind.values()) assertTrue(completions.getAsJsonObject("triggers").has(kind.jsonName()), kind.jsonName());
         assertEquals(Set.of("execution", "npc", "player", "relationship", "global"), names(language.getAsJsonArray("variableScopes")));
         assertEquals(Set.of("transient", "persistent"), names(language.getAsJsonArray("variableLifetimes")));
-        assertEquals(Set.of("boolean", "integer", "decimal", "string"), names(language.getAsJsonArray("variableTypes")));
+        assertEquals(Set.of("boolean", "integer", "decimal", "string", "list", "map", "any"), names(language.getAsJsonArray("variableTypes")));
         assertEquals(Set.of("interact", "attack", "any"), names(completions.getAsJsonObject("triggers").getAsJsonObject("interaction").getAsJsonObject("fields").getAsJsonObject("action").getAsJsonArray("enum")));
     }
 
