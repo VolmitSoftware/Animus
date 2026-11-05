@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "f81a35b6-8b55-5025-bfe2-f81ee898e5c9",
+  "id": "turtle",
+  "group": "animals",
+  "name": "Shelly",
+  "type": "minecraft:turtle",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 16.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "7cd84498-f810-5a18-9ecc-e12576878184",
+  "id": "tiny",
+  "group": "stands",
+  "name": "Tiny",
+  "type": "minecraft:armor_stand",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 12.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "armorStand": {
+    "small": true,
+    "arms": false,
+    "basePlate": false
+  },
+  "equipment": {
+    "head": {
+      "id": "minecraft:diamond_helmet"
+    }
+  }
+}
