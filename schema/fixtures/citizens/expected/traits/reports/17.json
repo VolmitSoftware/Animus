@@ -15,6 +15,11 @@
     "/traits/trader/stock/sell/0/item": "REQUIRES_INTEGRATION",
     "/traits/trader/stock/sell/0/price": "REQUIRES_INTEGRATION"
   },
+  "reasons": {
+    "/traits/trader/type": "dtlTraders data; convert it with the dtlTraders shop import",
+    "/traits/trader/stock/sell/0/item": "dtlTraders data; convert it with the dtlTraders shop import",
+    "/traits/trader/stock/sell/0/price": "dtlTraders data; convert it with the dtlTraders shop import"
+  },
   "worldRemaps": [
     {
       "source": "/traits/location",

@@ -9,6 +9,9 @@
     "/traits/type": "CONVERTED",
     "/traits/constructor": "REQUIRES_REVIEW"
   },
+  "reasons": {
+    "/traits/constructor": "not converted; check it in citizens:review"
+  },
   "worldRemaps": [],
   "references": [],
   "validationErrors": [

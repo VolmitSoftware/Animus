@@ -19,6 +19,13 @@
     "/traits/sittrait/sittingAt/y": "UNSUPPORTED_PRESERVED",
     "/traits/sittrait/sittingAt/z": "UNSUPPORTED_PRESERVED"
   },
+  "reasons": {
+    "/traits/mounttrait/mountedon": "the NPC this one rides is missing in the save; set animus:mount by hand",
+    "/traits/sittrait/sittingAt/world": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/x": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/y": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/z": "trait sittrait has no Animus equivalent; kept in citizens:review"
+  },
   "worldRemaps": [
     {
       "source": "/traits/location",

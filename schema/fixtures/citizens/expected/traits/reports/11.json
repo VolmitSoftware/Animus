@@ -38,6 +38,7 @@
     "/traits/sentinel/accuracy": "CONVERTED",
     "/traits/sentinel/reach": "CONVERTED"
   },
+  "reasons": {},
   "worldRemaps": [
     {
       "source": "/traits/location",
