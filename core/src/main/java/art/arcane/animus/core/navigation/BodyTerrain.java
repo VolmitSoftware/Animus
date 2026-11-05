@@ -9,7 +9,8 @@ import java.util.Objects;
  * Finds where a body comes to rest over one horizontal position: on the highest surface within its climb that it fits
  * on, otherwise on the first surface below its feet, or at the surface of water too deep to wade when it swims. Layers
  * are read from the top down and reading stops once the answer is settled, so terrain below a floor is never needed.
- * Every read is charged to an explicit cell budget.
+ * Every read is charged to an explicit cell budget. Climbable cells, such as scaffolding, can be stood on but never take
+ * a body's room.
  */
 public final class BodyTerrain {
     public enum Kind { GROUND, SWIM, NONE, BLOCKED, HAZARD, UNAVAILABLE, BUDGET }
@@ -71,7 +72,7 @@ public final class BodyTerrain {
         // A box filling the body's space at both ends of the reach fills it at every height between, so nothing below matters.
         double lowestFeet = swims ? Math.min(feet - drop, Math.floor(feet - drop - EPSILON)) : feet - drop;
         for (double[] box : boxes)
-            if (MotionValidator.overlaps(box[0], box[1], lowestFeet, lowestFeet + height)
+            if (box[2] == 0 && MotionValidator.overlaps(box[0], box[1], lowestFeet, lowestFeet + height)
                     && MotionValidator.overlaps(box[0], box[1], feet + climb, feet + climb + height))
                 return new Rest(Kind.BLOCKED, feet, count, "No room for the body");
         List<Double> tops = new ArrayList<>();
@@ -136,19 +137,19 @@ public final class BodyTerrain {
             this.sizeX = sizeX; this.sizeZ = sizeZ; this.cells = cells; low = maxY + 1;
         }
         Cell at(int cx, int cy, int cz) { return cells[((cy - minY) * sizeZ + cz - minZ) * sizeX + cx - minX]; }
-        /** Absolute {bottom, top} of every read box under the footprint. */
+        /** Absolute {bottom, top, climbable} of every read box under the footprint; climbable is 1 or 0. */
         List<double[]> boxes() {
             List<double[]> found = new ArrayList<>();
             for (int cx = minX; cx <= maxX; cx++) for (int cz = minZ; cz <= maxZ; cz++) for (int cy = low; cy <= maxY; cy++)
                 for (Cell.Box box : at(cx, cy, cz).boxes())
                     if (MotionValidator.overlaps(cx + box.minX(), cx + box.maxX(), x - half, x + half)
                             && MotionValidator.overlaps(cz + box.minZ(), cz + box.maxZ(), z - half, z + half))
-                        found.add(new double[]{cy + box.minY(), cy + box.maxY()});
+                        found.add(new double[]{cy + box.minY(), cy + box.maxY(), at(cx, cy, cz).climbable() ? 1 : 0});
             return found;
         }
         boolean clear(List<double[]> boxes, double feet, double bodyHeight) {
             if (MotionValidator.floor(feet + bodyHeight - EPSILON) > maxY) return false;
-            for (double[] box : boxes) if (MotionValidator.overlaps(box[0], box[1], feet, feet + bodyHeight)) return false;
+            for (double[] box : boxes) if (box[2] == 0 && MotionValidator.overlaps(box[0], box[1], feet, feet + bodyHeight)) return false;
             return true;
         }
         boolean hazard(double feet, double bodyHeight) {

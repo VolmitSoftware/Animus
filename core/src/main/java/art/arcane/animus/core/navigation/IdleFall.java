@@ -14,7 +14,8 @@ import java.util.UUID;
 /**
  * Gravity for a body that is not following a route. A runtime asks for one step per tick only after a block under or
  * beside the body's feet changed, and keeps asking while the body falls. Each step reads at most {@link #SEARCH} blocks
- * below the feet, so a long fall costs the same every tick. Unknown terrain holds the body where it is.
+ * below the feet, so a long fall costs the same every tick. Unknown terrain, and a ladder, vine or scaffolding at the
+ * feet, hold the body where it is.
  */
 public final class IdleFall {
     public enum Outcome { SUPPORTED, FALLING, LANDED, HELD }
@@ -32,24 +33,40 @@ public final class IdleFall {
      * @param swims true when the body stays at the surface of deep water
      */
     public static Step step(Vec3 feet, double speed, double hullWidth, double hullHeight, boolean swims, MotionValidator.Sampler terrain) {
+        int held = holding(feet, hullWidth, terrain);
+        if (held > 0) return new Step(speed > 0 ? Outcome.LANDED : Outcome.SUPPORTED, feet, 0, held, "climbing");
         BodyTerrain.Rest rest = new BodyTerrain(hullWidth, hullHeight, swims, cells(hullWidth, hullHeight), terrain).rest(feet.x(), feet.z(), feet.y(), 0, SEARCH, true);
         double next = Math.min(TERMINAL, (speed + GRAVITY) * DRAG);
+        int sampled = rest.sampled() - held;
         return switch (rest.kind()) {
             case GROUND, SWIM -> {
-                if (rest.feet() >= feet.y() - EPSILON) yield new Step(speed > 0 ? Outcome.LANDED : Outcome.SUPPORTED, feet, 0, rest.sampled(), rest.detail());
+                if (rest.feet() >= feet.y() - EPSILON) yield new Step(speed > 0 ? Outcome.LANDED : Outcome.SUPPORTED, feet, 0, sampled, rest.detail());
                 double y = Math.max(rest.feet(), feet.y() - next);
                 boolean landed = y <= rest.feet();
-                yield new Step(landed ? Outcome.LANDED : Outcome.FALLING, new Vec3(feet.x(), y, feet.z()), landed ? 0 : next, rest.sampled(), rest.detail());
+                yield new Step(landed ? Outcome.LANDED : Outcome.FALLING, new Vec3(feet.x(), y, feet.z()), landed ? 0 : next, sampled, rest.detail());
             }
-            case NONE -> new Step(Outcome.FALLING, new Vec3(feet.x(), feet.y() - next, feet.z()), next, rest.sampled(), rest.detail());
-            case BLOCKED, HAZARD, UNAVAILABLE, BUDGET -> new Step(Outcome.HELD, feet, 0, rest.sampled(), rest.detail());
+            case NONE -> new Step(Outcome.FALLING, new Vec3(feet.x(), feet.y() - next, feet.z()), next, sampled, rest.detail());
+            case BLOCKED, HAZARD, UNAVAILABLE, BUDGET -> new Step(Outcome.HELD, feet, 0, sampled, rest.detail());
         };
+    }
+
+    /** Cells read when a climbable cell in the layer of the feet holds the body, or the negated count when none does. */
+    private static int holding(Vec3 feet, double hullWidth, MotionValidator.Sampler terrain) {
+        double half = hullWidth / 2;
+        int y = MotionValidator.floor(feet.y() + EPSILON), read = 0;
+        for (int x = MotionValidator.floor(feet.x() - half + EPSILON); x <= MotionValidator.floor(feet.x() + half - EPSILON); x++)
+            for (int z = MotionValidator.floor(feet.z() - half + EPSILON); z <= MotionValidator.floor(feet.z() + half - EPSILON); z++) {
+                Cell cell = terrain.sample(x, y, z);
+                read++;
+                if (cell != null && cell.climbable()) return read;
+            }
+        return -read;
     }
 
     /** The most cells one step reads for this hull: 88 for a player, 700 for the largest hull. */
     public static int cells(double hullWidth, double hullHeight) {
         int across = (int) Math.ceil(hullWidth) + 1;
-        return across * across * (SEARCH + (int) Math.ceil(hullHeight) + 4);
+        return across * across * (SEARCH + (int) Math.ceil(hullHeight) + 5);
     }
 
     /** True when a change to this block can take away, or give, the support under a body's feet. */

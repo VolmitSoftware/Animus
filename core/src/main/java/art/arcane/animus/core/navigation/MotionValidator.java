@@ -8,11 +8,15 @@ import java.util.Objects;
 /**
  * Bounded swept clearance against real collision boxes. The swept volume is the box spanning the body at both ends of
  * one segment of at most two blocks. Support means a collision surface exactly at the feet under any part of the body,
- * as with a vanilla entity. A body may not move into a hazard it was not already touching.
+ * as with a vanilla entity. A body may not move into a hazard it was not already touching. Climbable cells hold a body up
+ * but never obstruct it.
  */
 public final class MotionValidator {
-    /** GROUND allows wading while the top of the body stays out of water; AIR allows no fluid; WATER needs fluid at the feet. */
-    public enum Medium { GROUND, AIR, WATER, AMPHIBIOUS_AIR }
+    /**
+     * GROUND allows wading while the top of the body stays out of water; AIR allows no fluid; WATER needs fluid at the
+     * feet; CLIMB is GROUND that ends either supported or holding a climbable cell at the feet.
+     */
+    public enum Medium { GROUND, AIR, WATER, AMPHIBIOUS_AIR, CLIMB }
     public enum Status { CLEAR, BLOCKED, HAZARD, UNAVAILABLE_TERRAIN, UNSUPPORTED_GEOMETRY, BUDGET_EXHAUSTED }
     @FunctionalInterface public interface Sampler { Cell sample(int x, int y, int z); }
     public record Result(Status status, int sampledCells, String detail) {
@@ -64,7 +68,7 @@ public final class MotionValidator {
         Region region = new Region(minX, minY, minZ, sizeX, sizeZ, cells);
         for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) for (int y = minY; y <= maxY; y++) {
             Cell cell = region.at(x, y, z);
-            for (Cell.Box box : cell.boxes())
+            if (!cell.climbable()) for (Cell.Box box : cell.boxes())
                 if (overlaps(x + box.minX(), x + box.maxX(), lowX, highX) && overlaps(z + box.minZ(), z + box.maxZ(), lowZ, highZ)
                         && overlaps(y + box.minY(), y + box.maxY(), lowY, highY))
                     return new Result(Status.BLOCKED, count, "Swept body is obstructed");
@@ -74,10 +78,11 @@ public final class MotionValidator {
         BitSet before = region.hazards(from, half, height), after = region.hazards(to, half, height);
         if (from.distance(to) <= EPSILON ? !after.isEmpty() : !subset(after, before))
             return new Result(Status.HAZARD, count, "Lava, fire or another hazard in the way");
-        if (medium == Medium.GROUND && region.water(to, half, floor(to.y() + height - EPSILON)))
+        if ((medium == Medium.GROUND || medium == Medium.CLIMB) && region.water(to, half, floor(to.y() + height - EPSILON)))
             return new Result(Status.BLOCKED, count, "Water too deep to wade");
         boolean supported = region.supported(to, half);
         if (requireSupport && !supported) return new Result(Status.BLOCKED, count, "No ground under the body");
+        if (medium == Medium.CLIMB && !supported && !region.holds(to, half)) return new Result(Status.BLOCKED, count, "Nothing to climb");
         if (medium == Medium.WATER && !supported && !region.water(to, half, floor(to.y() + EPSILON)))
             return new Result(Status.BLOCKED, count, "No swimming fluid or support");
         return new Result(Status.CLEAR, count, "clear");
@@ -99,6 +104,14 @@ public final class MotionValidator {
             for (int x = columns(feet.x(), half, false); x <= columns(feet.x(), half, true); x++)
                 for (int z = columns(feet.z(), half, false); z <= columns(feet.z(), half, true); z++)
                     if (at(x, y, z).water()) return true;
+            return false;
+        }
+        /** A climbable cell in the layer of the feet under any part of the body. */
+        boolean holds(Vec3 feet, double half) {
+            int y = floor(feet.y() + EPSILON);
+            for (int x = columns(feet.x(), half, false); x <= columns(feet.x(), half, true); x++)
+                for (int z = columns(feet.z(), half, false); z <= columns(feet.z(), half, true); z++)
+                    if (at(x, y, z).climbable()) return true;
             return false;
         }
         boolean supported(Vec3 feet, double half) {

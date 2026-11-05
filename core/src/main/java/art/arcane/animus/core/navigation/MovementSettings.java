@@ -96,7 +96,8 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
         double step = stepHeight.orElse(profile.stepHeight());
         int fall = maximumFall.orElse(profile.maximumFall());
         if (modes.equals(profile.modes()) && step == profile.stepHeight() && fall == profile.maximumFall()) return profile;
-        return new MovementProfile(modes, profile.width(), profile.height(), step, profile.jumpHeight(), fall, profile.diagonals());
+        boolean climbs = profile.climbs() && modes.contains(MovementProfile.Mode.WALK);
+        return new MovementProfile(modes, profile.width(), profile.height(), step, profile.jumpHeight(), fall, profile.diagonals(), climbs);
     }
 
     /** Whether the NPC at {@code at} counts as having reached {@code goal}: within the arrival margin, when one is set. */
