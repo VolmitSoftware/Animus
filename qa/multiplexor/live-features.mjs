@@ -20,8 +20,9 @@ function mainWorkspace() {
     if (parent === path.dirname(parent)) return path.join(path.dirname(root), 'ServerMultiplexor');
   }
 }
-const workspace = path.resolve(args.get('workspace') ?? mainWorkspace());
+const workspace = args.get('workspace') === 'main' || !args.get('workspace') ? mainWorkspace() : path.resolve(args.get('workspace'));
 const binary = path.resolve(args.get('binary') ?? path.join(mainWorkspace(), 'multiplexor'));
+const rootArgs = ['--root', workspace];
 const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) : null;
 const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
@@ -34,7 +35,7 @@ const defaultScenarios = project === 'folia' ? 'folia' : MOD ? (version === '26.
 const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
-assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live)-${project}-${dashed}$`).test(name), 'Instance name must bind the requested platform/version');
+assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug)-${project}-${dashed}$`).test(name), 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
 const pluginInstances = path.join(workspace, 'consumers/plugin-consumers/instances');
@@ -79,10 +80,10 @@ function muxEnvironment() {
 const BUSY = /Another network command is running|Another project operation owns the workspace/;
 function mux(...command) {
   const deadline = Date.now() + 30_000;
-  let done = spawnSync(binary, ['--root', workspace, '--consumer', consumer, ...command], { encoding: 'utf8', env: muxEnvironment() });
+  let done = spawnSync(binary, [...rootArgs, '--consumer', consumer, ...command], { encoding: 'utf8', env: muxEnvironment(), cwd: MAIN ? workspace : undefined });
   while (done.status && BUSY.test(done.stderr + done.stdout) && Date.now() < deadline) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
-    done = spawnSync(binary, ['--root', workspace, '--consumer', consumer, ...command], { encoding: 'utf8', env: muxEnvironment() });
+    done = spawnSync(binary, [...rootArgs, '--consumer', consumer, ...command], { encoding: 'utf8', env: muxEnvironment(), cwd: MAIN ? workspace : undefined });
   }
   if (done.status) throw new Error(`multiplexor ${command.slice(0, 2).join(' ')}: ${(done.stderr || done.stdout).slice(0, 400)}`);
   return done.stdout;
@@ -98,7 +99,7 @@ class Server {
   // Terrain a scenario keeps across restarts; start() clears the test area and then rebuilds this.
   floor = null;
   provision() {
-    const template = path.join(pluginInstances, `animus-baseline-${MOD ? 'paper' : project}-${dashed}`);
+    const template = args.get('template') ? path.resolve(args.get('template')) : path.join(pluginInstances, `animus-baseline-${MOD ? 'paper' : project}-${dashed}`);
     if (!existsSync(instance)) {
       if (MOD) mux('server', 'create', name, '--type', project, '--mc', version, '--loader', loaderVersion, '--auto-build', '--isolated');
       else mux('server', 'create', name, '--jar', realpathSync(path.join(template, 'server.jar')), '--type', project, '--mc', version, '--isolated');
@@ -108,10 +109,10 @@ class Server {
       mux('gameplay', 'prepare', name);
     }
     assert.equal(mux('instance', 'isolated', name).trim(), 'true', 'Refusing a shared instance');
-    copyFileSync(path.join(template, 'eula.txt'), path.join(instance, 'eula.txt'));
+    writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|mod)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|mod)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -197,7 +198,7 @@ class Server {
       }, 25);
       setTimeout(() => { clearInterval(poll); resolve(null); }, 90_000);
     });
-    const child = spawn(binary, ['--root', workspace, '--consumer', consumer, 'runtime', 'stop', name, '--graceful'], { env: muxEnvironment(), stdio: 'ignore' });
+    const child = spawn(binary, [...rootArgs, '--consumer', consumer, 'runtime', 'stop', name, '--graceful'], { env: muxEnvironment(), stdio: 'ignore', cwd: MAIN ? workspace : undefined });
     const closed = new Promise(resolve => child.on('exit', resolve));
     const leftover = await threads;
     await closed;
@@ -2280,7 +2281,153 @@ async function worlds() {
   await server.cmd('animus delete wnpc', /Deleted/);
 }
 
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, building, shops, folia, smoke, worlds };
+// A hired bodyguard through a long session: wandering, a dirt-path road, standing, far teleports, deaths, the nether,
+// fights and a renewal. The guard must never stay more than 8 blocks behind for long. --soak-minutes sets the length.
+async function guardsoak() {
+  const minutes = Number(args.get('soak-minutes') ?? 16);
+  const source = path.join(root, 'examples/packs/personal-guard');
+  mkdirSync(path.join(data, 'npcs/examples'), { recursive: true });
+  copyFileSync(path.join(source, 'npcs/examples/bodyguard.json'), path.join(data, 'npcs/examples/bodyguard.json'));
+  copyTree(source, path.join(data, 'packs/personal-guard'), entry => entry !== 'npcs');
+  server.floor = 'fill -40 61 -40 40 63 40 stone';
+  await server.stop();
+  await server.start();
+  // The road the demo's players walk: dirt path, whose top is 1/16 below a full block.
+  await server.cmd('fill -40 63 -1 40 63 1 minecraft:dirt_path', /filled/);
+  await server.cmd('setworldspawn 0 64 6', /world spawn/i);
+  await server.cmd('difficulty easy', /difficulty/i);
+  await server.cmd('execute in minecraft:the_nether run forceload add -16 -16 16 16', /Marked|already|No chunks/);
+  await delay(1000);
+  await server.cmd('execute in minecraft:the_nether run fill -12 99 -12 12 99 12 minecraft:netherrack', /Successfully filled|No blocks were filled/);
+  await server.cmd('execute in minecraft:the_nether run fill -12 100 -12 12 104 12 minecraft:air', /Successfully filled|No blocks were filled/);
+  const bodyguard = JSON.parse(readFileSync(path.join(data, 'npcs/examples/bodyguard.json'), 'utf8')).uuid;
+  const owner = await join(OWNER.name, null);
+  await gamemode('survival');
+  const hire = async pattern => {
+    await server.cmd(`give ${OWNER.name} minecraft:emerald 5`, /Gave/);
+    const window = await windowOpened(owner, await click(owner, bodyguard));
+    const from = await clickSlot(owner, window.container, 20);
+    await owner.chat(pattern, from, 8000);
+    await closeWindow(owner, window.container).catch(() => {});
+  };
+  await check('bodyguard hired for the soak', async () => {
+    await owner.tp(-15.5, 64, 11.5);
+    await hire(/Hired Bodyguard for 30 minutes/);
+    return combatOf('bodyguard');
+  });
+  const position = () => owner.position;
+  let where = 'overworld', zombies = 30, worst = 0, worstAt = '', samples = 0, laggingSince = null, renewed = false;
+  const timeline = [];
+  const respawnIfDead = async () => {
+    const health = owner.events.filter(e => e.event === 'health').at(-1);
+    if (!health || health.health > 0) return false;
+    const from = owner.events.length;
+    owner.send('respawn');
+    await owner.wait(e => e.event === 'position', from, 10_000);
+    await owner.wait(e => e.event === 'health' && e.health > 0, from, 10_000).catch(() => {});
+    where = 'overworld';
+    return true;
+  };
+  const sample = async phase => {
+    if (await respawnIfDead()) { laggingSince = null; return; }
+    const n = await inspect('bodyguard');
+    const fight = await combatOf('bodyguard');
+    const me = position();
+    samples++;
+    const guardWorld = n.y > 90 ? 'nether' : 'overworld';
+    const distance = guardWorld === where ? Math.hypot(n.x - me.x, n.z - me.z) : Infinity;
+    const fighting = /target=(?!none)/.test(fight);
+    if (distance > 8 && !fighting) laggingSince ??= Date.now();
+    else laggingSince = null;
+    const lag = laggingSince ? Date.now() - laggingSince : 0;
+    if (lag > worst) { worst = lag; worstAt = `${phase}: guard ${n.x.toFixed(1)},${n.y},${n.z.toFixed(1)} me ${where} ${me.x.toFixed(1)},${me.y},${me.z.toFixed(1)} ${fight}`; }
+    if (samples % 20 === 0) timeline.push(`${phase} d=${Number.isFinite(distance) ? distance.toFixed(1) : 'other-world'} ${fight.replace(/^Combat bodyguard: APPLIED /, '')}`);
+  };
+  const random = (low, high) => low + Math.random() * (high - low);
+  const walkTo = async (x, z, phase) => {
+    // Walk in short hops and sample between them, so a guard that stops is seen while it is stopped.
+    for (let hop = 0; hop < 40; hop++) {
+      const me = position(), dx = x - me.x, dz = z - me.z, length = Math.hypot(dx, dz);
+      if (length < .5) return;
+      const step = Math.min(4, length);
+      try { await owner.walk(me.x + dx / length * step, me.z + dz / length * step); }
+      catch (stuck) { note(`soak walk resync at ${me.x.toFixed(1)},${me.y},${me.z.toFixed(1)}: ${stuck.message}`); return; }
+      await sample(phase);
+    }
+  };
+  await check(`hired bodyguard keeps following for ${minutes} minutes`, async () => {
+    const deadline = Date.now() + minutes * 60_000;
+    const started = Date.now();
+    const phases = new Map();
+    while (Date.now() < deadline) {
+      const pick = Math.floor(Math.random() * 9);
+      const phase = ['wander', 'wander', 'road', 'road-stand', 'stand', 'teleport', 'die', 'nether', 'fight'][pick];
+      phases.set(phase, (phases.get(phase) ?? 0) + 1);
+      if (where !== 'overworld') {
+        const from = owner.events.length;
+        await server.cmd(`execute in minecraft:overworld run tp ${OWNER.name} 4 64 6`, /Teleported/);
+        await owner.wait(e => e.event === 'position', from, 10_000).catch(() => {});
+        where = 'overworld';
+      }
+      if (phase === 'wander') {
+        if (position().y < 63.99) await owner.tp(position().x, 64, 4);
+        for (let leg = 0; leg < 3; leg++) await walkTo(random(-34, 34), random(-34, 34), phase);
+      } else if (phase === 'road' || phase === 'road-stand') {
+        // Stand on the path itself, as a player walking the road does; tp() rounds to a tenth.
+        const from = owner.events.length, roadX = Math.round(position().x) + .5;
+        await server.cmd(`tp ${OWNER.name} ${roadX} 63.9375 0.5`, /Teleported/);
+        await owner.wait(e => e.event === 'position' && Math.abs(e.y - 63.9375) < .001, from, 10_000);
+        await walkTo(random(-36, 36), 0.5, phase);
+        if (phase === 'road-stand') for (let i = 0; i < 6; i++) { await delay(1000); await sample(phase); }
+      } else if (phase === 'stand') {
+        for (let i = 0; i < 6; i++) { await delay(1000); await sample(phase); }
+      } else if (phase === 'teleport') {
+        const me = position();
+        await owner.tp(Math.max(-36, Math.min(36, -me.x + random(-4, 4))), 64, Math.max(-36, Math.min(36, -me.z + random(-4, 4))) || 6);
+        for (let i = 0; i < 4; i++) { await delay(1000); await sample(phase); }
+      } else if (phase === 'die') {
+        const from = owner.events.length;
+        await server.cmd(`kill ${OWNER.name}`, /Killed/);
+        await owner.wait(e => e.event === 'health' && e.health <= 0, from, 10_000).catch(() => {});
+        await delay(1500);
+        await respawnIfDead();
+        for (let i = 0; i < 5; i++) { await delay(1000); await sample(phase); }
+      } else if (phase === 'nether') {
+        const from = owner.events.length;
+        await server.cmd(`execute in minecraft:the_nether run tp ${OWNER.name} ${random(-8, 8).toFixed(1)} 100 ${random(-8, 8).toFixed(1)}`, /Teleported/);
+        await owner.wait(e => e.event === 'respawn' && String(e.dimension).includes('the_nether'), from, 10_000);
+        await owner.wait(e => e.event === 'position', from, 10_000).catch(() => {});
+        where = 'nether';
+        for (let i = 0; i < 5; i++) { await delay(1000); await sample(phase); }
+        await walkTo(random(-8, 8), random(-8, 8), phase);
+      } else {
+        const me = position();
+        const zombie = await summon(++zombies, 'minecraft:husk', (me.x + 3).toFixed(1), 64, me.z.toFixed(1), 'Silent:1b');
+        await until(async () => { await sample(phase); return { ok: await entityCount(`@e[type=husk,nbt={UUID:[I;${zombies},0,0,1]}]`) === 0 }; }, 45_000, `the guard did not kill zombie ${zombie}`);
+      }
+      if (!renewed && Date.now() - started > minutes * 30_000) {
+        renewed = true;
+        if (where !== 'overworld') continue;
+        await respawnIfDead();
+        const n = await inspect('bodyguard');
+        await owner.tp(n.x + 1.5, 64, n.z);
+        await hire(/Renewed Bodyguard/);
+      }
+    }
+    const stalls = logText().split('\n').filter(line => /guard made no progress/.test(line)).map(plain);
+    note(`soak timeline: ${timeline.join(' | ')}`);
+    note(`soak stalls: ${stalls.join(' | ') || 'none'}`);
+    assert(worst <= 8000, `left more than 8 blocks behind for ${worst} ms at ${worstAt}`);
+    return `${samples} samples over ${minutes} min; phases ${JSON.stringify(Object.fromEntries(phases))}; longest lag ${worst} ms; renewed=${renewed}; watchdog stalls=${stalls.length}${stalls.length ? ` first: ${stalls[0].slice(-220)}` : ''}`;
+  });
+  await gamemode('creative');
+  await owner.close();
+  await server.cmd('animus delete bodyguard', /Deleted|Unknown/);
+  await server.cmd('kill @e[type=!player]', /Killed|No entity/);
+  server.floor = null;
+}
+
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, building, shops, folia, smoke, worlds, guardsoak };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line) || (MOD && /[Mm]ixin[^\n]*(?:fail|error|could not|not applied)/i.test(line)));

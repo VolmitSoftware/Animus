@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -24,6 +25,9 @@ final class CombatBrain {
     private static final long GUARD_INTERVAL = GuardFollow.MINIMUM_REPLAN_TICKS;
     private static final double HURRY_SPEED = 1.4;
     private static final long REGION_INTERVAL = 10;
+    /** A guard that should be following but has not moved a block for this long catches up or replans. */
+    static final long STALL_TICKS = 60;
+    private static final double PROGRESS = 1;
     private static final int GREETING_MEMORY = 256;
 
     private final CombatEngine engine;
@@ -41,6 +45,10 @@ final class CombatBrain {
     private final Set<UUID> greeted = new HashSet<>();
     private final Map<UUID, Long> lastGreeting = new HashMap<>();
     private final GuardFollow follow = new GuardFollow();
+    private WorldPosition progressFrom;
+    private long progressAt;
+    private long lastGuarded = Long.MIN_VALUE / 2;
+    private boolean stallReported;
     private CombatState state = CombatState.IDLE;
     private TargetRef target;
     private TargetRef threat;
@@ -489,24 +497,74 @@ final class CombatBrain {
         if (charge.isEmpty()) {
             if (state == CombatState.GUARDING) finish();
             follow.reset();
+            progressFrom = null;
             return GUARD_INTERVAL;
         }
         state = CombatState.GUARDING;
         WorldPosition at = charge.get().position();
+        // A fight, a death or an absent charge paused following: measure progress afresh.
+        if (progressFrom == null || now - lastGuarded > GUARD_INTERVAL * 2) mark(now, self.position());
+        lastGuarded = now;
         GuardFollow.Step step = follow.next(now, self.position(), at, settings.guard(), settings.pursuit().replanTicks());
         switch (step.action()) {
             case CATCH_UP -> {
-                world.stop(npc);
-                moving = false;
-                for (Vec3 spot : GuardFollow.catchUpSpots(step.goal(), at)) {
-                    if (world.teleport(npc, new WorldPosition(at.world(), spot))) { follow.planned(now, at); return GUARD_INTERVAL; }
-                }
+                if (catchUp(now, step, at)) return GUARD_INTERVAL;
                 if (self.position().world().equals(at.world())) walk(now, step, at);
             }
             case WALK -> walk(now, step, at);
             case HOLD -> {}
         }
+        watch(now, at, step);
         return GUARD_INTERVAL;
+    }
+
+    private boolean catchUp(long now, GuardFollow.Step step, WorldPosition charge) {
+        world.stop(npc);
+        moving = false;
+        for (Vec3 spot : GuardFollow.catchUpSpots(step.goal(), charge)) {
+            if (world.teleport(npc, new WorldPosition(charge.world(), spot))) {
+                follow.planned(now, charge);
+                world.npc(npc).ifPresent((VirtualNpcState.Snapshot moved) -> mark(now, moved.position()));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The watchdog: a guard that should be following but has not moved a block in {@link #STALL_TICKS} catches up by
+     * teleport when it may, otherwise drops its plan so the next turn replans. The first stall since walking last
+     * worked is logged with the movement's own reason.
+     */
+    private void watch(long now, WorldPosition charge, GuardFollow.Step step) {
+        Optional<VirtualNpcState.Snapshot> current = world.npc(npc);
+        if (current.isEmpty()) return;
+        WorldPosition here = current.get().position();
+        boolean sameWorld = here.world().equals(charge.world());
+        double distance = sameWorld ? here.point().distance(charge.point()) : Double.POSITIVE_INFINITY;
+        boolean walked = here.world().equals(progressFrom.world()) && here.point().distance(progressFrom.point()) >= PROGRESS;
+        if (distance <= settings.guard().followDistance() + PROGRESS || walked) {
+            if (walked) stallReported = false;
+            mark(now, here);
+            return;
+        }
+        if (now - progressAt < STALL_TICKS) return;
+        boolean teleports = settings.guard().catchUpDistance() > 0;
+        if (!stallReported) {
+            stallReported = true;
+            engine.guardStalled(this, now - progressAt, sameWorld ? String.format(Locale.ROOT, "%.1f", distance) : "another world",
+                    world.movement(npc), teleports ? "catching up" : "replanning");
+        }
+        mark(now, here);
+        if (teleports && catchUp(now, step, charge)) return;
+        follow.reset();
+        world.stop(npc);
+        moving = false;
+    }
+
+    private void mark(long now, WorldPosition position) {
+        progressFrom = position;
+        progressAt = now;
     }
 
     private void walk(long now, GuardFollow.Step step, WorldPosition charge) {
@@ -727,6 +785,8 @@ final class CombatBrain {
     void guard(TargetRef charge) {
         guarded = charge;
         follow.reset();
+        progressFrom = null;
+        stallReported = false;
         if (charge == null && state == CombatState.GUARDING) finish();
         nextPlan = 0;
     }

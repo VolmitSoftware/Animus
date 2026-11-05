@@ -161,6 +161,10 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         regionUnavailable++;
         diagnostics.accept("Combat NPC " + brain.handle() + ": pursuit region " + region + " cannot be checked (no protection plugin provides regions here, or the region does not exist); the region leash is not applied");
     }
+    void guardStalled(CombatBrain brain, long ticks, String distance, String movement, String remedy) {
+        diagnostics.accept("Combat NPC " + brain.handle() + ": guard made no progress toward its charge for " + ticks + " ticks (distance "
+                + distance + "; movement: " + movement + "); " + remedy);
+    }
     void requestDeletion(UUID npc) { if (!deletions.contains(npc)) deletions.add(npc); }
 
     /** NPCs that died with {@code deleteOnDeath} since the last call. Each death is returned once. */
