@@ -76,6 +76,9 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
     @Override public void release(UUID npc) {
         refusals.remove(npc);
         living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {
+            // A patrol resumes only once no route runs, so the chase path must end first or the NPC walks it out.
+            try { living.stopNavigation(active.id()); }
+            catch (IllegalStateException inactive) { /* nothing is moving it */ }
             try { living.resumePatrol(active.id()); }
             catch (IllegalArgumentException | IllegalStateException inactive) { /* no patrol to resume */ }
         });
