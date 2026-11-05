@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import '../model/animus_document.dart';
 
@@ -10,6 +11,7 @@ class WorkspaceSnapshot {
     required this.name,
     required this.generation,
     required this.documents,
+    this.resources = const <String, Uint8List>{},
   });
 
   final String id;
@@ -20,11 +22,16 @@ class WorkspaceSnapshot {
   final int generation;
   final List<AnimusDocument> documents;
 
-  WorkspaceSnapshot next({String? name, List<AnimusDocument>? documents}) => WorkspaceSnapshot(
+  /// Data-folder files that are not documents but belong to the workspace:
+  /// resource pack sources under `pack/assets/` (item models, textures).
+  final Map<String, Uint8List> resources;
+
+  WorkspaceSnapshot next({String? name, List<AnimusDocument>? documents, Map<String, Uint8List>? resources}) => WorkspaceSnapshot(
         id: id,
         name: name ?? this.name,
         generation: generation + 1,
         documents: documents ?? this.documents,
+        resources: resources ?? this.resources,
       );
 
   String encode() => jsonEncode(<String, Object?>{
@@ -33,6 +40,10 @@ class WorkspaceSnapshot {
         'name': name,
         'generation': generation,
         'documents': <Map<String, Object?>>[for (final AnimusDocument document in documents) document.toJson()],
+        if (resources.isNotEmpty)
+          'resources': <String, String>{
+            for (final String path in resources.keys.toList()..sort()) path: base64Encode(resources[path]!),
+          },
       });
 
   static WorkspaceSnapshot decode(String text) {
@@ -46,6 +57,11 @@ class WorkspaceSnapshot {
         for (final Object? document in json['documents']! as List<Object?>)
           AnimusDocument.fromJson(document! as Map<String, Object?>),
       ],
+      resources: <String, Uint8List>{
+        if (json['resources'] is Map<String, Object?>)
+          for (final MapEntry<String, Object?> entry in (json['resources']! as Map<String, Object?>).entries)
+            if (entry.value is String) entry.key: base64Decode(entry.value! as String),
+      },
     );
   }
 }

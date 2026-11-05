@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:golem/walk",
+  "rig": "town:golem",
+  "durationTicks": 20,
+  "loop": "loop",
+  "tracks": [
+    {
+      "bone": "torso",
+      "target": "rotation",
+      "blend": "replace",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            0,
+            0,
+            -4
+          ],
+          "easing": "ease_in_out"
+        },
+        {
+          "tick": 10,
+          "value": [
+            0,
+            0,
+            4
+          ],
+          "easing": "ease_in_out"
+        },
+        {
+          "tick": 20,
+          "value": [
+            0,
+            0,
+            -4
+          ]
+        }
+      ]
+    },
+    {
+      "bone": "head",
+      "target": "translation",
+      "blend": "add",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tick": 5,
+          "value": [
+            0,
+            0.05,
+            0
+          ],
+          "easing": "back_out"
+        },
+        {
+          "tick": 10,
+          "value": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "bone": "arm",
+      "target": "rotation",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            -30,
+            0,
+            0
+          ],
+          "easing": "bezier(0.42,0,0.58,1)"
+        },
+        {
+          "tick": 10,
+          "value": [
+            30,
+            0,
+            0
+          ],
+          "easing": "ease_in"
+        },
+        {
+          "tick": 20,
+          "value": [
+            -30,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "bone": "arm",
+      "target": "rotation",
+      "blend": "add",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            0,
+            10,
+            0
+          ],
+          "easing": "ease_out"
+        },
+        {
+          "tick": 20,
+          "value": [
+            0,
+            -10,
+            0
+          ]
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "tick": 10,
+      "capability": "animus:play-sound",
+      "arguments": {
+        "sound": "minecraft:entity.iron_golem.step"
+      }
+    }
+  ]
+}
