@@ -272,6 +272,11 @@ public final class EditorService implements AutoCloseable {
         return ids;
     }
 
+    /** Open editor event streams, for diagnostics. */
+    public synchronized int eventStreams() { return api == null ? 0 : api.parts().events().open(); }
+    /** The relay connection is registered, for diagnostics. */
+    public synchronized boolean relayRegistered() { return relay != null && relay.isRegistered(); }
+
     public synchronized List<String> status() {
         List<String> lines = new ArrayList<>();
         lines.add("Editor: " + state);

@@ -25,5 +25,8 @@ public final class PresentationPressure {
 
     public boolean strained(long tick) { return shortAt != Long.MIN_VALUE && tick - shortAt <= RECOVERY_TICKS; }
 
+    /** Cosmetic updates refused under strain since start. */
+    public long deferred() { return deferred; }
+
     public String describe(long tick) { return (strained(tick) ? "strained" : "normal") + "/cosmetic-deferred=" + deferred; }
 }

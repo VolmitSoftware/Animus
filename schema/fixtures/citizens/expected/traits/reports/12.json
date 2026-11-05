@@ -18,6 +18,7 @@
     "/traits/sentinel/respawnTime": "CONVERTED",
     "/traits/equipment/hand/type": "CONVERTED"
   },
+  "reasons": {},
   "worldRemaps": [
     {
       "source": "/traits/location",

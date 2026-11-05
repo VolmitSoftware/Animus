@@ -1,5 +1,8 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Load;
+import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.presentation.BodyRules;
@@ -53,7 +56,8 @@ final class VanillaDisplayTransport implements DisplayTransport<ServerPlayer> {
         final Consumer<Click> clicks;
         final Set<Integer> visible = new HashSet<>();
         long lastClickNanos = Long.MIN_VALUE / 2;
-        Session(ServerPlayer viewer, Consumer<Click> clicks) { this.viewer = viewer; this.clicks = clicks; }
+        final Load traffic;
+        Session(ServerPlayer viewer, Consumer<Click> clicks, Load traffic) { this.viewer = viewer; this.clicks = clicks; this.traffic = traffic; }
     }
 
     private final NativeEntityIds ids = new NativeEntityIds(EntityCounterAccessor.animus$counter());
@@ -62,6 +66,7 @@ final class VanillaDisplayTransport implements DisplayTransport<ServerPlayer> {
     private final Consumer<String> warnings;
     private final EntityType<?> textType = entityType("minecraft:text_display"), itemType = entityType("minecraft:item_display"),
             blockType = entityType("minecraft:block_display"), interactionType = entityType("minecraft:interaction");
+    private final AnimusMetrics metrics = AnimusMetrics.current();
     private boolean closed, reportedFailure;
 
     /** @param stacks builds the stack an item display shows */
@@ -75,7 +80,7 @@ final class VanillaDisplayTransport implements DisplayTransport<ServerPlayer> {
 
     @Override public void watch(ServerPlayer viewer, Consumer<Click> clicks) {
         if (closed || !viewer.connection.isAcceptingMessages()) return;
-        Session previous = sessions.put(viewer.getUUID(), new Session(viewer, Objects.requireNonNull(clicks)));
+        Session previous = sessions.put(viewer.getUUID(), new Session(viewer, Objects.requireNonNull(clicks), metrics.viewer(viewer.getUUID(), viewer.getGameProfile().name())));
         if (previous != null && previous.viewer.connection.isAcceptingMessages() && !previous.visible.isEmpty())
             send(previous, List.of(new ClientboundRemoveEntitiesPacket(previous.visible.stream().mapToInt(Integer::intValue).toArray())));
     }
@@ -140,8 +145,9 @@ final class VanillaDisplayTransport implements DisplayTransport<ServerPlayer> {
         if (session == null || !session.visible.contains(entityId)) return false;
         if (!attack && hand.equals("OFF_HAND")) return true;
         long now = System.nanoTime();
-        if (now - session.lastClickNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS) return true;
+        if (now - session.lastClickNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS) { metrics.inbound(session.traffic, false); return true; }
         session.lastClickNanos = now;
+        metrics.inbound(session.traffic, true);
         try { session.clicks.accept(new Click(entityId, attack, !attack && secondary, now)); }
         catch (RuntimeException failure) { report(failure); }
         return true;
@@ -218,6 +224,7 @@ final class VanillaDisplayTransport implements DisplayTransport<ServerPlayer> {
 
     private void send(Session session, List<Packet<ClientGamePacketListener>> packets) {
         if (!session.viewer.connection.isAcceptingMessages()) return;
+        metrics.sent(session.traffic, null, PacketKind.HOLOGRAM, packets.size());
         for (Packet<ClientGamePacketListener> packet : packets) session.viewer.connection.send(packet);
     }
     private void retire(Session session) {

@@ -13,7 +13,7 @@
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
-    "/traits/mounttrait/mountedon": "REQUIRES_REVIEW",
+    "/traits/mounttrait/mountedon": "CONVERTED",
     "/traits/sittrait/sittingAt/world": "UNSUPPORTED_PRESERVED",
     "/traits/sittrait/sittingAt/x": "UNSUPPORTED_PRESERVED",
     "/traits/sittrait/sittingAt/y": "UNSUPPORTED_PRESERVED",
@@ -24,6 +24,13 @@
     "/traits/skintrait/signature": "CONVERTED",
     "/traits/skintrait/textureRaw": "CONVERTED",
     "/traits/skintrait/updateSkins": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/sittrait/sittingAt/world": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/x": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/y": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/z": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sneaking/sneaking": "trait sneaking has no Animus equivalent; kept in citizens:review"
   },
   "worldRemaps": [
     {

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 9,
+  "converterVersion": 10,
   "fieldPathFormat": "json-pointer",
-  "importId": "16498f1ce9c5de7bf6865e1ff83d80657ec2be5ad0174acac90c9417e1fcec1a",
+  "importId": "efa03c8dd29a16d028f1825661077135240d3bc41f212ef466d6dc80879fd119",
   "sourceSha256": "af47d1342d6ceb90babb1439357ec6f225b699137a6bc95e549fe1d9f3baed5d",
   "worldMap": {
     "old_town": "town"
@@ -49,13 +49,10 @@
   "sentinelMapping": {},
   "issues": [],
   "migrationWarnings": [
-    "lookclose/enabled: Citizens writes it only when it differs from the server default and this save writes only false, so an unset value means true",
+    "lookclose/enabled: this save only ever writes false, so NPCs without the field are converted with true (the server default that wrote the save); if that default was false, set enabled in animus:look-close on those NPCs",
     "citizens-0: /traits/waypoints/linear: 1 points in another world or without usable coordinates were left out",
-    "citizens-0: /traits/waypoints/linear: 2 legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one until points are added between them",
     "citizens-0: /traits/waypoints/linear: chat waypoint triggers are not supported; kept in citizens:review",
-    "citizens-2: /traits/lookclose/range: look ranges above 64 blocks became 64",
-    "citizens-2: /traits/lookclose/targetnpcs: not supported; the NPC looks at the nearest player",
-    "citizens-2: /traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them",
+    "citizens-2: /traits/lookclose/range: look ranges above 64 blocks became 64; lower it in animus:look-close if that is too far",
     "citizens-3: /traits/commandtrait/commands/0/cooldown: the per-player cooldown is one cooldown for the NPC",
     "citizens-3: /traits/commandtrait/commands/2/hand: SHIFT_RIGHT needs a sneaking click, which Animus does not tell apart; not converted",
     "citizens-3: /traits/commandtrait/commands/3: the command costs money, experience or items, which Animus cannot charge; not converted",
@@ -75,13 +72,13 @@
     "4": "0a1b2c3d-0000-4000-8000-000000000304"
   },
   "documents": {
-    "npcs/town-r0_0/citizens-0.json": "95d1ac684da3b6a05e8715ea97c657fc83a6b158ff1e3bafd802a57c82ab3d6c",
-    "npcs/town-r0_0/citizens-1.json": "35a55f47695cc7641c187abaca14c83b9d2c52fc95cf9909ffbccdda0ee84213",
+    "npcs/town-r0_0/citizens-0.json": "73a69137f4c7b3daaedef04fb1d2b435f7b6b786e5a30a3d52c6baf71d58ea02",
+    "npcs/town-r0_0/citizens-1.json": "b8d9c939095dfd8c802c5cd466f4ce751e18d13096433b447dc21cc8ae2fc54f",
     "behaviors/citizens/text-2.json": "fd86b6d89e566471ce36cb74f5c889cd2355336dd7330f02375f7421cafd5674",
-    "npcs/town-r-1_0/citizens-2.json": "e39d2a5fa0239e493c8df2825eafbb096b1b41207f9797ba45b734346ec5a768",
+    "npcs/town-r-1_0/citizens-2.json": "b4136b7a146a2aa7d25c2a452185721e2c79758ece9925df75c033b40860182d",
     "behaviors/citizens/text-3.json": "2500899a3646cabd0c82cd0c2ddc83ee3a2be0f694052a1b2e4ae7049be79f75",
     "behaviors/citizens/commands-3.json": "56f79ffcffec46c36987f97bd074c2cf148401ff4bdff425837ed408ff96417d",
-    "npcs/town-r0_0/citizens-3.json": "7a36af6572a791a8e81931a242471a8a4c10e07f1dffbc68a8fb8ba044e8a811",
-    "npcs/town-r0_0/citizens-4.json": "0f98dd06bcc227ff8b0a2b72b2631346f161e91f4e883181a503f67b1fb2ffe6"
+    "npcs/town-r0_0/citizens-3.json": "2c1b9efdcb6641275297df44fafd437804a4210731886564589e607424a45abc",
+    "npcs/town-r0_0/citizens-4.json": "a0e08eae3ea8fe10893ec9c887d7fab2c6885fbf8e4ae2eb634ee90b80333a7a"
   }
 }

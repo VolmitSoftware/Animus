@@ -15,8 +15,9 @@ class RouteLegTest {
         assertDoesNotThrow(() -> PersistedNpcService.validateLeg(at(10.5, 64.5, 0.5), at(4.5, 63, 0.5), MovementProfile.Mode.WALK, 6, .6, 1.8));
     }
 
-    @Test void legBoundsStillApply() {
-        assertThrows(IllegalArgumentException.class, () -> PersistedNpcService.validateLeg(at(0, 64, 0), at(40, 64, 0), MovementProfile.Mode.WALK, 6, .6, 1.8));
+    @Test void aLegOfAnyLengthIsAcceptedAndOtherRulesStillApply() {
+        assertDoesNotThrow(() -> PersistedNpcService.validateLeg(at(0, 64, 0), at(200, 94, -150), MovementProfile.Mode.WALK, 6, .6, 1.8));
+        assertThrows(IllegalArgumentException.class, () -> PersistedNpcService.validateLeg(at(0, 64, 0), at(40_000_000, 64, 0), MovementProfile.Mode.WALK, 6, .6, 1.8));
         assertThrows(IllegalArgumentException.class, () -> PersistedNpcService.validateLeg(at(0, 64, 0), new WorldPosition("nether", new Vec3(1, 64, 0)), MovementProfile.Mode.WALK, 6, .6, 1.8));
         assertThrows(IllegalArgumentException.class, () -> PersistedNpcService.validateLeg(at(0, 64, 0), at(1, 64.5, 0), MovementProfile.Mode.WALK, 6, .6, 1.8), "goals name a block");
     }

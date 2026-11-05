@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/hello_task",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Hello {player_name}"
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": 20
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "spawn",
+            "as": "player"
+          }
+        }
+      ]
+    }
+  }
+}

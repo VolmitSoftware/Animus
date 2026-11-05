@@ -1,8 +1,7 @@
 {
   "citizensId": 2,
   "presentationWarnings": [
-    "/traits/sittrait: sitting shows only on player bodies; kept for review",
-    "/traits/sneak: sneaking shows only on player bodies; kept for review"
+    "/traits/sittrait: sitting shows only on player bodies; kept for review"
   ],
   "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
@@ -16,20 +15,33 @@
     "/traits/location/z": "CONVERTED",
     "/traits/controllable/enabled": "REQUIRES_REVIEW",
     "/traits/controllable/ownerRequired": "REQUIRES_REVIEW",
-    "/traits/horsemodifiers/color": "UNSUPPORTED_PRESERVED",
-    "/traits/horsemodifiers/style": "UNSUPPORTED_PRESERVED",
-    "/traits/horsemodifiers/carryingChest": "UNSUPPORTED_PRESERVED",
+    "/traits/horsemodifiers/color": "REQUIRES_REVIEW",
+    "/traits/horsemodifiers/style": "REQUIRES_REVIEW",
+    "/traits/horsemodifiers/carryingChest": "REQUIRES_REVIEW",
     "/traits/horsemodifiers/saddle": "UNSUPPORTED_PRESERVED",
     "/traits/equipment/saddle/type": "CONVERTED",
     "/traits/equipment/body/type": "CONVERTED",
-    "/traits/age/age": "UNSUPPORTED_PRESERVED",
-    "/traits/age/locked": "UNSUPPORTED_PRESERVED",
-    "/traits/gravity/enabled": "UNSUPPORTED_PRESERVED",
+    "/traits/age/age": "CONVERTED",
+    "/traits/age/locked": "CONVERTED",
+    "/traits/gravity/enabled": "CONVERTED",
     "/traits/sneak/sneaking": "UNSUPPORTED_PRESERVED",
     "/traits/sittrait/sittingAt/world": "UNSUPPORTED_PRESERVED",
     "/traits/sittrait/sittingAt/x": "UNSUPPORTED_PRESERVED",
     "/traits/sittrait/sittingAt/y": "UNSUPPORTED_PRESERVED",
     "/traits/sittrait/sittingAt/z": "UNSUPPORTED_PRESERVED"
+  },
+  "reasons": {
+    "/traits/controllable/enabled": "not converted; check it in citizens:review",
+    "/traits/controllable/ownerRequired": "not converted; check it in citizens:review",
+    "/traits/horsemodifiers/color": "horse colours, markings and chests are not shown",
+    "/traits/horsemodifiers/style": "horse colours, markings and chests are not shown",
+    "/traits/horsemodifiers/carryingChest": "horse colours, markings and chests are not shown",
+    "/traits/horsemodifiers/saddle": "the Equipment trait already fills this slot",
+    "/traits/sneak/sneaking": "sneaking shows only on player bodies",
+    "/traits/sittrait/sittingAt/world": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/x": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/y": "trait sittrait has no Animus equivalent; kept in citizens:review",
+    "/traits/sittrait/sittingAt/z": "trait sittrait has no Animus equivalent; kept in citizens:review"
   },
   "worldRemaps": [
     {

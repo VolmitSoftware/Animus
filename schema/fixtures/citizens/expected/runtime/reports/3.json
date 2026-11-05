@@ -39,6 +39,14 @@
     "/traits/commandtrait/commands/4/player": "CONVERTED",
     "/traits/commandtrait/commands/4/op": "CONVERTED"
   },
+  "reasons": {
+    "/traits/commandtrait/commands/2/command": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/commands/2/hand": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/commands/2/player": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/commands/3/command": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/commands/3/hand": "trait commandtrait has no Animus equivalent; kept in citizens:review",
+    "/traits/commandtrait/commands/3/cost": "trait commandtrait has no Animus equivalent; kept in citizens:review"
+  },
   "worldRemaps": [
     {
       "source": "/traits/location",

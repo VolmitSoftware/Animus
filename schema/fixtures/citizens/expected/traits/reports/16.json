@@ -15,6 +15,9 @@
     "/traits/trader/converted-to-v5": "CONVERTED",
     "/traits/profession/profession": "UNSUPPORTED_PRESERVED"
   },
+  "reasons": {
+    "/traits/profession/profession": "trait profession has no Animus equivalent; kept in citizens:review"
+  },
   "worldRemaps": [
     {
       "source": "/traits/location",

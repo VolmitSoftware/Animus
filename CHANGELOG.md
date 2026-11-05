@@ -98,6 +98,11 @@
 - `animus-api` maven-publish setup with sources and javadoc, and `jitpack.yml`.
 - Riding, NPC-on-NPC mounts, combat and dragon wing phases on Folia: a mounted group has one owner and hands off in one transfer, rides run on the NPC's region, and cross-region hits go to their owners with a validity check.
 - Editing any data file applies it live, with a note block ding and per-key messages for holders of `animus.hotload.notify` (operators by default); invalid hand edits are refused with the exact field error and the last valid version stays live; `[hotload]` settings.
+- Citizens item meta converts to item components (names, lore, enchantments, models, patterns, potions, persistent data); hologram margins, line height, view range, billboard, shadow, see-through and interpolation convert and render; look-close NPC targets and random looking; definition `movement` field (speed, water, step, fall, path range, arrival margin, stuck teleport); `glowing`, `teamColor`, `baby`, `usingItem`, `listed`, `gravity` and `tags`.
+- `/animus debug` with `network`, `performance`, `npc` and `watch` on every platform (permission `animus.debug`), backed by always-on packet, byte, click and per-subsystem time counters; byte figures are estimates and per-NPC time is sampled.
+- Animus publishes 24 metrics to React as source `animus` when React is installed, with no dependency on React (`docs/react.md`).
+- `/animus import citizens` converts Denizen scripts into `denizen:` behaviors and imports Denizen flag values as behavior state, with a `denizen` review category; `converter denizen-preview` and a browser Denizen converter with the same output.
+- Route legs of any length: long legs are planned in bounded terrain segments that climb, swim, fly and detour along cliffs and shores; guided routes reach destinations no guide links to.
 
 ### Changed
 
@@ -147,9 +152,14 @@
 - Servers connect to the Volmit editor relay by default (`relayEnabled = true`, `relayUrl` set to the deployed relay).
 - `[combat]` limits apply per region tick on Folia.
 - Shop messages, price format, economy and the command allow-lists apply without a restart; shops, chest GUIs, menus, holograms and text animations that fail to reload keep their last valid version.
+- Citizens converter version 10; per-NPC reports give a reason for every field that is not converted, and migration warnings are only actionable ones.
+- Mod-server command replies render colours through the shared text formatter.
+- `movement.pathRange` limits how far each plan reaches instead of making longer legs unreachable; a step blocked by new terrain replans; a leg terrain blocks is logged once per NPC.
+- Removed the Citizens import warnings for long legs and unlinked guided destinations.
 
 ### Fixed
 
+- Citizens hologram lines import in the right order.
 - Combat, builds and container shops refuse when WorldGuard is installed but disabled, at startup or later.
 - NPC builds work with WorldGuard installed; NPCs are asked about as non-members, so a region without `build` allowed is closed to them.
 - An NPC whose fight ends stops instead of walking the rest of its chase path.

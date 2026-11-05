@@ -1,11 +1,14 @@
 package art.arcane.animus.core.presentation;
 
 import art.arcane.animus.core.npc.ArmorStandLook;
+import art.arcane.animus.core.npc.BodyTraits;
+import art.arcane.animus.core.npc.HologramStyle;
 import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcPose;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -101,5 +104,36 @@ class BodyLookTest {
         assertEquals(0.3, BodyLook.lift(1.8, 1.8, false), 1e-9);
         assertEquals(0.55, BodyLook.lift(1.8, 1.8, true), 1e-9);
         assertEquals(0.9, BodyLook.lift(1.6, 1.0, false), 1e-9);
+    }
+
+    @Test void defaultStyleKeepsOneDisplayAndStyledHologramsStackRowsTheCitizensWay() {
+        BodyLook plain = BodyLook.of(ID, "minecraft:horse", "Old Bess", appearance(List.of("Top", "Bottom"), true, NpcPose.STANDING));
+        assertEquals(List.of(new BodyLook.TextRow("Top\nBottom\nOld Bess", 0)), plain.rows());
+        assertEquals(new BodyLook.TextStyle(BodyLook.BILLBOARD_CENTER, (byte) 0, 1f, 0, 0), plain.style());
+        HologramStyle style = new HologramStyle("vertical", true, true, OptionalDouble.of(32), OptionalDouble.of(0.4), 1, 4,
+                List.of(new HologramStyle.Margin(0, 0), new HologramStyle.Margin(0.1, 0.2)));
+        NpcAppearance styled = new NpcAppearance(Map.of(), List.of("Top", "Bottom"), true, NpcPose.STANDING, Optional.empty(), style, BodyTraits.DEFAULT);
+        BodyLook rows = BodyLook.of(ID, "minecraft:horse", "Old Bess", styled);
+        assertEquals(3, rows.rows().size());
+        assertEquals(new BodyLook.TextRow("Old Bess", 0), rows.rows().get(2));
+        assertEquals("Bottom", rows.rows().get(1).text());
+        assertEquals(0.2 + 0.4, rows.rows().get(1).offset(), 1e-9);
+        assertEquals(0.2 + 0.4 + 0.1 + 0.4, rows.rows().get(0).offset(), 1e-9);
+        assertEquals(3, rows.extraIds());
+        assertEquals(new BodyLook.TextStyle((byte) 1, (byte) 0x03, 0.5f, 1, 4), rows.style());
+        NpcAppearance noName = new NpcAppearance(Map.of(), List.of("Only"), false, NpcPose.STANDING, Optional.empty(),
+                new HologramStyle("center", false, false, OptionalDouble.empty(), OptionalDouble.of(0.5), 0, 0, List.of(HologramStyle.Margin.NONE)), BodyTraits.DEFAULT);
+        assertEquals(List.of(new BodyLook.TextRow("Only", 0)), BodyLook.of(ID, "minecraft:horse", "Old Bess", noName).rows());
+    }
+
+    @Test void bodyTraitsSetGlowColourBabyUseAndListing() {
+        NpcAppearance traits = new NpcAppearance(Map.of(), List.of(), true, NpcPose.STANDING, Optional.empty(), HologramStyle.DEFAULT,
+                new BodyTraits(true, Optional.of("dark_red"), true, true, true, false));
+        BodyLook horse = BodyLook.of(ID, "minecraft:horse", "Old Bess", traits);
+        assertEquals(Optional.of("§4Old Bess"), horse.text());
+        assertEquals(0x40, BodyLook.sharedFlags(NpcPose.STANDING, false, true));
+        assertTrue(horse.traits().baby());
+        assertTrue(BodyLook.of(ID, "minecraft:player", "Guard", traits).team());
+        assertFalse(BodyLook.of(ID, "minecraft:player", "Guard", NpcAppearance.PLAIN).team());
     }
 }
