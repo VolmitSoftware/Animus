@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "behavior": "animus:quests/denizen",
+  "scope": "relationship",
+  "npc": "00000000-0000-4000-8000-000000000001",
+  "player": "00000000-0000-4000-8000-0000000000a1",
+  "values": {
+    "interact-guard_quest": {
+      "type": "integer",
+      "value": 1
+    }
+  }
+}
