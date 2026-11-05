@@ -71,14 +71,14 @@ class CitizensBehaviorsTest {
         assertFalse(result.converted().contains("/traits/waypoints/linear/points/2/location/x"));
     }
 
-    @Test void cycleBecomesPingpongAndLongLegsAreReported() {
+    @Test void cycleBecomesPingpongAndLongLegsNeedNoWarning() {
         CitizensBehaviors.Result result = map("{\"waypoints\":{\"linear\":{\"cycle\":true,\"points\":{\"1\":" + location(100, 64, 0) + ",\"0\":" + location(0, 64, 0) + "}}}}");
         JsonObject navigation = result.navigation().orElseThrow();
         assertEquals("pingpong", navigation.get("order").getAsString());
         assertFalse(navigation.has("loop"));
         assertEquals(4.3, navigation.get("speed").getAsDouble());
         assertEquals(0.5, navigation.getAsJsonArray("points").get(0).getAsJsonObject().get("x").getAsDouble(), "map keys in numeric order");
-        assertTrue(result.warnings().stream().anyMatch((String warning) -> warning.contains("1 legs are longer than 32 blocks")), result.warnings().toString());
+        assertTrue(result.warnings().stream().noneMatch((String warning) -> warning.contains("legs are longer")), "a long leg is walked: " + result.warnings());
     }
 
     @Test void guidedWaypointsBecomeARandomRouteThroughGuides() {
@@ -91,7 +91,7 @@ class CitizensBehaviorsTest {
         assertEquals(1, navigation.getAsJsonArray("guides").size());
         assertEquals(100, navigation.getAsJsonArray("points").get(0).getAsJsonObject().get("waitTicks").getAsInt());
         assertEquals(1, result.guides());
-        assertTrue(result.warnings().contains("/traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them; add guide points between them in the route editor"), result.warnings().toString());
+        assertTrue(result.warnings().stream().noneMatch((String warning) -> warning.contains("destinations have no guide")), "an isolated destination is reached: " + result.warnings());
     }
 
     @Test void guidedWithoutDistanceUsesTheNavigatorRange() {

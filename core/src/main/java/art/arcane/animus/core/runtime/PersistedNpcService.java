@@ -10,9 +10,9 @@ import art.arcane.animus.core.mount.MountReference;
 import art.arcane.animus.core.mount.SeatGeometry;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyMobility;
-import art.arcane.animus.core.navigation.CaptureBounds;
 import art.arcane.animus.core.navigation.CaptureProvenance;
 import art.arcane.animus.core.navigation.IdleFall;
+import art.arcane.animus.core.navigation.LongLeg;
 import art.arcane.animus.core.navigation.MovementSettings;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.MovementProfile;
@@ -743,28 +743,42 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private void validateDestination(Value value, WorldPosition destination, MovementProfile.Mode mode, double speed) {
         validateLeg(value.state.snapshot().position(), destination, mode, speed, moveWidth(value), moveHeight(value));
     }
-    private CaptureBounds captureBounds(Value value, WorldPosition destination) {
-        return captureBounds(value.state.snapshot().position(), destination, moveWidth(value), moveHeight(value));
-    }
-    /** Shared by every runtime: one bounded route leg in the NPC's own world. */
+    /**
+     * Shared by every runtime: one route leg in the NPC's own world. A leg of any length is planned as a {@link LongLeg},
+     * one bounded capture at a time.
+     */
     public static void validateLeg(WorldPosition origin, WorldPosition destination, MovementProfile.Mode mode, double speed, double hullWidth, double hullHeight) {
-        Vec3 delta = destination.point().subtract(origin.point());
         if (!Double.isFinite(speed) || speed < 1 || speed > MAXIMUM_SPEED) throw new IllegalArgumentException("Navigation speed must be1..10 blocks/second");
         if (!origin.world().equals(destination.world())) throw new IllegalArgumentException("Navigation requires the same world");
-        if (Math.abs(delta.x()) > 32 || Math.abs(delta.z()) > 32 || Math.abs(delta.y()) > 8)
-            throw new IllegalArgumentException("Route leg exceeds32 horizontal/8 vertical block bounds; use intermediate waypoints");
         // The origin may rest on a partial surface (path, farmland, slab) where an earlier route ended; the goal names a block.
         if (mode == MovementProfile.Mode.WALK && destination.point().y() != Math.rint(destination.point().y()))
             throw new IllegalArgumentException("Walking goals require integer feet height");
-        captureBounds(origin, destination, hullWidth, hullHeight);
+        // Refuses a goal outside the world's coordinate bounds.
+        BlockPos.containing(destination.point());
     }
-    public static CaptureBounds captureBounds(WorldPosition origin, WorldPosition destination, double hullWidth, double hullHeight) {
-        BlockPos from = BlockPos.containing(origin.point()), to = BlockPos.containing(destination.point());
-        int margin = Math.max(0, (int) Math.ceil((hullWidth - 1) / 2)) + 2;
-        int minX = Math.min(from.x(), to.x()) - margin, minZ = Math.min(from.z(), to.z()) - margin;
-        int minY = Math.min(from.y(), to.y()) - 4, maxY = Math.max(from.y(), to.y()) + (int) Math.ceil(hullHeight) + 3;
-        return new CaptureBounds(minX, minY, minZ, Math.max(from.x(), to.x()) + margin - minX + 1,
-                maxY - minY + 1, Math.max(from.z(), to.z()) + margin - minZ + 1);
+    /**
+     * Terrain blocks this leg for good. Its route fails as any failed leg does, and the server log says so once per NPC,
+     * naming the leg, so an imported patrol that stops is explained.
+     */
+    private void blockLeg(Route route, String reason) {
+        Value value = route.value;
+        if (!value.blockedWarned) {
+            value.blockedWarned = true;
+            host.warn(blockedLeg(value.spec.definition().id(), route.waypoint, route.origin, route.goal, reason,
+                    route.leg != null && value.movement.teleportsWhenStuck()));
+        }
+        failLeg(route, reason);
+    }
+    /**
+     * The one log line for an NPC whose leg terrain blocks; shared by every runtime. An NPC whose movement teleports when
+     * stuck goes on from the point instead of stopping.
+     */
+    public static String blockedLeg(String npc, int waypoint, Vec3 from, WorldPosition to, String reason, boolean teleports) {
+        return "NPC " + npc + (teleports ? " teleported" : " stopped") + ": terrain blocks its route leg" + (waypoint < 0 ? "" : " to waypoint " + waypoint)
+                + " from " + block(from) + " to " + block(to.point()) + " in " + to.world() + " (" + reason + "); later blocked legs of this NPC are not logged";
+    }
+    private static String block(Vec3 point) {
+        return (int) Math.floor(point.x()) + " " + (int) Math.floor(point.y()) + " " + (int) Math.floor(point.z());
     }
     private MovementProfile profile(Value value, MovementProfile.Mode mode) {
         return value.movement.apply(BodyMobility.forRoute(value.spec.type(), moveWidth(value), moveHeight(value), mode), value.spec.type());
@@ -795,16 +809,6 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         WorldPosition at = value.state.snapshot().position();
         WorldPosition goal = leg.pause() ? at : new WorldPosition(at.world(), leg.goal());
         double speed = value.movement.routeSpeed(value.routeSpeedDeclared, waypointSettings.speed());
-        if (!leg.pause() && value.movement.outOfRange(at.point(), goal.point())) {
-            Route unreachable = new Route(value, goal, waypointSettings.mode(), speed, leg);
-            value.route = unreachable;
-            if (teleportStuck(unreachable)) return;
-            value.route = null;
-            value.navigationStatus = "waypoint " + leg.arrival() + " is beyond the NPC's path range"; failWatch(value, value.navigationStatus);
-            Optional<WaypointProgress.Leg> retry = progress.failed(leg);
-            if (retry.isPresent()) beginLeg(value, retry);
-            return;
-        }
         if (!leg.pause()) {
             try { validateDestination(value, goal, waypointSettings.mode(), speed); }
             catch (IllegalArgumentException invalid) {
@@ -912,8 +916,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 if (route.plan == null) {
                     BlockPos feet = BlockPos.containing(value.state.snapshot().position().point());
                     BlockPos goal = BlockPos.containing(route.goal.point());
+                    LongLeg.Request request = route.longLeg.request(value.state.snapshot().position().point());
+                    // A segment of a long leg needs only the terrain it captures; an unloaded chunk there makes its plan wait.
                     if (!host.chunkLoaded(world, Math.floorDiv(feet.x(), 16), Math.floorDiv(feet.z(), 16))
-                            || !host.chunkLoaded(world, Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16))) {
+                            || (request.direct() && !host.chunkLoaded(world, Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16)))) {
                         suspend(route, "unavailable terrain; no chunk loading requested");
                     } else if (fallBeforeLeg(route)) {
                         return RouteScheduler.Result.KEEP;
@@ -922,23 +928,28 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                         return RouteScheduler.Result.YIELD;
                     } else {
                         planStarts--;
-                        route.plan = navigation.plan(world, captureBounds(value, route.goal), feet, goal, profile(value, route.mode),
-                                new PathPlanner.Limits(4096, 4096, 256));
+                        route.plan = navigation.plan(world, request.bounds(), feet, request.aim(), profile(value, route.mode), request.limits());
                         route.result = route.plan.future().toCompletableFuture(); routeStatus(route, "planning", "");
                     }
                 } else if (route.result.isDone()) {
                     PathPlanner.Result planned = route.result.join(); route.capture = route.plan.capture().orElse(null); route.plan = null; route.result = null;
                     if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspend(route, "unavailable captured terrain");
-                    else if (planned.status() != PathPlanner.Status.FOUND) failLeg(route, "failed: " + planned.status());
                     else {
-                        route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), route.goal.point(), profile(value, route.mode));
-                        routeStatus(route, "moving", "kinematic; live collision revalidation");
+                        LongLeg.Next next = route.longLeg.planned(planned);
+                        if (next == LongLeg.Next.BLOCKED) blockLeg(route, "failed: " + planned.status());
+                        else if (next == LongLeg.Next.RETRY) routeStatus(route, "replanning", "attempt " + route.longLeg.attempts() + " after " + planned.status());
+                        else {
+                            route.segment = next == LongLeg.Next.SEGMENT;
+                            Vec3 end = route.segment ? planned.path().getLast().point() : route.goal.point();
+                            route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), end, profile(value, route.mode));
+                            routeStatus(route, "moving", moving(route.segment));
+                        }
                     }
                 }
             }
             if (routeCurrent(route) && route.execution != null && tickNumber >= route.nextAttempt) {
                 if (!route.execution.position().equals(value.state.snapshot().position().point())) { stopRoute(value, "cancelled: authoritative position changed"); }
-                else if (route.execution.finished()) arrive(route);
+                else if (route.execution.finished()) executed(route);
                 else {
                     PathExecution.Proposal step = route.execution.next(route.speed / 20).orElseThrow();
                     int sweep = motionCells(value, step.from().distance(step.to())), settle = motionCells(value, 0);
@@ -954,7 +965,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                         motionCells -= validation.sampledCells();
                     }
                     if (validation.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) suspend(route, validation.detail());
-                    else if (!validation.clear()) failLeg(route, "blocked: " + validation.status() + "; " + validation.detail());
+                    else if (!validation.clear()) blockedStep(route, "blocked: " + validation.status() + "; " + validation.detail());
                     else {
                         route.execution.commit(step);
                         Vec3 delta = step.to().subtract(step.from());
@@ -962,14 +973,31 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                         value.state.move(new WorldPosition(route.goal.world(), step.to())); index.upsert(value.state.snapshot());
                         value.poseRevision++; setPose(value, yaw, 0, step.onGround());
                         route.progressTick = tickNumber;
-                        routeStatus(route, "moving", "kinematic; live collision revalidation");
-                        if (route.execution.finished() || value.movement.arrived(step.to(), route.goal.point())) arrive(route);
+                        routeStatus(route, "moving", moving(route.segment));
+                        if (value.movement.arrived(step.to(), route.goal.point())) arrive(route);
+                        else if (route.execution.finished()) executed(route);
                     }
                 }
             }
         } catch (RejectedExecutionException full) { pathRefusals++; route.nextAttempt = tickNumber + 20; routeStatus(route, "queued", "path capacity"); }
         catch (RuntimeException failure) { if (value.route == route) failLeg(route, "failed: " + concise(failure)); else stopRoute(value, "failed: " + concise(failure)); }
         return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
+    }
+    /** The status detail of a route walking a planned path; shared by every runtime. */
+    public static String moving(boolean segment) {
+        return segment ? "kinematic; live collision revalidation; long leg segment" : "kinematic; live collision revalidation";
+    }
+    /** A walked path ended: a segment of a long leg plans the next one from here, the last one arrives. */
+    private void executed(Route route) {
+        if (!route.segment) { arrive(route); return; }
+        route.execution = null; route.segment = false;
+        routeStatus(route, "queued", "next long leg segment");
+    }
+    /** Terrain changed in front of the body: plan again from here until the leg runs out of tries. */
+    private void blockedStep(Route route, String reason) {
+        if (route.longLeg.blocked() == LongLeg.Next.BLOCKED) { blockLeg(route, reason); return; }
+        route.execution = null; route.segment = false;
+        routeStatus(route, "replanning", reason);
     }
     /**
      * A walking body that stands in the air (its ground changed, or it was imported onto other terrain) falls one step per
@@ -1612,6 +1640,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         final DefinitionAuthority authority;
         float yaw, pitch; boolean onGround = true; long poseRevision, arrivals;
         Route route; WaypointProgress waypoints; String navigationStatus = "idle", routeError;
+        /** The log already said terrain blocks one of this NPC's legs. */
+        boolean blockedWarned;
         final String routeSource;
         RouteReadTask routeTask; boolean routeReadQueued;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
@@ -1642,12 +1672,16 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private final class Route {
         final UUID id = UUID.randomUUID(); final Value value; final WorldPosition goal;
         final MovementProfile.Mode mode; final double speed; final int waypoint; final WaypointProgress.Leg leg;
+        final Vec3 origin; final LongLeg longLeg;
         NavigationPlan plan; CompletableFuture<PathPlanner.Result> result; PathExecution execution; CaptureProvenance capture;
         long nextAttempt, awakeChecked = Long.MIN_VALUE, progressTick;
-        boolean awake = true;
+        /** Segment: the path being walked ends part way along a long leg. */
+        boolean awake = true, segment;
         Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) {
             this.value = value; this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
             progressTick = tickNumber;
+            origin = value.state.snapshot().position().point();
+            longLeg = new LongLeg(origin, goal.point(), moveWidth(value), moveHeight(value), value.movement.pathRange());
         }
     }
     final class Presented {

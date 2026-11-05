@@ -3,7 +3,6 @@
   "presentationWarnings": [],
   "runtimeWarnings": [
     "/traits/waypoints/linear: 1 points in another world or without usable coordinates were left out",
-    "/traits/waypoints/linear: 2 legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one; add points between them in the route editor",
     "/traits/waypoints/linear: chat waypoint triggers are not supported; kept in citizens:review"
   ],
   "fieldPathFormat": "json-pointer",

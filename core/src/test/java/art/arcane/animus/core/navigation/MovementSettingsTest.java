@@ -58,8 +58,8 @@ class MovementSettingsTest {
         assertTrue(movement.arrived(new art.arcane.animus.core.virtual.Vec3(0.4, 64, 0), goal));
         assertFalse(movement.arrived(new art.arcane.animus.core.virtual.Vec3(0.6, 64, 0), goal));
         assertFalse(MovementSettings.DEFAULT.arrived(goal, goal));
-        assertTrue(movement.outOfRange(new art.arcane.animus.core.virtual.Vec3(11, 64, 0), goal));
-        assertFalse(MovementSettings.DEFAULT.outOfRange(new art.arcane.animus.core.virtual.Vec3(99, 64, 0), goal));
+        assertEquals(10, movement.pathRange().orElseThrow());
+        assertTrue(MovementSettings.DEFAULT.pathRange().isEmpty());
         assertTrue(movement.stuck(101));
         assertFalse(movement.stuck(100));
         assertTrue(movement.teleportsWhenStuck());
