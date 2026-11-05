@@ -1,0 +1,527 @@
+# Synthetic Citizens saves.yml. Every name, UUID, world and texture is invented.
+last-created-npc-id: 31
+npc:
+  '0':
+    name: Guard Captain
+    uuid: 0a1b2c3d-0000-4000-8000-000000000001
+    traits:
+      type: PLAYER
+      spawned: true
+      location:
+        world: legacy
+        worldid: 11111111-2222-3333-4444-555555555555
+        x: 10.5
+        y: 64.0
+        z: -20.25
+        yaw: 90.0
+        pitch: 0.0
+        bodyYaw: 90.0
+      lookclose:
+        enabled: true
+        range: 10.0
+        realisticlooking: false
+      scoreboardtrait:
+        color: WHITE
+        tags: []
+      owner:
+        uuid: 9f8e7d6c-5b4a-4321-8765-0123456789ab
+      skintrait:
+        skinName: captain
+        signature: c2lnLWE=
+        textureRaw: dGV4LWE=
+        updateSkins: false
+      equipment:
+        hand:
+          type: BOW
+          amount: 1
+        helmet:
+          type: IRON_HELMET
+          durability: 5
+        cosmetic_helmet:
+          type: CARVED_PUMPKIN
+        chestplate:
+          type: DIAMOND_CHESTPLATE
+          meta:
+            display-name: Shiny
+        boots:
+          type: LEATHER_BOOTS
+          amount: 200
+        off_hand:
+          type: AIR
+        weird:
+          type: STONE
+      inventory:
+        '0':
+          type: BREAD
+          amount: 16
+        '40':
+          type_key: torch
+          type_namespace: minecraft
+        '99':
+          type: STONE
+        abc:
+          type: DIRT
+        '3': not an item
+      sentinel:
+        allTargets:
+          targets: [MONSTERS, zombies, OWNER, foxes, witches]
+          byPlayerName: [Bob, '[bad']
+          byNpcName: [Villain]
+          byEntityName: [Grumpy.*]
+          byHeldItem: [diamond_sword, 'name:Excalibur']
+          byOffhandItem: [shield]
+          byEquippedItem: [golden_helmet]
+          byGroup: [raiders, 'bad group!']
+          byEvent: [pvp, eve, guarded_fight, 'message:surrender', 'pv:player:Bob', 'ev:zombie', 'bogus:event']
+          byOther: ['squad:red', 'healthbelow:50', 'healthbelow:20', 'healthabove:90', 'potion:SLOW', 'permission:town.enemy', 'uuid:9f8e7d6c-5b4a-4321-8765-0123456789ab', 'mystery:1']
+          byAllInOne:
+          - targets: [ZOMBIE]
+            byHeldItem: [iron_axe]
+          - targets: [SKELETON]
+            byInventoryItem: [arrow]
+          byMultiple:
+          - targets: [ZOMBIE, SKELETON]
+          - targets: [CREEPER]
+          byInventoryItem: [tnt]
+          byStatus: [angry]
+        allIgnores:
+          targets: [OWNER, NPCS]
+          byEvent: [pvp]
+          byMultiple:
+          - targets: [ZOMBIE, SKELETON]
+        allAvoids:
+          targets: [CREEPERS]
+          byEvent: [guarded_fight, 'pv:healthbelow:30']
+        avoidRange: 12.5
+        enemyTargetTime: 200
+        fightback: true
+        realistic: true
+        ignore_los: false
+        retain_target: true
+        reaction_slowdown: 10
+        runaway: false
+        chaseRange: 300
+        speed: 1.5
+        close_chase: true
+        ranged_chase: false
+        squad: red
+        guard_distance_minimum: 3
+        guard_selection_range: 2
+        guardedNPC: 1
+        guardingUpper: 0
+        guardingLower: 0
+        avoidReturnPoint: {world: legacy, x: 1, y: 2, z: 3}
+        disable_teleporting: false
+        damage: -1
+        attackRate: 20
+        attackRateRanged: 40
+        range: 30
+        reach: 3
+        safeShot: true
+        accuracy: 0.5
+        projectileRange: 50
+        health: 40
+        armor: 0.25
+        invincible: false
+        protected: true
+        protectFromRange: 0
+        allow_knockback: false
+        healRate: 50
+        drops:
+        - {type: DIAMOND, amount: 2}
+        - {type: STICK, meta: {display-name: Wand}}
+        - {id: 'minecraft:emerald', count: 70}
+        dropChances: [0.5, 1, 2]
+        enemyDrops: false
+        death_xp: 5
+        respawnTime: 0
+        spawnPoint: {world: legacy, x: 10.5, y: 64, z: -20.25}
+        worldguard_region: spawn
+        needsAmmo: false
+        weapon_damage_map: {DIAMOND_SWORD: 7, 'minecraft:iron_axe': 5.5}
+        warning_text: Leave now!
+        greeting_text: Hello traveller
+        greet_range: 5
+        greet_rate: 100
+        autoswitch: true
+        weapon_redirect_map: {BOW: ARROW}
+        stats_ticksSpawned: 1200
+        stats_timesSpawned: 3
+        stats_arrowsFired: 7
+        stats_potionsThrown: 0
+        stats_punches: 12
+        stats_attackedByEnemy: 4
+        stats_damageTaken: 18.5
+        mysteryField: kept
+  '1':
+    name: Protected Mayor
+    uuid: 0a1b2c3d-0000-4000-8000-000000000002
+    traits:
+      type: PLAYER
+      location: {world: Old Nether, x: -5, y: 70, z: 5, yaw: 0, pitch: 0}
+      skintrait:
+        skinName: captain
+        signature: c2lnLWE=
+        textureRaw: dGV4LWE=
+        updateSkins: false
+      hologramtrait:
+        lines:
+          '1': {text: 'Second line', margintop: 0.0, marginbottom: 0.0}
+          '0': {text: '&6Mayor', margintop: 0.0, marginbottom: 0.0}
+          '2': "tab\there"
+          notaline: skipped
+        lineHeight: -1.0
+        viewRange: 64
+      metadata:
+        nameplate-visible: false
+      poses:
+        defaultPose: Wave
+        list:
+          '0': 'wave;45.5;-120.0'
+          '1': 'nod;0;10'
+      text:
+        text: ['Welcome!', 'Mind the gate.']
+        talk-close: true
+        random-talker: false
+        range: 5.0
+      waypoints:
+        provider: linear
+        linear:
+          cycle: true
+          points:
+          - location: {world: legacy, worldid: 11111111-2222-3333-4444-555555555555, x: 1, y: 64, z: 1}
+          - location: {world: legacy, x: 9, y: 64, z: 9}
+            triggers:
+            - type: delay
+              delay: 40
+        guided:
+          availablewaypoints:
+          - location: {world: Old Nether, x: 3, y: 70, z: 3}
+          helperwaypoints:
+            '0':
+              location: {world: elsewhere, x: 4, y: 70, z: 4}
+      scoreboardtrait: {color: GOLD, tags: [mayor]}
+      lookclose: {enabled: true, range: 5.0}
+  '2':
+    name: Cart Horse
+    uuid: 0a1b2c3d-0000-4000-8000-000000000003
+    traits:
+      type: HORSE
+      location: {world: legacy, x: 0, y: 64, z: 0}
+      controllable: {enabled: true, ownerRequired: false}
+      horsemodifiers: {color: BROWN, style: WHITE, carryingChest: false, saddle: true}
+      equipment:
+        saddle: {type: SADDLE}
+        body: {type: IRON_HORSE_ARMOR}
+      age: {age: -24000, locked: true}
+      gravity: {enabled: true}
+      sneak: {sneaking: true}
+      sittrait:
+        sittingAt: {world: legacy, x: 0, y: 64, z: 0}
+  '3':
+    name: Rider
+    uuid: 0a1b2c3d-0000-4000-8000-000000000004
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 0, y: 65, z: 0}
+      mounttrait:
+        mountedon: 0a1b2c3d-0000-4000-8000-000000000003
+      sittrait:
+        sittingAt: {world: legacy, x: 0, y: 65, z: 0}
+      sneak: {sneaking: true}
+      sneaking: {sneaking: true}
+      skintrait:
+        skinName: rider
+        signature: c2lnLWI=
+        textureRaw: dGV4LWI=
+        updateSkins: true
+  '4':
+    name: Bench Sitter
+    uuid: 0a1b2c3d-0000-4000-8000-000000000005
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 2.5, y: 63.5, z: 2.5, yaw: -45.0, pitch: 10.0}
+      sittrait:
+        sittingAt: {world: legacy, x: 2.5, y: 63.5, z: 2.5, yaw: 0}
+      sneak: {sneaking: true}
+      rotationtrait: {properties: {headOnly: false, immediate: false, maxPitchPerTick: 10.0}}
+      targetable: {targetable: false}
+      attributetrait: {attributes: {generic_scale: 1.5}}
+  '5':
+    name: Display Stand
+    uuid: 0a1b2c3d-0000-4000-8000-000000000006
+    traits:
+      type: ARMOR_STAND
+      location: {world: legacy, x: 5, y: 64, z: 5}
+      armorstandtrait:
+        small: true
+        hasarms: 'true'
+        hasbaseplate: false
+        visible: true
+        marker: false
+        gravity: true
+        head: {x: 0.5, y: 0.0, z: -0.25}
+        leftArm: {x: 3.14159, y: 1.0, z: 7.0}
+        rightArm: {x: oops, y: 0, z: 0}
+        body: null
+      equipment:
+        helmet: {type: GOLDEN_HELMET}
+  '6':
+    name: Lost Mount
+    uuid: 0a1b2c3d-0000-4000-8000-000000000007
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 0, y: 64, z: 0}
+      mounttrait: {mountedon: 00000000-dead-4bee-8000-000000000000}
+      sittrait: {sittingAt: {world: legacy, x: 0, y: 64, z: 0}}
+  '7':
+    name: Bad Mount
+    uuid: 0a1b2c3d-0000-4000-8000-000000000008
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 0, y: 64, z: 0}
+      mounttrait: {mountedon: 0A1B2C3D-0000-4000-8000-000000000003}
+  '8':
+    name: Twin A
+    uuid: 0a1b2c3d-0000-4000-8000-0000000000aa
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 8, y: 64, z: 8}
+  '9':
+    name: Twin B
+    uuid: 0a1b2c3d-0000-4000-8000-0000000000aa
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 9, y: 64, z: 9}
+  '10':
+    name: Ambiguous Rider
+    uuid: 0a1b2c3d-0000-4000-8000-000000000010
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 10, y: 64, z: 10}
+      mounttrait: {mountedon: 0a1b2c3d-0000-4000-8000-0000000000aa}
+  '11':
+    name: Lonely Sentry
+    uuid: 0a1b2c3d-0000-4000-8000-000000000011
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 11, y: 64, z: 11}
+      sentinel:
+        guardedNPC: 99
+        guardingUpper: 1234567890123
+        guardingLower: -987654321
+        health: '40'
+        speed: 0.1
+        respawnTime: -1
+        greeting_text: "line\u0007bell"
+        warning_text: ''
+        squad: ''
+        chaseRange: oops
+        allTargets: [not, a, map]
+        drops: notalist
+        dropChances: 0.5
+        weapon_damage_map: {'bad item!': 4}
+        worldguard_region: 'bad region!'
+        spawnPoint: {world: legacy, x: 1, y: 2}
+        avoidReturnPoint: 'nowhere'
+        fightback: maybe
+        damage: 0
+        armor: -1
+        accuracy: 99
+        reach: 0.1
+  '12':
+    name: Unguarded
+    uuid: 0a1b2c3d-0000-4000-8000-000000000012
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 12, y: 64, z: 12}
+      sentinel:
+        guardedNPC: -1
+        damage: 6.5
+        guardingUpper: 1.5
+        guardingLower: 2
+        respawnTime: 200.4
+      equipment:
+        hand: {type: CROSSBOW}
+  '13':
+    name: Odd Guard
+    uuid: 0a1b2c3d-0000-4000-8000-000000000013
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 13, y: 64, z: 13}
+      sentinel:
+        guardedNPC: abc
+  '14':
+    name: Player Guard
+    uuid: 0a1b2c3d-0000-4000-8000-000000000014
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 14, y: 64, z: 14}
+      sentinel:
+        guardedNPC: '0'
+        guardingUpper: 81985529216486895
+        guardingLower: -81985529216486896
+  '15':
+    name: Not Sentinel
+    uuid: 0a1b2c3d-0000-4000-8000-000000000015
+    traits:
+      type: PLAYER
+      sentinel: legacy string value
+  '16':
+    name: Baker
+    uuid: 0a1b2c3d-0000-4000-8000-000000000016
+    traits:
+      type: VILLAGER
+      location: {world: legacy, x: 16, y: 64, z: 16}
+      trader:
+        guiName: '&aBakery Shop'
+        converted-to-v5: true
+      profession: {profession: FARMER}
+  '17':
+    name: Old Smith 3000
+    uuid: 0a1b2c3d-0000-4000-8000-000000000017
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 17, y: 64, z: 17}
+      trader:
+        type: server
+        stock:
+          sell:
+            '0': {item: 'iron_ingot a:3', price: 5.0}
+  '18':
+    name: Nameless Trader
+    uuid: 0a1b2c3d-0000-4000-8000-000000000018
+    traits:
+      type: PLAYER
+      trader: {guiName: 'null'}
+  '19':
+    name: Broken Trader
+    uuid: 0a1b2c3d-0000-4000-8000-000000000019
+    traits:
+      type: PLAYER
+      trader: just text
+  '20':
+    name: Mason
+    uuid: 0a1b2c3d-0000-4000-8000-000000000020
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 20, y: 64, z: 20}
+      builder:
+        Schematic: Town Hall.schematic
+        PatternXY: reverse_spiral
+        IgnoreAir: true
+        IgnoreLiquid: 'False'
+        Excavate: false
+        HoldItems: true
+        Silent: false
+        RequireMaterials: true
+        NeededMaterials: {'1': 5, '4': 64}
+        MoveTimeoutSeconds: 1000
+        YOffset: -2.6
+        YLayers: 5
+        Origin: {world: legacy, x: 1.5, y: 64, z: -3.2}
+        State: BUILDING
+        ContinueLoc: {world: legacy, x: 1, y: 64, z: 1}
+        onstart: begin_task
+        oncomplete: done_task
+        toggled: true
+        Extra: something
+  '21':
+    name: Apprentice
+    uuid: 0a1b2c3d-0000-4000-8000-000000000021
+    traits:
+      type: PLAYER
+      builder:
+        PatternXY: zigzag
+        Origin: {x: 1}
+  '22':
+    name: Broken Builder
+    uuid: 0a1b2c3d-0000-4000-8000-000000000022
+    traits:
+      type: PLAYER
+      builder: not a mapping
+      constructor: {schematic: castle.schem, speed: 2, layers: [1, 2]}
+  '23':
+    name: Constructor Only
+    uuid: 0a1b2c3d-0000-4000-8000-000000000023
+    traits:
+      type: PLAYER
+      constructor: 7
+  '24':
+    name: Herald
+    uuid: 0a1b2c3d-0000-4000-8000-000000000024
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 24, y: 64, z: 24}
+      commandtrait:
+        commands:
+          '0': {command: 'say Hear ye', hand: RIGHT, player: false, op: false, cooldown: 0, n: -1, delay: 0}
+        cost: -1.0
+        executionMode: LINEAR
+      assignment: {assignment: herald_script}
+      denizen_flags: {flags: {greeted: true}}
+      denizenflags: {}
+      triggers: {chat: {enabled: true, cooldown: 2.0}}
+      constants: {list: {greeting: hi}}
+      denizen: {}
+      denizenscript: {name: x}
+  '25':
+    uuid: 0a1b2c3d-0000-4000-8000-000000000025
+    traits:
+      type: minecraft:cow
+      location: {world: legacy, x: 25, y: 64, z: 25}
+      age: {age: 0, locked: false}
+  '26':
+    name: No UUID
+    traits:
+      type: ZOMBIE
+      location: {world: legacy, x: 26, y: 64, z: 26}
+      equipment:
+        hand: {type: 'minecraft:Golden_Sword'}
+  '27':
+    name: "Bad\u0001Name"
+    uuid: NOT-A-UUID
+    traits:
+      type: Weird Type!
+      location: {world: legacy, x: 100000000, y: 64}
+      owner: {uuid: not-a-uuid}
+      metadata: {nameplate-visible: hover}
+  '28':
+    name: Loud Banner
+    uuid: 0a1b2c3d-0000-4000-8000-000000000028
+    traits:
+      type: PLAYER
+      location: {world: '', x: 0, y: 0, z: 0}
+      metadata: {nameplate-visible: 'TRUE'}
+      hologramtrait:
+        lines: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17']
+      poses:
+        defaultPose: missing
+        list: ['wave;1;2']
+  '29':
+    name: Plain Record
+    uuid: 0a1b2c3d-0000-4000-8000-000000000029
+    traits: not a mapping
+  '30':
+    name: Long Liner
+    uuid: 0a1b2c3d-0000-4000-8000-000000000030
+    traits:
+      type: PLAYER
+      location: {world: '__Spawn__ World', x: 0, y: 64, z: 0}
+      hologramtrait:
+        lines:
+          '0': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+          '1': {nottext: 5}
+          '2': {text: 7}
+      equipment:
+        hand: {type: STICK, lore: [a, b]}
+  '31':
+    name: Shadow
+    uuid: 0a1b2c3d-0000-4000-8000-000000000031
+    traits:
+      type: PLAYER
+      location: {world: legacy, x: 31, y: 64, z: 31}
+      spawned: false
+      owner: {name: someone}
+      equipment: notamap
+      inventory: {}

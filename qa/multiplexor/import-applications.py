@@ -158,18 +158,18 @@ def main():
         state['editTransaction']=tx(command('animus edit citizens-900001 {"name":"QAConcurrent"}',r'.*Saved; transaction .*'))
         changed=snapshot(data)
         command(f'animus import apply-plan {updated} {stale}',r'.*(Conflict:|Application no longer matches current definitions).*')
-        assert_snapshot(data,changed);assert not (data/'npcs/citizens/citizens-900004.json').exists()
+        assert_snapshot(data,changed);assert not (data/'npcs/world/citizens-900004.json').exists()
         assert not (data/'imports'/updated/'applications'/stale/'receipt.json').exists()
         passed('stale-application-rejects-whole-batch-and-keeps-edit')
         fresh,fresh_plan,_=stage(updated,'replace');assert fresh!=stale and fresh_plan['replacements']==3
         state['beforeReplacement']=snapshot(data);prior=definitions(data)
         state['replacementApplication']=fresh;state['replacementTransaction']=apply(updated,fresh)
         for relative,document in definitions(data).items():
-            if relative.startswith('npcs/citizens/'):
+            if relative.startswith('npcs/world/'):
                 expected_revision=prior[relative]['revision']+1 if relative in prior else 1
                 assert document['revision']==expected_revision
             checkpoint(data,relative)
-        assert len(definitions(data))==7 and read(data/'npcs/citizens/citizens-900001.json')['name']=='QA Update Guard'
+        assert len(definitions(data))==7 and read(data/'npcs/world/citizens-900001.json')['name']=='QA Update Guard'
         assert apply(updated,fresh)=='already-applied';state['afterReplacement']=snapshot(data)
         original_archive(data,baseline,prepared['baseline'][1]);original_archive(data,updated,prepared['updated'][1])
         passed('reviewed-replacement-increments-revisions-and-adds-record')

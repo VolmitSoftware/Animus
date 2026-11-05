@@ -1,0 +1,16 @@
+{
+  "name": "Ambiguous Rider",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000010",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 10,
+      "y": 64,
+      "z": 10
+    },
+    "mounttrait": {
+      "mountedon": "0a1b2c3d-0000-4000-8000-0000000000aa"
+    }
+  }
+}

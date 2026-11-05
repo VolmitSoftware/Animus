@@ -1,0 +1,13 @@
+{
+  "name": "Apprentice",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000021",
+  "traits": {
+    "type": "PLAYER",
+    "builder": {
+      "PatternXY": "zigzag",
+      "Origin": {
+        "x": 1
+      }
+    }
+  }
+}

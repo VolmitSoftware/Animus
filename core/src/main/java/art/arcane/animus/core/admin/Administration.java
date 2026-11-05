@@ -1,6 +1,7 @@
 package art.arcane.animus.core.admin;
 
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.migration.CitizensImporter;
 import art.arcane.animus.core.migration.ImportApplications;
 import art.arcane.animus.core.npc.*;
@@ -81,7 +82,9 @@ public final class Administration {
                 yield errors.isEmpty() ? List.of(args[0] + " successful; " + runtime.npcs().all().size() + " active definitions") : errors;
             }
             case "import" -> {
-                if (args.length < 3) throw new IOException("import preview <inbox-file.yml> [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");
+                if (args.length >= 2 && args[1].equalsIgnoreCase("citizens"))
+                    yield new CitizensDropIn(runtime.documents(), runtime.npcs(), runtime.importHost()).execute(Arrays.copyOfRange(args, 2, args.length));
+                if (args.length < 3) throw new IOException("import citizens [apply|review|accept|rollback] | import preview <inbox-file.yml> [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");
                 CitizensImporter importer = new CitizensImporter();
                 if (args[1].equals("preview")) {
                     if (!args[2].matches("[a-zA-Z0-9_-]+\\.yml")) throw new IOException("Use a .yml filename under imports/inbox/");

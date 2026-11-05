@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000014",
+  "id": "citizens-14",
+  "group": "world-r0_0",
+  "name": "Player Guard",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "d06300ea137a9fefa8891b02208deb1cdd180bf1a240b5bab7dafc24a77e7706",
+    "citizensId": 14,
+    "originalSpawned": null,
+    "references": [
+      {
+        "source": "/traits/sentinel/guardedNPC",
+        "kind": "guard",
+        "original": "0",
+        "npcUuid": "0a1b2c3d-0000-4000-8000-000000000001",
+        "npcId": "citizens-0",
+        "citizensId": 0,
+        "status": "resolved"
+      }
+    ]
+  },
+  "position": {
+    "world": "world",
+    "x": 14,
+    "y": 64,
+    "z": 14,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "targeting": {
+        "scanRange": 20.0,
+        "reactionTicks": 0,
+        "memoryTicks": 0,
+        "retainTarget": false,
+        "fightBack": true,
+        "lineOfSight": "required"
+      },
+      "avoidance": {
+        "range": 10.0,
+        "fleeWhenAttacked": false
+      },
+      "guard": {
+        "followDistance": 7.0,
+        "pointRange": 4.0,
+        "player": "01234567-89ab-cdef-fedc-ba9876543210"
+      },
+      "pursuit": {
+        "leashRange": 100.0,
+        "giveUpRange": 100.0,
+        "speed": 4.3,
+        "closeChase": true,
+        "rangedChase": false,
+        "teleportWhenStuck": true,
+        "returnToPost": true
+      },
+      "melee": {
+        "reach": 3.0,
+        "cooldownTicks": 30,
+        "fromEquipment": true
+      },
+      "ranged": {
+        "fromEquipment": true,
+        "enabled": false,
+        "cooldownTicks": 30,
+        "range": 100.0,
+        "inaccuracy": 0.0,
+        "safeShot": true,
+        "useAmmo": false
+      },
+      "defense": {
+        "maximumHealth": 20.0,
+        "armor": 0,
+        "armorFromEquipment": true,
+        "invincible": false,
+        "protectedFromIgnored": false,
+        "protectFromRange": 0.0,
+        "knockback": true,
+        "healRateTicks": 100
+      },
+      "death": {
+        "victimDrops": false,
+        "experience": 0
+      },
+      "respawn": {
+        "delayTicks": 100
+      },
+      "greetings": {
+        "range": 10.0,
+        "cooldownTicks": 100
+      },
+      "preservedSettings": {
+        "guardedNPC": "0"
+      },
+      "historicalStatistics": {},
+      "migrationReport": {
+        "converted": [
+          "guardingUpper",
+          "guardingLower"
+        ],
+        "unsupported": [],
+        "unknown": [],
+        "notes": [
+          "guardedNPC: this NPC also guards a player, which takes precedence"
+        ]
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 14,
+        "y": 64,
+        "z": 14
+      },
+      "sentinel": {
+        "guardedNPC": "0",
+        "guardingUpper": 81985529216486895,
+        "guardingLower": -81985529216486896
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "Bad Mount",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000008",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 0,
+      "y": 64,
+      "z": 0
+    },
+    "mounttrait": {
+      "mountedon": "0A1B2C3D-0000-4000-8000-000000000003"
+    }
+  }
+}

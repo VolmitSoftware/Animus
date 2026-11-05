@@ -1,0 +1,121 @@
+{
+  "name": "Protected Mayor",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000002",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "Old Nether",
+      "x": -5,
+      "y": 70,
+      "z": 5,
+      "yaw": 0,
+      "pitch": 0
+    },
+    "skintrait": {
+      "skinName": "captain",
+      "signature": "c2lnLWE=",
+      "textureRaw": "dGV4LWE=",
+      "updateSkins": false
+    },
+    "hologramtrait": {
+      "lines": {
+        "1": {
+          "text": "Second line",
+          "margintop": 0.0,
+          "marginbottom": 0.0
+        },
+        "0": {
+          "text": "&6Mayor",
+          "margintop": 0.0,
+          "marginbottom": 0.0
+        },
+        "2": "tab\there",
+        "notaline": "skipped"
+      },
+      "lineHeight": -1.0,
+      "viewRange": 64
+    },
+    "metadata": {
+      "nameplate-visible": false
+    },
+    "poses": {
+      "defaultPose": "Wave",
+      "list": {
+        "0": "wave;45.5;-120.0",
+        "1": "nod;0;10"
+      }
+    },
+    "text": {
+      "text": [
+        "Welcome!",
+        "Mind the gate."
+      ],
+      "talk-close": true,
+      "random-talker": false,
+      "range": 5.0
+    },
+    "waypoints": {
+      "provider": "linear",
+      "linear": {
+        "cycle": true,
+        "points": [
+          {
+            "location": {
+              "world": "legacy",
+              "worldid": "11111111-2222-3333-4444-555555555555",
+              "x": 1,
+              "y": 64,
+              "z": 1
+            }
+          },
+          {
+            "location": {
+              "world": "legacy",
+              "x": 9,
+              "y": 64,
+              "z": 9
+            },
+            "triggers": [
+              {
+                "type": "delay",
+                "delay": 40
+              }
+            ]
+          }
+        ]
+      },
+      "guided": {
+        "availablewaypoints": [
+          {
+            "location": {
+              "world": "Old Nether",
+              "x": 3,
+              "y": 70,
+              "z": 3
+            }
+          }
+        ],
+        "helperwaypoints": {
+          "0": {
+            "location": {
+              "world": "elsewhere",
+              "x": 4,
+              "y": 70,
+              "z": 4
+            }
+          }
+        }
+      }
+    },
+    "scoreboardtrait": {
+      "color": "GOLD",
+      "tags": [
+        "mayor"
+      ]
+    },
+    "lookclose": {
+      "enabled": true,
+      "range": 5.0
+    }
+  }
+}

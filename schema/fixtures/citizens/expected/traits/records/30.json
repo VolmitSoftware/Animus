@@ -1,0 +1,33 @@
+{
+  "name": "Long Liner",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000030",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "__Spawn__ World",
+      "x": 0,
+      "y": 64,
+      "z": 0
+    },
+    "hologramtrait": {
+      "lines": {
+        "0": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "1": {
+          "nottext": 5
+        },
+        "2": {
+          "text": 7
+        }
+      }
+    },
+    "equipment": {
+      "hand": {
+        "type": "STICK",
+        "lore": [
+          "a",
+          "b"
+        ]
+      }
+    }
+  }
+}

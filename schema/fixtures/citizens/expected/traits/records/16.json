@@ -1,0 +1,20 @@
+{
+  "name": "Baker",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000016",
+  "traits": {
+    "type": "VILLAGER",
+    "location": {
+      "world": "legacy",
+      "x": 16,
+      "y": 64,
+      "z": 16
+    },
+    "trader": {
+      "guiName": "&aBakery Shop",
+      "converted-to-v5": true
+    },
+    "profession": {
+      "profession": "FARMER"
+    }
+  }
+}

@@ -12,11 +12,12 @@ import java.util.*;
 /** Immutable persisted definition. Unknown extension data is deliberately retained. */
 public final class NpcDefinition {
     private final JsonObject data;
-    private final boolean spawned;
+    private final boolean spawned, imported;
     private final List<String> behaviors;
     private NpcDefinition(JsonObject data) {
         this.data = data.deepCopy();
         spawned = data.get("spawned").getAsBoolean();
+        imported = data.has("migration");
         List<String> references = new ArrayList<>();
         if (data.has("behaviors")) for (JsonElement reference : data.getAsJsonArray("behaviors")) references.add(reference.getAsString());
         behaviors = List.copyOf(references);
@@ -124,6 +125,8 @@ public final class NpcDefinition {
     public long revision() { return data.get("revision").getAsLong(); }
     public String path() { return "npcs/" + group() + "/" + id() + ".json"; }
     public boolean spawned() { return spawned; }
+    /** True for a definition installed by an import, which keeps its {@code migration} record. */
+    public boolean imported() { return imported; }
     /** Behavior references attached to this NPC. Their trigger bindings run once the NPC is active. */
     public List<String> behaviors() { return behaviors; }
     public JsonObject json() { return data.deepCopy(); }

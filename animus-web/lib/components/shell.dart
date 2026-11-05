@@ -19,6 +19,7 @@ import '../state/live_session.dart';
 import '../state/server_hub.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
+import 'citizens_screen.dart';
 import 'document_view.dart';
 import 'server/connection_pill.dart';
 import 'server/live_bar.dart';
@@ -189,6 +190,8 @@ class _EditorShellState extends State<EditorShell> {
             dom.p(<Widget>[Component.text('Run /animus editor pair on the server and open the link it prints.')]),
           ]),
         ])
+      else if (workspace == null && component.route is CitizensRoute)
+        const CitizensScreen(key: ValueKey<String>('citizens'))
       else if (workspace == null)
         _home(store)
       else
@@ -277,6 +280,12 @@ class _EditorShellState extends State<EditorShell> {
         dom.div(classes: 'animus-row', <Widget>[
           Button.primary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), disabled: _busy, onPressed: () => _open(pickDirectory)),
           Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: _busy, onPressed: () => _open(pickZip)),
+          Button.ghost(
+            label: 'Convert Citizens save',
+            icon: ArcaneIcon.arrowRightLeft(),
+            disabled: _busy,
+            onPressed: () => component.onNavigate(const CitizensRoute()),
+          ),
         ]),
       ]),
       ServersPanel(hub: component.hub, onNavigate: component.onNavigate),

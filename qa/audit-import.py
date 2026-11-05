@@ -21,7 +21,7 @@ traits = collections.Counter()
 fields = collections.Counter()
 leaves = 0
 version = summary.get('converterVersion', 1)
-assert version in (1, 2, 3, 4, 5, 6), 'Unsupported converter version'
+assert version in (1, 2, 3, 4, 5, 6, 7), 'Unsupported converter version'
 remapped_locations = 0
 resolved_references = 0
 unresolved_references = 0
@@ -80,7 +80,11 @@ assert len(records) == summary['records'] == args.expected_records, 'Record coun
 for record in records:
     original = json.loads(record.read_text())
     key = record.stem
-    candidate = json.loads((stage / f'npcs/citizens/citizens-{key}.json').read_text())
+    located = [name for name in summary['documents'] if name.startswith('npcs/') and name.endswith(f'/citizens-{key}.json')]
+    assert len(located) == 1, f'Expected one definition file for record {key}'
+    candidate = json.loads((stage / located[0]).read_text())
+    if version >= 7:
+        assert located[0] == f"npcs/{candidate['group']}/citizens-{key}.json", f'Definition folder differs from its group in record {key}'
     report = json.loads((stage / f'reports/{key}.json').read_text())
     expected = paths(original)
     assert len(set(expected)) == len(expected), f'Ambiguous field paths in record {key}'

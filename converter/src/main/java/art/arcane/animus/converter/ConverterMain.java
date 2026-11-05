@@ -5,6 +5,7 @@ import art.arcane.animus.core.behavior.schema.OfflineBehaviorValidation;
 import art.arcane.animus.core.behavior.schema.OfflineCapabilities;
 import art.arcane.animus.core.migration.CitizensImporter;
 import art.arcane.animus.core.migration.ImportApplications;
+import art.arcane.animus.core.migration.ImportDigest;
 import art.arcane.animus.core.migration.ShopImporter;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
@@ -19,6 +20,8 @@ public final class ConverterMain {
     }
     static String run(String[] args) throws Exception {
         if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir> | shops-preview <dtlTraders-folder> <data-dir> [saves.yml] | shops-apply <data-dir> <import-id>");
+        // The canonical hash of a staged Citizens import, comparable with the browser converter's (ImportDigest).
+        if (args[0].equals("digest")) { require(args, 2); return ImportDigest.outputHash(Path.of(args[1])); }
         if (args[0].equals("validate-behaviors")) { require(args, 2); return validateBehaviors(Path.of(args[1])); }
         if (args[0].equals("schema")) { require(args, 2); return schema(Path.of(args[1])); }
         if (args[0].equals("shops-preview")) {

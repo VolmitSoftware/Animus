@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000100",
+  "id": "citizens-0",
+  "group": "world-r0_0",
+  "name": "Absent 0",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "9d91775d6c3f5c074e6642235db4183758ddc9cc0682526304b969e8c146c65f",
+    "citizensId": 0,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 0,
+    "y": 64,
+    "z": 0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 0,
+        "y": 64,
+        "z": 0
+      },
+      "anchors": {
+        "enabled": true
+      },
+      "battrait": [
+        1,
+        2
+      ],
+      "behavior": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "boundingbox": "text",
+      "chunktickettrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "clickredirecttrait": {
+        "enabled": true
+      },
+      "commandtrait": [
+        1,
+        2
+      ],
+      "disguise": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "dropstrait": "text",
+      "endercrystaltrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "endermantrait": {
+        "enabled": true
+      },
+      "entitypose": [
+        1,
+        2
+      ],
+      "followtrait": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "forcefieldtrait": "text",
+      "gamemodetrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "hometrait": {
+        "enabled": true
+      }
+    }
+  }
+}

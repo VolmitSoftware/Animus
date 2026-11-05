@@ -259,3 +259,46 @@
     border-bottom: 1px solid var(--animus-border);
   }
 }
+
+/* Convert Citizens save */
+.animus-citizens {
+  width: min(64rem, calc(100% - 2rem));
+}
+
+.animus-citizens-file,
+.animus-citizens-id code,
+.animus-citizens-lines {
+  overflow-wrap: anywhere;
+}
+
+.animus-citizens-error {
+  border-color: var(--animus-error);
+}
+
+.animus-citizens-table {
+  overflow-x: auto;
+}
+
+.animus-citizens-table table {
+  border-collapse: collapse;
+  min-width: min(24rem, 100%);
+}
+
+.animus-citizens-table th,
+.animus-citizens-table td {
+  text-align: start;
+  padding: 0.25rem 0.75rem 0.25rem 0;
+  border-bottom: 1px solid var(--animus-border);
+}
+
+.animus-citizens-table th:last-child,
+.animus-citizens-table td:last-child {
+  text-align: end;
+}
+
+.animus-citizens-lines {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1.25rem;
+  display: grid;
+  gap: 0.25rem;
+}

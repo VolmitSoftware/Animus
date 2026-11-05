@@ -167,7 +167,7 @@ public final class ImportApplications {
         List<NpcDefinition> definitions=new ArrayList<>();Map<String,String> skins=new TreeMap<>();Set<String> required=new HashSet<>();
         for(var entry:documents.entrySet()) {
             String path=entry.getKey();
-            if(!path.matches("(?:npcs/citizens/citizens-[0-9]+|skins/[a-f0-9]{64})\\.json"))throw new IOException("Invalid bundle path: "+path);
+            if(!path.matches(CitizensImporter.BUNDLE_PATH))throw new IOException("Invalid bundle path: "+path);
             String value=store.read(prefix+path);budget.charge(value);
             if(value==null || !JsonDocuments.hash(value).equals(string(documents,path)))throw new IOException("Preview changed: "+path);
             if(path.startsWith("npcs/")) {

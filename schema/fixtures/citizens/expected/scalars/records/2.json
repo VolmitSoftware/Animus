@@ -1,0 +1,12 @@
+{
+  "name": "Quote \" Back \\ Tab \t Line \u2028 End",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000202",
+  "traits": {
+    "location": {
+      "world": "world",
+      "x": 1000.0,
+      "y": 64,
+      "z": 2147483648
+    }
+  }
+}

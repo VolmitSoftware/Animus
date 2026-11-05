@@ -1,0 +1,43 @@
+{
+  "citizensId": 4,
+  "presentationWarnings": [
+    "/traits/sneak: sitting is shown instead of sneaking"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/location/yaw": "CONVERTED",
+    "/traits/location/pitch": "CONVERTED",
+    "/traits/sittrait/sittingAt/world": "CONVERTED",
+    "/traits/sittrait/sittingAt/x": "CONVERTED",
+    "/traits/sittrait/sittingAt/y": "CONVERTED",
+    "/traits/sittrait/sittingAt/z": "CONVERTED",
+    "/traits/sittrait/sittingAt/yaw": "CONVERTED",
+    "/traits/sneak/sneaking": "UNSUPPORTED_PRESERVED",
+    "/traits/rotationtrait/properties/headOnly": "UNSUPPORTED_PRESERVED",
+    "/traits/rotationtrait/properties/immediate": "UNSUPPORTED_PRESERVED",
+    "/traits/rotationtrait/properties/maxPitchPerTick": "UNSUPPORTED_PRESERVED",
+    "/traits/targetable/targetable": "UNSUPPORTED_PRESERVED",
+    "/traits/attributetrait/attributes/generic_scale": "UNSUPPORTED_PRESERVED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    },
+    {
+      "source": "/traits/sittrait/sittingAt",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

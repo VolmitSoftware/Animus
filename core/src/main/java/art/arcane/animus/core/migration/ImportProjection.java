@@ -36,7 +36,7 @@ final class ImportProjection {
             JsonObject data=npc.json(), migration=object(data,"migration");
             if(!string(migration,"importId").equals(importId))throw new IOException("NPC import identity mismatch: "+npc.id());
             int legacy=integer(migration,"citizensId");
-            if(legacy<0 || !npc.id().equals("citizens-"+legacy) || !npc.group().equals("citizens"))throw new IOException("Unexpected source import path: "+npc.path());
+            if(legacy<0 || !npc.id().equals("citizens-"+legacy) || !npc.path().matches(CitizensImporter.NPC_PATH))throw new IOException("Unexpected source import path: "+npc.path());
             dormant(data);
             UUID uuid=mode==Mode.DUPLICATE?UUID.nameUUIDFromBytes(("animus:import-copy:v1:"+importId+":"+label+":"+npc.uuid()).getBytes(StandardCharsets.UTF_8)):npc.uuid();
             String id=mode==Mode.DUPLICATE?npc.id()+"-"+label:npc.id();
