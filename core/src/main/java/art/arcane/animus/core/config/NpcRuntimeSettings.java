@@ -4,6 +4,9 @@ package art.arcane.animus.core.config;
  * Plugin-wide runtime budgets; definitions and state remain separate JSON documents. {@code packetsPerTick} is the NPC
  * packet work of one tick shared by every viewer (per region on Folia), {@code pendingSpawnsPerViewer} the spawns one
  * viewer may have unacknowledged, and {@code lookUpdatesPerTick} the look-close NPCs that may turn in one tick.
+ * A hotload applies every key on the owner's next tick (on Folia, each region's next tick). A lowered cap keeps the
+ * viewers and bodies already shown and only holds back new ones; a shorter view distance retires far bodies as usual.
+ * {@code enabled} turns the main-thread runtime off and on live; on Folia it needs a restart.
  */
 public record NpcRuntimeSettings(boolean enabled, int viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick,
                                  int packetsPerTick, int pendingSpawnsPerViewer, int lookUpdatesPerTick) {
