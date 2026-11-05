@@ -13,7 +13,8 @@ public interface CombatWorld {
     enum Visibility { CLEAR, BLOCKED, UNAVAILABLE }
     enum MoveStatus { ACCEPTED, BUSY, REJECTED }
     enum DamageKind { MELEE, PROJECTILE }
-    enum DamageStatus { APPLIED, NO_CHANGE, CANCELLED, PROTECTED, INVALID, FAILED }
+    /** {@code SCHEDULED}: handed to the target's owner, which applies it later and reports the fight itself. */
+    enum DamageStatus { APPLIED, NO_CHANGE, CANCELLED, PROTECTED, INVALID, FAILED, SCHEDULED }
 
     /** @param applied health and absorption actually removed; killed whether the target died from this hit */
     record DamageOutcome(DamageStatus status, double applied, boolean killed) {}
@@ -71,6 +72,17 @@ public interface CombatWorld {
     /** The helper's position, or empty when the real entity no longer exists. */
     Optional<Vec3> helperPosition(UUID helper);
     void removeHelper(UUID helper);
+
+    /** A combat NPC that this engine does not hold, as its owner last published it; empty when there is none. */
+    default Optional<CombatTarget> peer(UUID npc) { return Optional.empty(); }
+    /** Delivers a hit on a combat NPC this engine does not hold to that NPC's owner, which applies its own defense. */
+    default DamageOutcome strikePeer(TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback) {
+        return new DamageOutcome(DamageStatus.NO_CHANGE, 0, false);
+    }
+    /** Offers the target to idle squad members this engine does not hold, at most {@code limit}; returns how many were asked. */
+    default int alertPeers(String squad, UUID source, WorldPosition from, double range, TargetRef target, int limit) { return 0; }
+    /** A fight this engine saw, for guards and witnesses that other engines hold. */
+    default void foughtElsewhere(TargetRef attacker, TargetRef victim) {}
 
     /** Empty when the location's world is not loaded. */
     Optional<WorldPosition> resolve(CombatSettings.Location location);

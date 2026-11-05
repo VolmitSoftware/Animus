@@ -47,7 +47,7 @@ import org.bukkit.util.Vector;
  * also owns the NPC; otherwise it is refused, never answered from another region's live state.
  */
 final class RegionViewer {
-    static final int MAX_PENDING_SPAWNS = 8, MAX_COMPLETIONS = 64, PACKETS_PER_REGION = 32, WAKE_INTERVAL = 20;
+    static final int MAX_PENDING_SPAWNS = 8, MAX_COMPLETIONS = 64, PACKETS_PER_REGION = 32, WAKE_INTERVAL = 20, ROSTER_RESEND_TICKS = 20;
     private final RegionNpcRuntime host;
     final Player player;
     final UUID id, world;
@@ -143,9 +143,11 @@ final class RegionViewer {
                 if (now.appearance() != body.appearance) { retire(body); continue; }
                 if (body.spawnFinished && !body.moving && body.pose != now.pose()) { move(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && !body.equipping && sent < packetBudget && body.equipment != now.equipmentRevision()) { equip(body, now); sent++; if (!host.current(this)) return sent; }
+                if (body.spawnFinished && sent < packetBudget && body.dragonPhase != now.dragonPhase() && now.type().equals(DragonBody.TYPE)) { phase(body, now.dragonPhase()); sent++; if (!host.current(this)) return sent; }
                 if (now.rig() != null || body.rigIdentity != 0) { sent += presentRig(body, now, packetBudget - sent, rigBudget); if (!host.current(this)) return sent; }
             }
         }
+        if (ready && retirements.isEmpty() && sent < packetBudget) { sent += rosters(packetBudget - sent); if (!host.current(this)) return sent; }
         if (ready && sent < packetBudget)
             sent += preview.update(player, host.packets, at, host.settings.viewDistance(), sentChunk, host::previewSpec,
                     (Runnable completion) -> enqueue(() -> { if (host.current(this)) completion.run(); }), nativeIds, packetBudget - sent);
@@ -213,6 +215,15 @@ final class RegionViewer {
                 if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "equipment", body.actor, failure);
             }));
         } catch (RuntimeException failure) { body.equipping = false; body.equipment = now.equipmentRevision(); host.cosmeticFailed(this, "equipment", body.actor, failure); }
+    }
+    /** Cosmetic: the dragon's wing phase from its owner's publication. A failed send is tried again on a later update. */
+    private void phase(Presented body, int phase) {
+        body.dragonPhase = phase;
+        try {
+            host.packets.dragonPhase(player, body.body, phase).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired && !host.cosmeticFailed(this, "dragon phase", body.actor, failure)) body.dragonPhase = -1; });
+            });
+        } catch (RuntimeException failure) { if (!host.cosmeticFailed(this, "dragon phase", body.actor, failure)) body.dragonPhase = -1; }
     }
     /** Shows the body's bones once it is spawned, then sends changed bone transforms within this viewer's rig budget. */
     private int presentRig(Presented body, RegionActor.Publication now, int packetBudget, int[] rigBudget) {
@@ -307,14 +318,105 @@ final class RegionViewer {
                 action == VirtualNpcInteractionEvent.Action.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT));
         NpcRuntime.InteractionListener<Player> listener = host.interactions;
         if (listener != null && listener.interacted(player, actor.uuid, action == VirtualNpcInteractionEvent.Action.ATTACK, input.secondaryAction())) return;
+        // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
         if (actor.publication.ride() && action == VirtualNpcInteractionEvent.Action.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
-            player.sendMessage(RichText.colorize("&cCannot ride &r" + actor.spec.name() + "&c: " + RegionNpcRuntime.RIDING_UNAVAILABLE));
+            String refusal = actor.requestRide(player);
+            if (refusal != null) player.sendMessage(RichText.colorize("&cCannot ride &r" + actor.spec.name() + "&c: " + refusal));
+            else attach(body, actor);
             return;
         }
         if (player.hasPermission("animus.admin")) {
             host.selections.put(id, actor.id);
             player.sendMessage("Selected " + actor.id + " via " + action);
         }
+    }
+
+    /** Player owner only: this viewer presents the NPC now. */
+    boolean presents(UUID npc) {
+        Presented body = visible.get(npc);
+        return body != null && body.spawnFinished && !body.retired;
+    }
+    /**
+     * The rider's own attach goes out at once and authoritatively; the ride starts on the NPC's owner when the client has it.
+     * The callback carries the ride's epoch, so it never starts a later ride.
+     */
+    private void attach(Presented body, RegionActor actor) {
+        RegionRides.Lease<RegionActor> lease = host.rides.ofRider(id);
+        if (lease == null || lease.actor() != actor) return;
+        UUID generation = lease.generation();
+        java.util.function.BiConsumer<Boolean, String> settle = (Boolean succeeded, String failure) -> actor.owner.submit(new OwnerMailbox.Work() {
+            @Override public void run() { actor.rideAttached(generation, succeeded, failure); }
+            @Override public void refuse(String reason) { host.rides.release(lease); }
+        });
+        List<NativePacketAdapter.Body> passengers = passengers(actor.publication);
+        body.sentRoster = roster(passengers, player);
+        try {
+            host.packets.passengers(player, body.body, passengers, player, true).whenComplete((nothing, failure) -> enqueue(() ->
+                    settle.accept(failure == null, failure == null ? "" : art.arcane.animus.core.runtime.PersistedNpcService.concise(failure))));
+        } catch (RuntimeException failure) { settle.accept(false, art.arcane.animus.core.runtime.PersistedNpcService.concise(failure)); }
+    }
+    /** Player owner only, after this player's ride on the NPC ended: the detach reaches this client before any teleport. */
+    void detach(RegionActor actor) {
+        Presented body = visible.get(actor.uuid);
+        if (body == null || !body.spawnFinished || body.retired) return;
+        List<NativePacketAdapter.Body> passengers = passengers(actor.publication);
+        body.sentRoster = roster(passengers, null);
+        try {
+            host.packets.passengers(player, body.body, passengers, null, true).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) { body.sentRoster = null; host.cosmeticFailed(this, "passengers", body.actor, failure); } });
+            });
+        } catch (RuntimeException failure) { body.sentRoster = null; host.cosmeticFailed(this, "passengers", body.actor, failure); }
+    }
+    /** The seated passengers this viewer has spawned, from the vehicle owner's publication. */
+    private List<NativePacketAdapter.Body> passengers(RegionActor.Publication vehicle) {
+        if (vehicle.passengers().isEmpty()) return List.of();
+        List<NativePacketAdapter.Body> bodies = new java.util.ArrayList<>(vehicle.passengers().size());
+        for (UUID passenger : vehicle.passengers()) {
+            Presented seated = visible.get(passenger);
+            if (seated != null && seated.spawnFinished && !seated.retired) bodies.add(seated.body);
+        }
+        return bodies;
+    }
+    private static List<Integer> roster(List<NativePacketAdapter.Body> passengers, Player rider) {
+        List<Integer> roster = new java.util.ArrayList<>(passengers.size() + 1);
+        for (NativePacketAdapter.Body passenger : passengers) roster.add(passenger.entityId());
+        if (rider != null) roster.add(rider.getEntityId());
+        return List.copyOf(roster);
+    }
+    /**
+     * Client passenger lists replace the whole roster and need every ID known, so they are re-derived from what this
+     * viewer has. Vehicles losing a passenger go first: the client refuses a body that still sits on another vehicle.
+     * Other clients know a real rider only while vanilla tracks it, so a roster with a real rider repeats every second.
+     */
+    private int rosters(int packetBudget) {
+        int sent = 0;
+        boolean resend = ticks % ROSTER_RESEND_TICKS == 0;
+        for (int pass = 0; pass < 2; pass++) {
+            for (Presented vehicle : presentationOrder) {
+                if (sent >= packetBudget) return sent;
+                if (!vehicle.spawnFinished || vehicle.retired) continue;
+                RegionActor.Publication now = vehicle.actor.publication;
+                Player rider = now.rider();
+                // Most bodies carry nobody and never did: nothing to work out.
+                if (rider == null && now.passengers().isEmpty() && vehicle.sentRoster != null && vehicle.sentRoster.isEmpty()) continue;
+                List<NativePacketAdapter.Body> passengers = passengers(now);
+                List<Integer> roster = roster(passengers, rider);
+                List<Integer> previous = vehicle.sentRoster == null ? List.of(-1) : vehicle.sentRoster;
+                boolean changed = !roster.equals(previous), detaching = !roster.containsAll(previous);
+                boolean reveal = resend && rider != null && rider != player;
+                if (pass == 0 ? !(changed && detaching) : !(changed || reveal)) continue;
+                if (vehicle.sentRoster == null && roster.isEmpty()) { vehicle.sentRoster = roster; continue; }
+                vehicle.sentRoster = roster;
+                sent++;
+                try {
+                    host.packets.passengers(player, vehicle.body, passengers, rider, false).whenComplete((nothing, failure) -> {
+                        if (failure != null) enqueue(() -> { if (host.current(this) && !vehicle.retired) { vehicle.sentRoster = null; host.cosmeticFailed(this, "passengers", vehicle.actor, failure); } });
+                    });
+                } catch (RuntimeException failure) { vehicle.sentRoster = null; if (host.cosmeticFailed(this, "passengers", vehicle.actor, failure)) return sent; }
+                if (!host.current(this)) return sent;
+            }
+        }
+        return sent;
     }
 
     private static BodyPose pose(RegionActor.Publication now) {
@@ -329,6 +431,9 @@ final class RegionViewer {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, bonesShown, rigFailed;
         long pose, equipment, rigIdentity;
+        int dragonPhase = DragonBody.PHASE_HOVERING;
+        /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
+        List<Integer> sentRoster;
         BodyTransport.Bones bones; RigView view;
         Presented(RegionActor actor, NativePacketAdapter.Body body, RegionActor.Publication now) {
             this.actor = actor; this.body = body; appearance = now.appearance(); ids = body.entityIds().length; pose = now.pose();

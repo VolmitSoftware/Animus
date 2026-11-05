@@ -29,6 +29,12 @@ import art.arcane.animus.core.navigation.PathExecution;
 import art.arcane.animus.core.navigation.PathPlanner;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.virtual.ChunkPosition;
+import art.arcane.animus.core.combat.CombatLoadout;
+import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.CombatWorld;
+import art.arcane.animus.core.navigation.BodyTerrain;
+import art.arcane.animus.core.virtual.DragonBody;
+import art.arcane.animus.core.virtual.DragonMotion;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.VirtualNpcState;
@@ -68,7 +74,12 @@ final class RegionActor implements RegionOwner.Body {
     record Publication(boolean live, VirtualNpcState.Snapshot snapshot, DefinitionSpec<ItemStack> spec, String type, String name, BodySkin skin,
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
-                       String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig) {}
+                       String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
+                       List<UUID> passengers, Player rider, CombatView combat) {}
+    /** What other combat engines and status read of this NPC's combat; null when it has none. */
+    record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
+    /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
+    private static final int MOUNT_RETRY_TICKS = 20;
     /** A viewer marks nearby NPCs every second; a patrol stays awake this long after the last mark. */
     private static final long WATCHED_NANOS = 3_000_000_000L;
     private final RegionNpcRuntime host;
@@ -123,6 +134,16 @@ final class RegionActor implements RegionOwner.Body {
     private String rigId, rigProblem;
     private NpcRig<ItemStack> rig;
     private long rigGeneration = -1;
+    private final DragonMotion dragonMotion = new DragonMotion();
+    /** This NPC sits on its vehicle's seat; read by its group's owner. */
+    volatile boolean seated;
+    private long nextMountTry;
+    /** A real player riding this NPC; it moves with the NPC on every handoff. */
+    private final ActorRide riding;
+    private CombatSettings combatSettings;
+    private CombatLoadout combatLoadout = CombatLoadout.NONE;
+    private ActorCombat combat;
+    private int dragonPhase = DragonBody.PHASE_HOVERING;
 
     RegionActor(RegionNpcRuntime host, Desired desired, boolean announced) {
         this.host = host; this.desired = desired; this.announced = announced;
@@ -132,6 +153,7 @@ final class RegionActor implements RegionOwner.Body {
         state.spawn();
         configure(desired);
         owner = new RegionOwner(uuid, host.regions, host.budget, 32, 8, this);
+        riding = new ActorRide(this, host);
         publish(false);
     }
 
@@ -150,6 +172,8 @@ final class RegionActor implements RegionOwner.Body {
         routeReadWanted = waypoints == null && routeSource != null;
         rigId = RigReference.parse(spec.definition().json()).orElse(null);
         rig = null; rigProblem = null; rigGeneration = -1;
+        combatSettings = CombatSettings.active(spec.definition()).orElse(null);
+        combatLoadout = CombatLoadout.of(spec.definition());
     }
 
     /** Binds the rig after a definition change or catalog reload; a replaced rig re-presents the body. Owner only. */
@@ -231,6 +255,8 @@ final class RegionActor implements RegionOwner.Body {
         publish(true);
     }
     @Override public void suspended(String reason) {
+        riding.end("npc-dormant", ActorRide.Exit.RESTORE_POSITION);
+        closeCombat();
         cancelPlan();
         routeSleeping = false;
         if (routeWatch != null) stopRoute("unavailable: NPC became dormant because " + reason);
@@ -241,6 +267,9 @@ final class RegionActor implements RegionOwner.Body {
         publish(false);
     }
     @Override public void retired() {
+        riding.end("npc-retired", ActorRide.Exit.RESTORE_POSITION);
+        closeCombat();
+        seated = false;
         stopRoute("cancelled by definition replacement/despawn");
         failWatch("cancelled by definition replacement/despawn");
         cancelReads();
@@ -260,12 +289,16 @@ final class RegionActor implements RegionOwner.Body {
             if (wanted.spec() == null) { owner.retire(); return anchor(); }
             reconfigure(wanted);
         }
+        mounts();
+        riding.tick();
+        tickCombat();
         if (reread) { reread = false; routeReadWanted |= routeSource != null; }
         if (routeReadWanted) requestRouteRead();
-        if (route != null) { navigate(); supportWanted = false; fallSpeed = 0; }
-        else if (supportWanted || fallSpeed > 0) support();
+        if (route != null && !seated) { navigate(); supportWanted = false; fallSpeed = 0; }
+        else if (!seated && (supportWanted || fallSpeed > 0)) support();
         tickRig();
         look();
+        if (spec.type().equals(DragonBody.TYPE)) dragonPhase = dragonMotion.observe(turns, state.snapshot().position().point(), grounded());
         ChunkPosition now = anchor();
         if (!now.equals(anchored)) { host.anchor(this, anchored, now); anchored = now; }
         publish(true);
@@ -273,6 +306,7 @@ final class RegionActor implements RegionOwner.Body {
     }
 
     private void reconfigure(Desired next) {
+        riding.end("definition-changed", ActorRide.Exit.RESTORE_POSITION);
         WorldPosition position = applied.spec().position().equals(next.spec().position()) ? state.snapshot().position() : next.spec().position();
         stopRoute("cancelled by definition replacement/despawn");
         failWatch("cancelled by definition replacement/despawn");
@@ -291,6 +325,212 @@ final class RegionActor implements RegionOwner.Body {
         return owner.owned() && state.snapshot().active() && authority.accepts(host.runtime.npcs().snapshot().get(id));
     }
     boolean presentable() { return owner.owned() && DefinitionSpec.spawned(host.runtime.npcs().snapshot().get(id)); }
+
+    // ---- Combat: one engine per NPC, on its owner ----
+
+    /** Owner only: this NPC's combat, or null. */
+    ActorCombat combat() { return combat; }
+    private CombatView combatView() {
+        ActorCombat current = combat;
+        return current == null ? null : new CombatView(current.settings, current.loadout, current.guarded(), current.status(), current.helpers());
+    }
+    private void tickCombat() {
+        RegionCombat module = host.combat;
+        if (module == null || combatSettings == null) { closeCombat(); return; }
+        if (combat != null && !combat.matches(combatSettings, combatLoadout)) closeCombat();
+        if (combat == null) combat = module.open(this, combatSettings, combatLoadout);
+        if (combat != null) combat.tick();
+    }
+    private void closeCombat() {
+        ActorCombat current = combat;
+        combat = null;
+        if (current != null) current.close();
+    }
+    String displayName() { return displayName; }
+    String navigationStatus() { return navigation(); }
+    /** Combat movement: a walking leg towards the goal, at most 30 blocks across and 7 up or down per request. */
+    CombatWorld.MoveStatus combatMove(WorldPosition goal, double speed) {
+        if (seated || riding.active() || !navigable()) return CombatWorld.MoveStatus.REJECTED;
+        Vec3 origin = state.snapshot().position().point(), delta = goal.point().subtract(origin);
+        Vec3 clamped = new Vec3(origin.x() + clamp(delta.x(), 30), Math.floor(origin.y() + clamp(delta.y(), 7)), origin.z() + clamp(delta.z(), 30));
+        try { navigate(new WorldPosition(goal.world(), clamped), MovementProfile.Mode.WALK, speed); return CombatWorld.MoveStatus.ACCEPTED; }
+        catch (IllegalArgumentException refused) { return CombatWorld.MoveStatus.REJECTED; }
+        catch (IllegalStateException busy) { return CombatWorld.MoveStatus.BUSY; }
+    }
+    private static double clamp(double value, double limit) { return Math.max(-limit, Math.min(limit, value)); }
+    /** Restarts the definition's own patrol, if nothing else moves the NPC. */
+    void resumePatrol() {
+        if (!navigable() || route != null || routeRead != null) return;
+        waypoints = WaypointSettings.parse(spec.definition()).map(this::progress).orElse(null);
+        if (waypoints != null) beginLeg(waypoints.start(state.snapshot().position().point()));
+        else if (routeSource != null) routeReadWanted = true;
+    }
+    /**
+     * Places the NPC on clear ground at the destination. A destination this region holds is checked here; one another
+     * region holds is checked by that region, which hands the result back to this NPC's owner. Moving there then hands
+     * the NPC to that region like any chunk crossing. False when the destination is not known to be loaded.
+     */
+    boolean combatTeleport(WorldPosition destination) {
+        if (seated || riding.active() || !state.snapshot().active()) return false;
+        World world = host.world(destination.world());
+        if (world == null) return false;
+        ChunkPosition chunk = destination.chunk();
+        double width = hullWidth(), height = hullHeight();
+        if (host.regions.owns(world, chunk.x(), chunk.z(), chunk.x(), chunk.z())) {
+            Optional<WorldPosition> spot = clearSpot(world, destination, width, height);
+            spot.ifPresent(this::place);
+            return spot.isPresent();
+        }
+        if (!host.knownLoaded(chunk)) return false;
+        long epoch = owner.ownership().state().token() == null ? -1 : owner.ownership().state().token().epoch();
+        return host.regions.execute(chunk, () -> clearSpot(world, destination, width, height).ifPresent((WorldPosition spot) -> owner.submit(new OwnerMailbox.Work() {
+            @Override public void run() { if (state.snapshot().active() && !seated && riding == null) place(spot); }
+            @Override public void refuse(String reason) { /* The NPC went dormant; it stays where it was. */ }
+        })));
+    }
+    /** On the owner of the destination: a clear, supported spot in the destination's block column. */
+    private Optional<WorldPosition> clearSpot(World world, WorldPosition destination, double width, double height) {
+        ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
+        MotionValidator.Sampler terrain = LiveMovementProbe.owned(world, owned);
+        Vec3 point = destination.point();
+        for (int lift : new int[] {0, 1, -1, 2, -2}) {
+            Vec3 spot = new Vec3(point.x(), Math.floor(point.y()) + lift, point.z());
+            BodyTerrain.Rest rest = new BodyTerrain(width, height, false, 256, terrain).rest(spot.x(), spot.z(), spot.y(), 1 - 0.0001, 0, false);
+            Vec3 feet = rest.kind() == BodyTerrain.Kind.GROUND ? new Vec3(spot.x(), rest.feet(), spot.z()) : spot;
+            if (MotionValidator.check(feet, feet, width, height, MotionValidator.Medium.GROUND, true, 256, terrain).clear())
+                return Optional.of(new WorldPosition(destination.world(), feet));
+        }
+        return Optional.empty();
+    }
+    private void place(WorldPosition spot) {
+        VirtualNpcState.Snapshot before = state.snapshot();
+        stopRoute("cancelled by combat lifecycle/position change");
+        combatChanged(before, state.move(spot));
+    }
+    /** Knockback: a short slide onto clear, supported ground this region holds; otherwise the NPC stays put. */
+    void combatKnockback(Vec3 direction, double strength) {
+        double horizontal = Math.hypot(direction.x(), direction.z());
+        if (horizontal < .0001 || seated || riding.active() || !state.snapshot().active()) return;
+        double distance = Math.min(1.5, strength);
+        WorldPosition from = state.snapshot().position();
+        World world = host.world(from.world());
+        if (world == null) return;
+        Vec3 to = from.point().add(new Vec3(direction.x() / horizontal * distance, 0, direction.z() / horizontal * distance));
+        ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
+        if (!LiveMovementProbe.check(world, owned, from.point(), to, hullWidth(), hullHeight(), MotionValidator.Medium.GROUND, true, 256).clear()) return;
+        place(new WorldPosition(from.world(), to));
+    }
+    void combatHeal(double amount) { VirtualNpcState.Snapshot before = state.snapshot(); combatChanged(before, state.heal(amount)); }
+    /** A dead NPC comes back at the point, which may hand it to another region. Fires its spawn trigger again. */
+    boolean combatRevive(WorldPosition at) {
+        if (state.snapshot().health() > 0 || !DefinitionSpec.spawned(host.runtime.npcs().snapshot().get(id))) return false;
+        host.index.upsert(state.respawn(at));
+        pose++;
+        host.activated(uuid);
+        publish(true);
+        return true;
+    }
+    /** Owner only: publishes a combat change of the authoritative state and turns it into damage and death triggers. */
+    void combatChanged(VirtualNpcState.Snapshot before, VirtualNpcState.Snapshot after) {
+        boolean moved = !before.position().equals(after.position());
+        if (after.active()) host.index.upsert(after); else host.index.remove(uuid);
+        if (!after.active() || moved) stopRoute("cancelled by combat lifecycle/position change");
+        if (moved) pose++;
+        if (after.health() < before.health()) host.damaged(uuid, before.health() - after.health(), after.health() == 0);
+        publish(true);
+    }
+
+    // ---- Mounted NPCs: one owner for each mounted group ----
+
+    /**
+     * Owner of this NPC's group only. A passenger whose vehicle this thread also owns boards the vehicle's group and sits
+     * on its seat every turn after the vehicle moved. A vehicle another region owns is reached by stepping onto its
+     * published seat, which hands this NPC to that region like any chunk crossing; it boards there. When the relation
+     * ends the passenger leaves the group and returns to its definition position.
+     */
+    private void mounts() {
+        String vehicleId = host.mounts.vehicleOf().get(id);
+        RegionActor vehicle = vehicleId == null ? null : host.actors.get(vehicleId);
+        if (vehicle == this) vehicle = null;
+        if (owner.carried()) {
+            if (vehicle == null || vehicle.owner.root() != owner.root() || !vehicle.state.snapshot().active()) { owner.alight(); return; }
+            sit(vehicle);
+            return;
+        }
+        if (vehicleId == null) {
+            if (seated) {
+                seated = false;
+                state.move(spec.position()); host.index.upsert(state.snapshot()); setPose(spec.yaw(), spec.pitch(), true); pose++;
+            }
+            return;
+        }
+        if (route != null || waypoints != null || routeRead != null) { cancelRouteRead(); waypoints = null; stopRoute("unavailable: this NPC rides " + vehicleId); }
+        riding.end("npc-mounted", ActorRide.Exit.RESTORE_POSITION);
+        if (vehicle == null || !state.snapshot().active()) return;
+        if (vehicle.owner.owned() && vehicle.state.snapshot().active()) {
+            if (owner.board(vehicle.owner)) sit(vehicle);
+            return;
+        }
+        if (turns < nextMountTry) return;
+        nextMountTry = turns + MOUNT_RETRY_TICKS;
+        Publication view = vehicle.publication;
+        if (view == null || !view.live() || !view.snapshot().position().world().equals(state.snapshot().position().world())) return;
+        Vec3 seat = host.geometry(view.type()).seat().passengerFeet(view.snapshot().position().point(), view.yaw(), host.geometry(spec.type()).seat().vehicleAttachmentY());
+        // The vehicle's chunk is loaded: its owner just published it there. The step hands this NPC to that owner.
+        state.move(new WorldPosition(view.snapshot().position().world(), seat)); host.index.upsert(state.snapshot()); pose++;
+    }
+    /** Group owner only: the passenger takes its seat on the vehicle's live state, which the same thread holds. */
+    private void sit(RegionActor vehicle) {
+        VirtualNpcState.Snapshot carrier = vehicle.state.snapshot();
+        Vec3 seat = host.geometry(vehicle.spec.type()).seat().passengerFeet(carrier.position().point(), vehicle.yaw, host.geometry(spec.type()).seat().vehicleAttachmentY());
+        WorldPosition current = state.snapshot().position();
+        if (!current.point().equals(seat) || !current.world().equals(carrier.position().world())) {
+            state.move(new WorldPosition(carrier.position().world(), seat)); host.index.upsert(state.snapshot()); pose++;
+        }
+        setPose(vehicle.yaw, pitch, false);
+        seated = true;
+    }
+    /** Passengers seated on this NPC now, in declaration order. Owner of the group only. */
+    private List<UUID> passengers() {
+        List<String> declared = host.mounts.passengersOf().get(id);
+        if (declared == null) return List.of();
+        List<UUID> seats = new ArrayList<>(declared.size());
+        for (String passenger : declared) {
+            RegionActor actor = host.actors.get(passenger);
+            if (actor != null && actor.seated && actor.owner.carried() && actor.owner.root() == owner.root()) seats.add(actor.uuid);
+        }
+        return List.copyOf(seats);
+    }
+    /** For inspect, from any thread. */
+    String mountStatus() {
+        StringBuilder summary = new StringBuilder();
+        String vehicle = host.mounts.vehicleOf().get(id);
+        if (vehicle != null) summary.append("; mounted-on=").append(vehicle).append(seated ? "" : " (not seated yet: the vehicle is not active on a loaded chunk)");
+        List<String> passengers = host.mounts.passengersOf().get(id);
+        if (passengers != null) summary.append("; passengers=").append(passengers);
+        for (art.arcane.animus.core.mount.MountRelations.Diagnostic problem : host.mounts.diagnostics())
+            if (problem.id().equals(id)) summary.append("; mount-problem=").append(problem.field()).append(": ").append(problem.message());
+        return summary.toString();
+    }
+
+    // ---- A real player riding this NPC ----
+
+    /** On the thread that owns both the NPC and the player. Null once admitted, otherwise a message for the player. */
+    String requestRide(Player player) { return riding.request(player, ride); }
+    void rideAttached(UUID generation, boolean succeeded, String failure) { riding.attached(generation, succeeded, failure); publish(true); }
+    void endRide(UUID generation, String reason, ActorRide.Exit exit) { riding.end(generation, reason, exit); }
+    String rideSummary() { return riding.summary(); }
+    String rideLine() { return riding.line(); }
+    /** A ride takes the body from any route. */
+    void claimForRide() { cancelRouteRead(); waypoints = null; stopRoute("cancelled: a player is riding"); publish(true); }
+    /** One accepted ride step, published before any packet is sent. */
+    void rideStep(Vec3 position, float nextYaw) {
+        WorldPosition at = state.snapshot().position();
+        if (!position.equals(at.point())) { state.move(new WorldPosition(at.world(), position)); host.index.upsert(state.snapshot()); }
+        pose++; setPose(nextYaw, 0, true);
+    }
+    /** The ride ended: every viewer is sent the authoritative position again. */
+    void rideReleased() { pose++; publish(state.snapshot().active()); }
 
     // ---- Navigation, on the owner ----
 
@@ -326,7 +566,7 @@ final class RegionActor implements RegionOwner.Body {
      */
     private void look() {
         LookClose look = lookClose;
-        if (look == null || turns < nextLook || mount || !navigable()) return;
+        if (look == null || turns < nextLook || mount || seated || riding.active() || !navigable()) return;
         if (!look.whileNavigating() && (routeRead != null || (route != null && (route.plan != null || route.execution != null)))) return;
         if (host.budget.take(RegionBudget.Kind.LOOKS, 1) == 0) return;
         nextLook = turns + LookClose.INTERVAL_TICKS;
@@ -490,6 +730,14 @@ final class RegionActor implements RegionOwner.Body {
         }
         return true;
     }
+    /** Owner only: a solid block, in a chunk this region holds, lies under the feet. */
+    private boolean grounded() {
+        WorldPosition at = state.snapshot().position();
+        World world = host.world(at.world());
+        int x = (int) Math.floor(at.point().x()), y = (int) Math.floor(at.point().y() - 0.000001), z = (int) Math.floor(at.point().z());
+        if (world == null || y < world.getMinHeight() || y >= world.getMaxHeight() || !host.regions.owns(world, x >> 4, z >> 4, x >> 4, z >> 4) || !world.isChunkLoaded(x >> 4, z >> 4)) return false;
+        return world.getBlockAt(x, y, z).getType().isSolid();
+    }
     /** True while a viewer within view distance marked this NPC recently. Any thread. */
     boolean watched() {
         long seen = watchedNanos;
@@ -622,8 +870,8 @@ final class RegionActor implements RegionOwner.Body {
     private MovementProfile profile(MovementProfile.Mode mode) { return BodyMobility.forRoute(spec.type(), hullWidth(), hullHeight(), mode); }
     private double bodyWidth() { Hitbox box = state.snapshot().bounds(); return box.max().x() - box.min().x(); }
     private double bodyHeight() { Hitbox box = state.snapshot().bounds(); return box.max().y() - box.min().y(); }
-    private double hullWidth() { return PersistedNpcService.hullWidth(bodyWidth()); }
-    private double hullHeight() { return PersistedNpcService.hullHeight(bodyHeight()); }
+    double hullWidth() { return PersistedNpcService.hullWidth(bodyWidth()); }
+    double hullHeight() { return PersistedNpcService.hullHeight(bodyHeight()); }
 
     // ---- File reads: admitted on the owner, completed back through the mailbox ----
 
@@ -709,12 +957,14 @@ final class RegionActor implements RegionOwner.Body {
         boolean presented = live && snapshot.active();
         if (previous != null && previous.live() == presented && previous.snapshot().equals(snapshot) && previous.appearance() == appearance
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
-                && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot()) return;
+                && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
+                && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         equipment.forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
-                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot());
+                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView());
     }
+    private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {
         NpcRig<ItemStack> current = rig;
         return current == null ? null : current.snapshot();

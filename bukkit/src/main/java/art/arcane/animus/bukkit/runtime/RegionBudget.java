@@ -14,14 +14,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * remember, per region, who waited longest, because Folia runs the NPC tasks of a region in the same order every tick.
  */
 final class RegionBudget {
-    enum Kind { OWNER_WORK, ROUTES, MOTION_CELLS, CAPTURE, VIEWERS, PACKETS, WAKES, RIG_PLANS, LOOKS, ROUTE_PLANS }
+    enum Kind { OWNER_WORK, ROUTES, MOTION_CELLS, CAPTURE, VIEWERS, PACKETS, WAKES, RIG_PLANS, LOOKS, ROUTE_PLANS, COMBAT_BRAINS, COMBAT_SCANS, COMBAT_PATHS, COMBAT_ALERTS, COMBAT_HELPERS }
     private static final long IDLE_TURNS_NANOS = 60_000_000_000L;
     private static final class Window { Object region; long tick = Long.MIN_VALUE; final int[] used = new int[Kind.values().length]; }
     private static final class Turns { final WaitingTurns turns = new WaitingTurns(); volatile long seen; }
     private final RegionScheduler regions;
     private final int[] limits = new int[Kind.values().length];
     private final ThreadLocal<Window> windows = ThreadLocal.withInitial(Window::new);
-    private final Map<Object, Turns> turns = new ConcurrentHashMap<>();
+    private final Map<Object, Turns> turns = new ConcurrentHashMap<>(), combatTurns = new ConcurrentHashMap<>();
     private final AtomicInteger refusedRoutes = new AtomicInteger();
 
     RegionBudget(RegionScheduler regions, Map<Kind, Integer> limits) {
@@ -62,6 +62,14 @@ final class RegionBudget {
         refusedRoutes.incrementAndGet();
         return false;
     }
+    /** One combat brain turn, longest waiting first, like {@link #takeRoute}: combat NPCs ask in the same order every tick. */
+    boolean takeCombatTurn(int waited) {
+        Turns entry = turns(combatTurns);
+        if (entry == null) return false;
+        if (entry.turns.admits(waited) && take(Kind.COMBAT_BRAINS, 1) == 1) return true;
+        entry.turns.refused(waited);
+        return false;
+    }
     /** A route that took a turn but could not use it, for lack of another budget: it counts as waiting. */
     void routeRefused(int waited) {
         refund(Kind.ROUTES, 1);
@@ -72,11 +80,15 @@ final class RegionBudget {
     /** Route refusals on every region since the last call. */
     int drainRefusedRoutes() { return refusedRoutes.getAndSet(0); }
     /** Forgets turns of regions that stopped ticking, after a merge or split. */
-    void forgetIdleRegions(long nowNanos) { turns.values().removeIf((Turns entry) -> nowNanos - entry.seen > IDLE_TURNS_NANOS); }
-    private Turns turns() {
+    void forgetIdleRegions(long nowNanos) {
+        turns.values().removeIf((Turns entry) -> nowNanos - entry.seen > IDLE_TURNS_NANOS);
+        combatTurns.values().removeIf((Turns entry) -> nowNanos - entry.seen > IDLE_TURNS_NANOS);
+    }
+    private Turns turns() { return turns(turns); }
+    private Turns turns(Map<Object, Turns> table) {
         RegionScheduler.Tick tick = regions.tick();
         if (tick == null) return null;
-        Turns entry = turns.computeIfAbsent(tick.region(), (Object region) -> new Turns());
+        Turns entry = table.computeIfAbsent(tick.region(), (Object region) -> new Turns());
         entry.seen = System.nanoTime();
         entry.turns.begin(tick.number());
         return entry;

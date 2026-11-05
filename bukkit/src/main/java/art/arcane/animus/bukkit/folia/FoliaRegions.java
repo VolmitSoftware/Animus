@@ -21,7 +21,7 @@ public final class FoliaRegions implements RegionScheduler {
     private final Server server;
     private final Method entityScheduler, entityExecute, entityRepeat, cancel, entityOwned, rectangleOwned, chunkSent;
     private final Method regionScheduler, regionExecute, regionRepeat, globalScheduler, globalExecute, globalRepeat;
-    private final Method currentRegion, regionData, regionTick;
+    private final Method currentRegion, regionData, regionTick, teleportAsync;
     private final java.util.Map<String, World> worlds = new java.util.concurrent.ConcurrentHashMap<>();
 
     public FoliaRegions(Plugin plugin) throws ReflectiveOperationException {
@@ -47,10 +47,11 @@ public final class FoliaRegions implements RegionScheduler {
         currentRegion = Class.forName("io.papermc.paper.threadedregions.TickRegionScheduler").getMethod("getCurrentRegion");
         regionData = Class.forName("io.papermc.paper.threadedregions.ThreadedRegionizer$ThreadedRegion").getMethod("getData");
         regionTick = Class.forName("io.papermc.paper.threadedregions.TickRegions$TickRegionData").getMethod("getCurrentTick");
+        teleportAsync = Entity.class.getMethod("teleportAsync", org.bukkit.Location.class);
     }
 
-    /** Runs on the player's owner. {@code retired} runs instead, without world access, when the player is gone. */
-    public boolean execute(Player player, Runnable action, Runnable retired) {
+    /** Runs on the entity's owner. {@code retired} runs instead, without world access, when the entity is gone. */
+    public boolean execute(Entity player, Runnable action, Runnable retired) {
         if (!plugin.isEnabled()) { retired.run(); return false; }
         try {
             boolean accepted = (boolean) entityExecute.invoke(entityScheduler.invoke(player), plugin, action, retired, 1L);
@@ -76,6 +77,11 @@ public final class FoliaRegions implements RegionScheduler {
             Object task = globalRepeat.invoke(globalScheduler.invoke(server), plugin, (Consumer<Object>) ignored -> tick.run(), 1L, 1L);
             return () -> cancel.invoke(task);
         } catch (ReflectiveOperationException | RuntimeException failure) { throw new IllegalStateException("Global region scheduler refused the task", failure); }
+    }
+    /** Folia's only teleport: asynchronous, from the entity's owner. False when it could not be started. */
+    public boolean teleport(Entity entity, org.bukkit.Location destination) {
+        try { teleportAsync.invoke(entity, destination); return true; }
+        catch (ReflectiveOperationException | RuntimeException failure) { return false; }
     }
     public boolean owns(Entity entity) { return invokeBoolean(entityOwned, server, entity); }
     public void require(Player player) {

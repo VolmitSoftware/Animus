@@ -153,7 +153,7 @@ Older files use defaults for missing `[files]` and `[modules]` tables. See [modu
 
 Set `packetProofEnabled = true` in TOML and restart an isolated Bukkit/Paper test server. The proof requires `animus.admin`, is viewer-only, and expires after two minutes. It does not activate persisted definitions. Folia deliberately reports it unavailable until region-safe world snapshots and ownership transfer are implemented.
 
-Folia has a separate, limited `/animus foliaproof` stationary player preview. See [Folia preview commands and limits](docs/folia-preview.md) and the exact verification status in [implementation evidence](docs/implementation.md). Saved NPCs on Folia run on the region that owns their chunk; riding, mounts and combat stay unavailable there. See [persisted NPCs on Folia](docs/folia-runtime.md).
+Folia has a separate, limited `/animus foliaproof` stationary player preview. See [Folia preview commands and limits](docs/folia-preview.md) and the exact verification status in [implementation evidence](docs/implementation.md). Saved NPCs on Folia run on the region that owns their chunk, including riding, mounted groups and combat. See [persisted NPCs on Folia](docs/folia-runtime.md).
 
 ```text
 /animus proof status

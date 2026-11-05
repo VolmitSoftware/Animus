@@ -24,7 +24,7 @@ import org.bukkit.util.Vector;
 /**
  * Explicit main-thread combat authority. It never constructs an NPC body or a fake Bukkit attacker.
  * The caller owns permission/import-review policy and must close registrations when their runtime retires.
- * Unavailable on Folia: see {@link #FOLIA_UNAVAILABLE}.
+ * Unavailable on Folia, where the combat module runs on region owners instead: see {@link #FOLIA_UNAVAILABLE}.
  */
 public final class BukkitCombatBridge implements Listener, AutoCloseable {
     public enum Action { NPC_ATTACK, MOB_CONTROL, MOB_ATTACK }
@@ -63,7 +63,7 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
     private int remainingPlans;
     private boolean closed;
 
-    public static final String FOLIA_UNAVAILABLE = "unavailable on Folia: combat damages and retargets real players and mobs that other regions own, and its target scan, damage and mob control have no region handoff yet";
+    public static final String FOLIA_UNAVAILABLE = "unavailable on Folia: the manual attack and mob control commands drive a real mob's goals from the NPC's region while the mob's AI runs on its own region";
     public BukkitCombatBridge(Plugin plugin, String exactVersion, boolean folia, CombatLimits limits, Protection protection, Defense defense) {
         this.plugin = Objects.requireNonNull(plugin); this.limits = Objects.requireNonNull(limits); this.protection = Objects.requireNonNull(protection);
         this.defense = Objects.requireNonNull(defense);
