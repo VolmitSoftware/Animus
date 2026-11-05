@@ -1,0 +1,49 @@
+{
+  "format": "gloss-editor-workspace",
+  "version": 1,
+  "workspace": {
+    "schemaVersion": 2,
+    "workspaceId": "6f1c2b8e-4d5a-4c3b-9a1e-2b7d8c9e0f11",
+    "folders": [],
+    "documents": [
+      {
+        "id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "title": "chest",
+        "runtimeId": "chest",
+        "json": "{\n  \"schemaVersion\": 1,\n  \"revision\": 1,\n  \"title\": \"&8Chest\",\n  \"resolution\": \"9x1\",\n  \"mask\": [\"#   C   #\"],\n  \"keys\": {\n    \"#\": {\"type\": \"decoration\", \"icon\": {\"type\": \"item\", \"item\": \"minecraft:black_stained_glass_pane\", \"name\": \" \"}},\n    \"C\": {\"type\": \"button\", \"icon\": {\"type\": \"item\", \"item\": \"minecraft:barrier\", \"name\": \"&cClose\"}, \"actions\": [{\"type\": \"close\"}]}\n  }\n}",
+        "updatedAt": 1793793600000,
+        "kind": "inventory",
+        "folderId": null
+      },
+      {
+        "id": "1a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "title": "Lobby menu",
+        "runtimeId": "lobby/main",
+        "json": "{\"offset\": [0, 1.5, 2], \"components\": [{\"id\": \"hello\", \"offset\": [0, 0, 0], \"data\": {\"type\": \"decoration\", \"icon\": {\"type\": \"text\", \"text\": \"&eHello\"}}}]}",
+        "updatedAt": 1793793600000,
+        "kind": "menu",
+        "folderId": null
+      },
+      {
+        "id": "2a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "title": "Spawn sign",
+        "runtimeId": "spawn",
+        "json": "{\"schemaVersion\": 3, \"revision\": 2, \"anchor\": {\"world\": \"world\", \"position\": [0, 70, 0]}, \"lines\": [\"&aSpawn\"], \"actions\": [{\"type\": \"camera\", \"path\": []}]}",
+        "updatedAt": 1793793600000,
+        "kind": "hologram",
+        "folderId": null
+      },
+      {
+        "id": "3a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+        "title": "Sidebar",
+        "runtimeId": "sidebar",
+        "json": "{\"schemaVersion\": 1}",
+        "updatedAt": 1793793600000,
+        "kind": "scoreboard",
+        "folderId": null
+      }
+    ],
+    "activeDocumentId": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+  },
+  "images": []
+}

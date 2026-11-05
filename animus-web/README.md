@@ -2,7 +2,7 @@
 
 The browser editor for Animus. It is a client-mode Jaspr app on arcane_jaspr, hosted on Firebase as `animus-editor.web.app` (project `animus-editor`). The design is in [docs/editor-design.md](../docs/editor-design.md) and the shared contracts in [docs/editor-contracts.md](../docs/editor-contracts.md).
 
-The first screen opens a data folder (`plugins/Animus`, or `config/animus` on mod servers) from a directory pick or a zip. It lists NPCs, behaviors, packs, shops and chest GUIs, checks each against the schemas in `../schema` in the browser, and keeps the result as a local workspace in IndexedDB. Each document has Visual, Preview, Code and Split views. Nothing is uploaded.
+The first screen opens a data folder (`plugins/Animus`, or `config/animus` on mod servers) from a directory pick or a zip. It lists NPCs, behaviors, packs, shops, GUIs, rigs and animations, checks each against the schemas in `../schema` in the browser, and keeps the result as a local workspace in IndexedDB. Each document has Visual, Preview, Code and Split views. Nothing is uploaded.
 
 ## Building
 
@@ -31,9 +31,12 @@ The browser check opens `../schema/fixtures/export` in the built site at desktop
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/home_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/npc_preview_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/rig_editor_browser.cjs
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/gui_editors_browser.cjs
 ```
 
 `rig_editor_browser.cjs` opens `test/fixtures/rig_editor` (the shared golem rig and two clips), moves a bone with the gizmo, undoes it, renames a bone, keys and scrubs an animation, plays it, downloads the server files and the workspace zip, and imports `test/fixtures/bbmodel/robot.bbmodel`, at both widths with no console errors.
+
+`gui_editors_browser.cjs` opens `test/fixtures/gui_editors` (a chest GUI with a list, toggle and variant, one with a Gloss-only action, a shop, a hologram and a menu) and checks that each editor opens its fixture, that an edit round-trips to the document JSON, that a refused action is flagged at its field, that expression completion works, that undo works, that the data folder zip and the Gloss bundle export valid files and that `test/fixtures/gloss_bundle/gloss-workspace.json` imports, at both widths with no console errors.
 
 `npc_preview_browser.cjs` opens `test/fixtures/npc_preview` (every body type, pose and equipment slot, a skin document) and checks that each NPC's Preview draws a non-blank canvas at both widths, that text and orbiting work, and that a loaded skin PNG is drawn, with no console errors. `ANIMUS_SCREENSHOTS` is optional and should point outside the repository.
 
@@ -56,15 +59,29 @@ A rig's Visual and Preview views (and an animation's, which opens its rig) are t
 
 Every edit is a workspace commit to IndexedDB and can be undone; gizmo drags commit once on release. Files under `pack/assets/` are kept as workspace resources when a folder or zip is opened.
 
+## GUI editors
+
+Chest GUIs, shops, holographic menus and holograms (Gloss formats, docs/gui.md and docs/shops.md) have visual editors, adapted from Gloss Web's editors. Visual shows the editor beside its live preview, Preview the preview alone, and Split the editor beside the code.
+
+- Chest GUI: the window painted like the client's (title in the Minecraft font, item icons meshed by the stage renderer at their `gui` pose, counts, name and lore tooltips). Click a slot to edit what draws it: a mask key, an explicit slot or the list template. A brush paints keys into the mask. Tabs edit the window (title, size, mask rows, `show`, refresh), keys, the list (area, variable, source, page size, template), variants (which fields each replaces; the window shows and edits the chosen one) and named action lists.
+- Shop: pages, the buy, sell and trade grids painted as the shop window with its bottom-row controls, and per entry its type, item, display, price, trade goods, command entries (with the allow-list note), limits with resets, stock, discount, permission and broadcast.
+- Hologram: typed rows (text, item, head, block, entity), pages, variants, anchor, click box and actions, drawn in the 3D stage.
+- Menu: components with offsets, data, icons and actions, menu placement and named lists, drawn in front of the viewer in the 3D stage.
+- Actions: only the actions in `schema/gloss/source.json` that the surface accepts are offered, with fields per type. A refused action, component, icon or field is flagged with its exact path, as the server words it.
+- Expressions: text and condition fields check `{{ }}` holes and expressions with the engine copied from Gloss Web (`lib/logic/gui/gui_expr.dart`), complete names and functions as you type, and previews fill holes with a sample viewer.
+- New and Rename create and move GUI documents; Import and Export Gloss bundle read and write `gloss-editor-workspace` files (chest GUIs, menus, holograms, presets; documents with `animus:` actions are skipped on export).
+
+Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. The Java parsers are authoritative.
+
 ## Layout
 
 | Path | Contents |
 | --- | --- |
 | `lib/model/` | Document kinds and documents; documents keep their exact source so unknown keys survive |
-| `lib/logic/` | JSON Schema validator, shared schema catalog, data folder import and export, rig sampler, rig rules and edits, Blockbench import |
+| `lib/logic/` | JSON Schema validator, shared schema catalog, data folder import and export, rig sampler, rig rules and edits, Blockbench import; `gui/` the GUI catalog, expressions, checks, layout and Gloss bundles |
 | `lib/state/` | Hash routes, editor store with undo, workspace repositories (IndexedDB, memory) |
-| `lib/mc/` | Renderer core adapted from Gloss Web: assets and model resolver, meshers, rigs, scene, camera, `npc/` (definition to scene) and `rig/` (sampled rig to scene) |
-| `lib/components/` | Shell and document views; `mc/` holds the WebGL2 stage, renderer and asset loader; `rig/` the rig editor, gizmo and timeline |
+| `lib/mc/` | Renderer core adapted from Gloss Web: assets and model resolver, meshers, rigs, scene, camera, `npc/` (definition to scene), `rig/` (sampled rig to scene) and `gui/` (holograms and menus to scene) |
+| `lib/components/` | Shell and document views; `mc/` holds the WebGL2 stage, renderer and asset loader; `rig/` the rig editor, gizmo and timeline; `gui/` the GUI editors |
 | `lib/services/` | Theme preference, hash changes and file picking |
 | `lib/config/shared_schemas.g.dart` | `../schema` embedded by `tool/embed_schemas.dart` |
 | `web/` | `index.html`, `bootstrap.js` (pre-paint theme), numbered CSS, fonts; `assets/mc/` is generated |

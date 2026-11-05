@@ -10,6 +10,7 @@ import 'package:archive/archive.dart';
 
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
+import 'gui/gui_validation.dart';
 import 'rig_validation.dart';
 import 'shared_schemas.dart';
 
@@ -199,7 +200,7 @@ AnimusDocument validateSource(DocumentLocation location, String path, String sou
     ]);
   }
   final List<Diagnostic> diagnostics = <Diagnostic>[
-    ...schemas.validate(location.kind, json),
+    ...mergeGuiDiagnostics(schemas.validate(location.kind, json), validateGui(location.kind, json)),
     ..._identity(location, json),
     if (location.kind == DocumentKind.rig) ...validateRigStructure(json),
   ];

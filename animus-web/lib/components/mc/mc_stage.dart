@@ -414,9 +414,9 @@ class _McStageState extends State<McStage> {
           'z-index': '${(1000 - at.z * 10).round().clamp(0, 1000)}',
         }),
         <Widget>[
-          for (final String line in text.lines)
+          for (final List<McTextRun> runs in text.styled ?? <List<McTextRun>>[for (final String line in text.lines) mcLegacyRuns(line)])
             dom.div(classes: 'animus-mc-text-line', <Widget>[
-              for (final McTextRun run in mcLegacyRuns(line))
+              for (final McTextRun run in runs)
                 dom.span(
                   styles: dom.Styles(raw: <String, String>{
                     'color': run.cssColor,
@@ -427,7 +427,7 @@ class _McStageState extends State<McStage> {
                   }),
                   <Widget>[Component.text(run.text)],
                 ),
-              if (line.isEmpty) const Component.text(' '),
+              if (runs.every((McTextRun run) => run.text.isEmpty)) const Component.text(' '),
             ]),
         ],
       ));

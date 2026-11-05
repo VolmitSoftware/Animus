@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 3,
+  "revision": 1,
+  "anchor": {"world": "world", "position": [12.5, 66, -4.5]},
+  "lines": [
+    "&6&lWelcome to town",
+    "<gray>Hello, <aqua>{{ viewer.name }}</aqua>",
+    {"item": {"type": "item", "item": "minecraft:emerald"}},
+    {"block": "minecraft:oak_log"},
+    "&7Right click for the market"
+  ],
+  "actions": [
+    {"type": "message", "message": "&7The market is to the east."}
+  ],
+  "hitbox": {"width": 1.5, "height": 0.4}
+}
