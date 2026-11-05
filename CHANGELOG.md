@@ -73,6 +73,7 @@
 - Outbound editor relay client for all platforms, configured by the relay keys in `[editor]` of `config.toml` and off by default; server editor identity in `state/editor/identity.json`.
 - `animus:hire` NPC module: a chest window to hire a bodyguard for items or money, with durable contracts, renewal and hirer-only dismissal.
 - Answer buttons in `animus:choices` take optional `color`, `hover` and `style`; guard settings `catchUpDistance` and `replanDistance`.
+- Editor: 3D NPC preview covering every presented body type, the five definition poses, all eight equipment slots, armor stand parts and angles, nameplates and text display lines, with an orbit camera; skins from skin documents (arm model) or a PNG file or URL; `tool/extract_minecraft_world_assets.dart` generates the preview's Minecraft assets from a 26.3 client jar, not committed.
 
 ### Changed
 
