@@ -77,7 +77,7 @@ public final class NativeProtocolClient {
         "keep_alive", "ping", "disconnect", "chunk_batch_finished", "set_entity_data",
         "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health",
         "login", "sound", "level_particles", "boss_event", "move_entity_rot", "move_entity_pos_rot",
-        "open_screen", "container_set_content", "container_set_slot", "container_close");
+        "open_screen", "container_set_content", "container_set_slot", "container_close", "block_update", "section_blocks_update");
 
     private NativeProtocolClient(int port, String username) throws Exception {
         this.username = username;
@@ -307,6 +307,13 @@ public final class NativeProtocolClient {
         else if (packet instanceof ClientboundSoundPacket p) event("sound", "sound", p.getSound().unwrapKey().map(key -> key.identifier().toString()).orElse(p.getSound().value().location().toString()), "volume", p.getVolume(), "pitch", p.getPitch());
         else if (packet instanceof ClientboundLevelParticlesPacket p) event("particle", "particle", BuiltInRegistries.PARTICLE_TYPE.getKey(ProtocolRevision.particle(p).getType()).toString(), "count", ProtocolRevision.particleCount(p));
         else if (packet instanceof ClientboundBossEventPacket) event("boss_event");
+        // One event per packet, so cells the server changed in one tick and one chunk section arrive as one event.
+        else if (packet instanceof ClientboundBlockUpdatePacket p) event("blocks", "cells", List.of(cell(p.getPos(), p.getBlockState())));
+        else if (packet instanceof ClientboundSectionBlocksUpdatePacket p) {
+            List<Map<String, Object>> cells = new ArrayList<>();
+            p.runUpdates((at, state) -> cells.add(cell(at, state)));
+            event("blocks", "cells", cells);
+        }
         else if (packet instanceof ClientboundRotateHeadPacket p) event("head", "id", reflectedId(p), "yaw", p.getYHeadRot());
         else if (packet instanceof ClientboundMoveEntityPacket p && p.hasRotation()) event("rotation", "id", reflectedId(p), "yaw", p.getYRot(), "pitch", p.getXRot());
         else if (packet instanceof ClientboundSetEntityDataPacket p) {
@@ -370,6 +377,12 @@ public final class NativeProtocolClient {
         throw new NoSuchFieldException("entityId");
     }
 
+    private static Map<String, Object> cell(net.minecraft.core.BlockPos at, net.minecraft.world.level.block.state.BlockState state) {
+        Map<String, Object> cell = new LinkedHashMap<>();
+        cell.put("x", at.getX()); cell.put("y", at.getY()); cell.put("z", at.getZ());
+        cell.put("state", net.minecraft.commands.arguments.blocks.BlockStateParser.serialize(state));
+        return cell;
+    }
     private void emitMove(int id, Vec3 v) { event("move", "id", id, "x", v.x, "y", v.y, "z", v.z); }
 
     private void control(JsonObject command) throws Exception {

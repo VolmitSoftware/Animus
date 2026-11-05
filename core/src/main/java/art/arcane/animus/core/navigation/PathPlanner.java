@@ -19,12 +19,13 @@ import java.util.function.BooleanSupplier;
  *
  * <p>Walking bodies move between column centres. Each move is followed across in quarter-block samples, so a body
  * climbs a stair half by half and stands at the real height of slabs, snow, paths and soul sand. Every accepted move is
- * then checked with the same legs and clearance test that execution uses.
+ * then checked with the same legs and clearance test that execution uses. A body that climbs also moves one block
+ * straight up or down while it holds a ladder, vine or scaffolding, and stands on the top of a scaffolding column.
  */
 public final class PathPlanner {
     /** PARTIAL only answers a partial search: its path ends at the reachable place closest to a goal it could not reach. */
     public enum Status { FOUND, PARTIAL, UNREACHABLE, BUDGET_EXHAUSTED, CANCELLED, UNAVAILABLE_TERRAIN }
-    public enum Motion { START, WALK, STEP, JUMP, FALL, SWIM, FLY }
+    public enum Motion { START, WALK, STEP, JUMP, FALL, SWIM, FLY, CLIMB }
     /**
      * Search budgets. A partial search may name a goal outside its capture: when the goal is not reached it answers
      * {@link Status#PARTIAL} with the path to the reachable place closest to the goal.
@@ -139,11 +140,12 @@ public final class PathPlanner {
         private final BodyTerrain terrain;
         /** The captured cells, with every door this body may open read as open. */
         private final MotionValidator.Sampler cells;
-        private final boolean flies, walks;
+        private final boolean flies, walks, climbs;
         private boolean unavailable;
         private Search(VoxelSnapshot snapshot, MovementProfile profile, BooleanSupplier cancelled) {
             this.profile = profile; this.cancelled = cancelled;
             flies = profile.supports(MovementProfile.Mode.FLY); walks = profile.supports(MovementProfile.Mode.WALK);
+            climbs = walks && !flies && profile.climbs();
             cells = profile.opensDoors() ? DoorPassage.opened(snapshot::cell) : snapshot::cell;
             terrain = new BodyTerrain(profile.width(), profile.height(), profile.supports(MovementProfile.Mode.SWIM), CELLS, cells);
         }
@@ -171,6 +173,9 @@ public final class PathPlanner {
             }
             BodyTerrain.Rest rest = rest(point.x(), point.z(), voxel.y(), 1 - 0.0001, 1, start);
             if (rest.kind() == BodyTerrain.Kind.UNAVAILABLE) return new Place(Kind.UNKNOWN, voxel.y(), false);
+            // A climber may start or end holding a ladder or vine above the ground.
+            if (climbs && (!rest.usable() || floor(rest.feet()) < voxel.y()) && climbable(voxel.x(), voxel.y(), voxel.z())
+                    && check(point, point, MotionValidator.Medium.CLIMB, false).clear()) return new Place(Kind.OPEN, voxel.y(), false);
             if (!rest.usable() || floor(rest.feet()) < voxel.y() - 1) return new Place(Kind.BLOCKED, voxel.y(), false);
             return new Place(Kind.OPEN, rest.feet(), rest.kind() == BodyTerrain.Kind.SWIM);
         }
@@ -206,7 +211,35 @@ public final class PathPlanner {
                 if (edge == null && profile.jumpHeight() > profile.stepHeight()) edge = cross(from, dx, dz, true);
                 if (edge != null) edges.add(edge);
             }
+            if (climbs && !from.swimming()) {
+                Edge up = climb(from, 1), down = climb(from, -1);
+                if (up != null) edges.add(up);
+                if (down != null) edges.add(down);
+            }
             return edges;
+        }
+
+        /**
+         * One block straight up while the body holds the climbable cell its feet are in, or one block down into a climbable
+         * cell. The body ends standing on something or holding the cell at its feet.
+         */
+        private Edge climb(Node from, int direction) {
+            int layer = floor(from.y());
+            int target = direction > 0 ? layer + 1 : Math.abs(from.y() - layer) <= EPSILON ? layer - 1 : layer;
+            if (!climbable(from.feet().x(), direction > 0 ? layer : target, from.feet().z())) return null;
+            BlockPos column = offset(from.feet(), 0, target - from.feet().y(), 0);
+            if (column == null) return null;
+            Vec3 previous = centre(from.feet(), from.y()), end = centre(column, target);
+            for (Maneuver.Leg leg : Maneuver.climb(previous, end)) {
+                if (!check(previous, leg.target(), leg.medium(), leg.support()).clear()) return null;
+                previous = leg.target();
+            }
+            return new Edge(column, target, Math.max(from.y(), target), Motion.CLIMB, false);
+        }
+        private boolean climbable(int x, int y, int z) {
+            VoxelSnapshot.Cell cell = cells.sample(x, y, z);
+            if (cell.unavailable()) { unavailable = true; return false; }
+            return cell.climbable();
         }
 
         /** Follows the surface from one column centre to the next and checks the legs execution will use. */

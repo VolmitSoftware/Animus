@@ -588,7 +588,13 @@ public final class BuildService<P, I> implements AutoCloseable {
     @Override public void close() {
         if (closed || worker == null) { closed = true; return; }
         try { settingsListener.close(); } catch (Exception ignored) { /* Removing a listener cannot fail. */ }
-        for (BuildSession session : sessions.values()) session.stopCrew(crew);
+        // Scaffolding never outlives the server: it comes down now, and the saved build no longer lists it.
+        BuildSession.Context context = new BuildSession.Context(platform, crew, protection, new BuildSession.Budget(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
+        for (BuildSession session : sessions.values()) {
+            session.stopCrew(crew);
+            try { session.dismantle(context); }
+            catch (RuntimeException failure) { log.accept("Cannot take down the scaffolding of build " + session.id() + ": " + PersistedNpcService.concise(failure)); }
+        }
         try { if (ticker != null) ticker.close(); }
         catch (Exception ignored) { /* the tick checks closed */ }
         // A lane write still queued is skipped once the final save is done, so its chunks are written again here.

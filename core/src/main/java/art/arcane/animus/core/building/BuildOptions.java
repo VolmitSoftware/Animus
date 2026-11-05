@@ -13,16 +13,19 @@ import java.util.Set;
 
 /**
  * How one build is laid out and run. Command words ({@code rotation=90}) and the JSON form in saved build state and in
- * the {@code animus:builder} definition module carry the same fields.
+ * the {@code animus:builder} definition module carry the same fields. {@code scaffolding} lets the NPC put up and climb
+ * scaffolding to reach blocks too high to reach from the ground.
  */
 public record BuildOptions(Anchor anchor, BlockTransform transform, int offsetX, int offsetY, int offsetZ, Pattern pattern, int layers,
                            boolean groupAll, boolean ignoreAir, boolean ignoreLiquids, boolean excavate, double speed, int placeIntervalTicks,
-                           double reach, int moveTimeoutSeconds, boolean holdBlock, boolean silent, Materials materials, Optional<BlockPos> container) {
+                           double reach, int moveTimeoutSeconds, boolean holdBlock, boolean silent, Materials materials, Optional<BlockPos> container,
+                           boolean scaffolding) {
     public static final BuildOptions DEFAULT = new BuildOptions(Anchor.CENTER, BlockTransform.IDENTITY, 0, 0, 0, Pattern.SPIRAL, 1, false,
-            false, false, false, 2, 4, 4.5, 10, true, false, Materials.CREATIVE, Optional.empty());
+            false, false, false, 2, 4, 4.5, 10, true, false, Materials.CREATIVE, Optional.empty(), true);
     public static final int MAXIMUM_OFFSET = 1024;
     private static final Set<String> FIELDS = Set.of("anchor", "rotation", "mirror", "offset", "pattern", "layers", "groupAll", "ignoreAir",
-            "ignoreLiquids", "excavate", "speed", "placeIntervalTicks", "reach", "moveTimeoutSeconds", "holdBlock", "silent", "materials", "container");
+            "ignoreLiquids", "excavate", "speed", "placeIntervalTicks", "reach", "moveTimeoutSeconds", "holdBlock", "silent", "materials", "container",
+            "scaffolding");
 
     /**
      * Where the schematic sits against the build origin: {@code center} puts the middle of its footprint on the origin
@@ -81,16 +84,18 @@ public record BuildOptions(Anchor anchor, BlockTransform transform, int offsetX,
         Materials nextMaterials = remaining.containsKey("materials") ? named(Materials.class, remaining.remove("materials"), "materials", "creative, donate or container") : materials;
         Optional<BlockPos> nextContainer = remaining.containsKey("container") ? Optional.of(position("container", remaining.remove("container"))) : container;
         if (nextMaterials != Materials.CONTAINER) nextContainer = Optional.empty();
+        boolean nextScaffolding = remaining.containsKey("scaffolding") ? bool("scaffolding", remaining.remove("scaffolding")) : scaffolding;
         if (!remaining.isEmpty())
             throw new IllegalArgumentException("Unknown build option " + remaining.keySet().iterator().next() + "; use " + String.join(", ", words()));
         return new BuildOptions(nextAnchor, new BlockTransform(rotation, mirror), offset[0], offset[1], offset[2], nextPattern, nextLayers, nextGroupAll,
-                nextIgnoreAir, nextIgnoreLiquids, nextExcavate, nextSpeed, nextInterval, nextReach, nextTimeout, nextHold, nextSilent, nextMaterials, nextContainer);
+                nextIgnoreAir, nextIgnoreLiquids, nextExcavate, nextSpeed, nextInterval, nextReach, nextTimeout, nextHold, nextSilent, nextMaterials, nextContainer,
+                nextScaffolding);
     }
 
     /** Command option words, for usage and completion. */
     public static List<String> words() {
         return List.of("anchor", "rotation", "mirror", "offset", "yoffset", "pattern", "layers", "groupall", "ignoreair", "ignoreliquids", "excavate",
-                "speed", "interval", "reach", "timeout", "hold", "silent", "materials", "container");
+                "speed", "interval", "reach", "timeout", "hold", "silent", "materials", "container", "scaffolding");
     }
 
     public JsonObject toJson() {
@@ -115,6 +120,7 @@ public record BuildOptions(Anchor anchor, BlockTransform transform, int offsetX,
         json.addProperty("silent", silent);
         json.addProperty("materials", materials.name().toLowerCase(Locale.ROOT));
         container.ifPresent((BlockPos at) -> json.add("container", point(at)));
+        json.addProperty("scaffolding", scaffolding);
         return json;
     }
 
@@ -140,7 +146,8 @@ public record BuildOptions(Anchor anchor, BlockTransform transform, int offsetX,
                     json.has("placeIntervalTicks") ? whole(json, "placeIntervalTicks") : DEFAULT.placeIntervalTicks,
                     json.has("reach") ? number(json, "reach") : DEFAULT.reach,
                     json.has("moveTimeoutSeconds") ? whole(json, "moveTimeoutSeconds") : DEFAULT.moveTimeoutSeconds,
-                    flag(json, "holdBlock", DEFAULT.holdBlock), flag(json, "silent", DEFAULT.silent), materials, container);
+                    flag(json, "holdBlock", DEFAULT.holdBlock), flag(json, "silent", DEFAULT.silent), materials, container,
+                    flag(json, "scaffolding", DEFAULT.scaffolding));
         } catch (IllegalArgumentException | IllegalStateException | ClassCastException | UnsupportedOperationException invalid) {
             throw new IllegalArgumentException(path + ": " + invalid.getMessage(), invalid);
         }

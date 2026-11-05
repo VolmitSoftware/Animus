@@ -1,6 +1,6 @@
 # Building
 
-An NPC can build a schematic block by block. It walks to each block with its normal [navigation](runtime.md#initial-movement-and-routes), swings its arm and places the block, and nearby players hear the block's place sound. Several NPCs can share one build. Builds are saved, so they continue after a restart, and every block a build changes can be undone.
+An NPC can build a schematic block by block. It walks to each block with its normal [navigation](runtime.md#initial-movement-and-routes), faces it, swings its arm with the block in its hand and places it, and nearby players hear the block's place sound. A door, bed, tall flower or double chest goes down whole, never one half at a time. To reach blocks high above the ground, the NPC puts up [scaffolding](#scaffolding), climbs it and takes it down again. Several NPCs can share one build. Builds are saved, so they continue after a restart, and every block a build changes can be undone.
 
 Builds run on Spigot and Paper 26.1.2, 26.2 and 26.3, and on Fabric, NeoForge and Forge servers for the same versions. They are not available on Folia; see [platforms](#platforms).
 
@@ -63,6 +63,7 @@ A build is named after the NPC that leads it, and `<build>` may also be any NPC 
 | `interval` | `4` | Ticks between two blocks placed by one NPC, 1 to 200. |
 | `reach` | `4.5` | How close, 2 to 6 blocks, the NPC must be to place a block. |
 | `timeout` | `10` | Seconds, 1 to 300, an NPC may walk toward one block. After that it is moved next to the block, or places it from where it stands when there is no clear spot. |
+| `scaffolding` | `true` | Put up and climb scaffolding to reach blocks too high to reach from the ground. See [scaffolding](#scaffolding). |
 | `hold` | `true` | Show the block being placed (or a pickaxe while digging) in the NPC's hand. |
 | `silent` | `false` | No place sound. |
 | `materials` | `creative` | `creative` places blocks for free. `donate` uses items players hand over. `container` takes items from the container at `container=<x>,<y>,<z>`. |
@@ -81,13 +82,46 @@ Blocks are placed without updating their neighbours, so a torch or a door does n
 
 A block that already matches the schematic is skipped and costs nothing. Each NPC takes the next block of the current step; the next step starts only when every block of the current one is done.
 
+### Doors, beds and other objects of several blocks
+
+Some blocks are one object over several cells. The build places each of them as one step, with every cell in the same tick, the lowest cell first:
+
+| Object | Cells |
+| --- | --- |
+| Doors, tall flowers and grass (sunflower, lilac, rose bush, peony, tall grass, large fern), tall seagrass, pitcher plants, small dripleaf | Lower and upper half (`half=lower` and `half=upper`) |
+| Beds | Foot and head (`part`), the head in the direction the bed faces |
+| Double chests and trapped chests | Left and right half (`type=left` and `type=right`) |
+| Extended pistons and sticky pistons | The piston and its head |
+| Big dripleaf | Every stem in the column and the leaf on top |
+
+Facing, hinge and the other properties of each cell come from the schematic, and a bed is always placed empty. The object goes in the step of its lowest cell, so a door goes up with the layer of its lower half. When a schematic holds only one half, the build adds the other half where it belongs; when that cell holds another block in the schematic, the lone half is left out instead. Nothing is ever placed half done: when protection refuses one cell, or the build cannot pay for every cell, none of it is placed.
+
+When a build replaces or clears one half of such an object already in the world, the other half goes too, even outside the build's box. Undo puts every object back, or leaves it, as a whole.
+
 ### Materials
 
 With `materials=donate`, a build waits when it needs an item it does not have, and its status says which item and how many. Players hand items over with `/animus build <build> donate` while holding them; the build takes only items it still needs and leaves the rest in the hand. `animus.build.donate` is given to everyone by default. `survey` lists what the rest of the build needs and what it holds. The list is an upper bound: blocks already in place are only counted off when the build gets to them.
 
 With `materials=container`, items come from the container block at `container=`. The container must be in a loaded chunk; when it is missing or unloaded the build waits.
 
-The item for each block comes from the server: a wall torch needs a torch, wheat needs seeds. The upper half of a door or tall plant and the head of a bed are free, a double slab needs two slabs, and blocks with several pieces in one cell (candles, sea pickles, eggs, snow layers, petals) need one item per piece. Water and lava need a water or lava bucket each, and the bucket is used up. A block that no item places, such as fire or a portal, is skipped in these modes and counted under `no-item`. Undo is free and returns no items.
+The item for each block comes from the server: a wall torch needs a torch, wheat needs seeds. A door, tall plant or bed costs one item for the whole object, a double chest costs two chests, a piston's head is free, a double slab needs two slabs, and blocks with several pieces in one cell (candles, sea pickles, eggs, snow layers, petals) need one item per piece. Water and lava need a water or lava bucket each, and the bucket is used up. A block that no item places, such as fire or a portal, is skipped in these modes and counted under `no-item`. Undo is free and returns no items.
+
+## Scaffolding
+
+A block the NPC cannot reach from the ground, because it is more than about `reach` blocks above the NPC's feet with nowhere to stand near it, or because the NPC cannot walk to the only place that reaches it, is built from scaffolding:
+
+1. The build looks for a place to stand within `reach` of the block, one block under it or a little higher, that also reaches as many of the next blocks as possible. Under that place it plans a column of `minecraft:scaffolding` from the ground. When the column cannot go straight down, for example over a roof, it plans a column beside it and a level walkway of at most 6 blocks out to the place, as far as scaffolding reaches in the game. Scaffolding only goes into empty cells that the build does not fill: outside the schematic's box, or where the schematic has air or nothing.
+2. The NPC walks to the foot of the column, places a scaffolding block in the cell it stands in, climbs onto it, and repeats up to the top. On a walkway it places each block in front of it and walks onto it. It holds scaffolding while it does this, faces each block and swings, and climbs at most 2.35 blocks per second.
+3. It builds every block it reaches from the top. When the next block is a little higher or lower, the column grows or shrinks under it; when it is somewhere else, the scaffolding comes down and goes up again near that block.
+4. Taking it down runs the other way: the NPC steps back off each walkway block before removing it, then climbs down the column, removing the cell it stands in, until it is on the ground.
+
+The build finishes only when all its scaffolding is down. `pause` and `cancel` also send the NPCs down with their scaffolding. Scaffolding whose NPC has left the team or the world, scaffolding of a failed build, and scaffolding still standing when the server stops is removed at once, without the NPC. Scaffolding recorded with a build that did not stop cleanly is removed when the server starts again. While scaffolding stands, `status` shows `scaffolding=<blocks>`.
+
+Each scaffolding block is checked with protection like any other change and recorded for undo. When protection refuses a block or another block takes its place, the scaffolding comes down and the NPC reaches the block the old way: after `timeout` it is moved next to the block, or places it from where it stands. That is also what happens with `scaffolding=false` or when no scaffolding fits. `undo` removes scaffolding still standing; scaffolding the build already took down is not put up again.
+
+With `materials=creative` scaffolding is free. Otherwise each block takes one `minecraft:scaffolding` from the build's materials (or the container), and every block that comes down goes back to the build's materials, so one column's worth is used again and again. `survey` and `donate` count enough scaffolding for one column from the origin to one block under the highest block left. A build that runs out of scaffolding waits with `needs 1 minecraft:scaffolding to put up scaffolding` while the NPC stays on its column.
+
+Walking NPCs climb scaffolding, ladders and vines with their normal [navigation](runtime.md#initial-movement-and-routes), so a patrol can use them too.
 
 ## Pausing, waiting and undo
 
@@ -132,7 +166,7 @@ An NPC definition can hold a build request, which `/animus build start <npc-id>`
 }
 ```
 
-`options` uses the JSON names of the options above: `anchor`, `rotation`, `mirror`, `offset` (`{"x", "y", "z"}`), `pattern`, `layers`, `groupAll`, `ignoreAir`, `ignoreLiquids`, `excavate`, `speed`, `placeIntervalTicks`, `reach`, `moveTimeoutSeconds`, `holdBlock`, `silent`, `materials` and `container`. An imported section also needs `"reviewAccepted": true`. Nothing starts on its own.
+`options` uses the JSON names of the options above: `anchor`, `rotation`, `mirror`, `offset` (`{"x", "y", "z"}`), `pattern`, `layers`, `groupAll`, `ignoreAir`, `ignoreLiquids`, `excavate`, `speed`, `placeIntervalTicks`, `reach`, `moveTimeoutSeconds`, `holdBlock`, `silent`, `materials`, `container` and `scaffolding`. An imported section also needs `"reviewAccepted": true`. Nothing starts on its own.
 
 ## Saved state
 
@@ -149,7 +183,8 @@ Each build is saved under `state/builds/<build>.json`, with its undo record in `
   "schematicSha256": "5d41402abc4b2a76b9719d911017c592...",
   "options": {"anchor": "center", "rotation": 90, "mirror": "none", "offset": {"x": 0, "y": 0, "z": 0}, "pattern": "spiral",
               "layers": 1, "groupAll": false, "ignoreAir": false, "ignoreLiquids": false, "excavate": true, "speed": 2.0,
-              "placeIntervalTicks": 4, "reach": 4.5, "moveTimeoutSeconds": 10, "holdBlock": true, "silent": false, "materials": "donate"},
+              "placeIntervalTicks": 4, "reach": 4.5, "moveTimeoutSeconds": 10, "holdBlock": true, "silent": false, "materials": "donate",
+              "scaffolding": true},
   "state": "waiting",
   "reason": "needs 12 minecraft:oak_planks (have 0, the rest of the build needs 140)",
   "cursor": 1834,
@@ -162,7 +197,7 @@ Each build is saved under `state/builds/<build>.json`, with its undo record in `
 }
 ```
 
-After a restart the server reads the schematic again and continues from the saved step; blocks already in place are skipped. If the schematic file changed or went missing, the build stops with that reason and can still be undone. `state` is one of `running`, `paused`, `waiting`, `finished`, `cancelled`, `undoing`, `undone` or `failed`.
+While scaffolding stands, the record also lists it under `scaffolding`, so it can be removed after a crash. After a restart the server reads the schematic again and continues from the saved step; blocks already in place are skipped. If the schematic file changed or went missing, the build stops with that reason and can still be undone. `state` is one of `running`, `paused`, `waiting`, `finished`, `cancelled`, `undoing`, `undone` or `failed`.
 
 ## Settings
 
@@ -196,7 +231,7 @@ On Folia a build site, the NPCs of its team and its material container can belon
 
 ## Limits
 
-- The NPC walks with the normal navigator, at most 30 blocks per walking leg, and is moved next to a block after `timeout`. Parts of a build that no NPC can reach are still placed when the timeout runs out.
+- The NPC walks with the normal navigator, at most 30 blocks per walking leg, and climbs scaffolding for high blocks. A block it still cannot reach, with no room for scaffolding, is placed after `timeout` by moving the NPC next to it.
 - Block entity contents (chest items, sign text, banner patterns) and schematic entities are not copied.
 - Repair mode, the packet-only preview and area marking, multi-part builds, a materials screen and returning dug-out items are not available yet.
 - Builder `.schematic` files must be saved again as `.schem`.

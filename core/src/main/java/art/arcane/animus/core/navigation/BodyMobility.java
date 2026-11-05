@@ -3,7 +3,10 @@ package art.arcane.animus.core.navigation;
 import java.util.Objects;
 import java.util.Set;
 
-/** What a native body type can do: flyers fly, aquatic bodies only swim, most others walk and swim at the surface. */
+/**
+ * What a native body type can do: flyers fly, aquatic bodies only swim, most others walk, swim at the surface and climb
+ * ladders, vines and scaffolding.
+ */
 public final class BodyMobility {
     public static final double ORDINARY_STEP = 0.6, LARGE_STEP = 1, JUMP = 1.25;
     public static final int FALL = 3;
@@ -21,7 +24,7 @@ public final class BodyMobility {
                 : AQUATIC.contains(type) ? Set.of(MovementProfile.Mode.SWIM)
                 : SINKERS.contains(type) ? Set.of(MovementProfile.Mode.WALK)
                 : Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM);
-        return profile(modes, width, height);
+        return profile(modes, width, height, !SINKERS.contains(type));
     }
     /** Bodies that fall when nothing holds them up: flyers hover and aquatic bodies keep their depth. */
     public static boolean falls(String type) {
@@ -38,9 +41,10 @@ public final class BodyMobility {
             case SWIM -> AQUATIC.contains(type) ? Set.of(MovementProfile.Mode.SWIM) : Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM);
             case FLY -> Set.of(MovementProfile.Mode.FLY);
         };
-        return profile(modes, width, height);
+        return profile(modes, width, height, !SINKERS.contains(type));
     }
-    private static MovementProfile profile(Set<MovementProfile.Mode> modes, double width, double height) {
-        return new MovementProfile(modes, width, height, width > 1 ? LARGE_STEP : ORDINARY_STEP, JUMP, FALL, true);
+    private static MovementProfile profile(Set<MovementProfile.Mode> modes, double width, double height, boolean climber) {
+        boolean climbs = climber && modes.contains(MovementProfile.Mode.WALK);
+        return new MovementProfile(modes, width, height, width > 1 ? LARGE_STEP : ORDINARY_STEP, JUMP, FALL, true, climbs, false);
     }
 }
