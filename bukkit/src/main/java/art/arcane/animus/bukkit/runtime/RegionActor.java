@@ -616,7 +616,7 @@ final class RegionActor implements RegionOwner.Body {
     private void finishAppearance(AppearanceRead read, BodySkin loaded, String failure) {
         if (appearanceRead != read || read.cancelled) return;
         appearanceRead = null;
-        if (failure != null) { host.noteFailure("$.skin: " + failure); return; }
+        if (failure != null) { host.noteFailure("skin read", "npc=" + id, "$.skin: " + failure); return; }
         displaySkin = loaded; appearance++;
     }
     /** Read results return through the mailbox, so whichever region owns the NPC by then applies them. */

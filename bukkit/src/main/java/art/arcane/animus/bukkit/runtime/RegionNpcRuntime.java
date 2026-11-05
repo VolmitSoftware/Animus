@@ -4,6 +4,7 @@ import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.DefinitionSpec;
 import art.arcane.animus.core.runtime.ActivationWarnings;
 import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.runtime.RuntimeFailures;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.runtime.DefinitionQueue;
@@ -119,11 +120,13 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private final ConcurrentLinkedQueue<SkinRead> skinCompletions = new ConcurrentLinkedQueue<>();
     private long controlTicks;
     private AutoCloseable control;
-    private volatile String unavailable, lastFailure;
+    private volatile String unavailable;
+    private final RuntimeFailures failures;
     private volatile boolean closed;
 
     public RegionNpcRuntime(JavaPlugin plugin, AnimusRuntime runtime, String minecraftVersion, Executor io, PersistedNpcService.Settings settings, FoliaRegions regions) {
         this.plugin = Objects.requireNonNull(plugin); this.runtime = Objects.requireNonNull(runtime);
+        failures = new RuntimeFailures(plugin.getLogger()::warning);
         this.io = Objects.requireNonNull(io); this.settings = Objects.requireNonNull(settings); this.regions = Objects.requireNonNull(regions);
         viewerSlots = new Semaphore(settings.maximumViewers());
         previews = new ViewerPreviews(io, runtime.documents());
@@ -176,7 +179,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         return "NPC runtime ready on Folia regions | active=" + index.size() + " | dormant=" + Math.max(0, actors.size() - index.size())
                 + " | viewers=" + viewers.size() + " | visible=" + visible + " | handoffs=" + transfers.size() + " | file-reads=" + reads.get()
                 + " | accepted=" + accepted.get() + " | rejected=" + rejected.get() + " | path-jobs=" + navigation.outstandingJobs()
-                + " | riding, mounts and combat unavailable on Folia" + (lastFailure == null ? "" : " | last-error=" + lastFailure);
+                + " | riding, mounts and combat unavailable on Folia" + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
 
     @Override public String inspect(String id) {
@@ -287,7 +290,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         catch (IllegalArgumentException notUuid) { world = plugin.getServer().getWorld(name); }
         return world == null ? null : world.getUID();
     }
-    void noteFailure(String failure) { lastFailure = failure; }
+    /** A failure outside any viewer's session: shown in status and logged once per cause. */
+    void noteFailure(String operation, String context, String error) { failures.record(operation, context, error); }
     /** A chunk load event reported this chunk and no unload has followed. */
     boolean knownLoaded(ChunkPosition chunk) { return loaded.contains(chunk); }
     /** An owner saw the chunk loaded: chunks loaded before Animus enabled become known this way. */
@@ -363,22 +367,49 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (viewers.containsKey(id) || viewerFailures.containsKey(id) || !viewerSlots.tryAcquire()) return;
         RegionViewer viewer;
         try { viewer = new RegionViewer(this, player, epochs.capture(player)); }
-        catch (RuntimeException failure) { viewerSlots.release(); noteFailure(PersistedNpcService.concise(failure)); return; }
+        catch (RuntimeException failure) { viewerSlots.release(); failures.record("viewer admission", "viewer=" + player.getName(), failure); return; }
         if (viewers.putIfAbsent(id, viewer) != null) { viewerSlots.release(); return; }
         try {
             packets.watch(player, (target, callback) -> regions.execute(target, callback, () -> {}), viewer::interact)
                     .whenComplete((nothing, failure) -> viewer.enqueue(() -> {
                         if (!current(viewer)) return;
-                        if (failure == null) viewer.ready = true; else fail(viewer, PersistedNpcService.concise(failure));
+                        if (failure == null) viewer.ready = true; else watchFailed(viewer, failure);
                     }));
-        } catch (ReflectiveOperationException | RuntimeException failure) { fail(viewer, PersistedNpcService.concise(failure)); return; }
+        } catch (ReflectiveOperationException | RuntimeException failure) { watchFailed(viewer, failure); return; }
         viewer.task = regions.repeat(player, viewer::tick, () -> retire(viewer));
         if (!current(viewer)) viewer.close();
     }
-    void fail(RegionViewer viewer, String error) {
+    private static String context(RegionViewer viewer, RegionActor actor) {
+        return "viewer=" + viewer.player.getName() + (actor == null ? "" : ", npc=" + actor.id);
+    }
+    /** Player owner only. A watch that ended (the connection closed or was re-watched) is not an error: the viewer is dropped and watched again. */
+    void fail(RegionViewer viewer, String operation, RegionActor actor, Throwable failure) {
         if (!current(viewer)) return;
-        lastFailure = error;
+        if (RuntimeFailures.viewerGone(failure)) { lost(viewer); return; }
+        fail(viewer, operation, actor, PersistedNpcService.concise(failure));
+    }
+    void fail(RegionViewer viewer, String operation, RegionActor actor, String error) {
+        if (!current(viewer)) return;
+        failures.record(operation, context(viewer, actor), error);
         if (viewerFailures.size() < settings.maximumViewers()) viewerFailures.put(viewer.id, error);
+        disconnect(viewer);
+    }
+    /** Player owner only. Cosmetic work failed: an error is recorded and the viewer keeps its session. True when the watch had ended and the viewer was dropped. */
+    boolean cosmeticFailed(RegionViewer viewer, String operation, RegionActor actor, Throwable failure) {
+        if (RuntimeFailures.viewerGone(failure)) { if (current(viewer)) lost(viewer); return true; }
+        failures.record(operation, context(viewer, actor), failure);
+        return false;
+    }
+    /** Player owner only: drops a viewer whose watch ended without counting it as a failure, and watches it again. */
+    private void lost(RegionViewer viewer) {
+        disconnect(viewer);
+        admit(viewer.player);
+    }
+    /** A closed connection waits quietly for the quit, rejoin, teleport or respawn that follows it. */
+    private void watchFailed(RegionViewer viewer, Throwable failure) {
+        if (!current(viewer)) return;
+        if (!RuntimeFailures.viewerGone(failure)) { fail(viewer, "watch", null, failure); return; }
+        if (viewerFailures.size() < settings.maximumViewers()) viewerFailures.put(viewer.id, "connection closed");
         disconnect(viewer);
     }
     /** Network and pure state only, so a scheduler retirement callback may call it. */
@@ -475,8 +506,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 }
             }
         } catch (RuntimeException failure) {
-            lastFailure = PersistedNpcService.concise(failure);
-            plugin.getLogger().warning("NPC control tick failed: " + lastFailure);
+            failures.record("control tick", "", failure);
         }
     }
     private void warnActivation(String message) { plugin.getLogger().warning(message); }
@@ -543,7 +573,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             if (phase == NpcOwnership.Phase.RETIRED) rechecks.add(id);
             return;
         }
-        if (actors.size() >= MAX_ACTIVE) { lastFailure = "Active definition capacity reached: " + MAX_ACTIVE; return; }
+        if (actors.size() >= MAX_ACTIVE) { failures.record("activation", "", "Active definition capacity reached: " + MAX_ACTIVE); return; }
         create(desired, false);
     }
     private void create(RegionActor.Desired desired, boolean announced) {
