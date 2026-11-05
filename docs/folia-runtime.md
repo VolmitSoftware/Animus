@@ -39,7 +39,7 @@ These move with the NPC: the route and its goal, waypoint progress, a behavior w
 
 If the new chunk is not known to be loaded, the new owner refuses, does not hold the chunks, or has not adopted the NPC within 5 seconds, the NPC waits where it stands. A waiting behavior is told the route is unavailable; any other route stays and continues when the NPC starts again. Queued actions for a waiting NPC are refused with the reason. A later adoption from the expired epoch does nothing. If a chunk unloads under an NPC, the same rule applies. When a region splits or merges, the NPC's task moves with its chunk and keeps its epoch.
 
-A route leg whose terrain belongs to more than one region waits and retries after 2 seconds; a waiting behavior is told the route is unavailable instead. Folia keeps neighbouring loaded chunks in one region, so this normally only happens while regions merge.
+A segment of a long leg reads only chunks its region owns, so it walks to the region's edge and the NPC's handoff carries the route on. A short leg planned whole whose terrain belongs to more than one region waits and retries after 2 seconds; a waiting behavior is told the route is unavailable instead. Folia keeps neighbouring loaded chunks in one region, so this normally only happens while regions merge.
 
 ## Mounted groups
 
