@@ -1,7 +1,15 @@
+import 'dart:convert';
+
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../logic/data_folder.dart';
+import '../logic/data_folder_export.dart';
+import '../logic/gui/gloss_bundle.dart';
+import '../logic/gui/gui_catalog.dart';
+import '../logic/gui/gui_json.dart';
+import '../logic/gui/gui_templates.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../services/browser.dart';
@@ -73,6 +81,81 @@ class _EditorShellState extends State<EditorShell> {
     }
   }
 
+  String _fileStem(WorkspaceSnapshot workspace) {
+    final String stem = workspace.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+    return stem.isEmpty ? 'animus' : stem;
+  }
+
+  void _exportZip(WorkspaceSnapshot workspace) {
+    downloadBytes('${_fileStem(workspace)}.zip', exportDataFolderZip(workspace.documents), 'application/zip');
+    final int invalid = workspace.documents.where((AnimusDocument document) => !document.valid).length;
+    if (invalid > 0) {
+      ArcaneSonner.warning('Exported ${workspace.documents.length} documents; $invalid still need repair and the server will refuse them.');
+    } else {
+      ArcaneSonner.success('Exported ${workspace.documents.length} documents as a data folder zip.');
+    }
+  }
+
+  void _exportGloss(WorkspaceSnapshot workspace) {
+    final GlossExport exported = writeGlossBundle(workspace.documents);
+    if (exported.exported == 0) {
+      ArcaneSonner.warning('No chest GUIs, menus, holograms or presets Gloss can run.${exported.skipped.isEmpty ? '' : ' Skipped: ${exported.skipped.join('; ')}'}');
+      return;
+    }
+    downloadBytes('${_fileStem(workspace)}.gloss-workspace.json', utf8.encode(exported.bundle), 'application/json');
+    ArcaneSonner.success('Exported ${exported.exported} documents as a Gloss workspace bundle.'
+        '${exported.skipped.isEmpty ? '' : ' Skipped ${exported.skipped.length}: ${exported.skipped.join('; ')}'}');
+  }
+
+  Future<void> _importGloss() async {
+    final (String, String)? picked = await pickTextFile();
+    if (picked == null) return;
+    final GlossImport imported = readGlossBundle(picked.$2);
+    if (imported.error != null) {
+      ArcaneSonner.error(imported.error!);
+      return;
+    }
+    await component.store.putDocuments(<(DocumentLocation, String, String)>[
+      for (final GlossImportedDocument document in imported.documents) (document.location, document.path, document.source),
+    ]);
+    final int invalid = imported.documents
+        .where((GlossImportedDocument d) => !(component.store.document(d.location.kind, d.location.id)?.valid ?? false))
+        .length;
+    final String skipped = imported.skipped.isEmpty ? '' : ' Skipped: ${imported.skipped.join('; ')}.';
+    if (invalid > 0) {
+      ArcaneSonner.warning('Imported ${imported.documents.length} documents from ${picked.$1}; $invalid use features Animus refuses.$skipped');
+    } else {
+      ArcaneSonner.success('Imported ${imported.documents.length} documents from ${picked.$1}.$skipped');
+    }
+  }
+
+  Future<void> _create(WorkspaceSnapshot workspace, DocumentKind kind) async {
+    final Set<String> taken = <String>{for (final AnimusDocument document in workspace.documents) if (document.kind == kind) document.id};
+    final String id = newDocumentId(kind, taken);
+    await component.store.putDocuments(<(DocumentLocation, String, String)>[
+      (DocumentLocation(kind, id), documentPath(kind, id)!, prettyJson(newDocument(kind, id))),
+    ]);
+    component.onNavigate(DocumentRoute(workspace.id, kind, id));
+  }
+
+  Future<String?> _rename(WorkspaceSnapshot workspace, AnimusDocument document, String id) async {
+    if (id == document.id) return null;
+    final String? path = documentPath(document.kind, id);
+    if (path == null) {
+      return document.kind == DocumentKind.inventory || document.kind == DocumentKind.shop
+          ? 'Use namespace:path with a-z, 0-9, _ and -, such as town:menu.'
+          : 'Use a path with a-z, 0-9, _, - and /, such as town/welcome.';
+    }
+    final Object? json = document.json;
+    final String source = document.kind == DocumentKind.shop && json is Map<String, Object?> && json['id'] is String
+        ? prettyJson(<String, Object?>{...json, 'id': id})
+        : document.source;
+    final bool moved = await component.store.renameDocument(document.kind, document.id, id, path, source);
+    if (!moved) return '${document.kind.label}: $id already exists.';
+    component.onNavigate(DocumentRoute(workspace.id, document.kind, id));
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final EditorStore store = component.store;
@@ -80,7 +163,7 @@ class _EditorShellState extends State<EditorShell> {
     return dom.div(classes: 'animus-shell', <Widget>[
       _topbar(workspace),
       if (store.problem != null)
-        dom.div(classes: 'animus-banner', attributes: const <String, String>{'role': 'alert'}, <Widget>[
+        dom.div(key: const ValueKey<String>('banner'), classes: 'animus-banner', attributes: const <String, String>{'role': 'alert'}, <Widget>[
           Component.text(store.problem!),
         ]),
       if (workspace == null) _home(store) else _workspace(workspace),
@@ -111,6 +194,25 @@ class _EditorShellState extends State<EditorShell> {
           disabled: _busy,
           onPressed: () => _open(pickZip),
         ),
+        if (workspace != null) ...<Widget>[
+          Button.secondary(
+            label: 'Export zip',
+            icon: ArcaneIcon.download(),
+            size: ButtonSize.small,
+            onPressed: () => _exportZip(workspace),
+          ),
+          Button.ghost(
+            label: 'Import Gloss bundle',
+            icon: ArcaneIcon.upload(),
+            size: ButtonSize.small,
+            onPressed: _importGloss,
+          ),
+          Button.ghost(
+            label: 'Export Gloss bundle',
+            size: ButtonSize.small,
+            onPressed: () => _exportGloss(workspace),
+          ),
+        ],
         if (workspace != null)
           Button.ghost(
             label: 'Undo',
@@ -163,7 +265,7 @@ class _EditorShellState extends State<EditorShell> {
     final EditorRoute route = component.route;
     final DocumentRoute? selected = route is DocumentRoute ? route : null;
     final AnimusDocument? document = selected == null ? null : component.store.document(selected.kind, selected.documentId);
-    return dom.div(classes: 'animus-workspace', <Widget>[
+    return dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'animus-workspace', <Widget>[
       _sidebar(workspace, selected),
       dom.main_(classes: 'animus-main', <Widget>[
         if (selected != null && document != null)
@@ -173,6 +275,17 @@ class _EditorShellState extends State<EditorShell> {
             view: selected.view,
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
+            onJson: guiKinds.contains(document.kind)
+                ? (Object? json, {String? coalesce}) => component.store.editJson(document.kind, document.id, json, coalesce: coalesce)
+                : null,
+            onRename: guiKinds.contains(document.kind) ? (String id) => _rename(workspace, document, id) : null,
+            onDelete: guiKinds.contains(document.kind)
+                ? () async {
+                    await component.store.removeDocument(document.kind, document.id);
+                    component.onNavigate(WorkspaceRoute(workspace.id));
+                    ArcaneSonner.info('Deleted ${document.id}. Undo brings it back.');
+                  }
+                : null,
             skinDocument: _skinOf(document),
           )
         else if (selected != null)
@@ -190,6 +303,15 @@ class _EditorShellState extends State<EditorShell> {
     bool matches(AnimusDocument document) =>
         filter.isEmpty || document.id.toLowerCase().contains(filter) || document.title.toLowerCase().contains(filter);
     return dom.aside(classes: 'animus-sidebar', <Widget>[
+      dom.div(classes: 'animus-new', attributes: const <String, String>{'role': 'group', 'aria-label': 'New document'}, <Widget>[
+        for (final (DocumentKind kind, String label) in const <(DocumentKind, String)>[
+          (DocumentKind.inventory, 'New chest GUI'),
+          (DocumentKind.shop, 'New shop'),
+          (DocumentKind.menu, 'New menu'),
+          (DocumentKind.hologram, 'New hologram'),
+        ])
+          Button.ghost(label: label, icon: ArcaneIcon.plus(size: IconSize.sm), size: ButtonSize.small, onPressed: () => _create(workspace, kind)),
+      ]),
       TextInput(
         placeholder: 'Search documents',
         value: _filter,

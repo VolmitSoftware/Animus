@@ -137,6 +137,40 @@ final class McGlRenderer {
     return waiting;
   }
 
+  /// Draws [node] alone on a transparent [sizePx] square, orthographic and
+  /// facing the viewer, as the inventory draws an item at its `gui` pose.
+  /// Returns false while its model or texture is not ready.
+  bool renderIcon(McItemNode node, {required int sizePx}) {
+    if (_gl.lost) return false;
+    final web.WebGL2RenderingContext gl = _gl.gl;
+    if (_gl.canvas.width != sizePx) _gl.canvas.width = sizePx;
+    if (_gl.canvas.height != sizePx) _gl.canvas.height = sizePx;
+    gl.viewport(0, 0, sizePx, sizePx);
+    if (_sync(McScene(<McSceneNode>[node])) > 0) return false;
+    gl.enable(web.WebGL2RenderingContext.DEPTH_TEST);
+    gl.depthFunc(web.WebGL2RenderingContext.LEQUAL);
+    gl.disable(web.WebGL2RenderingContext.CULL_FACE);
+    gl.enable(web.WebGL2RenderingContext.BLEND);
+    gl.blendFunc(web.WebGL2RenderingContext.SRC_ALPHA, web.WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA);
+    gl.depthMask(true);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(web.WebGL2RenderingContext.COLOR_BUFFER_BIT | web.WebGL2RenderingContext.DEPTH_BUFFER_BIT);
+    final McGlProgram p = _gl.program;
+    gl.useProgram(p.program);
+    gl.uniformMatrix4fv(p.uniforms['uProjection'], false, McMat4.orthographic(-0.5, 0.5, -0.5, 0.5, 0.1, 10).toFloat32().toJS);
+    gl.uniformMatrix4fv(p.uniforms['uView'], false, McMat4.lookAt(const McVec3(0, 0, 4), const McVec3(0, 0, 0), McVec3.up).toFloat32().toJS);
+    gl.uniform3f(p.uniforms['uFogColor'], 0, 0, 0);
+    gl.uniform1f(p.uniforms['uFogStart'], _fogOff);
+    gl.uniform1f(p.uniforms['uFogEnd'], _fogOff + 1);
+    gl.uniform1i(p.uniforms['uTexture'], 0);
+    gl.activeTexture(web.WebGL2RenderingContext.TEXTURE0);
+    final _Drawable d = _nodes[node.key]!;
+    _setDraw(d.model, d.glint ? _glint : _noOverlay);
+    gl.bindTexture(web.WebGL2RenderingContext.TEXTURE_2D, d.texture.texture);
+    _gl.draw(d.buffer);
+    return true;
+  }
+
   void _setDraw(McMat4 model, List<double> overlay) {
     final web.WebGL2RenderingContext gl = _gl.gl;
     final McGlProgram p = _gl.program;

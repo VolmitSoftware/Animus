@@ -7,7 +7,15 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../state/workspace_route.dart';
+import 'gui/gui_fields.dart';
+import 'gui/hologram_editor.dart';
+import 'gui/inventory_editor.dart';
+import 'gui/menu_editor.dart';
+import 'gui/shop_editor.dart';
 import 'npc_preview.dart';
+
+/// Kinds with a visual editor and a painted or 3D preview.
+const Set<DocumentKind> guiEditorKinds = <DocumentKind>{DocumentKind.inventory, DocumentKind.shop, DocumentKind.menu, DocumentKind.hologram};
 
 /// One document with its Visual, Preview, Code and Split views.
 class DocumentPane extends StatefulWidget {
@@ -16,9 +24,19 @@ class DocumentPane extends StatefulWidget {
     required this.view,
     required this.onView,
     required this.onSource,
+    this.onJson,
+    this.onRename,
+    this.onDelete,
     this.skinDocument,
     super.key,
   });
+
+  /// Visual editor edits; null keeps the document read-only in Visual.
+  final JsonEdit? onJson;
+
+  /// Moves the document to a new id; returns a problem to show, or null.
+  final Future<String?> Function(String id)? onRename;
+  final Future<void> Function()? onDelete;
 
   final AnimusDocument document;
 
@@ -35,6 +53,8 @@ class DocumentPane extends StatefulWidget {
 class _DocumentPaneState extends State<DocumentPane> {
   String? _draft;
   String? _draftError;
+  String? _renaming;
+  String? _renameProblem;
 
   static const Map<ViewMode, String> _labels = <ViewMode, String>{
     ViewMode.visual: 'Visual',
@@ -74,6 +94,7 @@ class _DocumentPaneState extends State<DocumentPane> {
           dom.h2(<Widget>[Component.text(document.title)]),
           dom.code(classes: 'animus-muted', <Widget>[Component.text(document.path)]),
         ]),
+        if (component.onRename != null || component.onDelete != null) _manage(document),
         dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'tablist'}, <Widget>[
           for (final ViewMode option in ViewMode.values)
             Button(
@@ -94,6 +115,37 @@ class _DocumentPaneState extends State<DocumentPane> {
     ]);
   }
 
+  Widget _manage(AnimusDocument document) {
+    final String? renaming = _renaming;
+    if (renaming == null) {
+      return dom.div(classes: 'animus-row', <Widget>[
+        if (component.onRename != null)
+          Button.ghost(label: 'Rename', size: ButtonSize.small, onPressed: () => setState(() => _renaming = document.id)),
+        if (component.onDelete != null) Button.ghost(label: 'Delete', size: ButtonSize.small, onPressed: component.onDelete),
+      ]);
+    }
+    return dom.div(classes: 'animus-row animus-rename', <Widget>[
+      GuiTextInput(value: renaming, label: 'New id', onChanged: (String value) => setState(() => _renaming = value)),
+      Button.primary(
+        label: 'Move',
+        size: ButtonSize.small,
+        onPressed: () async {
+          final String? problem = await component.onRename!(renaming.trim());
+          if (!mounted) return;
+          setState(() {
+            _renameProblem = problem;
+            if (problem == null) _renaming = null;
+          });
+        },
+      ),
+      Button.ghost(label: 'Cancel', size: ButtonSize.small, onPressed: () => setState(() {
+        _renaming = null;
+        _renameProblem = null;
+      })),
+      if (_renameProblem != null) dom.span(classes: 'animus-error', <Widget>[Component.text(_renameProblem!)]),
+    ]);
+  }
+
   Widget _diagnostics(AnimusDocument document) {
     if (document.diagnostics.isEmpty) {
       return const dom.p(classes: 'animus-ok', <Widget>[Component.text('Valid against the shared schema.')]);
@@ -109,6 +161,15 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _visual(AnimusDocument document) {
     final Object? json = document.json;
+    final JsonEdit? onJson = component.onJson;
+    if (json is Map<String, Object?> && onJson != null && guiEditorKinds.contains(document.kind)) {
+      return switch (document.kind) {
+        DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson),
+        DocumentKind.shop => ShopEditor(document: document, onJson: onJson),
+        DocumentKind.menu => MenuEditor(document: document, onJson: onJson),
+        _ => HologramEditor(document: document, onJson: onJson),
+      };
+    }
     if (json is! Map<String, Object?>) {
       return const dom.section(classes: 'animus-panel', <Widget>[Component.text('The document is not a JSON object.')]);
     }
@@ -133,10 +194,17 @@ class _DocumentPaneState extends State<DocumentPane> {
       return NpcPreview(key: ValueKey<String>('npc-preview:${document.id}'), document: document, skinDocument: component.skinDocument);
     }
     final Object? json = document.json;
+    if (json is Map<String, Object?> && guiEditorKinds.contains(document.kind)) {
+      return switch (document.kind) {
+        DocumentKind.inventory => InventoryPreview(document: document),
+        DocumentKind.shop => ShopPreview(document: document),
+        DocumentKind.menu => MenuPreview(document: document),
+        _ => HologramPreview(document: document),
+      };
+    }
     final Map<String, Object?> object = json is Map<String, Object?> ? json : const <String, Object?>{};
     final List<(String, String)> facts = previewFacts(document.kind, object);
     return dom.section(classes: 'animus-panel animus-preview', <Widget>[
-      if (document.kind == DocumentKind.inventory) _chestGrid(object),
       dom.dl(<Widget>[
         for (final (String label, String value) in facts) ...<Widget>[
           dom.dt(<Widget>[Component.text(label)]),
@@ -144,25 +212,6 @@ class _DocumentPaneState extends State<DocumentPane> {
         ],
       ]),
     ]);
-  }
-
-  Widget _chestGrid(Map<String, Object?> json) {
-    final String resolution = json['resolution'] is String ? json['resolution']! as String : '9x3';
-    final int width = int.tryParse(resolution.split('x').first) ?? 9;
-    final List<String> mask = <String>[
-      for (final Object? row in json['mask'] is List<Object?> ? json['mask']! as List<Object?> : const <Object?>[]) '$row',
-    ];
-    return dom.div(
-      classes: 'animus-chest',
-      styles: dom.Styles(raw: <String, String>{'grid-template-columns': 'repeat($width, 2rem)'}),
-      <Widget>[
-        for (final String row in mask)
-          for (int column = 0; column < width; column++)
-            dom.span(classes: 'animus-chest-slot', <Widget>[
-              Component.text(column < row.length && row[column] != ' ' ? row[column] : ''),
-            ]),
-      ],
-    );
   }
 
   Widget _code(AnimusDocument document) {
@@ -222,28 +271,6 @@ List<(String, String)> previewFacts(DocumentKind kind, Map<String, Object?> json
         ('Routines', '${count(json['routines'])}'),
         ('Triggers', '${count(json['triggers'])}'),
         ('Variables', '${count(json['variables'])}'),
-      ];
-    case DocumentKind.shop:
-      final List<Object?> pages = json['pages'] is List<Object?> ? json['pages']! as List<Object?> : const <Object?>[];
-      int entries = 0;
-      for (final Object? page in pages) {
-        if (page is! Map<String, Object?>) continue;
-        for (final String mode in const <String>['buy', 'sell', 'trade']) {
-          entries += count(page[mode]);
-        }
-      }
-      return <(String, String)>[
-        ('Title', text(json['title'])),
-        ('Modes', json['modes'] is List<Object?> ? (json['modes']! as List<Object?>).join(', ') : 'buy, sell, trade'),
-        ('Pages', '${pages.length}'),
-        ('Entries', '$entries'),
-      ];
-    case DocumentKind.inventory:
-      return <(String, String)>[
-        ('Title', text(json['title'])),
-        ('Resolution', text(json['resolution'] ?? '9x3')),
-        ('Keys', '${count(json['keys'])}'),
-        ('Slots', '${count(json['slots'])}'),
       ];
     case DocumentKind.rig:
       return <(String, String)>[

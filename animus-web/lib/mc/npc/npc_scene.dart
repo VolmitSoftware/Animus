@@ -15,6 +15,7 @@ import '../rigs/mc_rigs.dart';
 import '../scene/mc_camera.dart';
 import '../scene/mc_math.dart';
 import '../scene/mc_scene.dart';
+import 'mc_text.dart';
 import 'npc_look.dart';
 import 'npc_pose.dart';
 
@@ -23,7 +24,7 @@ const int mcLeatherColor = 0xA06540;
 
 /// Text the client draws in world space, as the server lays it out.
 final class NpcText {
-  const NpcText({required this.anchor, required this.lines, required this.nameplate});
+  const NpcText({required this.anchor, required this.lines, required this.nameplate, this.styled});
 
   /// Bottom centre, world blocks: text grows upward from here.
   final McVec3 anchor;
@@ -33,6 +34,10 @@ final class NpcText {
 
   /// The client's own player nameplate rather than a text display.
   final bool nameplate;
+
+  /// Lines already styled (GUI text with hex colours and MiniMessage); when
+  /// set, the stage draws these instead of parsing [lines].
+  final List<List<McTextRun>>? styled;
 }
 
 final class NpcScene {
