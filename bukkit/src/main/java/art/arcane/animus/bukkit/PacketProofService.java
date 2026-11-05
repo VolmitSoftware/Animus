@@ -19,6 +19,9 @@ import org.bukkit.util.Vector;
 
 /** Opt-in mechanical proof, isolated to each viewer. Never runs real commands or damages real entities. */
 final class PacketProofService implements Listener, AutoCloseable {
+    private volatile art.arcane.animus.core.runtime.NpcRuntime.InteractionObserver observer;
+    /** Accepted proof clicks reach module subscribers as preview notices. */
+    void observeInteractions(art.arcane.animus.core.runtime.NpcRuntime.InteractionObserver observer) { this.observer = observer; }
     private static final int MAX_VIEWERS = 128;
     private static final int MAX_BODIES = 8;
     private static final int MAX_CONTROLLERS = 8;
@@ -379,6 +382,8 @@ final class PacketProofService implements Listener, AutoCloseable {
                 || !viewer.hasPermission("animus.admin") || body.state.snapshot().revision() != result.npc().revision()) return;
         if (event.isCancelled()) { viewer.sendMessage("Proof interaction cancelled id=" + body.body.entityId()); return; }
         session.accepted++;
+        var observed = observer;
+        if (observed != null) observed.accepted(body.body.uuid(), viewer.getUniqueId(), action == VirtualNpcInteractionEvent.Action.ATTACK, result.distance(), true);
         if (action == VirtualNpcInteractionEvent.Action.ATTACK) {
             cancelPlan(session);
             session.guard.updateSnapshot(body.body.entityId(), body.state.damage(1));

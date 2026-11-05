@@ -1,11 +1,35 @@
-plugins { id 'java-library' }
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
 ext.animusRoot = projectDir.parentFile
 apply from: '../gradle/java.gradle'
 // API coordinates and Java identity remain stable when the plugin's custom group changes.
+// The version follows AnimusApi.API_VERSION; core's ApiContractTest keeps them equal.
 group = 'art.arcane.animus'
-version = '1.0.0-SNAPSHOT'
+version = '1.1.0-SNAPSHOT'
 java { withSourcesJar(); withJavadocJar() }
 if (rootProject.projectDir != animusRoot) {
     layout.buildDirectory.set(rootProject.layout.buildDirectory.dir('animus-api'))
 }
-// Deliberately no external runtime/compile dependencies or publication task.
+// Deliberately no external runtime or compile dependencies. Publishing targets only the local Maven repository
+// (publishToMavenLocal) and JitPack, which runs that task from jitpack.yml; no remote repository is configured here.
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = 'animus-api'
+            from(components.java)
+            pom {
+                name = 'Animus API'
+                description = 'Versioned JDK-only contracts for trusted Animus Java modules.'
+                url = 'https://github.com/VolmitSoftware/Animus'
+                licenses {
+                    license {
+                        name = 'GNU General Public License v3.0'
+                        url = 'https://github.com/VolmitSoftware/Animus/blob/master/LICENSE'
+                    }
+                }
+            }
+        }
+    }
+}

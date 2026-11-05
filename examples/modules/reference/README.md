@@ -2,6 +2,14 @@
 
 This external example compiles against **only `animus-api` and Java 25**. It declares API major 1 support on Spigot, Paper and Folia and registers the nonprivileged `reference:hello` action. The action returns a JSON greeting; it does not access Minecraft state, execute a command, or provide a behavior interpreter.
 
+On an API 1.1 engine it also shows the 1.1 additions:
+
+- An interaction listener counts accepted, non-preview clicks per NPC on the bounded module worker.
+- The `reference:interactions` action returns that NPC's count and the number of protection checks seen.
+- A protection hook counts every combat and build protection check and allows it. The server's own protection still decides, because both must allow. Only one module can provide protection, so remove this example before installing a real protection module.
+
+It checks `AnimusApi.API_VERSION.minor()` first, so on a 1.0 engine it registers only the greeting.
+
 From the repository root:
 
 ```sh

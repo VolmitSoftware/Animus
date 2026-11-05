@@ -226,7 +226,8 @@ public final class AnimusCommands {
                 ExtensionRuntime.Status snapshot = extensions.status();
                 sender.tell("Modules " + snapshot.state() + " | startup=" + extensions.startupStatuses().size()
                         + " | " + ModuleCapabilityListing.of(extensions.capabilities()).counts() + " | failure=" + snapshot.failure());
-                sender.tell("Module invocations: " + snapshot.invocations());
+                sender.tell("Module invocations: " + snapshot.invocations() + " | dropped interaction notices=" + extensions.droppedInteractionNotices());
+                active.moduleHooks().status().forEach(sender::tell);
                 if (snapshot.lifecycle() != null) sender.tell("Module lifecycle: " + snapshot.lifecycle());
                 if (snapshot.cleanup() != null) sender.tell("Module cleanup: " + snapshot.cleanup());
                 sender.tell("File work: " + active.fileStatus());

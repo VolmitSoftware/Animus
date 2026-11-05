@@ -36,6 +36,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private BehaviorStateStore behaviorState;
     private volatile art.arcane.animus.core.migration.CitizensDropIn.Host importHost = art.arcane.animus.core.migration.CitizensDropIn.Host.NONE;
     private RigLibrary rigs;
+    private final art.arcane.animus.core.extension.ModuleHooks moduleHooks = new art.arcane.animus.core.extension.ModuleHooks();
     private volatile CatalogReloads catalogs = CatalogReloads.NONE;
 
     public AnimusRuntime(RuntimeEnvironment environment) {
@@ -193,6 +194,8 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.EditorSettings editorSettings() { return settings().editor(); }
     public synchronized art.arcane.animus.core.config.EditorRelaySettings editorRelaySettings() { return settings().relay(); }
     public RuntimeEnvironment environment() { return environment; }
+    /** Module protection, economy and import converter registrations; platforms wrap their adapters with it. */
+    public art.arcane.animus.core.extension.ModuleHooks moduleHooks() { return moduleHooks; }
     /** The platform's plugins folder and Citizens check for the drop-in Citizens migration; mod servers keep the default. */
     public art.arcane.animus.core.migration.CitizensDropIn.Host importHost() { return importHost; }
     public void importHost(art.arcane.animus.core.migration.CitizensDropIn.Host host) { importHost = Objects.requireNonNull(host, "host"); }

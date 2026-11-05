@@ -106,6 +106,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     volatile BukkitNavigationBridge navigation;
     volatile TriggerDispatcher triggers;
     volatile InteractionListener<Player> interactions;
+    volatile InteractionObserver observer;
     private final Map<String, Geometry> geometries = new HashMap<>();
     private final Map<ChunkPosition, Set<RegionActor>> resting = new ConcurrentHashMap<>(), anchored = new ConcurrentHashMap<>();
     private final Set<ChunkPosition> loaded = ConcurrentHashMap.newKeySet();
@@ -173,6 +174,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
 
     @Override public boolean available() { return !closed && packets != null; }
     @Override public void interactions(InteractionListener<Player> listener) { interactions = listener; }
+    @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(previews); triggers = dispatcher; }
     @Override public void refresh() { refresh.set(true); }
     @Override public PlayerAccess<Player> players() { return players; }

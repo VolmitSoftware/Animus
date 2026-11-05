@@ -12,7 +12,7 @@ import zipfile
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[2]
 parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.0.0-SNAPSHOT.jar')
+parser.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.1.0-SNAPSHOT.jar')
 parser.add_argument('--java-home',type=Path,default=Path('/opt/homebrew/opt/openjdk@25'))
 parser.add_argument('--output',type=Path,default=HERE/'build')
 args=parser.parse_args();api=args.api_jar.resolve();output=args.output.resolve()
