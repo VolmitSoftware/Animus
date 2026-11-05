@@ -145,6 +145,9 @@
 
 ### Fixed
 
+- Combat, builds and container shops refuse when WorldGuard is installed but disabled, at startup or later.
+- NPC builds work with WorldGuard installed; NPCs are asked about as non-members, so a region without `build` allowed is closed to them.
+- An NPC whose fight ends stops instead of walking the rest of its chase path.
 - The editor explains why the server closed its event stream, and a change set still being written at reconnect completes when the server reports it.
 - Citizens NPCs with a non-player body and a skin import without the skin and spawn; the skin is kept for review, preview counts only definitions the server can spawn as valid, and a definition that cannot activate is logged once at WARN with its field (converter version 9).
 - Patrols are no longer capped at 32: routes take turns under `[navigation]` per-tick budgets, patrols with no player near sleep, a walking patrol standing in the air falls before its first leg, and navigation pressure is reported in `/animus status` and the console.
