@@ -71,7 +71,7 @@ Future<PickedFiles?> pickDirectory() async {
   String name = 'Animus';
   for (final web.File file in files) {
     final String relative = file.webkitRelativePath.isEmpty ? file.name : file.webkitRelativePath;
-    if (!relative.endsWith('.json')) {
+    if (!relative.endsWith('.json') && !(relative.endsWith('.png') && relative.contains('pack/assets/'))) {
       contents[relative] = Uint8List(0);
       continue;
     }
@@ -111,4 +111,26 @@ Future<List<web.File>?> _pick({required String? accept, required bool directory}
   web.document.body?.append(input);
   input.click();
   return completer.future;
+}
+
+/// Lets the user pick one file. Null when the dialog is cancelled.
+Future<(String, Uint8List)?> pickFile(String accept) async {
+  final List<web.File>? files = await _pick(accept: accept, directory: false);
+  if (files == null || files.isEmpty) return null;
+  final web.File file = files.first;
+  return (file.name, (await file.arrayBuffer().toDart).toDart.asUint8List());
+}
+
+/// Saves [bytes] as a download named [name].
+void downloadBytes(String name, Uint8List bytes, {String type = 'application/zip'}) {
+  final web.Blob blob = web.Blob(<JSAny>[bytes.toJS].toJS, web.BlobPropertyBag(type: type));
+  final String url = web.URL.createObjectURL(blob);
+  final web.HTMLAnchorElement anchor = web.document.createElement('a') as web.HTMLAnchorElement
+    ..href = url
+    ..download = name
+    ..style.display = 'none';
+  web.document.body?.append(anchor);
+  anchor.click();
+  anchor.remove();
+  Timer(const Duration(seconds: 30), () => web.URL.revokeObjectURL(url));
 }

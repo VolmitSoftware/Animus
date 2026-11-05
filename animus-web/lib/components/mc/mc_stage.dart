@@ -81,11 +81,17 @@ final class McStageController extends ChangeNotifier {
   void resetCamera() => camera = _home;
 }
 
+/// Widgets drawn over the stage in pixel space, rebuilt with the camera.
+/// Elements under `[data-gizmo]` take their own pointer input; the orbit
+/// camera ignores presses on them.
+typedef McStageOverlay = List<Widget> Function(McCamera camera, double widthPx, double heightPx);
+
 class McStage extends StatefulWidget {
-  const McStage({required this.controller, this.label = 'NPC preview', super.key});
+  const McStage({required this.controller, this.label = 'NPC preview', this.overlay, super.key});
 
   final McStageController controller;
   final String label;
+  final McStageOverlay? overlay;
 
   @override
   State<McStage> createState() => _McStageState();
@@ -271,6 +277,8 @@ class _McStageState extends State<McStage> {
     on('pointerdown', (web.Event e) {
       final web.PointerEvent p = e as web.PointerEvent;
       if (_pointerId != null) return;
+      final web.EventTarget? target = e.target;
+      if (target != null && target.isA<web.Element>() && (target as web.Element).closest('[data-gizmo]') != null) return;
       _pointerId = p.pointerId;
       _lastX = _num(p, 'clientX');
       _lastY = _num(p, 'clientY');
@@ -426,6 +434,8 @@ class _McStageState extends State<McStage> {
       <Widget>[
         dom.div(id: _canvasHostId, classes: 'animus-mc-gl-host', attributes: <String, String>{'data-frames': '${_c.frames}'}, const <Widget>[]),
         dom.div(classes: 'animus-mc-text-layer', _textLayer()),
+        if (component.overlay != null && _widthPx > 0 && _heightPx > 0)
+          dom.div(classes: 'animus-mc-overlay', component.overlay!(_c.camera, _widthPx, _heightPx)),
         if (problem != null) dom.p(classes: 'animus-mc-problem', <Widget>[Component.text(problem)]),
       ],
     );

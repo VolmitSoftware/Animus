@@ -122,8 +122,12 @@ Map<String, Uint8List> filesFromZip(Uint8List bytes) {
   return files;
 }
 
+/// Resource pack sources the workspace keeps beside its documents.
+bool isResourcePath(String path) =>
+    path.startsWith('pack/assets/') && (path.endsWith('.json') || path.endsWith('.png')) && !path.split('/').contains('..');
+
 class DataFolderResult {
-  const DataFolderResult(this.documents, this.ignored, this.prefix);
+  const DataFolderResult(this.documents, this.ignored, this.prefix, [this.resources = const <String, Uint8List>{}]);
 
   /// Sorted by path.
   final List<AnimusDocument> documents;
@@ -131,6 +135,9 @@ class DataFolderResult {
   /// Paths under the data folder that are not documents.
   final List<String> ignored;
   final String prefix;
+
+  /// Files under `pack/assets/`, by data-folder path.
+  final Map<String, Uint8List> resources;
 }
 
 /// Parses and validates every document in [files] (path to bytes).
@@ -138,10 +145,15 @@ DataFolderResult openDataFolder(Map<String, Uint8List> files, SharedSchemas sche
   final String prefix = dataFolderPrefix(files.keys);
   final List<AnimusDocument> documents = <AnimusDocument>[];
   final List<String> ignored = <String>[];
+  final Map<String, Uint8List> resources = <String, Uint8List>{};
   final List<String> paths = files.keys.where((String path) => path.startsWith(prefix)).toList()..sort();
   for (final String fullPath in paths) {
     final String path = fullPath.substring(prefix.length);
     final DocumentLocation? location = locateDocument(path);
+    if (location == null && isResourcePath(path) && files[fullPath]!.isNotEmpty) {
+      resources[path] = files[fullPath]!;
+      continue;
+    }
     if (location == null) {
       ignored.add(path);
       continue;
@@ -161,7 +173,7 @@ DataFolderResult openDataFolder(Map<String, Uint8List> files, SharedSchemas sche
         ])
       else
         document,
-  ], ignored, prefix);
+  ], ignored, prefix, resources);
 }
 
 AnimusDocument parseDocument(DocumentLocation location, String path, Uint8List bytes, SharedSchemas schemas) {

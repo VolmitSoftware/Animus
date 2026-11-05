@@ -17,8 +17,13 @@ class DocumentPane extends StatefulWidget {
     required this.onView,
     required this.onSource,
     this.skinDocument,
+    this.editor,
     super.key,
   });
+
+  /// A structured editor (the rig editor) shown as Visual and Preview, and
+  /// beside the code in Split.
+  final Widget? editor;
 
   final AnimusDocument document;
 
@@ -86,9 +91,12 @@ class _DocumentPaneState extends State<DocumentPane> {
         ]),
       ]),
       _diagnostics(document),
-      dom.div(classes: 'animus-views is-${view.name}', <Widget>[
-        if (view == ViewMode.visual || (view == ViewMode.split && !_staged(document))) _visual(document),
-        if (view == ViewMode.preview || (view == ViewMode.split && _staged(document))) _preview(document),
+      dom.div(classes: 'animus-views is-${view.name}${component.editor != null ? ' has-editor' : ''}', <Widget>[
+        if (component.editor != null && view != ViewMode.code)
+          component.editor!
+        else if (view == ViewMode.visual || (view == ViewMode.split && !_staged(document)))
+          _visual(document),
+        if (component.editor == null && (view == ViewMode.preview || (view == ViewMode.split && _staged(document)))) _preview(document),
         if (view == ViewMode.code || view == ViewMode.split) _code(document),
       ]),
     ]);
