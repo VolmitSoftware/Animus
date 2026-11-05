@@ -2,6 +2,7 @@ package art.arcane.animus.core.gui.exchange;
 
 import art.arcane.animus.core.gui.GuiKind;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.WriteNotices;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.io.IOException;
@@ -88,8 +89,11 @@ public final class GlossFolders {
         Path temporary = Files.createTempFile(parent, ".animus-", ".tmp");
         try {
             Files.writeString(temporary, text, StandardCharsets.UTF_8);
+            WriteNotices.written(file, text);
             try { Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
             catch (AtomicMoveNotSupportedException unsupported) { Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING); }
+            catch (IOException | RuntimeException failure) { WriteNotices.touched(file); throw failure; }
+            WriteNotices.written(file, text);
         } finally { Files.deleteIfExists(temporary); }
     }
 }
