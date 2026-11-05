@@ -19,7 +19,7 @@ public final class TriggerBridge {
 
     public TriggerBridge(TriggerDispatcher dispatcher, SpatialNpcIndex index) {
         this.dispatcher = Objects.requireNonNull(dispatcher);
-        proximity = new ProximityTracker(dispatcher.settings().proximityLimits(), index);
+        proximity = new ProximityTracker(dispatcher.settings().proximityLimits(), index, dispatcher::hides);
     }
     public void activated(UUID npc) { dispatcher.activated(npc); }
     public void removed(UUID npc) { dispatcher.deactivated(npc); }

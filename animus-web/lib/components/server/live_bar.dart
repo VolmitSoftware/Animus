@@ -105,6 +105,10 @@ class _LiveBarState extends State<LiveBar> {
                   '${preview.expiresAt == null ? '' : ', until ${preview.expiresAt!.toLocal().toString().substring(11, 16)}'}. Commands, combat and economy are refused.'
               : 'Preview ${preview.state}.'),
         ]),
+      if (preview != null && preview.hiddenLine != null)
+        dom.p(classes: 'animus-muted animus-live-preview', attributes: const <String, String>{'data-testid': 'preview-hidden'}, <Widget>[
+          Component.text(preview.hiddenLine!),
+        ]),
       if (drafts.isNotEmpty)
         dom.ul(classes: 'animus-live-drafts', <Widget>[
           for (final DraftChange draft in drafts)

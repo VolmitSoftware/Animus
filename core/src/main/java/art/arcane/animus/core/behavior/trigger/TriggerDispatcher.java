@@ -60,6 +60,7 @@ public final class TriggerDispatcher implements TriggerSink {
     private final EnumMap<DropReason, LongAdder> drops = new EnumMap<>(DropReason.class);
     private volatile String unavailable = "no platform bridge is connected";
     private volatile Index index = Index.EMPTY;
+    private volatile HiddenNpcs hidden = HiddenNpcs.NONE;
     private volatile ProximityTracker.Plan plan = ProximityTracker.Plan.EMPTY;
     private volatile List<Diagnostic> activityDiagnostics = List.of();
     private volatile Diagnostic lastStartFailure;
@@ -92,6 +93,16 @@ public final class TriggerDispatcher implements TriggerSink {
     @Override public String availability() { String reason = unavailable; return reason == null ? "available" : reason; }
     public TriggerSettings settings() { return settings; }
     public ProximityTracker.Plan proximityPlan() { return available() ? plan : ProximityTracker.Plan.EMPTY; }
+    /** Connect with the runtime's previews: a viewer fires no trigger of a live NPC hidden from them. A later call replaces it. */
+    public void hide(HiddenNpcs hidden) { this.hidden = Objects.requireNonNull(hidden); }
+    /** The bound NPC is hidden from the viewer, so their proximity, interaction and choice events are dropped. Thread-safe. */
+    public boolean hides(UUID viewer, UUID npc) {
+        HiddenNpcs current = hidden;
+        if (current == HiddenNpcs.NONE) return false;
+        List<Binding> bindings = index.byNpc().get(npc);
+        String id = bindings == null || bindings.isEmpty() ? "" : bindings.getFirst().definition.id();
+        return current.hides(viewer, id, npc);
+    }
 
     @Override public Outcome<Boolean> publish(TriggerEvent event) {
         Objects.requireNonNull(event);
@@ -101,6 +112,8 @@ public final class TriggerDispatcher implements TriggerSink {
             return Outcome.rejected(Outcome.Status.UNAVAILABLE, "trigger-dispatch-unavailable", reason);
         }
         if (!index.byNpc().containsKey(event.npc())) return Outcome.ok(false);
+        Optional<UUID> player = event.player();
+        if (player.isPresent() && hides(player.get(), event.npc())) return Outcome.ok(false);
         synchronized (lock) {
             if (inbox.size() >= settings.eventQueue()) {
                 drops.get(DropReason.EVENT_QUEUE).increment();

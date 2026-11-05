@@ -1,6 +1,7 @@
 // Live editing against tool/fake_server.dart at desktop and phone widths:
 // pair from a link, open a document from the server catalog, edit it,
-// validate on the server, start a viewer-private preview, apply, force a
+// validate on the server, start a viewer-private preview (the live NPC it
+// hides is named until End preview), apply, force a
 // conflict and merge it, drop the direct path (failover to the relay) and
 // then every path (reconnect), and apply after recovery, with no console
 // errors other than the browser's own network lines while a path is down and
@@ -139,6 +140,7 @@ async function run(browser, width, height, label) {
   await page.getByRole('button', {name: 'Preview'}).click();
   await page.locator('[data-testid="preview-state"]', {hasText: 'for your player only'}).waitFor();
   assert.equal((await control('state')).previews.length, 1, 'the fake server runs one preview');
+  await page.locator('[data-testid="preview-hidden"]', {hasText: `Live NPC hidden for you while previewing: ${npc}`}).waitFor();
   await shot(page, `${label}-03-preview`);
 
   // Apply.
@@ -148,6 +150,8 @@ async function run(browser, width, height, label) {
   const applied = await serverDocument('npc', npc);
   assert.equal(applied.revision, before.revision + 1, 'the server raised the revision');
   await expectNotice(page, 'Preview ended', () => click(page, 'End preview'));
+  await page.locator('[data-testid="preview-hidden"]').waitFor({state: 'detached'});
+  await shot(page, `${label}-03b-preview-ended`);
 
   // Forced conflict: the server changes another field, the draft the name.
   await editDraft(page, (json) => { json.name = 'Greeter Second'; });

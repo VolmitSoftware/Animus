@@ -10,6 +10,7 @@ import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.runtime.ViewerPreviews;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import com.mojang.brigadier.ParseResults;
@@ -77,10 +78,11 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     @Override public int say(NpcHandle npc, Audience audience, String text) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         Component line = ModText.component(DialogueFormat.speech(active.name(), text));
-        return deliver(audience, active.state().position(), false, (ServerPlayer viewer) -> viewer.sendSystemMessage(line));
+        return deliver(active, audience, active.state().position(), false, (ServerPlayer viewer) -> viewer.sendSystemMessage(line));
     }
     @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) {
         NpcRuntime.ActiveNpc active = require(npc);
+        if (living.previews().hides(player, active)) return 0;
         Component message = ModText.component(DialogueFormat.speech(active.name(), prompt));
         Component buttons = ModText.parts(DialogueFormat.buttons(BuildIdentity.ID, token, List.copyOf(options)));
         return living.players().deliver(player, (ServerPlayer online) -> { online.sendSystemMessage(message); online.sendSystemMessage(buttons); }) ? 1 : 0;
@@ -166,7 +168,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         Holder<SoundEvent> event = BuiltInRegistries.SOUND_EVENT.get(id).<Holder<SoundEvent>>map((Holder.Reference<SoundEvent> reference) -> reference)
                 .orElseGet(() -> Holder.direct(SoundEvent.createVariableRangeEvent(id)));
         long seed = server.overworld().getRandom().nextLong();
-        return deliver(audience, at, true, (ServerPlayer viewer) -> viewer.connection.send(new ClientboundSoundPacket(event, SoundSource.NEUTRAL,
+        return deliver(active, audience, at, true, (ServerPlayer viewer) -> viewer.connection.send(new ClientboundSoundPacket(event, SoundSource.NEUTRAL,
                 at.point().x(), at.point().y(), at.point().z(), sound.volume(), sound.pitch(), seed)));
     }
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
@@ -175,7 +177,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         SimpleParticleType particle = particle(effect.particle());
         ServerLevel level = ModWorldKeys.level(server, at.world());
         if (level == null) throw PlatformRefusals.worldUnavailable();
-        return deliver(audience, at, true, (ServerPlayer viewer) -> level.sendParticles(viewer, particle, false, false,
+        return deliver(active, audience, at, true, (ServerPlayer viewer) -> level.sendParticles(viewer, particle, false, false,
                 at.point().x(), at.point().y(), at.point().z(), effect.count(), effect.spread(), effect.spread(), effect.spread(), 0));
     }
     private static SimpleParticleType particle(String key) {
@@ -205,9 +207,11 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         double y = (active.state().bounds().min().y() + active.state().bounds().max().y()) / 2;
         return new WorldPosition(position.world(), new Vec3(position.point().x(), y, position.point().z()));
     }
-    /** The trigger player, or nearby players. Returns how many were reached. */
-    private int deliver(Audience audience, WorldPosition at, boolean sameWorldOnly, Consumer<ServerPlayer> action) {
+    /** The trigger player, or nearby players, leaving out any viewer whose editor preview hides the speaker. Returns how many were reached. */
+    private int deliver(NpcRuntime.ActiveNpc speaker, Audience audience, WorldPosition at, boolean sameWorldOnly, Consumer<ServerPlayer> action) {
+        ViewerPreviews previews = living.previews();
         if (audience.player().isPresent()) {
+            if (previews.hides(audience.player().get(), speaker)) return 0;
             Optional<ServerPlayer> viewer = living.players().owned(audience.player().get());
             if (viewer.isEmpty()) return 0;
             if (sameWorldOnly && !ModWorldKeys.key(viewer.get().level()).equals(at.world())) return 0;
@@ -215,8 +219,13 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
             return 1;
         }
         List<ServerPlayer> nearby = living.players().ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
-        for (ServerPlayer viewer : nearby) action.accept(viewer);
-        return nearby.size();
+        int reached = 0;
+        for (ServerPlayer viewer : nearby) {
+            if (previews.hides(viewer.getUUID(), speaker)) continue;
+            action.accept(viewer);
+            reached++;
+        }
+        return reached;
     }
 
     @Override public boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) {

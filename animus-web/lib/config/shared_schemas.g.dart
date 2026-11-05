@@ -411,12 +411,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "preview-response": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["previewId", "viewer", "expiresAt", "npcs"],
+      "required": ["previewId", "viewer", "expiresAt", "npcs", "hidden"],
       "properties": {
         "previewId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$"},
         "viewer": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "The admin player who sees the preview."},
         "expiresAt": {"$ref": "#/$defs/instant"},
         "npcs": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/documentId"}},
+        "hidden": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/documentId"}, "description": "Live NPCs a candidate stands in for. While the preview runs they are hidden from the viewer, who fires none of their triggers and receives none of their speech, sounds or particles; other players are unaffected."},
         "documents": {"type": "array", "items": {"$ref": "#/$defs/documentDiagnostics"}}
       }
     },

@@ -4,5 +4,8 @@
   "expiresAt": "2026-11-04T12:15:00Z",
   "npcs": [
     "examples/greeter"
+  ],
+  "hidden": [
+    "examples/greeter"
   ]
 }

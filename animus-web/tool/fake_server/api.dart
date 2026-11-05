@@ -421,12 +421,17 @@ class FakeApi {
     final int maximum = limit('npcsPerPreview');
     if (npcs.length > maximum) throw ApiError('too-large', 'A preview shows at most $maximum NPCs.');
     final Preview started = previews.start(replace, token.id, settings.viewer, npcs);
+    final List<String> hidden = <String>[
+      for (final String id in started.npcs)
+        if (documents.find(DocumentKind.npc, id) != null) id,
+    ];
     events.publish(<String, Object?>{'type': 'preview', 'previewId': started.id, 'state': 'running'});
     return FakeResponse(200, body: <String, Object?>{
       'previewId': started.id,
       'viewer': started.viewer,
       'expiresAt': instant(started.expires),
       'npcs': started.npcs,
+      'hidden': hidden,
     });
   }
 

@@ -25,6 +25,7 @@ import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -479,6 +480,9 @@ public final class EditorApi implements EditorRequestHandler {
             JsonArray list = new JsonArray();
             ids.forEach(list::add);
             response.add("npcs", list);
+            JsonArray hidden = new JsonArray();
+            hiddenLive(npcs).forEach(hidden::add);
+            response.add("hidden", hidden);
             JsonObject event = new JsonObject();
             event.addProperty("type", "preview");
             event.addProperty("previewId", started.id());
@@ -486,6 +490,20 @@ public final class EditorApi implements EditorRequestHandler {
             parts.events().publish(event);
             return EditorResponse.json(200, response);
         });
+    }
+
+    /** The live NPCs (group/id) the candidates stand in for, by id or UUID, as the viewer's runtime hides them. */
+    private List<String> hiddenLive(List<NpcDefinition> candidates) {
+        Map<String, NpcDefinition> live = parts.npcs().get().snapshot();
+        LinkedHashSet<String> hidden = new LinkedHashSet<>();
+        for (NpcDefinition candidate : candidates) {
+            NpcDefinition same = live.get(candidate.id());
+            if (same != null) { hidden.add(same.group() + "/" + same.id()); continue; }
+            UUID uuid = candidate.uuid();
+            for (NpcDefinition existing : live.values())
+                if (existing.uuid().equals(uuid)) { hidden.add(existing.group() + "/" + existing.id()); break; }
+        }
+        return List.copyOf(hidden);
     }
 
     private CompletionStage<EditorResponse> endPreview(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {

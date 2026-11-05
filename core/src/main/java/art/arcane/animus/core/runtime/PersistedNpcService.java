@@ -186,7 +186,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     @Override public boolean available() { return !closed && packets != null; }
     /** Connect during startup, before the first runtime tick can activate an NPC. */
     @Override public void interactions(InteractionListener<P> listener) { interactions = listener; }
-    @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); triggers = new TriggerBridge(dispatcher, index); }
+    @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); dispatcher.hide(previews); triggers = new TriggerBridge(dispatcher, index); }
     @Override public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
         owner();

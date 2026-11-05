@@ -274,4 +274,17 @@ class TriggerDispatcherTest {
         behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");npc(true);dispatcher.activated(npc);pump();dispatcher.publish(click());pump();
         behavior("[{\"id\":\"click\",\"event\":\"interaction\"}]");pump();assertEquals(1,dispatcher.rows(0,1).getFirst().fired());
     }
+    @Test void playerEventsForAHiddenLiveNpcAreDroppedForThatViewerOnly()throws Exception{
+        behavior("[{\"id\":\"click\",\"event\":\"interaction\"},{\"id\":\"stop\",\"event\":\"waypoint\"}]");npc(true);dispatcher.activated(npc);pump();
+        UUID other=UUID.randomUUID();Set<UUID> hiding=new HashSet<>(Set.of(viewer));
+        dispatcher.hide((UUID player,String id,UUID uuid)->hiding.contains(player)&&"test".equals(id));
+        assertTrue(dispatcher.hides(viewer,npc));assertFalse(dispatcher.hides(other,npc));
+        assertEquals(Optional.of(false),dispatcher.publish(click()).value(),"the hidden viewer's click is not queued");
+        assertEquals(Optional.of(false),dispatcher.publish(new TriggerEvent.Proximity(npc,viewer,"example:greeter#click")).value());
+        assertEquals(Optional.of(true),dispatcher.publish(new TriggerEvent.Interaction(npc,other,TriggerEvent.Action.INTERACT)).value());
+        assertEquals(Optional.of(true),dispatcher.publish(new TriggerEvent.Waypoint(npc,0)).value(),"events without a player are unaffected");
+        pump();assertEquals(Optional.of(other),started.getFirst().player());
+        hiding.clear();assertFalse(dispatcher.hides(viewer,npc));
+        assertEquals(Optional.of(true),dispatcher.publish(click()).value(),"the viewer's triggers return when the preview ends");
+    }
 }
