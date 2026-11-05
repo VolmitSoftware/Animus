@@ -680,7 +680,7 @@ final class RegionActor implements RegionOwner.Body {
                         host.budget.routeRefused(waited); routeWaited = waited + 1;
                         routeStatus(current, "queued", "waiting for a planning turn"); return;
                     }
-                    current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, goal, profile(current.mode), request.limits());
+                    current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, request.aim(), profile(current.mode), request.limits());
                     current.result = current.plan.future().toCompletableFuture();
                     routeStatus(current, "planning", "");
                 }

@@ -831,7 +831,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                         return RouteScheduler.Result.YIELD;
                     } else {
                         planStarts--;
-                        route.plan = navigation.plan(world, request.bounds(), feet, goal, profile(value, route.mode), request.limits());
+                        route.plan = navigation.plan(world, request.bounds(), feet, request.aim(), profile(value, route.mode), request.limits());
                         route.result = route.plan.future().toCompletableFuture(); routeStatus(route, "planning", "");
                     }
                 } else if (route.result.isDone()) {
