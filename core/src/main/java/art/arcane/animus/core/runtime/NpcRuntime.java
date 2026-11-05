@@ -47,6 +47,8 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     @FunctionalInterface interface InteractionObserver { void accepted(UUID npc, UUID viewer, boolean attack, double distance, boolean preview); }
 
     boolean available();
+    /** Whether {@code npcs.enabled} turns this runtime on and off in place; false where that needs a restart (Folia). */
+    default boolean switchesLive() { return true; }
     /** Connect during startup. A later call replaces the listener. */
     void interactions(InteractionListener<P> listener);
     /** Connect during startup. A later call replaces the observer. */

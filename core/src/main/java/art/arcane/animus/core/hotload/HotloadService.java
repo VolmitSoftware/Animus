@@ -174,7 +174,8 @@ public final class HotloadService implements AutoCloseable {
             Optional<HotloadEngine.Delta> delta = engine.settle(item.snapshot(), HotloadEngine.Outcome.APPLIED);
             if (delta.isEmpty()) continue;
             screens |= item.target().area() == HotloadTargets.Area.CONFIG || item.verdict().kind().map(SCREENS::contains).orElse(false);
-            Predicate<String> restart = item.target().area() == HotloadTargets.Area.CONFIG ? SettingsLiveness::restartRequired : (String key) -> false;
+            boolean liveSwitch = parts.living().switchesLive();
+            Predicate<String> restart = item.target().area() == HotloadTargets.Area.CONFIG ? (String key) -> SettingsLiveness.restartRequired(key, liveSwitch) : (String key) -> false;
             List<HotloadDiff.Change> changes = HotloadDiff.diff(file, delta.get().before(), delta.get().after());
             if (changes.isEmpty()) continue;
             parts.log().accept("Hotloaded " + file + " (" + changes.size() + (changes.size() == 1 ? " change)" : " changes)"));

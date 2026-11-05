@@ -1,28 +1,20 @@
 package art.arcane.animus.core.hotload;
 
-import java.util.List;
+import java.util.Set;
 
 /**
- * Which {@code config.toml} keys take effect the moment a hotload applies them. Every other key is read once when a
- * service starts (budgets, thread pools, listeners, packet transports) and its hotload message says a restart is needed.
+ * Which {@code config.toml} keys still need a restart after a hotload. Every other key applies live: each service
+ * takes the new value on its own owner thread by its next tick. The one exception is {@code npcs.enabled} on Folia,
+ * where NPCs and viewers retire on their own regions in no fixed order, so the runtime cannot safely stop and start
+ * again in place. Changing a module jar also needs a restart, but that is a file, not a key.
  */
 public final class SettingsLiveness {
-    /** Exact keys, or prefixes ending in a dot that cover a whole table. */
-    private static final List<String> LIVE = List.of(
-            "statusMessage",
-            "hotload.",
-            "shops.enabled", "shops.economy", "shops.priceFormat", "shops.messages.",
-            "behaviors.actions.commandBehaviors", "behaviors.actions.commandNamespaces", "behaviors.actions.choiceLifetimeSeconds");
+    private static final Set<String> RESTART_WITHOUT_LIVE_SWITCH = Set.of("npcs.enabled");
 
     private SettingsLiveness() {}
 
-    public static boolean live(String key) {
-        for (String entry : LIVE) {
-            if (entry.endsWith(".") ? key.startsWith(entry) || key.equals(entry.substring(0, entry.length() - 1)) : key.equals(entry) || key.startsWith(entry + "["))
-                return true;
-        }
-        return false;
+    /** @param liveSwitch whether the NPC runtime turns itself on and off in place (false on Folia) */
+    public static boolean restartRequired(String key, boolean liveSwitch) {
+        return !liveSwitch && RESTART_WITHOUT_LIVE_SWITCH.contains(key);
     }
-
-    public static boolean restartRequired(String key) { return !live(key); }
 }
