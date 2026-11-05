@@ -28,9 +28,26 @@ import java.util.random.RandomGenerator;
  * sleep. All damage in either direction goes through {@link #hit}, which asks protection first.
  * Every combat NPC registers; at most {@code maximumNpcs} of them fight or scan at once. An NPC with no player near and
  * nothing to fight sleeps and holds no slot, and NPCs waiting for a slot get one in the order they asked.
+ * <p>
+ * A regionized server runs one engine per NPC on that NPC's owner. Such an engine reaches combatants it does not hold
+ * only through its world: their published views ({@link CombatWorld#peer}), hits and alerts delivered to their owners,
+ * and fights reported to engines elsewhere; per-tick work is drawn from the region's shared {@link Allowance}.
  */
 public final class CombatEngine implements CombatOperations, AutoCloseable {
     public record Status(UUID npc, CombatState state, Optional<TargetRef> target, boolean disengaged, int ammunition) {}
+    /** Per-tick work an engine may do, shared by every engine that ticks in the same region tick. */
+    public interface Allowance {
+        enum Kind { BRAINS, SCANS, PATHS, ALERTS, HELPER_UPDATES }
+        /** Up to {@code wanted} units for this tick. */
+        int take(Kind kind, int wanted);
+        /** Units taken this tick and not used. */
+        void refund(Kind kind, int unused);
+        /** A single engine on its own thread: the configured budgets alone bound it. */
+        Allowance UNLIMITED = new Allowance() {
+            @Override public int take(Kind kind, int wanted) { return wanted; }
+            @Override public void refund(Kind kind, int unused) {}
+        };
+    }
 
     private record Scheduled(long wake, long order, CombatBrain brain) {}
     private record Fight(TargetRef attacker, TargetRef victim, FightKind kind) {}
@@ -45,6 +62,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private final ProtectionGate protection;
     private final RandomGenerator random;
     private final Consumer<String> diagnostics;
+    private final Allowance allowance;
     private final Map<UUID, CombatBrain> brains = new HashMap<>();
     private final Map<String, List<CombatBrain>> squads = new HashMap<>();
     private final Map<TargetRef, List<CombatBrain>> guardians = new HashMap<>();
@@ -70,6 +88,10 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private boolean closed;
 
     public CombatEngine(CombatBudgets budgets, CombatWorld world, ProtectionAdapter adapter, RandomGenerator random, Consumer<String> diagnostics) {
+        this(budgets, world, adapter, random, diagnostics, Allowance.UNLIMITED);
+    }
+    public CombatEngine(CombatBudgets budgets, CombatWorld world, ProtectionAdapter adapter, RandomGenerator random, Consumer<String> diagnostics, Allowance allowance) {
+        this.allowance = Objects.requireNonNull(allowance, "allowance");
         this.budgets = Objects.requireNonNull(budgets, "budgets");
         this.world = Objects.requireNonNull(world, "world");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
@@ -105,6 +127,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         return brain == null ? Optional.empty() : Optional.ofNullable(brain.guarded());
     }
     public Set<UUID> npcs() { return Set.copyOf(brains.keySet()); }
+    /** Whether any NPC here reacts to fights or chat it witnesses. */
+    public boolean watches() { return !watchers.isEmpty(); }
     public boolean ownsHelper(UUID helper) { return helpers.tracks(helper); }
 
     public Optional<Status> status(UUID npc) {
@@ -150,18 +174,32 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     public void tick() {
         if (closed) return;
         tick++;
-        scansLeft = budgets.targetScansPerTick();
-        pathsLeft = budgets.pathRequestsPerTick();
-        alertsLeft = budgets.squadAlertsPerTick();
-        updateHelpers();
-        events();
-        for (int visited = 0; visited < budgets.brainsPerTick(); visited++) {
-            Scheduled next = schedule.peek();
-            if (next == null || next.wake() > tick) break;
-            schedule.poll();
-            CombatBrain brain = next.brain();
-            if (brain.retired() || brain.wake() != next.wake()) { visited--; continue; }
-            schedule(brain, tick + Math.max(1, brain.update(tick)));
+        Scheduled due = schedule.peek();
+        boolean work = due != null && due.wake() <= tick || helpers.size() > 0 || !fights.isEmpty() || !chats.isEmpty();
+        if (!work) return;
+        scansLeft = allowance.take(Allowance.Kind.SCANS, budgets.targetScansPerTick());
+        pathsLeft = allowance.take(Allowance.Kind.PATHS, budgets.pathRequestsPerTick());
+        alertsLeft = allowance.take(Allowance.Kind.ALERTS, budgets.squadAlertsPerTick());
+        try {
+            int visits = helpers.size() == 0 ? 0 : allowance.take(Allowance.Kind.HELPER_UPDATES, Math.min(budgets.helperUpdatesPerTick(), helpers.size()));
+            allowance.refund(Allowance.Kind.HELPER_UPDATES, visits - updateHelpers(visits));
+            events();
+            int brainTurns = allowance.take(Allowance.Kind.BRAINS, budgets.brainsPerTick()), visited = 0;
+            while (visited < brainTurns) {
+                Scheduled next = schedule.peek();
+                if (next == null || next.wake() > tick) break;
+                schedule.poll();
+                CombatBrain brain = next.brain();
+                if (brain.retired() || brain.wake() != next.wake()) continue;
+                visited++;
+                schedule(brain, tick + Math.max(1, brain.update(tick)));
+            }
+            allowance.refund(Allowance.Kind.BRAINS, brainTurns - visited);
+        } finally {
+            allowance.refund(Allowance.Kind.SCANS, scansLeft);
+            allowance.refund(Allowance.Kind.PATHS, pathsLeft);
+            allowance.refund(Allowance.Kind.ALERTS, alertsLeft);
+            scansLeft = 0; pathsLeft = 0; alertsLeft = 0;
         }
     }
 
@@ -266,6 +304,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         for (VirtualNpcState.Snapshot snapshot : npcs.candidates()) {
             CombatBrain other = brains.get(snapshot.npcId());
             if (other != null && other != brain) found.add(view(other, snapshot));
+            else if (other == null && !snapshot.npcId().equals(brain.npc())) world.peer(snapshot.npcId()).ifPresent(found::add);
         }
         return found;
     }
@@ -273,19 +312,22 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     Optional<CombatTarget> resolve(TargetRef ref) {
         if (ref.kind() != TargetKind.NPC) return world.real(ref);
         CombatBrain brain = brains.get(ref.id());
-        if (brain == null) return Optional.empty();
+        if (brain == null) return world.peer(ref.id());
         Optional<VirtualNpcState.Snapshot> snapshot = world.npc(ref.id());
         if (snapshot.isEmpty() || !snapshot.get().active()) return Optional.empty();
         return Optional.of(view(brain, snapshot.get()));
     }
 
     private CombatTarget view(CombatBrain brain, VirtualNpcState.Snapshot snapshot) {
-        CombatLoadout loadout = brain.loadout();
+        return npcTarget(brain.npc(), speaker(brain), snapshot, brain.handle(), brain.settings(), brain.loadout());
+    }
+    /** How a combat NPC appears to every rule and hit, here or as a view its owner published for other engines. */
+    public static CombatTarget npcTarget(UUID npc, String name, VirtualNpcState.Snapshot snapshot, String handle, CombatSettings settings, CombatLoadout loadout) {
         List<String> worn = new ArrayList<>();
         for (String slot : List.of("head", "chest", "legs", "feet")) if (!loadout.item(slot).equals(CombatLoadout.EMPTY)) worn.add(loadout.item(slot));
-        CombatTarget.Details details = new CombatTarget.Details(brain.settings().defense().maximumHealth(), loadout.item("main_hand"), loadout.item("off_hand"), worn, Set.of());
-        return new CombatTarget(new TargetRef(TargetKind.NPC, brain.npc()), "animus:npc", speaker(brain), snapshot.position(),
-                snapshot.bounds(), snapshot.health(), Set.of(TargetCategory.NPCS), brain.handle(), brain.settings().squad().name(), details);
+        CombatTarget.Details details = new CombatTarget.Details(settings.defense().maximumHealth(), loadout.item("main_hand"), loadout.item("off_hand"), worn, Set.of());
+        return new CombatTarget(new TargetRef(TargetKind.NPC, npc), "animus:npc", name, snapshot.position(),
+                snapshot.bounds(), snapshot.health(), Set.of(TargetCategory.NPCS), handle, settings.squad().name(), details);
     }
 
     /** Offers this target to the NPC's squad, spending the shared per-tick alert budget. */
@@ -302,6 +344,14 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             alertsLeft--;
             member.alerted(target);
         }
+        if (alertsLeft > 0) alertsLeft -= Math.max(0, Math.min(alertsLeft, world.alertPeers(squad.get(), source.npc(), self.position(), range, target, alertsLeft)));
+    }
+    /** A squad mate another engine holds offers this target. */
+    public void alerted(UUID npc, TargetRef target) {
+        CombatBrain member = brains.get(npc);
+        if (closed || member == null || !member.awaitsTarget()) return;
+        member.alerted(target);
+        wake(member);
     }
 
     /**
@@ -312,6 +362,12 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         for (CombatBrain guardian : guardians.getOrDefault(victim, List.of())) guardian.alerted(attacker);
         fought(attacker, victim);
     }
+    /** A fight another engine saw or the platform reported for this engine only: it is not passed on again. */
+    public void heardFight(TargetRef victim, TargetRef attacker) {
+        if (closed) return;
+        for (CombatBrain guardian : guardians.getOrDefault(victim, List.of())) { guardian.alerted(attacker); wake(guardian); }
+        witnessed(attacker, victim);
+    }
 
     /** A player said this in chat. NPCs with chat rules nearby learn of it on a later tick. Owner thread only. */
     public void chat(TargetRef player, String message) {
@@ -321,6 +377,10 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     }
 
     private void fought(TargetRef attacker, TargetRef victim) {
+        witnessed(attacker, victim);
+        if (!closed) world.foughtElsewhere(attacker, victim);
+    }
+    private void witnessed(TargetRef attacker, TargetRef victim) {
         for (CombatBrain guardian : guardians.getOrDefault(attacker, List.of())) {
             if (guardian.settings().guard().assist()) guardian.alerted(victim);
         }
@@ -385,7 +445,24 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             return outcome;
         }
         CombatBrain defender = brains.get(target.ref().id());
-        if (defender == null) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
+        if (defender == null) return world.strikePeer(attacker, from, target, amount, knockback);
+        return strike(defender, attacker, from, target, amount, knockback);
+    }
+
+    /**
+     * A hit on an NPC this engine holds, delivered by the engine that dealt it. The attacker's engine already asked
+     * protection; this side applies defense and the one damage authority.
+     */
+    public CombatWorld.DamageOutcome struck(UUID npc, TargetRef attacker, WorldPosition from, double amount, double knockback) {
+        CombatBrain defender = brains.get(npc);
+        Optional<VirtualNpcState.Snapshot> snapshot = world.npc(npc);
+        if (closed || defender == null || snapshot.isEmpty() || !snapshot.get().active() || !(amount > 0))
+            return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
+        CombatWorld.DamageOutcome outcome = strike(defender, attacker, from, view(defender, snapshot.get()), amount, knockback);
+        wake(defender);
+        return outcome;
+    }
+    private CombatWorld.DamageOutcome strike(CombatBrain defender, TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback) {
         double mitigated = defender.mitigate(attacker, from, amount, resolve(attacker));
         if (mitigated <= 0) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
         CombatWorld.DamageOutcome outcome = world.damageVirtual(defender.npc(), attacker, mitigated);
@@ -444,11 +521,11 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         return true;
     }
 
-    private void updateHelpers() {
-        int visits = Math.min(budgets.helperUpdatesPerTick(), helpers.size());
+    /** Visits at most {@code visits} helpers; returns how many it visited. */
+    private int updateHelpers(int visits) {
         for (int i = 0; i < visits; i++) {
             Optional<HelperLedger.Shot> next = helpers.next();
-            if (next.isEmpty()) return;
+            if (next.isEmpty()) return i;
             HelperLedger.Shot shot = next.get();
             Optional<Vec3> position = world.helperPosition(shot.helper());
             if (position.isEmpty()) {
@@ -461,6 +538,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             }
             if (!collide(shot, position.get())) shot.moved(position.get());
         }
+        return visits;
     }
 
     /** Whether a shot may land on this participant: a helpful potion reaches friends, anything else only foes. */

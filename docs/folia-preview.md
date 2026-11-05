@@ -1,6 +1,6 @@
 # Folia stationary preview
 
-The experimental Folia proof renders one stationary player-shaped NPC privately to an administrator. It has its own command and does not activate saved NPC definitions. Saved NPCs run separately through the [Folia runtime](folia-runtime.md); remote control, riding and combat remain unavailable on Folia.
+The experimental Folia proof renders one stationary player-shaped NPC privately to an administrator. It has its own command and does not activate saved NPC definitions. Saved NPCs run separately through the [Folia runtime](folia-runtime.md), where riding and combat run on region owners; the remote-control preview stays unavailable on Folia.
 
 Enable `packetProofEnabled = true` in `config.toml` and restart the isolated test server. An administrator with `animus.admin` can use:
 

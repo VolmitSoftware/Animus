@@ -35,6 +35,23 @@ class RegionRouteTurnsTest {
         assertEquals(0, budget.drainRefusedRoutes());
     }
 
+    /** Combat brains ask in the same fixed order; with more brains than turns, every one still gets turns. */
+    @Test void shouldGiveEveryCombatBrainOnARegionATurnWhenTheyAskInTheSameOrder() {
+        FakeRegions regions = new FakeRegions().assign(1, A);
+        Map<RegionBudget.Kind, Integer> limits = new EnumMap<>(RegionBudget.Kind.class);
+        for (RegionBudget.Kind kind : RegionBudget.Kind.values()) limits.put(kind, 64);
+        limits.put(RegionBudget.Kind.COMBAT_BRAINS, 8);
+        RegionBudget budget = new RegionBudget(regions, limits);
+        int brains = 40;
+        int[] waited = new int[brains], served = new int[brains];
+        for (int i = 0; i < brains; i++) {
+            int brain = i;
+            regions.repeat(A, () -> { if (budget.takeCombatTurn(waited[brain])) { served[brain]++; waited[brain] = 0; } else waited[brain]++; });
+        }
+        for (int tick = 0; tick < 100; tick++) regions.tick(1);
+        for (int i = 0; i < brains; i++) assertTrue(served[i] >= 10, "brain " + i + " served " + served[i]);
+    }
+
     @Test void shouldRefuseRouteTurnsAwayFromARegionThread() {
         FakeRegions regions = new FakeRegions().assign(1, A);
         Map<RegionBudget.Kind, Integer> limits = new EnumMap<>(RegionBudget.Kind.class);
