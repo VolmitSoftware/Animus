@@ -5,11 +5,11 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
-import '../logic/data_folder.dart';
 import '../logic/gui/gloss_bundle.dart';
 import '../logic/gui/gui_catalog.dart';
 import '../logic/gui/gui_json.dart';
-import '../logic/gui/gui_templates.dart';
+import '../logic/gui/gui_text.dart';
+import '../logic/offline/new_documents.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
@@ -21,7 +21,11 @@ import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
 import 'citizens_screen.dart';
 import 'document_view.dart';
+import 'gui/gui_fields.dart';
 import 'npc/npc_browser.dart';
+import 'offline/home_screen.dart';
+import 'offline/new_document_page.dart';
+import 'offline/sync_page.dart';
 import 'server/connection_pill.dart';
 import 'server/live_bar.dart';
 import 'server/pair_page.dart';
@@ -140,30 +144,53 @@ class _EditorShellState extends State<EditorShell> {
     }
   }
 
-  Future<void> _create(WorkspaceSnapshot workspace, DocumentKind kind) async {
-    final Set<String> taken = <String>{for (final AnimusDocument document in workspace.documents) if (document.kind == kind) document.id};
-    final String id = newDocumentId(kind, taken);
-    await component.store.commit(documents: <DocumentChange>[DocumentChange(kind, id, prettyJson(newDocument(kind, id)))]);
-    component.onNavigate(DocumentRoute(workspace.id, kind, id));
+  /// Where [document] goes under [id]: a behavior inside a pack stays in its
+  /// pack's folder.
+  String _pathFor(AnimusDocument document, String id) {
+    final int behaviors = document.path.indexOf('/behaviors/');
+    if (document.kind == DocumentKind.behavior && document.path.startsWith('packs/') && behaviors > 0) {
+      final int colon = id.indexOf(':');
+      return '${document.path.substring(0, behaviors)}/behaviors/${id.substring(0, colon)}/${id.substring(colon + 1)}.json';
+    }
+    return newDocumentPath(document.kind, id);
   }
 
-  Future<String?> _rename(WorkspaceSnapshot workspace, AnimusDocument document, String id) async {
-    if (id == document.id) return null;
-    if (locateDocument(documentPath(document.kind, id)) != DocumentLocation(document.kind, id)) {
-      return const <DocumentKind>{DocumentKind.inventory, DocumentKind.shop, DocumentKind.menu, DocumentKind.hologram, DocumentKind.textAnimation}.contains(document.kind)
-          ? 'Use namespace:path with a-z, 0-9, _ and -, such as town:welcome.'
-          : 'Use a path with a-z, 0-9, _, - and /, such as town/welcome.';
-    }
-    if (component.store.document(document.kind, id) != null) return '${document.kind.label}: $id already exists.';
+  /// Moves (or with [copy], copies) a document to [id] in one undo step. A
+  /// move takes the references along: NPCs listing a renamed behavior, and
+  /// the animations and NPCs of a renamed rig.
+  Future<String?> _relocate(WorkspaceSnapshot workspace, AnimusDocument document, String id, {required bool copy}) async {
+    final DocumentKind kind = document.kind;
+    if (id == document.id) return copy ? 'Pick an id that is not taken.' : null;
+    if (!validDocumentId(kind, id)) return 'Use ${idHint(kind)}.';
+    if (component.store.document(kind, id) != null) return '${kind.label}: $id already exists.';
     final Object? json = document.json;
-    final String source = document.kind == DocumentKind.shop && json is Map<String, Object?> && json['id'] is String
-        ? prettyJson(<String, Object?>{...json, 'id': id})
-        : document.source;
-    await component.store.commit(documents: <DocumentChange>[
-      DocumentChange(document.kind, document.id, null),
-      DocumentChange(document.kind, id, source),
-    ]);
-    component.onNavigate(DocumentRoute(workspace.id, document.kind, id));
+    final String source = json is Map<String, Object?> ? prettyJson(rewriteIdentity(kind, json, id, fresh: copy)) : document.source;
+    final List<DocumentChange> changes = <DocumentChange>[
+      if (!copy) DocumentChange(kind, document.id, null),
+      DocumentChange(kind, id, source, path: _pathFor(document, id)),
+    ];
+    if (!copy) {
+      for (final AnimusDocument other in workspace.documents) {
+        final Object? value = other.json;
+        if (value is! Map<String, Object?>) continue;
+        if (kind == DocumentKind.behavior && other.kind == DocumentKind.npc && stringList(value['behaviors']).contains(document.id)) {
+          changes.add(DocumentChange(other.kind, other.id, prettyJson(<String, Object?>{
+            ...value,
+            'behaviors': <String>[for (final String behavior in stringList(value['behaviors'])) behavior == document.id ? id : behavior],
+          })));
+        } else if (kind == DocumentKind.rig && other.kind == DocumentKind.animation && value['rig'] == document.id) {
+          changes.add(DocumentChange(other.kind, other.id, prettyJson(<String, Object?>{...value, 'rig': id})));
+        } else if (kind == DocumentKind.rig && other.kind == DocumentKind.npc && asMap(value['rig'])['id'] == document.id) {
+          changes.add(DocumentChange(other.kind, other.id, prettyJson(<String, Object?>{...value, 'rig': <String, Object?>{...asMap(value['rig']), 'id': id}})));
+        }
+      }
+    }
+    await component.store.commit(documents: changes);
+    final int references = changes.length - (copy ? 1 : 2);
+    ArcaneSonner.success(copy
+        ? 'Copied ${document.id} as $id.'
+        : 'Moved ${document.id} to $id${references > 0 ? ' and updated $references reference${references == 1 ? '' : 's'}' : ''}.');
+    component.onNavigate(DocumentRoute(workspace.id, kind, id));
     return null;
   }
 
@@ -269,50 +296,18 @@ class _EditorShellState extends State<EditorShell> {
     ]);
   }
 
-  Widget _home(EditorStore store) {
-    return dom.main_(classes: 'animus-home', <Widget>[
-      dom.section(classes: 'animus-panel animus-home-intro', <Widget>[
-        const dom.h1(<Widget>[Component.text('Open an Animus data folder')]),
-        const dom.p(<Widget>[
-          Component.text('Pick plugins/Animus (config/animus on mod servers) or a zip of it. '
-              'NPCs, behaviors, shops and GUIs are checked against the shared schemas in this browser. '
-              'Nothing is uploaded.'),
-        ]),
-        dom.div(classes: 'animus-row', <Widget>[
-          Button.primary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), disabled: _busy, onPressed: () => _open(pickDirectory)),
-          Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: _busy, onPressed: () => _open(pickZip)),
-          Button.ghost(
-            label: 'Convert Citizens save',
-            icon: ArcaneIcon.arrowRightLeft(),
-            disabled: _busy,
-            onPressed: () => component.onNavigate(const CitizensRoute()),
-          ),
-        ]),
-      ]),
-      ServersPanel(hub: component.hub, onNavigate: component.onNavigate),
-      dom.section(classes: 'animus-panel', <Widget>[
-        const dom.h2(<Widget>[Component.text('Workspaces in this browser')]),
-        if (store.workspaces.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('None yet. Opened folders are kept here as local workspaces.')])
-        else
-          dom.ul(classes: 'animus-workspace-list', <Widget>[
-            for (final WorkspaceSummary summary in store.workspaces)
-              dom.li(<Widget>[
-                dom.a(
-                  href: summary.serverId != null && component.hub.server(summary.serverId!) != null
-                      ? ServerRoute(summary.serverId!, const <String>[]).format()
-                      : WorkspaceRoute(summary.id).format(),
-                  <Widget>[Component.text(summary.name)],
-                ),
-                dom.span(classes: 'animus-muted', <Widget>[
-                  Component.text('${summary.documentCount} documents${summary.serverId == null ? '' : ', live on a server'}'),
-                ]),
-                Button.ghost(label: 'Remove', size: ButtonSize.small, onPressed: () => store.deleteWorkspace(summary.id)),
-              ]),
-          ]),
-      ]),
-    ]);
-  }
+  Widget _home(EditorStore store) => HomeScreen(
+        store: store,
+        hub: component.hub,
+        busy: _busy,
+        onOpenFolder: () => _open(pickDirectory),
+        onOpenZip: () => _open(pickZip),
+        onNavigate: component.onNavigate,
+      );
+
+  /// Kinds whose id the user picks (a skin's is its content hash, presets
+  /// have one fixed id).
+  bool _movable(DocumentKind kind) => kind != DocumentKind.skin && kind != DocumentKind.presets;
 
   Widget _workspace(WorkspaceSnapshot workspace) {
     final EditorRoute route = component.route;
@@ -341,15 +336,15 @@ class _EditorShellState extends State<EditorShell> {
                       coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',
                     )
                 : null,
-            onRename: guiKinds.contains(document.kind) ? (String id) => _rename(workspace, document, id) : null,
-            onDelete: guiKinds.contains(document.kind)
-                ? () async {
-                    await component.store.commit(documents: <DocumentChange>[DocumentChange(document.kind, document.id, null)]);
-                    component.onNavigate(WorkspaceRoute(workspace.id));
-                    ArcaneSonner.info('Deleted ${document.id}. Undo brings it back.');
-                  }
-                : null,
+            onRename: _movable(document.kind) ? (String id) => _relocate(workspace, document, id, copy: false) : null,
+            onDuplicate: _movable(document.kind) ? (String id) => _relocate(workspace, document, id, copy: true) : null,
+            onDelete: () async {
+              await component.store.commit(documents: <DocumentChange>[DocumentChange(document.kind, document.id, null)]);
+              component.onNavigate(WorkspaceRoute(workspace.id));
+              ArcaneSonner.info('Deleted ${document.id}. Undo brings it back.');
+            },
             skinDocument: _skinOf(document),
+            resources: workspace.resources,
             editor: _rigEditor(workspace, document),
             serverDiagnostics: session?.serverDiagnostics[documentKey(document.kind, document.id)] ?? const <Diagnostic>[],
             liveSchemas: session?.schemas,
@@ -362,6 +357,16 @@ class _EditorShellState extends State<EditorShell> {
           ])
         else if (route is NpcListRoute)
           NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
+        else if (route is NewDocumentRoute)
+          NewDocumentPage(
+            key: ValueKey<String>('new:${workspace.id}'),
+            store: component.store,
+            workspace: workspace,
+            kind: route.kind,
+            onNavigate: component.onNavigate,
+          )
+        else if (route is SyncRoute && workspace.server == null)
+          SyncPage(key: ValueKey<String>('sync:${workspace.id}'), store: component.store, hub: component.hub, workspace: workspace, onNavigate: component.onNavigate)
         else if (session != null)
           ServerOverview(
             key: ValueKey<String>('server-overview:${session.serverId}'),
@@ -380,14 +385,18 @@ class _EditorShellState extends State<EditorShell> {
     bool matches(AnimusDocument document) =>
         filter.isEmpty || document.id.toLowerCase().contains(filter) || document.title.toLowerCase().contains(filter);
     return dom.aside(classes: 'animus-sidebar', <Widget>[
-      dom.div(classes: 'animus-new', attributes: const <String, String>{'role': 'group', 'aria-label': 'New document'}, <Widget>[
-        for (final (DocumentKind kind, String label) in const <(DocumentKind, String)>[
-          (DocumentKind.inventory, 'New chest GUI'),
-          (DocumentKind.shop, 'New shop'),
-          (DocumentKind.menu, 'New menu'),
-          (DocumentKind.hologram, 'New hologram'),
-        ])
-          Button.ghost(label: label, icon: ArcaneIcon.plus(size: IconSize.sm), size: ButtonSize.small, onPressed: () => _create(workspace, kind)),
+      dom.nav(classes: 'animus-new', attributes: const <String, String>{'aria-label': 'Workspace'}, <Widget>[
+        dom.a(
+          href: NewDocumentRoute(workspace.id).format(),
+          classes: 'animus-side-link is-primary${component.route is NewDocumentRoute ? ' is-selected' : ''}',
+          const <Widget>[Component.text('New document')],
+        ),
+        if (workspace.server == null)
+          dom.a(
+            href: SyncRoute(workspace.id).format(),
+            classes: 'animus-side-link${component.route is SyncRoute ? ' is-selected' : ''}',
+            const <Widget>[Component.text('Send to a server')],
+          ),
       ]),
       TextInput(
         placeholder: 'Search documents',
@@ -449,10 +458,17 @@ class _EditorShellState extends State<EditorShell> {
                 dom.span(<Widget>[Component.text(kind.label)]),
               ]),
         ]),
-        if (workspace.documents.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('This workspace has no documents.')]),
+        if (workspace.documents.isEmpty) ...<Widget>[
+          const dom.p(<Widget>[Component.text('Nothing here yet. An NPC is a good first document: pick its body, name and skin, then give it a behavior.')]),
+          dom.div(classes: 'animus-row', <Widget>[
+            Button.primary(label: 'Create an NPC', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id, DocumentKind.npc))),
+            Button.ghost(label: 'Every kind of document', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id))),
+          ]),
+        ],
       ]),
-      dom.section(classes: 'animus-panel', <Widget>[
+      if (workspace.documents.isNotEmpty) _starters(workspace),
+      if (workspace.documents.isNotEmpty)
+        dom.section(classes: 'animus-panel', <Widget>[
         dom.h2(<Widget>[Component.text(invalid.isEmpty ? 'Every document passes the shared schemas' : '${invalid.length} documents need repair')]),
         if (invalid.isNotEmpty)
           dom.ul(classes: 'animus-problem-list', <Widget>[
@@ -474,6 +490,38 @@ class _EditorShellState extends State<EditorShell> {
             ]),
           ]),
         ]),
+    ]);
+  }
+
+  /// Ways into the playground: NPC previews and behavior dry runs.
+  Widget _starters(WorkspaceSnapshot workspace) {
+    final List<AnimusDocument> npcs = <AnimusDocument>[for (final AnimusDocument document in workspace.documents) if (document.kind == DocumentKind.npc) document];
+    final List<AnimusDocument> behaviors = <AnimusDocument>[for (final AnimusDocument document in workspace.documents) if (document.kind == DocumentKind.behavior) document];
+    Widget links(String title, List<AnimusDocument> documents, String verb) => dom.div(classes: 'animus-try-group', <Widget>[
+          dom.h3(<Widget>[Component.text(title)]),
+          dom.ul(classes: 'animus-try-list', <Widget>[
+            for (final AnimusDocument document in documents.take(8))
+              dom.li(<Widget>[
+                dom.a(href: DocumentRoute(workspace.id, document.kind, document.id, ViewMode.preview).format(), <Widget>[
+                  Component.text('$verb ${document.kind == DocumentKind.npc ? guiPlainText(document.title) : document.id}'),
+                ]),
+              ]),
+          ]),
+        ]);
+    return dom.section(classes: 'animus-panel animus-try', attributes: const <String, String>{'aria-labelledby': 'animus-try-title'}, <Widget>[
+      const dom.h2(id: 'animus-try-title', <Widget>[Component.text('Try it in the browser')]),
+      const dom.p(classes: 'animus-muted', <Widget>[
+        Component.text('Previews draw NPCs with their equipment, pose, text and rig. A dry run steps through a behavior and says what would happen on a server.'),
+      ]),
+      dom.div(classes: 'animus-try-groups', <Widget>[
+        if (npcs.isNotEmpty) links('NPC previews', npcs, 'Preview'),
+        if (behaviors.isNotEmpty) links('Behavior dry runs', behaviors, 'Dry-run'),
+        if (npcs.isEmpty && behaviors.isEmpty)
+          dom.p(<Widget>[
+            dom.a(href: NewDocumentRoute(workspace.id, DocumentKind.npc).format(), const <Widget>[Component.text('Create an NPC')]),
+            const Component.text(' to preview it here.'),
+          ]),
+      ]),
     ]);
   }
 
