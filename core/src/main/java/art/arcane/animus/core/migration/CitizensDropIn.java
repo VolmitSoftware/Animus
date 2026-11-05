@@ -443,15 +443,17 @@ public final class CitizensDropIn {
             } catch (IOException invalid) { problems.add(definition.id() + ": " + invalid.getMessage()); }
         }
         List<String> lines = new ArrayList<>();
-        if (changed.isEmpty()) lines.add("Nothing waiting in " + String.join(", ", categories));
+        Optional<DocumentStore.Change> servers = categories.contains("denizen") ? DenizenDropIn.serverBehaviors(store, state) : Optional.empty();
+        if (changed.isEmpty() && servers.isEmpty()) lines.add("Nothing waiting in " + String.join(", ", categories));
         else {
-            String transaction = DefinitionBatch.commit(store, changed, expected, List.of());
+            String transaction = DefinitionBatch.commit(store, changed, expected, servers.map(List::of).orElse(List.of()));
             state.getAsJsonArray("transactions").add(transaction);
             writeState(state);
             List<String> errors = npcs.reload();
             lines.add("Accepted " + String.join(", ", accepted.entrySet().stream().map((Map.Entry<String, Integer> entry) -> entry.getKey() + " " + entry.getValue()).toList())
                     + " on " + changed.size() + " NPCs; transaction " + transaction);
             if (!errors.isEmpty()) lines.add("Definition problems after reload: " + String.join("; ", errors));
+            servers.ifPresent((DocumentStore.Change change) -> lines.add("Denizen server behaviors enabled in " + change.path() + "; they start once the behaviors reload"));
             int guards = guards(imported(state), true);
             if (accepted.getOrDefault("combat", 0) > 0 && combatLimit > 0 && guards > combatLimit)
                 lines.add("Combat: " + guards + " guards accepted; at most " + combatLimit + " fight or scan at once ([combat] maximumNpcs). "
