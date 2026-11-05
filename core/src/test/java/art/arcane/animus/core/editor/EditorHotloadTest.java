@@ -85,6 +85,17 @@ class EditorHotloadTest {
         service.start();
     }
 
+    /** Starts with the listener on a free port; another process can take a probed port first, so a lost race picks another. */
+    private int startListening(java.util.function.IntFunction<String> text) throws Exception {
+        for (int attempt = 0; ; attempt++) {
+            int port = freePort();
+            start(text.apply(port));
+            if (service.listener().isPresent() || attempt == 4) return port;
+            service.close();
+            runtime.close();
+        }
+    }
+
     private void hotload(String text) throws IOException { runtime.applySettings(PluginSettings.parse(text, data.resolve("config.toml"))); }
 
     private static void await(BooleanSupplier condition, String what) throws InterruptedException {
@@ -128,8 +139,7 @@ class EditorHotloadTest {
 
     @Test
     void portChange_rebindsListener_tokenStaysValid() throws Exception {
-        int first = freePort();
-        start(config(listener(first)));
+        int first = startListening((int free) -> config(listener(free)));
         String token = token();
         assertEquals(200, catalog("http://127.0.0.1:" + first, token));
         int second = freePort();
@@ -141,8 +151,7 @@ class EditorHotloadTest {
 
     @Test
     void addressChange_rebindsListener() throws Exception {
-        int port = freePort();
-        start(config(listener(port)));
+        int port = startListening((int free) -> config(listener(free)));
         EditorListener before = service.listener().orElseThrow();
         String token = token();
         hotload(config(listener(port) + "listenAddress = \"::1\"\n"));
@@ -156,8 +165,7 @@ class EditorHotloadTest {
         Path certificate = data.resolve("certificate.pem"), key = data.resolve("key.pem");
         try (InputStream input = EditorHotloadTest.class.getResourceAsStream("/editor-tls/certificate.pem")) { Files.write(certificate, input.readAllBytes()); }
         try (InputStream input = EditorHotloadTest.class.getResourceAsStream("/editor-tls/key.pem")) { Files.write(key, input.readAllBytes()); }
-        int port = freePort();
-        start(config(listener(port)));
+        int port = startListening((int free) -> config(listener(free)));
         EditorListener before = service.listener().orElseThrow();
         String token = token();
         hotload(config(listener(port) + "tlsCertificate = \"certificate.pem\"\ntlsPrivateKey = \"key.pem\"\n"));
@@ -178,8 +186,7 @@ class EditorHotloadTest {
 
     @Test
     void originAndLimitChanges_applyWithoutRestartingListener() throws Exception {
-        int port = freePort();
-        start(config(listener(port)));
+        int port = startListening((int free) -> config(listener(free)));
         EditorListener before = service.listener().orElseThrow();
         String base = "http://127.0.0.1:" + port + "/animus/v1/changes";
         HttpRequest preflight = HttpRequest.newBuilder(URI.create(base)).method("OPTIONS", HttpRequest.BodyPublishers.noBody())
@@ -217,8 +224,7 @@ class EditorHotloadTest {
 
     @Test
     void relayEnableAndUrlChange_restartOnlyTheRelay() throws Exception {
-        int port = freePort();
-        start(config(listener(port)));
+        int port = startListening((int free) -> config(listener(free)));
         EditorListener before = service.listener().orElseThrow();
         String token = token();
         try (FakeAgent first = new FakeAgent(); FakeAgent second = new FakeAgent()) {
@@ -238,8 +244,7 @@ class EditorHotloadTest {
 
     @Test
     void portInUse_keepsRunningWithReason_laterFixRebinds() throws Exception {
-        int port = freePort();
-        start(config(listener(port)));
+        int port = startListening((int free) -> config(listener(free)));
         String token = token();
         try (ServerSocket taken = new ServerSocket()) {
             taken.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0));
@@ -258,8 +263,7 @@ class EditorHotloadTest {
 
     @Test
     void editorSwitch_closesAndReopens_tokenSurvives() throws Exception {
-        int port = freePort();
-        start(config(listener(port)));
+        int port = startListening((int free) -> config(listener(free)));
         String token = token();
         hotload(config("enabled = false\n" + listener(port)));
         await(() -> service.api().isEmpty(), "the editor closing");
