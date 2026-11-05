@@ -67,3 +67,10 @@ The browser and the server sample animations the same way. `fixtures/animation/s
 6. **Visual transform.** A visual's display transform is `model * T(visual.translation) * R(visual.rotation) * S(visual.scale)`. Display entities take it as translation, left rotation, scale and right rotation; any decomposition that reproduces the matrix is correct, so the fixtures pin the matrix (12 numbers, rows of `[r0 r1 r2 t]`).
 
 The server's segment planning (2-tick samples merged while linear within 0.01 blocks and 0.5 degrees) is built on this sampler and is not part of the shared contract.
+
+## Transport notes
+
+- The direct listener serves the API at `/animus/v1/`. A browser's WebSocket cannot carry headers, so on the direct path the first frame of `/v1/events` is `event-auth`, sent within 10 seconds; the listener passes its token to the handler as the `Authorization` header, which is what the relay forwards. A refused stream closes with code 4000 plus the HTTP status and the error code as the reason.
+- `POST /v1/imports` takes the save's raw bytes on the direct path. Over the relay, whose frames carry JSON, the body is a JSON string holding the bytes in base64; the listener hands the handler the same form.
+- Change ids are the journal transaction ids, so `POST /v1/changes/{changeId}/undo` replays the rollback receipt. Idempotency records live in `state/editor/changes/<key>.json` and are written in the same transaction as the documents.
+- On apply the server sets `revision` to the stored revision plus one for npc, behavior, shop, inventory, hologram, presets, rig and animation documents.
