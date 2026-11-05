@@ -333,11 +333,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
     /**
      * Starts combat on every NPC's owner. Null when it runs, otherwise why it cannot. Call once during startup, before
-     * definitions activate; each NPC opens its own engine on its next owner turn.
+     * definitions activate; each NPC opens its own engine on its next owner turn. Routing starts even while
+     * {@code [combat] enabled} is false, so a hotload can turn combat on.
      */
     public String enableCombat(art.arcane.animus.core.combat.ProtectionAdapter protection, String protectionName) {
         if (!available()) return "unavailable because the NPC runtime is: " + status();
-        if (!runtime.combatBudgets().enabled()) return "disabled in config.toml";
         if (combat == null) combat = new RegionCombat(this, runtime.combatBudgets(), protection, protectionName);
         return null;
     }

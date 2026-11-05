@@ -14,6 +14,8 @@ import art.arcane.animus.core.combat.ProtectionAdapter;
 import art.arcane.animus.core.combat.ProtectionGate;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
+import art.arcane.animus.core.config.CombatBudgets;
+import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -29,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -36,6 +39,10 @@ import java.util.function.Predicate;
  * The definition-driven combat module of a single-owner runtime: finds NPCs whose definitions enable combat, keeps them
  * registered with the engine, and answers the {@code combat <npc-id> ...} commands and behavior combat operations.
  * Owner thread only. The platform supplies the combat world, protection and its own real-entity event hooks.
+ * <p>
+ * The {@code [combat]} settings apply live: a hotload leaves them pending and the next {@link #tick} swaps them in.
+ * Turning combat off winds the engine down ({@link CombatEngine#stop}) and closes it once its helpers are gone; turning
+ * it on starts an engine as startup does.
  */
 public final class CombatModule implements AutoCloseable {
     public static final String MODULE_USAGE = "combat status | combat <npc-id> status|engage|disengage|release | combat <npc-id> target <uuid> | combat <npc-id> guard <uuid>|stop";
@@ -43,10 +50,18 @@ public final class CombatModule implements AutoCloseable {
     private static final int DEFINITIONS_PER_TICK = 64;
     private static final int ACTIVATIONS_PER_TICK = 16;
     private final AnimusRuntime runtime;
+    private static final String DISABLED = "disabled in config.toml";
     private final PersistedNpcService<?, ?> living;
-    private final CombatEngine engine;
-    private final ProtectionGate protection;
+    private final CombatWorld world;
+    private final ProtectionAdapter adapter;
+    private CombatEngine engine;
+    private ProtectionGate protection;
+    /** Why this platform cannot run the module at all, or null; config cannot change it. */
     private final String unavailable;
+    private boolean enabled;
+    /** Budgets a hotload delivered, taken by the next tick; written on the file lane. */
+    private final AtomicReference<CombatBudgets> pending = new AtomicReference<>();
+    private final AutoCloseable settingsListener;
     private final Predicate<UUID> player;
     private final Consumer<String> warnings;
     private final AtomicLong deletedOnDeath = new AtomicLong();
@@ -67,22 +82,38 @@ public final class CombatModule implements AutoCloseable {
                         String unavailable, Consumer<String> warnings, Predicate<UUID> player) {
         this.runtime = Objects.requireNonNull(runtime); this.living = living; this.player = Objects.requireNonNull(player);
         this.warnings = Objects.requireNonNull(warnings);
+        this.world = world; this.adapter = Objects.requireNonNull(adapter, "adapter");
         String reason = unavailable;
         if (reason == null) { Objects.requireNonNull(living, "living"); Objects.requireNonNull(world, "world"); }
-        if (reason == null && !runtime.combatBudgets().enabled()) reason = "disabled in config.toml";
-        else if (reason == null && !living.available()) reason = "unavailable because the NPC runtime is: " + living.status();
+        if (reason == null && !living.available()) reason = "unavailable because the NPC runtime is: " + living.status();
         this.unavailable = reason;
-        engine = reason == null ? new CombatEngine(runtime.combatBudgets(), world, adapter, new SplittableRandom(), warnings) : null;
-        protection = engine != null ? engine.protection() : new ProtectionGate(adapter, warnings);
+        protection = new ProtectionGate(adapter, warnings);
+        CombatBudgets budgets = runtime.combatBudgets();
+        enabled = budgets.enabled();
+        if (reason == null && enabled) start(budgets);
+        settingsListener = reason == null ? runtime.onSettings((PluginSettings next) -> pending.set(next.combat())) : null;
     }
 
-    public boolean active() { return engine != null; }
-    /** The running engine; only call while {@link #active()}. */
+    private void start(CombatBudgets budgets) {
+        engine = new CombatEngine(budgets, world, adapter, new SplittableRandom(), warnings);
+        protection = engine.protection();
+        observed = null; pass = null; refused = 0;
+        candidates.clear(); nextCandidates = new HashMap<>();
+    }
+
+    /** Whether this platform can run the module here; config may still turn combat off and on. */
+    public boolean supported() { return unavailable == null; }
+    /** Whether combat runs: the platform supports it and config enables it. False while a disabled engine still drains. */
+    public boolean active() { return engine != null && enabled; }
+    /** Whether an engine exists, running or draining its helpers after combat was turned off; platform hooks feed it then. */
+    public boolean running() { return engine != null; }
+    /** The engine; only call while {@link #running()}. */
     public CombatEngine engine() { return Objects.requireNonNull(engine, "Combat module is not running"); }
     public ProtectionGate protection() { return protection; }
+    private String reason() { return unavailable != null ? unavailable : DISABLED; }
 
     public String status() {
-        return engine == null ? " | module " + unavailable
+        return !active() ? " | module " + reason() + (engine != null ? " (stopping, helpers=" + engine.helperCount() + ")" : "")
                 : " | module npcs=" + engine.size() + " | " + engine.capacity() + (refused > 0 ? " | not-registered=" + refused : "") + " | helpers=" + engine.helperCount()
                 + " | protection-denials=" + protection.denials() + " | protection-failures=" + protection.failures()
                 + " | dropped-events=" + engine.droppedEvents() + " | region-unavailable=" + engine.regionUnavailable() + " | deleted-on-death=" + deletedOnDeath.get();
@@ -90,7 +121,7 @@ public final class CombatModule implements AutoCloseable {
 
     /** {@code combat <npc-id> ...}: the module's own subcommands. */
     public String execute(String[] args) {
-        if (engine == null) throw new IllegalStateException("Combat module " + unavailable);
+        if (!active()) throw new IllegalStateException("Combat module " + reason());
         if (args.length < 3) throw new IllegalArgumentException(MODULE_USAGE);
         NpcDefinition definition = runtime.npcs().find(args[1]).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + args[1]));
         UUID npc = definition.uuid();
@@ -120,12 +151,12 @@ public final class CombatModule implements AutoCloseable {
 
     /** Whether the NPC guards this player or NPC now. */
     public boolean guards(UUID npc, UUID charge) {
-        return engine != null && engine.guarded(npc).map((TargetRef ref) -> ref.id().equals(charge)).orElse(false);
+        return active() && engine.guarded(npc).map((TargetRef ref) -> ref.id().equals(charge)).orElse(false);
     }
 
     /** Behavior operations. A refusal carries the reason back to the behavior. */
     public String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) {
-        if (engine == null) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "combat-unavailable", "Combat module " + unavailable);
+        if (!active()) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "combat-unavailable", "Combat module " + reason());
         CombatOperations.Result result = switch (operation) {
             case ENABLE -> engine.engage(npc);
             case DISABLE -> engine.disengage(npc);
@@ -168,10 +199,38 @@ public final class CombatModule implements AutoCloseable {
     }
 
     public void tick() {
+        CombatBudgets next = pending.getAndSet(null);
+        if (next != null) apply(next);
         if (engine == null) return;
+        if (!enabled) {
+            engine.tick();
+            for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+            if (engine.drained()) {
+                engine.close();
+                engine = null;
+                candidates.clear();
+                warnings.accept("Combat stopped: disabled in config.toml");
+            }
+            return;
+        }
         reconcile();
         engine.tick();
         for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+    }
+
+    /** Owner thread: budgets swap in, and combat starts, resumes or winds down when {@code enabled} changed. */
+    private void apply(CombatBudgets next) {
+        boolean was = enabled;
+        enabled = next.enabled();
+        if (engine != null) engine.reconfigure(next);
+        if (enabled && !was) {
+            if (engine == null) start(next);
+            else engine.resume();
+            warnings.accept("Combat started: enabled in config.toml");
+        } else if (!enabled && was && engine != null) {
+            engine.stop();
+            warnings.accept("Combat stopping: disabled in config.toml; helpers in flight land or expire first");
+        }
     }
 
     /** Deletes the definition on the file lane as one transaction, and names the transaction that undoes it. */
@@ -244,6 +303,9 @@ public final class CombatModule implements AutoCloseable {
 
     /** Removes every helper projectile and ends all combat. */
     @Override public void close() {
+        if (settingsListener != null) {
+            try { settingsListener.close(); } catch (Exception ignored) { }
+        }
         if (engine != null) engine.close();
         candidates.clear();
     }
