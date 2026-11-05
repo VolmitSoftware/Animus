@@ -2,15 +2,12 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.AnimusRuntime;
-import art.arcane.animus.core.command.BehaviorCommands;
-import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.CatalogChange;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.ViewerPreviews;
-import java.io.IOException;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -32,9 +29,8 @@ import java.util.function.Supplier;
  * @param <P> the platform's online player
  */
 public final class RuntimeEditorHost<P> implements EditorHost {
-    /** What the platform passes in. {@code reloadGuis} reloads chest GUIs and shops after an apply. */
-    public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, Supplier<BehaviorCommands> behaviors, ExtensionRuntime extensions,
-                           Runnable reloadGuis, String platform, String serverName, Supplier<Map<String, Feature>> features, Predicate<P> admin,
+    /** What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}. */
+    public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, ExtensionRuntime extensions, String platform, String serverName, Supplier<Map<String, Feature>> features, Predicate<P> admin,
                            Consumer<String> log) {
         public Parts { Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(log); }
     }
@@ -76,30 +72,8 @@ public final class RuntimeEditorHost<P> implements EditorHost {
         return result;
     }
 
-    @Override public void applied(Set<DocumentKind> kinds, boolean rollback) {
-        Set<DocumentKind> npcs = EnumSet.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE);
-        try {
-            if (kinds.stream().anyMatch(npcs::contains)) {
-                List<String> problems = rollback ? parts.runtime().npcs().reloadAfterRollback() : parts.runtime().npcs().reload();
-                problems.stream().limit(8).forEach((String problem) -> parts.log().accept("Editor apply: NPC reload kept the last valid set: " + problem));
-                parts.living().refresh();
-            }
-        } catch (IOException failure) { parts.log().accept("Editor apply: NPC reload failed: " + failure.getMessage()); }
-        if (kinds.contains(DocumentKind.BEHAVIOR) || kinds.contains(DocumentKind.PACK)) {
-            BehaviorCommands behaviors = parts.behaviors().get();
-            if (behaviors != null) behaviors.execute(console(), new String[]{"behaviors", "reload"});
-        }
-        if (kinds.contains(DocumentKind.SHOP) || kinds.contains(DocumentKind.INVENTORY)) parts.reloadGuis().run();
-    }
-
-    /** Reports behavior reload lines to the server log. */
-    private CommandActor console() {
-        return new CommandActor() {
-            @Override public boolean permitted(String node) { return true; }
-            @Override public void tell(String message) { parts.log().accept("Editor apply: " + message); }
-            @Override public Optional<UUID> player() { return Optional.empty(); }
-            @Override public boolean reply(Runnable action) { action.run(); return true; }
-        };
+    @Override public void applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback) {
+        parts.runtime().catalogs().reload(new CatalogChange(kinds, removedBehaviors, rollback));
     }
 
     @Override public Optional<PreviewPresenter> previews() {

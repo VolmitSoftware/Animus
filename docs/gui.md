@@ -190,7 +190,7 @@ All of these need `animus.admin`.
 | `/animus gui list [inventory\|menu\|hologram\|animation]` | The loaded documents. |
 | `/animus gui open <gui> [player]` | Opens a chest GUI. |
 | `/animus gui menu <menu> [player]`, `/animus gui close [player]` | Opens or closes a holographic menu. |
-| `/animus gui reload` | Reads chest GUIs, shops, holograms, menus and animations again. |
+| `/animus gui reload` | Reads chest GUIs, shops, holograms, menus and animations again. Editor applies, `/animus rollback` and import apply, accept and rollback reload what they change on their own; use this after editing files by hand. |
 | `/animus gui problems` | Why files were refused, with the field. |
 | `/animus gui import gloss <kind\|all> [id\|all] [namespace=<ns>] [replace=true]` | Copies documents from Gloss's folders on this server. |
 | `/animus gui export gloss <kind\|all> [id\|all] [replace=true]` | Writes documents into Gloss's folders. |

@@ -34,6 +34,14 @@ public enum DocumentKind {
 
     public EditorScope applyScope() { return applyScope; }
 
+    /** The kind whose folder holds a data-folder relative path, the deepest folder first; empty for anything else. */
+    public static Optional<DocumentKind> forPath(String path) {
+        DocumentKind found = null;
+        for (DocumentKind kind : values())
+            if (path.startsWith(kind.folder + "/") && (found == null || kind.folder.length() > found.folder.length())) found = kind;
+        return Optional.ofNullable(found);
+    }
+
     public static Optional<DocumentKind> parse(String wireName) {
         for (DocumentKind kind : values()) if (kind.wireName.equals(wireName)) return Optional.of(kind);
         return Optional.empty();
