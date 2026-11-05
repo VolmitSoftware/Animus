@@ -1,26 +1,42 @@
 /// The NPC document's Preview: the 3D stage showing the definition's body,
-/// pose, skin, equipment and text, with the skin controls and a readout of
-/// what the stage cannot show.
+/// pose, skin, equipment, text and the rig it names (with its animations
+/// playable), with the skin controls and a readout of what the stage cannot
+/// show. It is drawn in the browser; no server takes part.
 library;
 
 import 'dart:convert';
+import 'dart:js_interop';
+import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
+import 'package:web/web.dart' as web;
 
 import '../logic/gui/gui_json.dart';
 import '../logic/npc/route_model.dart';
+import '../logic/offline/new_documents.dart';
+import '../logic/rig_sampler.dart';
 import '../mc/npc/npc_look.dart';
+import '../mc/npc/npc_playground.dart';
 import '../mc/npc/npc_scene.dart';
 import '../mc/npc/npc_skin.dart';
 import '../mc/npc/route_overlay.dart';
 import '../model/animus_document.dart';
 import '../services/skin_images.dart';
+import 'mc/mc_asset_loader.dart';
 import 'mc/mc_stage.dart';
 
 class NpcPreview extends StatefulWidget {
-  const NpcPreview({required this.document, this.skinDocument, this.route, super.key});
+  const NpcPreview({
+    required this.document,
+    this.skinDocument,
+    this.route,
+    this.rig,
+    this.animations = const <AnimusDocument>[],
+    this.resources = const <String, Uint8List>{},
+    super.key,
+  });
 
   final AnimusDocument document;
 
@@ -32,18 +48,32 @@ class NpcPreview extends StatefulWidget {
   /// document it names), drawn around the body when shown.
   final JsonMap? route;
 
+  /// The rig the definition's `rig` names, when the workspace has it.
+  final AnimusDocument? rig;
+
+  /// That rig's animations, to play on the stage.
+  final List<AnimusDocument> animations;
+
+  /// Workspace resources: rig textures and the PNGs of local skins.
+  final Map<String, Uint8List> resources;
+
   @override
   State<NpcPreview> createState() => _NpcPreviewState();
 }
 
 class _NpcPreviewState extends State<NpcPreview> {
   final McStageController _stage = McStageController();
+  final Map<String, (Uint8List, String)> _textures = <String, (Uint8List, String)>{};
   bool? _slim;
   String _url = '';
   bool _loading = false;
   String? _shown;
   NpcScene? _scene;
   bool _showRoute = true;
+  String? _animation;
+  double _tick = 0;
+  bool _playing = false;
+  double? _lastFrame;
 
   NpcLook get _look {
     final Object? json = component.document.json;
@@ -56,11 +86,42 @@ class _NpcPreviewState extends State<NpcPreview> {
 
   bool _slimFor(NpcLook look) => _slim ?? _skinInfo?.slim ?? false;
 
+  /// A PNG loaded this session, or the one a local skin keeps in the
+  /// workspace.
+  LoadedSkin? _loaded(NpcLook look) =>
+      SkinImages.forKeyOrWorkspace(_skinKey(look), look.skin == null ? null : component.resources[skinImagePath(look.skin!)]);
+
   NpcSkinChoice _skinFor(NpcLook look) {
     final bool slim = _slimFor(look);
-    final LoadedSkin? loaded = SkinImages.forKey(_skinKey(look));
+    final LoadedSkin? loaded = _loaded(look);
     if (loaded != null) return NpcSkinChoice(textureId: loaded.textureId, slim: slim);
     return slim ? NpcSkinChoice.alex : NpcSkinChoice.steve;
+  }
+
+  Clip? get _clip {
+    final String? id = _animation;
+    if (id == null) return null;
+    for (final AnimusDocument animation in component.animations) {
+      final Object? json = animation.json;
+      if (animation.id != id || json is! Map<String, Object?>) continue;
+      try {
+        return Clip.fromJson(json);
+      } on Object {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  String _texture(String path) {
+    final Uint8List? bytes = component.resources[path];
+    if (bytes == null) return 'missing:$path';
+    final (Uint8List, String)? known = _textures[path];
+    if (known != null && identical(known.$1, bytes)) return known.$2;
+    final String id = 'npc-rig:${component.document.id}:$path#${_textures.length}';
+    _textures[path] = (bytes, id);
+    McAssetLoader.registerImage(id, 'data:image/png;base64,${base64Encode(bytes)}');
+    return id;
   }
 
   @override
@@ -75,20 +136,76 @@ class _NpcPreviewState extends State<NpcPreview> {
     _sync(frame: oldComponent.document.id != component.document.id);
   }
 
-  /// Rebuilds the scene when the definition or the skin changed.
+  @override
+  void dispose() {
+    _playing = false;
+    super.dispose();
+  }
+
+  /// Rebuilds the scene when the definition, the skin, the rig or the
+  /// playhead changed.
   void _sync({bool frame = false}) {
     final NpcLook look = _look;
     final NpcSkinChoice skin = _skinFor(look);
     final JsonMap? route = _showRoute ? component.route : null;
-    final String signature = '${component.document.source}|${skin.textureId}|${skin.slim}|${route == null ? '' : jsonEncode(route)}';
+    final AnimusDocument? rig = component.rig;
+    final String signature = '${component.document.source}|${skin.textureId}|${skin.slim}|${route == null ? '' : jsonEncode(route)}'
+        '|${rig?.source.hashCode}|$_animation|$_tick';
     if (signature == _shown && !frame) return;
     _shown = signature;
-    final NpcScene body = npcScene(look, skin: skin);
+    final Object? rigJson = rig?.json;
+    final NpcScene body = npcPlaygroundScene(
+      look,
+      skin: skin,
+      rig: rigJson is Map<String, Object?> ? rigJson : null,
+      clip: _clip,
+      tick: _tick,
+      resources: component.resources,
+      textureId: _texture,
+    );
     final JsonMap position = asMap(asMap(component.document.json)['position']);
     final NpcScene scene = _scene = route == null
         ? body
         : withRoute(body, RouteSpec(route), (asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0));
     _stage.show(scene.scene, scene.texts, yawDeg: look.yawDeg, frame: frame);
+  }
+
+  void _play() {
+    final Clip? clip = _clip;
+    if (_playing || clip == null) {
+      setState(() => _playing = false);
+      return;
+    }
+    if ((clip.loop == LoopMode.once || clip.loop == LoopMode.hold) && _tick >= clip.durationTicks) _tick = 0;
+    setState(() => _playing = true);
+    _lastFrame = null;
+    _frame();
+  }
+
+  void _frame() {
+    web.window.requestAnimationFrame(
+      ((JSNumber now) {
+        if (!_playing || !mounted) return;
+        final double time = now.toDartDouble;
+        final double? last = _lastFrame;
+        _lastFrame = time;
+        final Clip? clip = _clip;
+        if (clip == null) {
+          setState(() => _playing = false);
+          return;
+        }
+        if (last != null) {
+          _tick += (time - last) / 50;
+          if ((clip.loop == LoopMode.once || clip.loop == LoopMode.hold) && _tick >= clip.durationTicks) {
+            _tick = clip.durationTicks;
+            _playing = false;
+          }
+          _sync();
+          setState(() {});
+        }
+        if (_playing) _frame();
+      }).toJS,
+    );
   }
 
   Future<void> _load(Future<LoadedSkin?> Function(String key) load) async {
@@ -112,9 +229,12 @@ class _NpcPreviewState extends State<NpcPreview> {
     final NpcScene scene = _scene!;
     final bool player = look.isPlayer;
     final NpcSkinInfo? info = _skinInfo;
-    final LoadedSkin? loaded = SkinImages.forKey(_skinKey(look));
+    final LoadedSkin? loaded = _loaded(look);
     final bool slim = _slimFor(look);
     return dom.section(classes: 'animus-panel animus-npc-preview', <Widget>[
+      const dom.p(classes: 'animus-preview-label', <Widget>[
+        Component.text('Browser preview. The server draws the same definition; nothing here is sent to one.'),
+      ]),
       dom.div(classes: 'animus-npc-preview-bar', <Widget>[
         Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
         if (component.route != null)
@@ -128,6 +248,34 @@ class _NpcPreviewState extends State<NpcPreview> {
               _sync(frame: true);
             },
           ),
+        if (component.rig != null) ...<Widget>[
+          dom.label(classes: 'animus-inline-field', <Widget>[
+            const dom.span(<Widget>[Component.text('Animation')]),
+            ArcaneSelect(
+              size: ComponentSize.sm,
+              value: _animation ?? '',
+              options: <ArcaneSelectOption>[
+                const ArcaneSelectOption(label: 'Rest pose', value: ''),
+                for (final AnimusDocument animation in component.animations) ArcaneSelectOption(label: animation.id, value: animation.id),
+              ],
+              onChanged: (String value) {
+                setState(() {
+                  _animation = value.isEmpty ? null : value;
+                  _tick = 0;
+                  _playing = false;
+                });
+                _sync();
+              },
+            ),
+          ]),
+          Button.secondary(
+            label: _playing ? 'Pause' : 'Play',
+            size: ButtonSize.small,
+            disabled: _animation == null,
+            attributes: <String, String>{'aria-pressed': '$_playing'},
+            onPressed: _play,
+          ),
+        ],
         if (player) ...<Widget>[
           Button.secondary(
             label: 'Load skin PNG',
@@ -139,6 +287,7 @@ class _NpcPreviewState extends State<NpcPreview> {
             TextInput(
               placeholder: 'Skin PNG URL',
               value: _url,
+              attributes: const <String, String>{'aria-label': 'Skin PNG URL'},
               onChanged: (String value) => setState(() => _url = value),
             ),
             Button.ghost(
@@ -175,6 +324,8 @@ class _NpcPreviewState extends State<NpcPreview> {
       McStage(controller: _stage, label: 'Preview of ${component.document.title}'),
       dom.dl(classes: 'animus-npc-facts', <Widget>[
         ..._fact('Body', scene.presentable ? look.type : '${look.type} (not presented)'),
+        if (component.rig != null)
+          ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}'}'),
         if (player) ..._fact('Pose', look.pose.name),
         if (player) ..._fact('Skin', _skinText(look, info, loaded, slim)),
         if (look.armorStand != null) ..._fact('Armor stand', _armorStandText(look.armorStand!)),

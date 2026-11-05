@@ -124,9 +124,13 @@ Map<String, Uint8List> filesFromZip(Uint8List bytes) {
   return files;
 }
 
-/// Resource pack sources the workspace keeps beside its documents.
+/// Resource pack sources the workspace keeps beside its documents, and the
+/// skin PNGs the editor keeps for local skins (`editor/skins/<hash>.png`).
 bool isResourcePath(String path) =>
-    path.startsWith('pack/assets/') && (path.endsWith('.json') || path.endsWith('.png')) && !path.split('/').contains('..');
+    (path.startsWith('pack/assets/') && (path.endsWith('.json') || path.endsWith('.png')) && !path.split('/').contains('..')) ||
+    _editorSkin.hasMatch(path);
+
+final RegExp _editorSkin = RegExp(r'^editor/skins/[a-f0-9]{64}\.png$');
 
 class DataFolderResult {
   const DataFolderResult(this.documents, this.ignored, this.prefix, [this.resources = const <String, Uint8List>{}]);

@@ -5,22 +5,6 @@ library;
 import '../../model/document_kind.dart';
 import 'gui_json.dart';
 
-/// The id a new document of [kind] gets before the user renames it.
-String newDocumentId(DocumentKind kind, Set<String> taken) {
-  final String base = switch (kind) {
-    DocumentKind.inventory => 'example:menu',
-    DocumentKind.shop => 'example:shop',
-    DocumentKind.menu => 'example:menu',
-    DocumentKind.hologram => 'example:hologram',
-    _ => 'example',
-  };
-  if (!taken.contains(base)) return base;
-  for (int index = 2;; index++) {
-    final String candidate = '$base-$index';
-    if (!taken.contains(candidate)) return candidate;
-  }
-}
-
 JsonMap newDocument(DocumentKind kind, String id) => switch (kind) {
       DocumentKind.inventory => <String, Object?>{
           'schemaVersion': 1,
