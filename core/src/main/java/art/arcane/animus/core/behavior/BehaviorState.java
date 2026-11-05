@@ -3,6 +3,7 @@ package art.arcane.animus.core.behavior;
 import art.arcane.animus.api.Diagnostic;
 import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.behavior.BehaviorProgram.ScopedVariable;
+import art.arcane.animus.core.behavior.BehaviorProgram.Type;
 import art.arcane.animus.core.behavior.BehaviorProgram.Value;
 import java.util.Map;
 import java.util.Objects;
@@ -36,11 +37,26 @@ public interface BehaviorState {
         @Override public void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations){throw unavailable();}
     };
 
-    /** The stored value, or {@code initial} when the key was never written. A stored value of another type is refused, not coerced. */
+    /** The stored value, or {@code initial} when the key was never written or has expired. A stored value of another type is refused, not coerced. */
     Value read(Subject subject,String variable,ScopedVariable declaration,Value initial);
 
-    /** Applies every write or none of them. */
+    /**
+     * As {@link #read(Subject,String,ScopedVariable,Value)} for a variable declared {@code declared}: {@code ANY} accepts a
+     * stored value of every type. When the key is unset or expired the returned object is {@code initial} itself.
+     */
+    default Value read(Subject subject,String variable,ScopedVariable declaration,Value initial,Type declared){return read(subject,variable,declaration,initial);}
+
+    /** Applies every write or none of them. A written key loses any expiry it had. */
     void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations);
+
+    /**
+     * Applies every write or none of them; a key named in {@code expiresAtMillis} reads as unset from that epoch
+     * millisecond on, other written keys lose any expiry. Services without expiry refuse expiring writes.
+     */
+    default void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations,Map<String,Long> expiresAtMillis){
+        if(expiresAtMillis.isEmpty()){write(subject,writes,declarations);return;}
+        throw new Rejected(Outcome.Status.UNAVAILABLE,"behavior-state-expiry-unavailable","$.variables","This state service keeps no expiry");
+    }
 
     /** Cheap periodic owner-turn hook; durable implementations use it to queue a coalesced flush. */
     default void maintain(){}
