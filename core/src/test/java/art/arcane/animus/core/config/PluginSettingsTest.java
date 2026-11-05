@@ -71,6 +71,14 @@ class PluginSettingsTest {
             Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[navigation]\nmaximumRoutes = 32\n");
             error = assertThrows(IOException.class, () -> PluginSettings.load(store));
             assertTrue(error.getMessage().contains("maximumRoutes is not a navigation setting"), error.getMessage());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[navigation]\nplanningJobs = 96\ncaptureReadsPerTick = 8192\n");
+            navigation = PluginSettings.load(store).navigation();
+            assertEquals(96, navigation.planningJobs());
+            assertEquals(8192, navigation.captureReadsPerTick());
+            assertEquals(new art.arcane.animus.core.navigation.NavigationLimits(8192, 96, 8192), navigation.limits());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[navigation]\nplanningJobs = 257\n");
+            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("navigation: planningJobs must be within 1..256"), error.getMessage());
         }
     }
     @Test void buildLimitsAreReadFromTomlAndBounded() throws Exception {
