@@ -55,7 +55,7 @@ class HotloadServiceTest {
 
     private List<String> shown() { return lines.stream().map((String line) -> RichText.sectionRuns(line).stream().map(RichText.Run::text).reduce("", String::concat)).toList(); }
 
-    @Test void configEditAppliesLiveKeysAndMarksRestartKeys() throws Exception {
+    @Test void configEditAppliesEveryKeyLiveWithoutARestartMarker() throws Exception {
         Path config = root.resolve("config.toml");
         String text = Files.readString(config);
         Files.writeString(config, text.replace("statusMessage = \"Hello from Animus\"", "statusMessage = \"Hotloaded hello\"")
@@ -65,9 +65,24 @@ class HotloadServiceTest {
         assertEquals(40, runtime.npcSettings().viewDistance());
         List<String> shown = shown();
         assertTrue(shown.contains("[Animus]: Animus Hotloaded: [config.toml] [statusMessage] [\"Hello from Animus\" -> \"Hotloaded hello\"]"), shown.toString());
-        assertTrue(shown.contains("[Animus]: Animus Hotloaded: [config.toml] [npcs.viewDistance] [48 -> 40] [restart required]"), shown.toString());
+        assertTrue(shown.contains("[Animus]: Animus Hotloaded: [config.toml] [npcs.viewDistance] [48 -> 40]"), shown.toString());
+        assertTrue(shown.stream().noneMatch((String line) -> line.contains("restart required")), shown.toString());
         assertTrue(dings.stream().allMatch(Boolean::booleanValue));
         assertTrue(refreshed.contains("screens"));
+    }
+
+    @Test void theNpcSwitchIsMarkedForRestartWhereTheRuntimeCannotSwitchLive() throws Exception {
+        hotload.close();
+        hotload = new HotloadService(new HotloadService.Parts(runtime, runtime.fileExecutor((Runnable task, art.arcane.animus.core.extension.MutationLane.EngineTaskEvent event, Throwable failure) -> {}),
+                Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()) { @Override public boolean switchesLive() { return false; } },
+                (List<String> sent, boolean sound) -> lines.addAll(sent), () -> {}, (String line) -> {}));
+        hotload.listen();
+        hotload.cycle();
+        Path config = root.resolve("config.toml");
+        Files.writeString(config, Files.readString(config).replaceFirst("\\[npcs]\n((?:.*\n)*?)enabled = true", "[npcs]\n$1enabled = false").replace("viewDistance = 48", "viewDistance = 40"));
+        settle();
+        assertTrue(shown().contains("[Animus]: Animus Hotloaded: [config.toml] [npcs.enabled] [true -> false] [restart required]"), shown().toString());
+        assertTrue(shown().contains("[Animus]: Animus Hotloaded: [config.toml] [npcs.viewDistance] [48 -> 40]"), shown().toString());
     }
 
     @Test void invalidConfigKeepsTheRunningSettingsWithTheFieldError() throws Exception {

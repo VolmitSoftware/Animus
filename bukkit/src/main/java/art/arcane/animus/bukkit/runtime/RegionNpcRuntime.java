@@ -222,6 +222,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
     @Override public void interactions(InteractionListener<Player> listener) { interactions = listener; }
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
+    @Override public boolean switchesLive() { return false; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(previews); triggers = dispatcher; }
     @Override public void refresh() { refresh.set(true); }
     @Override public PlayerAccess<Player> players() { return players; }
