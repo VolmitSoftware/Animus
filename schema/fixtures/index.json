@@ -275,6 +275,30 @@
       "schema": "editor-v1.schema.json"
     },
     {
+      "path": "editor/messages/import-review.0.json",
+      "definition": "import-review",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/import-stage-request.0.json",
+      "definition": "import-stage-request",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/import-accept-request.0.json",
+      "definition": "import-accept-request",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/import-accept-request.0.json",
+      "definition": "import-accept-request",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
       "path": "editor/messages/change-applied.0.json",
       "definition": "change-applied",
       "valid": true,

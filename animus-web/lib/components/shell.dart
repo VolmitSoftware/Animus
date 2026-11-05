@@ -191,7 +191,7 @@ class _EditorShellState extends State<EditorShell> {
           ]),
         ])
       else if (workspace == null && component.route is CitizensRoute)
-        const CitizensScreen(key: ValueKey<String>('citizens'))
+        CitizensScreen(key: const ValueKey<String>('citizens'), hub: component.hub)
       else if (workspace == null)
         _home(store)
       else

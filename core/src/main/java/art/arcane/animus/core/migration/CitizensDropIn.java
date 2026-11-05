@@ -380,6 +380,61 @@ public final class CitizensDropIn {
         return lines;
     }
 
+    /**
+     * Where the drop-in flow stands, for the editor API: {@code state} ({@code none}, {@code staged}, {@code applied} or
+     * {@code rolled-back}), the staged imports and their sources, and once applied the categories still waiting and the
+     * data kept but not run. Report paths are relative to the data folder.
+     */
+    public JsonObject status() throws IOException {
+        JsonObject state = state();
+        boolean citizensApplied = applied(state), shopkeepersApplied = ShopkeepersDropIn.applied(state);
+        boolean staged = state.has("applicationId") || ShopkeepersDropIn.staged(state);
+        String phase = citizensApplied || shopkeepersApplied ? "applied"
+                : !staged ? "none"
+                : state.has("state") && state.get("state").getAsString().equals("rolled-back") ? "rolled-back" : "staged";
+        JsonObject status = new JsonObject();
+        status.addProperty("state", phase);
+        if (state.has("importId")) {
+            JsonObject citizens = new JsonObject();
+            citizens.addProperty("importId", state.get("importId").getAsString());
+            citizens.addProperty("source", state.get("source").getAsString());
+            citizens.addProperty("mode", state.get("mode").getAsString());
+            citizens.addProperty("report", state.get("report").getAsString());
+            status.add("citizens", citizens);
+        }
+        if (state.has("shopImportId")) {
+            JsonObject traders = new JsonObject();
+            traders.addProperty("importId", state.get("shopImportId").getAsString());
+            traders.addProperty("source", state.get("shopSource").getAsString());
+            traders.addProperty("report", "imports/shops/" + state.get("shopImportId").getAsString() + "/report.json");
+            status.add("dtltraders", traders);
+        }
+        if (state.has("shopkeepers") && state.get("shopkeepers").isJsonObject()) {
+            JsonObject part = state.getAsJsonObject("shopkeepers");
+            JsonObject shopkeepers = new JsonObject();
+            shopkeepers.addProperty("importId", part.get("importId").getAsString());
+            shopkeepers.addProperty("source", part.get("source").getAsString());
+            shopkeepers.addProperty("state", part.get("state").getAsString());
+            shopkeepers.addProperty("report", part.get("report").getAsString());
+            shopkeepers.addProperty("waiting", part.has("pending") ? part.getAsJsonArray("pending").size() : 0);
+            status.add("shopkeepers", shopkeepers);
+        }
+        if (phase.equals("applied")) {
+            List<JsonObject> definitions = imported(state).stream().map(NpcDefinition::json).toList();
+            JsonObject pending = new JsonObject();
+            pending(definitions).forEach(pending::addProperty);
+            status.add("pending", pending);
+            JsonObject preserved = new JsonObject();
+            preserved(definitions).forEach(preserved::addProperty);
+            status.add("preserved", preserved);
+            status.addProperty("npcs", definitions.size());
+        }
+        JsonArray transactions = new JsonArray();
+        if (state.has("transactions")) state.getAsJsonArray("transactions").forEach(transactions::add);
+        status.add("transactions", transactions);
+        return status;
+    }
+
     /** True when the category's setting on this imported definition is still off and would be turned on by accepting it. */
     static boolean waiting(JsonObject json, String category) {
         JsonObject modules = json.has("modules") && json.get("modules").isJsonObject() ? json.getAsJsonObject("modules") : new JsonObject();

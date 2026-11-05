@@ -67,7 +67,7 @@ public final class EditorService implements AutoCloseable {
             events.publish(event);
         });
         timers = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("Animus-editor-timers").factory());
-        api = new EditorApi(new EditorApi.Parts(settings, relaySettings.enabled(), host, identity, tokens, audit, documents, changes, previews, events, runtime::npcs, timers, clock,
+        api = new EditorApi(new EditorApi.Parts(settings, relaySettings.enabled(), host, identity, tokens, audit, documents, changes, previews, events, runtime::npcs, runtime::importHost, timers, clock,
                 runtime.environment().minecraftVersion()));
         long frameMillis = Math.max(10, 1000 / settings.eventFramesPerSecond());
         timers.scheduleAtFixedRate(guard(events::tick), frameMillis, frameMillis, TimeUnit.MILLISECONDS);

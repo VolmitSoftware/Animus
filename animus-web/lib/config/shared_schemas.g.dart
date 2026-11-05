@@ -95,8 +95,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "POST", "path": "/v1/changes", "scope": "apply:*", "request": "change-set", "responses": {"200": "change-applied", "409": "change-conflict", "422": "change-invalid"}},
     {"method": "GET", "path": "/v1/changes/{idempotencyKey}", "scope": "read", "request": null, "responses": {"200": "change-status-response"}},
     {"method": "POST", "path": "/v1/changes/{changeId}/undo", "scope": "apply:*", "request": "undo-request", "responses": {"200": "change-applied", "409": "change-conflict"}},
-    {"method": "POST", "path": "/v1/imports", "scope": "import", "request": "application/octet-stream", "responses": {"200": "import-response", "413": "error-response"}},
-    {"method": "POST", "path": "/v1/imports/{importId}/apply", "scope": "import", "request": null, "responses": {"200": "change-applied", "409": "change-conflict"}},
+    {"method": "GET", "path": "/v1/imports", "scope": "import", "request": null, "responses": {"200": "import-review"}},
+    {"method": "POST", "path": "/v1/imports", "scope": "import", "query": {"file": "citizens|shopkeepers|shopkeepers-config|dtltraders", "name": "dtltraders file: guis.yml, config.yml, messages.yml, data.dat or shops/<shop>/<shop>.yml"}, "request": "application/octet-stream", "responses": {"200": "import-review", "400": "error-response", "403": "error-response", "409": "error-response", "413": "error-response"}},
+    {"method": "POST", "path": "/v1/imports/stage", "scope": "import", "request": "import-stage-request", "responses": {"200": "import-review", "400": "error-response", "403": "error-response"}},
+    {"method": "POST", "path": "/v1/imports/{importId}/apply", "scope": "import", "applyScopes": ["apply:npcs", "apply:behaviors", "apply:gui"], "request": null, "responses": {"200": "import-review", "409": "error-response"}},
+    {"method": "POST", "path": "/v1/imports/{importId}/accept", "scope": "import", "applyScopes": ["apply:npcs", "apply:behaviors", "apply:gui"], "request": "import-accept-request", "responses": {"200": "import-review", "409": "error-response"}},
+    {"method": "POST", "path": "/v1/imports/{importId}/rollback", "scope": "import", "applyScopes": ["apply:npcs", "apply:behaviors", "apply:gui"], "request": null, "responses": {"200": "import-review", "409": "error-response"}},
     {"method": "POST", "path": "/v1/npcs/{id}/spawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
     {"method": "POST", "path": "/v1/npcs/{id}/despawn", "scope": "spawn", "request": null, "responses": {"200": "spawn-response"}},
     {"method": "WS", "path": "/v1/events", "scope": "read", "request": "event-auth", "responses": {"frame": "event"}}
@@ -510,12 +514,55 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "required": ["idempotencyKey"],
       "properties": {"idempotencyKey": {"$ref": "#/$defs/idempotencyKey"}}
     },
-    "import-response": {
+    "importId": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "import-stage-request": {
       "type": "object",
-      "required": ["importId", "report"],
+      "additionalProperties": false,
+      "description": "What /animus import citizens takes: a mode for NPCs that already exist and world mappings. A duplicate needs a copy label.",
       "properties": {
-        "importId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$"},
-        "report": {"type": "object", "description": "The converter's report.json for the staged import."}
+        "mode": {"enum": ["reject", "replace", "duplicate"]},
+        "label": {"type": "string", "pattern": "^[a-z0-9_-]{1,32}$"},
+        "worlds": {"type": "object", "propertyNames": {"pattern": "^[A-Za-z0-9_.-]{1,64}$"}, "additionalProperties": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"}}
+      }
+    },
+    "import-accept-request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["categories"],
+      "properties": {
+        "categories": {"type": "array", "minItems": 1, "maxItems": 7, "items": {"enum": ["spawn", "patrols", "combat", "riding", "shops", "builder", "all"]}}
+      }
+    },
+    "import-review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "transactions", "lines", "uploads", "reports"],
+      "description": "Where the drop-in import (Citizens, its dtlTraders shops and a Shopkeepers save) stands, the same steps and lines as /animus import citizens.",
+      "properties": {
+        "state": {"enum": ["none", "staged", "applied", "rolled-back"]},
+        "citizens": {
+          "type": "object", "additionalProperties": false, "required": ["importId", "source", "mode", "report"],
+          "properties": {"importId": {"$ref": "#/$defs/importId"}, "source": {"type": "string"}, "mode": {"enum": ["reject", "replace", "duplicate"]}, "report": {"type": "string"}}
+        },
+        "dtltraders": {
+          "type": "object", "additionalProperties": false, "required": ["importId", "source", "report"],
+          "properties": {"importId": {"$ref": "#/$defs/importId"}, "source": {"type": "string"}, "report": {"type": "string"}}
+        },
+        "shopkeepers": {
+          "type": "object", "additionalProperties": false, "required": ["importId", "source", "state", "report", "waiting"],
+          "properties": {"importId": {"$ref": "#/$defs/importId"}, "source": {"type": "string"}, "state": {"enum": ["staged", "applied", "rolled-back"]}, "report": {"type": "string"}, "waiting": {"type": "integer", "minimum": 0}}
+        },
+        "pending": {"type": "object", "description": "Applied: NPCs waiting in each review category.", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "preserved": {"type": "object", "description": "Applied: Citizens data kept but not run, by kind.", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "npcs": {"type": "integer", "minimum": 0},
+        "transactions": {"type": "array", "items": {"type": "string"}},
+        "lines": {"type": "array", "maxItems": 200, "items": {"type": "string", "maxLength": 2048}},
+        "uploads": {"type": "object", "additionalProperties": false, "properties": {"citizens": {"type": "string"}, "shopkeepers": {"type": "string"}, "shopkeepers-config": {"type": "string"}, "dtltraders": {"type": "string"}}},
+        "reports": {
+          "type": "object", "additionalProperties": false,
+          "description": "Parts of each staged report.json; issue lists hold at most 100 entries, with <key>Total giving the full count.",
+          "properties": {"citizens": {"type": "object"}, "shopkeepers": {"type": "object"}, "dtltraders": {"type": "object"}}
+        }
       }
     },
     "spawn-response": {

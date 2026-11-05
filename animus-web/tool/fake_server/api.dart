@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:animus_editor/config/shared_schemas.g.dart';
 import 'package:animus_editor/model/document_kind.dart';
@@ -7,6 +8,7 @@ import 'changes.dart';
 import 'documents.dart';
 import 'events.dart';
 import 'identity.dart';
+import 'imports.dart';
 import 'messages.dart';
 import 'previews.dart';
 import 'protocol.dart';
@@ -61,6 +63,10 @@ class FakeApi {
     events = EventHub((String tokenId) => previews.endToken(tokenId));
     previews = FakePreviews((String id, String state) =>
         events.publish(<String, Object?>{'type': 'preview', 'previewId': id, 'state': state}));
+    imports = FakeImports(documents, (List<StoredDocument> changed, List<StoredDocument> deleted) => publishCatalog(
+          <Map<String, Object?>>[for (final StoredDocument document in changed) document.version],
+          <Map<String, Object?>>[for (final StoredDocument document in deleted) <String, Object?>{'kind': document.kind.wireName, 'id': document.id}],
+        ));
     documents.load();
   }
 
@@ -93,6 +99,7 @@ class FakeApi {
   late final FakeChanges changes;
   late final EventHub events;
   late final FakePreviews previews;
+  late final FakeImports imports;
   Map<String, Object?>? _schemas;
 
   /// Back to the data folder as loaded, with no tokens, previews or records.
@@ -101,6 +108,7 @@ class FakeApi {
     previews.clear();
     tokens.clear();
     changes.clear();
+    imports.reset();
     documents.load();
   }
 
@@ -184,6 +192,7 @@ class FakeApi {
           'documents' when n >= 3 => _Route('read', false, _document),
           'skins' when n == 3 && s[2] == 'texture.png' => _Route('read', false, _skin),
           'changes' when n == 2 => _Route('read', false, _changeStatus),
+          'imports' when n == 1 => _Route('import', false, _importStatus),
           _ => null,
         };
       case 'POST':
@@ -192,7 +201,9 @@ class FakeApi {
           'previews' when n == 1 => _Route('preview', false, _preview),
           'changes' when n == 1 => _Route(null, true, _apply),
           'changes' when n == 3 && s[2] == 'undo' => _Route(null, true, _undo),
-          'imports' when n == 1 || (n == 3 && s[2] == 'apply') => _Route('import', false, _imports),
+          'imports' when n == 1 => _Route('import', false, _upload),
+          'imports' when n == 2 && s[1] == 'stage' => _Route('import', false, _importStage),
+          'imports' when n == 3 && const <String>{'apply', 'accept', 'rollback'}.contains(s[2]) => _Route('import', false, _importStep),
           'npcs' when n == 3 && (s[2] == 'spawn' || s[2] == 'despawn') => _Route('spawn', false, _spawn),
           _ => null,
         };
@@ -254,7 +265,7 @@ class FakeApi {
         'editor.listener': yes,
         'editor.relay': yes,
         'previews': yes,
-        'imports': no('the fake server does not stage imports'),
+        'imports': yes,
         'spawn': yes,
         'skins.texture': no('the server does not cache decoded skin textures; the editor loads them from the skin\'s texture URL'),
       },
@@ -490,8 +501,62 @@ class FakeApi {
     return FakeResponse(200, body: changes.status(key));
   }
 
-  FakeResponse _imports(FakeRequest request, FakeToken token, List<String> segments) =>
-      throw invalid('The fake server does not stage imports; use a real server for POST /v1/imports.');
+  FakeResponse _importStatus(FakeRequest request, FakeToken token, List<String> segments) => FakeResponse(200, body: imports.status());
+
+  /// The file's bytes on the direct path, a base64 JSON string over the relay.
+  FakeResponse _upload(FakeRequest request, FakeToken token, List<String> segments) {
+    final Map<String, String> query = request.query;
+    for (final String key in query.keys) {
+      if (key != 'file' && key != 'name') throw invalid('Unknown query parameter $key.');
+    }
+    final Object? body = request.body;
+    if (body is! String) throw invalid('The upload is the file\'s bytes, or over the relay a base64 JSON string.');
+    final Uint8List bytes;
+    try {
+      bytes = base64Decode(body);
+    } on FormatException {
+      throw invalid('The upload is not base64.');
+    }
+    if (bytes.isEmpty) throw invalid('The uploaded file is empty.');
+    if (bytes.length > limit('importBodyBytes')) throw ApiError('too-large', 'Imports are limited to ${limit('importBodyBytes')} bytes.');
+    return FakeResponse(200, body: imports.upload(query['file'] ?? 'citizens', query['name'], bytes));
+  }
+
+  FakeResponse _importStage(FakeRequest request, FakeToken token, List<String> segments) {
+    final Map<String, Object?> body = request.body == null ? <String, Object?>{} : bodyObject(request);
+    fields(body, r'$', <String>{'mode', 'label', 'worlds'});
+    final String mode = body.containsKey('mode') ? stringField(body, 'mode', RegExp(r'^(?:reject|replace|duplicate)$'), r'$.mode') : 'reject';
+    final String? label = body.containsKey('label') ? stringField(body, 'label', RegExp(r'^[a-z0-9_-]{1,32}$'), r'$.label') : null;
+    if ((mode == 'duplicate') != (label != null)) throw invalid(r'$.label: a duplicate import needs a copy label, and only a duplicate takes one.');
+    final Object? worlds = body['worlds'];
+    if (worlds != null && worlds is! Map<String, Object?>) throw invalid(r'$.worlds: expected an object of old world names to new ones.');
+    final Map<String, String> mapped = <String, String>{
+      for (final MapEntry<String, Object?> entry in ((worlds as Map<String, Object?>?) ?? const <String, Object?>{}).entries) entry.key: '${entry.value}',
+    };
+    return FakeResponse(200, body: imports.stage(mode, label, mapped));
+  }
+
+  FakeResponse _importStep(FakeRequest request, FakeToken token, List<String> segments) {
+    final String id = segments[1];
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(id)) throw ApiError('not-found', 'No staged import $id.');
+    for (final String scope in const <String>['apply:npcs', 'apply:behaviors', 'apply:gui']) {
+      if (!token.has(scope)) throw ApiError('scope-missing', 'This token lacks $scope.');
+    }
+    switch (segments[2]) {
+      case 'apply':
+        return FakeResponse(200, body: imports.apply(id));
+      case 'accept':
+        final Map<String, Object?> body = bodyObject(request);
+        fields(body, r'$', <String>{'categories'});
+        final Object? categories = body['categories'];
+        if (categories is! List<Object?> || categories.isEmpty || categories.any((Object? c) => c is! String)) {
+          throw invalid(r'$.categories: expected a non-empty array of review categories.');
+        }
+        return FakeResponse(200, body: imports.accept(id, categories.cast<String>()));
+      default:
+        return FakeResponse(200, body: imports.rollback(id));
+    }
+  }
 
   FakeResponse _spawn(FakeRequest request, FakeToken token, List<String> segments) {
     final String id = _decode(segments[1]);

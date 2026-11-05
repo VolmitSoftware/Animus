@@ -117,6 +117,10 @@ final class EditorHarness implements AutoCloseable {
     final EditorApi api;
     final EditorSettings settings;
     final NpcRepository npcs;
+    /** Whether the drop-in import sees Citizens as still running. */
+    volatile boolean citizensRunning;
+    final art.arcane.animus.core.migration.CitizensDropIn.Host importHost =
+            new art.arcane.animus.core.migration.CitizensDropIn.Host(Optional.empty(), () -> citizensRunning, () -> false);
     private long counter;
 
     EditorHarness(Path directory) throws IOException { this(directory, EditorSettings.DEFAULT); }
@@ -146,7 +150,7 @@ final class EditorHarness implements AutoCloseable {
             events.publish(event);
         });
         api = new EditorApi(new EditorApi.Parts(settings, false, host, EditorIdentity.loadOrCreate(store), new EditorTokens(store, clock), new EditorAudit(store, clock), documents,
-                new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours())), previews, events, () -> npcs, timers, clock, "26.1.2"));
+                new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours())), previews, events, () -> npcs, () -> importHost, timers, clock, "26.1.2"));
     }
 
     /** Pairs and returns the bearer token. */

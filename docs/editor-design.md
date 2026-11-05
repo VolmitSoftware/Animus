@@ -368,8 +368,10 @@ This follows React rather than Gloss. Gloss's long-poll snapshot relay suits who
 | `POST /v1/changes` | apply:* | Apply a change set (below). |
 | `GET /v1/changes/{key}` | read | Outcome of a change set by idempotency key. |
 | `POST /v1/changes/{id}/undo` | apply:* | Undo an applied change set through its rollback receipt. |
-| `POST /v1/imports` | import | Upload a save (16 MiB limit) for a staged import; returns the converter report. |
-| `POST /v1/imports/{id}/apply` | import | Apply a staged import. |
+| `GET /v1/imports` | import | Where the drop-in import stands, with its review. |
+| `POST /v1/imports?file=&name=` | import | Upload a Citizens `saves.yml`, a Shopkeepers `save.yml` or `config.yml`, or a dtlTraders file (16 MiB limit) to where `/animus import citizens` looks first. Refused while an import is applied. |
+| `POST /v1/imports/stage` | import | Stage the uploaded saves (`mode`, `label`, `worlds`) as `/animus import citizens` does; returns the review. Installs nothing. |
+| `POST /v1/imports/{id}/apply`, `/accept`, `/rollback` | import and apply:npcs, apply:behaviors, apply:gui | Apply the staged import, accept review categories, or roll the import and every acceptance back. `{id}` must be the staged import. |
 | `POST /v1/npcs/{id}/spawn`, `/despawn` | spawn | Same checks as the commands. |
 | `WS /v1/events` | read | Catalog changes, diagnostics, preview status, apply results. First frame is `{"type": "auth", "token": ...}`; 10 s to send it. |
 

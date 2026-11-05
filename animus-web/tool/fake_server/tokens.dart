@@ -35,10 +35,13 @@ class Pairing {
 }
 
 class _Pending {
-  const _Pending(this.secretHash, this.expires);
+  const _Pending(this.secretHash, this.expires, this.extraScopes);
 
   final String secretHash;
   final DateTime expires;
+
+  /// Scopes granted on top of the pairing defaults, such as import.
+  final List<String> extraScopes;
 }
 
 /// Pairings, tokens and counters, as EditorTokens without the file.
@@ -62,12 +65,13 @@ class FakeTokens {
     _revoked.clear();
   }
 
-  /// A fresh one-time secret, good for `secretMinutes`.
-  Pairing pair() {
+  /// A fresh one-time secret, good for `secretMinutes`; its token gets the
+  /// pairing defaults plus [extraScopes].
+  Pairing pair([List<String> extraScopes = const <String>[]]) {
     final String id = 'tok_${randomText(12)}';
     final String secret = randomText(32);
     final DateTime expires = now().add(Duration(minutes: pairingDefaults['secretMinutes']! as int));
-    _pairings[id] = _Pending(sha256Text(secret), expires);
+    _pairings[id] = _Pending(sha256Text(secret), expires, extraScopes);
     return Pairing(id, secret, expires);
   }
 
@@ -85,6 +89,7 @@ class FakeTokens {
     final String text = 'anm_$tokenId.${randomText(32)}';
     final List<String> scopes = <String>[
       for (final Object? scope in pairingDefaults['defaultScopes']! as List<Object?>) scope! as String,
+      for (final String scope in pending.extraScopes) scope,
     ];
     final FakeToken token = FakeToken(tokenId, sha256Text(text), scopes, time,
         time.add(Duration(days: pairingDefaults['defaultTokenDays']! as int)), client);

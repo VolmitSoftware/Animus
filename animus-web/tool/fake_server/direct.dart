@@ -92,7 +92,10 @@ class DirectPath {
         break;
       }
     }
-    if (refused == null && bytes.isNotEmpty) {
+    if (refused == null && bytes.isNotEmpty && target == '/v1/imports') {
+      // As the real listener does: the upload's raw bytes reach the handler as base64.
+      body = base64Encode(bytes.takeBytes());
+    } else if (refused == null && bytes.isNotEmpty) {
       try {
         body = jsonDecode(utf8.decode(bytes.takeBytes()));
         if (body is! Map<String, Object?>) refused = invalid('The body is not one JSON object.');

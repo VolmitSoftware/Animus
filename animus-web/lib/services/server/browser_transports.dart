@@ -52,7 +52,11 @@ class DirectTransport implements ServerTransport {
     if (_closed) throw const TransportFailure(ConnectionPath.direct, 'closed');
     final web.Headers headers = web.Headers();
     request.headers.forEach((String name, String value) => headers.append(name, value));
-    if (request.body != null) headers.append('Content-Type', 'application/json');
+    if (request.bytes != null) {
+      headers.append('Content-Type', 'application/octet-stream');
+    } else if (request.body != null) {
+      headers.append('Content-Type', 'application/json');
+    }
     final web.AbortController abort = web.AbortController();
     _inFlight.add(abort);
     final Timer timer = Timer(requestTimeout, () => abort.abort());
@@ -63,7 +67,7 @@ class DirectTransport implements ServerTransport {
             web.RequestInit(
               method: request.method,
               headers: headers,
-              body: request.body == null ? null : jsonEncode(request.body).toJS,
+              body: request.bytes != null ? request.bytes!.toJS : (request.body == null ? null : jsonEncode(request.body).toJS),
               mode: 'cors',
               credentials: 'omit',
               cache: 'no-store',
@@ -275,7 +279,7 @@ class RelayTransport implements ServerTransport {
       'method': request.method,
       'path': request.path,
       if (request.headers.isNotEmpty) 'headers': request.headers,
-      if (request.body != null) 'body': request.body,
+      if (request.relayBody != null) 'body': request.relayBody,
     }).toJS);
     return id;
   }
