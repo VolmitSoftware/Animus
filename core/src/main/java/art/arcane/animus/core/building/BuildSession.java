@@ -312,6 +312,7 @@ public final class BuildSession {
             complete(claim.step);
             return null;
         }
+        context.crew().terrainChanged(world, at);
         if (need.kind() == MaterialRules.Kind.ITEM) consume(need, context.world());
         journal.record(at, before, target);
         placed++;
@@ -392,7 +393,7 @@ public final class BuildSession {
             BuildProtection.Action action = air(entry.before()) ? BuildProtection.Action.BREAK : BuildProtection.Action.PLACE;
             UUID npc = context.crew().member(leader()).map(BuildCrew.Member::uuid).orElse(new UUID(0, 0));
             if (!context.protection().allows(new BuildProtection.Request(npc, startedBy, world, at, action))) { undoSkipped++; continue; }
-            if (context.world().place(world, at, entry.before())) reverted++; else undoSkipped++;
+            if (context.world().place(world, at, entry.before())) { reverted++; context.crew().terrainChanged(world, at); } else undoSkipped++;
             listener.changed(this);
         }
         finishUndo();

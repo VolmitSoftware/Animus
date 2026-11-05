@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.navigation.BukkitTerrain;
+import art.arcane.animus.bukkit.navigation.TerrainChanges;
 import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.AnimusRuntime;
@@ -59,7 +60,10 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
                                                                PersistedNpcService.Settings settings, NativePacketAdapter.Scheduler replies) {
         BukkitRuntimeHost host = new BukkitRuntimeHost(plugin, minecraftVersion, replies);
         host.service = new PersistedNpcService<>(host, runtime, io, settings);
-        if (host.service.available()) plugin.getServer().getPluginManager().registerEvents(host, plugin);
+        if (host.service.available()) {
+            plugin.getServer().getPluginManager().registerEvents(host, plugin);
+            plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(host.service::terrainChanged), plugin);
+        }
         return host.service;
     }
 

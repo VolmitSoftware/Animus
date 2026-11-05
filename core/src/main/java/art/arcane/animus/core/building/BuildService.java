@@ -592,6 +592,7 @@ public final class BuildService<P, I> implements AutoCloseable {
             catch (RuntimeException ignored) { /* facing is cosmetic */ }
         }
         @Override public void swing(String npc) { living.swing(npc); }
+        @Override public void terrainChanged(String world, BlockPos at) { living.terrainChanged(world, at); }
         @Override public void hold(String npc, Optional<String> item) {
             try { living.setEquipment(npc, EquipmentSlot.MAIN_HAND, platform.stack(item)); }
             catch (RuntimeException ignored) { /* holding is cosmetic */ }

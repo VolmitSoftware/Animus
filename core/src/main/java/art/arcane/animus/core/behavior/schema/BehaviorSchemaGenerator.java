@@ -423,7 +423,7 @@ public final class BehaviorSchemaGenerator {
         return rule;
     }
     private static JsonObject navigation() {
-        JsonObject navigation = described(type("object"), "Native waypoints, or a reusable route under behaviors/routes/.");
+        JsonObject navigation = described(type("object"), "Native waypoints, or a reusable route under routes/.");
         JsonObject properties = new JsonObject();
         properties.add("enabled", type("boolean"));
         properties.add("reviewAccepted", type("boolean"));
