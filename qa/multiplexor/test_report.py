@@ -16,6 +16,10 @@ class ReportTest(unittest.TestCase):
         module=value|{'target':'animus-modules-folia-26-2'}
         self.assertTrue(r.selected(module,'run10',{'new'},10,'modules'))
         self.assertFalse(r.selected(module,'run10',{'new'},10,'production'))
+        baseline=value|{'target':'animus-baseline-paper-26-3'}
+        self.assertTrue(r.selected(baseline,'run10',{'new'},None,'production'))
+        self.assertFalse(r.selected(value|{'target':'animus-paper-26-3'},'run10',{'new'},None,'production'))
+        self.assertTrue(r.selected(value|{'target':'animus-import-paper-26-3'},'run10',{'new'},None,'importApplications'))
     def test_prepared_descriptors_are_never_lifecycle_passes(self):
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/'runtime.json';path.write_text(json.dumps({'status':'prepared','scope':'Fresh isolated regression instance preparation only; no server startup or runtime validation','port':1234}))

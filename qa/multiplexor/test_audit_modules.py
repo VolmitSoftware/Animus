@@ -43,6 +43,7 @@ class ModuleAuditTest(unittest.TestCase):
             with self.assertRaises(m.base.AuditError):m.structure(m.read(m.latest_attempt(p)[1]))
     def test_exact_round_names_and_no_cross_round_fallback(self):
         self.assertEqual(m.base.target_name('paper','26.3',10),'animus-r10-paper-26-3')
+        self.assertEqual(m.base.target_name('paper','26.3'),'animus-baseline-paper-26-3')
         self.assertEqual(m.base.target_name('folia','26.2',10,'import'),'animus-r10-import-folia-26-2')
         self.assertEqual(m.base.target_name('spigot','26.1.2',kind='modules'),'animus-modules-spigot-26-1-2')
         for r in [0,-1,True,'10',1000001]:

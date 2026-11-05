@@ -30,9 +30,6 @@ After the production source and harness are frozen and actual Multiplexor has pr
 
 ```sh
 python3 qa/multiplexor/behaviors.py \
-  --binary ../ServerMultiplexor/multiplexor \
-  --workspace .qa/multiplexor-workspace \
-  --build-home .qa/multiplexor-build-cache \
   --build-run <reviewed-run> --artifact-sha256 <reviewed-sha256> \
   --project paper --version 26.3 \
   --module-fixtures <generated-fixture-directory> \

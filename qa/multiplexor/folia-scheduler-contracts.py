@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import multiplexor_workspace as mw
 
 TARGETS = [('26.1.2', 8, 'STABLE'), ('26.2', 7, 'BETA'), ('26.3', 6, 'ALPHA')]
 CLASSES = {
@@ -32,7 +33,7 @@ def sha(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--workspace', type=Path, default=Path('.qa/multiplexor-workspace'))
+    parser.add_argument('--workspace', type=Path, default=mw.default_workspace())
     parser.add_argument('--javap', type=Path, default=Path('/opt/homebrew/opt/openjdk@25/bin/javap'))
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
@@ -54,9 +55,9 @@ def main():
                                         'slow channel cleanup bounds', 'shutdown and queued skin work']}
     try:
         for version, build, channel in TARGETS:
-            name = 'animus-folia-' + version.replace('.', '-')
+            name = mw.baseline_name('folia', version)
             instance = args.workspace.resolve() / 'consumers/plugin-consumers/instances' / name
-            lifecycle = args.workspace.resolve() / 'animus-evidence' / name / 'runtime.json'
+            lifecycle = mw.evidence_root(args.workspace.resolve()) / name / 'runtime.json'
             prior = json.loads(lifecycle.read_text())
             assert prior['project'] == 'folia' and prior['minecraftVersion'] == version and prior['build'] == build and prior['channel'] == channel, 'Exact platform source mismatch'
             launcher = instance / 'server.jar'

@@ -11,6 +11,7 @@ import re
 import shutil
 import sys
 import zipfile
+import multiplexor_workspace as mw
 
 spec = importlib.util.spec_from_file_location('module_import_audit', Path(__file__).with_name('audit-import-applications.py'))
 imports = importlib.util.module_from_spec(spec); spec.loader.exec_module(imports)
@@ -194,7 +195,7 @@ class ModuleAuditor(imports.ImportAuditor):
         require(report['pluginSha256'] == self.artifact_hash, 'Wrong module artifact')
         instance = self.deployed(report, project, version, name); data = instance / 'plugins/Animus'
         require(report['deployedPlugins'] == report['plugins'] and report['finalServerSha256'] == report['serverSha256'], 'Deployment changed')
-        reference_path = self.workspace / 'animus-evidence' / base.target_name(project, version) / 'runtime.json'
+        reference_path = mw.evidence_root(self.workspace) / base.target_name(project, version) / 'runtime.json'
         self.file(reference_path, kind='pinned-server-reference'); pinned = read(reference_path)
         require((report['serverBuild'],report['serverChannel'],report['serverSha256']) == (pinned['build'],pinned['channel'],pinned['serverSha256']), 'Exact server release mismatch')
         self.sources(folder, report); modules, reference, observer = self.fixtures(folder, data, report)
@@ -216,7 +217,7 @@ class ModuleAuditor(imports.ImportAuditor):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--workspace',type=Path,default=Path('.qa/multiplexor-workspace'));p.add_argument('--repo',type=Path,default=Path(__file__).resolve().parents[2])
+    p.add_argument('--workspace',type=Path,default=mw.default_workspace());p.add_argument('--repo',type=Path,default=Path(__file__).resolve().parents[2])
     for name in ['build-status','source-snapshot','output']:p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--artifact-sha256',required=True);p.add_argument('--instance-prefix',choices=['animus-modules'],required=True)
     a=p.parse_args();require(not base.lexists(a.output),'Choose a new immutable audit directory');a.output.mkdir(parents=True)
@@ -231,7 +232,7 @@ def main(argv=None):
         result['apiArtifact']=audit.api
         for project in ['paper','spigot','folia']:
             for version in base.VERSIONS:
-                folder=audit.workspace/'animus-evidence'/base.target_name(project,version,kind='modules');attempts,selected=latest_attempt(folder)
+                folder=mw.evidence_root(audit.workspace)/base.target_name(project,version,kind='modules');attempts,selected=latest_attempt(folder)
                 for attempt in attempts:
                     f=attempt/'result.json';entry={'report':str(f),'status':'pending'}
                     if f.exists():audit.file(f,kind='preserved-module-attempt');entry.update({k:read(f).get(k) for k in ['status','buildRun','error']})

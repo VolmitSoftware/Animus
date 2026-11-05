@@ -15,6 +15,7 @@ import runpy
 import shutil
 import socket
 import time
+import multiplexor_workspace as mw
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / 'qa/behaviors'
@@ -79,7 +80,6 @@ class Scenario:
         self.a.binary = args.binary.resolve()
         self.a.workspace = args.workspace.resolve()
         self.a.transcript = []
-        assert '.qa' in self.a.workspace.parts
         assert re.fullmatch('[0-9a-f]{64}', args.artifact_sha256)
         self.fixtures = read(args.module_fixtures / 'build.json')
         self.observer = read(args.observer.parent / 'build.json')
@@ -90,14 +90,14 @@ class Scenario:
         if args.instance_name:
             assert re.fullmatch(r'animus-gate-behaviors-' + args.project + '-' + re.escape(args.version.replace('.', '-')), args.instance_name), 'Instance name must bind requested platform/version'
             self.name = args.instance_name
-        baseline_name = f'animus-{args.project}-{args.version.replace(".", "-")}'
+        baseline_name = mw.baseline_name(args.project, args.version)
         self.instances = args.workspace / 'consumers/plugin-consumers/instances'
         self.baseline = self.instances / baseline_name
         self.instance = self.instances / self.name
-        self.pinned = read(args.workspace / 'animus-evidence' / baseline_name / 'runtime.json')
+        self.pinned = read(mw.evidence_root(args.workspace) / baseline_name / 'runtime.json')
         assert sha(self.baseline / 'server.jar') == self.pinned['serverSha256']
         self.token = f'{time.time_ns()}-{os.getpid()}'
-        self.evidence = args.workspace / 'animus-evidence' / self.name / f'behaviors-{self.token}'
+        self.evidence = mw.evidence_root(args.workspace) / self.name / f'behaviors-{self.token}'
         no_symlinks(self.evidence); self.evidence.mkdir(parents=True)
         self.data = self.instance / 'plugins/Animus'
         self.log = self.instance / 'logs/latest.log'
@@ -716,7 +716,10 @@ historyEntries = 64
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('binary', 'workspace', 'build-home', 'module-fixtures', 'observer'):
+    parser.add_argument('--binary', type=Path, default=mw.default_binary())
+    parser.add_argument('--workspace', type=Path, default=mw.default_workspace())
+    parser.add_argument('--build-home', type=Path, help='Only when the build used a MULTIPLEXOR_BUILD_HOME override')
+    for name in ('module-fixtures', 'observer'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--build-run', required=True)
     parser.add_argument('--artifact-sha256', required=True)

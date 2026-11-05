@@ -16,9 +16,6 @@ Run all three phases with the fixture path returned above:
 
 ```sh
 python3 qa/multiplexor/folia-proof.py \
-  --binary ../ServerMultiplexor/multiplexor \
-  --workspace .qa/multiplexor-workspace \
-  --build-home .qa/multiplexor-build-cache \
   --build-run '<recorded run ID>' --version 26.3 \
   --fixture '<fixture output>/AnimusFoliaFixture.jar' \
   --skin-file '<local signed skin JSON>' --phase all
@@ -34,7 +31,7 @@ The IO/Netty/owner stalls are QA-only, bounded by watchdogs, and operate only on
 
 The full three-phase suite passed on the recorded Multiplexor build `run-1793807521311830-32660`, plugin SHA-256 `5bd4a77deef1dc7ce6fa6b0de1809305fe080775aa516a3da6ea37594ceab2cf`. Each target passed 34 main, 11 bounds, and 5 shutdown checks. This establishes the limited stationary-preview behavior covered above, with the stated terrain/graphical limitations.
 
-| Exact target | Native checks | Evidence directory under `.qa/multiplexor-workspace/animus-evidence/` |
+| Exact target | Native checks | Evidence directory under the retired QA workspace's `animus-evidence/` |
 |---|---:|---|
 | Folia 26.1.2 build 8 STABLE | 50 | `animus-folia-26-1-2/folia-proof-1793807854819201000` |
 | Folia 26.2 build 7 BETA | 50 | `animus-folia-26-2/folia-proof-1793807854825572000` |
