@@ -54,7 +54,7 @@ class LongLegTest {
             BlockPos feet = BlockPos.containing(at);
             assertTrue(feet.x() >= bounds.minX() && feet.x() < bounds.minX() + bounds.sizeX() && feet.z() >= bounds.minZ() && feet.z() < bounds.minZ() + bounds.sizeZ(), "capture holds the feet");
             captures.add(bounds);
-            PathPlanner.Result result = new PathPlanner().plan(capture(world, loaded, bounds), feet, BlockPos.containing(goal), profile, request.limits(), () -> false);
+            PathPlanner.Result result = new PathPlanner().plan(capture(world, loaded, bounds), feet, request.aim(), profile, request.limits(), () -> false);
             if (result.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) return new Run(null, at, plans, captures);
             LongLeg.Next next = leg.planned(result);
             if (next == LongLeg.Next.BLOCKED) return new Run(next, at, plans, captures);
@@ -111,16 +111,22 @@ class LongLegTest {
         Vec3 start = new Vec3(.5, 64, .5), goal = new Vec3(.5, 94, .5);
         arrived(walk(world, start, goal, FLIER), goal);
     }
-    @Test void aSwimmingRouteCrossesALakeThatAWalkingRouteCannot() {
-        World lake = (int x, int y, int z) -> {
-            boolean water = x >= 30 && x <= 110 && z >= -60 && z <= 60;
+    private static World lake(int halfWidth) {
+        return (int x, int y, int z) -> {
+            boolean water = x >= 30 && x <= 110 && Math.abs(z) <= halfWidth;
             if (!water) return y < 64 ? Cell.SOLID : Cell.AIR;
             return y < 56 ? Cell.SOLID : y < 64 ? Cell.WATER : Cell.AIR;
         };
+    }
+    @Test void aSwimmingRouteCrossesALakeThatAWalkingRouteCannot() {
         Vec3 start = new Vec3(.5, 64, .5), goal = new Vec3(140.5, 64, .5);
-        arrived(walk(lake, start, goal, SWIMMER), goal);
-        Run walking = walk(lake, start, goal, WALKER);
+        arrived(walk(lake(600), start, goal, SWIMMER), goal);
+        Run walking = walk(lake(600), start, goal, WALKER);
         assertEquals(LongLeg.Next.BLOCKED, walking.outcome(), "a walking route stays on land; the lake is wider than any detour");
+    }
+    @Test void aWalkingRouteFollowsTheShoreAroundASmallerLake() {
+        Vec3 start = new Vec3(.5, 64, .5), goal = new Vec3(140.5, 64, .5);
+        arrived(walk(lake(40), start, goal, WALKER), goal);
     }
     @Test void aBlockedSegmentReplansAroundTheWall() {
         // A wall across the straight line, open only beyond its end at z=12: the straight capture stops at the wall.
@@ -130,8 +136,17 @@ class LongLegTest {
             return Cell.AIR;
         };
         Vec3 start = new Vec3(.5, 64, .5), goal = new Vec3(60.5, 64, .5);
-        Run run = walk(world, start, goal, WALKER);
-        arrived(run, goal);
+        arrived(walk(world, start, goal, WALKER), goal);
+    }
+    @Test void aCliffLongerThanOneCaptureIsFollowedUntilItEnds() {
+        // A cliff 12 blocks high across the way, ending 45 blocks to one side: detours walk along it to its end.
+        World world = (int x, int y, int z) -> {
+            if (y < 64) return Cell.SOLID;
+            if (x >= 30 && x <= 34 && z >= -200 && z <= 45 && y < 76) return Cell.SOLID;
+            return Cell.AIR;
+        };
+        Vec3 start = new Vec3(.5, 64, .5), goal = new Vec3(90.5, 64, .5);
+        arrived(walk(world, start, goal, WALKER), goal);
     }
     @Test void aSegmentBlockedWhileWalkedIsPlannedAgainThenGivenUp() {
         LongLeg leg = new LongLeg(new Vec3(.5, 64, .5), new Vec3(100.5, 64, .5), WIDTH, HEIGHT);
