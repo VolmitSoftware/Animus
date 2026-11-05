@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/greet_task",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "wait",
+          "ticks": 40
+        },
+        {
+          "type": "action",
+          "capability": "animus:spawn-particle",
+          "arguments": {
+            "particle": "minecraft:happy_villager",
+            "count": 10,
+            "spread": 0.5,
+            "audience": "nearby"
+          }
+        },
+        {
+          "type": "repeat",
+          "count": 2,
+          "body": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Wave."
+            }
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "visits",
+            "scope": "player",
+            "equals": 1
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "First visit."
+            }
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Again."
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "minecraft:title {player} times 20 40 20"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "minecraft:title {player} subtitle {\"text\":\"{player_name}\"}"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "minecraft:title {player} title {\"text\":\"Guard\"}"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "minecraft:title {player} actionbar {\"text\":\"§eVisit logged\"}"
+          }
+        },
+        {
+          "type": "call",
+          "routine": "task-greet_task-extra"
+        }
+      ]
+    },
+    "task-greet_task-extra": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Extra path."
+      }
+    }
+  }
+}

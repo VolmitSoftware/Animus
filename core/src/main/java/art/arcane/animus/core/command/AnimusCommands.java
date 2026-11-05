@@ -1,5 +1,7 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.extension.loader.StartupModules;
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.api.Diagnostic;
@@ -76,6 +78,14 @@ public final class AnimusCommands {
             builds.execute(sender, arguments);
             return;
         }
+        // Diagnostics have their own node so an operator can read them without full administration.
+        if (arguments.length > 0 && arguments[0].equalsIgnoreCase("debug")) {
+            Extra debug = services.extras().get("debug");
+            if (!sender.permitted(DebugCommands.PERMISSION)) sender.tell("You do not have permission to use this command.");
+            else if (debug == null) sender.tell("Animus debug is not available on this server.");
+            else debug.execute(sender, arguments);
+            return;
+        }
         boolean status = arguments.length == 0 || arguments[0].equalsIgnoreCase("status");
         if (!sender.permitted(status ? "animus.status" : "animus.admin")) { sender.tell("You do not have permission to use this command."); return; }
         String operation = arguments.length == 0 ? "status" : arguments[0].toLowerCase(Locale.ROOT);
@@ -135,8 +145,11 @@ public final class AnimusCommands {
         try {
             services.files().execute(() -> {
                 List<String> result;
+                AnimusMetrics metrics = AnimusMetrics.current();
+                long started = metrics.start();
                 try {
                     result = new Administration(activeRuntime).execute(commandArgs);
+                    if (commandArgs.length > 0 && List.of("import", "rollback").contains(commandArgs[0])) metrics.stop(Subsystem.IMPORTS, started);
                     if (commandArgs.length > 0 && commandArgs[0].equals("reload")) {
                         List<String> reloaded = new ArrayList<>(result);
                         reloaded.add(rigSummary(activeRuntime.rigs().reload()));
@@ -159,12 +172,15 @@ public final class AnimusCommands {
 
     public List<String> complete(CommandActor sender, String[] arguments) {
         boolean admin = sender.permitted("animus.admin");
+        boolean debug = services.extras().containsKey("debug") && sender.permitted(DebugCommands.PERMISSION);
         if (arguments.length == 1) {
             List<String> available = admin ? new ArrayList<>(Administration.COMMANDS) : new ArrayList<>(List.of("status"));
             if (admin) available.addAll(List.of("select", "attack", "target", "combat", "navigate", "navigation", "look", "ride", "modules", "behaviors", "rigs", "pack"));
-            if (admin) available.addAll(services.extras().keySet().stream().sorted().toList());
+            if (admin) available.addAll(services.extras().keySet().stream().filter((String key) -> !key.equals("debug")).sorted().toList());
+            if (debug) available.add("debug");
             return matching(available, arguments[0]);
         }
+        if (arguments[0].equalsIgnoreCase("debug")) return debug ? services.extras().get("debug").complete(sender, arguments) : List.of();
         AnimusRuntime activeRuntime = services.runtime();
         if (!admin || !activeRuntime.isRunning()) return List.of();
         String operation = arguments[0].toLowerCase(Locale.ROOT);

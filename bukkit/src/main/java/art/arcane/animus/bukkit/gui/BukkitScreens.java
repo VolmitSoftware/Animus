@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.gui;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.bukkit.protection.RegionContainerAccess;
 import art.arcane.animus.bukkit.protection.RegionFlags;
 import art.arcane.animus.core.gui.GuiModel;
@@ -164,6 +166,8 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         fill(next.inventory, frame);
         if (previous != null) previous.replaced = true;
         player.openInventory(next.inventory);
+        AnimusMetrics metrics = AnimusMetrics.current();
+        metrics.sent(metrics.viewer(player.getUniqueId(), player.getName()), null, PacketKind.GUI_WINDOW, 1);
         if (player.getOpenInventory().getTopInventory().getHolder() != next) return Optional.empty();
         return Optional.of(next);
     }
