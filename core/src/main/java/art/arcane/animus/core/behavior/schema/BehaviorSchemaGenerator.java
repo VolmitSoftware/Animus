@@ -96,6 +96,8 @@ public final class BehaviorSchemaGenerator {
                     routines.add("additionalProperties", reference("node"));
                     properties.add("routines", routines);
                 }
+                case "server" -> properties.add("server", described(type("boolean"),
+                        "true makes a server-wide behavior: it has no NPC, uses server events only, declares only execution, player and global variables, and runs only when listed in server-behaviors.json."));
                 case "triggers" -> {
                     JsonObject triggers = described(type("array"), "Automatic starts, at most " + TriggerCompiler.MAX_TRIGGERS + ".");
                     triggers.addProperty("maxItems", TriggerCompiler.MAX_TRIGGERS);
@@ -312,7 +314,7 @@ public final class BehaviorSchemaGenerator {
     }
 
     private static JsonObject trigger() {
-        JsonObject trigger = described(type("object"), "An automatic start for NPCs that list this behavior.");
+        JsonObject trigger = described(type("object"), "An automatic start for NPCs that list this behavior, or for a server behavior.");
         trigger.add("required", strings("id", "event"));
         JsonObject properties = new JsonObject();
         for (String name : TriggerKind.COMMON_FIELDS) properties.add(name, triggerField(name).schema());
@@ -351,11 +353,26 @@ public final class BehaviorSchemaGenerator {
                 yield new Field(described(radius, "Blocks, above 0."), "number", true);
             }
             case "waypoint" -> new Field(described(range("integer", -1, TriggerCompiler.MAX_WAYPOINT), "A route point index; -1 is a manually requested destination. Omit for any arrival."), "integer", false);
-            case "intervalTicks" -> new Field(described(range("integer", 1, TriggerCompiler.MAX_INTERVAL_TICKS), "Ticks between firings while the NPC is active."), "integer", true);
+            case "intervalTicks" -> new Field(described(range("integer", 1, TriggerCompiler.MAX_INTERVAL_TICKS), "Ticks between firings while the NPC is active. Server behaviors use at least " + TriggerCompiler.MIN_SERVER_INTERVAL_TICKS + "."), "integer", true);
             case "dialogue" -> new Field(described(reference("identifier"), "The id of an animus:choices prompt."), "identifier", true);
             case "choice" -> new Field(described(reference("identifier"), "An option id of that prompt. Omit for any option."), "identifier", false);
             case "key" -> new Field(described(pattern(KEY), "A trigger a module registered, namespace:name."), "capability", true);
             case "animation" -> new Field(described(pattern("^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$"), "An animation id under animations/. Omit for any played animation."), "string", false);
+            case "first" -> new Field(described(type("boolean"), "true fires only on first joins, false only for returning players. Omit for every join."), "boolean", false);
+            case "pattern" -> new Field(described(bounded(TriggerCompiler.MAX_PATTERN), "Case-insensitive match of the whole message; * matches any text. Omit for every message."), "string", false);
+            case "name" -> new Field(described(pattern("^" + TriggerCompiler.COMMAND_NAME + "$"), "The command to register, without a slash."), "string", true);
+            case "aliases" -> {
+                JsonObject aliases = type("array");
+                aliases.addProperty("maxItems", TriggerCompiler.MAX_ALIASES);
+                aliases.addProperty("uniqueItems", true);
+                aliases.add("items", pattern("^" + TriggerCompiler.COMMAND_NAME + "$"));
+                yield new Field(described(aliases, "Other names for the command, at most " + TriggerCompiler.MAX_ALIASES + "."), "array", false);
+            }
+            case "permission" -> new Field(described(pattern("^" + TriggerCompiler.PERMISSION + "$"), "A permission node the sender must hold. Omit to let everyone run it."), "string", false);
+            case "description" -> new Field(described(bounded(TriggerCompiler.MAX_COMMAND_TEXT), "Shown in the server's command help."), "string", false);
+            case "usage" -> new Field(described(bounded(TriggerCompiler.MAX_COMMAND_TEXT), "Usage text shown in the server's command help."), "string", false);
+            case "from" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "Fires only when leaving this world. Omit for any world."), "string", false);
+            case "to" -> new Field(described(bounded(TriggerCompiler.MAX_WORLD_NAME), "Fires only when entering this world. Omit for any world."), "string", false);
             default -> throw new IllegalStateException("No schema for trigger field " + name);
         };
     }
@@ -676,6 +693,7 @@ public final class BehaviorSchemaGenerator {
             JsonObject trigger = new JsonObject();
             trigger.addProperty("description", kind.description());
             trigger.addProperty("carriesPlayer", kind.carriesPlayer());
+            trigger.addProperty("reach", kind.reach().name().toLowerCase(Locale.ROOT));
             JsonObject fields = new JsonObject();
             for (String name : kind.keys()) {
                 Field field = name.equals("event") ? new Field(constant(kind.jsonName()), "event", true) : triggerField(name);
@@ -750,6 +768,7 @@ public final class BehaviorSchemaGenerator {
 
     private static JsonObject type(String type) { JsonObject schema = new JsonObject(); schema.addProperty("type", type); return schema; }
     private static JsonObject pattern(String pattern) { JsonObject schema = type("string"); schema.addProperty("pattern", pattern); return schema; }
+    private static JsonObject bounded(int maximum) { JsonObject schema = pattern(NONBLANK); schema.addProperty("maxLength", maximum); return schema; }
     private static JsonObject text(int maximum, String description) {
         JsonObject schema = described(pattern(NONBLANK), description);
         schema.addProperty("maxLength", maximum);

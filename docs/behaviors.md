@@ -134,12 +134,20 @@ This example requires a module providing `example:wave` and `example:bow`. Every
 | `damage` | None. | Authoritative NPC health falls. |
 | `death` | None. | Authoritative NPC health reaches zero. No despawn trigger follows a death. `say`, `play-sound` and `spawn-particle` still come from where the NPC fell; actions that need a living body are unavailable until it respawns. |
 | `waypoint` | Optional `waypoint`: -1 to 4,095. | The NPC arrives at a route point; -1 is a manually requested destination. Without the field, any arrival fires. |
-| `timer` | `intervalTicks`: 1 to 72,000. | The interval passes while the NPC is active. |
+| `timer` | `intervalTicks`: 1 to 72,000; 20 to 72,000 in a server behavior. | The interval passes while the NPC is active, or while the server runs in a [server behavior](#server-behaviors). |
 | `dialogue_choice` | `dialogue`. Optional `choice`. | A viewer's click on that prompt from this NPC passes validation. |
-| `module` | `key`: a `namespace:name` trigger. | The owning module publishes that trigger. |
+| `module` | `key`: a `namespace:name` trigger. | The owning module publishes that trigger. In a server behavior, any publish of that key fires it. |
 | `build_finished` | None. | A build this NPC leads or helps with places its last block. See [building](building.md). |
 | `build_paused` | None. | A build this NPC works on is paused by command, or starts waiting for unloaded terrain, materials or an active builder. |
 | `animation_finished` | Optional `animation`: an animation id such as `town:golem/wave`. | A clip started by `animus:play-animation` reaches its end: a `once` clip stops and a `hold` clip starts holding its last frame. Looping clips and the rig's own idle and walk clips never fire it. |
+| `player_join` | Optional `first`: `true` fires only on a player's first join, `false` only for returning players. | A player joins. Server behaviors only. |
+| `player_quit` | None. | A player leaves. Server behaviors only. |
+| `player_chat` | Optional `pattern` (up to 256 characters): matched against the whole message, ignoring case, where `*` matches any text. | A player sends a chat message. Server behaviors only. |
+| `command` | `name`, optional `aliases` (up to 8), `permission`, `description`, `usage` | Someone runs the command Animus registers for it. See [commands](#server-commands). Server behaviors only. |
+| `server_start` | None. | Behaviors first load after the server starts. Server behaviors only. |
+| `player_death` | None. | A player dies. Server behaviors only. |
+| `player_respawn` | None. | A player respawns. Server behaviors only. |
+| `player_world_change` | Optional `from`, `to`: world names. | A player moves to another world. Server behaviors only. |
 
 Interaction, proximity and dialogue executions carry the viewer's UUID, and module executions carry the UUID the module supplied. The other events carry no player. Triggers pass no other event data to the routine. Trigger-started runs use the same scoped variables as manual runs, and `player` and `relationship` variables resolve from the triggering player. Every routine a behavior's triggers start shares that behavior's variables. A trigger with no player cannot start a behavior declaring such a variable: that start is counted under `START_FAILED`, and `/animus behaviors triggers` shows the most recent refusal with its exact field. Spawn, despawn, damage, death, waypoint and timer triggers never have a player, so `/animus behaviors validate` warns with `behavior-trigger-needs-player` on each such trigger in that behavior. The behavior is still accepted, since its other triggers may work. A `module` trigger depends on what its module supplies and is not flagged.
 
@@ -184,6 +192,69 @@ An event that finds its cooldown running is suppressed. An event that finds a fu
 
 A valid click on [`animus:choices`](#dialogue-choices) publishes the dialogue event. `dialogue` matches the prompt's `id` and `choice` matches the option's `id`.
 
+## Server behaviors
+
+A behavior with `"server": true` belongs to the whole server instead of an NPC. It is what imported Denizen world and command scripts become:
+
+```json
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:welcome",
+  "server": true,
+  "entry": "main",
+  "variables": {"visits": {"type": "integer", "initial": 0, "scope": "player", "lifetime": "persistent"}},
+  "routines": {
+    "main": {"type": "action", "capability": "animus:title", "arguments": {"title": "Welcome to town"}},
+    "spawn": {"type": "action", "capability": "animus:teleport", "arguments": {"x": 0, "y": 64, "z": 0, "world": "world"}}
+  },
+  "triggers": [
+    {"id": "hello", "event": "player_join", "first": true},
+    {"id": "spawn", "event": "command", "name": "spawn", "aliases": ["hub"], "permission": "town.spawn", "routine": "spawn"}
+  ]
+}
+```
+
+A server behavior runs only when it is listed in `server-behaviors.json` at the top of the plugin folder:
+
+```json
+{"schemaVersion": 1, "behaviors": ["town:welcome"]}
+```
+
+The list holds at most 256 ids. It is read at startup and by `/animus behaviors reload`. A listed id that is missing, unavailable or not a server behavior is reported and skipped. Removing an id cancels that behavior's running runs, as replacing a behavior does. Accepting the `denizen` review of `/animus import citizens` adds the imported server behaviors to this file, and rolling the import back removes them.
+
+A server behavior has no NPC. It may declare only `execution`, `player` and `global` variables, and it may use only these events: `player_join`, `player_quit`, `player_chat`, `command`, `server_start`, `timer`, `player_death`, `player_respawn`, `player_world_change` and `module`. NPC behaviors cannot use the player and server events. Capabilities that need an NPC refuse a server run with `no-npc`: `say`, `look`, `navigate`, `stop-navigation`, `set-appearance`, `set-equipment`, `combat-control`, `build`, `play-animation`, `stop-animation`, `choices`, `npc-state`, `player-in-range`, flags and quests with `npc` or `relationship` scope, sounds and particles `at` the NPC, and teleports of or to the NPC.
+
+Every event except `server_start` and `timer` carries the player, so `player` variables and the player capabilities work from it. Runs see the event's details as `context`: `message` for chat and death, `first` for joins, `from` and `to` for world changes, and `command`, `alias`, `args` (the words after the command) and `raw_args` for commands. Cooldowns of player events apply per trigger and player, so one player's cooldown never holds back another. Other cooldowns apply per trigger.
+
+### Server commands
+
+Each enabled `command` trigger registers a command with the server. `name` and each alias are 1 to 32 lowercase letters, digits, `_` or `-`, written without a slash. The server checks `permission` before the trigger fires; without one, everyone may run it. The console may run it too, and then the run has no player. A name the server or another plugin or mod already owns is refused with a diagnostic and stays unregistered; a taken alias is left out. Two enabled behaviors cannot register the same name. At most 64 commands are registered, and a command is removed when its behavior is no longer enabled.
+
+On Paper, Spigot and Folia the commands join the server's command map under the `animus:` fallback prefix. On Fabric, Forge and NeoForge they join the server's command tree, with everything after the name passed as one argument.
+
+### Threads and limits
+
+Platform listeners only publish events into a bounded queue. Player actions of a server run go to that player's owner, which on Folia is the player's own scheduler; broadcasts and console commands go to the global owner. `/animus behaviors triggers` lists server triggers after the NPC triggers, with their counts, drops and diagnostics.
+
+These defaults live under `[behaviors.server]` in `config.toml` and require restart:
+
+```toml
+[behaviors.server]
+enabled = true
+eventQueue = 512
+eventsPerTick = 64
+startsPerTick = 16
+queuePerTrigger = 64
+concurrentPerTrigger = 8
+concurrentTotal = 32
+defaultCooldownTicks = 0
+minimumTimerTicks = 20
+maximumCommands = 64
+```
+
+As with NPC triggers, overflow is dropped and counted, and a queued start waiting longer than 100 ticks is dropped. A timer below `minimumTimerTicks` stays unbound and is listed as a diagnostic. With `enabled = false`, server behaviors show `UNAVAILABLE` and nothing runs.
+
 
 ## Built-in capabilities
 
@@ -227,34 +298,41 @@ This greeter faces the player who started it, asks a question, and records that 
 | `animus:has-permission` | `permission` | The triggering player holds the permission. False with no triggering player. |
 | `animus:npc-state` | At least one of `spawned`, `minimumHealth`, `maximumHealth` | The NPC matches all of them. A dormant or removed NPC has `spawned` false and health 0. |
 | `animus:player-in-range` | `radius` (1-64), optional `anyPlayer` | The triggering player, or any player with `anyPlayer`, is within the radius in the NPC's world. |
-| `animus:flag-state` | `name`, optional `scope`, optional `value` (default true) | The flag has that value. An unset flag is false. |
+| `animus:flag-state` | `name`, optional `scope`, optional `value` (default true: any of true, false, a number or text) | The flag has exactly that value: `3` never equals `3.0` or `"3"`. An unset or expired flag is false and equals nothing else. |
 | `animus:quest-state` | `name`, optional `scope`, at least one of `equals`, `atLeast`, `atMost` | The stage matches all of them. An unset quest is stage 0. |
 
 ### Actions
 
 | Capability | Arguments | Result |
 | --- | --- | --- |
-| `animus:say` | `text` (up to 1,024 characters), optional `audience`, `radius` | Sends `Name » text`. Text is [formatted](#text-formatting). Each `{player_name}` becomes the triggering player's name. |
+| `animus:say` | `text` (up to 1,024 characters), optional `audience`, `radius`, `player` | Sends `Name » text`. Text is [formatted](#text-formatting). Each `{player_name}` becomes the triggering player's name. |
+| `animus:message` | `text` (up to 1,024 characters), optional `to`: `trigger` (default), `all`, `world` or `console`, optional `player` with `trigger` | Sends [formatted](#text-formatting) text with no speaker name to the triggering player, every online player, the players in the NPC's world (the triggering player's world in a server behavior) or the console. Reports `delivered`. |
+| `animus:title` | At least one of `title` and `subtitle` (each up to 256 characters), optional `fadeIn`, `stay`, `fadeOut` (0-72,000 ticks; defaults 10, 70 and 20), `player` | Shows a title to the player. |
+| `animus:actionbar` | `text` (up to 256 characters), optional `player` | Shows the text above the player's hotbar. |
 | `animus:choices` | `id`, `prompt`, `options` (1-8 of `id` and `text`, each with optional `color`, `hover`, `style`), optional `lifetimeSeconds` (1-600) | Shows the prompt and a row of coloured answer buttons to the triggering player. Completes when shown and does not wait for the answer. |
-| `animus:command` | `command` (no leading slash), optional `as`: `console` (default) or `player` | Runs the command. Each `{player}` becomes the triggering player's UUID, which vanilla selectors accept, such as `clear {player} minecraft:emerald 1`. Each `{player_name}` becomes their current name. Requires the allow-list below. |
+| `animus:command` | `command` (no leading slash), optional `as`: `console` (default) or `player`, optional `player` | Runs the command. Each `{player}` becomes the triggering player's UUID, which vanilla selectors accept, such as `clear {player} minecraft:emerald 1`. Each `{player_name}` becomes their current name. Requires the allow-list below. |
 | `animus:navigate` | Either `x`, `y`, `z` with optional `mode` (`walk`, `swim`, `fly`) and `speed` (1-5), or `route`. Optional `wait`, and with it `timeoutTicks` (20-12,000, default 1,200). | Starts a route or follows `routes/<route>.json`. Completes when requested unless `wait` is true; see [walking a patrol](#walking-a-patrol). The limits in [the runtime guide](runtime.md) apply. |
 | `animus:stop-navigation` | None | Stops any route. Reports `stopped`. |
 | `animus:look` | Either `x`, `y`, `z`, or `"target": "player"` | Turns the NPC. The target must be within 64 blocks in the same world. |
 | `animus:set-appearance` | Any of `name` (up to 16 characters) and `skin` (a skin file hash), or `"reset": true` | Shows a new name on any body, or a skin on a player body. Viewers receive a fresh body. |
 | `animus:set-equipment` | `slot` (`main_hand`, `off_hand`, `head`, `chest`, `legs`, `feet`, `body`), optional `item` | Shows the item, such as `minecraft:iron_sword`. Without `item`, clears the slot. Equipment declared in the definition returns after restart or a definition change. |
-| `animus:play-sound` | `sound`, optional `volume` (0-4), `pitch` (0.5-2), `audience`, `radius` | Plays the sound at the NPC for its audience only. |
-| `animus:spawn-particle` | `particle`, optional `count` (1-64), `spread` (0-8), `audience`, `radius` | Shows the particle at the NPC to its audience only. Particles that need extra data are rejected. |
+| `animus:play-sound` | `sound`, optional `volume` (0-4), `pitch` (0.5-2), `audience`, `radius`, `at`: `npc` (default) or `player`, `player` | Plays the sound at the NPC, or at the player, for its audience only. Server behaviors always play at the player. |
+| `animus:spawn-particle` | `particle`, optional `count` (1-64), `spread` (0-8), `audience`, `radius`, `at`: `npc` (default) or `player`, `player` | Shows the particle at the NPC, or at the player, to its audience only. Server behaviors always show it at the player. Particles that need extra data are rejected. |
+| `animus:teleport` | Optional `target`: `player` (default) or `npc`. Either `x`, `y`, `z` with optional `world`, `yaw` (-360-360), `pitch` (-90-90), or `to`: `npc` or `player`. Optional `player`. | Teleports the player or the NPC. Without `world` the target stays in its world. Reports `teleported`. On Folia a teleport the platform cannot make is refused with its reason. |
+| `animus:give-item` | `item` (such as `minecraft:bread`), optional `amount` (1-6,400, default 1), `name`, `lore` (up to 16 lines), `player` | Gives the items; what does not fit drops at the player's feet. Reports `given`. |
+| `animus:take-item` | `item`, optional `amount` (1-6,400, default 1), `player` | Takes up to that many. Reports `taken`, never more than the player held. |
+| `animus:give-book` | `title` and `author` (each up to 32 characters), `pages` (1-50, each up to 1,024 characters and [formatted](#text-formatting)), optional `player` | Gives a written book. Reports `given`. |
 | `animus:build` | `operation` (`start`, `pause`, `resume`, `cancel`, `undo`). For `start` only: `schematic` (a file in the `schematics` folder; without it the NPC's saved `animus:builder` section is used), `x`, `y`, `z` (all or none; none builds where the NPC stands), `rotation` (0, 90, 180 or 270), `mirror` (`none`, `x`, `z`), `anchor` (`center`, `corner`, `schematic`), `pattern`, `materials` (`creative`, `donate`), `excavate`, `ignoreAir`, `ignoreLiquids` | Drives the NPC's [build](building.md). A start answers once the schematic starts loading; loading errors go to the server log. Protection still applies. Unavailable on Folia. |
 | `animus:play-animation` | `animation` (an id under `animations/`), optional `speed` (0.25-4, default 1), `loop` (`once`, `loop`, `pingpong`, `hold`), `layer` (0-3, default 0) | Plays a clip of the NPC's [rig](runtime.md#rigs-and-animations). Higher layers blend over lower ones. Refused when the NPC has no rig or the clip animates another rig. |
 | `animus:stop-animation` | Optional `layer` (0-3; without it every played layer stops), `fadeTicks` (0-40) | Stops played clips. Layer 0 returns to the rig's `idle` clip, or `walk` while the NPC walks. |
 | `animus:combat-control` | `operation` (`enable`, `disable`, `target`, `release`, `guard`), `target` (an entity or NPC UUID, or `player` for the triggering player): required for `target`, optional for `guard`, refused otherwise | Drives the [combat module](combat.md#behaviors-and-commands). Needs enabled combat settings; protection still applies. |
-| `animus:open-shop` | `shop` (a shop id such as `town:baker`) | Opens the [shop](shops.md) for the triggering player. Reports `delivered` 0 when they are offline. |
-| `animus:open-gui` | `gui`, optional `kind`: `inventory` (default), `menu`, `shop` or `gloss` | Opens the [chest GUI](gui.md), [holographic menu](gui.md#holographic-menus) or shop with that id for the triggering player. `gloss` opens a Gloss menu by its Gloss id, such as `lobby/main`, and refuses as `gloss-unavailable` when Gloss is not installed. |
-| `animus:set-flag` | `name`, optional `scope`, optional `value` (default true) | Sets the flag. |
+| `animus:open-shop` | `shop` (a shop id such as `town:baker`), optional `player` | Opens the [shop](shops.md) for the triggering player. Reports `delivered` 0 when they are offline. |
+| `animus:open-gui` | `gui`, optional `kind`: `inventory` (default), `menu`, `shop` or `gloss`, optional `player` | Opens the [chest GUI](gui.md), [holographic menu](gui.md#holographic-menus) or shop with that id for the triggering player. `gloss` opens a Gloss menu by its Gloss id, such as `lobby/main`, and refuses as `gloss-unavailable` when Gloss is not installed. |
+| `animus:set-flag` | `name`, optional `scope`, and either optional `value` (default true: true, false, a number or text) with optional `expireSeconds` (1-31,536,000), or `"clear": true` | Sets the flag, which reads as unset once `expireSeconds` pass. `clear` unsets it. Lists and maps are refused with `flag-value-unsupported` for now. |
 | `animus:set-quest-state` | `name`, optional `scope`, and either `value` or `random` (1-1,000,000) | Sets the stage to `value`, or to a random stage from 0 up to but not including `random`. `"random": 3` picks 0, 1 or 2. |
 | `animus:advance-quest-state` | `name`, optional `scope`, `by` (default 1), `maximum` | Adds to the stage without passing `maximum`. Reports `value`. |
 
-`audience` is `trigger` (default) or `nearby`; `radius` applies to `nearby`, from 1 to 64 with a default of 16. `scope` is `player` (default), `npc`, `relationship` or `global`. A capability that addresses the triggering player fails with `no-triggering-player` when a behavior has none, as with a console `/animus behaviors run`. Text that uses `{player_name}` needs a triggering player too, even with the `nearby` audience; it fails with `player-name-unknown` when the server does not know the player's name.
+`audience` is `trigger` (default) or `nearby`; `radius` applies to `nearby`, from 1 to 64 with a default of 16. `player` is the UUID of an online player the capability addresses instead of the triggering player; a capability with `player` needs no triggering player. In a preview, `player`, `audience: nearby` and messages to anyone other than the triggering player are refused, and teleports and items always are. `scope` is `player` (default), `npc`, `relationship` or `global`. A capability that addresses the triggering player fails with `no-triggering-player` when a behavior has none, as with a console `/animus behaviors run`. Text that uses `{player_name}` needs a triggering player too, even with the `nearby` audience; it fails with `player-name-unknown` when the server does not know the player's name.
 
 Appearance and equipment changes last until restart or until the NPC's definition changes, and they do not edit the definition. Changing the definition during a run cancels that run, which is why these actions stay out of the file.
 
@@ -544,14 +622,14 @@ The current administrative commands require `animus.admin`:
 | `/animus behaviors status` | Catalog state/generation, runtime work, retained calls, bounded delivery counts and failures. |
 | `/animus behaviors list [page]` | Up to 20 observed sources, availability, accepted/observed revisions and accepted hashes. |
 | `/animus behaviors validate [behavior-id]` | Scan and compile a candidate without replacing accepted programs or changing source files. With an ID, show only that behavior's problems. |
-| `/animus behaviors reload` | Publish validated source observations, including packs; preserve the preceding accepted program for invalid edits. |
+| `/animus behaviors reload` | Publish validated source observations, including packs; preserve the preceding accepted program for invalid edits. Rereads `server-behaviors.json`. |
 | `/animus behaviors schema` | Write the generated [schemas and completions](#schemas-and-editor-support) under `schemas/`. |
 | `/animus behaviors packs` | Each pack with its manifest state and any missing required modules. |
 | `/animus behaviors run <npc-id> <behavior-id>` | Admit manual execution against the captured definition and accepted program. Returns an execution UUID. |
 | `/animus behaviors inspect <execution-uuid>` | Inspect active or retained terminal state, source identity, waits, diagnostics and recent traces. |
 | `/animus behaviors trace <npc-id-or-uuid>` | Show each active run of that NPC, manual or trigger-started, with its origin, waits and last step, plus its last four finished runs. Use `inspect` for one run's full recent steps. A deleted NPC's UUID still works while its runs are retained. |
 | `/animus behaviors cancel <execution-uuid>` | Cancel that execution and revoke its pending calls. |
-| `/animus behaviors triggers [page]` | Trigger availability and totals, drop reasons, binding problems and up to 20 bindings with last fired, fired, active, queued, suppressed and dropped counts. |
+| `/animus behaviors triggers [page]` | Trigger availability and totals, drop reasons, binding problems and up to 20 bindings with last fired, fired, active, queued, suppressed and dropped counts. [Server behavior](#server-behaviors) triggers follow the NPC triggers. |
 | `/animus behaviors state status` | Stored and transient key counts against their budgets, documents waiting to be written, write failures, and each invalid stored file with its exact reason. |
 | `/animus behaviors state purge behavior <behavior-id>` | Remove every variable of that behavior. |
 | `/animus behaviors state purge npc <npc-id-or-uuid>` | Remove that NPC's `npc` and `relationship` variables across all behaviors. |
@@ -597,6 +675,18 @@ maximumDepth = 8
 maximumDocumentBytes = 262144
 maximumAggregateBytes = 16777216
 maximumCapabilityChecks = 8192
+
+[behaviors.server]
+enabled = true
+eventQueue = 512
+eventsPerTick = 64
+startsPerTick = 16
+queuePerTrigger = 64
+concurrentPerTrigger = 8
+concurrentTotal = 32
+defaultCooldownTicks = 0
+minimumTimerTicks = 20
+maximumCommands = 64
 
 [behaviors.state]
 maximumKeys = 65536
