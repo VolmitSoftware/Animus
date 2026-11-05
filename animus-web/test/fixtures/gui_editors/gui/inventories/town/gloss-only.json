@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "title": "&8Gloss only",
+  "resolution": "9x1",
+  "mask": ["X        "],
+  "keys": {
+    "X": {
+      "type": "button",
+      "icon": {"type": "item", "item": "minecraft:ender_eye", "name": "&dRide"},
+      "actions": [
+        {"type": "sound", "sound": "minecraft:ui.button.click"},
+        {"type": "camera", "path": []}
+      ]
+    }
+  }
+}

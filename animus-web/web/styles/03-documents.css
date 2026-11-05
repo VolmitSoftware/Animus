@@ -98,23 +98,6 @@
   overflow-wrap: anywhere;
 }
 
-.animus-chest {
-  display: grid;
-  gap: 2px;
-  margin-bottom: 1rem;
-  width: max-content;
-}
-
-.animus-chest-slot {
-  display: grid;
-  place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid var(--animus-border);
-  border-radius: 2px;
-  font-family: var(--font-mono);
-}
-
 .animus-code {
   display: grid;
   gap: 0.5rem;
