@@ -161,7 +161,7 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(shops.status());
             getLogger().info(guis.status());
             startBuilds(mainThread);
-            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, () -> buildsUnavailable, ownerTicks, () -> guis),
+            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, this::buildsRefusal, ownerTicks, () -> guis),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new ExtensionRuntime(runtime.documents().resolve("modules"),
@@ -198,7 +198,7 @@ public final class AnimusPlugin extends JavaPlugin {
             extras.put("shop", shops.shopCommand());
             extras.put("gui", guis.command());
             if (foliaProof != null) extras.put("foliaproof", new FoliaProofCommand());
-            extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsUnavailable)));
+            extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsRefusal())));
             extras.put("editor", new EditorCommands(() -> editor, commands));
             animusCommands = new AnimusCommands(new AnimusCommands.Services(runtime, commands, living, () -> behaviors, extensions, builtins,
                     combat::execute, extras, () -> stopping));
@@ -279,7 +279,8 @@ public final class AnimusPlugin extends JavaPlugin {
         java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> {
             Map<String, EditorHost.Feature> available = new HashMap<>();
             available.put("combat", combat.status().toLowerCase(Locale.ROOT).contains("unavailable") ? EditorHost.Feature.no(combat.status()) : EditorHost.Feature.yes());
-            available.put("builds", buildsUnavailable == null ? EditorHost.Feature.yes() : EditorHost.Feature.no(buildsUnavailable));
+            String buildsRefused = buildsRefusal();
+            available.put("builds", buildsRefused == null ? EditorHost.Feature.yes() : EditorHost.Feature.no(buildsRefused));
             available.put("gloss", getServer().getPluginManager().isPluginEnabled("Gloss") ? EditorHost.Feature.yes() : EditorHost.Feature.no("Gloss is not installed"));
             available.put("placeholderapi", getServer().getPluginManager().isPluginEnabled("PlaceholderAPI") ? EditorHost.Feature.yes() : EditorHost.Feature.no("PlaceholderAPI is not installed"));
             return available;
@@ -311,8 +312,13 @@ public final class AnimusPlugin extends JavaPlugin {
                 tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel,
                 () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); },
                 (String message) -> getLogger().info(message), null);
-        buildsUnavailable = builds.unavailable().orElse(null);
         getLogger().info(builds.status());
+    }
+
+    /** Why builds cannot run now, or null; follows {@code builds.enabled} in config.toml live. */
+    private String buildsRefusal() {
+        BuildService<Player, ItemStack> service = builds;
+        return service != null ? service.unavailable().orElse(null) : buildsUnavailable;
     }
 
     private void publishChoice(DialogueChoice choice) {

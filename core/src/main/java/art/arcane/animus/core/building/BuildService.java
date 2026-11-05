@@ -11,6 +11,7 @@ import art.arcane.animus.core.building.schematic.NbtReader;
 import art.arcane.animus.core.building.schematic.SchematicException;
 import art.arcane.animus.core.building.schematic.SchematicReader;
 import art.arcane.animus.core.config.BuildSettings;
+import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
@@ -94,8 +95,13 @@ public final class BuildService<P, I> implements AutoCloseable {
     private final String protectionName;
     private final Supplier<TriggerSink> triggers;
     private final Consumer<String> log;
-    private final String unavailable;
-    private final BuildSettings settings;
+    /** Why builds can never run here (Folia, no NPC runtime), or null. */
+    private final String platformReason;
+    /** {@code [builds]} of config.toml; a hotload replaces it whole and the next read uses it. */
+    private volatile BuildSettings settings;
+    private final AutoCloseable settingsListener;
+    /** Saved builds are read once, the first tick builds are on. Owner thread. */
+    private boolean restored, paused;
     private final Map<String, BuildSession> sessions = new LinkedHashMap<>();
     private final Set<String> loading = new HashSet<>();
     private final Set<String> dirty = new TreeSet<>();
@@ -126,11 +132,9 @@ public final class BuildService<P, I> implements AutoCloseable {
         this.living = living; this.platform = platform;
         this.protection = new BuildProtection.Gate(Objects.requireNonNull(protection), log);
         settings = runtime.buildSettings();
-        String reason = unavailable;
-        if (reason == null && !settings.enabled()) reason = "disabled in config.toml";
-        if (reason == null && (living == null || !living.available())) reason = "unavailable because the NPC runtime is: " + (living == null ? "missing" : living.status());
-        this.unavailable = reason;
-        if (reason != null) return;
+        platformReason = unavailable != null ? unavailable : living == null ? "unavailable because the NPC runtime is: missing" : null;
+        if (platformReason != null) { settingsListener = () -> {}; return; }
+        settingsListener = runtime.onSettings((PluginSettings next) -> settings = next.builds());
         Objects.requireNonNull(platform, "platform");
         worker = Executors.newSingleThreadExecutor((Runnable work) -> {
             Thread thread = new Thread(work, "Animus build planner");
@@ -138,20 +142,28 @@ public final class BuildService<P, I> implements AutoCloseable {
             return thread;
         });
         ticker = ticks.apply(this::tick);
-        worker.execute(this::restoreSaved);
+        restoreWhenReady();
     }
 
-    public boolean available() { return unavailable == null && !closed; }
-    public Optional<String> unavailable() { return Optional.ofNullable(unavailable); }
+    public boolean available() { return unavailable().isEmpty() && !closed; }
+    /** Why builds cannot run now: the platform, {@code builds.enabled = false}, or an unavailable NPC runtime. Follows a hotload. */
+    public Optional<String> unavailable() {
+        if (platformReason != null) return Optional.of(platformReason);
+        if (!settings.enabled()) return Optional.of("disabled in config.toml");
+        if (!living.available()) return Optional.of("unavailable because the NPC runtime is: " + living.status());
+        return Optional.empty();
+    }
     private void requireAvailable() {
-        if (unavailable != null) throw new IllegalStateException("Building is " + unavailable);
+        Optional<String> reason = unavailable();
+        if (reason.isPresent()) throw new IllegalStateException("Building is " + reason.get());
         if (closed) throw new IllegalStateException("Building has stopped");
     }
 
     public String status() {
-        if (unavailable != null) return "Builds unavailable: " + unavailable;
+        Optional<String> reason = unavailable();
+        if (reason.isPresent()) return "Builds unavailable: " + reason.get() + (sessions.isEmpty() ? "" : " | saved=" + sessions.size());
         long open = sessions.values().stream().filter((BuildSession session) -> session.state().open()).count();
-        return "Builds ready | open=" + open + " | saved=" + sessions.size() + " | loading=" + loading.size()
+        return "Builds ready | open=" + open + "/" + settings.maximumBuilds() + " | saved=" + sessions.size() + " | loading=" + loading.size()
                 + " | protection=" + protectionName + " | protection-denials=" + protection.denials() + " | protection-failures=" + protection.failures()
                 + (saveFailures > 0 ? " | save-failures=" + saveFailures : "");
     }
@@ -351,8 +363,11 @@ public final class BuildService<P, I> implements AutoCloseable {
             try { completion.run(); }
             catch (RuntimeException failure) { log.accept("Build work failed: " + PersistedNpcService.concise(failure)); }
         }
-        if (!living.available()) return;
-        BuildSession.Budget budget = new BuildSession.Budget(settings.placementsPerTick(), settings.checksPerTick(), settings.undoPerTick());
+        BuildSettings current = settings;
+        if (!current.enabled() || !living.available()) { pause(); return; }
+        paused = false;
+        restoreWhenReady();
+        BuildSession.Budget budget = new BuildSession.Budget(current.placementsPerTick(), current.checksPerTick(), current.undoPerTick());
         BuildSession.Context context = new BuildSession.Context(platform, crew, protection, budget);
         List<BuildSession> order = new ArrayList<>(sessions.values());
         if (!order.isEmpty()) {
@@ -367,7 +382,26 @@ public final class BuildService<P, I> implements AutoCloseable {
                 }
             }
         }
-        if (!dirty.isEmpty() && tick - lastSave >= (long) settings.saveSeconds() * TICKS_PER_SECOND) save(false);
+        if (!dirty.isEmpty() && tick - lastSave >= (long) current.saveSeconds() * TICKS_PER_SECOND) save(false);
+    }
+
+    /**
+     * Builds were turned off or the NPC runtime went away: crews stop where they stand and progress is saved. Open builds
+     * keep their state and continue from it once builds are on again.
+     */
+    private void pause() {
+        if (paused) return;
+        paused = true;
+        for (BuildSession session : sessions.values()) session.stopCrew(crew);
+        if (!dirty.isEmpty()) save(false);
+    }
+
+    /** Reads the saved builds the first time builds can run, so a server started with builds off restores them when they are turned on. */
+    private void restoreWhenReady() {
+        if (restored || unavailable().isPresent()) return;
+        restored = true;
+        try { worker.execute(this::restoreSaved); }
+        catch (RejectedExecutionException stopped) { restored = false; }
     }
 
     private void save(boolean now) {
@@ -552,7 +586,8 @@ public final class BuildService<P, I> implements AutoCloseable {
     }
 
     @Override public void close() {
-        if (closed || unavailable != null) { closed = true; return; }
+        if (closed || worker == null) { closed = true; return; }
+        try { settingsListener.close(); } catch (Exception ignored) { /* Removing a listener cannot fail. */ }
         for (BuildSession session : sessions.values()) session.stopCrew(crew);
         try { if (ticker != null) ticker.close(); }
         catch (Exception ignored) { /* the tick checks closed */ }
