@@ -24,7 +24,7 @@ class ShopkeepersDropInTest {
     @AfterEach void clearGuard() { CitizensGuard.clear(); }
 
     private CitizensDropIn dropIn(DocumentStore store, NpcRepository npcs) {
-        return new CitizensDropIn(store, npcs, new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), () -> false, shopkeepersRunning::get));
+        return new CitizensDropIn(store, npcs, new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), () -> false, shopkeepersRunning::get, () -> false));
     }
 
     private void leave(String fixture, String target) throws IOException {
