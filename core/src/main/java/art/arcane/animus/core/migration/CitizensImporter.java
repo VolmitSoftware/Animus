@@ -16,7 +16,10 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 6;
+    public static final int CONVERTER_VERSION = 7;
+    /** A staged or installed imported definition path; groups other than {@code citizens} come from converter version 7. */
+    static final String NPC_PATH = "npcs/[a-z0-9][a-z0-9_-]{0,63}/citizens-[0-9]+\\.json";
+    static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/citizens-[0-9]+|skins/[a-f0-9]{64})\\.json";
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     public record Preview(String id, Path directory, int records, int valid, int skins, JsonObject summary) {
         public Preview { summary = summary.deepCopy(); }
@@ -98,7 +101,7 @@ public final class CitizensImporter {
                     String uuid = mapping.get(key).getAsString();
                     definition.addProperty("uuid", uuid);
                     definition.addProperty("id", "citizens-" + key);
-                    definition.addProperty("group", "citizens");
+                    definition.addProperty("group", "citizens"); // Set to the NPC's world folder once its location is known.
                     definition.addProperty("name", scalar(record, "name", "Citizen " + key));
                     definition.addProperty("type", type.contains(":") ? type : "minecraft:" + type);
                     definition.addProperty("spawned", false);
@@ -133,6 +136,7 @@ public final class CitizensImporter {
                         position.addProperty("pitch", facing.pitch());
                     });
                     definition.add("position", position);
+                    definition.addProperty("group", group(world));
                     for (Map.Entry<String, JsonElement> field : presentation.fields().entrySet()) definition.add(field.getKey(), field.getValue());
                     for (String warning : presentation.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
                     JsonObject modules = new JsonObject();
@@ -157,6 +161,7 @@ public final class CitizensImporter {
                         trader.module().ifPresent((JsonObject shop) -> modules.add("animus:shop", shop));
                         trader.warning().ifPresent((String warning) -> migrationWarnings.add("citizens-" + key + ": " + warning));
                     }
+                    riding(traits.get("controllable")).ifPresent((JsonObject riding) -> modules.add("animus:riding", riding));
                     if (traits.has(BuilderMapping.BUILDER_TRAIT)) {
                         BuilderMapping.Result build = BuilderMapping.convert(reviewed.get(BuilderMapping.BUILDER_TRAIT));
                         modules.add(BuilderModule.MODULE, build.module());
@@ -192,7 +197,7 @@ public final class CitizensImporter {
                     if (!errors.isEmpty()) issues.add("citizens-" + key + ": " + String.join("; ", errors));
                     else valid++;
 
-                    writeBundle(temporary, "npcs/citizens/citizens-" + key + ".json", JsonDocuments.write(definition), manifest);
+                    writeBundle(temporary, "npcs/" + definition.get("group").getAsString() + "/citizens-" + key + ".json", JsonDocuments.write(definition), manifest);
                     DocumentStore.atomic(temporary.resolve("records/" + key + ".json"), JsonDocuments.write(record));
                     DocumentStore.atomic(temporary.resolve("reports/" + key + ".json"), JsonDocuments.write(report));
                 }
@@ -271,7 +276,7 @@ public final class CitizensImporter {
         Set<String> bundledSkins = new HashSet<>();
         for (var document : documents.entrySet()) {
             String relative = document.getKey();
-            if (!relative.matches("(?:npcs/citizens/citizens-[0-9]+|skins/[a-f0-9]{64})\\.json")) throw new IOException("Invalid bundle path: " + relative);
+            if (!relative.matches(BUNDLE_PATH)) throw new IOException("Invalid bundle path: " + relative);
             String content = JsonDocuments.read(store.resolve("imports/" + id + "/" + relative));
             if (!JsonDocuments.hash(content).equals(document.getValue().getAsString())) throw new IOException("Preview changed: " + relative + "; generate a new preview");
             String before = store.read(relative);
@@ -300,6 +305,28 @@ public final class CitizensImporter {
         receipt.addProperty("state", "installed-dormant");
         changes.add(new DocumentStore.Change(receiptPath, "missing", JsonDocuments.write(receipt)));
         return store.commit(changes);
+    }
+
+    /**
+     * The folder an imported NPC goes in: its world, after world mapping, as a lowercase path segment. An NPC without a
+     * world goes in {@code citizens}. The same world always gives the same folder, so paths are stable across imports.
+     */
+    public static String group(String world) {
+        String lowered = world.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-").replaceAll("-{2,}", "-")
+                .replaceAll("^[^a-z0-9]+", "").replaceAll("[-_]+$", "");
+        if (lowered.length() > 64) lowered = lowered.substring(0, 64).replaceAll("[-_]+$", "");
+        return lowered.isEmpty() ? "citizens" : lowered;
+    }
+
+    /** A Citizens {@code controllable} trait that is on becomes a disabled {@code animus:riding} section waiting for review. */
+    static Optional<JsonObject> riding(JsonElement trait) {
+        if (trait == null || !trait.isJsonObject()) return Optional.empty();
+        JsonElement enabled = trait.getAsJsonObject().get("enabled");
+        if (enabled != null && enabled.isJsonPrimitive() && enabled.getAsJsonPrimitive().isBoolean() && !enabled.getAsBoolean()) return Optional.empty();
+        JsonObject riding = new JsonObject();
+        riding.addProperty("enabled", false);
+        riding.addProperty("reviewAccepted", false);
+        return Optional.of(riding);
     }
 
     static JsonObject parseYaml(String content) throws IOException {
@@ -495,8 +522,12 @@ public final class CitizensImporter {
             JsonObject receipt = JsonDocuments.object(text);
             if (!receipt.get("importId").getAsString().equals(preview.id()) || receipt.get("records").getAsInt() != preview.records()
                     || !receipt.get("state").getAsString().equals("installed-dormant")) throw new IOException("Invalid import receipt");
+            Map<String, String> paths = new HashMap<>();
+            for (String relative : preview.summary().getAsJsonObject("documents").keySet())
+                if (relative.startsWith("npcs/")) paths.put(relative.substring(relative.lastIndexOf("/citizens-") + 10, relative.length() - 5), relative);
             for (var entry : preview.summary().getAsJsonObject("idMap").entrySet()) {
-                String path = "npcs/citizens/citizens-" + entry.getKey() + ".json";
+                String path = paths.get(entry.getKey());
+                if (path == null) throw new IOException("Import manifest has no definition for Citizens NPC " + entry.getKey());
                 String current = store.read(path);
                 if (current == null) throw new IOException("Previously applied import is incomplete: " + path);
                 NpcDefinition definition = NpcDefinition.parse(current);

@@ -51,6 +51,7 @@ public final class TraderMapping {
         JsonObject module = new JsonObject();
         module.addProperty("shop", shopId(name));
         module.addProperty("openOn", "right");
+        module.addProperty("reviewAccepted", false);
         JsonObject imported = new JsonObject();
         imported.addProperty("source", "dtlTraders");
         imported.addProperty("shopName", name);

@@ -9,7 +9,8 @@ import java.util.Set;
 
 /**
  * {@code modules["animus:shop"]} in an NPC definition: the shop a click opens. A sneaking administrator's click keeps
- * its selection meaning and opens nothing.
+ * its selection meaning and opens nothing. An imported section opens nothing until its {@code "reviewAccepted"} is
+ * literal {@code true}.
  */
 public record ShopBinding(String shop, OpenOn openOn) {
     public static final String MODULE = "animus:shop";
@@ -30,7 +31,7 @@ public record ShopBinding(String shop, OpenOn openOn) {
         if (!value.isJsonObject()) throw new IllegalArgumentException(path + ": expected object");
         JsonObject module = value.getAsJsonObject();
         for (String key : module.keySet())
-            if (!Set.of("shop", "openOn", "imported").contains(key)) throw new IllegalArgumentException(path + "." + key + ": unknown field");
+            if (!Set.of("shop", "openOn", "imported", "reviewAccepted").contains(key)) throw new IllegalArgumentException(path + "." + key + ": unknown field");
         JsonElement shop = module.get("shop");
         if (shop == null || !shop.isJsonPrimitive() || !shop.getAsJsonPrimitive().isString() || !shop.getAsString().matches(ShopDocument.ID))
             throw new IllegalArgumentException(path + ".shop: expected a shop id such as town:baker");
@@ -41,6 +42,13 @@ public record ShopBinding(String shop, OpenOn openOn) {
                 throw new IllegalArgumentException(path + ".openOn: expected right, left or both");
             openOn = OpenOn.valueOf(text.getAsString().toUpperCase(Locale.ROOT));
         }
+        boolean reviewed = false;
+        if (module.has("reviewAccepted")) {
+            JsonElement accepted = module.get("reviewAccepted");
+            if (!accepted.isJsonPrimitive() || !accepted.getAsJsonPrimitive().isBoolean()) throw new IllegalArgumentException(path + ".reviewAccepted: expected boolean");
+            reviewed = accepted.getAsBoolean();
+        }
+        if (definition.has("migration") && module.has("imported") && !reviewed) return Optional.empty();
         return Optional.of(new ShopBinding(shop.getAsString(), openOn));
     }
 }
