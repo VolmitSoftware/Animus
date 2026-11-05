@@ -739,7 +739,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
      */
     private boolean routeAwake(Route route) {
         if (route.leg == null || route.value.routeWatch != null || !routeCurrent(route)) return true;
-        if (tickNumber - route.awakeChecked < AWAKE_RECHECK_TICKS) return route.awake;
+        // A new route has never looked: awakeChecked starts unset, and subtracting from it must not overflow into "recent".
+        if (route.awakeChecked != Long.MIN_VALUE && tickNumber - route.awakeChecked < AWAKE_RECHECK_TICKS) return route.awake;
         route.awakeChecked = tickNumber;
         route.awake = !host.playersNear(route.value.state.snapshot().position(), settings.viewDistance(), 1).isEmpty();
         return route.awake;

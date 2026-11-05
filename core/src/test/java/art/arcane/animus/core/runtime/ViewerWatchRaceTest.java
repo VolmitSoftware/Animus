@@ -120,6 +120,7 @@ class ViewerWatchRaceTest {
         final FakeHost host = new FakeHost(this);
         final List<Runnable> ticks = new ArrayList<>();
         MotionValidator.Sampler terrain;
+        volatile boolean playersAway;
         PersistedNpcService<Player, Object> service;
         Harness(AnimusRuntime runtime, Path npcs) { this.runtime = runtime; this.npcs = npcs; }
         void tick(int count) { for (int i = 0; i < count; i++) for (Runnable tick : List.copyOf(ticks)) tick.run(); }
@@ -216,7 +217,7 @@ class ViewerWatchRaceTest {
         @Override public float pitch(Player player) { return 0; }
         @Override public boolean permitted(Player player, String node) { return false; }
         @Override public void tell(Player player, String message) {}
-        @Override public List<Player> playersNear(WorldPosition at, double radius, int limit) { return List.of(harness.player); }
+        @Override public List<Player> playersNear(WorldPosition at, double radius, int limit) { return harness.playersAway ? List.of() : List.of(harness.player); }
         @Override public boolean teleport(Player player, WorldPosition destination, float yaw, float pitch) { return false; }
         @Override public Optional<String> resolveWorld(String reference) { return Optional.of(reference); }
         @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return true; }
