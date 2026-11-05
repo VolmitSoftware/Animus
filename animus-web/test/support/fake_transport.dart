@@ -21,7 +21,10 @@ class FakeTransport implements ServerTransport {
   Future<ApiResponse> send(ApiRequest request) async {
     network.sent.add((path, request));
     if (closed || network.down.contains(path)) throw TransportFailure(path, 'down');
-    final ApiResponse response = network.handler(request);
+    final Future<void> Function(ConnectionPath path, ApiRequest request)? gate = network.gate;
+    if (gate != null) await gate(path, request);
+    if (closed || network.down.contains(path)) throw TransportFailure(path, 'down');
+    final ApiResponse response = (network.pathHandlers[path] ?? network.handler)(request);
     if (network.dropAfter != null && network.dropAfter!(request)) {
       // The server handled it, then the path died before the answer arrived.
       network.dropAfter = null;
@@ -57,6 +60,8 @@ class FakeSubscription implements EventSubscription {
   final StreamController<Map<String, Object?>> controller = StreamController<Map<String, Object?>>.broadcast(sync: true);
   String? reason;
 
+  bool get isOpen => !controller.isClosed;
+
   @override
   Stream<Map<String, Object?>> get events => controller.stream;
 
@@ -82,10 +87,17 @@ class FakeNetwork {
   FakeNetwork(this.handler);
 
   FakeHandler handler;
+
+  /// Answers on one path instead of [handler].
+  final Map<ConnectionPath, FakeHandler> pathHandlers = <ConnectionPath, FakeHandler>{};
+
+  /// Awaited before a request is answered, to hold it in flight.
+  Future<void> Function(ConnectionPath path, ApiRequest request)? gate;
   final Set<ConnectionPath> down = <ConnectionPath>{};
   final List<(ConnectionPath, ApiRequest)> sent = <(ConnectionPath, ApiRequest)>[];
   final List<(ConnectionPath, FakeSubscription)> streams = <(ConnectionPath, FakeSubscription)>[];
   final List<ConnectionPath> opened = <ConnectionPath>[];
+  final List<FakeTransport> transports = <FakeTransport>[];
   String? refuseStream;
 
   /// When it matches a request, the path drops after the server handled it.
@@ -94,10 +106,15 @@ class FakeNetwork {
   Future<ServerTransport> open(ConnectionPath path, String url) async {
     opened.add(path);
     if (down.contains(path)) throw TransportFailure(path, 'unreachable');
-    return FakeTransport(path, this);
+    final FakeTransport transport = FakeTransport(path, this);
+    transports.add(transport);
+    return transport;
   }
 
   FakeSubscription get lastStream => streams.last.$2;
+
+  /// The last stream opened on [path].
+  FakeSubscription streamOn(ConnectionPath path) => streams.lastWhere(((ConnectionPath, FakeSubscription) stream) => stream.$1 == path).$2;
 }
 
 /// Answers hello and capabilities like the fixtures; [rest] answers the rest.

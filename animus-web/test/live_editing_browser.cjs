@@ -1,8 +1,9 @@
 // Live editing against tool/fake_server.dart at desktop and phone widths:
 // pair from a link, open a document from the server catalog, edit it,
 // validate on the server, start a viewer-private preview, apply, force a
-// conflict and merge it, drop the direct path (failover to the relay) and
-// then every path (reconnect), and apply after recovery, with no console
+// conflict and merge it, drop the direct path (failover to the relay, then
+// back to direct once it recovers) and then every path (reconnect), and
+// apply after recovery, with no console
 // errors other than the browser's own network lines while a path is down and
 // its line for the forced conflict's 409.
 //
@@ -169,12 +170,29 @@ async function run(browser, width, height, label) {
 
   // Drop the direct path: the editor fails over to the relay.
   networkDown = true;
-  await control('drop', {path: 'direct', seconds: 30});
+  await control('drop', {path: 'direct', seconds: 8});
   await page.locator('.animus-live .animus-pill', {hasText: 'Online (relay)'}).waitFor({timeout: 20000});
   await editDraft(page, (json) => { json.name = 'Over The Relay'; });
   await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
   assert.equal((await fetchSource(npc)).name, 'Over The Relay');
   await shot(page, `${label}-05-relay`);
+
+  // Once the drop ends, the relay session probes the direct path (15 s
+  // after going online over the relay) and moves back to it without going
+  // offline.
+  const phases = [];
+  await page.exposeFunction(`animusPhase_${label}`, (phase) => phases.push(phase));
+  await page.evaluate((name) => {
+    const pill = () => document.querySelector('.animus-live .animus-pill');
+    new MutationObserver(() => window[name](pill()?.getAttribute('data-phase'))).observe(document.body, {subtree: true, attributes: true, childList: true});
+  }, `animusPhase_${label}`);
+  await page.locator('.animus-live .animus-pill', {hasText: 'Online (direct)'}).waitFor({timeout: 45000});
+  assert.ok(phases.every((phase) => phase === 'online'), `${label}: the switch back stays online: ${JSON.stringify([...new Set(phases)])}`);
+  await waitForStreams({direct: 1, relay: 0}, `${label}: one direct event stream after the switch`);
+  await editDraft(page, (json) => { json.name = 'Direct Again'; });
+  await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
+  assert.equal((await fetchSource(npc)).name, 'Direct Again');
+  await shot(page, `${label}-05b-direct-again`);
 
   // Drop every path: the editor waits and reconnects once the server is back.
   await control('drop', {path: 'all', seconds: 4});
@@ -190,11 +208,22 @@ async function run(browser, width, height, label) {
 
   // Undo through the server.
   await expectNotice(page, 'Undid 1 document', () => click(page, 'Undo last apply'));
-  assert.equal((await fetchSource(npc)).name, 'Over The Relay');
+  assert.equal((await fetchSource(npc)).name, 'Direct Again');
   await shot(page, `${label}-07-undo`);
 
   assert.deepEqual(errors, [], `${label}: console errors`);
   await context.close();
+}
+
+/// Waits until the fake server holds [wanted] open event streams per path.
+async function waitForStreams(wanted, message) {
+  let streams;
+  for (let tries = 0; tries < 50; tries++) {
+    streams = (await control('state')).streams;
+    if (streams.direct === wanted.direct && streams.relay === wanted.relay) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.deepEqual(streams, wanted, message);
 }
 
 /// The stored NPC source on the fake server, via the controls.

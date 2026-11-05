@@ -75,6 +75,13 @@ class ServerHub {
     return connection;
   }
 
+  /// Probes the direct path now on every connection that is on the relay.
+  void probeDirect() {
+    for (final ServerConnection connection in _connections.values) {
+      connection.probeNow();
+    }
+  }
+
   ConnectionStatus status(String id) => _connections[id]?.status ?? const ConnectionStatus(ConnectionPhase.offline);
 
   bool hasToken(String id) {
