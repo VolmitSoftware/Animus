@@ -1,0 +1,324 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:animus_editor/logic/data_folder.dart';
+import 'package:animus_editor/logic/gui/gui_json.dart';
+import 'package:animus_editor/logic/npc/dialogue_tree.dart';
+import 'package:animus_editor/logic/npc/npc_bulk.dart';
+import 'package:animus_editor/logic/npc/npc_catalog.dart';
+import 'package:animus_editor/logic/npc/route_model.dart';
+import 'package:animus_editor/logic/shared_schemas.dart';
+import 'package:animus_editor/model/animus_document.dart';
+import 'package:animus_editor/model/document_kind.dart';
+import 'package:animus_editor/state/editor_store.dart';
+import 'package:test/test.dart';
+
+import 'package:animus_editor/state/workspace_repository.dart';
+
+Map<String, Uint8List> _folder(String name) {
+  final Directory directory = Directory('test/fixtures/$name');
+  return <String, Uint8List>{
+    for (final File file in directory.listSync(recursive: true).whereType<File>())
+      file.path.substring(directory.path.length + 1).replaceAll(r'\', '/'): file.readAsBytesSync(),
+  };
+}
+
+List<AnimusDocument> _documents() => openDataFolder(_folder('npc_browser'), SharedSchemas.embedded).documents;
+
+List<NpcEntry> _entries() => npcEntries(_documents());
+
+NpcEntry _entry(String key) => _entries().firstWhere((NpcEntry entry) => entry.key == key);
+
+List<String> _keys(Iterable<NpcEntry> entries) => <String>[for (final NpcEntry entry in entries) entry.key];
+
+JsonMap _json(DocumentChange change) => asMap(jsonDecode(change.source!));
+
+void main() {
+  group('fixture', () {
+    test('every npc_browser document passes the shared schemas', () {
+      for (final AnimusDocument document in _documents()) {
+        expect(document.diagnostics.where((Diagnostic d) => d.severity == DiagnosticSeverity.error), isEmpty, reason: '${document.kind.wireName}:${document.id}');
+      }
+    });
+
+    test('tags outside the bounds are refused by the schema', () {
+      final AnimusDocument document = _documents().firstWhere((AnimusDocument d) => d.id == 'town/baker');
+      final JsonMap json = <String, Object?>{...asMap(document.json), 'tags': <String>['Merchant', 'merchant', 'merchant']};
+      final AnimusDocument edited = validateSource(DocumentLocation(DocumentKind.npc, document.id), document.path, prettyJson(json), SharedSchemas.embedded);
+      expect(edited.valid, isFalse);
+    });
+  });
+
+  group('catalog', () {
+    test('entries read folder, tags, world and features', () {
+      final NpcEntry guard = _entry('town/guard-north');
+      expect(guard.folder, 'town');
+      expect(guard.localId, 'guard-north');
+      expect(guard.tags, <String>['guard', 'patrol']);
+      expect(guard.world, 'world');
+      expect(guard.features, containsAll(<NpcFeature>[NpcFeature.route, NpcFeature.combat]));
+      expect(_entry('town/guard-south').has(NpcFeature.route), isTrue, reason: 'a referenced route counts');
+      expect(_entry('town/baker').has(NpcFeature.shop), isTrue);
+      expect(_entry('wild/golem-keeper').has(NpcFeature.rig), isTrue);
+      expect(_entry('harbor/ferryman').has(NpcFeature.skin), isTrue);
+      expect(_entry('harbor/dockhand').features, isEmpty);
+    });
+
+    test('entries sort by folder then name', () {
+      expect(_keys(_entries()), <String>['harbor/dockhand', 'harbor/ferryman', 'town/baker', 'town/guard-north', 'town/guard-south', 'wild/golem-keeper']);
+    });
+
+    test('plain words match name, id, type, world and tags', () {
+      expect(_keys(NpcQuery.parse('guard').filter(_entries())), <String>['town/guard-north', 'town/guard-south']);
+      expect(_keys(NpcQuery.parse('FERRY').filter(_entries())), <String>['harbor/ferryman']);
+      expect(_keys(NpcQuery.parse('harbor').filter(_entries())), <String>['harbor/dockhand', 'harbor/ferryman']);
+      expect(_keys(NpcQuery.parse('armor_stand').filter(_entries())), <String>['harbor/dockhand', 'wild/golem-keeper']);
+      expect(_keys(NpcQuery.parse('merch').filter(_entries())), <String>['town/baker']);
+    });
+
+    test('field terms narrow and a leading dash negates', () {
+      expect(_keys(NpcQuery.parse('tag:guard -tag:patrol').filter(_entries())), <String>['town/guard-south']);
+      expect(_keys(NpcQuery.parse('folder:harbor is:despawned').filter(_entries())), <String>['harbor/dockhand']);
+      expect(_keys(NpcQuery.parse('group:wild').filter(_entries())), <String>['wild/golem-keeper']);
+      expect(_keys(NpcQuery.parse('has:combat has:route').filter(_entries())), <String>['town/guard-north', 'town/guard-south']);
+      expect(_keys(NpcQuery.parse('type:armor_stand world:harbor').filter(_entries())), <String>['harbor/dockhand']);
+      expect(_keys(NpcQuery.parse('has:nothing').filter(_entries())), isEmpty);
+      expect(NpcQuery.parse('   ').terms, isEmpty);
+    });
+
+    test('toggleTerm adds and removes one term', () {
+      expect(toggleTerm('guard', 'has', 'combat'), 'guard has:combat');
+      expect(toggleTerm('guard has:combat', 'has', 'combat'), 'guard');
+      expect(hasTerm('guard has:combat', 'has', 'combat'), isTrue);
+    });
+
+    test('folders and tags are counted', () {
+      expect(<String>[for (final NpcFolder folder in npcFolders(_entries())) '${folder.name}=${folder.count}'], <String>['harbor=2', 'town=3', 'wild=1']);
+      expect(npcTags(_entries()).first, ('guard', 2));
+      expect(npcValues(_entries(), (NpcEntry entry) => entry.world), <String>['harbor', 'world']);
+    });
+  });
+
+  group('bulk', () {
+    test('addTag skips NPCs that have it and refuses a bad tag', () {
+      final List<NpcEntry> selected = <NpcEntry>[_entry('town/guard-north'), _entry('town/guard-south'), _entry('town/baker')];
+      final NpcBulkResult result = addTag(selected, 'patrol');
+      expect(result.changed, 2);
+      expect(result.skipped.keys, <String>['town/guard-north']);
+      expect(_json(result.changes.first)['tags'], <String>['guard', 'patrol']);
+      expect(addTag(selected, 'Bad Tag').changes, isEmpty);
+      expect(addTag(selected, 'Bad Tag').skipped, hasLength(3));
+    });
+
+    test('addTag stops at the tag limit', () {
+      final AnimusDocument document = _documents().firstWhere((AnimusDocument d) => d.id == 'town/baker');
+      final JsonMap json = <String, Object?>{...asMap(document.json), 'tags': <String>[for (int index = 0; index < npcTagLimit; index++) 't$index']};
+      final NpcEntry full = NpcEntry.of(document.copyWith(json: json));
+      expect(addTag(<NpcEntry>[full], 'one-more').skipped.values.single, contains('$npcTagLimit'));
+    });
+
+    test('removeTag drops an emptied tags list', () {
+      final NpcBulkResult result = removeTag(<NpcEntry>[_entry('town/baker'), _entry('harbor/dockhand')], 'merchant');
+      expect(result.changed, 1);
+      expect(_json(result.changes.single).containsKey('tags'), isFalse);
+    });
+
+    test('moveToFolder rewrites group and path and refuses collisions', () {
+      final Set<String> taken = <String>{for (final NpcEntry entry in _entries()) entry.key, 'harbor/baker'};
+      final NpcBulkResult result = moveToFolder(<NpcEntry>[_entry('town/guard-north'), _entry('town/baker'), _entry('harbor/ferryman')], 'harbor', taken);
+      expect(result.changed, 1);
+      expect(result.skipped.keys, unorderedEquals(<String>['town/baker', 'harbor/ferryman']));
+      expect(result.changes.first.source, isNull);
+      expect(result.changes.first.id, 'town/guard-north');
+      expect(result.changes.last.id, 'harbor/guard-north');
+      expect(result.changes.last.path, 'npcs/harbor/guard-north.json');
+      expect(_json(result.changes.last)['group'], 'harbor');
+      expect(moveToFolder(<NpcEntry>[_entry('town/baker')], 'Bad/Folder', taken).changes, isEmpty);
+    });
+
+    test('two NPCs with one id cannot move into one folder', () {
+      final AnimusDocument document = _documents().firstWhere((AnimusDocument d) => d.id == 'town/baker');
+      final NpcEntry twin = NpcEntry.of(AnimusDocument(kind: DocumentKind.npc, id: 'harbor/baker', path: 'npcs/harbor/baker.json', source: document.source, json: document.json, diagnostics: const <Diagnostic>[]));
+      final NpcBulkResult result = moveToFolder(<NpcEntry>[_entry('town/baker'), twin], 'wild', <String>{'town/baker', 'harbor/baker'});
+      expect(result.changed, 1);
+      expect(result.skipped.keys, <String>['harbor/baker']);
+    });
+
+    test('setModuleEnabled switches present modules and creates only standalone ones', () {
+      final List<NpcEntry> selected = <NpcEntry>[_entry('town/guard-north'), _entry('town/baker')];
+      final NpcBulkResult off = setModuleEnabled(selected, 'animus:combat', false);
+      expect(off.changed, 1);
+      expect(asMap(asMap(_json(off.changes.single)['modules'])['animus:combat'])['enabled'], isFalse);
+      expect(asMap(asMap(_json(off.changes.single)['modules'])['animus:combat'])['melee'], isNotNull, reason: 'settings are kept');
+      final NpcBulkResult on = setModuleEnabled(selected, 'animus:combat', true);
+      expect(on.changed, 1);
+      expect(asMap(_json(on.changes.single)['modules'])['animus:combat'], <String, Object?>{'enabled': true});
+      expect(asMap(_json(on.changes.single)['modules'])['animus:shop'], isNotNull);
+      final NpcBulkResult navigation = setModuleEnabled(<NpcEntry>[_entry('town/baker')], 'animus:navigation', true);
+      expect(navigation.changes, isEmpty);
+      expect(navigation.skipped.values.single, contains('configure'));
+    });
+
+    test('removeModule drops an emptied modules object', () {
+      final NpcBulkResult result = removeModule(<NpcEntry>[_entry('town/guard-south')], 'animus:combat');
+      expect(asMap(_json(result.changes.single)['modules']).keys, <String>['animus:navigation']);
+      final NpcBulkResult both = removeModule(<NpcEntry>[NpcEntry.of(_documents().firstWhere((AnimusDocument d) => d.id == 'town/baker'))], 'animus:shop');
+      expect(asMap(_json(both.changes.single)['modules']).keys, <String>['animus:look-close']);
+    });
+
+    test('setSpawned and deleteNpcs', () {
+      final NpcBulkResult spawned = setSpawned(<NpcEntry>[_entry('harbor/dockhand'), _entry('harbor/ferryman')], true);
+      expect(spawned.changed, 1);
+      expect(_json(spawned.changes.single)['spawned'], isTrue);
+      final NpcBulkResult deleted = deleteNpcs(<NpcEntry>[_entry('harbor/dockhand')]);
+      expect(deleted.changed, 1);
+      expect(deleted.changes.single.source, isNull);
+    });
+
+    test('describeBulk names changed and skipped counts', () {
+      expect(describeBulk('Tagged', addTag(<NpcEntry>[_entry('town/baker')], 'shopkeeper')), 'Tagged 1 NPC.');
+      expect(describeBulk('Tagged', addTag(<NpcEntry>[_entry('town/guard-north')], 'guard')), startsWith('Nothing to change; skipped 1'));
+    });
+
+    test('one bulk change set is one undo step', () async {
+      final EditorStore store = EditorStore(repository: MemoryWorkspaceRepository(), schemas: SharedSchemas.embedded, newId: () => 'ws-npc');
+      await store.openFiles('npc browser', _folder('npc_browser'));
+      final List<NpcEntry> all = npcEntries(store.workspace!.documents);
+      await store.commit(documents: addTag(all, 'reviewed').changes);
+      await store.commit(documents: moveToFolder(<NpcEntry>[npcEntries(store.workspace!.documents).firstWhere((NpcEntry e) => e.key == 'wild/golem-keeper')], 'town', <String>{for (final NpcEntry e in all) e.key}).changes);
+      expect(store.document(DocumentKind.npc, 'town/golem-keeper'), isNotNull);
+      expect(store.document(DocumentKind.npc, 'town/golem-keeper')!.valid, isTrue);
+      expect(store.document(DocumentKind.npc, 'wild/golem-keeper'), isNull);
+      await store.undo();
+      expect(store.document(DocumentKind.npc, 'wild/golem-keeper'), isNotNull);
+      expect(npcEntries(store.workspace!.documents).every((NpcEntry e) => e.tags.contains('reviewed')), isTrue);
+      await store.undo();
+      expect(npcEntries(store.workspace!.documents).any((NpcEntry e) => e.tags.contains('reviewed')), isFalse);
+    });
+  });
+
+  group('routes', () {
+    JsonMap navigation() => asMap(_entry('town/guard-north').modules[navigationModule]);
+
+    test('sequence links follow the order and close a loop', () {
+      final RouteSpec spec = RouteSpec(navigation());
+      expect(spec.points, hasLength(4));
+      expect(spec.points[1].waitTicks, 60);
+      expect(spec.links, <(int, int)>[(0, 1), (1, 2), (2, 3), (3, 0)]);
+      expect(RouteSpec(<String, Object?>{...navigation(), 'loop': false}).links, hasLength(3));
+      expect(RouteSpec(<String, Object?>{...navigation(), 'order': 'pingpong'}).links, hasLength(3));
+    });
+
+    test('random links points and guides within linkDistance', () {
+      final AnimusDocument route = _documents().firstWhere((AnimusDocument d) => d.kind == DocumentKind.route);
+      final RouteSpec spec = RouteSpec(asMap(route.json));
+      expect(spec.nodes, hasLength(4));
+      expect(spec.nodes.last.guide, isTrue);
+      expect(spec.links, unorderedEquals(<(int, int)>[(0, 1), (1, 2), (0, 3), (1, 3), (2, 3)]));
+      expect(spec.problems(), isEmpty);
+    });
+
+    test('problems name the field the runtime refuses', () {
+      final JsonMap wrong = <String, Object?>{'order': 'sequence', 'guides': <Object?>[<String, Object?>{'x': 0, 'y': 64, 'z': 0}], 'points': <Object?>[<String, Object?>{'x': 0, 'y': 64.5, 'z': 0}]};
+      final List<String> fields = <String>[for (final (String field, String _) in RouteSpec(wrong).problems()) field];
+      expect(fields, containsAll(<String>['guides', 'points[0].y']));
+      expect(RouteSpec(const <String, Object?>{'order': 'sequence'}).problems().single.$1, 'points');
+      expect(RouteSpec(const <String, Object?>{'order': 'wander'}).problems(), isEmpty);
+    });
+
+    test('edits add, move, remove and reorder nodes', () {
+      JsonMap route = navigation();
+      route = addRouteNode(route, 20, 64, 0);
+      expect(asList(route['points']), hasLength(5));
+      route = moveRouteNode(route, 'points', 4, 21.5, -3);
+      expect(asList(route['points']).last, <String, Object?>{'x': 21.5, 'y': 64, 'z': -3});
+      route = moveRouteNode(route, 'points', 1, 13, -7);
+      expect(asMap(asList(route['points'])[1])['waitTicks'], 60, reason: 'other fields are kept');
+      route = reorderRoutePoint(route, 4, 0);
+      expect(asMap(asList(route['points']).first)['x'], 21.5);
+      route = removeRouteNode(route, 'points', 0);
+      expect(asList(route['points']), hasLength(4));
+      route = addRouteNode(route, 1, 64, 1, guide: true);
+      expect(asList(route['guides']), hasLength(1));
+      expect(removeRouteNode(route, 'guides', 0).containsKey('guides'), isFalse);
+    });
+
+    test('setRouteOrder removes fields the order refuses', () {
+      final JsonMap random = setRouteOrder(<String, Object?>{'loop': true, 'wander': <String, Object?>{'radius': 4}, 'points': <Object?>[]}, 'random');
+      expect(random.containsKey('loop'), isFalse);
+      expect(random.containsKey('wander'), isFalse);
+      final JsonMap sequence = setRouteOrder(<String, Object?>{'guides': <Object?>[], 'linkDistance': 8}, 'sequence');
+      expect(sequence.keys, <String>['order']);
+    });
+
+    test('bounds cover nodes and the NPC with a square and a sensible step', () {
+      final RouteSpec spec = RouteSpec(navigation());
+      final RouteBounds bounds = RouteBounds.around(spec.nodes, extra: <(double, double)>[(4.5, -6.5)]);
+      expect(bounds.minX <= 4 && bounds.maxX >= 12 && bounds.minZ <= -6.5 && bounds.maxZ >= 4, isTrue);
+      expect(bounds.width, bounds.depth);
+      expect(bounds.step, 1);
+      expect(RouteBounds.around(const <RouteNode>[RouteNode(0, 0, 0), RouteNode(300, 0, 300)]).step, greaterThan(8));
+    });
+  });
+
+  group('dialogue', () {
+    JsonMap behavior() => asMap(_documents().firstWhere((AnimusDocument d) => d.kind == DocumentKind.behavior).json);
+
+    test('a trigger starts the entry routine and answers nest under options', () {
+      final DialogueTree tree = dialogueTree(behavior());
+      expect(tree.hasDialogue, isTrue);
+      expect(tree.unasked, isEmpty);
+      final DialogueStart start = tree.starts.single;
+      expect(start.label, 'interaction');
+      expect(start.routine, 'main');
+      expect((start.steps.first as DialogueSay).text, 'Ahoy there.');
+      final DialogueChoices ferry = start.steps[1] as DialogueChoices;
+      expect(ferry.prompt, 'Need a crossing?');
+      expect(ferry.steps, <JsonStep>['routines', 'main', 'steps', 2]);
+      expect(ferry.options.map((DialogueOption o) => o.id), <String>['yes', 'no']);
+      final DialogueAnswer yes = ferry.options.first.answers.single;
+      expect(yes.routine, 'cross');
+      final DialogueChoices fare = yes.steps[1] as DialogueChoices;
+      expect(fare.options.first.answers.single.routine, 'paid');
+      expect(fare.options.last.answers, isEmpty, reason: 'nobody answers "later"');
+      expect((ferry.options.last.answers.single.steps.single as DialogueSay).text, 'Suit yourself.');
+    });
+
+    test('unasked answers, branches, effects and loops back are reported', () {
+      final JsonMap doc = <String, Object?>{
+        'entry': 'main',
+        'routines': <String, Object?>{
+          'main': <String, Object?>{
+            'type': 'condition',
+            'capability': 'animus:flag-state',
+            'arguments': <String, Object?>{'name': 'met'},
+            'then': <String, Object?>{'type': 'action', 'capability': 'animus:say', 'arguments': <String, Object?>{'text': 'Again?'}},
+            'else': <String, Object?>{
+              'type': 'sequence',
+              'steps': <Object?>[
+                <String, Object?>{'type': 'action', 'capability': 'animus:set-flag', 'arguments': <String, Object?>{'name': 'met'}},
+                <String, Object?>{'type': 'call', 'routine': 'main'},
+              ],
+            },
+          },
+        },
+        'triggers': <Object?>[
+          <String, Object?>{'id': 'orphan', 'event': 'dialogue_choice', 'dialogue': 'nobody-asks'},
+        ],
+      };
+      final DialogueTree tree = dialogueTree(doc);
+      expect(tree.unasked, <String>['orphan']);
+      expect(tree.starts.single.label, 'entry');
+      final DialogueBranch branch = tree.starts.single.steps.single as DialogueBranch;
+      expect(branch.label, 'animus:flag-state name=met');
+      expect((branch.then.single as DialogueSay).text, 'Again?');
+      expect((branch.otherwise.first as DialogueEffect).capability, 'animus:set-flag');
+      expect((branch.otherwise.last as DialogueJump).routine, 'main');
+    });
+
+    test('a behavior without speech has no dialogue', () {
+      expect(dialogueTree(const <String, Object?>{'entry': 'main', 'routines': <String, Object?>{'main': <String, Object?>{'type': 'action', 'capability': 'animus:look'}}}).hasDialogue, isFalse);
+    });
+  });
+}
