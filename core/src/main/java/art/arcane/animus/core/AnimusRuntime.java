@@ -197,13 +197,15 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.HotloadSettings hotloadSettings() { return settings().hotload(); }
 
     /**
-     * Replaces the running settings after a hotload of {@code config.toml}, then tells every listener. Values a service
-     * read when it started stay in effect until a restart; the hotload message marks those keys.
+     * Replaces the running settings after a hotload of {@code config.toml}: the file lane takes its new limits here, then
+     * every listener hears the change and moves it onto its own owner thread. The few keys that still need a restart are
+     * listed in {@link art.arcane.animus.core.hotload.SettingsLiveness}.
      */
     public void applySettings(PluginSettings next) {
         Objects.requireNonNull(next, "next");
         synchronized (this) {
             if (!isRunning()) throw new IllegalStateException("Animus is not running");
+            fileWork.limits(next.files().maximumOperations(), Duration.ofMillis(next.files().deliveryBudgetMillis()));
             settings = next;
         }
         for (Consumer<PluginSettings> listener : settingsListeners) listener.accept(next);

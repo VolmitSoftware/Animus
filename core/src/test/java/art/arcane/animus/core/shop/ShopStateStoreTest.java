@@ -31,6 +31,17 @@ class ShopStateStoreTest {
         }
     }
 
+    @Test void aHotloadedFlushDelayAppliesToTheNextWrite() throws Exception {
+        try (ShopStateStore store = new ShopStateStore(folder.resolve("state"), folder.resolve("logs"), 600_000, new ArrayList<String>()::add)) {
+            store.flushMillis(5);
+            store.ledger().record("town:baker", "bread", LIMIT, ALEX, 1, Instant.now());
+            Path journal = folder.resolve("state/ledger.journal");
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+            while (!Files.exists(journal) && System.nanoTime() < deadline) Thread.sleep(10);
+            assertTrue(Files.exists(journal), "the change waited for the old ten minute delay");
+        }
+    }
+
     @Test void journaledChangesSurviveWithoutACleanShutdown() throws Exception {
         ShopStateStore crashed = open(new ArrayList<>());
         crashed.ledger().record("town:baker", "bread", LIMIT, ALEX, 3, Instant.now());
