@@ -35,6 +35,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private BehaviorStateStore behaviorState;
     private volatile art.arcane.animus.core.migration.CitizensDropIn.Host importHost = art.arcane.animus.core.migration.CitizensDropIn.Host.NONE;
     private RigLibrary rigs;
+    private volatile CatalogReloads catalogs = CatalogReloads.NONE;
 
     public AnimusRuntime(RuntimeEnvironment environment) {
         this(environment, failure -> System.getLogger("Animus").log(System.Logger.Level.ERROR,
@@ -184,6 +185,9 @@ public final class AnimusRuntime implements AutoCloseable {
     /** The platform's plugins folder and Citizens check for the drop-in Citizens migration; mod servers keep the default. */
     public art.arcane.animus.core.migration.CitizensDropIn.Host importHost() { return importHost; }
     public void importHost(art.arcane.animus.core.migration.CitizensDropIn.Host host) { importHost = Objects.requireNonNull(host, "host"); }
+    /** What reloads shops, GUIs, holograms, rigs and behaviors after a committed change; the platform sets it once its services exist. */
+    public CatalogReloads catalogs() { return catalogs; }
+    public void catalogs(CatalogReloads reloads) { catalogs = Objects.requireNonNull(reloads, "reloads"); }
     private PluginSettings settings() {
         if (!isRunning()) throw new IllegalStateException("Animus is not running");
         return settings;

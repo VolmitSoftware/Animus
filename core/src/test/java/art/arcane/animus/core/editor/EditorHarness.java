@@ -87,7 +87,7 @@ final class EditorHarness implements AutoCloseable {
 
         @Override public CompletionStage<List<String>> activationProblems(NpcDefinition definition) { return CompletableFuture.completedFuture(activation); }
 
-        @Override public void applied(Set<DocumentKind> kinds, boolean rollback) {
+        @Override public void applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback) {
             applied.add(kinds.isEmpty() ? EnumSet.noneOf(DocumentKind.class) : EnumSet.copyOf(kinds));
             rollbacks.add(rollback);
         }

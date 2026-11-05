@@ -52,10 +52,11 @@ public interface EditorHost {
     CompletionStage<List<String>> activationProblems(NpcDefinition definition);
 
     /**
-     * Called on the file lane after an apply, undo or import committed. The platform reloads NPCs, behaviors and GUIs of these
-     * kinds. {@code rollback} is true when older revisions were restored on purpose.
+     * Called on the file lane after an apply, undo or import committed. The platform reloads every catalog of these kinds:
+     * NPCs, behaviors, shops, GUIs, holograms and rigs. {@code removedBehaviors} names behaviors whose sources the change
+     * deleted, so the catalog forgets them. {@code rollback} is true when older revisions were restored on purpose.
      */
-    void applied(Set<DocumentKind> kinds, boolean rollback);
+    void applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback);
 
     /** Viewer-private previews, or empty with the reason they are unavailable. */
     Optional<PreviewPresenter> previews();
