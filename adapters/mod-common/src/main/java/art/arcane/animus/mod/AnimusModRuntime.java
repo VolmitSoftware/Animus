@@ -109,8 +109,7 @@ public final class AnimusModRuntime {
                 if (event == MutationLane.EngineTaskEvent.FAILED) LOGGER.warn("Animus file task failed", failure);
             });
             NpcRuntimeSettings npcSettings = next.runtime.npcSettings();
-            PersistedNpcService.Settings settings = new PersistedNpcService.Settings(npcSettings.enabled(), npcSettings.viewDistance(), npcSettings.maximumVisible(),
-                    npcSettings.maximumViewers(), npcSettings.updatesPerTick());
+            PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
             next.host = new VanillaRuntimeHost(server, next.ticks, LOGGER::warn, this::interactionAllowed);
             next.living = new PersistedNpcService<>(next.host, next.runtime, files, settings);
             LOGGER.info(next.living.status());

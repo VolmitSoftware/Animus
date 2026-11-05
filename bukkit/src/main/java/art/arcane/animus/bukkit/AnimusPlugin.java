@@ -121,8 +121,7 @@ public final class AnimusPlugin extends JavaPlugin {
                 getLogger().info(foliaProof.status());
             }
             NpcRuntimeSettings npcSettings = runtime.npcSettings();
-            PersistedNpcService.Settings settings = new PersistedNpcService.Settings(npcSettings.enabled(), npcSettings.viewDistance(), npcSettings.maximumVisible(),
-                    npcSettings.maximumViewers(), npcSettings.updatesPerTick());
+            PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
             FoliaRegions regions = replies.isFolia() ? new FoliaRegions(this) : null;
             PersistedNpcService<Player, ItemStack> mainThread = regions == null ? BukkitRuntimeHost.start(this, runtime, environment.minecraftVersion(), commands, settings, (Player player, Runnable task) -> replies.reply(player, task)) : null;
             living = regions == null ? mainThread : new RegionNpcRuntime(this, runtime, environment.minecraftVersion(), commands, settings, regions);
