@@ -60,6 +60,7 @@ final class JsonSchemaCheck {
                 case "exclusiveMaximum" -> { if (number(value) && decimal(value).compareTo(argument.getAsBigDecimal()) >= 0) errors.add(path + ": not below maximum"); }
                 case "minItems" -> { if (value.isJsonArray() && value.getAsJsonArray().size() < argument.getAsInt()) errors.add(path + ": too few items"); }
                 case "maxItems" -> { if (value.isJsonArray() && value.getAsJsonArray().size() > argument.getAsInt()) errors.add(path + ": too many items"); }
+                case "uniqueItems" -> { if (argument.getAsBoolean() && value.isJsonArray() && new java.util.HashSet<>(value.getAsJsonArray().asList()).size() < value.getAsJsonArray().size()) errors.add(path + ": duplicate items"); }
                 case "minProperties" -> { if (value.isJsonObject() && value.getAsJsonObject().size() < argument.getAsInt()) errors.add(path + ": too few properties"); }
                 case "maxProperties" -> { if (value.isJsonObject() && value.getAsJsonObject().size() > argument.getAsInt()) errors.add(path + ": too many properties"); }
                 case "required" -> {

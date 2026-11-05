@@ -4,6 +4,7 @@
 /// ```text
 /// #/                                         home
 /// #/workspace/<id>                           a workspace
+/// #/workspace/<id>/npcs                      the NPC browser
 /// #/workspace/<id>/<kind>/<docId>?view=code  one document (docId URI-encoded)
 /// #/citizens                                 convert a Citizens save locally
 /// #/pair/<code>                              a pairing link
@@ -41,6 +42,7 @@ sealed class EditorRoute {
     switch (parts.first) {
       case 'workspace':
         if (parts.length == 2) return WorkspaceRoute(decode(parts[1]));
+        if (parts.length == 3 && parts[2] == 'npcs') return NpcListRoute(decode(parts[1]));
         if (parts.length == 4) {
           final DocumentKind? kind = DocumentKind.parse(parts[2]);
           if (kind == null) return WorkspaceRoute(decode(parts[1]));
@@ -107,6 +109,22 @@ class WorkspaceRoute extends EditorRoute {
 
   @override
   int get hashCode => workspaceId.hashCode;
+}
+
+/// The NPC browser of a workspace.
+class NpcListRoute extends EditorRoute {
+  const NpcListRoute(this.workspaceId);
+
+  final String workspaceId;
+
+  @override
+  String format() => '#/workspace/${Uri.encodeComponent(workspaceId)}/npcs';
+
+  @override
+  bool operator ==(Object other) => other is NpcListRoute && other.workspaceId == workspaceId;
+
+  @override
+  int get hashCode => Object.hash('npcs', workspaceId);
 }
 
 class DocumentRoute extends EditorRoute {
