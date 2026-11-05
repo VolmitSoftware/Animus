@@ -27,6 +27,9 @@ import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.config.NavigationSettings;
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.RuntimeGauges;
+import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.config.RigSettings;
 import art.arcane.animus.core.npc.NpcItem;
@@ -166,6 +169,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private final NearbyPlayers<P> nearby;
     private long nearbyTick = Long.MIN_VALUE;
     private final PresentationPressure pressure = new PresentationPressure();
+    /** The metrics of the server start that built this runtime. */
+    private final AnimusMetrics metrics = AnimusMetrics.current();
+    /** Budget use summed per tick since the last metrics roll, as percentages; owner only. */
+    private long navigationUse, packetUse, loadTicks;
     private final PlayerAccess<P> players = new PlayerAccess<P>() {
         @Override public boolean online(UUID player) { owner(); return host.player(player).isPresent(); }
         @Override public Optional<P> owned(UUID player) { owner(); return host.player(player); }
@@ -202,6 +209,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             riders = mountRuntime.riders();
             admissions = host.onlinePlayers().iterator();
             ticker = host.everyTick(this::tick);
+            metrics.gauges(this::gauges);
         } catch (Exception | LinkageError failure) {
             unavailable = "unavailable: " + concise(failure);
             if (packets != null) packets.close(); packets = null;
@@ -227,6 +235,28 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 + " | chunks=" + host.chunkDelivery() + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
     @Override public boolean cosmeticAllowed() { return !available() || !pressure.strained(tickNumber); }
+    /** Owner only: counts for the metrics roll, which runs on this owner's tick thread. */
+    RuntimeGauges gauges() {
+        if (!available()) return RuntimeGauges.NONE;
+        owner();
+        int visible = 0;
+        for (Viewer viewer : viewers.values()) visible += viewer.visible.size();
+        List<RuntimeGauges.NpcPlace> places = new ArrayList<>(index.size());
+        int live = 0;
+        for (Entry entry : entries.values()) {
+            if (entry.value == null) continue;
+            VirtualNpcState.Snapshot state = entry.value.state.snapshot();
+            if (!state.active()) continue;
+            live++;
+            ChunkPosition chunk = state.position().chunk();
+            places.add(new RuntimeGauges.NpcPlace(state.npcId(), chunk.world(), chunk.x(), chunk.z()));
+        }
+        int navigationLoad = loadTicks == 0 ? 0 : (int) (navigationUse / loadTicks), presentationLoad = loadTicks == 0 ? 0 : (int) (packetUse / loadTicks);
+        navigationUse = 0; packetUse = 0; loadTicks = 0;
+        return new RuntimeGauges("single owner thread", runtime.npcs().snapshot().size(), live, Math.max(0, entries.size() - live), routeOrder.sleeping(),
+                viewers.size(), visible, routeOrder.size(), routeOrder.waiting(), navigation.outstandingJobs(), navigationPressure.pressured(),
+                pressure.strained(tickNumber), pressure.deferred(), navigationLoad, presentationLoad, places);
+    }
     @Override public String inspect(String id) {
         if (!available()) return "Runtime " + id + ": " + (closed ? "closed" : unavailable);
         owner();
@@ -533,6 +563,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private void tickRigs() {
         if (rigOrder.isEmpty() || !runtime.isRunning()) return;
         RigCatalog catalog = runtime.rigs().catalog();
+        boolean sampling = metrics.sampling();
         for (Value value : List.copyOf(rigOrder)) {
             if (!valueCurrent(value)) continue;
             if (value.rigGeneration != catalog.generation()) {
@@ -544,8 +575,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 }
             }
             if (value.rig == null || !value.state.snapshot().active()) continue;
+            long started = sampling ? metrics.start() : 0;
             for (RigPlayback.Finished done : value.rig.tick(tickNumber, walking(value)))
                 if (triggers != null) triggers.animationFinished(value.spec.definition().uuid(), done.animation(), done.layer());
+            if (sampling) metrics.npcCost(metrics.npc(value.spec.definition().uuid()), metrics.start() - started);
         }
         // Sampling new segments is cosmetic; clip endings above still fire their triggers under load.
         if (!pressure.allows(PresentationPressure.Tier.COSMETIC, tickNumber)) return;
@@ -770,7 +803,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         planStarts = navigationSettings.planningStartsPerTick(); motionCells = navigationSettings.motionCellsPerTick(); pathRefusals = 0;
         RouteScheduler.Tick turn = routeOrder.tick(tickNumber, new RouteScheduler.Listener<>() {
             @Override public boolean awake(Route route) { return routeAwake(route); }
-            @Override public RouteScheduler.Result work(Route route) { return available() ? workRoute(route) : RouteScheduler.Result.DEFER; }
+            @Override public RouteScheduler.Result work(Route route) {
+                if (!available()) return RouteScheduler.Result.DEFER;
+                if (!metrics.sampling()) return workRoute(route);
+                long started = metrics.start();
+                RouteScheduler.Result result = workRoute(route);
+                metrics.npcCost(metrics.npc(route.value.spec.definition().uuid()), metrics.start() - started);
+                return result;
+            }
             @Override public void slept(Route route) {
                 if (route.plan != null) route.plan.cancel(); route.plan = null; route.result = null;
                 routeStatus(route, "sleeping", "no player within " + (int) settings.viewDistance() + " blocks");
@@ -1022,6 +1062,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (!available()) return;
         owner();
         tickNumber++;
+        long mark = metrics.start();
         try {
             // Completion work is bounded independently of connection count and packet acknowledgments.
             for (int i = 0; i < settings.packetsPerTick() * 2; i++) { Runnable completion = completions.poll(); if (completion == null) break; completion.run(); }
@@ -1052,16 +1093,23 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 changes.removeFirst(); work++;
             }
             mountRuntime.resolve();
+            mark = metrics.lap(Subsystem.RUNTIME, mark);
             riders.tick();
             tickNavigation();
+            int cellLimit = navigationSettings.motionCellsPerTick();
+            navigationUse += navigationPressure.lastDeferred() > 0 ? 100 : Math.min(100, Math.max(0, cellLimit - motionCells) * 100 / Math.max(1, cellLimit));
             tickSupport();
+            mark = metrics.lap(Subsystem.NAVIGATION, mark);
             tickRigs();
+            mark = metrics.lap(Subsystem.RIGS, mark);
             tickLooks();
             if (!available()) return; // Arrival listeners may disable the plugin or retire the entire runtime.
             mountRuntime.syncPassengers();
             mountRuntime.tickDragons();
             admit();
+            mark = metrics.lap(Subsystem.PRESENTATION, mark);
             if (triggers != null) triggers.proximity(viewers.keySet(), this::viewerPosition);
+            mark = metrics.lap(Subsystem.BEHAVIORS, mark);
             List<Viewer> updated = new ArrayList<>();
             int used = FairViewerWork.run(viewerOrder, settings.updatesPerTick(), settings.packetsPerTick(), this::current, (Viewer viewer, int remaining) -> {
                 if (viewer.failed) { fail(viewer, "packet callbacks", null, "Packet callback queue full"); return 0; }
@@ -1081,6 +1129,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                     if (!current(viewer)) continue;
                     used += presentCosmetics(viewer, settings.packetsPerTick() - used);
                 }
+            metrics.lap(Subsystem.PRESENTATION, mark);
+            packetUse += Math.min(100, used * 100 / Math.max(1, settings.packetsPerTick()));
+            loadTicks++;
         } catch (RuntimeException failure) {
             failures.record("tick", "", failure);
             mountRuntime.close();
