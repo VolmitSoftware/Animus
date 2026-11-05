@@ -11,6 +11,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Accepted programs with durable last-valid checkpoints. Sources stay read-only; checkpoints are generated data.
@@ -73,7 +74,7 @@ public final class BehaviorCatalog {
     public record Reload(boolean published,Snapshot snapshot,List<Diagnostic> diagnostics,int scannedDocuments,long scannedBytes){
         public Reload{diagnostics=List.copyOf(diagnostics);}
     }
-    private final BehaviorSourceReader reader;private final Limits limits;private final CapabilityResolver resolver;private final BehaviorCheckpoints checkpoints;
+    private final BehaviorSourceReader reader;private Limits limits;private final AtomicReference<Limits> pendingLimits=new AtomicReference<>();private final CapabilityResolver resolver;private final BehaviorCheckpoints checkpoints;
     private final Map<String,Diagnostic> checkpointProblems=new TreeMap<>();
     private boolean reloading;
     private volatile Snapshot published=new Snapshot(0,Map.of(),Map.of(),List.of());
@@ -109,8 +110,15 @@ public final class BehaviorCatalog {
         return new Entry(source,Optional.of(program.id()),Optional.empty(),OptionalLong.empty(),SourceState.VALID,Optional.of(accepted),List.of());
     }
     public Snapshot snapshot(){return published;}
+    /**
+     * A hotload of {@code [behaviors.catalog]}, adopted when the next validate or reload starts. Lowered budgets never forget
+     * an accepted program: a reload that no longer fits is rejected and the published snapshot stays.
+     */
+    public void limits(Limits next){pendingLimits.set(Objects.requireNonNull(next));}
+    private void adoptLimits(){Limits next=pendingLimits.getAndSet(null);if(next==null)return;limits=next;reader.limits(next);}
     /** Validate current files against accepted revision/hash state without publishing, writing or forgetting programs. */
     public synchronized Validation validate(long expectedGeneration){
+        if(!reloading)adoptLimits();
         Snapshot before=published;
         if(reloading||before.generation()!=expectedGeneration){
             Diagnostic error=error(reloading?"catalog-reentrant-reload":"catalog-generation-conflict","behaviors","Catalog observation is already running or its generation changed");
@@ -129,7 +137,7 @@ public final class BehaviorCatalog {
     }
     /** Expected generation is process-local. Structural/read-budget conflicts leave the entire snapshot unchanged. */
     public synchronized Reload reload(long expectedGeneration,Set<Removal> removals){
-        Objects.requireNonNull(removals);Snapshot before=published;
+        Objects.requireNonNull(removals);if(!reloading)adoptLimits();Snapshot before=published;
         if(reloading)return rejected("catalog-reentrant-reload","Reload must not reenter registry observation",before);
         if(expectedGeneration!=before.generation())return rejected("catalog-generation-conflict","Catalog generation changed",before);
         if(removals.size()>limits.maximumDocuments())return rejected("catalog-removal-budget","Too many removal tokens",before);

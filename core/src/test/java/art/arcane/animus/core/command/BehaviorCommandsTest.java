@@ -4,6 +4,7 @@ import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.admin.Administration;
 import art.arcane.animus.core.behavior.BehaviorEngine;
+import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.config.*;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
@@ -101,10 +102,49 @@ class BehaviorCommandsTest {
             assertTrue(harness.service.statusLines().getFirst().contains("CLOSED"));assertNotNull(harness.service.diagnosticRuntime());assertTrue(harness.service.diagnosticRuntime().awaitStopped(Duration.ofSeconds(3)));assertEquals(1,queued.size());
         }
     }
-    @Test void disabledBehaviorSettingsNeverQueueCatalogOrCreateOwner()throws Exception{
+    private static BehaviorSettings enabled(boolean enabled,BehaviorCatalog.Limits catalog){
+        var d=BehaviorSettings.DEFAULT;return new BehaviorSettings(enabled,d.maximumOperations(),d.operationsPerTick(),d.tickMillis(),d.deliveryBudgetMillis(),d.engine(),catalog,d.triggers(),d.state(),d.actions());
+    }
+    @Test void behaviorsEnabledHotloadsOffAndOnWithoutStoppingRunningExecutions()throws Exception{
+        source("example:wait",1,30);
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();CommandActor sender=sender(false,true);UUID running=harness.run(sender,"example:wait");
+            harness.service.settings(enabled(false,BehaviorCatalog.Limits.defaults()));
+            assertTrue(harness.service.statusLines().getFirst().startsWith("Behaviors DISABLED"));
+            assertEquals("behaviors are disabled in config.toml",harness.service.triggers().availability());
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","run","test","example:wait"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE | state=DISABLED"),messages.toString());
+            until(()->harness.service.diagnosticRuntime().inspect(running).orElseThrow().report().state()==BehaviorEngine.State.COMPLETED);
+            harness.service.settings(BehaviorSettings.DEFAULT);
+            until(()->harness.service.statusLines().getFirst().startsWith("Behaviors READY"));
+            UUID next=harness.run(sender,"example:wait");assertNotEquals(running,next);
+        }
+    }
+    @Test void behaviorsStartedDisabledLoadTheCatalogWhenEnabled()throws Exception{
+        source("example:wait",1,1);
+        try(var harness=new Harness(enabled(false,BehaviorCatalog.Limits.defaults()),null)){
+            harness.extensions.start();
+            assertTrue(harness.service.statusLines().getFirst().startsWith("Behaviors DISABLED"));
+            harness.service.settings(BehaviorSettings.DEFAULT);
+            until(()->harness.service.statusLines().getFirst().startsWith("Behaviors READY"));
+            harness.run(sender(false,true),"example:wait");
+        }
+    }
+    @Test void changedCatalogBudgetsReloadTheCatalog()throws Exception{
+        source("example:wait",1,1);
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();assertTrue(harness.service.statusLines().getFirst().contains("catalog-generation=1"));
+            var d=BehaviorCatalog.Limits.defaults();
+            BehaviorSettings tighter=enabled(true,new BehaviorCatalog.Limits(d.maximumDocuments()-1,d.maximumEntries(),d.maximumDepth(),d.maximumDocumentBytes(),d.maximumAggregateBytes(),d.maximumCapabilityChecks()));
+            harness.service.settings(tighter);
+            until(()->harness.service.statusLines().getFirst().contains("catalog-generation=2"));
+            harness.service.settings(tighter);
+            Thread.sleep(100);assertTrue(harness.service.statusLines().getFirst().contains("catalog-generation=2"),"unchanged budgets do not reload");
+        }
+    }
+    @Test void disabledBehaviorSettingsNeverQueueCatalogWork()throws Exception{
         var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions());AtomicInteger submitted=new AtomicInteger();
         try(var harness=new Harness(disabled,observer->task->submitted.incrementAndGet())){
-            harness.extensions.start();assertEquals(0,submitted.get());assertNull(harness.service.diagnosticRuntime());CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
+            harness.extensions.start();assertEquals(0,submitted.get());assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
         }
     }
     @Test void pagesAndDiagnosticsAreBoundedAndDeniedCommandsDoNotRun()throws Exception{
@@ -237,10 +277,10 @@ class BehaviorCommandsTest {
             harness.run(sender,"example:greeter");
         }
     }
-    @Test void disabledBehaviorsHaveNoDispatcherAndReportIt()throws Exception{
+    @Test void disabledBehaviorsKeepAnUnavailableDispatcherAndReportIt()throws Exception{
         var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions());
         try(var harness=new Harness(disabled,observer->task->{})){
-            assertNull(harness.service.triggers());harness.service.execute(sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE"));
+            assertFalse(harness.service.triggers().available());harness.service.execute(sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE | reason=behaviors are disabled"),messages.toString());
         }
     }
     @Test void schemaWritesGeneratedFilesThroughTheFileLane()throws Exception{

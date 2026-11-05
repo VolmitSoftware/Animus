@@ -6,6 +6,7 @@ import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.npc.NpcDefinition;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 
@@ -13,6 +14,8 @@ import java.util.function.Supplier;
  * Turns events into bounded execution starts. {@link #publish}, {@link #activated}, {@link #deactivated},
  * {@link #dead} and the diagnostic reads are thread-safe; {@link #pump} and {@link #finished} belong to the
  * behavior owner. Sources must be quick immutable observations. Overflow is dropped and counted, never queued.
+ * Hotloaded settings wait in a pending slot until the owner's next pump; a lowered cap refuses new work and leaves
+ * queued and running triggers alone.
  */
 public final class TriggerDispatcher implements TriggerSink {
     public enum DropReason { EVENT_QUEUE, INACTIVE, NPC_QUEUE, TRIGGER_QUEUE, TOTAL_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE, ACTIVE_CAPACITY }
@@ -44,11 +47,16 @@ public final class TriggerDispatcher implements TriggerSink {
     private record Index(Map<UUID, List<Binding>> byNpc, List<Binding> ordered, List<Diagnostic> diagnostics) {
         static final Index EMPTY = new Index(Map.of(), List.of(), List.of());
     }
-    private record Pending(Binding binding, Optional<UUID> player, long admitted) {}
+    /** {@code lifetime} is the queue lifetime when admitted, so a lowered setting never expires work already waiting. */
+    private record Pending(Binding binding, Optional<UUID> player, long admitted, int lifetime) {}
     private record Timer(long due, Binding binding, int interval) {}
 
     private static final int MAX_DIAGNOSTICS = 64, MAX_TRACKED_NPCS = 16384;
-    private final TriggerSettings settings;
+    private static final String DISABLED = "disabled in config.toml", BEHAVIORS_DISABLED = "behaviors are disabled in config.toml";
+    private volatile TriggerSettings settings; // written by the owner only
+    private volatile ProximityTracker.Limits proximityLimits;
+    private final AtomicReference<TriggerSettings> pendingSettings = new AtomicReference<>();
+    private volatile boolean behaviorsEnabled = true;
     private final Supplier<Map<String, NpcDefinition>> definitions;
     private final Supplier<BehaviorCatalog.Snapshot> catalog;
     private final Object lock = new Object();
@@ -58,7 +66,8 @@ public final class TriggerDispatcher implements TriggerSink {
     private long activityGeneration; // lock
     private final LongAdder events = new LongAdder(), suppressed = new LongAdder(), started = new LongAdder();
     private final EnumMap<DropReason, LongAdder> drops = new EnumMap<>(DropReason.class);
-    private volatile String unavailable = "no platform bridge is connected";
+    /** The platform or runtime reason; null once a bridge connects. Configuration switches are checked separately. */
+    private volatile String blocked = "no platform bridge is connected";
     private volatile Index index = Index.EMPTY;
     private volatile HiddenNpcs hidden = HiddenNpcs.NONE;
     private volatile ProximityTracker.Plan plan = ProximityTracker.Plan.EMPTY;
@@ -82,16 +91,27 @@ public final class TriggerDispatcher implements TriggerSink {
 
     public TriggerDispatcher(TriggerSettings settings, Supplier<Map<String, NpcDefinition>> definitions, Supplier<BehaviorCatalog.Snapshot> catalog) {
         this.settings = Objects.requireNonNull(settings); this.definitions = Objects.requireNonNull(definitions); this.catalog = Objects.requireNonNull(catalog);
+        proximityLimits = settings.proximityLimits();
         for (DropReason reason : DropReason.values()) drops.put(reason, new LongAdder());
-        if (!settings.enabled()) unavailable = "disabled in config.toml";
     }
 
     /** The platform proved it can run NPCs on their owner. Disabled settings stay unavailable. */
-    public void connect() { if (settings.enabled()) unavailable = null; }
-    public void unavailable(String reason) { unavailable = Objects.requireNonNull(reason); }
-    @Override public boolean available() { return unavailable == null; }
-    @Override public String availability() { String reason = unavailable; return reason == null ? "available" : reason; }
+    public void connect() { blocked = null; }
+    public void unavailable(String reason) { blocked = Objects.requireNonNull(reason); }
+    /** A hotload of {@code [behaviors.triggers]}; the owner adopts it on its next pump. Thread-safe. */
+    public void settings(TriggerSettings next) { pendingSettings.set(Objects.requireNonNull(next)); }
+    /** {@code behaviors.enabled}: while false no event is accepted and nothing new starts; running executions finish. Thread-safe. */
+    public void behaviorsEnabled(boolean enabled) { behaviorsEnabled = enabled; }
+    private String unavailable() {
+        if (!behaviorsEnabled) return BEHAVIORS_DISABLED;
+        if (!settings.enabled()) return DISABLED;
+        return blocked;
+    }
+    @Override public boolean available() { return unavailable() == null; }
+    @Override public String availability() { String reason = unavailable(); return reason == null ? "available" : reason; }
     public TriggerSettings settings() { return settings; }
+    /** The current proximity budgets; trackers read them once per tick. */
+    public ProximityTracker.Limits proximityLimits() { return proximityLimits; }
     public ProximityTracker.Plan proximityPlan() { return available() ? plan : ProximityTracker.Plan.EMPTY; }
     /** Connect with the runtime's previews: a viewer fires no trigger of a live NPC hidden from them. A later call replaces it. */
     public void hide(HiddenNpcs hidden) { this.hidden = Objects.requireNonNull(hidden); }
@@ -106,7 +126,7 @@ public final class TriggerDispatcher implements TriggerSink {
 
     @Override public Outcome<Boolean> publish(TriggerEvent event) {
         Objects.requireNonNull(event);
-        String reason = unavailable;
+        String reason = unavailable();
         if (reason != null) {
             drops.get(DropReason.UNAVAILABLE).increment();
             return Outcome.rejected(Outcome.Status.UNAVAILABLE, "trigger-dispatch-unavailable", reason);
@@ -158,13 +178,20 @@ public final class TriggerDispatcher implements TriggerSink {
     public void pump(Starter starter) {
         Objects.requireNonNull(starter);
         tick = tick + 1;
-        if (unavailable != null) { clearState(); return; }
+        adoptSettings();
+        if (unavailable() != null) { clearState(); return; }
         stateCleared = false;
         refresh();
         drainSpawns();
         drainEvents();
         fireTimers();
         startQueued(starter);
+    }
+    /** Index and timer budgets change which bindings exist, so new settings rebuild the index on this pump. */
+    private void adoptSettings() {
+        TriggerSettings next = pendingSettings.getAndSet(null);
+        if (next == null || next.equals(settings)) return;
+        settings = next; proximityLimits = next.proximityLimits(); indexDirty = true;
     }
     public void finished(Request request) {
         Stats stat = request.binding().stats; stat.active = stat.active - 1;
@@ -348,7 +375,7 @@ public final class TriggerDispatcher implements TriggerSink {
         if (queue.size() >= settings.maximumQueued()) { drop(binding, DropReason.TOTAL_QUEUE); return false; }
         if (npcQueued.getOrDefault(npc, 0) >= settings.queuePerNpc()) { drop(binding, DropReason.NPC_QUEUE); return false; }
         if (stat.queued >= settings.queuePerTrigger()) { drop(binding, DropReason.TRIGGER_QUEUE); return false; }
-        queue.addLast(new Pending(binding, player, tick));
+        queue.addLast(new Pending(binding, player, tick, settings.queueLifetimeTicks()));
         queuedCount = queue.size(); stat.queued = stat.queued + 1; stat.lastAdmitted = tick;
         npcQueued.merge(npc, 1, Integer::sum);
         return true;
@@ -363,7 +390,7 @@ public final class TriggerDispatcher implements TriggerSink {
             Pending pending = iterator.next();
             Binding binding = pending.binding();
             UUID npc = binding.definition.uuid();
-            if (tick - pending.admitted() > settings.queueLifetimeTicks()) { release(iterator, pending); drop(binding, DropReason.EXPIRED); continue; }
+            if (tick - pending.admitted() > pending.lifetime()) { release(iterator, pending); drop(binding, DropReason.EXPIRED); continue; }
             if (!current(binding)) { release(iterator, pending); drop(binding, DropReason.STALE); continue; }
             if (starts >= settings.startsPerTick() || activeCount >= settings.concurrentTotal()) continue;
             if (npcActive.getOrDefault(npc, 0) >= settings.concurrentPerNpc() || binding.stats.active >= settings.concurrentPerTrigger()) continue;
@@ -398,7 +425,7 @@ public final class TriggerDispatcher implements TriggerSink {
     }
 
     public Snapshot snapshot() {
-        Index view = index; String reason = unavailable;
+        Index view = index; String reason = unavailable();
         Map<DropReason, Long> counted = new EnumMap<>(DropReason.class);
         drops.forEach((drop, count) -> { long value = count.sum(); if (value > 0) counted.put(drop, value); });
         List<Diagnostic> diagnostics = new ArrayList<>();

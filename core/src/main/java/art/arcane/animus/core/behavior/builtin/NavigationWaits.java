@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Actions waiting for a route to end. Each holds an invocation slot for as long as the NPC walks, so the
@@ -32,7 +33,8 @@ final class NavigationWaits implements AutoCloseable {
         }
     }
 
-    private final int maximum;
+    private int maximum; // this monitor
+    private final AtomicInteger pendingMaximum = new AtomicInteger();
     private final BehaviorPlatform platform;
     private final Set<Wait> active = new LinkedHashSet<>();
     private long tick;
@@ -42,6 +44,12 @@ final class NavigationWaits implements AutoCloseable {
         if (maximum < 1) throw new IllegalArgumentException("Navigation wait capacity must be positive");
         this.maximum = maximum;
         this.platform = Objects.requireNonNull(platform);
+    }
+
+    /** New capacity, adopted on the next owner tick. A lower one keeps every active wait and refuses new ones until they end. */
+    void maximum(int next) {
+        if (next < 1) throw new IllegalArgumentException("Navigation wait capacity must be positive");
+        pendingMaximum.set(next);
     }
 
     /** Owner only, before starting the route, so a refused wait leaves the NPC's current route alone. */
@@ -71,6 +79,8 @@ final class NavigationWaits implements AutoCloseable {
         List<Wait> snapshot;
         long now;
         synchronized (this) {
+            int next = pendingMaximum.getAndSet(0);
+            if (next > 0) maximum = next;
             now = ++tick;
             if (closed || active.isEmpty()) return;
             snapshot = new ArrayList<>(active);

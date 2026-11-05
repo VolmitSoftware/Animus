@@ -106,7 +106,7 @@ final class RegionViewer {
         WorldPosition at = position(player.getLocation());
         TriggerDispatcher dispatcher = host.triggers;
         if (dispatcher != null) {
-            if (proximity == null) proximity = new ProximityTracker(dispatcher.settings().proximityLimits(), host.index, dispatcher::hides);
+            if (proximity == null) proximity = new ProximityTracker(dispatcher::proximityLimits, host.index, dispatcher::hides);
             proximity.tick(dispatcher.proximityPlan(), List.of(id), viewer -> Optional.of(at), dispatcher::publish);
         }
         if ((ticks - 1) % WAKE_INTERVAL == 0) host.wakeNear(player, at);

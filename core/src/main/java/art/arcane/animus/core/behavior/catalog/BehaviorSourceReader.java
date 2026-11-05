@@ -22,7 +22,8 @@ final class BehaviorSourceReader {
     record Scan(Map<String,Source> sources,Map<String,Source> manifests,Map<String,Fingerprint> manifest,int entries,long bytes){
         Scan{sources=Map.copyOf(sources);manifests=Collections.unmodifiableMap(new TreeMap<>(manifests));manifest=Map.copyOf(manifest);}
     }
-    private final Path root;private final Object rootKey;private final BehaviorCatalog.Limits limits;
+    private final Path root;private final Object rootKey;private BehaviorCatalog.Limits limits; // the catalog's lock
+    void limits(BehaviorCatalog.Limits next){limits=Objects.requireNonNull(next);}
     BehaviorSourceReader(Path dataRoot,BehaviorCatalog.Limits limits)throws IOException{
         if(Files.isSymbolicLink(dataRoot))throw new IOException("Data root symlinks are not allowed");
         root=dataRoot.toRealPath();BasicFileAttributes attributes=Files.readAttributes(root,BasicFileAttributes.class,NOFOLLOW_LINKS);
