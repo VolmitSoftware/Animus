@@ -23,6 +23,8 @@ function mainWorkspace() {
 const workspace = args.get('workspace') === 'main' || !args.get('workspace') ? mainWorkspace() : path.resolve(args.get('workspace'));
 const binary = path.resolve(args.get('binary') ?? path.join(mainWorkspace(), 'multiplexor'));
 const rootArgs = ['--root', workspace];
+// Multiplexor runs from its own workspace folder so a missing root can never create a stray workspace elsewhere.
+const MAIN = true;
 const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) : null;
 const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;

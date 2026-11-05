@@ -128,6 +128,7 @@
 ### Fixed
 
 - Guards no longer freeze after stepping onto a partial block such as a dirt path, farmland or slab; catch-up teleports land on partial blocks, and a stalled guard catches up and logs why once.
+- Guards no longer freeze after stepping onto a partial block such as a dirt path, farmland or slab; catch-up teleports land on partial blocks, and a stalled guard catches up and logs why once.
 - Logging out while riding on a mod server no longer warns about a closed connection.
 - Forge jars ship a `pack.mcmeta`, so Forge no longer reports a missing data pack.
 - A saddled NPC can be ridden again after a ride ends.
