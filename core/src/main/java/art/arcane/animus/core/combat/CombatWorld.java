@@ -32,6 +32,8 @@ public interface CombatWorld {
 
     /** Starts or replaces combat movement. Holds any waypoint patrol until release. */
     MoveStatus move(UUID npc, WorldPosition goal, double speed);
+    /** What the NPC's movement is doing now, or why the last move was refused. For diagnostics only. */
+    default String movement(UUID npc) { return "unknown"; }
     /** Ends combat movement and leaves the NPC standing. */
     void stop(UUID npc);
     /** Ends combat movement and resumes any held waypoint patrol. */
