@@ -6,7 +6,9 @@ import art.arcane.animus.core.behavior.BehaviorProgram.Scope;
 import art.arcane.animus.core.behavior.BehaviorProgram.ScopedVariable;
 import art.arcane.animus.core.behavior.BehaviorProgram.Type;
 import art.arcane.animus.core.behavior.BehaviorProgram.Value;
+import art.arcane.animus.core.behavior.BehaviorCompiler;
 import art.arcane.animus.core.behavior.BehaviorState;
+import art.arcane.animus.core.behavior.BehaviorValues;
 import art.arcane.animus.core.behavior.catalog.BehaviorPath;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocumentTree;
@@ -33,6 +35,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -85,17 +88,25 @@ public final class BehaviorStateStore implements BehaviorState {
     private static final int BATCH_CHARS=3*1024*1024,TREE_DEPTH=24,MAXIMUM_PROBLEM_CHARS=512;
     private static final String NAME_PATTERN="[a-z0-9][a-z0-9_-]{0,63}";
 
+    /** Expired keys removed per owner turn, and queue entries examined per turn including superseded ones. */
+    private static final int EXPIRIES_PER_TURN=256,EXPIRY_POLLS_PER_TURN=1024;
+
     private record Key(Lifetime lifetime,Scope scope,String behavior,UUID npc,UUID player){}
     private static final class Document {
-        final Key key;final String path;final TreeMap<String,Value> values=new TreeMap<>();
+        final Key key;final String path;final TreeMap<String,Value> values=new TreeMap<>();final Map<String,Long> expires=new HashMap<>();
         long version,bytes;String problem;
         Document(Key key,String path){this.key=key;this.path=path;}
     }
-    private record Pending(Document document,long version,Map<String,Value> values){}
+    private record Pending(Document document,long version,Map<String,Value> values,Map<String,Long> expires){}
+    /** A queued expiry; superseded when the key's current expiry differs. */
+    private record Expiry(long at,Key key,String name){}
 
     private final DocumentStore store;
     private final Limits limits;
-    private final LongSupplier clock;
+    private final LongSupplier clock,millis;
+    private final PriorityQueue<Expiry> expiries=new PriorityQueue<>(Comparator.comparingLong(Expiry::at));
+    private int expiringKeys;
+    private volatile long nextExpiry=Long.MAX_VALUE;
     private final long flushNanos;
     private final Runnable flushTask=this::flushFromLane;
     private final Map<Key,Document> documents=new HashMap<>();
@@ -109,16 +120,17 @@ public final class BehaviorStateStore implements BehaviorState {
     private volatile boolean dirtySignal,flushQueued;
     private volatile long notBefore;
 
-    private BehaviorStateStore(DocumentStore store,Limits limits,LongSupplier clock){
-        this.store=Objects.requireNonNull(store);this.limits=Objects.requireNonNull(limits);this.clock=Objects.requireNonNull(clock);
+    private BehaviorStateStore(DocumentStore store,Limits limits,LongSupplier clock,LongSupplier millis){
+        this.store=Objects.requireNonNull(store);this.limits=Objects.requireNonNull(limits);this.clock=Objects.requireNonNull(clock);this.millis=Objects.requireNonNull(millis);
         flushNanos=limits.flushMillis()*1_000_000L;
     }
 
     /** Reads the whole state tree. An invalid document is preserved and blocks its own subject; a structural tree failure throws. */
-    public static BehaviorStateStore open(DocumentStore store,Limits limits)throws IOException{return open(store,limits,System::nanoTime);}
-    // Package-private deterministic clock seam; production uses System.nanoTime.
-    static BehaviorStateStore open(DocumentStore store,Limits limits,LongSupplier clock)throws IOException{
-        BehaviorStateStore state=new BehaviorStateStore(store,limits,clock);
+    public static BehaviorStateStore open(DocumentStore store,Limits limits)throws IOException{return open(store,limits,System::nanoTime,System::currentTimeMillis);}
+    // Package-private deterministic clock seams; production uses System.nanoTime for flushes and epoch milliseconds for expiry.
+    static BehaviorStateStore open(DocumentStore store,Limits limits,LongSupplier clock)throws IOException{return open(store,limits,clock,System::currentTimeMillis);}
+    static BehaviorStateStore open(DocumentStore store,Limits limits,LongSupplier clock,LongSupplier millis)throws IOException{
+        BehaviorStateStore state=new BehaviorStateStore(store,limits,clock,millis);
         state.load();
         state.prepareClosingClasses();
         return state;
@@ -127,27 +139,37 @@ public final class BehaviorStateStore implements BehaviorState {
     /** The executor must be the shared file lane. Until it is attached, values only reach disk through an explicit flush or close. */
     public void attach(Executor lane){this.lane=Objects.requireNonNull(lane);}
 
-    @Override public synchronized Value read(Subject subject,String variable,ScopedVariable declaration,Value initial){
+    @Override public Value read(Subject subject,String variable,ScopedVariable declaration,Value initial){return read(subject,variable,declaration,initial,initial.type());}
+
+    @Override public synchronized Value read(Subject subject,String variable,ScopedVariable declaration,Value initial,Type declared){
         Document document=documents.get(key(subject,declaration));
         if(document==null)return initial;
         if(document.problem!=null)throw invalid(document);
         Value stored=document.values.get(variable);
-        if(stored==null)return initial;
-        if(stored.type()!=initial.type())throw new Rejected(Outcome.Status.CONFLICT,"behavior-state-type-mismatch","$.variables."+variable+".type",
-                "Stored value is "+name(stored.type())+" and the declaration is "+name(initial.type())+"; purge this state or restore the declaration");
+        if(stored==null||expired(document,variable,millis.getAsLong()))return initial;
+        if(declared!=Type.ANY&&stored.type()!=declared)throw new Rejected(Outcome.Status.CONFLICT,"behavior-state-type-mismatch","$.variables."+variable+".type",
+                "Stored value is "+name(stored.type())+" and the declaration is "+name(declared)+"; purge this state or restore the declaration");
         return stored;
     }
+    private static boolean expired(Document document,String name,long now){Long at=document.expires.get(name);return at!=null&&at<=now;}
 
-    @Override public synchronized void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations){
+    @Override public void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations){write(subject,writes,declarations,Map.of());}
+
+    /** An expiry at or before the current time removes the key at once. */
+    @Override public synchronized void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations,Map<String,Long> expiresAtMillis){
         if(closed)throw new Rejected(Outcome.Status.UNAVAILABLE,"behavior-state-closed","$.variables","Behavior state is closing");
+        for(String name:expiresAtMillis.keySet())if(!writes.containsKey(name))throw new Rejected(Outcome.Status.INVALID,"behavior-state-expiry","$.variables."+name,"An expiry names a key this write does not set");
+        long now=millis.getAsLong();
         int newPersistent=0,newTransient=0;long persistentDelta=0,transientDelta=0;Map<Key,Integer> growth=null;
         for(Map.Entry<String,Value> write:writes.entrySet()){
             String name=write.getKey();ScopedVariable declaration=declarations.get(name);Key key=key(subject,declaration);
             Document document=documents.get(key);
             if(document!=null&&document.problem!=null)throw invalid(document);
+            Long expiry=expiresAtMillis.get(name);
+            if(expiry!=null&&expiry<=now)continue;
             if(document==null&&declaration.lifetime()==Lifetime.PERSISTENT)path(key);
             int valueBytes=valueBytes(write.getValue());
-            if(write.getValue().type()==Type.STRING&&valueBytes>limits.maximumValueBytes())
+            if(write.getValue().type()!=Type.BOOLEAN&&write.getValue().type()!=Type.INTEGER&&write.getValue().type()!=Type.DECIMAL&&valueBytes>limits.maximumValueBytes())
                 throw new Rejected(Outcome.Status.FAILED,"behavior-state-value-size","$.variables."+name,"Value of "+valueBytes+" bytes exceeds maximumValueBytes="+limits.maximumValueBytes());
             Value prior=document==null?null:document.values.get(name);
             long delta=prior==null?valueBytes+(long)name.length():valueBytes-(long)valueBytes(prior);
@@ -164,7 +186,11 @@ public final class BehaviorStateStore implements BehaviorState {
             checkBytes(name,persistentDelta,persistentBytes);
             checkBytes(name,transientDelta,transientBytes);
         }
-        for(Map.Entry<String,Value> write:writes.entrySet())apply(key(subject,declarations.get(write.getKey())),write.getKey(),write.getValue());
+        for(Map.Entry<String,Value> write:writes.entrySet()){
+            Key key=key(subject,declarations.get(write.getKey()));Long expiry=expiresAtMillis.get(write.getKey());
+            if(expiry!=null&&expiry<=now){Document document=documents.get(key);if(document!=null)remove(document,write.getKey());}
+            else apply(key,write.getKey(),write.getValue(),expiry);
+        }
     }
     private void checkKeys(String name,int added,int current,int maximum,String setting){
         if(added>0&&current+added>maximum)throw new Rejected(Outcome.Status.FAILED,"behavior-state-key-budget","$.variables."+name,"State holds "+current+" keys; "+setting+"="+maximum);
@@ -172,27 +198,64 @@ public final class BehaviorStateStore implements BehaviorState {
     private void checkBytes(String name,long delta,long current){
         if(delta>0&&current+delta>limits.maximumBytes())throw new Rejected(Outcome.Status.FAILED,"behavior-state-byte-budget","$.variables."+name,"State holds "+current+" bytes; maximumBytes="+limits.maximumBytes());
     }
-    private void apply(Key key,String name,Value value){
+    private void apply(Key key,String name,Value value,Long expiry){
         Document document=documents.get(key);
         if(document==null){document=new Document(key,key.lifetime()==Lifetime.PERSISTENT?path(key):null);documents.put(key,document);}
         Value prior=document.values.put(name,value);
-        if(value.equals(prior))return;
+        Long previous=expiry==null?document.expires.remove(name):document.expires.put(name,expiry);
+        boolean expiryChanged=!Objects.equals(previous,expiry);
+        if(previous==null&&expiry!=null)expiringKeys++;else if(previous!=null&&expiry==null)expiringKeys--;
+        if(expiry!=null&&expiryChanged)queue(new Expiry(expiry,key,name));
+        if(value.equals(prior)&&!expiryChanged)return;
         long delta=prior==null?valueBytes(value)+(long)name.length():valueBytes(value)-(long)valueBytes(prior);
         document.bytes+=delta;document.version++;
         if(key.lifetime()==Lifetime.TRANSIENT){transientBytes+=delta;if(prior==null)transientKeys++;return;}
         persistentBytes+=delta;if(prior==null)persistentKeys++;
+        markDirty(document);
+    }
+    private void markDirty(Document document){
         dirty.add(document);
         if(!dirtySignal){notBefore=clock.getAsLong()+flushNanos;dirtySignal=true;}
     }
+    private void remove(Document document,String name){
+        Value prior=document.values.remove(name);
+        if(document.expires.remove(name)!=null)expiringKeys--;
+        if(prior==null)return;
+        long bytes=valueBytes(prior)+(long)name.length();
+        document.bytes-=bytes;document.version++;
+        if(document.key.lifetime()==Lifetime.TRANSIENT){transientBytes-=bytes;transientKeys--;return;}
+        persistentBytes-=bytes;persistentKeys--;
+        markDirty(document);
+    }
+    private void queue(Expiry expiry){
+        expiries.add(expiry);
+        // Superseded entries stay queued until their time; rebuild when they outnumber live expiries.
+        if(expiries.size()>2*expiringKeys+EXPIRY_POLLS_PER_TURN){
+            expiries.clear();
+            for(Document document:documents.values())for(Map.Entry<String,Long> entry:document.expires.entrySet())expiries.add(new Expiry(entry.getValue(),document.key,entry.getKey()));
+        }
+        nextExpiry=expiries.isEmpty()?Long.MAX_VALUE:expiries.peek().at();
+    }
 
-    /** Owner turn hook. Costs one volatile read while nothing is dirty and queues at most one flush. */
+    /** Owner turn hook. Costs two volatile reads while nothing is dirty or due, removes at most 256 expired keys and queues at most one flush. */
     @Override public void maintain(){
+        if(nextExpiry!=Long.MAX_VALUE&&nextExpiry<=millis.getAsLong())expire();
         if(!dirtySignal||flushQueued)return;
         Executor executor=lane;
         if(executor==null||clock.getAsLong()-notBefore<0)return;
         flushQueued=true;
         try{executor.execute(flushTask);}
         catch(RejectedExecutionException full){flushQueued=false;notBefore=clock.getAsLong()+flushNanos;}
+    }
+    private synchronized void expire(){
+        long now=millis.getAsLong();int removed=0,polls=0;
+        while(!expiries.isEmpty()&&expiries.peek().at()<=now&&removed<EXPIRIES_PER_TURN&&polls<EXPIRY_POLLS_PER_TURN){
+            Expiry expiry=expiries.poll();polls++;
+            Document document=documents.get(expiry.key());
+            if(document==null||document.problem!=null||!Objects.equals(document.expires.get(expiry.name()),expiry.at()))continue;
+            remove(document,expiry.name());removed++;
+        }
+        nextExpiry=expiries.isEmpty()?Long.MAX_VALUE:expiries.peek().at();
     }
     /** Lane observer: a cancelled or failed flush task must not block later ones. */
     public void flushAbandoned(){flushQueued=false;}
@@ -221,7 +284,7 @@ public final class BehaviorStateStore implements BehaviorState {
                 // Escaped JSON can be six times the logical size; the budget stays conservative.
                 long estimate=document.bytes*6+512;
                 if(!batch.isEmpty()&&chars+estimate>BATCH_CHARS)break;
-                chars+=estimate;batch.add(new Pending(document,document.version,new TreeMap<>(document.values)));
+                chars+=estimate;batch.add(new Pending(document,document.version,new TreeMap<>(document.values),new HashMap<>(document.expires)));
             }
         }
         List<DocumentStore.Generated> changes=new ArrayList<>(batch.size());
@@ -232,7 +295,7 @@ public final class BehaviorStateStore implements BehaviorState {
                 try{existing=store.read(pending.document().path);}
                 catch(CharacterCodingException undecodable){quarantine(pending.document(),"Stored bytes are not valid UTF-8");continue;}
                 if(pending.values().isEmpty()&&existing==null)continue;
-                changes.add(new DocumentStore.Generated(pending.document().path,pending.values().isEmpty()?null:serialize(pending.document().key,pending.values())));
+                changes.add(new DocumentStore.Generated(pending.document().path,pending.values().isEmpty()?null:serialize(pending.document().key,pending.values(),pending.expires())));
             }
             if(!changes.isEmpty())store.commitGenerated(changes);
         }catch(IOException | RuntimeException failure){
@@ -260,7 +323,7 @@ public final class BehaviorStateStore implements BehaviorState {
     private synchronized void quarantine(Document document,String message){
         document.problem=bounded(message);dirty.remove(document);
         if(document.key.lifetime()==Lifetime.PERSISTENT){persistentKeys-=document.values.size();persistentBytes-=document.bytes;}
-        document.values.clear();document.bytes=0;
+        document.values.clear();document.bytes=0;expiringKeys-=document.expires.size();document.expires.clear();
     }
 
     /** File-lane only. Removes matching keys from memory at once, then durably. Running executions read initial values afterward. */
@@ -274,7 +337,7 @@ public final class BehaviorStateStore implements BehaviorState {
                 if(!selector.matches(document.key))continue;
                 if(document.problem!=null){invalid.add(document);iterator.remove();removedDocuments++;continue;}
                 if(document.values.isEmpty())continue;
-                removedDocuments++;removedKeys+=document.values.size();
+                removedDocuments++;removedKeys+=document.values.size();expiringKeys-=document.expires.size();document.expires.clear();
                 if(document.key.lifetime()==Lifetime.PERSISTENT){
                     persistentKeys-=document.values.size();persistentBytes-=document.bytes;
                     document.values.clear();document.bytes=0;document.version++;dirty.add(document);dirtySignal=true;
@@ -333,11 +396,14 @@ public final class BehaviorStateStore implements BehaviorState {
             try{
                 parse(store.read(path),key,document);
                 persistentKeys+=document.values.size();persistentBytes+=document.bytes;
+                expiringKeys+=document.expires.size();
+                for(Map.Entry<String,Long> entry:document.expires.entrySet())expiries.add(new Expiry(entry.getValue(),key,entry.getKey()));
             }catch(IOException | RuntimeException invalid){
                 document.problem=bounded(invalid.getMessage()==null?invalid.getClass().getSimpleName():invalid.getMessage());
-                document.values.clear();document.bytes=0;
+                document.values.clear();document.bytes=0;document.expires.clear();
             }
         }
+        nextExpiry=expiries.isEmpty()?Long.MAX_VALUE:expiries.peek().at();
     }
     private static void parse(String content,Key key,Document document)throws IOException{
         JsonObject root=JsonDocuments.object(content);
@@ -352,8 +418,16 @@ public final class BehaviorStateStore implements BehaviorState {
             String name=entry.getKey(),field="$.values."+name;
             if(!name.matches(NAME_PATTERN))throw new IOException(field+": invalid variable name");
             if(!entry.getValue().isJsonObject())throw new IOException(field+": expected object");
-            Value value=value(entry.getValue().getAsJsonObject(),field);
+            JsonObject item=entry.getValue().getAsJsonObject();
+            Value value=value(item,field);
             document.values.put(name,value);document.bytes+=valueBytes(value)+name.length();
+            if(item.has("expires")){
+                JsonElement expires=item.get("expires");
+                try{
+                    if(!expires.isJsonPrimitive()||!expires.getAsJsonPrimitive().isNumber())throw new ArithmeticException();
+                    document.expires.put(name,expires.getAsBigDecimal().longValueExact());
+                }catch(ArithmeticException | NumberFormatException invalid){throw new IOException(field+".expires: expected epoch milliseconds");}
+            }
         }
     }
     private static void identity(JsonObject root,String field,UUID expected)throws IOException{
@@ -367,19 +441,13 @@ public final class BehaviorStateStore implements BehaviorState {
     }
     private static Value value(JsonObject object,String field)throws IOException{
         String declared=text(object,"type");JsonElement raw=object.get("value");
-        if(raw==null||!raw.isJsonPrimitive())throw new IOException(field+".value: expected scalar");
-        JsonPrimitive primitive=raw.getAsJsonPrimitive();
-        try{
-            return switch(declared){
-                case "boolean"->{if(!primitive.isBoolean())throw new IOException(field+".value: expected boolean");yield new Value(Type.BOOLEAN,primitive.getAsBoolean());}
-                case "integer"->{if(!primitive.isNumber())throw new IOException(field+".value: expected integer");yield new Value(Type.INTEGER,primitive.getAsBigDecimal().longValueExact());}
-                case "decimal"->{if(!primitive.isNumber())throw new IOException(field+".value: expected decimal");yield new Value(Type.DECIMAL,primitive.getAsDouble());}
-                case "string"->{if(!primitive.isString())throw new IOException(field+".value: expected string");yield new Value(Type.STRING,primitive.getAsString());}
-                default->throw new IOException(field+".type: expected boolean, integer, decimal or string");
-            };
-        }catch(ArithmeticException | IllegalArgumentException invalid){throw new IOException(field+".value: outside the type's bounds",invalid);}
+        if(declared.equals("any")||!BehaviorCompiler.TYPE_NAMES.contains(declared))throw new IOException(field+".type: expected boolean, integer, decimal, string, list or map");
+        Type type=Type.valueOf(declared.toUpperCase(Locale.ROOT));
+        if(raw==null||raw.isJsonNull())throw new IOException(field+".value: expected "+declared);
+        try{return BehaviorValues.read(raw,type);}
+        catch(ArithmeticException | IllegalArgumentException invalid){throw new IOException(field+".value: expected "+declared+" within the type's bounds",invalid);}
     }
-    private static String serialize(Key key,Map<String,Value> values){
+    private static String serialize(Key key,Map<String,Value> values,Map<String,Long> expires){
         JsonObject root=new JsonObject();
         root.addProperty("schemaVersion",1);root.addProperty("behavior",key.behavior());root.addProperty("scope",name(key.scope()));
         if(key.npc()!=null)root.addProperty("npc",key.npc().toString());
@@ -388,9 +456,9 @@ public final class BehaviorStateStore implements BehaviorState {
         for(Map.Entry<String,Value> entry:values.entrySet()){
             Value value=entry.getValue();JsonObject item=new JsonObject();
             item.addProperty("type",name(value.type()));
-            if(value.value() instanceof Boolean flag)item.addProperty("value",flag);
-            else if(value.value() instanceof Number number)item.addProperty("value",number);
-            else item.addProperty("value",(String)value.value());
+            item.add("value",BehaviorValues.json(value));
+            Long expiry=expires.get(entry.getKey());
+            if(expiry!=null)item.addProperty("expires",expiry);
             stored.add(entry.getKey(),item);
         }
         root.add("values",stored);
@@ -436,7 +504,14 @@ public final class BehaviorStateStore implements BehaviorState {
     private static Rejected invalid(Document document){
         return new Rejected(Outcome.Status.CONFLICT,"behavior-state-document-invalid",document.path,"Stored state is invalid and left unchanged; purge it to continue: "+document.problem);
     }
-    private static int valueBytes(Value value){return value.value() instanceof String text?text.getBytes(StandardCharsets.UTF_8).length:Long.BYTES;}
+    /** Strings count their UTF-8 bytes, lists and maps their canonical JSON bytes, scalars eight. */
+    private static int valueBytes(Value value){
+        return switch(value.type()){
+            case STRING->((String)value.value()).getBytes(StandardCharsets.UTF_8).length;
+            case LIST,MAP->BehaviorValues.canonical(value).getBytes(StandardCharsets.UTF_8).length;
+            default->Long.BYTES;
+        };
+    }
     private static String name(Enum<?> value){return value.name().toLowerCase(Locale.ROOT);}
     private static String bounded(String message){
         String text=message==null?"Unavailable":message.length()>MAXIMUM_PROBLEM_CHARS?message.substring(0,MAXIMUM_PROBLEM_CHARS):message;
@@ -455,10 +530,11 @@ public final class BehaviorStateStore implements BehaviorState {
         Document sample=new Document(new Key(Lifetime.PERSISTENT,Scope.NPC,"animus:closing",new UUID(0,0),null),"unused");
         Map<String,Value> values=new TreeMap<>();
         values.put("flag",new Value(Type.BOOLEAN,true));values.put("text",new Value(Type.STRING,"closing"));values.put("count",new Value(Type.INTEGER,0L));
+        values.put("items",new Value(Type.LIST,List.of(new Value(Type.DECIMAL,0.5))));values.put("map",new Value(Type.MAP,Map.of("k",new Value(Type.STRING,"v"))));
         JsonObject journal=new JsonObject();journal.add("entries",new JsonArray());journal.addProperty("receipt",false);
         JsonDocuments.write(journal);
-        JsonDocuments.hash(serialize(sample.key,values));
-        new Pending(sample,0,values);
+        JsonDocuments.hash(serialize(sample.key,values,Map.of("flag",1L)));
+        new Pending(sample,0,values,Map.of());
         new DocumentStore.Generated("unused",null);
         new DocumentStore.Change("unused","missing",null);
     }
