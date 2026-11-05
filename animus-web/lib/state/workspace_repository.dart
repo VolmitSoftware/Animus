@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import '../model/animus_document.dart';
 import '../model/server_binding.dart';
+import 'workspace_migration.dart';
 
 /// A local workspace: drafts of documents opened from a data folder. Drafts
 /// live only in the browser; the server holds none.
@@ -43,7 +44,7 @@ class WorkspaceSnapshot {
       );
 
   String encode() => jsonEncode(<String, Object?>{
-        'schemaVersion': 1,
+        'schemaVersion': workspaceSchemaVersion,
         'id': id,
         'name': name,
         'generation': generation,
@@ -57,21 +58,28 @@ class WorkspaceSnapshot {
 
   static WorkspaceSnapshot decode(String text) {
     final Map<String, Object?> json = jsonDecode(text) as Map<String, Object?>;
-    if (json['schemaVersion'] != 1) throw FormatException('Unsupported workspace schemaVersion ${json['schemaVersion']}');
+    final Object? version = json['schemaVersion'];
+    if (version != 1 && version != workspaceSchemaVersion) throw FormatException('Unsupported workspace schemaVersion $version');
+    List<AnimusDocument> documents = <AnimusDocument>[
+      for (final Object? document in json['documents']! as List<Object?>) AnimusDocument.fromJson(document! as Map<String, Object?>),
+    ];
+    ServerBinding? server = json['server'] is Map<String, Object?> ? ServerBinding.fromJson(json['server']! as Map<String, Object?>) : null;
+    if (version == 1) {
+      final ({List<AnimusDocument> documents, ServerBinding? server}) migrated = migrateVersion1(documents, server);
+      documents = migrated.documents;
+      server = migrated.server;
+    }
     return WorkspaceSnapshot(
       id: json['id']! as String,
       name: json['name']! as String,
       generation: (json['generation']! as num).toInt(),
-      documents: <AnimusDocument>[
-        for (final Object? document in json['documents']! as List<Object?>)
-          AnimusDocument.fromJson(document! as Map<String, Object?>),
-      ],
+      documents: documents,
       resources: <String, Uint8List>{
         if (json['resources'] is Map<String, Object?>)
           for (final MapEntry<String, Object?> entry in (json['resources']! as Map<String, Object?>).entries)
             if (entry.value is String) entry.key: base64Decode(entry.value! as String),
       },
-      server: json['server'] is Map<String, Object?> ? ServerBinding.fromJson(json['server']! as Map<String, Object?>) : null,
+      server: server,
     );
   }
 }

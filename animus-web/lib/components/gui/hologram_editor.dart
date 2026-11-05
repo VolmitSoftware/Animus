@@ -8,7 +8,9 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_catalog.dart';
+import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/gui/text_animation.dart';
 import '../../mc/gui/gui_scene.dart';
 import '../../model/animus_document.dart';
 import 'actions_editor.dart';
@@ -18,28 +20,42 @@ import 'gui_stage_preview.dart';
 
 const List<String> _lineKinds = <String>['text', 'item', 'head', 'block', 'entity'];
 
+GuiAnimationClock _clock(AnimusDocument document, Map<String, JsonMap> animations, int nowMs) =>
+    GuiAnimationClock(from: document.id, animations: animations, nowMs: nowMs);
+
 class HologramPreview extends StatelessWidget {
-  const HologramPreview({required this.document, this.page, this.variant, super.key});
+  const HologramPreview({required this.document, this.page, this.variant, this.animations = const <String, JsonMap>{}, super.key});
 
   final AnimusDocument document;
   final int? page;
   final int? variant;
 
+  /// The workspace's text animations by id.
+  final Map<String, JsonMap> animations;
+
   @override
-  Widget build(BuildContext context) => dom.section(classes: 'animus-panel animus-gui-preview', <Widget>[
-        GuiStagePreview(
-          scene: hologramScene(asMap(document.json), page: page, variant: variant),
-          signature: '${document.source}|$page|$variant',
-          label: 'Hologram ${document.id}',
-        ),
-      ]);
+  Widget build(BuildContext context) {
+    final JsonMap doc = asMap(document.json);
+    return dom.section(classes: 'animus-panel animus-gui-preview', <Widget>[
+      GuiStagePreview(
+        scene: hologramScene(doc, page: page, variant: variant, clock: _clock(document, animations, DateTime.now().millisecondsSinceEpoch)),
+        sceneAt: (int nowMs) => hologramScene(doc, page: page, variant: variant, clock: _clock(document, animations, nowMs)),
+        tickMs: animationTickMs(document.source, document.id, animations),
+        signature: '${document.source}|$page|$variant',
+        label: 'Hologram ${document.id}',
+      ),
+    ]);
+  }
 }
 
 class HologramEditor extends StatefulWidget {
-  const HologramEditor({required this.document, required this.onJson, super.key});
+  const HologramEditor({required this.document, required this.onJson, this.animations = const <String, JsonMap>{}, super.key});
 
   final AnimusDocument document;
   final JsonEdit onJson;
+
+  /// The workspace's text animations by id.
+  final Map<String, JsonMap> animations;
 
   @override
   State<HologramEditor> createState() => _HologramEditorState();
@@ -71,7 +87,9 @@ class _HologramEditorState extends State<HologramEditor> {
     return dom.div(classes: 'animus-gui-editor', <Widget>[
       dom.section(classes: 'animus-panel animus-gui-stage', <Widget>[
         GuiStagePreview(
-          scene: hologramScene(doc, page: _page, variant: _variant),
+          scene: hologramScene(doc, page: _page, variant: _variant, clock: _clock(component.document, component.animations, DateTime.now().millisecondsSinceEpoch)),
+          sceneAt: (int nowMs) => hologramScene(doc, page: _page, variant: _variant, clock: _clock(component.document, component.animations, nowMs)),
+          tickMs: animationTickMs(component.document.source, component.document.id, component.animations),
           signature: '${component.document.source}|$which',
           label: 'Hologram ${component.document.id}',
           toolbar: <Widget>[
@@ -161,6 +179,7 @@ class _HologramEditorState extends State<HologramEditor> {
       'text' => GuiTextInput(
           value: line is String ? line : (asString(object['text']) ?? ''),
           mode: GuiTextMode.template,
+          names: ExpressionNames(animations: animationCompletionIds(component.document.id, component.animations.keys)),
           label: 'Line ${index + 1} text',
           onChanged: (String v) => set(line is String || line == null ? v : <String, Object?>{'text': v}),
         ),

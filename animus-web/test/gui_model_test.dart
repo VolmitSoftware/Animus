@@ -341,7 +341,7 @@ void main() {
       expect(<String>[for (final GlossImportedDocument d in imported.documents) '${d.location} ${d.path}'], <String>[
         'inventory:gloss:chest gui/inventories/gloss/chest.json',
         'menu:lobby/main gui/menus/lobby/main.json',
-        'hologram:spawn gui/holograms/spawn.json',
+        'hologram:gloss:spawn gui/holograms/gloss/spawn.json',
       ]);
       expect(imported.skipped, <String>['Sidebar: Gloss scoreboard documents have no Animus equivalent']);
       final AnimusDocument hologram = validateSource(imported.documents[2].location, imported.documents[2].path, imported.documents[2].source, schemas);
@@ -366,10 +366,19 @@ void main() {
       expect(exported.skipped, <String>['Chest GUIs: town:board uses animus: actions, which Gloss cannot run']);
       expect(exported.exported, 3, reason: 'gloss-only, hub and welcome; the shop is not a Gloss kind');
       final JsonMap bundle = jsonDecode(exported.bundle) as JsonMap;
-      expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town/hub', 'town/welcome', 'town/gloss-only'});
+      expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town/hub', 'town.welcome', 'town/gloss-only'});
       final GlossImport back = readGlossBundle(exported.bundle);
+      // Gloss holograms are flat, so town:welcome leaves as town.welcome and
+      // comes back into the gloss namespace, as the server's import does.
+      const Map<String, String> returned = <String, String>{'hologram:gloss:town-welcome': 'hologram:town:welcome'};
       for (final GlossImportedDocument document in back.documents) {
-        final AnimusDocument original = folder.documents.firstWhere((AnimusDocument d) => d.kind == document.location.kind && d.id == document.location.id);
+        final String key = returned['${document.location}'] ?? '${document.location}';
+        final AnimusDocument original = folder.documents.firstWhere((AnimusDocument d) => '${d.kind.wireName}:${d.id}' == key);
+        if (key != '${document.location}') {
+          expect(document.path, 'gui/holograms/gloss/town-welcome.json');
+          expect(document.source, original.source);
+          continue;
+        }
         expect(document.path, original.path);
         expect(document.source, original.source);
       }

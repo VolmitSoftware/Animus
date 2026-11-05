@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 3,
+  "revision": 1,
+  "anchor": {"world": "world", "position": [4.5, 65, 2.5]},
+  "lines": [
+    "|animation.sparkle|&6Bakery",
+    "&7Fresh bread every morning"
+  ]
+}

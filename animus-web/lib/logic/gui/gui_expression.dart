@@ -28,12 +28,16 @@ List<TemplateHole> templateHoles(String text) => <TemplateHole>[
 /// Names an expression may read besides the catalog: a list's `var` and its
 /// members, for example.
 final class ExpressionNames {
-  const ExpressionNames({this.locals = const <String>{}});
+  const ExpressionNames({this.locals = const <String>{}, this.animations = const <String>{}});
 
   static const ExpressionNames standard = ExpressionNames();
 
   /// Bare roots that are valid along with any member (`entry`, `entry.name`).
   final Set<String> locals;
+
+  /// Text animations `|animation.<id>|` can show, written as the document
+  /// would write them (see `animationCompletionIds`).
+  final Set<String> animations;
 
   bool knows(String name) {
     if (guiExpressionNames.containsKey(name)) return true;
@@ -44,7 +48,7 @@ final class ExpressionNames {
     return locals.contains(root);
   }
 
-  ExpressionNames withLocal(String name) => ExpressionNames(locals: <String>{...locals, name});
+  ExpressionNames withLocal(String name) => ExpressionNames(locals: <String>{...locals, name}, animations: animations);
 }
 
 /// Why [source] (a whole expression) would refuse the document, or null.
@@ -200,6 +204,22 @@ final class ExpressionCompletion {
 }
 
 final RegExp _identifierTail = RegExp(r'[A-Za-z_][A-Za-z0-9_.]*$');
+final RegExp _animationTail = RegExp(r'\|animation\.([a-z0-9_:/-]*)$');
+final RegExp _animationChar = RegExp(r'[a-z0-9_:/-]');
+
+List<ExpressionCompletion> _completeAnimation(String text, int at, RegExpMatch match, Set<String> animations, int limit) {
+  final String prefix = match.group(1)!;
+  final int from = at - prefix.length;
+  int to = at;
+  while (to < text.length && _animationChar.hasMatch(text[to])) {
+    to++;
+  }
+  if (to < text.length && text[to] == '|') to++;
+  final List<String> ids = animations.where((String id) => id.startsWith(prefix) && id != prefix).toList()..sort();
+  return <ExpressionCompletion>[
+    for (final String id in ids.take(limit)) ExpressionCompletion(id, '$id|', 'text animation', replaceFrom: from, replaceTo: to),
+  ];
+}
 
 /// Completions at [caret]: names and functions matching the identifier being
 /// typed. In a [template] field completions only appear inside `{{ }}`, and
@@ -213,6 +233,8 @@ List<ExpressionCompletion> completeExpression(
 }) {
   final int at = caret.clamp(0, text.length);
   final String before = text.substring(0, at);
+  final RegExpMatch? animation = template && names.animations.isNotEmpty ? _animationTail.firstMatch(before) : null;
+  if (animation != null) return _completeAnimation(text, at, animation, names.animations, limit);
   if (template) {
     final int open = before.lastIndexOf('{{');
     if (open < 0 || before.lastIndexOf('}}') > open) return const <ExpressionCompletion>[];
