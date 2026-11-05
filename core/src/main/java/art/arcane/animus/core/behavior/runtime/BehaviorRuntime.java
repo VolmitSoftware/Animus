@@ -4,6 +4,7 @@ import art.arcane.animus.api.*;
 import art.arcane.animus.core.behavior.*;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.catalog.BehaviorPath;
+import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.npc.NpcDefinition;
 import java.time.Duration;
@@ -44,7 +45,13 @@ public final class BehaviorRuntime implements AutoCloseable {
     private enum Phase { QUEUED,RUNNING,DELIVERY_QUEUED,DELIVERING }
     private record Capture(String npcId,NpcDefinition definition,UUID npcUuid,long revision,
                            String behaviorId,BehaviorCatalog.Accepted accepted,Optional<UUID> player,
-                           Optional<TriggerDispatcher.Request> trigger) {}
+                           Optional<TriggerDispatcher.Request> trigger,Optional<ServerTriggerDispatcher.Request> server) {
+        Capture(String npcId,NpcDefinition definition,UUID npcUuid,long revision,String behaviorId,BehaviorCatalog.Accepted accepted,Optional<UUID> player,Optional<TriggerDispatcher.Request> trigger){
+            this(npcId,definition,npcUuid,revision,behaviorId,accepted,player,trigger,Optional.empty());
+        }
+    }
+    /** The npc id executions of server behaviors report. */
+    public static final String SERVER_NPC_ID="server";
     private record Lease(UUID execution,Capture capture) {}
     private record Publication(BehaviorEngine.Status engine,Map<UUID,Execution> executions) {}
     private static final BehaviorEngine.Status EMPTY_ENGINE=new BehaviorEngine.Status(0,0,0,0,0,0,0,0,0,0,false);
@@ -55,6 +62,8 @@ public final class BehaviorRuntime implements AutoCloseable {
     private final Supplier<BehaviorCatalog.Snapshot> catalog;
     private final BehaviorInvoker invoker;
     private final TriggerDispatcher triggers;
+    private final ServerTriggerDispatcher servers;
+    private final ConnectedFacts facts=new ConnectedFacts();
     private final Object control=new Object();
     private final ArrayDeque<Operation<?>> requests=new ArrayDeque<>();
     private final Set<Operation<?>> admitted=Collections.newSetFromMap(new IdentityHashMap<>());
@@ -79,15 +88,26 @@ public final class BehaviorRuntime implements AutoCloseable {
     public BehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
                                  Supplier<Map<String,NpcDefinition>> definitions,
                                  Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,TriggerDispatcher triggers,BehaviorState state) {
-        this(limits,engineLimits,definitions,catalog,invoker,triggers,state,daemonFactory("animus-behavior-owner"));
+        this(limits,engineLimits,definitions,catalog,invoker,triggers,null,state,daemonFactory("animus-behavior-owner"));
+    }
+    /** A null server dispatcher runs no server behaviors. */
+    public BehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
+                                 Supplier<Map<String,NpcDefinition>> definitions,
+                                 Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,TriggerDispatcher triggers,ServerTriggerDispatcher servers,BehaviorState state) {
+        this(limits,engineLimits,definitions,catalog,invoker,triggers,servers,state,daemonFactory("animus-behavior-owner"));
     }
     // Package-private deterministic owner-start seam; production always uses its private daemon owner.
     BehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
                           Supplier<Map<String,NpcDefinition>> definitions,
                           Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,TriggerDispatcher triggers,BehaviorState state,ThreadFactory ownerFactory) {
+        this(limits,engineLimits,definitions,catalog,invoker,triggers,null,state,ownerFactory);
+    }
+    BehaviorRuntime(Limits limits,BehaviorEngine.Limits engineLimits,
+                          Supplier<Map<String,NpcDefinition>> definitions,
+                          Supplier<BehaviorCatalog.Snapshot> catalog,BehaviorInvoker invoker,TriggerDispatcher triggers,ServerTriggerDispatcher servers,BehaviorState state,ThreadFactory ownerFactory) {
         this.limits=Objects.requireNonNull(limits);this.engineLimits=Objects.requireNonNull(engineLimits);
         this.definitions=Objects.requireNonNull(definitions);this.catalog=Objects.requireNonNull(catalog);
-        this.invoker=Objects.requireNonNull(invoker);this.triggers=triggers;this.state=Objects.requireNonNull(state);
+        this.invoker=Objects.requireNonNull(invoker);this.triggers=triggers;this.servers=servers;this.state=Objects.requireNonNull(state);
         LifecycleClasses.prepare();
         deliveries=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(limits.maximumOperations()),
                 daemonFactory("animus-behavior-result"),new ThreadPoolExecutor.AbortPolicy());
@@ -159,7 +179,14 @@ public final class BehaviorRuntime implements AutoCloseable {
         }
     }
     /** Revokes new requests immediately. Neither trusted handlers nor public result callbacks run here. */
-    @Override public void close(){if(triggers!=null)triggers.unavailable("behavior runtime is stopping");synchronized(control){closing=true;control.notifyAll();}}
+    /**
+     * Connects the platform's world facts. Integration seam: the engine construction in turn() receives {@link #facts()}
+     * once the engine accepts a {@link BehaviorFacts}. A later call replaces the provider; until then runs see {@link BehaviorFacts#NONE}.
+     */
+    public void facts(BehaviorFacts provider){facts.connect(provider);}
+    /** The facts every run of this runtime reads; it forwards to the connected provider. */
+    public BehaviorFacts facts(){return facts;}
+    @Override public void close(){if(triggers!=null)triggers.unavailable("behavior runtime is stopping");if(servers!=null)servers.unavailable("behavior runtime is stopping");synchronized(control){closing=true;control.notifyAll();}}
     /** Standalone owner/test convenience; platform shutdown must use close() plus immutable diagnostics. */
     public boolean awaitStopped(Duration duration)throws InterruptedException {
         Objects.requireNonNull(duration);if(duration.isNegative()||duration.compareTo(Duration.ofMinutes(1))>0)throw new IllegalArgumentException("Wait must be between zero and one minute");
@@ -171,6 +198,7 @@ public final class BehaviorRuntime implements AutoCloseable {
     private void turn() {
         owner=Thread.currentThread();List<Operation<?>> completed=new ArrayList<>(limits.operationsPerTick());
         try {
+            // Integration seam: hand facts() to the engine here once BehaviorEngine takes a BehaviorFacts.
             if(engine==null){engine=new BehaviorEngine(engineLimits,new GuardedInvoker(),this::terminal,state);started=true;}
             if(closing)engine.close();
             for(int count=0;count<limits.operationsPerTick();count++){
@@ -200,9 +228,30 @@ public final class BehaviorRuntime implements AutoCloseable {
     }
     /** A dispatcher fault retires triggers and leaves manual execution running. */
     private void pumpTriggers(){
-        if(triggers==null)return;
-        try{triggers.pump(this::startTriggered);}
-        catch(RuntimeException | AssertionError | LinkageError fault){triggers.unavailable("trigger dispatcher failed: "+fault.getClass().getSimpleName());}
+        if(triggers!=null){
+            try{triggers.pump(this::startTriggered);}
+            catch(RuntimeException | AssertionError | LinkageError fault){triggers.unavailable("trigger dispatcher failed: "+fault.getClass().getSimpleName());}
+        }
+        if(servers!=null){
+            try{servers.pump(this::startServer);}
+            catch(RuntimeException | AssertionError | LinkageError fault){servers.unavailable("server trigger dispatcher failed: "+fault.getClass().getSimpleName());}
+        }
+    }
+    /** A server behavior runs with {@link ServerNpc#HANDLE} and no NPC definition. */
+    private Outcome<UUID> startServer(ServerTriggerDispatcher.Request request){
+        Capture capture=new Capture(SERVER_NPC_ID,null,ServerNpc.HANDLE.uuid(),0,request.binding().behavior(),request.accepted(),request.player(),Optional.empty(),Optional.of(request));
+        if(!current(capture))return Outcome.rejected(Outcome.Status.CONFLICT,"captured-source-changed","Server behavior changed or was disabled after trigger admission");
+        Outcome<UUID> result=engine.start(request.program(),serverContext(request,()->current(capture)));
+        result.value().ifPresent(id->{active.put(id,new Lease(id,capture));viewsChanged=true;});
+        return result;
+    }
+    /**
+     * Integration seam: the one place a server event's context map ({@code request.event()}: plain Boolean, String and
+     * List of String values) is handed to the run. Once {@link BehaviorEngine.Context} carries an event map, pass
+     * {@code request.event()} to it here so expressions read it as {@code context.*}.
+     */
+    private static BehaviorEngine.Context serverContext(ServerTriggerDispatcher.Request request,java.util.function.BooleanSupplier current){
+        return new BehaviorEngine.Context(ServerNpc.HANDLE,request.player(),false,current);
     }
     private Outcome<UUID> startTriggered(TriggerDispatcher.Request request){
         NpcDefinition definition=request.definition();
@@ -214,6 +263,7 @@ public final class BehaviorRuntime implements AutoCloseable {
     }
     private void fail(Throwable fault){synchronized(control){if(failure.isEmpty())failure=fault.getClass().getSimpleName();closing=true;}}
     private boolean current(Capture capture) {
+        if(capture.server().isPresent())return !closing&&capture.server().get().current().getAsBoolean();
         if(closing||Objects.requireNonNull(definitions.get()).get(capture.npcId())!=capture.definition())return false;
         BehaviorCatalog.Resolution resolution=Objects.requireNonNull(catalog.get()).byId().get(capture.behaviorId());
         return resolution!=null&&resolution.available()&&resolution.accepted().orElse(null)==capture.accepted();
@@ -222,7 +272,7 @@ public final class BehaviorRuntime implements AutoCloseable {
         Lease lease=active.remove(report.id());
         if(lease==null)throw new IllegalStateException("Terminal execution has no captured lease");
         Execution finished=view(lease,report);
-        manualByNpc.remove(lease.capture().npcUuid(),lease);lease.capture().trigger().ifPresent(request->triggers.finished(request));history.put(report.id(),finished);viewsChanged=true;
+        manualByNpc.remove(lease.capture().npcUuid(),lease);lease.capture().trigger().ifPresent(request->triggers.finished(request));lease.capture().server().ifPresent(request->servers.finished(request));history.put(report.id(),finished);viewsChanged=true;
         while(history.size()>engineLimits.historyEntries())history.remove(history.keySet().iterator().next());
         ArrayDeque<Execution> recent=recentByNpc.get(lease.capture().npcUuid());
         if(recent==null){recent=new ArrayDeque<>(RECENT_PER_NPC);recentByNpc.put(lease.capture().npcUuid(),recent);}
@@ -243,7 +293,7 @@ public final class BehaviorRuntime implements AutoCloseable {
         published=new Publication(status,Map.copyOf(views));
         viewPublications++;
     }
-    private static Execution view(Lease lease,BehaviorEngine.Report report){Capture c=lease.capture();return new Execution(c.npcId(),c.npcUuid(),c.revision(),c.behaviorId(),c.accepted().revision(),c.accepted().sourceHash(),c.player(),c.trigger().map(request->request.binding().key()),report);}
+    private static Execution view(Lease lease,BehaviorEngine.Report report){Capture c=lease.capture();return new Execution(c.npcId(),c.npcUuid(),c.revision(),c.behaviorId(),c.accepted().revision(),c.accepted().sourceHash(),c.player(),c.trigger().map(request->request.binding().key()).or(()->c.server().map(request->request.binding().key())),report);}
     private void queueDelivery(Operation<?> operation) {
         synchronized(control){operation.phase=Phase.DELIVERY_QUEUED;}
         // Every queued/running delivery retains one global admission, so this bounded queue cannot overflow.

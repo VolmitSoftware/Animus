@@ -102,7 +102,7 @@ class BehaviorCommandsTest {
         }
     }
     @Test void disabledBehaviorSettingsNeverQueueCatalogOrCreateOwner()throws Exception{
-        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions());AtomicInteger submitted=new AtomicInteger();
+        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions(),defaults.server());AtomicInteger submitted=new AtomicInteger();
         try(var harness=new Harness(disabled,observer->task->submitted.incrementAndGet())){
             harness.extensions.start();assertEquals(0,submitted.get());assertNull(harness.service.diagnosticRuntime());CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
         }
@@ -238,7 +238,7 @@ class BehaviorCommandsTest {
         }
     }
     @Test void disabledBehaviorsHaveNoDispatcherAndReportIt()throws Exception{
-        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions());
+        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions(),defaults.server());
         try(var harness=new Harness(disabled,observer->task->{})){
             assertNull(harness.service.triggers());harness.service.execute(sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE"));
         }
