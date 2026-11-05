@@ -15,6 +15,7 @@ import art.arcane.animus.api.Outcome;
 import art.arcane.animus.api.Platform;
 import art.arcane.animus.api.TrustedModule;
 import art.arcane.animus.api.Version;
+import art.arcane.animus.core.behavior.BehaviorFlags;
 import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.BehaviorState;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.AppearanceChange;
@@ -70,7 +71,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final String PLAYER_TOKEN = "{player}", PLAYER_NAME_TOKEN = "{player_name}";
     private static final int MAXIMUM_RANDOM_STAGE_BOUND = 1_000_000;
     private static final String IDENTIFIER = "[a-z0-9][a-z0-9_-]*";
-    private static final String FLAG_STATE = NAMESPACE + ":flags/", QUEST_STATE = NAMESPACE + ":quests/";
+    private static final String FLAG_STATE = BehaviorFlags.FLAGS, QUEST_STATE = BehaviorFlags.QUESTS;
     private static final Key NAVIGATE = new Key(NAMESPACE, "navigate");
     private static final int DEFAULT_WAIT_TICKS = 1200, MINIMUM_WAIT_TICKS = 20, MAXIMUM_WAIT_TICKS = 12_000;
     private static final long OWNER_TICK_MILLIS = 50, LAGGING_OWNER_ALLOWANCE = 2, WAIT_DEADLINE_SLACK_MILLIS = 5000;
@@ -84,7 +85,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         final boolean owner;
         Effect(boolean owner) { this.owner = owner; }
     }
-    private record StateSlot(BehaviorState.Subject subject, String name, BehaviorProgram.ScopedVariable declaration) {}
+    private record StateSlot(BehaviorState.Subject subject, String name, BehaviorProgram.ScopedVariable declaration, BehaviorProgram.Type type) {}
     private static final BehaviorProgram.Value UNSET_FLAG = new BehaviorProgram.Value(BehaviorProgram.Type.BOOLEAN, false);
     private static final BehaviorProgram.Value UNSET_QUEST = stage(0);
     private record Call(Invocation invocation, JsonObject arguments) {
@@ -285,7 +286,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
                 call -> {
                     boolean expected = flag(call.arguments, "value", true);
-                    return CompletableFuture.completedFuture((Boolean) read(slot(call, FLAG_STATE), UNSET_FLAG).value() == expected);
+                    return CompletableFuture.completedFuture(read(slot(call, FLAG_STATE), UNSET_FLAG).equals(new BehaviorProgram.Value(BehaviorProgram.Type.BOOLEAN, expected)));
                 });
         condition("quest-state", Effect.STATE_READ, "Compares a quest stage. An unset quest is stage zero.",
                 schema(STATE + "," + integer("equals", 0, 1_000_000_000_000L) + "," + integer("atLeast", 0, 1_000_000_000_000L) + "," + integer("atMost", 0, 1_000_000_000_000L),
@@ -608,24 +609,28 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     /**
-     * Flags and quests live in behavior state under one reserved identity per kind and behavior namespace,
-     * so a pack's behaviors share them, packs stay apart, and the state budgets and purge commands apply.
+     * Flags and quests live in behavior state under one reserved identity per kind and behavior namespace (see
+     * {@link BehaviorFlags}). Flags are declared {@code any}; quest stages are integers.
      */
     private static StateSlot slot(Call call, String identity) {
         String behavior = call.invocation.behavior().orElseThrow(() -> new CapabilityRefusal(Outcome.Status.INVALID, "no-behavior-namespace", "Flags and quests belong to a behavior namespace, and this call has no behavior"));
-        BehaviorProgram.Scope scope = BehaviorProgram.Scope.valueOf(text(call.arguments, "scope").orElse("player").toUpperCase(Locale.ROOT));
-        if (scope.requiresPlayer()) requirePlayer(call);
-        return new StateSlot(new BehaviorState.Subject(identity + behavior.substring(0, behavior.indexOf(':')), call.npc().uuid(), call.player()),
-                text(call.arguments, "name").orElseThrow(), new BehaviorProgram.ScopedVariable(scope, BehaviorProgram.Lifetime.PERSISTENT));
+        BehaviorProgram.ScopedVariable declaration = BehaviorFlags.declaration(text(call.arguments, "scope").orElse("player"));
+        if (declaration.scope().requiresPlayer()) requirePlayer(call);
+        return new StateSlot(BehaviorFlags.subject(identity, behavior, call.npc().uuid(), call.player()), text(call.arguments, "name").orElseThrow(), declaration,
+                identity.equals(FLAG_STATE) ? BehaviorProgram.Type.ANY : BehaviorProgram.Type.INTEGER);
     }
 
     private BehaviorProgram.Value read(StateSlot slot, BehaviorProgram.Value unset) {
-        try { return state.read(slot.subject, slot.name, slot.declaration, unset); }
+        try { return state.read(slot.subject, slot.name, slot.declaration, unset, slot.type); }
         catch (BehaviorState.Rejected rejected) { throw new CapabilityRefusal(rejected.status(), rejected.diagnostic()); }
     }
 
-    private void write(StateSlot slot, BehaviorProgram.Value value) {
-        try { state.write(slot.subject, Map.of(slot.name, value), Map.of(slot.name, slot.declaration)); }
+    private void write(StateSlot slot, BehaviorProgram.Value value) { write(slot, value, OptionalLong.empty()); }
+
+    /** An expiry at or before the store's current time removes the key, so it also clears a flag. */
+    private void write(StateSlot slot, BehaviorProgram.Value value, OptionalLong expiresAtMillis) {
+        Map<String, Long> expiry = expiresAtMillis.isPresent() ? Map.of(slot.name, expiresAtMillis.getAsLong()) : Map.of();
+        try { state.write(slot.subject, Map.of(slot.name, value), Map.of(slot.name, slot.declaration), expiry); }
         catch (BehaviorState.Rejected rejected) { throw new CapabilityRefusal(rejected.status(), rejected.diagnostic()); }
     }
 
