@@ -65,6 +65,10 @@
 - NPCs build Sponge `.schem` (v1-3) and structure `.nbt` schematics with `/animus build`, in phase order, with rotation, mirroring, patterns, layers and excavation; creative, donated and container materials; bounded undo; pause, resume, cancel; teams; resume after restart.
 - `animus:build` action, `build_finished` and `build_paused` triggers, `[builds]` settings and the `animus.build.donate` permission.
 - Builder trait import into `animus:builder`; Constructor traits kept and reported.
+- Chest GUIs in the Gloss inventory format, run natively without Gloss.
+- Shops with buy, sell and trade grids, limits, stock, discounts, command entries and confirmation, bound with the `animus:shop` module; `animus:open-shop` and `animus:open-gui` actions; `/animus shop` and `/animus gui`.
+- Vault economy on Bukkit; money prices fail closed elsewhere.
+- dtlTraders importer for shop files, `guis.yml`, trader traits, version 3 stock and `data.dat`.
 
 ### Changed
 
@@ -91,6 +95,9 @@
 - Sentinel import maps 51 of 69 fields (converter version 5).
 
 - Build changes ask WorldGuard on Bukkit; mod servers allow all build changes; builds are unavailable on Folia.
+
+- The example `shop` pack uses a shop and a chest GUI instead of commands.
+- Citizens converter version 6 maps the `trader` trait.
 
 ### Fixed
 
