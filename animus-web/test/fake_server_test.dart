@@ -327,6 +327,7 @@ void main() {
     expect(started.status, 200);
     expectMessage('preview-response', started.body);
     expect(started.json['npcs'], <String>['examples/greeter']);
+    expect(started.json['hidden'], <String>['examples/greeter'], reason: 'the stored greeter is the live NPC the candidate hides');
     final String previewId = started.json['previewId']! as String;
     final Map<String, Object?> running = await events.nextOf('preview');
     expectMessage('event', running);

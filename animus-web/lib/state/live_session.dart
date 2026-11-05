@@ -51,7 +51,7 @@ class ConflictView {
 }
 
 class PreviewState {
-  const PreviewState(this.id, this.state, this.expiresAt, this.npcs);
+  const PreviewState(this.id, this.state, this.expiresAt, this.npcs, this.hidden);
 
   final String id;
 
@@ -60,7 +60,15 @@ class PreviewState {
   final DateTime? expiresAt;
   final List<String> npcs;
 
+  /// Live NPCs a candidate stands in for: hidden from the viewer, who neither sees nor hears them while it runs.
+  final List<String> hidden;
+
   bool get running => state == 'running';
+
+  /// The live bar's line about hidden live NPCs, or null when the preview hides none or has ended.
+  String? get hiddenLine => running && hidden.isNotEmpty
+      ? 'Live NPC${hidden.length == 1 ? '' : 's'} hidden for you while previewing: ${hidden.join(', ')}'
+      : null;
 }
 
 enum NoticeLevel { info, success, warning, error }
@@ -386,6 +394,7 @@ class LiveSession {
           'running',
           DateTime.tryParse('${body['expiresAt']}'),
           <String>[for (final Object? id in (body['npcs'] as List<Object?>?) ?? const <Object?>[]) '$id'],
+          <String>[for (final Object? id in (body['hidden'] as List<Object?>?) ?? const <Object?>[]) '$id'],
         );
         for (final Object? raw in (body['documents'] as List<Object?>?) ?? const <Object?>[]) {
           if (raw is Map<String, Object?>) serverDiagnostics['${raw['kind']}:${raw['id']}'] = diagnosticsOf(raw['diagnostics']);
@@ -406,7 +415,7 @@ class LiveSession {
         if (response == null) return;
         // The preview event may have ended it (and said so) already.
         final bool announced = !(preview?.running ?? false);
-        preview = PreviewState(running.id, 'ended', running.expiresAt, running.npcs);
+        preview = PreviewState(running.id, 'ended', running.expiresAt, running.npcs, running.hidden);
         if (!announced) _notice(NoticeLevel.info, 'Preview ended.');
       });
 
@@ -685,7 +694,7 @@ class LiveSession {
       case 'preview':
         final PreviewState? running = preview;
         if (running != null && running.id == event['previewId']) {
-          preview = PreviewState(running.id, '${event['state']}', running.expiresAt, running.npcs);
+          preview = PreviewState(running.id, '${event['state']}', running.expiresAt, running.npcs, running.hidden);
           if (running.running && !preview!.running) _notice(NoticeLevel.info, 'Preview ${event['state']}.');
           _changed();
         }
