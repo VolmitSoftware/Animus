@@ -1,5 +1,7 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.gui.ScreenHost;
@@ -110,6 +112,8 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
             return menu;
         }, ModText.component(frame.title())));
         if (id.isEmpty() || next.menu == null) return Optional.empty();
+        AnimusMetrics metrics = AnimusMetrics.current();
+        metrics.sent(metrics.viewer(player.getUUID(), player.getGameProfile().name()), null, PacketKind.GUI_WINDOW, 1);
         return Optional.of(next);
     }
 
