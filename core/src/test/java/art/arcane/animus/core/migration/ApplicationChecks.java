@@ -39,28 +39,28 @@ public final class ApplicationChecks {
             try(DocumentStore store=new DocumentStore(root.resolve("roundtrip"))){
                 var converted=preview(store,root.resolve("source.yml"),"Guard");
                 var staged=ImportApplications.stage(store,converted.id(),ImportProjection.Mode.REJECT,null);
-                check(store.read("npcs/world/citizens-1.json")==null,"staging installs nothing");
+                check(store.read("npcs/world-r0_0/citizens-1.json")==null,"staging installs nothing");
                 check(staged.applicationId().equals(ImportApplications.stage(store,converted.id(),ImportProjection.Mode.REJECT,null).applicationId()),"same stage idempotent");
                 String installed=ImportApplications.apply(store,converted.id(),staged.applicationId());
                 check(ImportApplications.apply(store,converted.id(),staged.applicationId()).equals("already-applied"),"repeat apply idempotent");
                 NpcRepository repository=new NpcRepository(store);repository.loadForStartup();
-                String original=store.read("npcs/world/citizens-1.json");
-                String originalPointer=store.read("state/npc-definitions/last-valid/npcs/world/citizens-1.json");
+                String original=store.read("npcs/world-r0_0/citizens-1.json");
+                String originalPointer=store.read("state/npc-definitions/last-valid/npcs/world-r0_0/citizens-1.json");
                 check(originalPointer!=null,"initial accepted checkpoint");
                 var updated=preview(store,root.resolve("source.yml"),"Updated");
                 rejects(()->ImportApplications.stage(store,updated.id(),ImportProjection.Mode.REJECT,null),"collision");
                 var replacement=ImportApplications.stage(store,updated.id(),ImportProjection.Mode.REPLACE,null);
                 check(replacement.replacements()==2,"explicit replacement count");
-                check(store.read("npcs/world/citizens-1.json").equals(original),"replacement stage leaves active data");
+                check(store.read("npcs/world-r0_0/citizens-1.json").equals(original),"replacement stage leaves active data");
                 String replaced=ImportApplications.apply(store,updated.id(),replacement.applicationId());
-                NpcDefinition accepted=NpcDefinition.parse(store.read("npcs/world/citizens-1.json"));
+                NpcDefinition accepted=NpcDefinition.parse(store.read("npcs/world-r0_0/citizens-1.json"));
                 check(accepted.revision()==2 && accepted.name().equals("Updated"),"replacement applied with increasing revision");
-                check(!store.read("state/npc-definitions/last-valid/npcs/world/citizens-1.json").equals(originalPointer),"replacement updates accepted checkpoint atomically");
+                check(!store.read("state/npc-definitions/last-valid/npcs/world-r0_0/citizens-1.json").equals(originalPointer),"replacement updates accepted checkpoint atomically");
                 NpcRepository restarted=new NpcRepository(store);restarted.loadForStartup();
                 check(restarted.all().size()==2 && restarted.diagnostics().isEmpty(),"replacement restart before rollback");
                 store.rollback(replaced);
-                check(store.read("npcs/world/citizens-1.json").equals(original),"rollback restores exact prior definition");
-                check(store.read("state/npc-definitions/last-valid/npcs/world/citizens-1.json").equals(originalPointer),"rollback restores checkpoint");
+                check(store.read("npcs/world-r0_0/citizens-1.json").equals(original),"rollback restores exact prior definition");
+                check(store.read("state/npc-definitions/last-valid/npcs/world-r0_0/citizens-1.json").equals(originalPointer),"rollback restores checkpoint");
                 check(store.read("imports/"+updated.id()+"/applications/"+replacement.applicationId()+"/receipt.json")==null,"rollback removes application receipt");
                 ImportApplications.apply(store,updated.id(),replacement.applicationId());
                 var duplicate=ImportApplications.stage(store,converted.id(),ImportProjection.Mode.DUPLICATE,"town");
@@ -80,7 +80,7 @@ public final class ApplicationChecks {
                 var converted=preview(store,root.resolve("source.yml"),"Guard");
                 new CitizensImporter().apply(store,converted.id());
                 var replacement=ImportApplications.stage(store,converted.id(),ImportProjection.Mode.REPLACE,null);
-                String path="npcs/world/citizens-1.json", original=store.read(path);
+                String path="npcs/world-r0_0/citizens-1.json", original=store.read(path);
                 JsonObject edited=JsonDocuments.object(original);edited.addProperty("name","Concurrent edit");
                 store.commit(List.of(new DocumentStore.Change(path,JsonDocuments.hash(original),JsonDocuments.write(edited))));
                 rejects(()->ImportApplications.apply(store,converted.id(),replacement.applicationId()),"Conflict");
@@ -98,16 +98,16 @@ public final class ApplicationChecks {
             try(DocumentStore store=new DocumentStore(root.resolve("new-collision"))){
                 var converted=preview(store,root.resolve("source.yml"),"Guard");
                 var staged=ImportApplications.stage(store,converted.id(),ImportProjection.Mode.REJECT,null);
-                JsonObject collision=JsonDocuments.object(Files.readString(converted.directory().resolve("npcs/world/citizens-1.json")));
+                JsonObject collision=JsonDocuments.object(Files.readString(converted.directory().resolve("npcs/world-r0_0/citizens-1.json")));
                 collision.addProperty("id","other");collision.addProperty("group","custom");
                 store.commit(List.of(new DocumentStore.Change("npcs/custom/other.json","missing",JsonDocuments.write(collision))));
                 rejects(()->ImportApplications.apply(store,converted.id(),staged.applicationId()),"another path");
-                check(store.read("npcs/world/citizens-2.json")==null,"whole batch rejected on new identity collision");
+                check(store.read("npcs/world-r0_0/citizens-2.json")==null,"whole batch rejected on new identity collision");
             }
             try(DocumentStore store=new DocumentStore(root.resolve("orphan-pointer"))){
                 var converted=preview(store,root.resolve("source.yml"),"Guard");
                 new CitizensImporter().apply(store,converted.id());new NpcRepository(store).loadForStartup();
-                String sourcePath="npcs/world/citizens-1.json", pointerPath="state/npc-definitions/last-valid/"+sourcePath;
+                String sourcePath="npcs/world-r0_0/citizens-1.json", pointerPath="state/npc-definitions/last-valid/"+sourcePath;
                 String original=store.read(sourcePath), pointer=store.read(pointerPath);
                 Files.delete(store.resolve(sourcePath));
                 NpcDefinition definition=NpcDefinition.parse(original);
@@ -123,7 +123,7 @@ public final class ApplicationChecks {
                 var converted=new CitizensImporter().preview(source,store,Map.of());
                 var staged=ImportApplications.stage(store,converted.id(),ImportProjection.Mode.REJECT,null);
                 ImportApplications.apply(store,converted.id(),staged.applicationId());
-                String skin=NpcDefinition.parse(store.read("npcs/world/citizens-1.json")).json().get("skin").getAsString();
+                String skin=NpcDefinition.parse(store.read("npcs/world-r0_0/citizens-1.json")).json().get("skin").getAsString();
                 check(store.read("skins/"+skin+".json").contains("opaque-unrecognized-skin"),"unknown skin data remains preserved");
             }
             try(DocumentStore store=DocumentStore.readOnly(root.resolve("roundtrip"))){

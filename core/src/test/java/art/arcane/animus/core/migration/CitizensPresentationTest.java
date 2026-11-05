@@ -137,7 +137,7 @@ class CitizensPresentationTest {
                 """);
         CitizensImporter.Preview preview = new CitizensImporter().preview(source, root.resolve("out"), Map.of());
         assertEquals(1, preview.valid(), preview.summary().toString());
-        NpcDefinition definition = NpcDefinition.parse(Files.readString(preview.directory().resolve("npcs/world/citizens-1.json")));
+        NpcDefinition definition = NpcDefinition.parse(Files.readString(preview.directory().resolve("npcs/world-r0_0/citizens-1.json")));
         NpcAppearance appearance = NpcAppearance.of(definition);
         assertEquals("minecraft:iron_sword", appearance.equipment().get(EquipmentSlot.MAIN_HAND).id());
         assertEquals(List.of("Hello"), appearance.hologram());

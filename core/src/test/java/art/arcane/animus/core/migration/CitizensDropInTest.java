@@ -90,7 +90,7 @@ class CitizensDropInTest {
             CitizensDropIn flow = dropIn(store, npcs);
             String staged = joined(flow.execute(new String[0]));
             assertTrue(staged.contains("3 NPCs, 3 valid"), staged);
-            assertTrue(staged.contains("npcs/world/ 2") && staged.contains("npcs/world_nether/ 1"), staged);
+            assertTrue(staged.contains("npcs/world-r0_-1/ 1") && staged.contains("npcs/world-r0_0/ 1") && staged.contains("npcs/world_nether-r0_0/ 1"), staged);
             assertTrue(staged.contains("1 shops"), staged);
             assertTrue(staged.contains("1 .schem/.nbt files") && staged.contains("1 old .schematic"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
@@ -106,7 +106,7 @@ class CitizensDropInTest {
             assertTrue(applied.contains("Shops installed"), applied);
             assertEquals(3, npcs.all().size());
             NpcDefinition guard = npcs.find("citizens-1").orElseThrow();
-            assertEquals("npcs/world/citizens-1.json", guard.path());
+            assertEquals("npcs/world-r0_-1/citizens-1.json", guard.path());
             assertFalse(guard.spawned());
             assertEquals(10.5, guard.json().getAsJsonObject("position").get("x").getAsDouble());
             assertNotNull(store.read("shops/dtltraders/bakery.json"));
@@ -142,7 +142,7 @@ class CitizensDropInTest {
             String rolledBack = joined(flow.execute(new String[]{"rollback"}));
             assertTrue(rolledBack.contains("undone"), rolledBack);
             assertTrue(npcs.all().isEmpty());
-            assertNull(store.read("npcs/world/citizens-1.json"));
+            assertNull(store.read("npcs/world-r0_-1/citizens-1.json"));
             assertNull(store.read("shops/dtltraders/bakery.json"));
             assertFalse(Files.exists(store.resolve("schematics/hut.schem")));
 
@@ -158,7 +158,7 @@ class CitizensDropInTest {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
             String staged = joined(flow.execute(new String[]{"duplicate", "copy", "world=survival"}));
-            assertTrue(staged.contains("npcs/survival/ 2") && staged.contains("Application duplicate"), staged);
+            assertTrue(staged.contains("npcs/survival-r0_-1/ 1") && staged.contains("npcs/survival-r0_0/ 1") && staged.contains("Application duplicate"), staged);
             flow.execute(new String[]{"apply"});
             assertEquals("copy-copy", npcs.find("citizens-1-copy").orElseThrow().group());
             assertEquals("survival", npcs.find("citizens-1-copy").orElseThrow().json().getAsJsonObject("position").get("world").getAsString());

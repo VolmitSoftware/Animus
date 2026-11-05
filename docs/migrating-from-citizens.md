@@ -46,7 +46,7 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
 
 ## Where the files go
 
-Each NPC becomes `npcs/<world>/citizens-<id>.json`. The folder is the NPC's world after world mapping, in lowercase with other characters changed to `-` (`World Nether` becomes `world-nether`). An NPC with no world goes in `npcs/citizens/`. The ID is always `citizens-<Citizens id>` and the UUID is the Citizens UUID, so the same save always gives the same files. Skins go in `skins/<sha256>.json`, one file for each different skin.
+Each NPC becomes `npcs/<world>-r<x>_<z>/citizens-<id>.json`. The folder is the NPC's world after world mapping and the 512-block region file it stands in, so NPCs of one town share a folder: an NPC at x 100, z -40 in `world` goes in `npcs/world-r0_-1/`, the area of `region/r.0.-1.mca`. The world name is lowercased with other characters changed to `-` (`World Nether` becomes `world-nether`) and cut to 48 characters. An NPC without coordinates goes in `npcs/<world>/`, and one with no world in `npcs/citizens/`. Citizens has no NPC groups of its own, so the location is the grouping. The ID is always `citizens-<Citizens id>` and the UUID is the Citizens UUID, so the same save always gives the same files. Skins go in `skins/<sha256>.json`, one file for each different skin.
 
 ## What converts
 

@@ -26,8 +26,8 @@ class ImportTreeBoundaryTest {
 
     private void assertUnapplied(DocumentStore store, CitizensImporter.Preview preview) throws Exception {
         assertNull(store.read("imports/" + preview.id() + "/receipt.json"));
-        assertNull(store.read("npcs/world/citizens-1.json"));
-        assertFalse(Files.exists(store.resolve("state/npc-definitions/last-valid/npcs/world/citizens-1.json")));
+        assertNull(store.read("npcs/world-r0_0/citizens-1.json"));
+        assertFalse(Files.exists(store.resolve("state/npc-definitions/last-valid/npcs/world-r0_0/citizens-1.json")));
     }
 
     @Test void rejectsExcessiveDepthEvenWhenItContainsNoNpcFiles() throws Exception {
@@ -66,7 +66,7 @@ class ImportTreeBoundaryTest {
             var preview = preview(store);
             Files.createDirectories(store.resolve("npcs/notes.json"));
             new CitizensImporter().apply(store, preview.id());
-            assertNotNull(store.read("npcs/world/citizens-1.json"));
+            assertNotNull(store.read("npcs/world-r0_0/citizens-1.json"));
             assertTrue(Files.isDirectory(store.resolve("npcs/notes.json")));
         }
     }
