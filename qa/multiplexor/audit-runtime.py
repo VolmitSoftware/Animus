@@ -21,6 +21,7 @@ import shutil
 import socket
 import sys
 import zipfile
+import multiplexor_workspace as mw
 
 VERSIONS = ('26.1.2', '26.2', '26.3')
 PHASES = ('prepare', 'recover-position', 'verify', 'combat', 'control', 'movement')
@@ -172,6 +173,8 @@ def target_name(project, version, round_number=None, kind=None):
     require(project in ('paper', 'spigot', 'folia') and version in VERSIONS, 'Unsupported exact target')
     require(round_number is None or type(round_number) is int and 1 <= round_number <= 1000000, 'Invalid evidence round')
     require(kind in (None, 'import', 'modules'), 'Invalid evidence category')
+    if round_number is None and kind is None:
+        return mw.baseline_name(project, version)
     prefix = 'animus' + (f'-r{round_number}' if round_number is not None else '')
     return prefix + (f'-{kind}' if kind else '') + f'-{project}-{version.replace(".", "-")}'
 
@@ -472,7 +475,7 @@ class Auditor:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--workspace', type=Path, default=Path('.qa/multiplexor-workspace'))
+    parser.add_argument('--workspace', type=Path, default=mw.default_workspace())
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--native-root', type=Path, default=Path.home() / '.gradle/caches/fabric-loom')
     parser.add_argument('--build-status', type=Path, required=True)
@@ -502,7 +505,7 @@ def main(argv=None):
             result['reviewedHarness'] = audit.configure_reviewed_harness(args.reviewed_harness.resolve())
         for project in (('paper', 'spigot') if args.production_only else ('paper', 'spigot', 'folia')):
             for version in VERSIONS:
-                target = audit.workspace / 'animus-evidence' / target_name(project, version, args.round)
+                target = mw.evidence_root(audit.workspace) / target_name(project, version, args.round)
                 attempts = audit.inventory(target)
                 result['attempts'].extend(attempts)
                 try:

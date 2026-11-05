@@ -17,6 +17,7 @@ import re
 import sys
 import uuid
 import zipfile
+import multiplexor_workspace as mw
 
 spec = importlib.util.spec_from_file_location('import_runtime_audit', Path(__file__).with_name('audit-runtime.py'))
 base = importlib.util.module_from_spec(spec)
@@ -277,7 +278,7 @@ class ImportAuditor(base.Auditor):
                 and report['pluginSha256'] == self.artifact_hash, 'Wrong target/build/artifact')
         self.sources(folder, report)
         name = base.target_name(project, version, self.round_number, "import"); instance = self.workspace / 'consumers/plugin-consumers/instances' / name; data = instance / 'plugins/Animus'
-        reference = self.workspace / 'animus-evidence' / f'animus-{project}-{version.replace(".", "-")}' / 'runtime.json'
+        reference = mw.evidence_root(self.workspace) / mw.baseline_name(project, version) / 'runtime.json'
         self.file(reference, kind='pinned-server-reference'); pinned = read(reference)
         require((report['serverBuild'], report['serverChannel'], report['serverSha256']) == (pinned['build'], pinned['channel'], pinned['serverSha256']), 'Pinned exact server build/channel/hash differs')
         require(report['finalServerSha256'] == report['serverSha256'], 'Server changed during run')
@@ -319,7 +320,7 @@ class ImportAuditor(base.Auditor):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--workspace', type=Path, default=Path('.qa/multiplexor-workspace'))
+    parser.add_argument('--workspace', type=Path, default=mw.default_workspace())
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--build-status', type=Path, required=True)
     parser.add_argument('--source-snapshot', type=Path, required=True)
@@ -344,7 +345,7 @@ def main(argv=None):
         result['sourceSnapshot'] = audit.bind_sources(args.source_snapshot.resolve(), args.build_status.resolve())
         for project in ['paper', 'spigot', 'folia']:
             for version in base.VERSIONS:
-                directory = audit.workspace / 'animus-evidence' / base.target_name(project, version, args.round, "import")
+                directory = mw.evidence_root(audit.workspace) / base.target_name(project, version, args.round, "import")
                 attempts, selected = latest_attempt(directory)
                 for folder in attempts:
                     path = folder / 'result.json'; entry = {'report': str(path), 'status': 'pending'}

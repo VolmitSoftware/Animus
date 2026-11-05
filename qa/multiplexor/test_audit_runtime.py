@@ -52,9 +52,9 @@ class RuntimeAuditTest(unittest.TestCase):
         self.output_count = 0
 
     def target(self, project, version):
-        name = f'animus-{project}-{version.replace(".", "-")}'
+        name = f'animus-baseline-{project}-{version.replace(".", "-")}'
         instance = self.workspace / 'consumers/plugin-consumers/instances' / name
-        evidence = self.workspace / 'animus-evidence' / name
+        evidence = self.workspace / 'consumers/plugin-consumers/state/animus-evidence' / name
         write(instance / 'server.jar', name)
         write(instance / 'server.properties', f'server-ip=127.0.0.1\nserver-port={self.port}\n')
         plugin = instance / 'plugins' / self.binary.name
@@ -186,14 +186,14 @@ class RuntimeAuditTest(unittest.TestCase):
         self.invoke(1, 'Exactly two recoveryWarnings')
 
     def test_current_deployed_bytes_and_description_are_verified(self):
-        instance = self.workspace / 'consumers/plugin-consumers/instances/animus-paper-26-3'
+        instance = self.workspace / 'consumers/plugin-consumers/instances/animus-baseline-paper-26-3'
         write(instance / 'server.jar', 'changed server')
         self.invoke(1, 'Hash mismatch')
         with zipfile.ZipFile(self.binary, 'w') as jar: jar.writestr('plugin.yml', 'description: Wrong\n')
         with self.assertRaisesRegex(audit.AuditError, 'Packaged description differs'): audit.packaged_description(self.binary)
 
     def test_managed_server_symlink_records_and_verifies_resolved_bytes(self):
-        instance = self.workspace / 'consumers/plugin-consumers/instances/animus-paper-26-3'
+        instance = self.workspace / 'consumers/plugin-consumers/instances/animus-baseline-paper-26-3'
         deployed = instance / 'server.jar'; target = instance / 'pinned-server.jar'
         deployed.rename(target); deployed.symlink_to(target.name)
         report, _ = self.invoke()
@@ -215,7 +215,7 @@ class RuntimeAuditTest(unittest.TestCase):
             self.invoke(1, 'open or cannot be verified closed')
 
     def test_actual_source_and_broken_pointer_symlink_cannot_hide_behind_receipt(self):
-        root = self.workspace / 'consumers/plugin-consumers/instances/animus-paper-26-3/plugins/Animus'
+        root = self.workspace / 'consumers/plugin-consumers/instances/animus-baseline-paper-26-3/plugins/Animus'
         source = write(root / 'npcs/runtimeqa/runtime-test.json', '{}')
         self.invoke(1, 'Owned source or checkpoint still exists')
         source.unlink()

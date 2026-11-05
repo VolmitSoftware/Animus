@@ -5,18 +5,20 @@ Fixture setup explicitly teleports synthetic viewers; no-load claims exclude set
 """
 import argparse, hashlib, json, os, re, runpy, shutil, signal, socket, subprocess, time, uuid
 from pathlib import Path
+import multiplexor_workspace as mw
 
 helpers=runpy.run_path(str(Path(__file__).with_name('managed-runtime.py')))
 run,wait_log,console=helpers['run'],helpers['wait_log'],helpers['console']
 p=argparse.ArgumentParser(description=__doc__)
-for name in ['binary','workspace','build-home','fixture','skin-file']:p.add_argument('--'+name,type=Path,required=True)
+p.add_argument('--binary',type=Path,default=mw.default_binary());p.add_argument('--workspace',type=Path,default=mw.default_workspace())
+p.add_argument('--build-home',type=Path,help='Only when the build used a MULTIPLEXOR_BUILD_HOME override')
+for name in ['fixture','skin-file']:p.add_argument('--'+name,type=Path,required=True)
 p.add_argument('--build-run',required=True)
 p.add_argument('--version',choices=['26.1.2','26.2','26.3'],required=True)
 p.add_argument('--instance-name',help='Explicit fresh animus-r<N>-folia-<version> isolated QA instance')
 p.add_argument('--phase',choices=['main','bounds','shutdown','all'],default='all')
 a=p.parse_args();a.binary=a.binary.resolve();a.workspace=a.workspace.resolve();a.transcript=[]
-assert '.qa' in a.workspace.parts
-root=Path(__file__).resolve().parents[2];name='animus-folia-'+a.version.replace('.','-')
+root=Path(__file__).resolve().parents[2];name=mw.baseline_name('folia',a.version)
 if a.instance_name:
     assert re.fullmatch(r'animus-(?:r[1-9][0-9]*|gate)-folia-'+re.escape(a.version.replace('.','-')),a.instance_name),'Instance name must bind the requested Folia version'
     name=a.instance_name
@@ -50,9 +52,9 @@ lines=properties.read_text().splitlines()
 overrides={'max-players':'12','difficulty':'peaceful','gamemode':'creative','white-list':'true','server-ip':'127.0.0.1','online-mode':'false'}
 properties.write_text('\n'.join(line for line in lines if line.partition('=')[0] not in overrides)+'\n'+'\n'.join(k+'='+v for k,v in overrides.items())+'\n')
 props=dict(line.split('=',1) for line in properties.read_text().splitlines() if '=' in line and not line.startswith('#'))
-port=int(props['server-port']);source=json.loads((a.workspace/'animus-evidence'/name/'runtime.json').read_text())
+port=int(props['server-port']);source=json.loads((mw.evidence_root(a.workspace)/name/'runtime.json').read_text())
 assert sha(instance/'server.jar')==source['serverSha256']
-evidence=a.workspace/'animus-evidence'/name/f'folia-proof-{time.time_ns()}';evidence.mkdir(parents=True)
+evidence=mw.evidence_root(a.workspace)/name/f'folia-proof-{time.time_ns()}';evidence.mkdir(parents=True)
 shutil.copy2(a.fixture.parent/'build.json',evidence/'fixture-build.json')
 shutil.copy2(Path(__file__),evidence/'wrapper-source.py')
 owned_sources=[root/'qa/folia-proof/client.mjs',root/'qa/protocol-client/client.mjs',root/'qa/protocol-client/NativeProtocolClient.java',root/'qa/protocol-client'/('v26_3' if a.version=='26.3' else 'v26_1_26_2')/'ProtocolRevision.java']

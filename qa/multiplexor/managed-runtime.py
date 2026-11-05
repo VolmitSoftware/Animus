@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Exercise real Multiplexor creation, artifact deployment, runtime and console transport.
-Uses only isolated instances in a dedicated QA workspace. Does not launch Java itself.
+Uses only isolated animus-baseline-* instances in the shared Multiplexor workspace. Does not launch Java itself.
 """
 import argparse, hashlib, json, os, re, shutil, socket, subprocess, time
 from pathlib import Path
+import multiplexor_workspace as mw
 
 
 def run(args, *command, allow_failure=False):
@@ -55,8 +56,8 @@ def console(session, log, command, pattern):
 
 def target(args, source):
     project, version, build = source['project'], source['minecraftVersion'], source['build']
-    name = f'animus-{project}-{version.replace(".", "-")}'
-    evidence_dir = args.workspace / 'animus-evidence' / name
+    name = mw.baseline_name(project, version)
+    evidence_dir = mw.evidence_root(args.workspace) / name
     evidence_dir.mkdir(parents=True, exist_ok=True)
     if (evidence_dir / 'runtime.json').exists():
         previous = evidence_dir / 'lifecycle-history' / str(time.time_ns())
@@ -212,15 +213,15 @@ def target(args, source):
                         report['status'] = 'failed'; report.setdefault('emergencyCleanup', []).append(kind)
         (evidence_dir/'runtime.json').write_text(json.dumps(report,indent=2)+'\n')
         (evidence_dir/'commands.json').write_text(json.dumps(args.transcript,indent=2)+'\n')
-        (args.workspace/'animus-evidence/commands.json').write_text(json.dumps(args.transcript,indent=2)+'\n')
+        (mw.evidence_root(args.workspace)/'commands.json').write_text(json.dumps(args.transcript,indent=2)+'\n')
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--binary',type=Path,required=True)
-    parser.add_argument('--workspace',type=Path,required=True)
+    parser.add_argument('--binary',type=Path,default=mw.default_binary())
+    parser.add_argument('--workspace',type=Path,default=mw.default_workspace())
     parser.add_argument('--build-run',required=True)
-    parser.add_argument('--build-home',type=Path,help='Same MULTIPLEXOR_BUILD_HOME used for the recorded build')
+    parser.add_argument('--build-home',type=Path,help='Only when the recorded build used a MULTIPLEXOR_BUILD_HOME override')
     parser.add_argument('--java-home',type=Path,required=True)
     parser.add_argument('--accepted-eula',type=Path,required=True)
     parser.add_argument('--source-evidence',type=Path,help='Optional index of official server download evidence')
@@ -232,7 +233,6 @@ def main():
     args=parser.parse_args()
     if args.inline_recovery: args.recovery = True
     args.binary=args.binary.resolve();args.workspace=args.workspace.resolve()
-    if '.qa' not in args.workspace.parts: parser.error('Use a dedicated .qa workspace')
     if not re.search(r'(?m)^eula=true$',args.accepted_eula.read_text()):parser.error('Existing accepted EULA required')
     args.transcript=[]
     if args.source_evidence:

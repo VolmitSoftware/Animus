@@ -5,13 +5,14 @@ instance, and retains stage logs, native-client receipts, definitions and hashes
 """
 import argparse, hashlib, json, os, re, runpy, shutil, signal, socket, subprocess, time
 from pathlib import Path
+import multiplexor_workspace as mw
 
 helpers = runpy.run_path(str(Path(__file__).with_name('managed-runtime.py')))
 run, wait_log, console = helpers['run'], helpers['wait_log'], helpers['console']
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--binary', type=Path, required=True)
-parser.add_argument('--workspace', type=Path, required=True)
-parser.add_argument('--build-home', type=Path)
+parser.add_argument('--binary', type=Path, default=mw.default_binary())
+parser.add_argument('--workspace', type=Path, default=mw.default_workspace())
+parser.add_argument('--build-home', type=Path, help='Only when the build used a MULTIPLEXOR_BUILD_HOME override')
 parser.add_argument('--build-run', required=True)
 parser.add_argument('--project', choices=['paper', 'spigot'], required=True)
 parser.add_argument('--version', choices=['26.1.2', '26.2', '26.3'], required=True)
@@ -33,9 +34,8 @@ if sum([args.motion_only, args.combat_only, args.readiness_only]) > 1: parser.er
 if args.recovery and (args.motion_only or args.combat_only or args.readiness_only): parser.error('Recovery requires the prepare/restart/verify lifecycle')
 if args.motion_only and not (args.control or args.movement): args.control = args.movement = True
 args.binary = args.binary.resolve(); args.workspace = args.workspace.resolve(); args.transcript = []
-assert '.qa' in args.workspace.parts, 'Dedicated QA workspace required'
 repo = Path(__file__).resolve().parents[2]
-name = f'animus-{args.project}-{args.version.replace(".", "-")}'
+name = mw.baseline_name(args.project, args.version)
 if args.instance_name:
     assert re.fullmatch(r'animus-(?:r[1-9][0-9]*|gate)-'+args.project+'-'+re.escape(args.version.replace('.','-')),args.instance_name), 'Instance name must bind the requested platform/version'
     name = args.instance_name
@@ -53,7 +53,7 @@ data = instance/'plugins/Animus'
 if args.skin_file:
     (data/'skins').mkdir(parents=True, exist_ok=True)
     shutil.copy2(args.skin_file, data/'skins'/args.skin_file.name)
-evidence = args.workspace/'animus-evidence'/name/f'production-{time.time_ns()}'
+evidence = mw.evidence_root(args.workspace)/name/f'production-{time.time_ns()}'
 evidence.mkdir(parents=True)
 state_file = evidence/'npc-state.json'
 log = instance/'logs/latest.log'
@@ -70,7 +70,7 @@ report['wrapperSha256'] = sha(evidence/'wrapper-source.py')
 if args.combat: report['combatNpcId'] = f'combat-{time.time_ns()}'
 if args.movement: report['movementNpcId'] = f'movement-{time.time_ns()}'
 if not (args.combat_only or args.motion_only or args.readiness_only): report['runtimeNpcId'] = f'runtime-{time.time_ns()}'
-source = json.loads((args.workspace/'animus-evidence'/name/'runtime.json').read_text())
+source = json.loads((mw.evidence_root(args.workspace)/name/'runtime.json').read_text())
 assert report['serverSha256'] == source['serverSha256'], 'Server artifact changed after exact-version verification'
 report['serverBuild'] = source['build']; report['serverChannel'] = source['channel']
 libraries = instance/('bundler/libraries' if args.project == 'spigot' else 'libraries')

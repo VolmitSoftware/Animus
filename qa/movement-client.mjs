@@ -4,13 +4,13 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
-import { NativeClient, prepareNative, parseArgs, delay } from './protocol-client/client.mjs';
+import { NativeClient, ownedQaPath, prepareNative, parseArgs, delay } from './protocol-client/client.mjs';
 const args = parseArgs(), harness = prepareNative(args, import.meta.url, 'movement');
 const { version, port, resultDir, nativeCodec, clients, wire } = harness;
 const id = args.get('id') ?? `movement-${Date.now().toString(36)}`;
 assert(/^movement-[a-z0-9]+$/.test(id));
 const dataDir = path.resolve(args.get('data-dir') ?? '');
-assert(dataDir.split(path.sep).includes('.qa'), 'Only isolated QA data may be edited');
+assert(ownedQaPath(dataDir), 'Only isolated QA data may be edited');
 const routeFile = path.join(dataDir, 'behaviors', 'routes', `${id}.json`);
 const checks = [];
 const passed = (name, detail = {}) => { checks.push({ name, ...detail }); console.log(JSON.stringify({ event: 'check', status: 'passed', name, ...detail })); };
