@@ -20,7 +20,8 @@ import art.arcane.animus.core.AnimusSplash;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.bukkit.building.BukkitBuildPlatform;
-import art.arcane.animus.bukkit.building.WorldGuardBuildProtection;
+import art.arcane.animus.bukkit.protection.RegionBuildProtection;
+import art.arcane.animus.bukkit.protection.RegionFlags;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.building.BuildProtection;
@@ -292,18 +293,9 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info("Builds " + buildsUnavailable);
             return;
         }
-        BuildProtection protection = BuildProtection.NONE;
-        String name = "none installed";
-        if (getServer().getPluginManager().isPluginEnabled("WorldGuard")) {
-            try {
-                protection = WorldGuardBuildProtection.create(getServer());
-                name = "WorldGuard region flags";
-            } catch (RuntimeException | LinkageError failure) {
-                String reason = "WorldGuard is installed but its API could not be used (" + failure.getClass().getSimpleName() + "); every block change is denied";
-                protection = request -> { throw new IllegalStateException(reason); };
-                name = reason;
-            }
-        }
+        RegionFlags.Binding regions = RegionFlags.bind(getServer());
+        BuildProtection protection = regions == null ? BuildProtection.NONE : new RegionBuildProtection(regions.flags());
+        String name = regions == null ? "none installed" : regions.describe("every block change is denied");
         builds = new BuildService<>(runtime, mainThread, commands, new BukkitBuildPlatform(getServer()), runtime.moduleHooks().buildProtection(protection), name,
                 tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel,
                 () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); },
