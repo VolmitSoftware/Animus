@@ -32,6 +32,9 @@ PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/home_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/npc_preview_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/rig_editor_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/gui_editors_browser.cjs
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/inspectors_browser.cjs
+dart run tool/fake_server.dart &     # for the live editing check
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/live_editing_browser.cjs
 ```
 
 `rig_editor_browser.cjs` opens `test/fixtures/rig_editor` (the shared golem rig and two clips), moves a bone with the gizmo, undoes it, renames a bone, keys and scrubs an animation, plays it, downloads the server files and the workspace zip, and imports `test/fixtures/bbmodel/robot.bbmodel`, at both widths with no console errors.
@@ -39,6 +42,35 @@ PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animu
 `gui_editors_browser.cjs` opens `test/fixtures/gui_editors` (a chest GUI with a list, toggle and variant, one with a Gloss-only action, a shop, a hologram and a menu) and checks that each editor opens its fixture, that an edit round-trips to the document JSON, that a refused action is flagged at its field, that expression completion works, that undo works, that the data folder zip and the Gloss bundle export valid files and that `test/fixtures/gloss_bundle/gloss-workspace.json` imports, at both widths with no console errors.
 
 `npc_preview_browser.cjs` opens `test/fixtures/npc_preview` (every body type, pose and equipment slot, a skin document) and checks that each NPC's Preview draws a non-blank canvas at both widths, that text and orbiting work, and that a loaded skin PNG is drawn, with no console errors. `ANIMUS_SCREENSHOTS` is optional and should point outside the repository.
+
+`inspectors_browser.cjs` opens `../schema/fixtures/export`, edits an NPC field, a trigger and a behavior node, and checks code completion and the diagnostics line jump at both widths.
+
+`live_editing_browser.cjs` runs against the fake server: it pairs from a link, opens an NPC from the server catalog, edits it, validates on the server, starts a preview, applies, forces a conflict and merges it, cuts the direct path (the editor fails over to the relay) and then every path (it reconnects), applies again and undoes through the server, at both widths with no console errors and no sideways scrolling. `ANIMUS_WEB_URL` and `ANIMUS_FAKE_URL` move it off ports 8098 and 9797.
+
+## Connecting to a server
+
+`/animus editor pair` on a server prints a link to `#/pair/ANM1....`. Opening it (or pasting the link or code under Servers on the home page) shows the server's fingerprint and paths. Pair exchanges the one-time secret for a token over the first path that answers with that fingerprint, then replaces the address so the secret does not stay in history. The token is kept in sessionStorage, or in localStorage too when "Remember this browser" is ticked; saved servers are listed on the home page.
+
+Each paired server has one connection (`lib/services/server/server_connection.dart`). It tries the direct path (`<directUrl>/animus/v1`, fetch and a WebSocket whose first frame is `event-auth`) and the relay (`<relayUrl>/app`, subscribed by fingerprint) in turn, the last good one first. Every `hello` must carry the pinned fingerprint, or the path is refused and nothing more is sent. When a path drops, the other is tried at once; after that it retries every 1, 2, 4 up to 30 seconds, and "Retry now" skips the wait. A refused, expired or revoked token asks for a new pairing. Mutating requests carry `X-Animus-Counter`.
+
+## Live editing
+
+A paired server opens as a server workspace (`#/server/<id>`), next to the local ones. Its overview lists the server's catalog; opened documents join the workspace with the revision and hash they came from. The live bar above each document shows the connection and the changed drafts and offers:
+
+- Validate: the server's validators on the changed drafts (or the open document), with their diagnostics shown in the document and the code view, marked as from the server.
+- Preview: the changed drafts and the open NPC shown to the token's player only; End preview stops it. The server refuses commands, combat, economy and trades in previews.
+- Apply: every changed draft (edited, new or deleted) as one change set with its base revision and hash. When the server's version moved, nothing is written and each document opens in a three-way merge (base, mine, server): fields only one side changed merge by themselves, and each field both changed keeps the side picked. Use merge moves the draft onto the server's revision for the next apply.
+- Undo last apply: the server's rollback receipt for the last applied change set.
+
+Unanswered change sets are kept with the workspace. After a reconnect (or a reload) the editor asks the server what became of each by its idempotency key, and reports one that never arrived. Catalog events refresh documents that were not edited here; edited ones are marked changed on server, with a Merge button. The server's own schemas (with its modules) drive the inspectors while connected.
+
+## Fake server
+
+`dart run tool/fake_server.dart` starts an in-memory editor-v1 server for local development and tests. It loads `../schema/fixtures/export` (`--data=`) once and never writes to disk. One loopback port (`--port=`, default 9797) serves the direct API at `http://127.0.0.1:9797/animus/v1/`, the browser side of the relay at `ws://127.0.0.1:9797/app`, and test controls at `http://127.0.0.1:9797/__fake/`. Allowed origins come from `--origin=` (repeatable, default `http://127.0.0.1:8098`), and previews show to the `--viewer=` UUID. At start it prints a `Pair:` link with both paths in it. The controls have no auth and answer only loopback callers: `POST /__fake/pair?paths=both|direct|relay` mints a fresh code, `POST /__fake/edit` changes a document on the server side, `POST /__fake/drop {"path":"direct|relay|all","seconds":N}` and `POST /__fake/offline {"seconds":N}` cut a connection or take the server off the relay, `POST /__fake/revoke`, `/restore` and `/reset` do what their names say, and `GET /__fake/state` and `GET /__fake/document?kind=&id=` show tokens, previews, changes and documents.
+
+## Inspectors and code view
+
+NPC definitions and behaviors have structured Visual views built from the generated schemas and `completions.json`, or from the connected server's schemas, which include loaded modules. The NPC inspector edits identity, body type, presence, position, skin and behaviors (completed from the workspace). Modules are edited as JSON and kept, and other schema fields render generically, with help from the schema descriptions. The behavior editor shows the document, typed variables, routines as a tree of nodes (sequence, action, condition, wait, repeat, parallel, call, set) and triggers. You can add, remove, reorder and change the type of nodes. Actions and conditions pick a capability with its description and availability, and their arguments are typed from the capability's spec (choices, bounds, required markers). Triggers pick their event and get that event's fields. Keys the editors do not know are kept. In the Code view, Ctrl+Space (or typing in a string) completes keys and values from the same schemas. The gutter marks lines with diagnostics, and a list under the text jumps to each one; server diagnostics are tagged.
 
 ## NPC preview
 
@@ -78,14 +110,14 @@ Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. Th
 | Path | Contents |
 | --- | --- |
 | `lib/model/` | Document kinds and documents; documents keep their exact source so unknown keys survive |
-| `lib/logic/` | JSON Schema validator, shared schema catalog, data folder import and export, rig sampler, rig rules and edits, Blockbench import; `gui/` the GUI catalog, expressions, checks, layout and Gloss bundles |
-| `lib/state/` | Hash routes, editor store with undo, workspace repositories (IndexedDB, memory) |
+| `lib/logic/` | JSON Schema validator, shared schema catalog, data folder import and export, rig sampler, rig rules and edits, Blockbench import, change sets and the three-way merge; `inspect/` schema fields, completion and JSON outlines; `gui/` the GUI catalog, expressions, checks, layout and Gloss bundles |
+| `lib/state/` | Hash routes, editor store with undo, workspace repositories (IndexedDB, memory), the server hub and live sessions |
 | `lib/mc/` | Renderer core adapted from Gloss Web: assets and model resolver, meshers, rigs, scene, camera, `npc/` (definition to scene), `rig/` (sampled rig to scene) and `gui/` (holograms and menus to scene) |
-| `lib/components/` | Shell and document views; `mc/` holds the WebGL2 stage, renderer and asset loader; `rig/` the rig editor, gizmo and timeline; `gui/` the GUI editors |
-| `lib/services/` | Theme preference, hash changes and file picking |
+| `lib/components/` | Shell and document views; `mc/` holds the WebGL2 stage, renderer and asset loader; `rig/` the rig editor, gizmo and timeline; `gui/` the GUI editors; `inspect/` the NPC inspector, behavior editor and code view; `server/` pairing, connection status, the live bar, merges and the server overview |
+| `lib/services/` | Theme preference, hash changes and file picking; `server/` pairing codes, saved servers and tokens, the direct and relay transports and the connection |
 | `lib/config/shared_schemas.g.dart` | `../schema` embedded by `tool/embed_schemas.dart` |
 | `web/` | `index.html`, `bootstrap.js` (pre-paint theme), numbered CSS, fonts; `assets/mc/` is generated |
-| `tool/` | Schema embedding, Minecraft asset extraction (`mc_extract/`) |
+| `tool/` | Schema embedding, Minecraft asset extraction (`mc_extract/`), the fake server (`fake_server/`) |
 
 ## Deploying
 

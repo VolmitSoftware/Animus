@@ -3,14 +3,20 @@ import 'package:arcane_jaspr_ascii/arcane_jaspr_ascii.dart';
 import 'package:jaspr/jaspr.dart' show Component;
 
 import 'components/shell.dart';
+import 'model/server_binding.dart';
 import 'services/browser.dart';
+import 'services/server/server_connection.dart';
+import 'services/server/server_profiles.dart';
 import 'state/editor_store.dart';
+import 'state/live_session.dart';
+import 'state/server_hub.dart';
 import 'state/workspace_route.dart';
 
 class AnimusApp extends StatefulWidget {
-  const AnimusApp({required this.store, super.key});
+  const AnimusApp({required this.store, required this.hub, super.key});
 
   final EditorStore store;
+  final ServerHub hub;
 
   @override
   State<AnimusApp> createState() => _AnimusAppState();
@@ -20,11 +26,13 @@ class _AnimusAppState extends State<AnimusApp> {
   Brightness _brightness = loadBrightness();
   EditorRoute _route = EditorRoute.parse(currentHash());
   void Function()? _stopHash;
+  LiveSession? _session;
 
   @override
   void initState() {
     super.initState();
     component.store.addListener(_storeChanged);
+    component.hub.addListener(_storeChanged);
     _stopHash = onHashChange((String hash) => _routeTo(EditorRoute.parse(hash)));
     _routeTo(_route);
   }
@@ -32,12 +40,51 @@ class _AnimusAppState extends State<AnimusApp> {
   @override
   void dispose() {
     component.store.removeListener(_storeChanged);
+    component.hub.removeListener(_storeChanged);
     _stopHash?.call();
+    _session?.dispose();
     super.dispose();
   }
 
   void _storeChanged() {
+    _syncSession();
     if (mounted) setState(() {});
+  }
+
+  /// Keeps one live session for the open workspace when it belongs to a
+  /// paired server.
+  void _syncSession() {
+    final ServerBinding? binding = component.store.workspace?.server;
+    final String? serverId = binding != null && component.hub.server(binding.serverId) != null ? binding.serverId : null;
+    if (_session?.serverId == serverId) return;
+    final LiveSession? previous = _session;
+    _session = null;
+    previous?.dispose();
+    if (serverId == null) return;
+    final ServerConnection connection = component.hub.connection(serverId);
+    final LiveSession session = LiveSession(store: component.store, connection: connection, serverId: serverId);
+    session.addListener(() {
+      if (mounted) setState(() {});
+    });
+    session.notices.listen(_toast);
+    session.start();
+    _session = session;
+    if (connection.status.phase == ConnectionPhase.offline && component.hub.hasToken(serverId)) {
+      component.hub.connect(serverId);
+    }
+  }
+
+  void _toast(LiveNotice notice) {
+    switch (notice.level) {
+      case NoticeLevel.success:
+        ArcaneSonner.success(notice.message);
+      case NoticeLevel.warning:
+        ArcaneSonner.warning(notice.message);
+      case NoticeLevel.error:
+        ArcaneSonner.error(notice.message);
+      case NoticeLevel.info:
+        ArcaneSonner.info(notice.message);
+    }
   }
 
   Future<void> _routeTo(EditorRoute route) async {
@@ -47,6 +94,16 @@ class _AnimusAppState extends State<AnimusApp> {
       DocumentRoute(:final String workspaceId) => workspaceId,
       _ => null,
     };
+    if (route is ServerRoute) {
+      final ServerProfile? profile = component.hub.server(route.serverId);
+      if (profile == null) {
+        component.store.closeWorkspace();
+        await component.store.refreshWorkspaces();
+        return;
+      }
+      await component.store.openServerWorkspace(ServerHub.workspaceIdOf(profile.id), profile.name, component.hub.bindingFor(profile));
+      return;
+    }
     if (workspaceId == null) {
       component.store.closeWorkspace();
       await component.store.refreshWorkspaces();
@@ -71,6 +128,8 @@ class _AnimusAppState extends State<AnimusApp> {
       home: Component.fragment(<Widget>[
         EditorShell(
           store: component.store,
+          hub: component.hub,
+          session: _session,
           route: _route,
           brightness: _brightness,
           onToggleTheme: _toggleTheme,

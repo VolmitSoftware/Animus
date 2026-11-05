@@ -1,0 +1,707 @@
+import 'dart:async';
+
+import '../logic/change_sets.dart';
+import '../logic/gui/gui_json.dart';
+import '../logic/json_merge.dart';
+import '../model/animus_document.dart';
+import '../model/document_kind.dart';
+import '../model/server_binding.dart';
+import '../services/server/server_connection.dart';
+import '../services/server/transport.dart';
+import 'editor_store.dart';
+import 'workspace_repository.dart';
+
+/// One `documentVersion` from the catalog.
+class CatalogEntry {
+  const CatalogEntry(this.kind, this.id, this.path, this.revision, this.hash);
+
+  final DocumentKind kind;
+  final String id;
+  final String path;
+  final int revision;
+  final String hash;
+
+  String get key => documentKey(kind, id);
+
+  static CatalogEntry? fromJson(Object? json) {
+    if (json is! Map<String, Object?>) return null;
+    final DocumentKind? kind = DocumentKind.parse('${json['kind']}');
+    if (kind == null || json['id'] is! String || json['revision'] is! num || json['hash'] is! String) return null;
+    return CatalogEntry(kind, json['id']! as String, '${json['path']}', (json['revision']! as num).toInt(), json['hash']! as String);
+  }
+}
+
+/// A document whose draft and the server's version both moved: the
+/// three-way merge and the side chosen for each conflicting field.
+class ConflictView {
+  ConflictView({required this.key, required this.kind, required this.id, required this.base, required this.mine, required this.server, required this.merge});
+
+  final String key;
+  final DocumentKind kind;
+  final String id;
+  final ServerBase? base;
+
+  /// The draft, or [absentValue] when it was deleted here.
+  final Object? mine;
+
+  /// The server's version now; null when the server deleted it.
+  final ServerBase? server;
+  final MergeResult merge;
+  final Map<String, MergeSide> choices = <String, MergeSide>{};
+}
+
+class PreviewState {
+  const PreviewState(this.id, this.state, this.expiresAt, this.npcs);
+
+  final String id;
+
+  /// running, ended, expired or player-left.
+  final String state;
+  final DateTime? expiresAt;
+  final List<String> npcs;
+
+  bool get running => state == 'running';
+}
+
+enum NoticeLevel { info, success, warning, error }
+
+class LiveNotice {
+  const LiveNotice(this.level, this.message, this.at);
+
+  final NoticeLevel level;
+  final String message;
+  final DateTime at;
+}
+
+typedef LiveListener = void Function();
+
+/// Live editing of one server workspace: opening documents from the
+/// catalog, server validation, viewer-private previews, applying change sets
+/// with revisions, conflicts and their merge, change status after a
+/// reconnect, undo through the server, and refreshes from the event stream.
+class LiveSession {
+  LiveSession({required this.store, required this.connection, required this.serverId, String Function()? newKey, DateTime Function()? now})
+      : _newKey = newKey ?? newIdempotencyKey,
+        _now = now ?? DateTime.now;
+
+  final EditorStore store;
+  final ServerConnection connection;
+  final String serverId;
+  final String Function() _newKey;
+  final DateTime Function() _now;
+  final List<LiveListener> _listeners = <LiveListener>[];
+  final List<StreamSubscription<Object?>> _subscriptions = <StreamSubscription<Object?>>[];
+  final StreamController<LiveNotice> _notices = StreamController<LiveNotice>.broadcast(sync: true);
+
+  List<CatalogEntry> catalog = const <CatalogEntry>[];
+  bool catalogLoaded = false;
+  final Map<String, List<Diagnostic>> serverDiagnostics = <String, List<Diagnostic>>{};
+  final Map<String, ConflictView> conflicts = <String, ConflictView>{};
+
+  /// Drafts edited here whose server version changed since they were opened.
+  final Set<String> stale = <String>{};
+  PreviewState? preview;
+
+  /// `GET /v1/schemas` from the server (generated schemas with its loaded
+  /// modules), once connected.
+  Map<String, Object?>? schemas;
+
+  /// What is running now, for the UI to disable buttons and say so.
+  String? busy;
+  final List<LiveNotice> log = <LiveNotice>[];
+  ConnectionPhase _lastPhase = ConnectionPhase.offline;
+
+  Stream<LiveNotice> get notices => _notices.stream;
+
+  void addListener(LiveListener listener) => _listeners.add(listener);
+
+  void removeListener(LiveListener listener) => _listeners.remove(listener);
+
+  void _changed() {
+    for (final LiveListener listener in List<LiveListener>.of(_listeners)) {
+      listener();
+    }
+  }
+
+  void _notice(NoticeLevel level, String message) {
+    final LiveNotice notice = LiveNotice(level, message, _now());
+    log.add(notice);
+    if (log.length > 30) log.removeAt(0);
+    _notices.add(notice);
+    _changed();
+  }
+
+  void start() {
+    _subscriptions.add(connection.statuses.listen(_status));
+    _subscriptions.add(connection.events.listen((Map<String, Object?> event) => unawaited(_event(event))));
+    if (connection.status.online) unawaited(_online());
+  }
+
+  Future<void> dispose() async {
+    for (final StreamSubscription<Object?> subscription in _subscriptions) {
+      await subscription.cancel();
+    }
+    _subscriptions.clear();
+    await _notices.close();
+  }
+
+  ServerBinding? get binding {
+    final ServerBinding? server = store.workspace?.server;
+    return server != null && server.serverId == serverId ? server : null;
+  }
+
+  bool get online => connection.status.online;
+
+  List<DraftChange> get drafts {
+    final WorkspaceSnapshot? workspace = store.workspace;
+    final ServerBinding? server = binding;
+    if (workspace == null || server == null) return const <DraftChange>[];
+    return pendingDrafts(workspace.documents, server);
+  }
+
+  DraftState stateOf(DocumentKind kind, String id) {
+    final String key = documentKey(kind, id);
+    return draftState(store.document(kind, id), binding?.bases[key]);
+  }
+
+  void _status(ConnectionStatus status) {
+    final ConnectionPhase previous = _lastPhase;
+    _lastPhase = status.phase;
+    if (status.online && previous != ConnectionPhase.online) {
+      unawaited(_online());
+    } else if (!status.online && previous == ConnectionPhase.online) {
+      _notice(NoticeLevel.warning, 'Connection lost: ${status.message ?? status.label}. Drafts stay in this browser.');
+    }
+    _changed();
+  }
+
+  /// After every (re)connect: what happened to unanswered change sets, and
+  /// what changed on the server meanwhile.
+  Future<void> _online() async {
+    if (schemas == null) {
+      final ApiResponse? response = await _call(const ApiRequest('GET', '/v1/schemas'), 'load the server schemas');
+      final Object? body = response?.body;
+      if (response != null && response.ok && body is Map<String, Object?> && body['schemas'] is Map<String, Object?>) {
+        schemas = body['schemas']! as Map<String, Object?>;
+      }
+    }
+    await recoverPending();
+    await loadCatalog();
+    final ServerBinding? server = binding;
+    if (server == null) return;
+    final Map<String, CatalogEntry> byKey = <String, CatalogEntry>{for (final CatalogEntry entry in catalog) entry.key: entry};
+    final List<String> moved = <String>[
+      for (final MapEntry<String, ServerBase> base in server.bases.entries)
+        if (byKey[base.key]?.hash != base.value.hash) base.key,
+    ];
+    if (moved.isNotEmpty) await _absorb(moved);
+  }
+
+  Future<ApiResponse?> _call(ApiRequest request, String what) async {
+    try {
+      return await connection.request(request);
+    } on NotConnected catch (offline) {
+      _notice(NoticeLevel.error, 'Could not $what: ${offline.status.message ?? 'not connected'}.');
+    } on TransportFailure catch (failure) {
+      _notice(NoticeLevel.error, 'Could not $what: ${failure.message}. Reconnecting.');
+    }
+    return null;
+  }
+
+  Future<T?> _run<T>(String label, Future<T?> Function() task) async {
+    busy = label;
+    _changed();
+    try {
+      return await task();
+    } finally {
+      busy = null;
+      _changed();
+    }
+  }
+
+  static String documentPathOf(DocumentKind kind, String id) =>
+      '/v1/documents/${kind.wireName}/${id.split('/').map(Uri.encodeComponent).join('/')}';
+
+  Future<void> loadCatalog() async {
+    final List<CatalogEntry> entries = <CatalogEntry>[];
+    String? after;
+    for (int page = 0; page < 64; page++) {
+      final ApiResponse? response = await _call(
+        ApiRequest('GET', after == null ? '/v1/catalog' : '/v1/catalog?after=${Uri.encodeQueryComponent(after)}'),
+        'load the catalog',
+      );
+      if (response == null) return;
+      final Object? body = response.body;
+      if (!response.ok || body is! Map<String, Object?>) {
+        _notice(NoticeLevel.error, 'The catalog failed: ${response.errorMessage}');
+        return;
+      }
+      for (final Object? raw in (body['documents'] as List<Object?>?) ?? const <Object?>[]) {
+        final CatalogEntry? entry = CatalogEntry.fromJson(raw);
+        if (entry != null) entries.add(entry);
+      }
+      after = body['next'] as String?;
+      if (after == null) break;
+    }
+    catalog = entries;
+    catalogLoaded = true;
+    _changed();
+  }
+
+  /// Fetches one document: its base, or null when the server has none.
+  Future<(ServerBase?, List<Diagnostic>)?> _fetch(DocumentKind kind, String id) async {
+    final ApiResponse? response = await _call(ApiRequest('GET', documentPathOf(kind, id)), 'read $id');
+    if (response == null) return null;
+    if (response.status == 404) return (null, const <Diagnostic>[]);
+    final Object? body = response.body;
+    if (!response.ok || body is! Map<String, Object?>) {
+      _notice(NoticeLevel.error, 'Reading ${kind.wireName} $id failed: ${response.errorMessage}');
+      return null;
+    }
+    return (
+      ServerBase(revision: (body['revision']! as num).toInt(), hash: '${body['hash']}', path: '${body['path']}', source: body['source']),
+      diagnosticsOf(body['diagnostics']),
+    );
+  }
+
+  /// Adds documents from the catalog to the workspace. A document already
+  /// here keeps its draft.
+  Future<void> openDocuments(List<CatalogEntry> entries) => _run<void>('Opening', () async {
+        final List<DocumentChange> changes = <DocumentChange>[];
+        final Map<String, ServerBase> bases = <String, ServerBase>{};
+        for (final CatalogEntry entry in entries) {
+          if (store.document(entry.kind, entry.id) != null) continue;
+          final (ServerBase?, List<Diagnostic>)? fetched = await _fetch(entry.kind, entry.id);
+          final ServerBase? base = fetched?.$1;
+          if (base == null) continue;
+          bases[entry.key] = base;
+          changes.add(DocumentChange(entry.kind, entry.id, prettyJson(base.source), path: base.path));
+          if (fetched!.$2.isNotEmpty) serverDiagnostics[entry.key] = fetched.$2;
+        }
+        if (changes.isEmpty) return;
+        await store.commit(
+          documents: changes,
+          server: (ServerBinding binding) => binding.copyWith(bases: <String, ServerBase>{...binding.bases, ...bases}),
+          undoable: false,
+        );
+        _notice(NoticeLevel.success, 'Opened ${changes.length} document${changes.length == 1 ? '' : 's'} from the server.');
+      });
+
+  List<Map<String, Object?>> _changes(List<DraftChange> drafts) =>
+      <Map<String, Object?>>[for (final DraftChange draft in drafts) if (draft.change != null) draft.change!];
+
+  /// Validates every changed draft (or [only]) on the server.
+  Future<bool> validate({Set<String>? only}) async =>
+      await _run<bool>('Validating', () async {
+        final ServerBinding? server = binding;
+        final WorkspaceSnapshot? workspace = store.workspace;
+        if (server == null || workspace == null) return false;
+        final List<DraftChange> drafts = _withFocus(pendingDrafts(workspace.documents, server, only: only), only);
+        final List<Map<String, Object?>> changes = _changes(drafts);
+        if (changes.isEmpty) {
+          _notice(NoticeLevel.info, 'Nothing to validate.');
+          return true;
+        }
+        final ApiResponse? response = await _call(ApiRequest('POST', '/v1/validate', body: <String, Object?>{'documents': changes}), 'validate');
+        if (response == null) return false;
+        final Object? body = response.body;
+        if (!response.ok || body is! Map<String, Object?>) {
+          _notice(NoticeLevel.error, 'Validation failed: ${response.errorMessage}');
+          return false;
+        }
+        for (final DraftChange draft in drafts) {
+          serverDiagnostics.remove(draft.key);
+        }
+        int errors = 0;
+        for (final Object? raw in (body['documents'] as List<Object?>?) ?? const <Object?>[]) {
+          if (raw is! Map<String, Object?>) continue;
+          final List<Diagnostic> diagnostics = diagnosticsOf(raw['diagnostics']);
+          if (diagnostics.isNotEmpty) serverDiagnostics['${raw['kind']}:${raw['id']}'] = diagnostics;
+          errors += diagnostics.where((Diagnostic diagnostic) => diagnostic.severity == DiagnosticSeverity.error).length;
+        }
+        final bool valid = body['valid'] == true;
+        _notice(valid ? NoticeLevel.success : NoticeLevel.warning,
+            valid ? 'The server accepts ${changes.length} document${changes.length == 1 ? '' : 's'}.' : 'The server found $errors error${errors == 1 ? '' : 's'}.');
+        return valid;
+      }) ??
+      false;
+
+  /// The changed drafts, plus the focused documents even when unchanged (a
+  /// preview of an NPC as stored is still a preview).
+  List<DraftChange> _withFocus(List<DraftChange> drafts, Set<String>? only) {
+    if (only == null) return drafts;
+    final ServerBinding? server = binding;
+    final List<DraftChange> result = List<DraftChange>.of(drafts);
+    for (final String key in only) {
+      if (result.any((DraftChange draft) => draft.key == key)) continue;
+      final (DocumentKind, String)? parsed = parseDocumentKey(key);
+      final ServerBase? base = server?.bases[key];
+      final AnimusDocument? document = parsed == null ? null : store.document(parsed.$1, parsed.$2);
+      if (parsed == null || base == null || document == null || document.json is! Map<String, Object?>) continue;
+      result.add(DraftChange(key, parsed.$1, parsed.$2, DraftState.clean, <String, Object?>{
+        'kind': parsed.$1.wireName,
+        'id': parsed.$2,
+        'baseRevision': base.revision,
+        'baseHash': base.hash,
+        'source': document.json,
+      }));
+    }
+    return result;
+  }
+
+  /// Shows the changed drafts (and [focus]) to the token's player only, or
+  /// replaces the running preview.
+  Future<void> startPreview({Set<String>? focus}) => _run<void>('Previewing', () async {
+        final ServerBinding? server = binding;
+        final WorkspaceSnapshot? workspace = store.workspace;
+        if (server == null || workspace == null) return;
+        final List<DraftChange> drafts = _withFocus(pendingDrafts(workspace.documents, server), focus);
+        final List<Map<String, Object?>> changes = <Map<String, Object?>>[
+          for (final Map<String, Object?> change in _changes(drafts))
+            if (change['delete'] != true) change,
+        ];
+        if (changes.isEmpty) {
+          _notice(NoticeLevel.info, 'Open or change an NPC to preview it.');
+          return;
+        }
+        final PreviewState? running = preview;
+        final ApiResponse? response = await _call(
+          ApiRequest('POST', '/v1/previews', body: <String, Object?>{
+            if (running != null && running.running) 'previewId': running.id,
+            'documents': changes,
+          }),
+          'start the preview',
+        );
+        if (response == null) return;
+        final Object? body = response.body;
+        if (!response.ok || body is! Map<String, Object?>) {
+          final List<Diagnostic> diagnostics = _errorDiagnostics(response);
+          if (diagnostics.isNotEmpty && drafts.length == 1) serverDiagnostics[drafts.first.key] = diagnostics;
+          if (response.errorCode == 'not-found') preview = null;
+          _notice(NoticeLevel.error, 'Preview refused: ${response.errorMessage}');
+          return;
+        }
+        preview = PreviewState(
+          '${body['previewId']}',
+          'running',
+          DateTime.tryParse('${body['expiresAt']}'),
+          <String>[for (final Object? id in (body['npcs'] as List<Object?>?) ?? const <Object?>[]) '$id'],
+        );
+        for (final Object? raw in (body['documents'] as List<Object?>?) ?? const <Object?>[]) {
+          if (raw is Map<String, Object?>) serverDiagnostics['${raw['kind']}:${raw['id']}'] = diagnosticsOf(raw['diagnostics']);
+        }
+        _notice(NoticeLevel.success, 'Previewing ${preview!.npcs.length} NPC${preview!.npcs.length == 1 ? '' : 's'} for your player only.');
+      });
+
+  List<Diagnostic> _errorDiagnostics(ApiResponse response) {
+    final Object? body = response.body;
+    if (body is! Map<String, Object?> || body['error'] is! Map<String, Object?>) return const <Diagnostic>[];
+    return diagnosticsOf((body['error']! as Map<String, Object?>)['diagnostics']);
+  }
+
+  Future<void> endPreview() => _run<void>('Ending preview', () async {
+        final PreviewState? running = preview;
+        if (running == null) return;
+        final ApiResponse? response = await _call(ApiRequest('DELETE', '/v1/previews/${Uri.encodeComponent(running.id)}'), 'end the preview');
+        if (response == null) return;
+        // The preview event may have ended it (and said so) already.
+        final bool announced = !(preview?.running ?? false);
+        preview = PreviewState(running.id, 'ended', running.expiresAt, running.npcs);
+        if (!announced) _notice(NoticeLevel.info, 'Preview ended.');
+      });
+
+  /// Sends every changed draft as one change set. Nothing is written unless
+  /// all of them still match their server base.
+  Future<void> apply({String? message}) => _run<void>('Applying', () async {
+        final ServerBinding? server = binding;
+        final WorkspaceSnapshot? workspace = store.workspace;
+        if (server == null || workspace == null) return;
+        final List<DraftChange> drafts = pendingDrafts(workspace.documents, server);
+        final List<DraftChange> blocked = <DraftChange>[for (final DraftChange draft in drafts) if (draft.problem != null) draft];
+        if (blocked.isNotEmpty) {
+          _notice(NoticeLevel.error, 'Fix ${blocked.map((DraftChange draft) => draft.id).join(', ')} first: ${blocked.first.problem}');
+          return;
+        }
+        if (drafts.isEmpty) {
+          _notice(NoticeLevel.info, 'No changes to apply.');
+          return;
+        }
+        final String key = _newKey();
+        final PendingChange pending = PendingChange(
+          idempotencyKey: key,
+          documents: <String>[for (final DraftChange draft in drafts) draft.key],
+          sentAt: _now().toUtc(),
+          message: message,
+        );
+        await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: <PendingChange>[...binding.pending, pending]), undoable: false);
+        final Map<String, ({String path, Object? source})> sent = <String, ({String path, Object? source})>{
+          for (final DraftChange draft in drafts)
+            if (draft.change?['source'] != null)
+              draft.key: (path: store.document(draft.kind, draft.id)?.path ?? documentPath(draft.kind, draft.id), source: draft.change!['source']),
+        };
+        final ApiResponse? response = await _call(
+          ApiRequest('POST', '/v1/changes', body: <String, Object?>{
+            'idempotencyKey': key,
+            'documents': _changes(drafts),
+            if (message != null && message.isNotEmpty) 'message': message,
+          }),
+          'apply',
+        );
+        if (response == null) return;
+        await _outcome(response, pending, sent);
+      });
+
+  Future<void> _outcome(ApiResponse response, PendingChange pending, Map<String, ({String path, Object? source})>? sent) async {
+    final ChangeOutcome? outcome = ChangeOutcome.parse(response.body);
+    switch (outcome) {
+      case final ChangeApplied applied:
+        await _applied(applied, pending, sent);
+      case final ChangeConflicted conflicted:
+        await _dropPending(pending.idempotencyKey);
+        _conflicts(conflicted.conflicts);
+        _notice(NoticeLevel.warning,
+            '${pending.undoOf == null ? 'Apply' : 'Undo'} stopped: ${conflicted.conflicts.length} document${conflicted.conflicts.length == 1 ? '' : 's'} changed on the server. Nothing was written.');
+      case final ChangeInvalid invalid:
+        await _dropPending(pending.idempotencyKey);
+        serverDiagnostics.addAll(invalid.diagnostics);
+        _notice(NoticeLevel.error, 'The server refused the change set: ${invalid.diagnostics.length} document${invalid.diagnostics.length == 1 ? '' : 's'} have errors. Nothing was written.');
+      case null:
+        if (response.status >= 500 || response.errorCode == 'busy' || response.errorCode == 'rate-limited') {
+          _notice(NoticeLevel.warning, 'The server is busy (${response.errorMessage}). The change set is kept; its status is checked on the next connect.');
+          return;
+        }
+        await _dropPending(pending.idempotencyKey);
+        _notice(NoticeLevel.error, 'The server refused the change set: ${response.errorMessage}');
+    }
+  }
+
+  Future<void> _dropPending(String key) => store.commit(
+        server: (ServerBinding binding) => binding.copyWith(
+          pending: <PendingChange>[for (final PendingChange change in binding.pending) if (change.idempotencyKey != key) change],
+        ),
+        undoable: false,
+      );
+
+  Future<void> _applied(ChangeApplied applied, PendingChange pending, Map<String, ({String path, Object? source})>? sent) async {
+    if (sent == null || pending.undoOf != null) {
+      // No local copy of what was written (a recovered or undone change
+      // set): take the server's versions.
+      await store.commit(server: (ServerBinding binding) => recordApplied(binding, applied, const <String, ({String path, Object? source})>{}, undoOf: pending.undoOf, at: _now().toUtc()), undoable: false);
+      await _absorb(<String>[for (final AppliedDocument document in applied.documents) document.key], replace: true);
+    } else {
+      final Map<String, ({String path, Object? source})> stored = <String, ({String path, Object? source})>{};
+      final List<DocumentChange> documents = <DocumentChange>[];
+      for (final AppliedDocument document in applied.documents) {
+        final ({String path, Object? source})? copy = sent[document.key];
+        if (copy == null || document.hash == null) continue;
+        final Object? source = withServerRevision(document.kind, copy.source, document.revision);
+        stored[document.key] = (path: copy.path, source: source);
+        final AnimusDocument? draft = store.document(document.kind, document.id);
+        if (draft != null && jsonEquals(draft.json, copy.source)) documents.add(DocumentChange(document.kind, document.id, prettyJson(source)));
+      }
+      await store.commit(
+        documents: documents,
+        server: (ServerBinding binding) => recordApplied(binding, applied, stored, at: _now().toUtc()),
+        undoable: false,
+      );
+    }
+    for (final AppliedDocument document in applied.documents) {
+      serverDiagnostics.remove(document.key);
+      stale.remove(document.key);
+      conflicts.remove(document.key);
+    }
+    _notice(NoticeLevel.success,
+        '${pending.undoOf == null ? 'Applied' : 'Undid'} ${applied.documents.length} document${applied.documents.length == 1 ? '' : 's'} (change ${applied.changeId}).');
+  }
+
+  /// Undoes an applied change set through the server's rollback receipt.
+  Future<void> undo(String changeId) => _run<void>('Undoing', () async {
+        final ServerBinding? server = binding;
+        if (server == null) return;
+        final AppliedChange? change = server.history.where((AppliedChange entry) => entry.changeId == changeId).firstOrNull;
+        final String key = _newKey();
+        final PendingChange pending = PendingChange(idempotencyKey: key, documents: change?.documents ?? const <String>[], sentAt: _now().toUtc(), undoOf: changeId);
+        await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: <PendingChange>[...binding.pending, pending]), undoable: false);
+        final ApiResponse? response = await _call(
+          ApiRequest('POST', '/v1/changes/${Uri.encodeComponent(changeId)}/undo', body: <String, Object?>{'idempotencyKey': key}),
+          'undo',
+        );
+        if (response == null) return;
+        await _outcome(response, pending, null);
+      });
+
+  /// Asks the server what became of every unanswered change set.
+  Future<void> recoverPending() async {
+    final ServerBinding? server = binding;
+    if (server == null) return;
+    for (final PendingChange pending in List<PendingChange>.of(server.pending)) {
+      final ApiResponse? response = await _call(ApiRequest('GET', '/v1/changes/${Uri.encodeComponent(pending.idempotencyKey)}'), 'check a change set');
+      if (response == null) return;
+      final Object? body = response.body;
+      if (!response.ok || body is! Map<String, Object?>) continue;
+      switch (body['status']) {
+        case 'applied' || 'conflict' || 'invalid':
+          await _outcome(ApiResponse(200, body['result']), pending, null);
+        case 'unknown':
+          await _dropPending(pending.idempotencyKey);
+          _notice(NoticeLevel.warning, 'A change set sent before the connection dropped never reached the server. Your drafts are unchanged; apply again.');
+        default:
+          _notice(NoticeLevel.info, 'A change set is still being written on the server.');
+      }
+    }
+  }
+
+  void _conflicts(List<ServerConflict> found) {
+    final ServerBinding? server = binding;
+    for (final ServerConflict conflict in found) {
+      final ServerBase? base = server?.bases[conflict.key];
+      final AnimusDocument? draft = store.document(conflict.kind, conflict.id);
+      final Object? mine = draft == null ? absentValue : draft.json;
+      final ServerBase? current = conflict.current == null
+          ? null
+          : ServerBase(revision: conflict.current!.revision, hash: conflict.current!.hash, path: base?.path ?? draft?.path ?? documentPath(conflict.kind, conflict.id), source: conflict.current!.source);
+      conflicts[conflict.key] = ConflictView(
+        key: conflict.key,
+        kind: conflict.kind,
+        id: conflict.id,
+        base: base,
+        mine: mine,
+        server: current,
+        merge: mergeJson(base == null ? absentValue : base.source, mine, current == null ? absentValue : current.source),
+      );
+    }
+    _changed();
+  }
+
+  /// Fetches the server's version of [keys]. A clean draft (or every draft
+  /// when [replace]) takes it; an edited one is marked stale for a merge.
+  Future<void> _absorb(List<String> keys, {bool replace = false}) async {
+    final List<DocumentChange> documents = <DocumentChange>[];
+    final Map<String, ServerBase?> bases = <String, ServerBase?>{};
+    for (final String key in keys) {
+      final (DocumentKind, String)? parsed = parseDocumentKey(key);
+      if (parsed == null) continue;
+      final (ServerBase?, List<Diagnostic>)? fetched = await _fetch(parsed.$1, parsed.$2);
+      if (fetched == null) return;
+      final ServerBase? current = fetched.$1;
+      // Our own apply already moved the base there.
+      if (current != null && binding?.bases[key]?.hash == current.hash) {
+        stale.remove(key);
+        continue;
+      }
+      final DraftState state = stateOf(parsed.$1, parsed.$2);
+      if (state == DraftState.clean || replace) {
+        bases[key] = current;
+        documents.add(DocumentChange(parsed.$1, parsed.$2, current == null ? null : prettyJson(current.source), path: current?.path));
+        stale.remove(key);
+      } else if (binding?.bases[key]?.hash != current?.hash) {
+        stale.add(key);
+      }
+    }
+    if (documents.isEmpty) {
+      _changed();
+      return;
+    }
+    await store.commit(
+      documents: documents,
+      server: (ServerBinding binding) {
+        final Map<String, ServerBase> next = Map<String, ServerBase>.of(binding.bases);
+        bases.forEach((String key, ServerBase? base) => base == null ? next.remove(key) : next[key] = base);
+        return binding.copyWith(bases: next);
+      },
+      undoable: false,
+    );
+    _notice(NoticeLevel.info, 'Refreshed ${documents.length} document${documents.length == 1 ? '' : 's'} changed on the server.');
+  }
+
+  /// Builds the merge view for a stale draft from the server's version now.
+  Future<void> merge(String key) => _run<void>('Merging', () async {
+        final (DocumentKind, String)? parsed = parseDocumentKey(key);
+        if (parsed == null) return;
+        final (ServerBase?, List<Diagnostic>)? fetched = await _fetch(parsed.$1, parsed.$2);
+        if (fetched == null) return;
+        final ServerBase? current = fetched.$1;
+        _conflicts(<ServerConflict>[ServerConflict(parsed.$1, parsed.$2, current)]);
+      });
+
+  /// Writes the merge result as the draft and moves its base to the server's
+  /// version, so the next apply sends it against that revision. With
+  /// [dropDraft] the server's version (or its deletion) is taken whole.
+  Future<void> resolve(String key, {bool dropDraft = false}) async {
+    final ConflictView? view = conflicts[key];
+    if (view == null) return;
+    final ServerBase? current = view.server;
+    final Object? merged = dropDraft ? (current?.source) : resolveMerge(view.merge, view.choices);
+    final bool remove = merged == null || isAbsent(merged);
+    await store.commit(
+      documents: <DocumentChange>[
+        DocumentChange(view.kind, view.id, remove ? null : prettyJson(merged), path: current?.path ?? view.base?.path),
+      ],
+      server: (ServerBinding binding) {
+        final Map<String, ServerBase> next = Map<String, ServerBase>.of(binding.bases);
+        if (current == null) {
+          next.remove(key);
+        } else {
+          next[key] = current;
+        }
+        return binding.copyWith(bases: next);
+      },
+    );
+    conflicts.remove(key);
+    stale.remove(key);
+    _notice(NoticeLevel.info, dropDraft
+        ? 'Took the server version of ${view.id}.'
+        : 'Merged ${view.id} onto server revision ${current?.revision ?? 'none'}. Apply to send it.');
+  }
+
+  void choose(String key, String path, MergeSide side) {
+    conflicts[key]?.choices[path] = side;
+    _changed();
+  }
+
+  Future<void> _event(Map<String, Object?> event) async {
+    switch (event['type']) {
+      case 'catalog':
+        final ServerBinding? server = binding;
+        if (server == null) return;
+        // Documents in a change set still in flight settle with its answer.
+        final Set<String> inFlight = <String>{for (final PendingChange change in server.pending) ...change.documents};
+        final List<String> moved = <String>[];
+        for (final Object? raw in (event['documents'] as List<Object?>?) ?? const <Object?>[]) {
+          final CatalogEntry? entry = CatalogEntry.fromJson(raw);
+          if (entry == null) continue;
+          _catalogUpsert(entry);
+          final ServerBase? base = server.bases[entry.key];
+          if (base != null && base.hash != entry.hash && !inFlight.contains(entry.key)) moved.add(entry.key);
+        }
+        for (final Object? raw in (event['deleted'] as List<Object?>?) ?? const <Object?>[]) {
+          if (raw is! Map<String, Object?>) continue;
+          final String key = '${raw['kind']}:${raw['id']}';
+          catalog = <CatalogEntry>[for (final CatalogEntry entry in catalog) if (entry.key != key) entry];
+          if (server.bases.containsKey(key) && !inFlight.contains(key)) moved.add(key);
+        }
+        if (moved.isNotEmpty) await _absorb(moved);
+        _changed();
+      case 'preview':
+        final PreviewState? running = preview;
+        if (running != null && running.id == event['previewId']) {
+          preview = PreviewState(running.id, '${event['state']}', running.expiresAt, running.npcs);
+          if (running.running && !preview!.running) _notice(NoticeLevel.info, 'Preview ${event['state']}.');
+          _changed();
+        }
+      case 'diagnostics':
+        for (final Object? raw in (event['documents'] as List<Object?>?) ?? const <Object?>[]) {
+          if (raw is Map<String, Object?>) serverDiagnostics['${raw['kind']}:${raw['id']}'] = diagnosticsOf(raw['diagnostics']);
+        }
+        _changed();
+      case 'closing':
+        _notice(NoticeLevel.warning, 'The server is closing the connection: ${event['reason']}.');
+    }
+  }
+
+  void _catalogUpsert(CatalogEntry entry) {
+    final List<CatalogEntry> next = <CatalogEntry>[for (final CatalogEntry existing in catalog) if (existing.key != entry.key) existing, entry];
+    next.sort((CatalogEntry a, CatalogEntry b) => a.path.compareTo(b.path));
+    catalog = next;
+  }
+}

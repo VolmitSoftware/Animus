@@ -1,0 +1,357 @@
+/// The browser's two paths to a server: fetch and WebSocket against the
+/// plugin's listener, and one WebSocket to the relay.
+library;
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:js_interop';
+
+import 'package:web/web.dart' as web;
+
+import 'transport.dart';
+
+/// Opens [path] at [url] in this browser.
+Future<ServerTransport> openBrowserTransport(ConnectionPath path, String url, String fingerprint) async {
+  switch (path) {
+    case ConnectionPath.direct:
+      return DirectTransport(url);
+    case ConnectionPath.relay:
+      final RelayTransport relay = RelayTransport(url, fingerprint);
+      await relay.open();
+      return relay;
+  }
+}
+
+String _trimSlash(String url) => url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+
+Duration requestTimeout = const Duration(seconds: 15);
+
+/// `<directUrl>/animus/v1/...` over fetch, events over a WebSocket whose
+/// first frame is `event-auth`.
+class DirectTransport implements ServerTransport {
+  DirectTransport(String url) : _base = '${_trimSlash(url)}/animus';
+
+  final String _base;
+  final Set<_DirectSubscription> _open = <_DirectSubscription>{};
+  final Set<web.AbortController> _inFlight = <web.AbortController>{};
+  bool _closed = false;
+
+  @override
+  ConnectionPath get path => ConnectionPath.direct;
+
+  @override
+  Future<ApiResponse> send(ApiRequest request) async {
+    if (_closed) throw const TransportFailure(ConnectionPath.direct, 'closed');
+    final web.Headers headers = web.Headers();
+    request.headers.forEach((String name, String value) => headers.append(name, value));
+    if (request.body != null) headers.append('Content-Type', 'application/json');
+    final web.AbortController abort = web.AbortController();
+    _inFlight.add(abort);
+    final Timer timer = Timer(requestTimeout, () => abort.abort());
+    try {
+      final web.Response response = await web.window
+          .fetch(
+            '$_base${request.path}'.toJS,
+            web.RequestInit(
+              method: request.method,
+              headers: headers,
+              body: request.body == null ? null : jsonEncode(request.body).toJS,
+              mode: 'cors',
+              credentials: 'omit',
+              cache: 'no-store',
+              signal: abort.signal,
+            ),
+          )
+          .toDart;
+      final String text = (await response.text().toDart).toDart;
+      Object? body;
+      if (text.isNotEmpty) {
+        try {
+          body = jsonDecode(text);
+        } on FormatException {
+          body = null;
+        }
+      }
+      return ApiResponse(response.status, body);
+    } on TransportFailure {
+      rethrow;
+    } on Object catch (failure) {
+      throw TransportFailure(ConnectionPath.direct, _closed ? 'closed' : 'unreachable ($failure)');
+    } finally {
+      timer.cancel();
+      _inFlight.remove(abort);
+    }
+  }
+
+  @override
+  Future<EventSubscription> subscribe(String token) async {
+    if (_closed) throw const TransportFailure(ConnectionPath.direct, 'closed');
+    final String socketUrl = '${_base.replaceFirst(RegExp('^http'), 'ws')}/v1/events';
+    final _DirectSubscription subscription = _DirectSubscription(socketUrl, token, _open.remove);
+    _open.add(subscription);
+    await subscription.opened;
+    return subscription;
+  }
+
+  @override
+  Future<void> close() async {
+    _closed = true;
+    for (final web.AbortController abort in List<web.AbortController>.of(_inFlight)) {
+      abort.abort();
+    }
+    for (final _DirectSubscription subscription in List<_DirectSubscription>.of(_open)) {
+      await subscription.cancel();
+    }
+  }
+}
+
+class _DirectSubscription implements EventSubscription {
+  _DirectSubscription(String url, String token, this._done) : _socket = web.WebSocket(url) {
+    _socket.addEventListener('open', ((web.Event _) {
+      _socket.send(jsonEncode(<String, Object?>{'type': 'auth', 'token': token}).toJS);
+      if (!_opened.isCompleted) _opened.complete();
+    }).toJS);
+    _socket.addEventListener('message', ((web.MessageEvent event) {
+      final JSAny? data = event.data;
+      if (data == null || !data.isA<JSString>()) return;
+      try {
+        final Object? frame = jsonDecode((data as JSString).toDart);
+        if (frame is Map<String, Object?>) {
+          if (frame['type'] == 'closing') _reason = frame['reason'] as String?;
+          _controller.add(frame);
+        }
+      } on FormatException {
+        // The server sends only JSON frames; ignore anything else.
+      }
+    }).toJS);
+    _socket.addEventListener('close', ((web.CloseEvent event) {
+      if (event.code >= 4000) _reason ??= event.reason.isEmpty ? 'closed ${event.code}' : event.reason;
+      if (!_opened.isCompleted) {
+        _opened.completeError(const TransportFailure(ConnectionPath.direct, 'the event stream did not open'));
+      }
+      _finish(event.code >= 4000 || _cancelled ? null : const TransportFailure(ConnectionPath.direct, 'the event stream dropped'));
+    }).toJS);
+  }
+
+  final web.WebSocket _socket;
+  final void Function(_DirectSubscription subscription) _done;
+  final StreamController<Map<String, Object?>> _controller = StreamController<Map<String, Object?>>.broadcast();
+  final Completer<void> _opened = Completer<void>();
+  String? _reason;
+  bool _cancelled = false;
+  bool _finished = false;
+
+  Future<void> get opened => _opened.future;
+
+  @override
+  Stream<Map<String, Object?>> get events => _controller.stream;
+
+  @override
+  String? get closeReason => _reason;
+
+  void _finish(Object? error) {
+    if (_finished) return;
+    _finished = true;
+    if (error != null) _controller.addError(error);
+    _controller.close();
+    _done(this);
+  }
+
+  @override
+  Future<void> cancel() async {
+    _cancelled = true;
+    if (_socket.readyState <= 1) _socket.close(1000);
+    _finish(null);
+  }
+}
+
+/// One WebSocket to `<relayUrl>/app`, subscribed to the server's
+/// fingerprint. Requests and the event stream are relay frames.
+class RelayTransport implements ServerTransport {
+  RelayTransport(String url, this.fingerprint) : _url = '${_trimSlash(url)}/app';
+
+  final String _url;
+  final String fingerprint;
+  late final web.WebSocket _socket;
+  final Completer<void> _subscribed = Completer<void>();
+  final Map<int, Completer<ApiResponse>> _pending = <int, Completer<ApiResponse>>{};
+  final Map<int, _RelaySubscription> _streams = <int, _RelaySubscription>{};
+  int _nextId = 1;
+  bool _closed = false;
+  bool _online = false;
+
+  @override
+  ConnectionPath get path => ConnectionPath.relay;
+
+  Future<void> open() {
+    try {
+      _socket = web.WebSocket(_url);
+    } on Object catch (failure) {
+      throw TransportFailure(ConnectionPath.relay, 'cannot open $_url ($failure)');
+    }
+    _socket.addEventListener('open', ((web.Event _) {
+      _socket.send(jsonEncode(<String, Object?>{'type': 'subscribe', 'protocol': 1, 'fingerprint': fingerprint}).toJS);
+    }).toJS);
+    _socket.addEventListener('message', ((web.MessageEvent event) {
+      final JSAny? data = event.data;
+      if (data == null || !data.isA<JSString>()) return;
+      try {
+        final Object? frame = jsonDecode((data as JSString).toDart);
+        if (frame is Map<String, Object?>) _frame(frame);
+      } on FormatException {
+        // Relay frames are JSON.
+      }
+    }).toJS);
+    _socket.addEventListener('close', ((web.CloseEvent event) => _fail('the relay connection closed (${event.code})')).toJS);
+    final Timer timer = Timer(requestTimeout, () => _fail('the relay did not answer the subscription'));
+    return _subscribed.future.whenComplete(timer.cancel);
+  }
+
+  void _frame(Map<String, Object?> frame) {
+    switch (frame['type']) {
+      case 'subscribed':
+        _online = frame['online'] == true;
+        if (_subscribed.isCompleted) return;
+        if (_online) {
+          _subscribed.complete();
+        } else {
+          _fail('the relay has no connection from this server');
+        }
+      case 'status':
+        _online = frame['online'] == true;
+        if (!_online) _fail('the server left the relay');
+      case 'response':
+        final int id = (frame['id']! as num).toInt();
+        final Completer<ApiResponse>? waiting = _pending.remove(id);
+        final Map<String, String> headers = <String, String>{
+          if (frame['headers'] is Map<String, Object?>)
+            for (final MapEntry<String, Object?> entry in (frame['headers']! as Map<String, Object?>).entries)
+              if (entry.value is String) entry.key: entry.value! as String,
+        };
+        waiting?.complete(ApiResponse((frame['status']! as num).toInt(), frame['body'], headers: headers));
+      case 'event':
+        final _RelaySubscription? stream = _streams[(frame['id']! as num).toInt()];
+        final Object? value = frame['event'];
+        if (stream != null && value is Map<String, Object?>) stream.add(value);
+      case 'close':
+        final int id = (frame['id']! as num).toInt();
+        _streams.remove(id)?.finish(null);
+        _pending.remove(id)?.completeError(const TransportFailure(ConnectionPath.relay, 'the relay closed the request'));
+      case 'error':
+        _fail('relay error ${frame['code']}: ${frame['message']}');
+    }
+  }
+
+  void _fail(String message) {
+    if (_closed) return;
+    _closed = true;
+    final TransportFailure failure = TransportFailure(ConnectionPath.relay, message);
+    if (!_subscribed.isCompleted) _subscribed.completeError(failure);
+    for (final Completer<ApiResponse> waiting in _pending.values) {
+      waiting.completeError(failure);
+    }
+    _pending.clear();
+    for (final _RelaySubscription stream in _streams.values.toList()) {
+      stream.finish(failure);
+    }
+    _streams.clear();
+    if (_socket.readyState <= 1) _socket.close(1000);
+  }
+
+  int _send(ApiRequest request) {
+    if (_closed) throw const TransportFailure(ConnectionPath.relay, 'closed');
+    final int id = _nextId++;
+    _socket.send(jsonEncode(<String, Object?>{
+      'type': 'request',
+      'id': id,
+      'method': request.method,
+      'path': request.path,
+      if (request.headers.isNotEmpty) 'headers': request.headers,
+      if (request.body != null) 'body': request.body,
+    }).toJS);
+    return id;
+  }
+
+  @override
+  Future<ApiResponse> send(ApiRequest request) {
+    final int id = _send(request);
+    final Completer<ApiResponse> completer = Completer<ApiResponse>();
+    _pending[id] = completer;
+    final Timer timer = Timer(requestTimeout, () {
+      if (_pending.remove(id) != null) {
+        completer.completeError(const TransportFailure(ConnectionPath.relay, 'the request timed out'));
+      }
+    });
+    return completer.future.whenComplete(timer.cancel);
+  }
+
+  @override
+  Future<EventSubscription> subscribe(String token) async {
+    final int id = _send(ApiRequest('GET', '/v1/events', headers: <String, String>{'Authorization': 'Bearer $token'}));
+    final _RelaySubscription stream = _RelaySubscription(id, (int id) {
+      _streams.remove(id);
+      if (!_closed) _socket.send(jsonEncode(<String, Object?>{'type': 'close', 'id': id}).toJS);
+    });
+    _streams[id] = stream;
+    final Completer<ApiResponse> answer = Completer<ApiResponse>();
+    _pending[id] = answer;
+    final ApiResponse response = await answer.future.timeout(requestTimeout, onTimeout: () {
+      _pending.remove(id);
+      throw const TransportFailure(ConnectionPath.relay, 'the event stream did not open');
+    });
+    if (!response.ok) {
+      _streams.remove(id);
+      stream.refused('${response.status} ${response.errorCode ?? ''}'.trim());
+      throw StreamRefused(response.status, response.errorCode ?? 'refused');
+    }
+    return stream;
+  }
+
+  @override
+  Future<void> close() async {
+    for (final _RelaySubscription stream in _streams.values.toList()) {
+      await stream.cancel();
+    }
+    _fail('closed');
+  }
+}
+
+class _RelaySubscription implements EventSubscription {
+  _RelaySubscription(this.id, this._cancel);
+
+  final int id;
+  final void Function(int id) _cancel;
+  final StreamController<Map<String, Object?>> _controller = StreamController<Map<String, Object?>>.broadcast();
+  String? _reason;
+  bool _finished = false;
+
+  void add(Map<String, Object?> event) {
+    if (event['type'] == 'closing') _reason = event['reason'] as String?;
+    _controller.add(event);
+  }
+
+  void refused(String reason) {
+    _reason = reason;
+    finish(null);
+  }
+
+  void finish(Object? error) {
+    if (_finished) return;
+    _finished = true;
+    if (error != null) _controller.addError(error);
+    _controller.close();
+  }
+
+  @override
+  Stream<Map<String, Object?>> get events => _controller.stream;
+
+  @override
+  String? get closeReason => _reason;
+
+  @override
+  Future<void> cancel() async {
+    if (_finished) return;
+    _cancel(id);
+    finish(null);
+  }
+}

@@ -5,6 +5,7 @@ import '../logic/rig_validation.dart';
 import '../logic/shared_schemas.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
+import '../model/server_binding.dart';
 import 'workspace_repository.dart';
 
 typedef StoreListener = void Function();
@@ -12,11 +13,14 @@ typedef StoreListener = void Function();
 /// One document written by [EditorStore.commit]: new text, or removal when
 /// [source] is null.
 class DocumentChange {
-  const DocumentChange(this.kind, this.id, this.source);
+  const DocumentChange(this.kind, this.id, this.source, {this.path});
 
   final DocumentKind kind;
   final String id;
   final String? source;
+
+  /// Where a new document lives; defaults to [documentPath].
+  final String? path;
 }
 
 /// Where a new document of [kind] with [id] lives in the data folder.
@@ -92,6 +96,26 @@ class EditorStore {
     return snapshot;
   }
 
+  /// Opens the workspace for a paired server, creating it empty the first
+  /// time. Documents join it as they are opened from the server's catalog.
+  Future<WorkspaceSnapshot> openServerWorkspace(String id, String name, ServerBinding binding) async {
+    WorkspaceSnapshot? snapshot = _workspace?.id == id ? _workspace : await repository.load(id);
+    if (snapshot == null) {
+      snapshot = WorkspaceSnapshot(id: id, name: name, generation: 1, documents: const <AnimusDocument>[], server: binding);
+      await repository.save(snapshot);
+    }
+    if (_workspace?.id != id) {
+      _workspace = snapshot;
+      _ignored = const <String>[];
+      _undo.clear();
+      _coalesce = null;
+    }
+    _problem = null;
+    _workspaces = await repository.list();
+    _changed();
+    return snapshot;
+  }
+
   /// Opens a stored workspace; returns false when it does not exist.
   Future<bool> openWorkspace(String id) async {
     if (_workspace?.id == id) return true;
@@ -137,9 +161,12 @@ class EditorStore {
     List<DocumentChange> documents = const <DocumentChange>[],
     Map<String, Uint8List?> resources = const <String, Uint8List?>{},
     String? coalesce,
+    ServerBinding Function(ServerBinding binding)? server,
+    bool undoable = true,
   }) => _enqueue(() async {
     final WorkspaceSnapshot? current = _workspace;
     if (current == null) return;
+    final ServerBinding? binding = current.server == null || server == null ? current.server : server(current.server!);
     final List<AnimusDocument> next = List<AnimusDocument>.of(current.documents);
     final Set<String> touched = <String>{};
     bool changed = false;
@@ -154,7 +181,7 @@ class EditorStore {
         continue;
       }
       if (index >= 0 && next[index].source == source) continue;
-      final String path = index >= 0 ? next[index].path : documentPath(change.kind, change.id);
+      final String path = index >= 0 ? next[index].path : (change.path ?? documentPath(change.kind, change.id));
       final AnimusDocument edited = validateSource(DocumentLocation(change.kind, change.id), path, source, schemas);
       if (index >= 0) {
         next[index] = edited;
@@ -174,7 +201,7 @@ class EditorStore {
         nextResources[resource.key] = resource.value!;
       }
     }
-    if (!changed) return;
+    if (!changed && identical(binding, current.server)) return;
     final Map<String, Object?> rigs = <String, Object?>{
       for (final AnimusDocument document in next)
         if (document.kind == DocumentKind.rig) document.id: document.json,
@@ -189,8 +216,8 @@ class EditorStore {
       next[index] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateAnimationStructure(fresh.json, rigs[rig])]);
     }
     final bool merge = coalesce != null && coalesce == _coalesce && _undo.isNotEmpty;
-    await _save(current, current.next(documents: next, resources: nextResources), recordUndo: !merge);
-    _coalesce = coalesce;
+    await _save(current, current.next(documents: next, resources: nextResources, server: binding), recordUndo: undoable && !merge);
+    _coalesce = undoable ? coalesce : null;
   });
 
   Future<void> undo() => _enqueue(() async {

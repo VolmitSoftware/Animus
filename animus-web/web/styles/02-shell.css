@@ -238,6 +238,16 @@
 }
 
 @media (max-width: 760px) {
+  .animus-topbar {
+    flex-wrap: wrap;
+  }
+
+  .animus-topbar-actions {
+    flex: 1 1 100%;
+    min-width: 0;
+    margin-inline-start: 0;
+  }
+
   .animus-workspace {
     grid-template-columns: 1fr;
   }
