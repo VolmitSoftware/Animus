@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "revision": 2,
+  "revision": 3,
   "id": "personal-guard:bodyguard",
-  "entry": "main",
+  "entry": "hint",
   "routines": {
-    "main": {
+    "hint": {
       "type": "sequence",
       "steps": [
         {
@@ -15,245 +15,23 @@
           }
         },
         {
-          "type": "condition",
-          "capability": "animus:flag-state",
-          "arguments": {
-            "name": "taken",
-            "scope": "npc"
-          },
-          "then": {
-            "type": "condition",
-            "capability": "animus:flag-state",
-            "arguments": {
-              "name": "hired",
-              "scope": "relationship"
-            },
-            "then": {
-              "type": "action",
-              "capability": "animus:choices",
-              "arguments": {
-                "id": "service",
-                "prompt": "Yes, boss?",
-                "options": [
-                  {
-                    "id": "dismiss",
-                    "text": "You are dismissed"
-                  },
-                  {
-                    "id": "stay",
-                    "text": "Carry on"
-                  }
-                ]
-              }
-            },
-            "else": {
-              "type": "action",
-              "capability": "animus:say",
-              "arguments": {
-                "text": "I already have a client."
-              }
-            }
-          },
-          "else": {
-            "type": "action",
-            "capability": "animus:choices",
-            "arguments": {
-              "id": "hire",
-              "prompt": "Looking for protection?",
-              "options": [
-                {
-                  "id": "hire",
-                  "text": "You are hired"
-                },
-                {
-                  "id": "pass",
-                  "text": "Not now"
-                }
-              ]
-            }
-          }
-        }
-      ]
-    },
-    "hire": {
-      "type": "condition",
-      "capability": "animus:flag-state",
-      "arguments": {
-        "name": "taken",
-        "scope": "npc"
-      },
-      "then": {
-        "type": "action",
-        "capability": "animus:say",
-        "arguments": {
-          "text": "Too late. Someone else just hired me."
-        }
-      },
-      "else": {
-        "type": "sequence",
-        "steps": [
-          {
-            "type": "action",
-            "capability": "animus:set-flag",
-            "arguments": {
-              "name": "taken",
-              "scope": "npc"
-            }
-          },
-          {
-            "type": "action",
-            "capability": "animus:set-flag",
-            "arguments": {
-              "name": "hired",
-              "scope": "relationship"
-            }
-          },
-          {
-            "type": "action",
-            "capability": "animus:combat-control",
-            "arguments": {
-              "operation": "enable"
-            }
-          },
-          {
-            "type": "action",
-            "capability": "animus:combat-control",
-            "arguments": {
-              "operation": "guard",
-              "target": "player"
-            }
-          },
-          {
-            "type": "action",
-            "capability": "animus:set-equipment",
-            "arguments": {
-              "slot": "main_hand",
-              "item": "minecraft:iron_sword"
-            }
-          },
-          {
-            "type": "action",
-            "capability": "animus:say",
-            "arguments": {
-              "text": "Then I will stand ready. Lead the way."
-            }
-          }
-        ]
-      }
-    },
-    "dismiss": {
-      "type": "sequence",
-      "steps": [
-        {
-          "type": "action",
-          "capability": "animus:set-flag",
-          "arguments": {
-            "name": "hired",
-            "scope": "relationship",
-            "value": false
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:set-flag",
-          "arguments": {
-            "name": "taken",
-            "scope": "npc",
-            "value": false
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:combat-control",
-          "arguments": {
-            "operation": "guard"
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:combat-control",
-          "arguments": {
-            "operation": "release"
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:set-equipment",
-          "arguments": {
-            "slot": "main_hand"
-          }
-        },
-        {
           "type": "action",
           "capability": "animus:say",
           "arguments": {
-            "text": "Stay safe out there."
+            "text": "Need protection? &eRight-click&f me to see my terms. &7⚔"
           }
         }
       ]
-    },
-    "stay": {
-      "type": "action",
-      "capability": "animus:say",
-      "arguments": {
-        "text": "Understood."
-      }
-    },
-    "pass": {
-      "type": "action",
-      "capability": "animus:say",
-      "arguments": {
-        "text": "You know where to find me."
-      }
-    },
-    "reset": {
-      "type": "action",
-      "capability": "animus:set-flag",
-      "arguments": {
-        "name": "taken",
-        "scope": "npc",
-        "value": false
-      }
     }
   },
   "triggers": [
     {
-      "id": "ready",
-      "event": "spawn",
-      "routine": "reset"
-    },
-    {
-      "id": "click",
-      "event": "interaction",
-      "cooldownTicks": 40
-    },
-    {
-      "id": "hired",
-      "event": "dialogue_choice",
-      "dialogue": "hire",
-      "choice": "hire",
-      "routine": "hire"
-    },
-    {
-      "id": "passed",
-      "event": "dialogue_choice",
-      "dialogue": "hire",
-      "choice": "pass",
-      "routine": "pass"
-    },
-    {
-      "id": "dismissed",
-      "event": "dialogue_choice",
-      "dialogue": "service",
-      "choice": "dismiss",
-      "routine": "dismiss"
-    },
-    {
-      "id": "kept",
-      "event": "dialogue_choice",
-      "dialogue": "service",
-      "choice": "stay",
-      "routine": "stay"
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 5,
+      "routine": "hint",
+      "cooldownTicks": 1200
     }
   ]
 }

@@ -2,6 +2,6 @@
   "schemaVersion": 1,
   "id": "personal-guard",
   "name": "Personal guard",
-  "version": "1.0.0",
-  "description": "A bodyguard that follows and defends the player who hires it until dismissed."
+  "version": "2.0.0",
+  "description": "A bodyguard players hire for emeralds through a chest window; it follows and defends its hirer until the contract ends or they dismiss it."
 }

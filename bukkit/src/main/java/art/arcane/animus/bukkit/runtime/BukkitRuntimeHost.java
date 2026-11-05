@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.navigation.BukkitTerrain;
 import art.arcane.animus.bukkit.navigation.TerrainChanges;
@@ -96,7 +97,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public float yaw(Player player) { return player.getLocation().getYaw(); }
     @Override public float pitch(Player player) { return player.getLocation().getPitch(); }
     @Override public boolean permitted(Player player, String node) { return player.hasPermission(node); }
-    @Override public void tell(Player player, String message) { player.sendMessage(message); }
+    @Override public void tell(Player player, String message) { player.sendMessage(RichText.colorize(message)); }
     @Override public List<Player> playersNear(WorldPosition at, double radius, int limit) {
         World world = terrain.world(at.world());
         List<Player> result = new ArrayList<>();

@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.packet;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcPose;
@@ -20,7 +21,9 @@ final class NativePresentation {
     private final Map<ArmorStandLook.Part, Object> standPoses = new EnumMap<>(ArmorStandLook.Part.class);
     private final Class<? extends Enum> poses;
     private final Constructor<?> rotations, vector, scoreboard, team;
-    private final Method literal, teamVisibility, teamCollision, addMember, addTeam, removeTeam;
+    private final Method literal, empty, append, setStyle, withColor, fromRgb, withBold, withItalic, withUnderlined, withStrikethrough, withObfuscated;
+    private final Object plainStyle;
+    private final Method teamVisibility, teamCollision, addMember, addTeam, removeTeam;
     private final Object never, noCollision;
 
     @SuppressWarnings("unchecked")
@@ -42,7 +45,17 @@ final class NativePresentation {
         for (NpcPose candidate : NpcPose.values()) Enum.valueOf((Class) poses, BodyLook.nativePose(candidate));
         rotations = Class.forName("net.minecraft.core.Rotations").getConstructor(float.class, float.class, float.class);
         vector = Class.forName("org.joml.Vector3f").getConstructor(float.class, float.class, float.class);
-        literal = Class.forName("net.minecraft.network.chat.Component").getMethod("literal", String.class);
+        Class<?> component = Class.forName("net.minecraft.network.chat.Component");
+        Class<?> mutable = Class.forName("net.minecraft.network.chat.MutableComponent");
+        Class<?> style = Class.forName("net.minecraft.network.chat.Style");
+        Class<?> colour = Class.forName("net.minecraft.network.chat.TextColor");
+        literal = component.getMethod("literal", String.class); empty = component.getMethod("empty");
+        append = mutable.getMethod("append", component); setStyle = mutable.getMethod("setStyle", style);
+        plainStyle = style.getField("EMPTY").get(null);
+        withColor = style.getMethod("withColor", colour); fromRgb = colour.getMethod("fromRgb", int.class);
+        withBold = style.getMethod("withBold", Boolean.class); withItalic = style.getMethod("withItalic", Boolean.class);
+        withUnderlined = style.getMethod("withUnderlined", Boolean.class); withStrikethrough = style.getMethod("withStrikethrough", Boolean.class);
+        withObfuscated = style.getMethod("withObfuscated", Boolean.class);
         Class<?> board = Class.forName("net.minecraft.world.scores.Scoreboard");
         Class<?> playerTeam = Class.forName("net.minecraft.world.scores.PlayerTeam");
         Class<? extends Enum> visibility = (Class<? extends Enum>) Class.forName("net.minecraft.world.scores.Team$Visibility");
@@ -82,10 +95,26 @@ final class NativePresentation {
     }
 
     List<Object> textValues(String content, double lift) throws ReflectiveOperationException {
-        return List.of(dataValue.invoke(null, text, literal.invoke(null, content)),
+        return List.of(dataValue.invoke(null, text, component(content)),
                 dataValue.invoke(null, billboard, BodyLook.BILLBOARD_CENTER),
                 dataValue.invoke(null, lineWidth, BodyLook.LINE_WIDTH),
                 dataValue.invoke(null, translation, vector.newInstance(0f, (float) lift, 0f)));
+    }
+
+    /** Formatted text as a styled vanilla component, so hex colours render; a plain literal would show them as codes. */
+    Object component(String content) throws ReflectiveOperationException {
+        Object root = empty.invoke(null);
+        for (RichText.Run run : RichText.runs(content)) {
+            Object style = plainStyle;
+            if (run.rgb().isPresent()) style = withColor.invoke(style, fromRgb.invoke(null, run.rgb().getAsInt()));
+            if (run.bold()) style = withBold.invoke(style, Boolean.TRUE);
+            if (run.italic()) style = withItalic.invoke(style, Boolean.TRUE);
+            if (run.underlined()) style = withUnderlined.invoke(style, Boolean.TRUE);
+            if (run.strikethrough()) style = withStrikethrough.invoke(style, Boolean.TRUE);
+            if (run.obfuscated()) style = withObfuscated.invoke(style, Boolean.TRUE);
+            append.invoke(root, setStyle.invoke(literal.invoke(null, run.text()), style));
+        }
+        return root;
     }
 
     List<Object> seatValues() throws ReflectiveOperationException {

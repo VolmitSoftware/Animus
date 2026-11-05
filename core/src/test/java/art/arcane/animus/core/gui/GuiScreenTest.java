@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.MockScreenHost.Player;
 import art.arcane.animus.core.inventory.MockInventory.Stack;
@@ -41,7 +42,7 @@ class GuiScreenTest {
         add("town:menu", GuiDocumentTest.GLOSS);
         alex.facts.put("level", 7);
         assertTrue(open("town:menu"));
-        assertEquals("Shop - Alex", GuiText.plain(alex.frame.title()));
+        assertEquals("Shop - Alex", RichText.plain(alex.frame.title()));
         assertEquals("minecraft:gray_stained_glass_pane", alex.frame.items().get(0).item().id());
         assertEquals("minecraft:stone", alex.frame.items().get(10).item().id(), "list cells draw over explicit slots, as in Gloss");
         assertEquals("minecraft:oak_log", alex.frame.items().get(12).item().id());
@@ -78,7 +79,7 @@ class GuiScreenTest {
                  "list": {"area": ".", "var": "entry", "source": "['a','b','c','d','e']", "template": {"type": "decoration", "icon": {"type": "item", "item": "minecraft:paper", "name": "{{ entry }}"}}}}
                 """);
         open("town:list");
-        assertEquals("Page 1/3", GuiText.plain(alex.frame.items().get(6).name().orElseThrow()));
+        assertEquals("Page 1/3", RichText.plain(alex.frame.items().get(6).name().orElseThrow()));
         click(6, Click.LEFT); click(6, Click.LEFT); click(6, Click.LEFT);
         assertEquals("e", alex.frame.items().get(0).name().orElseThrow());
         assertNull(alex.frame.items().get(1));

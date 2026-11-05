@@ -80,6 +80,11 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     public long regionUnavailable() { return regionUnavailable; }
     public ProtectionGate protection() { return protection; }
     public boolean registered(UUID npc) { return brains.containsKey(npc); }
+    /** Whom the NPC guards now, if anyone. */
+    public Optional<TargetRef> guarded(UUID npc) {
+        CombatBrain brain = brains.get(npc);
+        return brain == null ? Optional.empty() : Optional.ofNullable(brain.guarded());
+    }
     public Set<UUID> npcs() { return Set.copyOf(brains.keySet()); }
     public boolean ownsHelper(UUID helper) { return helpers.tracks(helper); }
 
