@@ -27,6 +27,7 @@ public final class TriggerBridge {
         if (!preview) dispatcher.publish(new TriggerEvent.Interaction(npc, viewer, action));
     }
     public void waypoint(UUID npc, int waypoint) { dispatcher.publish(new TriggerEvent.Waypoint(npc, waypoint)); }
+    public void animationFinished(UUID npc, String animation, int layer) { dispatcher.publish(new TriggerEvent.AnimationFinished(npc, animation, layer)); }
     /** before is null when the NPC was not indexed, such as a change after its death. */
     public void changed(VirtualNpcState.Snapshot before, VirtualNpcState.Snapshot after) {
         if (before == null || after.health() >= before.health()) return;

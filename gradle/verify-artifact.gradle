@@ -144,6 +144,13 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 String fmlRange = platform == 'forge' ? target.forgeLoaderRange : '[3,)'
                 require(Pattern.compile('(?m)^modLoader\\s*=\\s*"javafml"\\s*$').matcher(metadata).find(), 'missing Java FML loader declaration')
                 require(Pattern.compile('(?m)^loaderVersion\\s*=\\s*"' + Pattern.quote(fmlRange) + '"\\s*$').matcher(metadata).find(), 'incorrect FML loader range')
+                if (platform == 'forge') {
+                    // Forge reads every mod jar as a data pack and logs "Missing data pack" for one without metadata.
+                    JarEntry packEntry = archive.getJarEntry('pack.mcmeta')
+                    require(packEntry != null, 'missing pack.mcmeta that Forge reads as the mod data pack')
+                    Map<String, Object> pack = (Map<String, Object>) new JsonSlurper().parseText(archive.getInputStream(packEntry).withCloseable { InputStream stream -> stream.getText('UTF-8') }).pack
+                    require(pack instanceof Map && pack.description instanceof String && pack.min_format == target.dataPackFormat && pack.max_format == target.dataPackFormat, "pack.mcmeta must declare data pack format ${target.dataPackFormat}")
+                }
                 if (platform == 'neoforge') {
                     String javaRange = "[${target.javaVersion},)"
                     require(Pattern.compile('(?ms)^\\[features\\.' + Pattern.quote(animus.projectId) + '\\]\\s*\\n(?:(?!^\\[).)*?^javaVersion\\s*=\\s*"' + Pattern.quote(javaRange) + '"\\s*$').matcher(metadata).find(), 'incorrect NeoForge Java requirement')

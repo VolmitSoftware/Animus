@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Milestone gate: run every applicable scenario set on the nine exact Paper/Spigot/Folia targets.
 
+Fabric, NeoForge and Forge targets (for example --targets fabric-26.3) run only the live set, with the
+mod jar given by --mod-jars and no Bukkit fixture; their instances are named animus-mod-<loader>-<version>.
+
 Uses one successful Multiplexor build run. Fixtures are rebuilt against that exact artifact.
 Each target runs its sets one after another, so at most --workers servers run at once.
 Instances are named animus-gate-[set-]<platform>-<version>.
@@ -10,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PROJECTS = ['paper', 'spigot', 'folia']
+MOD_PROJECTS = ['fabric', 'neoforge', 'forge']
 VERSIONS = ['26.1.2', '26.2', '26.3']
 SETS = ['live', 'native', 'modules', 'imports', 'behaviors']
 SKIN = 'consumers/plugin-consumers/instances/animus-r10-paper-26-3/plugins/Animus/skins/d140b4361c456ad426b436dd35d097786be4fe57d7618a67a4d07d044add6696.json'
@@ -20,7 +24,8 @@ p.add_argument('--workspace', type=Path, required=True)
 p.add_argument('--build-home', type=Path, required=True)
 p.add_argument('--build-run', required=True)
 p.add_argument('--output', type=Path, required=True, help='New directory for logs and state')
-p.add_argument('--targets', help='Comma list like paper-26.3,folia-26.2; default all nine')
+p.add_argument('--targets', help='Comma list like paper-26.3,folia-26.2,fabric-26.3; default the nine Bukkit targets')
+p.add_argument('--mod-jars', type=Path, default=ROOT / 'build/distributions', help='Directory holding the Fabric, NeoForge and Forge jars')
 p.add_argument('--sets', default=','.join(SETS))
 p.add_argument('--workers', type=int, default=3)
 a = p.parse_args()
@@ -101,6 +106,16 @@ base = ['--binary', str(a.binary), '--workspace', str(a.workspace), '--build-hom
 def commands(project: str, version: str) -> list[tuple[str, list[str]]]:
     dashed = version.replace('.', '-')
     jobs: list[tuple[str, list[str]]] = []
+    if project in MOD_PROJECTS:
+        if 'live' not in sets:
+            return jobs
+        label = {'fabric': 'Fabric', 'neoforge': 'NeoForge', 'forge': 'Forge'}[project]
+        jars = sorted(a.mod_jars.glob(f'* [[]{label}[]] {version}+*.jar'))
+        assert len(jars) == 1, f'expected one {label} {version} jar in {a.mod_jars}: {jars}'
+        jobs.append(('live', ['node', 'qa/multiplexor/live-features.mjs', '--project', project, '--version', version, '--instance-name', f'animus-mod-{project}-{dashed}',
+                              '--results', str(a.output / f'live-{project}-{version}'), '--workspace', str(a.workspace), '--binary', str(a.binary),
+                              '--build-home', str(a.build_home), '--plugin', str(jars[0]), '--skin-file', fixtures['skin']]))
+        return jobs
     if 'live' in sets:
         live = ['node', 'qa/multiplexor/live-features.mjs', '--project', project, '--version', version, '--instance-name', f'animus-gate-live-{project}-{dashed}',
                 '--results', str(a.output / f'live-{project}-{version}'), '--workspace', str(a.workspace), '--binary', str(a.binary),
@@ -136,7 +151,7 @@ def commands(project: str, version: str) -> list[tuple[str, list[str]]]:
 targets = [(project, version) for project in PROJECTS for version in VERSIONS]
 if a.targets:
     wanted = set(a.targets.split(','))
-    targets = [(project, version) for project, version in targets if f'{project}-{version}' in wanted]
+    targets = [(project, version) for project, version in targets + [(m, v) for m in MOD_PROJECTS for v in VERSIONS] if f'{project}-{version}' in wanted]
 lock = threading.Lock()
 results: list[dict[str, object]] = []
 
