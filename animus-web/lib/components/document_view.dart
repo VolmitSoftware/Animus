@@ -277,7 +277,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     final String text = _draft ?? document.source;
     final InspectSchemas schemas = _schemas;
     final ValueHints? hints = switch (document.kind) {
-      DocumentKind.behavior => behaviorHints,
+      DocumentKind.behavior => behaviorHints(guiIds: <DocumentKind, List<String>>{for (final DocumentKind kind in <DocumentKind>[DocumentKind.inventory, DocumentKind.menu, DocumentKind.shop]) kind: _ids(kind)}),
       DocumentKind.npc => npcHints(behaviorIds: _ids(DocumentKind.behavior), skinIds: _ids(DocumentKind.skin)),
       _ => null,
     };

@@ -8,6 +8,7 @@ import 'package:animus_editor/logic/inspect/inspect_schemas.dart';
 import 'package:animus_editor/logic/inspect/json_completion.dart';
 import 'package:animus_editor/logic/inspect/json_outline.dart';
 import 'package:animus_editor/logic/inspect/schema_fields.dart';
+import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
 final InspectSchemas schemas = InspectSchemas.embedded;
@@ -182,9 +183,29 @@ void main() {
       final (String text, int caret) = _caret('{"routines": {"main": {}, "wave": {}}, "triggers": [{"id": "a", "event": "prox|"}]}');
       expect(labels(suggestJson(text, caret, schemas.behavior, catalog: catalog)), <String>['proximity']);
       final (String text2, int caret2) = _caret('{"routines": {"main": {}, "wave": {}}, "triggers": [{"id": "a", "event": "spawn", "routine": "|"}]}');
-      expect(labels(suggestJson(text2, caret2, schemas.behavior, catalog: catalog, hints: behaviorHints)), <String>['main', 'wave']);
+      expect(labels(suggestJson(text2, caret2, schemas.behavior, catalog: catalog, hints: behaviorHints())), <String>['main', 'wave']);
       final (String text3, int caret3) = _caret('{"spawned": t|}');
       expect(labels(suggestJson(text3, caret3, schemas.npc)), <String>['true']);
+    });
+
+    test('should suggest workspace GUI ids of the open-gui kind when editing its gui argument', () {
+      final ValueHints hints = behaviorHints(guiIds: <DocumentKind, List<String>>{
+        DocumentKind.inventory: <String>['town:board'],
+        DocumentKind.menu: <String>['lobby:main', 'town:hub'],
+        DocumentKind.shop: <String>['town:market'],
+      });
+      List<String> at(String source) {
+        final (String text, int caret) = _caret(source);
+        return labels(suggestJson(text, caret, schemas.behavior, catalog: catalog, hints: hints));
+      }
+
+      expect(at('{"routines": {"m": {"type": "action", "capability": "animus:open-gui", "arguments": {"kind": "menu", "gui": "|"}}}}'),
+          <String>['lobby:main', 'town:hub']);
+      expect(at('{"routines": {"m": {"type": "action", "capability": "animus:open-gui", "arguments": {"gui": "|"}}}}'), <String>['town:board']);
+      expect(at('{"routines": {"m": {"type": "action", "capability": "animus:open-gui", "arguments": {"kind": "shop", "gui": "|"}}}}'),
+          <String>['town:market']);
+      expect(at('{"routines": {"m": {"type": "action", "capability": "animus:open-shop", "arguments": {"shop": "|"}}}}'), <String>['town:market']);
+      expect(at('{"routines": {"m": {"type": "action", "capability": "animus:open-gui", "arguments": {"kind": "gloss", "gui": "|"}}}}'), isEmpty);
     });
 
     test('suggests workspace behavior ids for npc behaviors', () {

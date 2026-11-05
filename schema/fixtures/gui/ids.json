@@ -1,5 +1,5 @@
 {
-  "description": "Hologram and text-animation ids, shared by core (GuiIdContractTest) and animus-web (gui_ids_test.dart). locations: the id a data-folder path has (null when it is not a document of that kind). references: |animation.<token>| in a document resolves to an animation id (an id without a namespace is in the referencing document's namespace). gloss: Animus id to Gloss runtime id on export; glossImport: Gloss runtime id to Animus id on import into the default gloss namespace. migration: how the editor moves a local workspace document saved with the old plain-path id.",
+  "description": "Chest GUI, holographic menu, hologram and text-animation ids, shared by core (GuiIdContractTest) and animus-web (gui_ids_test.dart). locations: the id a data-folder path has (null when it is not a document of that kind). references: |animation.<token>| in a document resolves to an animation id (an id without a namespace is in the referencing document's namespace). gloss: Animus id to Gloss runtime id on export; glossImport: Gloss runtime id to Animus id on import into the default gloss namespace. migration: how the editor moves a local workspace document saved with the old plain-path id (holograms and text animations before workspace version 2, menus before version 3).",
   "locations": [
     {"path": "gui/holograms/town/welcome.json", "kind": "hologram", "id": "town:welcome"},
     {"path": "gui/holograms/town/signs/market.json", "kind": "hologram", "id": "town:signs/market"},
@@ -8,7 +8,9 @@
     {"path": "gui/text-animations/shop/sparkle.json", "kind": "text-animation", "id": "shop:sparkle"},
     {"path": "gui/text-animations/fx/glow/slow.json", "kind": "text-animation", "id": "fx:glow/slow"},
     {"path": "gui/text-animations/rainbow.json", "kind": "text-animation", "id": null},
-    {"path": "gui/menus/lobby/main.json", "kind": "menu", "id": "lobby/main"},
+    {"path": "gui/menus/lobby/main.json", "kind": "menu", "id": "lobby:main"},
+    {"path": "gui/menus/lobby/shops/food.json", "kind": "menu", "id": "lobby:shops/food"},
+    {"path": "gui/menus/main.json", "kind": "menu", "id": null},
     {"path": "gui/inventories/shop/counter.json", "kind": "inventory", "id": "shop:counter"}
   ],
   "references": [
@@ -21,18 +23,30 @@
     {"kind": "hologram", "animus": "town:signs/market", "gloss": "town.signs.market"},
     {"kind": "hologram", "animus": "gloss:spawn", "gloss": "spawn"},
     {"kind": "text-animation", "animus": "gloss:rainbow", "gloss": "rainbow"},
-    {"kind": "text-animation", "animus": "fx:glow/slow", "gloss": "fx.glow.slow"}
+    {"kind": "text-animation", "animus": "fx:glow/slow", "gloss": "fx.glow.slow"},
+    {"kind": "menu", "animus": "lobby:main", "gloss": "lobby.main"},
+    {"kind": "menu", "animus": "lobby:shops/food", "gloss": "lobby.shops/food"},
+    {"kind": "menu", "animus": "gloss:lobby/main", "gloss": "lobby/main"},
+    {"kind": "inventory", "animus": "town:menu", "gloss": "town.menu"},
+    {"kind": "inventory", "animus": "town:shop/food", "gloss": "town.shop.food"},
+    {"kind": "inventory", "animus": "gloss:chest", "gloss": "chest"}
   ],
   "glossImport": [
     {"kind": "hologram", "gloss": "spawn", "animus": "gloss:spawn"},
     {"kind": "hologram", "gloss": "Spawn.Sign", "animus": "gloss:spawn-sign"},
-    {"kind": "text-animation", "gloss": "rainbow", "animus": "gloss:rainbow"}
+    {"kind": "text-animation", "gloss": "rainbow", "animus": "gloss:rainbow"},
+    {"kind": "menu", "gloss": "lobby/main", "animus": "gloss:lobby/main"},
+    {"kind": "menu", "gloss": "Lobby.Main", "animus": "gloss:lobby-main"},
+    {"kind": "inventory", "gloss": "chest", "animus": "gloss:chest"},
+    {"kind": "inventory", "gloss": "Town/Menu", "animus": "gloss:town/menu"}
   ],
   "migration": [
     {"kind": "hologram", "id": "town/welcome", "path": "gui/holograms/town/welcome.json", "migratedId": "town:welcome", "migratedPath": "gui/holograms/town/welcome.json"},
     {"kind": "hologram", "id": "town/signs/market", "path": "gui/holograms/town/signs/market.json", "migratedId": "town:signs/market", "migratedPath": "gui/holograms/town/signs/market.json"},
     {"kind": "hologram", "id": "spawn", "path": "gui/holograms/spawn.json", "migratedId": "gloss:spawn", "migratedPath": "gui/holograms/gloss/spawn.json"},
     {"kind": "text-animation", "id": "rainbow", "path": "gui/text-animations/rainbow.json", "migratedId": "gloss:rainbow", "migratedPath": "gui/text-animations/gloss/rainbow.json"},
-    {"kind": "text-animation", "id": "shop/sparkle", "path": "gui/text-animations/shop/sparkle.json", "migratedId": "shop:sparkle", "migratedPath": "gui/text-animations/shop/sparkle.json"}
+    {"kind": "text-animation", "id": "shop/sparkle", "path": "gui/text-animations/shop/sparkle.json", "migratedId": "shop:sparkle", "migratedPath": "gui/text-animations/shop/sparkle.json"},
+    {"kind": "menu", "id": "lobby/main", "path": "gui/menus/lobby/main.json", "migratedId": "lobby:main", "migratedPath": "gui/menus/lobby/main.json"},
+    {"kind": "menu", "id": "hub", "path": "gui/menus/hub.json", "migratedId": "gloss:hub", "migratedPath": "gui/menus/gloss/hub.json"}
   ]
 }

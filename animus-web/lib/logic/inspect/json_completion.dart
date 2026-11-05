@@ -6,6 +6,7 @@ library;
 import 'dart:convert';
 
 import '../gui/gui_json.dart';
+import '../../model/document_kind.dart';
 import 'completion_catalog.dart';
 import 'json_outline.dart';
 import 'schema_fields.dart';
@@ -199,22 +200,42 @@ int _rank(String label, String typed) {
 }
 
 /// Hints for behavior documents: routine names for `entry` and `routine`
-/// fields, declared variables for `variable` fields.
-List<FieldOption> behaviorHints(List<JsonStep> path, Object? root) {
-  if (path.isEmpty) return const <FieldOption>[];
-  final JsonStep last = path.last;
-  final JsonMap document = asMap(root);
-  if (last == 'entry' || last == 'routine') {
-    return <FieldOption>[for (final String name in asMap(document['routines']).keys) FieldOption(name, description: 'routine')];
-  }
-  if (last == 'variable') {
-    return <FieldOption>[
-      for (final MapEntry<String, Object?> entry in asMap(document['variables']).entries)
-        FieldOption(entry.key, description: asString(asMap(entry.value)['type']) ?? 'variable'),
-    ];
-  }
-  return const <FieldOption>[];
-}
+/// fields, declared variables for `variable` fields, and workspace ids from
+/// [guiIds] for the `gui` argument of `animus:open-gui` (of its `kind`,
+/// `inventory` by default) and the `shop` argument of `animus:open-shop`.
+ValueHints behaviorHints({Map<DocumentKind, List<String>> guiIds = const <DocumentKind, List<String>>{}}) => (List<JsonStep> path, Object? root) {
+      if (path.isEmpty) return const <FieldOption>[];
+      final JsonStep last = path.last;
+      final JsonMap document = asMap(root);
+      if (last == 'entry' || last == 'routine') {
+        return <FieldOption>[for (final String name in asMap(document['routines']).keys) FieldOption(name, description: 'routine')];
+      }
+      if (last == 'variable') {
+        return <FieldOption>[
+          for (final MapEntry<String, Object?> entry in asMap(document['variables']).entries)
+            FieldOption(entry.key, description: asString(asMap(entry.value)['type']) ?? 'variable'),
+        ];
+      }
+      if ((last == 'gui' || last == 'shop') && path.length >= 2 && path[path.length - 2] == 'arguments') {
+        final JsonMap node = asMap(readIn(root, path.sublist(0, path.length - 2)));
+        final JsonMap arguments = asMap(node['arguments']);
+        final String? capability = asString(node['capability']);
+        final DocumentKind? kind = switch ((capability, last)) {
+          ('animus:open-gui', 'gui') => switch (asString(arguments['kind']) ?? 'inventory') {
+              'inventory' => DocumentKind.inventory,
+              'menu' => DocumentKind.menu,
+              'shop' => DocumentKind.shop,
+              _ => null,
+            },
+          ('animus:open-shop', 'shop') => DocumentKind.shop,
+          _ => null,
+        };
+        if (kind == null) return const <FieldOption>[];
+        final String description = '${kind.wireName} in this workspace';
+        return <FieldOption>[for (final String id in guiIds[kind] ?? const <String>[]) FieldOption(id, description: description)];
+      }
+      return const <FieldOption>[];
+    };
 
 /// Hints for NPC documents: behavior ids for `behaviors` items and skin
 /// hashes for `skin`, from the workspace.

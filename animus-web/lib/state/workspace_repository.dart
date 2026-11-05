@@ -59,13 +59,13 @@ class WorkspaceSnapshot {
   static WorkspaceSnapshot decode(String text) {
     final Map<String, Object?> json = jsonDecode(text) as Map<String, Object?>;
     final Object? version = json['schemaVersion'];
-    if (version != 1 && version != workspaceSchemaVersion) throw FormatException('Unsupported workspace schemaVersion $version');
+    if (version is! int || version < 1 || version > workspaceSchemaVersion) throw FormatException('Unsupported workspace schemaVersion $version');
     List<AnimusDocument> documents = <AnimusDocument>[
       for (final Object? document in json['documents']! as List<Object?>) AnimusDocument.fromJson(document! as Map<String, Object?>),
     ];
     ServerBinding? server = json['server'] is Map<String, Object?> ? ServerBinding.fromJson(json['server']! as Map<String, Object?>) : null;
-    if (version == 1) {
-      final ({List<AnimusDocument> documents, ServerBinding? server}) migrated = migrateVersion1(documents, server);
+    if (version < workspaceSchemaVersion) {
+      final ({List<AnimusDocument> documents, ServerBinding? server}) migrated = migrateWorkspace(documents, server);
       documents = migrated.documents;
       server = migrated.server;
     }

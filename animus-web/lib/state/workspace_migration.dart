@@ -1,10 +1,12 @@
 /// Moves workspaces saved by older editors onto the current document ids.
 ///
 /// Version 1 workspaces gave holograms and text animations plain path ids
-/// (`town/welcome`); the server names them `namespace:path` (`town:welcome`),
-/// which version 2 uses. A one-segment file (`gui/holograms/spawn.json`) has
-/// no namespace, which the server refuses, so it moves into the `gloss`
-/// namespace as the server's Gloss import would place it.
+/// (`town/welcome`), and versions 1 and 2 did so for holographic menus
+/// (`lobby/main`); the server names them `namespace:path` (`town:welcome`,
+/// `lobby:main`), which version 3 uses. A one-segment file
+/// (`gui/holograms/spawn.json`) has no namespace, which the server refuses, so
+/// it moves into the `gloss` namespace as the server's Gloss import would
+/// place it.
 library;
 
 import '../logic/data_folder.dart';
@@ -12,13 +14,14 @@ import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
 
-const int workspaceSchemaVersion = 2;
+const int workspaceSchemaVersion = 3;
 
-const Set<DocumentKind> _namespacedSince2 = <DocumentKind>{DocumentKind.hologram, DocumentKind.textAnimation};
+/// Kinds that had plain path ids in older workspaces.
+const Set<DocumentKind> _namespaced = <DocumentKind>{DocumentKind.hologram, DocumentKind.textAnimation, DocumentKind.menu};
 
-/// The id and path a version 1 document has now, or null when it is unchanged.
+/// The id and path an older document has now, or null when it is unchanged.
 ({String id, String path})? migratedLocation(DocumentKind kind, String id, String path) {
-  if (!_namespacedSince2.contains(kind) || id.contains(':')) return null;
+  if (!_namespaced.contains(kind) || id.contains(':')) return null;
   final DocumentLocation? located = locateDocument(path);
   if (located != null && located.kind == kind) return (id: located.id, path: path);
   final List<String> segments = id.split('/');
@@ -27,8 +30,8 @@ const Set<DocumentKind> _namespacedSince2 = <DocumentKind>{DocumentKind.hologram
   return (id: moved, path: '${kind.folder}/${moved.substring(0, colon)}/${moved.substring(colon + 1)}.json');
 }
 
-/// Version 1 documents and server bookkeeping keyed by `kind:id`, renamed.
-({List<AnimusDocument> documents, ServerBinding? server}) migrateVersion1(List<AnimusDocument> documents, ServerBinding? server) {
+/// Older documents and server bookkeeping keyed by `kind:id`, renamed.
+({List<AnimusDocument> documents, ServerBinding? server}) migrateWorkspace(List<AnimusDocument> documents, ServerBinding? server) {
   final Map<String, String> renamed = <String, String>{};
   final List<AnimusDocument> moved = <AnimusDocument>[
     for (final AnimusDocument document in documents)

@@ -18,7 +18,7 @@ void main() {
     expect(locateDocument('packs/quest/behaviors/quest/giver.json'), const DocumentLocation(DocumentKind.behavior, 'quest:giver'));
     expect(locateDocument('shops/town/baker.json'), const DocumentLocation(DocumentKind.shop, 'town:baker'));
     expect(locateDocument('gui/inventories/town/menu.json'), const DocumentLocation(DocumentKind.inventory, 'town:menu'));
-    expect(locateDocument('gui/menus/town/main.json'), const DocumentLocation(DocumentKind.menu, 'town/main'));
+    expect(locateDocument('gui/menus/town/main.json'), const DocumentLocation(DocumentKind.menu, 'town:main'));
     expect(locateDocument('gui/presets.json'), const DocumentLocation(DocumentKind.presets, 'presets'));
     expect(locateDocument('rigs/town/golem.json'), const DocumentLocation(DocumentKind.rig, 'town:golem'));
     expect(locateDocument('animations/town/golem/walk.json'), const DocumentLocation(DocumentKind.animation, 'town:golem/walk'));
@@ -30,6 +30,7 @@ void main() {
       'state/npc-definitions/last-valid/town/guard.json',
       'schemas/npc.schema.json',
       'gui/inventories/menu.json',
+      'gui/menus/main.json',
       'packs/quest/npcs/examples/giver.json',
     ]) {
       expect(locateDocument(ignored), isNull, reason: ignored);
