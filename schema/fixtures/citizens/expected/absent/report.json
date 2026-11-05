@@ -1,14 +1,31 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 7,
+  "converterVersion": 8,
   "fieldPathFormat": "json-pointer",
-  "importId": "9d91775d6c3f5c074e6642235db4183758ddc9cc0682526304b969e8c146c65f",
+  "importId": "886d86376aff5c5fc70be53183f4b58cbf33cd48b84c9c9248c15061c4d13f1f",
   "sourceSha256": "53142c31e4accb7fede2620677991d0e82aec965eff326c24e489ec56e0571c0",
   "worldMap": {},
   "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
   "records": 5,
   "valid": 5,
   "skins": 0,
+  "behaviors": 0,
+  "conversions": {
+    "routes": 0,
+    "routePoints": 0,
+    "routeGuides": 0,
+    "lookClose": 0,
+    "textBehaviors": 0,
+    "commandBehaviors": 0
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": false,
+      "realisticlooking": false,
+      "disablewhilenavigating": true
+    },
+    "inferred": []
+  },
   "traits": {
     "type": 5,
     "location": 5,
@@ -113,10 +130,10 @@
     "4": "0a1b2c3d-0000-4000-8000-000000000104"
   },
   "documents": {
-    "npcs/world-r0_0/citizens-0.json": "e9677ccf20437648506aa433a916d8e2ee141218f2f1ad81dc8366d32ec0aada",
-    "npcs/world-r0_0/citizens-1.json": "3a2d5d77f0f8041bc755a21e83db5d26e900d7d26c6203b1fb9841bfe97fdedd",
-    "npcs/world-r0_0/citizens-2.json": "0f679143195c9486d553c80c82da7c703ccbb2d859e88e5ac9c2280058fec97c",
-    "npcs/world-r0_0/citizens-3.json": "82ea504635d8f7624b0a7e455c91a1820e806ec62932415a4534a3b060612d34",
-    "npcs/world-r0_0/citizens-4.json": "3410f6881497d94e6693de59725345ba98d8d886a6e6c6774f049db712193b0d"
+    "npcs/world-r0_0/citizens-0.json": "0b936a234d1070815a18e898058519418d7c2355228b48d88db2f65ace01d062",
+    "npcs/world-r0_0/citizens-1.json": "1ffcbfe88fd5a541d346fd558b258a519900d81b2f52fe86b9b29b0a07475b1b",
+    "npcs/world-r0_0/citizens-2.json": "63c7b3e4fe243af53efe193b8f64b2916166baf8ea80bd67abadd9c23902e33a",
+    "npcs/world-r0_0/citizens-3.json": "87bb314c2fc979883e45a660d87a82be8d506c27f237758e76970af3a0199124",
+    "npcs/world-r0_0/citizens-4.json": "29c93ca08568e91aeae7d0248248c072c2d6dbff505f0c4a937b803fa1bc3ef4"
   }
 }

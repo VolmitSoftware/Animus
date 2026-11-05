@@ -87,6 +87,17 @@ void main() {
       expect(EditorRoute.parse('#/citizens'), const CitizensRoute());
     });
 
+    test('patrols, look-close, text and commands are counted in the review aggregate', () {
+      final CitizensReview review = CitizensReview.of(convertCitizens(_source('runtime.yml'), const <String, String>{'old_town': 'town'}));
+      final Map<String, Object?> aggregate = review.aggregate();
+      expect(aggregate['behaviors'], 3);
+      expect(aggregate['conversions'], <String, int>{
+        'commandBehaviors': 1, 'lookClose': 2, 'routeGuides': 1, 'routePoints': 6, 'routes': 3, 'textBehaviors': 2, //
+      });
+      expect(review.preview.files.keys.where((String path) => path.startsWith('behaviors/citizens/')).toList()..sort(),
+          <String>['behaviors/citizens/commands-3.json', 'behaviors/citizens/text-2.json', 'behaviors/citizens/text-3.json']);
+    });
+
     test('world mappings must be nonblank', () {
       expect(() => convertCitizens('npc: {}\n', const <String, String>{'a': ' '}), throwsA(isA<CitizensImportException>()));
     });

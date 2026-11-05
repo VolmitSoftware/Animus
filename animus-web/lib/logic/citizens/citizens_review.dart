@@ -7,7 +7,7 @@ import 'citizens_converter.dart';
 import 'java_json.dart';
 
 class CitizensReview {
-  CitizensReview._(this.preview, this.traits, this.types, this.classification, this.issues, this.warnings, this.outputHash);
+  CitizensReview._(this.preview, this.traits, this.types, this.conversions, this.classification, this.issues, this.warnings, this.outputHash);
 
   factory CitizensReview.of(CitizensPreview preview) {
     final JObject summary = preview.summary;
@@ -23,12 +23,16 @@ class CitizensReview {
       }
     }
     List<String> texts(String key) => <String>[for (final JElement entry in (summary.get(key)! as JArray).elements) entry.asPrimitive.asString];
-    return CitizensReview._(preview, counts('traits'), counts('types'), classification, texts('issues'), texts('migrationWarnings'), preview.outputHash());
+    return CitizensReview._(preview, counts('traits'), counts('types'), counts('conversions'), classification, texts('issues'), texts('migrationWarnings'),
+        preview.outputHash());
   }
 
   final CitizensPreview preview;
   final Map<String, int> traits;
   final Map<String, int> types;
+
+  /// What runs in Animus: routes and their points, look-close, and generated text and command behaviors.
+  final Map<String, int> conversions;
 
   /// Leaf fields of every record by conversion status.
   final Map<String, int> classification;
@@ -47,6 +51,8 @@ class CitizensReview {
         'records': preview.records,
         'valid': preview.valid,
         'skins': preview.skins,
+        'behaviors': _count('behaviors'),
+        'conversions': <String, int>{for (final String key in conversions.keys.toList()..sort()) key: conversions[key]!},
         'traitKinds': traits.length,
         'classification': <String, int>{for (final String key in classification.keys.toList()..sort()) key: classification[key]!},
         'issues': issues.length,

@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 8,
+  "fieldPathFormat": "json-pointer",
+  "importId": "5d097b7bfff0b0e64d7c1ee6fbcddb4b26539d03c2e7b482cb14c1f031197c5a",
+  "sourceSha256": "af47d1342d6ceb90babb1439357ec6f225b699137a6bc95e549fe1d9f3baed5d",
+  "worldMap": {
+    "old_town": "town"
+  },
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "records": 5,
+  "valid": 5,
+  "skins": 0,
+  "behaviors": 3,
+  "conversions": {
+    "routes": 3,
+    "routePoints": 6,
+    "routeGuides": 1,
+    "lookClose": 2,
+    "textBehaviors": 2,
+    "commandBehaviors": 1
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": true,
+      "realisticlooking": false,
+      "disablewhilenavigating": true
+    },
+    "inferred": [
+      "enabled",
+      "realisticlooking",
+      "disablewhilenavigating"
+    ]
+  },
+  "traits": {
+    "type": 5,
+    "location": 5,
+    "lookclose": 3,
+    "waypoints": 4,
+    "text": 2,
+    "commandtrait": 1
+  },
+  "types": {
+    "player": 4,
+    "villager": 1
+  },
+  "sentinelFields": {},
+  "sentinelMapping": {},
+  "issues": [],
+  "migrationWarnings": [
+    "lookclose/enabled: Citizens writes it only when it differs from the server default and this save writes only false, so an unset value means true",
+    "citizens-0: /traits/waypoints/linear: 1 points in another world or without usable coordinates were left out",
+    "citizens-0: /traits/waypoints/linear: 2 legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one until points are added between them",
+    "citizens-0: /traits/waypoints/linear: chat waypoint triggers are not supported; kept in citizens:review",
+    "citizens-2: /traits/lookclose/range: look ranges above 64 blocks became 64",
+    "citizens-2: /traits/lookclose/targetnpcs: not supported; the NPC looks at the nearest player",
+    "citizens-2: /traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them",
+    "citizens-3: /traits/commandtrait/commands/0/cooldown: the per-player cooldown is one cooldown for the NPC",
+    "citizens-3: /traits/commandtrait/commands/2/hand: SHIFT_RIGHT needs a sneaking click, which Animus does not tell apart; not converted",
+    "citizens-3: /traits/commandtrait/commands/3: the command costs money, experience or items, which Animus cannot charge; not converted",
+    "citizens-3: /traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console",
+    "citizens-3: /traits/commandtrait: commands stay denied until citizens:commands-3 is on the [behaviors.actions] commandBehaviors list in config.toml",
+    "citizens-4: /traits/waypoints/provider: waypoint provider spiral is not supported; kept in citizens:review"
+  ],
+  "remappedLocations": 12,
+  "resolvedReferences": 0,
+  "unresolvedReferences": 0,
+  "sourceFields": {},
+  "idMap": {
+    "0": "0a1b2c3d-0000-4000-8000-000000000300",
+    "1": "0a1b2c3d-0000-4000-8000-000000000301",
+    "2": "0a1b2c3d-0000-4000-8000-000000000302",
+    "3": "0a1b2c3d-0000-4000-8000-000000000303",
+    "4": "0a1b2c3d-0000-4000-8000-000000000304"
+  },
+  "documents": {
+    "npcs/town-r0_0/citizens-0.json": "a689357afe0793d8f9e1d2f875f00f3687b355abdee44e17d5dbf5249aa43ec6",
+    "npcs/town-r0_0/citizens-1.json": "0303d179d101728b7aabd92648cbaca357ae464feabf279302ae88763c468d25",
+    "behaviors/citizens/text-2.json": "fd86b6d89e566471ce36cb74f5c889cd2355336dd7330f02375f7421cafd5674",
+    "npcs/town-r-1_0/citizens-2.json": "f8973293c0533a655f384a870119dc3281f250e9a172503b71b8889927367181",
+    "behaviors/citizens/text-3.json": "2500899a3646cabd0c82cd0c2ddc83ee3a2be0f694052a1b2e4ae7049be79f75",
+    "behaviors/citizens/commands-3.json": "56f79ffcffec46c36987f97bd074c2cf148401ff4bdff425837ed408ff96417d",
+    "npcs/town-r0_0/citizens-3.json": "e9ee3afe433c176c14d865a43b52e69f2d8a0652114518b0a10fe5b86efff167",
+    "npcs/town-r0_0/citizens-4.json": "6ef2f5eb713b5a29e94f679d280a8a1ba4cb79e7f62a4a43d4567f8b63ce74e4"
+  }
+}

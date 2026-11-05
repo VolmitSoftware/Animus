@@ -15,6 +15,13 @@
       "worldMap": {}
     },
     {
+      "name": "runtime",
+      "source": "runtime.yml",
+      "worldMap": {
+        "old_town": "town"
+      }
+    },
+    {
       "name": "scalars",
       "source": "scalars.yml",
       "worldMap": {

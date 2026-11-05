@@ -75,6 +75,8 @@ async function run(browser, viewport, label) {
       records: desktop.records,
       valid: desktop.valid,
       skins: desktop.skins,
+      behaviors: desktop.behaviors,
+      conversions: desktop.conversions,
       traitKinds: desktop.traitKinds,
       classification: desktop.classification,
       issues: desktop.issues,
