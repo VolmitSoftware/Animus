@@ -171,13 +171,7 @@ public final class AnimusModRuntime {
                     new ModOperators(server), screenService::refreshOpen, LOGGER::info));
             next.hotload.start();
             TriggerDispatcher triggers = next.behaviors.triggers();
-            if (triggers != null) {
-                if (next.living.available()) { triggers.connect(); next.living.bindTriggers(triggers); }
-                else {
-                    triggers.unavailable(next.living.status());
-                    LOGGER.info("Behavior triggers unavailable: {}", next.living.status());
-                }
-            }
+            if (triggers != null) next.ticks.every(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, next.living, LOGGER::info));
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
                     next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
                             "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files)), () -> owner.stopping));

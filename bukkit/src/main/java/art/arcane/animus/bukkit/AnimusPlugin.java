@@ -85,7 +85,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private BukkitScreens screens;
     private volatile ShopService<Player, ItemStack> shops;
     private volatile HoloService<Player, ItemStack> guis;
-    private AutoCloseable screenTicks, hireTicks;
+    private AutoCloseable screenTicks, hireTicks, triggerTicks;
     private final DialogueTriggers dialogueTriggers = new DialogueTriggers(() -> {
         BehaviorCommands current = behaviors;
         return current == null ? null : current.triggers();
@@ -187,13 +187,7 @@ public final class AnimusPlugin extends JavaPlugin {
                     (String message) -> getLogger().info(message)));
             hotload.start();
             TriggerDispatcher triggers = behaviors.triggers();
-            if (triggers != null) {
-                if (living.available()) { triggers.connect(); living.bindTriggers(triggers); }
-                else {
-                    triggers.unavailable(living.status());
-                    getLogger().info("Behavior triggers unavailable: " + living.status());
-                }
-            }
+            if (triggers != null) triggerTicks = ownerTicks.apply(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, living, (String message) -> getLogger().info(message)));
             Map<String, AnimusCommands.Extra> extras = new HashMap<>();
             extras.put("proof", new ProofCommand());
             extras.put("shop", shops.shopCommand());
@@ -240,7 +234,7 @@ public final class AnimusPlugin extends JavaPlugin {
         animusCommands = null;
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
-        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks)) {
+        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks, triggerTicks)) {
             if (ticks == null) continue;
             try { ticks.close(); }
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }
