@@ -139,7 +139,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private TriggerBridge triggers;
     private volatile InteractionListener<P> interactions;
     private volatile String unavailable;
-    private String lastFailure;
+    private final RuntimeFailures failures;
     private volatile boolean closed;
     private long accepted, rejected;
     long tickNumber;
@@ -159,6 +159,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     public PersistedNpcService(RuntimeHost<P, I> host, AnimusRuntime runtime, Executor io, Settings settings) {
         this.host = Objects.requireNonNull(host); this.runtime = Objects.requireNonNull(runtime);
         this.io = Objects.requireNonNull(io); this.settings = Objects.requireNonNull(settings);
+        failures = new RuntimeFailures(host::warn);
         previews = new ViewerPreviews(io, runtime.documents());
         completions = new ArrayBlockingQueue<>(settings.maximumViewers() * (MAX_PENDING_PER_VIEWER + 2));
         rigSettings = runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT;
@@ -195,7 +196,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 + " | skin-reads=" + skinTasks.size() + " | accepted=" + accepted + " | rejected=" + rejected
                 + " | routes=" + routeOrder.size() + " | path-jobs=" + navigation.outstandingJobs() + " | route-reads=" + routeReads.size()
                 + " | mounted=" + mountRuntime.mountedCount() + " | mount-problems=" + mountRuntime.problemCount() + " | riders=" + riders.count()
-                + " | chunks=" + host.chunkDelivery() + (lastFailure == null ? "" : " | last-error=" + lastFailure);
+                + " | chunks=" + host.chunkDelivery() + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
     @Override public String inspect(String id) {
         if (!available()) return "Runtime " + id + ": " + (closed ? "closed" : unavailable);
@@ -535,15 +536,15 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (body.bones == null) {
             if (packetBudget <= 0 || viewer.bones + shown.displays().size() > rigSettings.maximumBones()) return 0;
             try { body.bones = packets.createBones(body.body, shown.displays()); }
-            catch (RuntimeException invalid) { body.rigFailed = true; body.value.rigProblem = concise(invalid); lastFailure = concise(invalid); return 0; }
+            catch (RuntimeException invalid) { body.rigFailed = true; body.value.rigProblem = concise(invalid); failures.record("rig bones", context(viewer, body.value), invalid); return 0; }
             body.rigIdentity = shown.identity(); body.view = new RigView(body.bones.count()); viewer.bones += body.bones.count();
             try {
                 packets.showBones(viewer.player, body.body, body.bones, pose(body.value), List.of(frame.targets()), shown.hideBody())
                         .whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
-                            if (failure != null) { if (current(viewer) && !body.retired) { body.rigFailed = true; lastFailure = concise(failure); } return; }
+                            if (failure != null) { if (current(viewer) && !body.retired && !cosmeticFailed(viewer, "show bones", body.value, failure)) body.rigFailed = true; return; }
                             body.view.shown(frame); body.bonesShown = true;
                         }));
-            } catch (RuntimeException failure) { body.rigFailed = true; lastFailure = concise(failure); }
+            } catch (RuntimeException failure) { if (!cosmeticFailed(viewer, "show bones", body.value, failure)) body.rigFailed = true; }
             return 1;
         }
         if (!body.bonesShown || rigBudget[0] <= 0) return 0;
@@ -557,9 +558,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         rigBudget[0] -= due.length;
         try {
             packets.moveBones(viewer.player, body.bones, due, targets, durations).whenComplete((Void nothing, Throwable failure) -> {
-                if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) { body.view.unsent(due); lastFailure = concise(failure); } });
+                if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) { body.view.unsent(due); cosmeticFailed(viewer, "move bones", body.value, failure); } });
             });
-        } catch (RuntimeException failure) { body.view.unsent(due); lastFailure = concise(failure); }
+        } catch (RuntimeException failure) { body.view.unsent(due); cosmeticFailed(viewer, "move bones", body.value, failure); }
         return 0;
     }
     private void readAppearanceSkin(Value value, String skin) {
@@ -582,7 +583,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         boolean owns = value.appearanceTask == task;
         if (owns) value.appearanceTask = null;
         if (task.cancelled || !owns || !valueCurrent(value)) return;
-        if (completion.error != null) { lastFailure = "$.skin: " + completion.error; return; }
+        if (completion.error != null) { failures.record("skin read", "npc=" + value.spec.definition().id(), "$.skin: " + completion.error); return; }
         value.displaySkin = completion.skin;
         representBody(value);
     }
@@ -950,7 +951,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             admit();
             if (triggers != null) triggers.proximity(viewers.keySet(), this::viewerPosition);
             FairViewerWork.run(viewerOrder, settings.updatesPerTick(), PACKET_WORK, this::current, (Viewer viewer, int remaining) -> {
-                if (viewer.failed || !host.online(viewer.player)) { fail(viewer, "Packet callback/connection unavailable"); return 0; }
+                if (viewer.failed) { fail(viewer, "packet callbacks", null, "Packet callback queue full"); return 0; }
+                if (!host.online(viewer.player)) { disconnect(viewer.player); return 0; }
                 if (host.dead(viewer.player)) { disconnect(viewer.player); return 0; }
                 if (!viewer.world.equals(host.position(viewer.player).world())) { disconnect(viewer.player); admissions = host.onlinePlayers().iterator(); return 0; }
                 if (viewer.guard.issuedCount() >= MAX_ISSUED_IDS - settings.maximumVisible()) {
@@ -959,12 +961,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 return update(viewer, remaining);
             });
         } catch (RuntimeException failure) {
-            lastFailure = concise(failure);
+            failures.record("tick", "", failure);
             mountRuntime.close();
             // Capability failure must not leave clients able to interact with stale presentation.
             for (Viewer viewer : List.copyOf(viewers.values())) disconnect(viewer.player);
-            host.warn("NPC runtime tick failed: " + lastFailure);
-            unavailable = "unavailable after runtime failure: " + lastFailure;
+            unavailable = "unavailable after runtime failure: " + failures.last();
             if (triggers != null) triggers.failed("NPC runtime " + unavailable);
             closeQuietly(ticker); packets.close(); packets = null;
             if (navigation != null) navigation.close();
@@ -975,7 +976,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         NpcDefinition definition = change.definition(); Entry entry = entries.get(change.id());
         if (!DefinitionSpec.spawned(definition)) { if (entry != null) remove(entry); return true; }
         if (entry == null) {
-            if (entries.size() >= MAX_ACTIVE) { lastFailure = "Active definition capacity reached: " + MAX_ACTIVE; return true; }
+            if (entries.size() >= MAX_ACTIVE) { failures.record("activation", "", "Active definition capacity reached: " + MAX_ACTIVE); return true; }
             entry = new Entry(change.id()); entries.put(change.id(), entry);
         }
         if (entry.task != null && entry.task.spec.definition() != definition) { entry.task.cancelled = true; entry.task = null; }
@@ -1065,9 +1066,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             try {
                 packets.watch(player, (BodyTransport.Interaction input) -> interact(viewer, input)).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                     if (!current(viewer)) return;
-                    if (failure == null) viewer.ready = true; else fail(viewer, concise(failure));
+                    if (failure == null) viewer.ready = true; else watchFailed(viewer, failure);
                 }));
-            } catch (RuntimeException failure) { fail(viewer, concise(failure)); }
+            } catch (RuntimeException failure) { watchFailed(viewer, failure); }
         }
     }
     private int update(Viewer viewer, int packetBudget) {
@@ -1083,7 +1084,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             packets.despawn(viewer.player, body.body).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                 if (!current(viewer)) return;
                 body.despawnFinished = true;
-                if (failure != null) fail(viewer, concise(failure)); else releaseRetired(viewer, body);
+                if (failure != null) fail(viewer, "despawn", body.value, failure); else releaseRetired(viewer, body);
             }));
         }
         // One outstanding move per body; rotating the body queue prevents a busy subset starving other updates.
@@ -1147,13 +1148,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 if (!current(viewer)) return;
                 presented.spawnFinished = true; viewer.pendingSpawns--;
                 if (presented.retired) { releaseRetired(viewer, presented); return; }
-                if (failure != null) { fail(viewer, concise(failure)); return; }
+                if (failure != null) { fail(viewer, "spawn", value, failure); return; }
                 if (!eligibleNow(viewer, value)) { retire(viewer, presented); return; }
                 viewer.rosterDirty = true;
                 try { viewer.guard.bind(body.entityId(), value.state.snapshot()); presented.bound = true; }
-                catch (RuntimeException invalid) { fail(viewer, concise(invalid)); }
+                catch (RuntimeException invalid) { fail(viewer, "spawn", value, invalid); }
             }));
-        } catch (RuntimeException failure) { fail(viewer, concise(failure)); }
+        } catch (RuntimeException failure) { fail(viewer, "spawn", value, failure); }
     }
     /** Native IDs a body of this NPC reserves, including its text display and seat. */
     private int nativeIds(Value value) {
@@ -1170,12 +1171,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             packets.move(viewer.player, body.body, pose(body.value)).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                 if (!current(viewer) || body.retired || viewer.visible.get(body.body.uuid()) != body) return;
                 body.moving = false;
-                if (failure != null) { fail(viewer, concise(failure)); return; }
+                if (failure != null) { fail(viewer, "move", body.value, failure); return; }
                 if (!eligibleNow(viewer, body.value)) { retire(viewer, body); return; }
                 body.deliveredPoseRevision = revision;
                 if (body.bound) viewer.guard.updateSnapshot(body.body.entityId(), body.value.state.snapshot());
             }));
-        } catch (RuntimeException failure) { fail(viewer, concise(failure)); }
+        } catch (RuntimeException failure) { fail(viewer, "move", body.value, failure); }
     }
     /** Cosmetic: a failed send is recorded and not retried, and never costs the viewer their session. */
     private void equip(Viewer viewer, Presented body) {
@@ -1185,12 +1186,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             packets.equipment(viewer.player, body.body, Map.copyOf(body.value.equipment)).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                 body.equipping = false;
                 body.deliveredEquipmentRevision = revision;
-                if (failure != null && current(viewer) && !body.retired) lastFailure = concise(failure);
+                if (failure != null && current(viewer) && !body.retired) cosmeticFailed(viewer, "equipment", body.value, failure);
             }));
         } catch (RuntimeException failure) {
             body.equipping = false;
             body.deliveredEquipmentRevision = revision;
-            lastFailure = concise(failure);
+            cosmeticFailed(viewer, "equipment", body.value, failure);
         }
     }
     private boolean eligibleNow(Viewer viewer, Value value) {
@@ -1253,7 +1254,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         }
     }
 
-    void noteFailure(Throwable failure) { lastFailure = concise(failure); }
+    /** Cosmetic work of one viewer failed: an error is recorded and the viewer keeps its session. True when the watch had ended and the viewer was dropped. */
+    boolean cosmeticFailed(Viewer viewer, String operation, Value value, Throwable failure) {
+        if (RuntimeFailures.viewerGone(failure)) { if (current(viewer)) lost(viewer); return true; }
+        failures.record(operation, context(viewer, value), failure);
+        return false;
+    }
     double playerWidth() { return geometries.get(art.arcane.animus.core.presentation.BodyRules.PLAYER).width(); }
     double playerHeight() { return geometries.get(art.arcane.animus.core.presentation.BodyRules.PLAYER).height(); }
     SeatGeometry playerSeat() { return geometries.get(art.arcane.animus.core.presentation.BodyRules.PLAYER).seat(); }
@@ -1265,12 +1271,30 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         return viewer == null || !host.online(viewer.player) || host.dead(viewer.player) ? Optional.empty() : Optional.of(host.position(viewer.player));
     }
     boolean current(Viewer viewer) { return !closed && viewers.get(host.id(viewer.player)) == viewer; }
-    private void fail(Viewer viewer, String error) {
+    private String context(Viewer viewer, Value value) {
+        return "viewer=" + host.name(viewer.player) + (value == null ? "" : ", npc=" + value.spec.definition().id());
+    }
+    /** Body work of one viewer failed. A watch that ended (the connection closed or was re-watched) is not an error: the viewer is dropped and watched again. */
+    private void fail(Viewer viewer, String operation, Value value, Throwable failure) {
         if (!current(viewer)) return;
-        lastFailure = error;
+        if (RuntimeFailures.viewerGone(failure)) { lost(viewer); return; }
+        fail(viewer, operation, value, concise(failure));
+    }
+    private void fail(Viewer viewer, String operation, Value value, String error) {
+        if (!current(viewer)) return;
+        failures.record(operation, context(viewer, value), error);
         if (viewerFailures.size() < settings.maximumViewers()) viewerFailures.put(host.id(viewer.player), error);
         disconnect(viewer.player);
     }
+    /** The transport could not watch the viewer. A closed connection waits quietly for the quit, rejoin, teleport or respawn that follows it. */
+    private void watchFailed(Viewer viewer, Throwable failure) {
+        if (!current(viewer)) return;
+        if (!RuntimeFailures.viewerGone(failure)) { fail(viewer, "watch", null, failure); return; }
+        if (viewerFailures.size() < settings.maximumViewers()) viewerFailures.put(host.id(viewer.player), "connection closed");
+        disconnect(viewer.player);
+    }
+    /** Drops a viewer whose watch ended without counting it as a failure; the next admission watches it again. */
+    private void lost(Viewer viewer) { disconnect(viewer.player); admissions = host.onlinePlayers().iterator(); }
     private void disconnect(P player) {
         if (riders != null) riders.viewerLost(player);
         Viewer old = viewers.remove(host.id(player));

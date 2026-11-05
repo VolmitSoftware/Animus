@@ -131,10 +131,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     @Override public ControlSubscription subscribeControl(Player viewer) {
         ensureOpen();
         Session session = sessions.get(viewer.getUniqueId());
-        if (session == null || session.viewer != viewer || !current(session)) throw new IllegalStateException("Viewer is not watched");
+        if (session == null || session.viewer != viewer || !current(session)) throw new BodyTransport.ViewerUnwatched("Viewer is not watched");
         ControlSubscription subscription = new ControlSubscription(session);
         if (!session.control.compareAndSet(null, subscription)) throw new IllegalStateException("Viewer already has a control subscription");
-        if (!current(session)) { subscription.close(); throw new IllegalStateException("Viewer session retired"); }
+        if (!current(session)) { subscription.close(); throw new BodyTransport.ViewerUnwatched("Viewer session retired"); }
         return subscription;
     }
     public final class ControlSubscription implements BodyTransport.ControlSubscription {
@@ -205,7 +205,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         if (previous != null) retire(previous);
         try {
             channel.eventLoop().execute(() -> {
-                if (!current(session) || !channel.isActive()) { session.ready.completeExceptionally(new CancellationException("Viewer session retired")); return; }
+                if (!current(session) || !channel.isActive()) { session.ready.completeExceptionally(new BodyTransport.ViewerUnwatched("Viewer session retired")); return; }
                 try {
                     if (channel.pipeline().get(handlerName) != null) channel.pipeline().remove(handlerName);
                     if (channel.pipeline().get("packet_handler") == null) throw new IllegalStateException("Vanilla packet_handler is unavailable");
@@ -245,7 +245,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 else {
                     // A delayed failure from an older presentation must not remove a newer one of the same body.
                     if (!hasNewerPresentation(session, presentation)) removePackets(session, body);
-                    result.completeExceptionally(failure != null ? failure : new CancellationException("Viewer retired during spawn"));
+                    result.completeExceptionally(failure != null ? failure : new BodyTransport.ViewerUnwatched("Viewer retired during spawn"));
                 }
             });
         });
@@ -280,7 +280,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Body vehicle = checkBody(carrier);
         List<Body> requested = passengers.stream().map(this::checkBody).toList();
         Session session = sessions.get(viewer.getUniqueId());
-        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
         List<Presentation> presentations = new ArrayList<>();
         synchronized (session) {
             Presentation mount = session.visible.get(vehicle.entityId);
@@ -315,7 +315,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Body dragon = checkBody(presented);
         if (!dragon.typeKey.equals(DragonBody.TYPE)) return failed("Phase applies only to dragon bodies");
         Session session = sessions.get(viewer.getUniqueId());
-        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
         Presentation presentation = session.visible.get(dragon.entityId);
         if (presentation == null || presentation.body != dragon) return failed("Dragon is not visible to this viewer");
         CompletableFuture<Void> result = new CompletableFuture<>();
@@ -330,7 +330,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     @Override public CompletionStage<Void> swing(Player viewer, BodyTransport.Body presented) {
         Body body = checkBody(presented);
         Session session = sessions.get(viewer.getUniqueId());
-        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
         CompletableFuture<Void> result = new CompletableFuture<>();
@@ -348,7 +348,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Body body = checkBody(presented);
         if (nativeApi.equipment == null) return failed("Equipment packets are unavailable on this server version");
         Session session = sessions.get(viewer.getUniqueId());
-        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
         Presentation presentation = session.visible.get(body.entityId);
         if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
         Object packet;
@@ -416,7 +416,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Bones bones = checkBones(moved, null);
         if (indices.length != transforms.length || indices.length != durations.length) return failed("Bone updates need a transform and duration each");
         Session session = sessions.get(viewer.getUniqueId());
-        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
         if (session.bones.get(bones.body.entityId) != bones) return failed("Bones are not shown to this viewer");
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
@@ -514,7 +514,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         ensureOpen();
         if (!viewer.getWorld().getUID().toString().equals(pose.world())) throw new IllegalArgumentException("Viewer and body world differ");
         Session session = sessions.get(viewer.getUniqueId());
-        if (session == null || session.viewer != viewer || !current(session)) throw new IllegalStateException("Viewer must be watched before sending body packets");
+        if (session == null || session.viewer != viewer || !current(session)) throw new BodyTransport.ViewerUnwatched("Viewer must be watched before sending body packets");
         return session;
     }
     private Body checkBody(BodyTransport.Body presented) {
@@ -525,6 +525,8 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     private void ensureOpen() { if (closed) throw new IllegalStateException("Packet adapter is closed"); }
     private boolean current(Session session) { return !closed && session.active.get() && sessions.get(session.viewerId) == session; }
     private static CompletionStage<Void> failed(String reason) { return CompletableFuture.failedFuture(new IllegalStateException(reason)); }
+    /** The viewer's watch has ended or was never installed: the work is dropped, not sent. */
+    private static CompletionStage<Void> unwatched(String reason) { return CompletableFuture.failedFuture(new BodyTransport.ViewerUnwatched(reason)); }
     private static void complete(CompletableFuture<Void> result, Throwable failure) { if (failure == null) result.complete(null); else result.completeExceptionally(failure); }
     @FunctionalInterface private interface Operation { void run() throws ReflectiveOperationException; }
 
@@ -539,7 +541,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             if (failure != null) { result.completeExceptionally(failure); return; }
             try {
                 session.channel.eventLoop().execute(() -> {
-                    if (!current(session)) { result.completeExceptionally(new CancellationException("Viewer session retired")); return; }
+                    if (!current(session)) { result.completeExceptionally(new BodyTransport.ViewerUnwatched("Viewer session retired")); return; }
                     try { operation.run(); }
                     catch (ReflectiveOperationException | RuntimeException e) { result.completeExceptionally(e); }
                 });
@@ -548,7 +550,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     }
 
     private CompletionStage<Void> write(Session session, List<Object> packets) {
-        if (!session.channel.isActive()) return failed("Viewer connection is closed");
+        if (!session.channel.isActive()) return unwatched("Viewer connection is closed");
         List<CompletableFuture<Void>> results = new ArrayList<>(packets.size());
         try {
             for (Object packet : packets) {
@@ -598,7 +600,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             retiredBones.putAll(session.bones);
             session.visible.clear(); session.spawning.clear(); session.passengers.clear(); session.bones.clear(); session.rosters.clear();
         }
-        session.ready.completeExceptionally(new CancellationException("Viewer session retired"));
+        session.ready.completeExceptionally(new BodyTransport.ViewerUnwatched("Viewer session retired"));
         try {
             session.channel.eventLoop().execute(() -> {
                 for (Body body : bodies) {
@@ -880,7 +882,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             Object handle = craftPlayerHandle.invoke(viewer);
             Object connection = networkConnection.get(playerConnection.get(handle));
             Channel result = (Channel) channel.get(connection);
-            if (result == null || !result.isActive()) throw new IllegalStateException("Viewer is not connected");
+            if (result == null || !result.isActive()) throw new BodyTransport.ViewerUnwatched("Viewer is not connected");
             return result;
         }
         @SuppressWarnings({"unchecked", "rawtypes"})
