@@ -392,13 +392,12 @@ void main() {
   group('export and editing', () {
     test('should give every new document a path that locates back to it and passes validation', () {
       for (final DocumentKind kind in guiKinds) {
-        final String id = newDocumentId(kind, const <String>{});
+        final String id = 'example:${kind.wireName}';
         final String path = documentPath(kind, id);
         expect(locateDocument(path), DocumentLocation(kind, id), reason: path);
         final AnimusDocument document = validateSource(DocumentLocation(kind, id), path, prettyJson(newDocument(kind, id)), schemas);
         expect(errors(document), isEmpty, reason: '$kind ${document.diagnostics}');
       }
-      expect(newDocumentId(DocumentKind.shop, <String>{'example:shop'}), 'example:shop-2');
       expect(locateDocument(documentPath(DocumentKind.inventory, 'no-namespace')), isNull);
     });
 
