@@ -131,6 +131,7 @@
 - Converter version 7 puts imported NPCs in `npcs/<world>-r<x>_<z>/` folders; controllable NPCs import with riding disabled, imported shops wait for review, and imported NPCs stay despawned while Citizens is enabled.
 - The Citizens converter is version 8, so every import ID changes.
 - The editor uses the server's `namespace:path` ids for holograms and text animations, including Gloss bundles; saved workspaces are moved on load.
+- Holographic menus use the server's `namespace:path` ids in the editor and editor API (workspaces migrate to version 3); Gloss bundle ids for chest GUIs and menus match `/animus gui import|export gloss`; behavior JSON completes `animus:open-gui` and `animus:open-shop` ids.
 
 ### Fixed
 
