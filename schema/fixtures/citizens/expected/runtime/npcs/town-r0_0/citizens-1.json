@@ -21,6 +21,9 @@
     "yaw": 0,
     "pitch": 0
   },
+  "movement": {
+    "avoidWater": false
+  },
   "modules": {
     "animus:navigation": {
       "enabled": false,

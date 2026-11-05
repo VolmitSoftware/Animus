@@ -22,7 +22,8 @@
     "pitch": 0
   },
   "movement": {
-    "speed": 4.3
+    "speed": 4.3,
+    "avoidWater": false
   },
   "behaviors": [
     "citizens:text-2"

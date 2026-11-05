@@ -41,6 +41,7 @@
     "visible": false
   },
   "movement": {
+    "avoidWater": false,
     "fly": true
   },
   "baby": true,

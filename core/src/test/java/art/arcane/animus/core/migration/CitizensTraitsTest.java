@@ -59,6 +59,12 @@ class CitizensTraitsTest {
         assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, map("player", "{\"metadata\":{\"protected\":false}}", false).notes().get("/metadata/protected").status());
     }
 
+    @Test void aRouteWithoutAvoidWaterSwimsAsCitizensDoes() {
+        assertEquals(json("{\"avoidWater\":false}"), map("player", "{}", false, true).fields().get("movement"), "Citizens' default lets the NPC swim");
+        assertFalse(map("player", "{}", false, false).fields().has("movement"), "an NPC without a route needs no movement");
+        assertEquals(json("{\"avoidWater\":true}"), map("player", "{\"navigator\":{\"avoidwater\":true}}", false, true).fields().get("movement"));
+    }
+
     @Test void vanillaAiBecomesAWanderRouteOnMobBodies() {
         String record = "{\"metadata\":{\"minecraft-ai\":true},\"navigator\":{\"speedmodifier\":1.5}}";
         assertTrue(CitizensTraits.wanders("minecraft:zombie", json(record)));
