@@ -1,6 +1,7 @@
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.Registry;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagNetworkSerialization;
 import net.minecraft.network.protocol.common.ClientboundUpdateTagsPacket;
@@ -21,4 +22,6 @@ final class ProtocolRevision {
     static int[] removed(ClientboundRemoveEntitiesPacket packet) { return packet.getEntityIds().toIntArray(); }
     static Vec3 position(ClientboundEntityPositionSyncPacket packet) { return packet.values().position(); }
     static Map<ResourceKey<? extends Registry<?>>, TagNetworkSerialization.NetworkPayload> tags(ClientboundUpdateTagsPacket packet) { return packet.getTags(); }
+    static ParticleOptions particle(ClientboundLevelParticlesPacket packet) { return packet.getParticle(); }
+    static int particleCount(ClientboundLevelParticlesPacket packet) { return packet.getCount(); }
 }

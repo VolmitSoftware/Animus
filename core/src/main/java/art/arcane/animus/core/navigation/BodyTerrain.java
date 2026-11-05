@@ -90,13 +90,29 @@ public final class BodyTerrain {
             if (!swims) return new Rest(Kind.BLOCKED, top, count, "Water too deep to wade");
             return surface(area, boxes, feet, climb, drop, allowHazard, count);
         }
-        if (!complete) return null;
+        if (!complete) {
+            // Deep water: any unread ground lies so far down that the body's head would be under the open surface,
+            // so the surface is final and the bottom, which may be outside the capture, is never needed.
+            if (!swims) return null;
+            Rest swim = surface(area, boxes, feet, climb, drop, allowHazard, count);
+            return swim.kind() == Kind.SWIM && submerged(area, MotionValidator.floor(feet - drop + height - EPSILON), (int) swim.feet()) ? swim : null;
+        }
         if (swims) {
             Rest swim = surface(area, boxes, feet, climb, drop, allowHazard, count);
             if (swim.kind() != Kind.NONE) return swim;
         }
         return tops.isEmpty() ? new Rest(Kind.NONE, feet, count, "No ground within reach")
                 : new Rest(Kind.BLOCKED, feet, count, "No room for the body");
+    }
+
+    /**
+     * True when no unread landing could keep the head above the surface: the highest unread box top leaves the head at or
+     * below the surface layer, and every layer such a head could occupy, from {@code from} up, is read and holds water.
+     */
+    private boolean submerged(Area area, int from, int surface) {
+        if (MotionValidator.floor(area.low - 1 + Cell.MAX_HEIGHT + height - EPSILON) > surface) return false;
+        for (int y = from; y <= surface; y++) if (y < area.low || !area.water(y)) return false;
+        return true;
     }
 
     /** The bottom of the highest water block whose top is open, so a swimming body keeps its head out. */

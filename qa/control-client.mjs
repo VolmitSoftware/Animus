@@ -160,8 +160,9 @@ try {
   ({ body, status: before } = await owner.fresh());
   await owner.command('fill -2 60 5 2 60 5 air', /Successfully filled|No blocks were filled/); hole = true;
   await owner.keys({ forward: true }); after = await owner.until(value => value.state === 'BLOCKED'); owner.assertMotion(before, after);
-  assert.equal(after.state, 'BLOCKED'); assert(after.z <= 4.70001); await owner.stationary(after);
-  passed('flat control refuses unsupported ground instead of walking into a hole');
+  // Support is ground under any part of the 0.6-wide body, so it may overhang the hole but never leave the edge block.
+  assert.equal(after.state, 'BLOCKED'); assert(after.z > 4.7 && after.z < 5.3 && after.y === 61, JSON.stringify(after)); await owner.stationary(after);
+  passed('flat control refuses unsupported ground instead of walking into a hole', { z: after.z });
   await owner.clear(); await owner.command('fill -2 60 5 2 60 5 stone', /Successfully filled|No blocks were filled/); hole = false;
 
   ({ body, status: before } = await owner.fresh());

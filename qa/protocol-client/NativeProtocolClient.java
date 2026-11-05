@@ -299,7 +299,7 @@ public final class NativeProtocolClient {
             event("equipment", "id", p.getEntity(), "slots", slots);
         }
         else if (packet instanceof ClientboundSoundPacket p) event("sound", "sound", p.getSound().unwrapKey().map(key -> key.identifier().toString()).orElse(p.getSound().value().location().toString()), "volume", p.getVolume(), "pitch", p.getPitch());
-        else if (packet instanceof ClientboundLevelParticlesPacket p) event("particle", "particle", BuiltInRegistries.PARTICLE_TYPE.getKey(p.particle().getType()).toString(), "count", p.count());
+        else if (packet instanceof ClientboundLevelParticlesPacket p) event("particle", "particle", BuiltInRegistries.PARTICLE_TYPE.getKey(ProtocolRevision.particle(p).getType()).toString(), "count", ProtocolRevision.particleCount(p));
         else if (packet instanceof ClientboundBossEventPacket) event("boss_event");
         else if (packet instanceof ClientboundRotateHeadPacket p) event("head", "id", reflectedId(p), "yaw", p.getYHeadRot());
         else if (packet instanceof ClientboundMoveEntityPacket p && p.hasRotation()) event("rotation", "id", reflectedId(p), "yaw", p.getYRot(), "pitch", p.getXRot());

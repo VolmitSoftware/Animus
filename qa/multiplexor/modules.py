@@ -13,7 +13,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ['binary','workspace','build-home','module-fixtures','reference','observer']:p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--build-run',required=True);p.add_argument('--artifact-sha256',required=True)
-    p.add_argument('--project',choices=['paper','spigot','folia'],required=True);p.add_argument('--version',choices=['26.1.2','26.2','26.3'],required=True)
+    p.add_argument('--project',choices=['paper','spigot','folia'],required=True);p.add_argument('--instance-name',help='Explicit animus-gate-modules-<project>-<version> isolated QA instance');p.add_argument('--version',choices=['26.1.2','26.2','26.3'],required=True)
     a=p.parse_args();a.binary=a.binary.resolve();a.workspace=a.workspace.resolve();a.transcript=[]
     assert '.qa' in a.workspace.parts and re.fullmatch(r'[a-f0-9]{64}',a.artifact_sha256)
     fixtures=read(a.module_fixtures/'build.json');reference=read(a.reference.parent/'build.json');observer=read(a.observer.parent/'build.json')
@@ -21,6 +21,9 @@ def main():
     assert observer['fixtureSha256']==sha(a.observer) and observer['pluginSha256']==a.artifact_sha256
     assert fixtures['apiSha256']==reference['apiSha256']
     source_name='animus-'+a.project+'-'+a.version.replace('.','-');name='animus-modules-'+a.project+'-'+a.version.replace('.','-')
+    if a.instance_name:
+        assert re.fullmatch(r'animus-gate-modules-'+a.project+'-'+re.escape(a.version.replace('.','-')),a.instance_name),'Instance name must bind requested platform/version'
+        name=a.instance_name
     baseline=a.workspace/'consumers/plugin-consumers/instances'/source_name;instance=a.workspace/'consumers/plugin-consumers/instances'/name
     pinned=read(a.workspace/'animus-evidence'/source_name/'runtime.json');assert sha(baseline/'server.jar')==pinned['serverSha256']
     token=f'{time.time_ns()}-{os.getpid()}';npc_id='module-qa-'+str(time.time_ns());evidence=a.workspace/'animus-evidence'/name/f'modules-{token}';evidence.mkdir(parents=True)
