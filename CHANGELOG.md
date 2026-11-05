@@ -103,6 +103,7 @@
 - Animus publishes 24 metrics to React as source `animus` when React is installed, with no dependency on React (`docs/react.md`).
 - `/animus import citizens` converts Denizen scripts into `denizen:` behaviors and imports Denizen flag values as behavior state, with a `denizen` review category; `converter denizen-preview` and a browser Denizen converter with the same output.
 - Route legs of any length: long legs are planned in bounded terrain segments that climb, swim, fly and detour along cliffs and shores; guided routes reach destinations no guide links to.
+- Walking routes open and close wooden doors, fence gates and trapdoors (`movement.openDoors`); `targetableByMobs` lets nearby melee hostile mobs attack an NPC on Paper and Spigot; definition `poses` and the `animus:pose` action; WorldGuard `use` checks for doors NPCs open.
 
 ### Changed
 
@@ -156,9 +157,11 @@
 - Mod-server command replies render colours through the shared text formatter.
 - `movement.pathRange` limits how far each plan reaches instead of making longer legs unreachable; a step blocked by new terrain replans; a leg terrain blocks is logged once per NPC.
 - Removed the Citizens import warnings for long legs and unlinked guided destinations.
+- Mob control covers husks, drowned, zombie villagers and vindicators; Citizens converter v11 converts door opening, targetable, vanilla AI and named poses.
 
 ### Fixed
 
+- Imported Citizens routes with no saved `avoidwater` swim across water as Citizens does.
 - Citizens hologram lines import in the right order.
 - Combat, builds and container shops refuse when WorldGuard is installed but disabled, at startup or later.
 - NPC builds work with WorldGuard installed; NPCs are asked about as non-members, so a region without `build` allowed is closed to them.
