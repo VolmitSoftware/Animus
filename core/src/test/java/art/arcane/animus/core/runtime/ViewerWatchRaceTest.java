@@ -155,6 +155,8 @@ class ViewerWatchRaceTest {
     /** Mirrors the packet adapters: once the watch is gone, body packets refuse synchronously. */
     static final class FakeTransport implements BodyTransport<Player, Object> {
         final AtomicInteger watches = new AtomicInteger(), spawned = new AtomicInteger();
+        /** Body packets in the order the runtime sent them: "spawn", "move" or "despawn", a space and the body UUID. */
+        final List<String> sent = new ArrayList<>();
         volatile boolean watched, connected = true;
         volatile String spawnFailure;
         private void requireWatch() { if (!watched) throw new BodyTransport.ViewerUnwatched("Viewer must be watched before sending body packets"); }
@@ -174,14 +176,14 @@ class ViewerWatchRaceTest {
         @Override public CompletionStage<Void> spawn(Player viewer, Body body, BodyPose pose) {
             requireWatch();
             if (spawnFailure != null) return CompletableFuture.failedFuture(new IllegalStateException(spawnFailure));
-            spawned.incrementAndGet();
+            spawned.incrementAndGet(); sent.add("spawn " + body.uuid());
             return CompletableFuture.completedFuture(null);
         }
-        @Override public CompletionStage<Void> move(Player viewer, Body body, BodyPose pose) { requireWatch(); return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> move(Player viewer, Body body, BodyPose pose) { requireWatch(); sent.add("move " + body.uuid()); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> passengers(Player viewer, Body vehicle, List<? extends Body> passengers, Player realRider, boolean authoritative) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> dragonPhase(Player viewer, Body dragon, int phase) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> equipment(Player viewer, Body body, Map<EquipmentSlot, Object> items) { return CompletableFuture.completedFuture(null); }
-        @Override public CompletionStage<Void> despawn(Player viewer, Body body) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> despawn(Player viewer, Body body) { sent.add("despawn " + body.uuid()); return CompletableFuture.completedFuture(null); }
         @Override public void forget(Player viewer) {}
         @Override public ControlSubscription subscribeControl(Player viewer) { throw new IllegalStateException("no control"); }
         @Override public void placeRider(Player rider, double x, double y, double z) {}
@@ -210,14 +212,13 @@ class ViewerWatchRaceTest {
         @Override public boolean spectator(Player player) { return false; }
         @Override public boolean inVehicle(Player player) { return false; }
         @Override public int entityId(Player player) { return 1; }
-        @Override public WorldPosition position(Player player) { return new WorldPosition("world", new Vec3(0.5, 64, 0.5)); }
+        @Override public WorldPosition position(Player player) { return new WorldPosition("world", new Vec3(harness.playersAway ? 5000.5 : 0.5, 64, 0.5)); }
         @Override public Vec3 eye(Player player) { return new Vec3(0.5, 65.62, 0.5); }
         @Override public Vec3 direction(Player player) { return new Vec3(0, 0, 1); }
         @Override public float yaw(Player player) { return 0; }
         @Override public float pitch(Player player) { return 0; }
         @Override public boolean permitted(Player player, String node) { return false; }
         @Override public void tell(Player player, String message) {}
-        @Override public List<Player> playersNear(WorldPosition at, double radius, int limit) { return harness.playersAway ? List.of() : List.of(harness.player); }
         @Override public boolean teleport(Player player, WorldPosition destination, float yaw, float pitch) { return false; }
         @Override public Optional<String> resolveWorld(String reference) { return Optional.of(reference); }
         @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return true; }

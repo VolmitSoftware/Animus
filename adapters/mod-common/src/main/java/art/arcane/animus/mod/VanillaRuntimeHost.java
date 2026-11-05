@@ -9,7 +9,6 @@ import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -83,17 +82,6 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     @Override public float pitch(ServerPlayer player) { return player.getXRot(); }
     @Override public boolean permitted(ServerPlayer player, String node) { return permitted(player.permissions(), node); }
     @Override public void tell(ServerPlayer player, String message) { player.sendSystemMessage(ModText.component(message)); }
-    @Override public List<ServerPlayer> playersNear(WorldPosition at, double radius, int limit) {
-        ServerLevel level = terrain.level(at.world());
-        List<ServerPlayer> result = new ArrayList<>();
-        if (level == null) return result;
-        double square = radius * radius;
-        for (ServerPlayer candidate : level.players()) {
-            if (result.size() >= limit) break;
-            if (candidate.distanceToSqr(at.point().x(), at.point().y(), at.point().z()) <= square) result.add(candidate);
-        }
-        return result;
-    }
     @Override public boolean teleport(ServerPlayer player, WorldPosition destination, float yaw, float pitch) {
         ServerLevel level = terrain.level(destination.world());
         if (level == null) return false;

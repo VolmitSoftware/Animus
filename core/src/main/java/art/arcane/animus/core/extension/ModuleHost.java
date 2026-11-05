@@ -76,6 +76,43 @@ public final class ModuleHost implements AutoCloseable {
         if(!sink.available())return Outcome.rejected(Outcome.Status.UNAVAILABLE,"trigger-dispatch-unavailable",sink.availability());
         return sink.publish(new TriggerEvent.Module(npc.uuid(),player,key));
     }
+    private volatile ModuleHooks hooks=new ModuleHooks();
+    private final AtomicLong noticeSequence=new AtomicLong();
+    private long droppedNotices;
+    /** The engine-wide hook registry platform adapters already wrap. Connect before installing modules. */
+    public void connectHooks(ModuleHooks registry){hooks=Objects.requireNonNull(registry);}
+    public ModuleHooks hooks(){return hooks;}
+    /** Interaction notices dropped because a subscribing module had no free invocation slot. */
+    public synchronized long droppedNotices(){return droppedNotices;}
+    /**
+     * Engine-owned, quick and nonblocking: fans one accepted interaction out to every subscribing module as bounded
+     * module work. Called on the platform owner after authority checks; never waits for listeners.
+     */
+    public void interacted(NpcHandle npc,UUID viewer,InteractionNotice.Action action,double distance,boolean preview){
+        List<Entry> subscribers;
+        synchronized(this){
+            if(admissionClosed)return;
+            subscribers=new ArrayList<>();
+            for(Entry entry:enabled)if(!entry.listeners.isEmpty() && available(entry))subscribers.add(entry);
+        }
+        if(subscribers.isEmpty())return;
+        InteractionNotice notice=new InteractionNotice(npc,viewer,action,distance,preview,noticeSequence.getAndIncrement());
+        for(Entry entry:subscribers){
+            List<InteractionNotice.Listener> listeners=entry.listeners;
+            CompletionStage<Outcome<Boolean>> delivered=invoke(entry,null,token->{
+                for(InteractionNotice.Listener listener:listeners){if(token.cancelled())break;listener.interacted(notice,token);}
+                return CompletableFuture.completedFuture(Boolean.TRUE);
+            },Payload.VALUE);
+            delivered.thenAccept(outcome->{if(outcome.status()==Outcome.Status.BUSY)synchronized(this){droppedNotices++;}});
+        }
+    }
+    @FunctionalInterface private interface ValueWork<T>{T run(Cancellation token)throws Exception;}
+    private <T> CompletionStage<Outcome<T>> valueCall(Entry entry,ValueWork<T> work){
+        return invoke(entry,null,token->CompletableFuture.completedFuture(work.run(token)),Payload.VALUE);
+    }
+    private synchronized void overran(Entry entry,String hook){
+        if(entry.state==State.ACTIVE){entry.state=State.SUSPENDED;entry.reason="integration-deadline-exceeded: "+hook;}
+    }
     /** Lifecycle is serialized separately from the registry; callbacks never hold its monitor. */
     public Outcome<ModuleStatus> install(TrustedModule module) {return install(module,null);}
     /** Engine-owned capabilities use the same registry and schema path under the reserved namespace. Never for discovered archives. */
@@ -108,6 +145,7 @@ public final class ModuleHost implements AutoCloseable {
                     if(admissionClosed)throw new IllegalStateException("Host admission closed while enabling module");
                     if(capabilities.size()+committed.size()>1024)throw new IllegalArgumentException("Capability capacity reached");
                     for(Key key:committed.keySet())if(capabilities.containsKey(key))throw new IllegalArgumentException("Capability collision");
+                    hooks.commit(entry.owner,entry.stagedHooks());
                     capabilities.putAll(committed);entry.state=State.ACTIVE;entry.reason="active";enabled.add(entry);
                 }
                 return Outcome.ok(status(entry));
@@ -212,7 +250,7 @@ public final class ModuleHost implements AutoCloseable {
         Optional<String> refused=builtinRefusal(registration);
         if(refused.isPresent())return completedHandle(Outcome.Status.UNAVAILABLE,refused.get());
         long deadline=registration.owner.policy==null?deadlineNanos:registration.owner.policy.deadlineMillis(key,argumentsJson).stream().map(millis->TimeUnit.MILLISECONDS.toNanos(millis)).findFirst().orElse(deadlineNanos);
-        return invokeHandle(registration.owner,registration.descriptor,token->registration.action.run(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),true,sourceCurrent,deadline);
+        return invokeHandle(registration.owner,registration.descriptor,token->registration.action.run(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),Payload.JSON_OBJECT,sourceCurrent,deadline);
     }
     public CompletionStage<Outcome<Boolean>> condition(Key key,NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview){
         return conditionHandle(key,npc,player,argumentsJson,preview).result();
@@ -232,7 +270,7 @@ public final class ModuleHost implements AutoCloseable {
         if(registration.descriptor.privileged())return completedHandle(Outcome.Status.UNAVAILABLE,"privileged-condition-not-granted");
         Optional<String> refused=builtinRefusal(registration);
         if(refused.isPresent())return completedHandle(Outcome.Status.UNAVAILABLE,refused.get());
-        return invokeHandle(registration.owner,registration.descriptor,token->registration.condition.test(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),false,sourceCurrent);
+        return invokeHandle(registration.owner,registration.descriptor,token->registration.condition.test(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),Payload.BOOLEAN,sourceCurrent);
     }
     private Invocation invocation(Registration registration,NpcHandle npc,Optional<UUID> player,String json,boolean preview,Cancellation token,Optional<String> behavior){
         List<Diagnostic> errors=argumentProblems(registration,json);
@@ -251,22 +289,24 @@ public final class ModuleHost implements AutoCloseable {
         try{if(text==null || text.length()>65536 || !StandardCharsets.UTF_8.newEncoder().canEncode(text) || text.getBytes(StandardCharsets.UTF_8).length>65536)throw new InvalidPayload();JsonDocuments.object(text);}
         catch(java.io.IOException failure){throw new InvalidPayload();}
     }
+    /** What a successful handler must return: a bounded JSON object, a Boolean, or any non-null engine value. */
+    private enum Payload { JSON_OBJECT, BOOLEAN, VALUE }
     @FunctionalInterface private interface Operation<T>{CompletionStage<T> run(Cancellation token)throws Exception;}
-    private <T> CompletionStage<Outcome<T>> invoke(Entry entry,Descriptor descriptor,Operation<T> operation,boolean jsonResult){
-        return invokeHandle(entry,descriptor,operation,jsonResult).result();
+    private <T> CompletionStage<Outcome<T>> invoke(Entry entry,Descriptor descriptor,Operation<T> operation,Payload payload){
+        return invokeHandle(entry,descriptor,operation,payload).result();
     }
-    private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,boolean jsonResult){
-        return invokeHandle(entry,descriptor,operation,jsonResult,()->true);
+    private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,Payload payload){
+        return invokeHandle(entry,descriptor,operation,payload,()->true);
     }
-    private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,boolean jsonResult,BooleanSupplier sourceCurrent){
-        return invokeHandle(entry,descriptor,operation,jsonResult,sourceCurrent,deadlineNanos);
+    private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,Payload payload,BooleanSupplier sourceCurrent){
+        return invokeHandle(entry,descriptor,operation,payload,sourceCurrent,deadlineNanos);
     }
-    private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,boolean jsonResult,BooleanSupplier sourceCurrent,long deadline){
+    private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,Payload payload,BooleanSupplier sourceCurrent,long deadline){
         Call<T> call;
         synchronized(this){
             if(!available(entry) || descriptor!=null && !descriptor.platforms().contains(platform))return completedHandle(Outcome.Status.UNAVAILABLE,reason(entry));
             if(calls.size()>=maximumInvocations)return completedHandle(Outcome.Status.BUSY,"invocation-capacity");
-            call=new Call<>(entry,operation,jsonResult,sourceCurrent);calls.add(call);
+            call=new Call<>(entry,operation,payload,sourceCurrent);calls.add(call);
             call.deadline=deadlines.schedule(call::timeout,deadline,TimeUnit.NANOSECONDS);
             workers.execute(call);
         }
@@ -328,16 +368,52 @@ public final class ModuleHost implements AutoCloseable {
     private void maybeStopDeliveriesLocked(){
         if(admissionClosed && calls.stream().allMatch(call->call.deliveryPhase!=0))deliveries.shutdown();
     }
-    private final class Entry implements ModuleContext,Registrar {
+    private final class Entry implements ModuleContext,Registrar,ImportConverters.Registrar,Integrations.Registrar {
         final TrustedModule module;final ModuleManifest manifest;final BuiltinPolicy policy;final DefinitionService scopedDefinitions;final Map<Key,Registration> staged=new LinkedHashMap<>();final List<AutoCloseable> resources=new ArrayList<>();
+        final List<InteractionNotice.Listener> stagedListeners=new ArrayList<>();final List<ModuleHooks.Converter> stagedConverters=new ArrayList<>();
+        Integrations.Protection stagedProtection;Integrations.Economy stagedEconomy;
+        volatile List<InteractionNotice.Listener> listeners=List.of();
         volatile State state=State.STARTING;volatile String reason="starting";boolean staging=true,cleaned;
+        final ModuleHooks.Owner owner=new ModuleHooks.Owner(){
+            public String id(){return manifest.id();}
+            public boolean available(){return ModuleHost.this.available(Entry.this);}
+            public String reason(){return ModuleHost.this.reason(Entry.this);}
+            public long deadlineNanos(){return deadlineNanos;}
+            public void overran(String hook){ModuleHost.this.overran(Entry.this,hook);}
+        };
         Entry(TrustedModule module,ModuleManifest manifest,BuiltinPolicy policy){this.module=module;this.manifest=manifest;this.policy=policy;scopedDefinitions=definitions.scoped(()->available(this));}
-        synchronized Map<Key,Registration> seal(){staging=false;return Map.copyOf(staged);}
+        synchronized Map<Key,Registration> seal(){staging=false;listeners=List.copyOf(stagedListeners);return Map.copyOf(staged);}
+        synchronized ModuleHooks.Staged stagedHooks(){return new ModuleHooks.Staged(Optional.ofNullable(stagedProtection),Optional.ofNullable(stagedEconomy),stagedConverters);}
+        public void onInteraction(InteractionNotice.Listener listener){
+            Objects.requireNonNull(listener);
+            synchronized(this){if(!staging || stagedListeners.size()>=8)throw new IllegalStateException("Interaction subscription closed/full");stagedListeners.add(listener);}
+        }
+        public ImportConverters.Registrar imports(){return this;}
+        public Integrations.Registrar integrations(){return this;}
+        public synchronized void converter(ImportConverters.Descriptor descriptor,ImportConverters.Converter converter){
+            Objects.requireNonNull(descriptor);Objects.requireNonNull(converter);
+            if(!staging || stagedConverters.size()>=16)throw new IllegalStateException("Registration closed/full");
+            if(!descriptor.key().namespace().equals(manifest.id()))throw new IllegalArgumentException("Foreign converter namespace");
+            if(stagedConverters.stream().anyMatch(existing->existing.descriptor().key().equals(descriptor.key())))throw new IllegalArgumentException("Duplicate converter");
+            if(!descriptor.platforms().contains(platform))return;
+            stagedConverters.add(new ModuleHooks.Converter(descriptor,manifest.version(),owner,
+                    source->valueCall(this,token->converter.detect(source,token)),source->valueCall(this,token->converter.convert(source,token))));
+        }
+        public synchronized void protection(Integrations.Descriptor descriptor,Integrations.Protection protection){
+            Objects.requireNonNull(descriptor);Objects.requireNonNull(protection);
+            if(!staging || stagedProtection!=null)throw new IllegalStateException("Registration closed or protection already staged");
+            if(descriptor.platforms().contains(platform))stagedProtection=protection;
+        }
+        public synchronized void economy(Integrations.Descriptor descriptor,Integrations.Economy economy){
+            Objects.requireNonNull(descriptor);Objects.requireNonNull(economy);
+            if(!staging || stagedEconomy!=null)throw new IllegalStateException("Registration closed or economy already staged");
+            if(descriptor.platforms().contains(platform))stagedEconomy=economy;
+        }
         synchronized List<AutoCloseable> takeResources(){List<AutoCloseable> copy=List.copyOf(resources);resources.clear();return copy;}
         public DefinitionService definitions(){return scopedDefinitions;}
         public Registrar registrations(){return this;}
         public TriggerPublisher triggers(){return (key,npc,player)->publishTrigger(this,key,npc,player);}
-        public ModuleScheduler scheduler(){return work->invoke(this,null,token->CompletableFuture.completedFuture(work.run(token)),true);}
+        public ModuleScheduler scheduler(){return work->invoke(this,null,token->CompletableFuture.completedFuture(work.run(token)),Payload.JSON_OBJECT);}
         public synchronized void onClose(AutoCloseable resource){if(!staging || resources.size()>=64)throw new IllegalStateException("Startup resource registration closed/full");resources.add(Objects.requireNonNull(resource));}
         public void action(Descriptor descriptor,Action action){stage(descriptor,Kind.ACTION,Objects.requireNonNull(action),null);}
         public void condition(Descriptor descriptor,Condition condition){stage(descriptor,Kind.CONDITION,null,Objects.requireNonNull(condition));}
@@ -350,12 +426,12 @@ public final class ModuleHost implements AutoCloseable {
         }
     }
     private final class Call<T> implements Runnable {
-        final Entry entry;final Operation<T> operation;final boolean jsonResult;final BooleanSupplier sourceCurrent;
+        final Entry entry;final Operation<T> operation;final Payload payload;final BooleanSupplier sourceCurrent;
         final AtomicBoolean cancelled=new AtomicBoolean(),sourceRevoked=new AtomicBoolean(),finished=new AtomicBoolean();final AtomicInteger terminal=new AtomicInteger();final CompletableFuture<Outcome<T>> result=new CompletableFuture<>();
         volatile ScheduledFuture<?> deadline;
         // Host monitor protects delivery phase: 0 not submitted, 1 queued, 2 delivering, 3 returned.
         int deliveryPhase;long deliveryStartedNanos;
-        Call(Entry entry,Operation<T> operation,boolean jsonResult,BooleanSupplier sourceCurrent){this.entry=entry;this.operation=operation;this.jsonResult=jsonResult;this.sourceCurrent=Objects.requireNonNull(sourceCurrent);}
+        Call(Entry entry,Operation<T> operation,Payload payload,BooleanSupplier sourceCurrent){this.entry=entry;this.operation=operation;this.payload=payload;this.sourceCurrent=Objects.requireNonNull(sourceCurrent);}
         /** Observed revocation stays latched, including if a source is subsequently restored. */
         boolean isCancelled(){
             if(cancelled.get())return true;
@@ -413,7 +489,7 @@ public final class ModuleHost implements AutoCloseable {
             else if(failure!=null)outcome=rejected(failure instanceof InvalidPayload?Outcome.Status.INVALID:Outcome.Status.FAILED,"handler-failed: "+failure.getClass().getSimpleName());
             else if(value==null)outcome=rejected(Outcome.Status.FAILED,"handler-returned-null");
             else {
-                try{if(jsonResult)jsonObject((String)value);else if(!(value instanceof Boolean))throw new InvalidPayload();outcome=Outcome.ok(value);}
+                try{switch(payload){case JSON_OBJECT->jsonObject((String)value);case BOOLEAN->{if(!(value instanceof Boolean))throw new InvalidPayload();}case VALUE->{}}outcome=Outcome.ok(value);}
                 catch(Exception invalid){outcome=rejected(Outcome.Status.INVALID,"result-must-be-json-object");}
             }
             publish(outcome);releaseIfComplete();

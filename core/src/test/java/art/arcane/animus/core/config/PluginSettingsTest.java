@@ -124,18 +124,22 @@ class PluginSettingsTest {
     }
     @Test void runtimeBudgetsUseTomlAndPreserveUnspecifiedDefaults() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
-            String toml = "statusMessage = 'Test'\n[npcs]\nenabled = false\nmaximumVisible = 12\nupdatesPerTick = 3\n";
+            String toml = "statusMessage = 'Test'\n[npcs]\nenabled = false\nmaximumVisible = 12\nupdatesPerTick = 3\npacketsPerTick = 96\nlookUpdatesPerTick = 8\n";
             Files.writeString(root.resolve("config.toml"), toml);
             NpcRuntimeSettings settings = PluginSettings.load(store).npcs();
             assertFalse(settings.enabled());
             assertEquals(12, settings.maximumVisible());
             assertEquals(3, settings.updatesPerTick());
             assertEquals(48, settings.viewDistance());
+            assertEquals(96, settings.packetsPerTick());
+            assertEquals(8, settings.lookUpdatesPerTick());
+            assertEquals(8, settings.pendingSpawnsPerViewer());
             assertEquals(toml, Files.readString(root.resolve("config.toml")));
         }
     }
     @ParameterizedTest
-    @ValueSource(strings = {"enabled = 'true'", "viewDistance = 0", "viewDistance = 257", "maximumVisible = 129", "maximumVisible = 1.5", "maximumViewers = 1025", "updatesPerTick = 0", "updatesPerTick = 65", "maximumVisible = '12'"})
+    @ValueSource(strings = {"enabled = 'true'", "viewDistance = 0", "viewDistance = 257", "maximumVisible = 129", "maximumVisible = 1.5", "maximumViewers = 1025", "updatesPerTick = 0", "updatesPerTick = 65", "maximumVisible = '12'",
+            "packetsPerTick = 0", "packetsPerTick = 1025", "pendingSpawnsPerViewer = 0", "pendingSpawnsPerViewer = 65", "lookUpdatesPerTick = 0", "lookUpdatesPerTick = 1025"})
     void rejectsInvalidRuntimeBudgetsBeforeStartup(String field) throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[npcs]\n" + field + "\n");

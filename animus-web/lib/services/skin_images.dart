@@ -12,13 +12,16 @@ import 'package:web/web.dart' as web;
 import '../components/mc/mc_asset_loader.dart';
 
 final class LoadedSkin {
-  const LoadedSkin({required this.textureId, required this.source});
+  const LoadedSkin({required this.textureId, required this.source, required this.dataUrl});
 
   /// The runtime image id stages bind.
   final String textureId;
 
   /// Where it came from, for the panel's readout.
   final String source;
+
+  /// The 64x64 PNG, for face thumbnails.
+  final String dataUrl;
 }
 
 final class SkinImages {
@@ -70,8 +73,9 @@ final class SkinImages {
     ctx.drawImage(image, 0, 0);
     if (h == 32) _widenLegacy(ctx);
     final String id = 'skin:$key';
-    McAssetLoader.registerImage(id, canvas.toDataURL('image/png'));
-    final LoadedSkin skin = LoadedSkin(textureId: id, source: source);
+    final String png = canvas.toDataURL('image/png');
+    McAssetLoader.registerImage(id, png);
+    final LoadedSkin skin = LoadedSkin(textureId: id, source: source, dataUrl: png);
     _loaded[key] = skin;
     return skin;
   }

@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.runtime.PresentationPressure;
 import art.arcane.animus.core.runtime.WaitingTurns;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -17,7 +18,7 @@ final class RegionBudget {
     enum Kind { OWNER_WORK, ROUTES, MOTION_CELLS, CAPTURE, VIEWERS, PACKETS, WAKES, RIG_PLANS, LOOKS, ROUTE_PLANS, COMBAT_BRAINS, COMBAT_SCANS, COMBAT_PATHS, COMBAT_ALERTS, COMBAT_HELPERS }
     private static final long IDLE_TURNS_NANOS = 60_000_000_000L;
     private static final class Window { Object region; long tick = Long.MIN_VALUE; final int[] used = new int[Kind.values().length]; }
-    private static final class Turns { final WaitingTurns turns = new WaitingTurns(); volatile long seen; }
+    private static final class Turns { final WaitingTurns turns = new WaitingTurns(); final PresentationPressure pressure = new PresentationPressure(); volatile long seen; }
     private final RegionScheduler regions;
     private final int[] limits = new int[Kind.values().length];
     private final ThreadLocal<Window> windows = ThreadLocal.withInitial(Window::new);
@@ -76,6 +77,18 @@ final class RegionBudget {
         Turns entry = turns();
         if (entry != null) entry.turns.refused(waited);
         refusedRoutes.incrementAndGet();
+    }
+    /** Authoritative packet work on this region waited for budget this tick: cosmetic work pauses here for a while. */
+    void shortOfPackets() {
+        RegionScheduler.Tick tick = regions.tick();
+        Turns entry = tick == null ? null : turns();
+        if (entry != null) entry.pressure.shortOfBudget(tick.number());
+    }
+    /** Cosmetic work (look-close, rig sampling and bones, hologram text refresh) may run on this region now; true away from a region thread. */
+    boolean cosmeticAllowed() {
+        RegionScheduler.Tick tick = regions.tick();
+        Turns entry = tick == null ? null : turns();
+        return entry == null || entry.pressure.allows(PresentationPressure.Tier.COSMETIC, tick.number());
     }
     /** Route refusals on every region since the last call. */
     int drainRefusedRoutes() { return refusedRoutes.getAndSet(0); }

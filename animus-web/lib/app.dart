@@ -92,6 +92,7 @@ class _AnimusAppState extends State<AnimusApp> {
     final String? workspaceId = switch (route) {
       WorkspaceRoute(:final String workspaceId) => workspaceId,
       DocumentRoute(:final String workspaceId) => workspaceId,
+      NpcListRoute(:final String workspaceId) => workspaceId,
       _ => null,
     };
     if (route is ServerRoute) {

@@ -34,6 +34,8 @@ PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animu
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/gui_editors_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/inspectors_browser.cjs
 dart run tool/fake_server.dart &     # for the live editing check
+dart run tool/fake_server.dart --data=test/fixtures/npc_browser --port=9897 &
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_FAKE_URL=http://127.0.0.1:9897 ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/npc_browser_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/live_editing_browser.cjs
 ```
 
@@ -44,6 +46,8 @@ PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animu
 `npc_preview_browser.cjs` opens `test/fixtures/npc_preview` (every body type, pose and equipment slot, a skin document) and checks that each NPC's Preview draws a non-blank canvas at both widths, that text and orbiting work, and that a loaded skin PNG is drawn, with no console errors. `ANIMUS_SCREENSHOTS` is optional and should point outside the repository.
 
 `inspectors_browser.cjs` opens `../schema/fixtures/export`, edits an NPC field, a trigger and a behavior node, and checks code completion and the diagnostics line jump at both widths.
+
+`npc_browser_browser.cjs` opens `test/fixtures/npc_browser` (six NPCs in three folders with tags, routes, combat, a shop, a rig, a skin and a dialogue behavior). It searches and filters the NPC browser, tags three NPCs and moves two to a new folder (undoing each in one step), switches combat off in bulk, adds and drags route points on the grid, flags and fixes an out-of-range combat value, sets equipment and a skin, and edits an answer in the conversation view. Against the fake server loaded with the same folder (paired with the `spawn` scope) it spawns and despawns a selection. Both widths, no console errors, no sideways scrolling.
 
 `live_editing_browser.cjs` runs against the fake server: it pairs from a link, opens an NPC from the server catalog, edits it, validates on the server, starts a preview, applies, forces a conflict and merges it, cuts the direct path (the editor fails over to the relay) and then every path (it reconnects), applies again and undoes through the server, at both widths with no console errors and no sideways scrolling. `ANIMUS_WEB_URL` and `ANIMUS_FAKE_URL` move it off ports 8098 and 9797.
 
@@ -62,7 +66,7 @@ A paired server opens as a server workspace (`#/server/<id>`), next to the local
 - Apply: every changed draft (edited, new or deleted) as one change set with its base revision and hash. When the server's version moved, nothing is written and each document opens in a three-way merge (base, mine, server): fields only one side changed merge by themselves, and each field both changed keeps the side picked. Use merge moves the draft onto the server's revision for the next apply.
 - Undo last apply: the server's rollback receipt for the last applied change set.
 
-Unanswered change sets are kept with the workspace. After a reconnect (or a reload) the editor asks the server what became of each by its idempotency key, and reports one that never arrived. Catalog events refresh documents that were not edited here; edited ones are marked changed on server, with a Merge button. The server's own schemas (with its modules) drive the inspectors while connected.
+Unanswered change sets are kept with the workspace. After a reconnect (or a reload) the editor asks the server what became of each by its idempotency key, and reports one that never arrived; one the server is still writing settles from its `change` event. An event stream the server closed because the editor fell 256 events behind (reason `limit`) is explained, reconnected and followed by a fresh catalog load. Catalog events refresh documents that were not edited here; edited ones are marked changed on server, with a Merge button. The server's own schemas (with its modules) drive the inspectors while connected.
 
 ## Importing on a server
 
@@ -76,13 +80,21 @@ The Convert Citizens save screen can also import on a paired server: choose the 
 
 ## Inspectors and code view
 
-NPC definitions and behaviors have structured Visual views built from the generated schemas and `completions.json`, or from the connected server's schemas, which include loaded modules. The NPC inspector edits identity, body type, presence, position, skin and behaviors (completed from the workspace). Modules are edited as JSON and kept, and other schema fields render generically, with help from the schema descriptions. The behavior editor shows the document, typed variables, routines as a tree of nodes (sequence, action, condition, wait, repeat, parallel, call, set) and triggers. You can add, remove, reorder and change the type of nodes. Actions and conditions pick a capability with its description and availability, and their arguments are typed from the capability's spec (choices, bounds, required markers). Triggers pick their event and get that event's fields. Keys the editors do not know are kept. In the Code view, Ctrl+Space (or typing in a string) completes keys and values from the same schemas. The gutter marks lines with diagnostics, and a list under the text jumps to each one; server diagnostics are tagged.
+NPC definitions and behaviors have structured Visual views built from the generated schemas and `completions.json`, or from the connected server's schemas, which include loaded modules. The NPC inspector edits identity, body type, presence, position and behaviors (completed from the workspace), with the typed editors described under NPC browser and editors; other schema fields render generically, with help from the schema descriptions. The behavior editor shows the document, typed variables, routines as a tree of nodes (sequence, action, condition, wait, repeat, parallel, call, set) and triggers. You can add, remove, reorder and change the type of nodes. Actions and conditions pick a capability with its description and availability, and their arguments are typed from the capability's spec (choices, bounds, required markers). Triggers pick their event and get that event's fields. Keys the editors do not know are kept. In the Code view, Ctrl+Space (or typing in a string) completes keys and values from the same schemas. The gutter marks lines with diagnostics, and a list under the text jumps to each one; server diagnostics are tagged.
 
 ## NPC preview
 
 An NPC's Preview (and Split, beside the code) is a WebGL2 stage adapted from Gloss Web's renderer: the body rig in its definition pose (standing, sneaking, sleeping, swimming, sitting), armour layers and held or worn items from all eight equipment slots, the native nameplate, the text display with the hologram lines and long or formatted names, and an orbit camera (drag, right or shift drag to pan, wheel or pinch to zoom). Bodies: player (classic and slim), armor stand (parts, angles, arms, base plate, small, invisible), horse (saddle and armour), turtle, frog, llama (carpet), armadillo and ender dragon. Rig geometry is the 26.3 client's `LayerDefinition`s. Slots a body does not show are listed under the stage.
 
 Player skins: a definition's `skin` names a `skins/<hash>.json` document, from which the preview reads the arm model. Its signed texture comes from the server once the editor connects; until then the preview wears the default skin, or a PNG loaded from a file or a CORS-enabled URL with the controls above the stage (kept for the page session, per skin hash).
+
+## NPC browser and editors
+
+Browse (beside NPCs in the sidebar, `#/workspace/<id>/npcs`) lists every NPC with its folder (`npcs/<group>/`), tags, type, world and features. The search takes words (name, id, type, world, tag) and `tag:`, `folder:`, `type:`, `world:`, `has:` (route, combat, shop, rig, skin, behaviors) and `is:` (spawned, despawned, invalid) terms; a leading `-` negates one. The folder tree, tag cloud and feature chips write the same terms. Selected NPCs can be tagged and untagged, moved to another folder (the `group` and the file follow; an id already in that folder is skipped), have a module switched on, off or removed, be marked spawned or despawned, or be deleted. Each is one commit, so Undo reverts it whole, and on a server workspace it goes out in the next apply. With a token holding the `spawn` scope, Spawn and Despawn on server act on the server at once.
+
+`tags` is part of the NPC schema: at most 32 unique labels of 1-32 lowercase letters, digits, `_` and `-`.
+
+An NPC's Visual view puts the inspector beside the 3D stage. The inspector has typed editors for tags, the skin (workspace skins with their face once a PNG is loaded, or a hash, plus PNG from a file or URL), equipment (a row per slot with suggestions, icon, count and components), the route (`animus:navigation`: waypoints of its own drawn on a top-down grid where a click adds a point or guide and a drag moves one, with order, mode, speed, waits, loop, link distance and wander; or a reusable route shown read-only), combat (`animus:combat`, every section of docs/combat.md, checked in the browser with the server's paths and messages by `lib/logic/npc/combat_settings.dart`), and the shop binding. Other modules get fields from their schema (the connected server's when online, so loaded modules are typed too) or JSON. The stage draws the route's points, guides and links around the body. Route documents open in the same route editor. A behavior that says or asks anything shows its conversation as a tree: what starts it, each line, each prompt with its answers and what each answer's `dialogue_choice` trigger runs, with the lines editable in place.
 
 ## Rig editor
 
@@ -127,4 +139,12 @@ Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. Th
 
 ## Deploying
 
-Not yet. The deploy workflow arrives with the hosting phase. `firebase.json` already sets the cache rules, the single rewrite to `/index.html` and the security headers; scripts load only from the site, so the app runs without arcane_jaspr's inline fallback scripts.
+The editor is live at https://animus-editor.web.app. To deploy a new build from this folder (full steps, the relay and the server settings are in [docs/deployment.md](../docs/deployment.md)):
+
+```sh
+dart run tool/extract_minecraft_world_assets.dart --jar=<26.3 client jar> --version=26.3
+dart run jaspr_cli:jaspr build
+GOOGLE_APPLICATION_CREDENTIALS=<service account path> npx -y firebase-tools deploy --only hosting --project animus-editor --non-interactive
+```
+
+Never paste, print or commit the service account key. `firebase.json` sets the cache rules, the single rewrite to `/index.html` and the security headers; scripts load only from the site, so the app runs without arcane_jaspr's inline fallback scripts. The relay deploys separately to Cloud Run; see [relay/README.md](relay/README.md#cloud-run).

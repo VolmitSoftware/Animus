@@ -5,7 +5,7 @@ import argparse,hashlib,json,os,subprocess,time,zipfile
 
 ROOT=Path(__file__).resolve().parents[2]
 HERE=Path(__file__).resolve().parent
-p=argparse.ArgumentParser(description=__doc__);p.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.0.0-SNAPSHOT.jar');p.add_argument('--java-home',type=Path,default=Path('/opt/homebrew/opt/openjdk@25'));a=p.parse_args()
+p=argparse.ArgumentParser(description=__doc__);p.add_argument('--api-jar',type=Path,default=ROOT/'animus-api/build/libs/animus-api-1.1.0-SNAPSHOT.jar');p.add_argument('--java-home',type=Path,default=Path('/opt/homebrew/opt/openjdk@25'));a=p.parse_args()
 api=a.api_jar.resolve();java=a.java_home/'bin'
 sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 with zipfile.ZipFile(api) as archive:

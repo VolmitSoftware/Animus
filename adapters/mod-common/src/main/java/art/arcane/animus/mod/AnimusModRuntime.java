@@ -109,8 +109,7 @@ public final class AnimusModRuntime {
                 if (event == MutationLane.EngineTaskEvent.FAILED) LOGGER.warn("Animus file task failed", failure);
             });
             NpcRuntimeSettings npcSettings = next.runtime.npcSettings();
-            PersistedNpcService.Settings settings = new PersistedNpcService.Settings(npcSettings.enabled(), npcSettings.viewDistance(), npcSettings.maximumVisible(),
-                    npcSettings.maximumViewers(), npcSettings.updatesPerTick());
+            PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
             next.host = new VanillaRuntimeHost(server, next.ticks, LOGGER::warn, this::interactionAllowed);
             next.living = new PersistedNpcService<>(next.host, next.runtime, files, settings);
             LOGGER.info(next.living.status());
@@ -119,7 +118,7 @@ public final class AnimusModRuntime {
             next.ticks.every(next.combat::tick);
             Running owner = next;
             next.screens = new ModScreens(server, next.ticks, art.arcane.animus.core.shop.ShopService.economy(next.runtime.shopSettings(),
-                    art.arcane.animus.core.inventory.Economy.none(ModScreens.NO_ECONOMY)));
+                    next.runtime.moduleHooks().economy(art.arcane.animus.core.inventory.Economy.none(ModScreens.NO_ECONOMY))));
             next.shops = new art.arcane.animus.core.shop.ShopService<>(next.runtime, next.screens, next.living, files,
                     (String name) -> Optional.ofNullable(server.getPlayerList().getPlayerByName(name)).map(ServerPlayer::getUUID), LOGGER::info);
             next.screens.bind(next.shops.screens());
@@ -145,8 +144,8 @@ public final class AnimusModRuntime {
             next.guis.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {});
             LOGGER.info(next.shops.status());
             LOGGER.info(next.guis.status());
-            next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), BuildProtection.NONE,
-                    "none (mod servers have no standard protection API; every block change is allowed)", next.ticks::every,
+            next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), next.runtime.moduleHooks().buildProtection(BuildProtection.NONE),
+                    "none (mod servers have no standard protection API; a module protection hook can deny block changes)", next.ticks::every,
                     () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null);
             LOGGER.info(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
@@ -157,6 +156,9 @@ public final class AnimusModRuntime {
                         BehaviorCommands current = owner.behaviors;
                         if (current != null) current.modulesInitialized(initialized);
                     }, next.builtins);
+            next.extensions.connectHooks(next.runtime.moduleHooks());
+            ExtensionRuntime modules = next.extensions;
+            next.living.observeInteractions(modules::interacted);
             next.behaviors = new BehaviorCommands(dataDirectory, next.runtime, next.extensions, LOGGER::info);
             next.runtime.catalogs(new art.arcane.animus.core.RuntimeCatalogs(new art.arcane.animus.core.RuntimeCatalogs.Parts(next.runtime, next.living::refresh,
                     () -> owner.behaviors, () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),

@@ -20,7 +20,8 @@ import art.arcane.animus.core.AnimusSplash;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.bukkit.building.BukkitBuildPlatform;
-import art.arcane.animus.bukkit.building.WorldGuardBuildProtection;
+import art.arcane.animus.bukkit.protection.RegionBuildProtection;
+import art.arcane.animus.bukkit.protection.RegionFlags;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.building.BuildProtection;
@@ -121,8 +122,7 @@ public final class AnimusPlugin extends JavaPlugin {
                 getLogger().info(foliaProof.status());
             }
             NpcRuntimeSettings npcSettings = runtime.npcSettings();
-            PersistedNpcService.Settings settings = new PersistedNpcService.Settings(npcSettings.enabled(), npcSettings.viewDistance(), npcSettings.maximumVisible(),
-                    npcSettings.maximumViewers(), npcSettings.updatesPerTick());
+            PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
             FoliaRegions regions = replies.isFolia() ? new FoliaRegions(this) : null;
             PersistedNpcService<Player, ItemStack> mainThread = regions == null ? BukkitRuntimeHost.start(this, runtime, environment.minecraftVersion(), commands, settings, (Player player, Runnable task) -> replies.reply(player, task)) : null;
             living = regions == null ? mainThread : new RegionNpcRuntime(this, runtime, environment.minecraftVersion(), commands, settings, regions);
@@ -132,7 +132,7 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(proof.status(null));
             Platform modulePlatform = modulePlatform();
             Function<Runnable, AutoCloseable> ownerTicks = regions != null ? regions::globalTicks : tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel;
-            Economy vault = BukkitScreens.vault(getServer());
+            Economy vault = runtime.moduleHooks().economy(BukkitScreens.vault(getServer()));
             screens = new BukkitScreens(this, (Player player, Runnable task) -> replies.reply(player == null ? getServer().getConsoleSender() : player, task),
                     () -> ShopService.economy(runtime.shopSettings(), vault));
             shops = new ShopService<>(runtime, screens, living, commands,
@@ -166,6 +166,11 @@ public final class AnimusPlugin extends JavaPlugin {
                         BehaviorCommands current = behaviors;
                         if (current != null) current.modulesInitialized(initialized);
                     }, builtins);
+            extensions.connectHooks(runtime.moduleHooks());
+            ExtensionRuntime modules = extensions;
+            living.observeInteractions(modules::interacted);
+            proof.observeInteractions(modules::interacted);
+            if (foliaProof != null) foliaProof.observeInteractions(modules::interacted);
             behaviors = new BehaviorCommands(getDataFolder().toPath(), runtime, extensions, message -> getLogger().info(message));
             runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, owners::refresh, () -> behaviors,
                     () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
@@ -288,19 +293,10 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info("Builds " + buildsUnavailable);
             return;
         }
-        BuildProtection protection = BuildProtection.NONE;
-        String name = "none installed";
-        if (getServer().getPluginManager().isPluginEnabled("WorldGuard")) {
-            try {
-                protection = WorldGuardBuildProtection.create(getServer());
-                name = "WorldGuard region flags";
-            } catch (RuntimeException | LinkageError failure) {
-                String reason = "WorldGuard is installed but its API could not be used (" + failure.getClass().getSimpleName() + "); every block change is denied";
-                protection = request -> { throw new IllegalStateException(reason); };
-                name = reason;
-            }
-        }
-        builds = new BuildService<>(runtime, mainThread, commands, new BukkitBuildPlatform(getServer()), protection, name,
+        RegionFlags.Binding regions = RegionFlags.bind(getServer());
+        BuildProtection protection = regions == null ? BuildProtection.NONE : new RegionBuildProtection(regions.flags());
+        String name = regions == null ? "none installed" : regions.describe("every block change is denied");
+        builds = new BuildService<>(runtime, mainThread, commands, new BukkitBuildPlatform(getServer()), runtime.moduleHooks().buildProtection(protection), name,
                 tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel,
                 () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); },
                 (String message) -> getLogger().info(message), null);

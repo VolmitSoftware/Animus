@@ -50,6 +50,9 @@ public final class StartupModules implements AutoCloseable {
                             public Capabilities.TriggerPublisher triggers(){return context.triggers();}
                             public ModuleScheduler scheduler(){return context.scheduler();}
                             public void onClose(AutoCloseable resource){Objects.requireNonNull(resource);context.onClose(()->{callback(id,"resource-close");try{resource.close();}finally{callback("","idle");}});}
+                            public void onInteraction(InteractionNotice.Listener listener){context.onInteraction(listener);}
+                            public ImportConverters.Registrar imports(){return context.imports();}
+                            public Integrations.Registrar integrations(){return context.integrations();}
                         };
                         callback(id,"enable");try{actual.enable(observed);}finally{callback("","idle");}
                     }

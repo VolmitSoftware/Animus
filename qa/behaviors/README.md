@@ -2,14 +2,14 @@
 
 This harness tests explicitly requested JSON programs against existing NPC definitions on the private behavior owner thread. Targets are Paper, Spigot and Folia 26.1.2, 26.2 and 26.3. All physical NPC services stay disabled. It grants no world access, automatic trigger, preview, privileged command, durable quest state or general Folia simulation.
 
-`acceptance.json` lists 26 required live gates. They remain unverified until a complete managed report and independent audit pass. The older runtime10 evidence and the initial proposal under `.qa/next-behavior-qa` remain unchanged; neither establishes this new live gate.
+`acceptance.json` lists the 26 required live checks. All 26 pass on Paper, Spigot and Folia 26.1.2, 26.2 and 26.3 on merged master, run through `qa/multiplexor/gate.py`.
 
 ## Build inputs
 
 Use Java 25 and the reviewed standalone public API JAR:
 
 ```sh
-python3 qa/behaviors/build-fixtures.py --api-jar animus-api/build/libs/animus-api-1.0.0-SNAPSHOT.jar
+python3 qa/behaviors/build-fixtures.py --api-jar animus-api/build/libs/animus-api-1.1.0-SNAPSHOT.jar
 python3 qa/behaviors/verify-fixtures.py --module-fixtures <generated-fixture-directory>
 python3 qa/behaviors/build-plugin-fixture.py --spigot-api <exact-api-jar> --plugin <reviewed-plugin-jar>
 python3 -m unittest discover -s qa/behaviors -p 'test_*.py' -v

@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.config.NavigationSettings;
 import art.arcane.animus.core.runtime.NavigationPressure;
+import art.arcane.animus.core.runtime.NearbyPlayers;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.DefinitionSpec;
 import art.arcane.animus.core.runtime.ActivationWarnings;
@@ -114,6 +115,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     volatile BukkitNavigationBridge navigation;
     volatile TriggerDispatcher triggers;
     volatile InteractionListener<Player> interactions;
+    volatile InteractionObserver observer;
     private final Map<String, Geometry> geometries = new HashMap<>();
     private final Map<ChunkPosition, Set<RegionActor>> resting = new ConcurrentHashMap<>(), anchored = new ConcurrentHashMap<>();
     private final Set<ChunkPosition> loaded = ConcurrentHashMap.newKeySet();
@@ -149,7 +151,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, navigationSettings.routesPerTick());
         limits.put(RegionBudget.Kind.MOTION_CELLS, navigationSettings.motionCellsPerTick()); limits.put(RegionBudget.Kind.ROUTE_PLANS, navigationSettings.planningStartsPerTick());
         limits.put(RegionBudget.Kind.CAPTURE, navigationSettings.captureReadsPerTick()); limits.put(RegionBudget.Kind.VIEWERS, settings.updatesPerTick());
-        limits.put(RegionBudget.Kind.PACKETS, RegionViewer.PACKETS_PER_REGION); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, 32);
+        limits.put(RegionBudget.Kind.PACKETS, settings.packetsPerTick()); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, settings.lookUpdatesPerTick());
         rigs = runtime.isRunning() ? runtime.rigSettings() : art.arcane.animus.core.config.RigSettings.DEFAULT;
         limits.put(RegionBudget.Kind.RIG_PLANS, rigs.plansPerTick());
         art.arcane.animus.core.config.CombatBudgets combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : art.arcane.animus.core.config.CombatBudgets.DEFAULT;
@@ -185,6 +187,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
 
     @Override public boolean available() { return !closed && packets != null; }
     @Override public void interactions(InteractionListener<Player> listener) { interactions = listener; }
+    @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(previews); triggers = dispatcher; }
     @Override public void refresh() { refresh.set(true); }
     @Override public PlayerAccess<Player> players() { return players; }
@@ -192,6 +195,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     /** A preview candidate checked against this server, on the viewer's region. */
     DefinitionSpec<ItemStack> previewSpec(NpcDefinition definition) { return DefinitionSpec.parse(definition, geometries.keySet(), this::worldKey, DefinitionItems::stack); }
 
+    /** Per region: false while this region's NPC moves and despawns wait for packet budget. */
+    @Override public boolean cosmeticAllowed() { return budget.cosmeticAllowed(); }
     @Override public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
         int visible = 0;
@@ -585,6 +590,12 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (available()) regions.execute(player, () -> admit(player), () -> {});
     }
 
+    /** Players a region thread owns, indexed by chunk for that region's current tick. */
+    private static final class OwnedPlayers {
+        final NearbyPlayers<Player> index = new NearbyPlayers<>((Player player) -> player.isOnline() ? RegionViewer.position(player.getLocation()) : null);
+        RegionScheduler.Tick tick;
+    }
+    private final ThreadLocal<OwnedPlayers> ownedPlayers = ThreadLocal.withInitial(OwnedPlayers::new);
     private final PlayerAccess<Player> players = new PlayerAccess<Player>() {
         @Override public boolean online(UUID player) { return online.containsKey(player); }
         @Override public Optional<Player> owned(UUID player) {
@@ -592,13 +603,16 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             return online != null && regions.owns(online) ? Optional.of(online) : Optional.empty();
         }
         @Override public List<Player> ownedNear(WorldPosition at, double radius, int limit) {
-            List<Player> result = new ArrayList<>();
-            for (Player candidate : online.values()) {
-                if (result.size() >= limit) break;
-                if (!regions.owns(candidate) || !candidate.getWorld().getUID().toString().equals(at.world())) continue;
-                if (RegionViewer.position(candidate.getLocation()).point().distance(at.point()) <= radius) result.add(candidate);
+            RegionScheduler.Tick tick = regions.tick();
+            if (tick == null) return List.of();
+            OwnedPlayers owned = ownedPlayers.get();
+            if (!tick.equals(owned.tick)) {
+                // This region's players only, once per region tick; later lookups visit nearby chunks only.
+                List<Player> mine = new ArrayList<>();
+                for (Player candidate : online.values()) if (regions.owns(candidate)) mine.add(candidate);
+                owned.index.rebuild(mine); owned.tick = tick;
             }
-            return result;
+            return owned.index.near(at, radius, limit);
         }
         @Override public boolean deliver(UUID player, Consumer<Player> action) {
             Player target = online.get(player);

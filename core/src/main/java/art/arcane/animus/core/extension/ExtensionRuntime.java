@@ -197,6 +197,18 @@ public final class ExtensionRuntime implements AutoCloseable {
     private static String bounded(String reason) { return reason.length() > 200 ? reason.substring(0, 200) : reason; }
     /** Connect before start so module startup and the behavior catalog observe dispatch. */
     public void connectTriggers(art.arcane.animus.core.behavior.trigger.TriggerSink sink) { host.connectTriggers(sink); }
+    /** Connect the engine-wide registry platform adapters wrap, before start. */
+    public void connectHooks(ModuleHooks hooks) { host.connectHooks(hooks); }
+    public long droppedInteractionNotices() { return host.droppedNotices(); }
+    /**
+     * Platform owner bridge for an accepted NPC interaction; quick and nonblocking. Subscribing modules receive it
+     * as bounded module work. Ignored until modules are ready.
+     */
+    public void interacted(UUID npc, UUID viewer, boolean attack, double distance, boolean preview) {
+        if (state != State.READY) return;
+        host.interacted(new NpcHandle(npc), viewer, attack ? InteractionNotice.Action.ATTACK : InteractionNotice.Action.INTERACT,
+                Double.isFinite(distance) && distance >= 0 ? distance : 0, preview);
+    }
     /** Internal behavior bridge. Carries the execution's preview flag; a privileged grant comes only from the allow-list. */
     public BehaviorInvoker behaviorInvoker() { return behaviorInvoker; }
 
