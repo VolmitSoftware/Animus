@@ -12,10 +12,14 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../logic/citizens/citizens_converter.dart';
 import '../logic/citizens/citizens_review.dart';
+import '../logic/shopkeepers/shopkeepers_converter.dart';
 import '../services/browser.dart';
 
 @JS('animusCitizensResult')
 external set _citizensResult(JSString? value);
+
+@JS('animusShopkeepersResult')
+external set _shopkeepersResult(JSString? value);
 
 class CitizensScreen extends StatefulWidget {
   const CitizensScreen({super.key});
@@ -31,17 +35,84 @@ class _CitizensScreenState extends State<CitizensScreen> {
   CitizensReview? _review;
   String? _error;
   bool _busy = false;
+  (String, Uint8List)? _shopSave;
+  (String, Uint8List)? _shopConfig;
+  ShopkeepersPreview? _shops;
+  String? _shopError;
+
+  static const String _yaml = '.yml,.yaml,application/x-yaml,text/yaml';
 
   Future<void> _choose() async {
-    final (String, Uint8List)? picked = await pickFile('.yml,.yaml,application/x-yaml,text/yaml');
+    final (String, Uint8List)? picked = await pickFile(_yaml);
     if (picked == null) return;
     setState(() {
       _fileName = picked.$1;
       _bytes = picked.$2;
       _review = null;
       _error = null;
+      // Links were checked against the previous Citizens save.
+      _shops = null;
     });
     _citizensResult = null;
+    _shopkeepersResult = null;
+  }
+
+  Future<void> _chooseShops(bool config) async {
+    final (String, Uint8List)? picked = await pickFile(_yaml);
+    if (picked == null) return;
+    setState(() {
+      if (config) {
+        _shopConfig = picked;
+      } else {
+        _shopSave = picked;
+      }
+      _shops = null;
+      _shopError = null;
+    });
+    _shopkeepersResult = null;
+  }
+
+  Future<void> _convertShops() async {
+    final (String, Uint8List)? save = _shopSave;
+    if (save == null) return;
+    setState(() {
+      _busy = true;
+      _shopError = null;
+      _shops = null;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+    try {
+      final (String, Uint8List)? config = _shopConfig;
+      final Uint8List? citizens = _bytes;
+      final ShopkeepersPreview preview = convertShopkeepers(
+        decodeShopkeepersSource(save.$2, 'save.yml'),
+        config: config == null ? null : decodeShopkeepersSource(config.$2, 'config.yml'),
+        citizens: citizens == null ? null : decodeShopkeepersSource(citizens, 'saves.yml'),
+      );
+      _shopkeepersResult = jsonEncode(<String, Object?>{
+        'importId': preview.id,
+        'outputHash': preview.outputHash(),
+        'shops': preview.shops,
+        'npcs': preview.npcs,
+        'issues': preview.issueCount,
+        'offers': <String, int>{'trade': preview.tradeOffers, 'static': preview.staticOffers, 'skipped': preview.skippedOffers},
+        'links': <String, int>{'found': preview.linksFound, 'notFound': preview.linksMissing, 'unchecked': preview.linksUnchecked},
+      }).toJS;
+      setState(() => _shops = preview);
+    } on ShopkeepersImportException catch (failure) {
+      _shopkeepersResult = jsonEncode(<String, Object?>{'error': failure.message}).toJS;
+      setState(() => _shopError = failure.message);
+    } on Object catch (failure) {
+      _shopkeepersResult = jsonEncode(<String, Object?>{'error': '$failure'}).toJS;
+      setState(() => _shopError = 'The conversion failed: $failure');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _downloadShops(ShopkeepersPreview preview) {
+    downloadBytes('animus-shopkeepers-import-${preview.id.substring(0, 12)}.zip', shopkeepersBundleZip(preview));
+    ArcaneSonner.success('Unzip it into the Animus data folder, then run /animus import citizens on the server to review and apply it.');
   }
 
   Future<void> _convert() async {
@@ -111,6 +182,53 @@ class _CitizensScreenState extends State<CitizensScreen> {
           dom.p(<Widget>[Component.text(_error!)]),
         ]),
       if (review != null) ..._report(review),
+      _shopkeepersPanel(),
+    ]);
+  }
+
+  Widget _shopkeepersPanel() {
+    final ShopkeepersPreview? shops = _shops;
+    return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Shopkeepers shops'}, <Widget>[
+      const dom.h2(<Widget>[Component.text('Shopkeepers shops (optional)')]),
+      const dom.p(classes: 'animus-muted', <Widget>[
+        Component.text('Pick a Shopkeepers save.yml, and its config.yml for the currency items. When a Citizens saves.yml is chosen above, '
+            'Citizens shopkeepers are checked against it. Converted shops stay closed until reviewed on the server.'),
+      ]),
+      dom.div(classes: 'animus-row', <Widget>[
+        Button.secondary(label: 'Choose Shopkeepers save.yml', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: () => _chooseShops(false)),
+        dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_shopSave?.$1 ?? 'No file chosen')]),
+      ]),
+      dom.div(classes: 'animus-row', <Widget>[
+        Button.secondary(label: 'Choose config.yml', icon: ArcaneIcon.settings(), disabled: _busy, onPressed: () => _chooseShops(true)),
+        dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_shopConfig?.$1 ?? 'Default currency (emerald)')]),
+      ]),
+      dom.div(classes: 'animus-row', <Widget>[
+        Button.primary(label: _busy ? 'Converting' : 'Convert shops', icon: ArcaneIcon.store(), disabled: _busy || _shopSave == null, onPressed: _convertShops),
+        if (shops != null)
+          Button.secondary(label: 'Download shops bundle', icon: ArcaneIcon.download(), onPressed: () => _downloadShops(shops)),
+      ]),
+      if (_shopError != null)
+        dom.div(classes: 'animus-citizens-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[
+          const dom.h3(<Widget>[Component.text('Shops not converted')]),
+          dom.p(<Widget>[Component.text(_shopError!)]),
+        ]),
+      if (shops != null) ...<Widget>[
+        dom.div(classes: 'animus-stats', <Widget>[
+          _stat('${shops.shops}', 'shops'),
+          _stat('${shops.tradeOffers}', 'trading offers'),
+          _stat('${shops.staticOffers}', 'shown only'),
+          _stat('${shops.skippedOffers}', 'kept in source.yml'),
+          _stat('${shops.npcs}', 'new mob NPCs'),
+          _stat('${shops.issueCount}', 'issues'),
+          _stat('${shops.linksFound}', 'Citizens links found'),
+          _stat('${shops.linksMissing}', 'Citizens links not found'),
+          _stat('${shops.linksUnchecked}', 'Citizens links unchecked'),
+        ]),
+        dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
+          const Component.text('Import '),
+          dom.code(<Widget>[Component.text(shops.id)]),
+        ]),
+      ],
     ]);
   }
 

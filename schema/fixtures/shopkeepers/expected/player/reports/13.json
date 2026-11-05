@@ -1,0 +1,28 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/containers": "CONVERTED",
+    "/name": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/offers/1": "UNSUPPORTED_PRESERVED",
+    "/owner": "CONVERTED",
+    "/owner uuid": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/offers/1: a book offer copies a written book from the shop's chest by title; Animus trades exact items only, so it is kept in source.yml",
+    "a sign shopkeeper gets no NPC; open the shop with /animus shop open shopkeepers:shop-13 or bind it to an NPC"
+  ],
+  "counts": {
+    "CONVERTED": 12,
+    "UNSUPPORTED_PRESERVED": 1
+  },
+  "shopkeeper": 13,
+  "shop": "shopkeepers:shop-13"
+}

@@ -27,6 +27,18 @@ class ConverterDigestTest {
         assertEquals(ImportDigest.outputHash(citizensFixtures().resolve("expected/absent")), digest);
     }
 
+    @Test void shopkeepersPreviewPrintsCountsAndTheGoldenOutputHash() throws Exception {
+        Path shopkeepers = citizensFixtures().resolveSibling("shopkeepers");
+        String preview = ConverterMain.run(new String[]{"shopkeepers-preview", shopkeepers.resolve("player.yml").toString(), root.toString(), "config=" + shopkeepers.resolve("player-config.yml")});
+        assertTrue(preview.contains("Output hash: " + ImportDigest.outputHash(shopkeepers.resolve("expected/player"))), preview);
+        assertTrue(preview.contains("Shops: 6"), preview);
+        Matcher id = Pattern.compile("^Shopkeepers preview ([a-f0-9]{64})").matcher(preview);
+        assertTrue(id.find(), preview);
+        String applied = ConverterMain.run(new String[]{"shopkeepers-apply", root.toString(), id.group(1)});
+        assertTrue(applied.contains("waiting for their NPC: 1"), applied);
+        assertThrows(IllegalArgumentException.class, () -> ConverterMain.run(new String[]{"shopkeepers-preview", "a", "b", "colour=x"}));
+    }
+
     @Test void digestNeedsOneStagedDirectory() {
         assertThrows(IllegalArgumentException.class, () -> ConverterMain.run(new String[]{"digest", "a", "b"}));
         assertThrows(Exception.class, () -> ConverterMain.run(new String[]{"digest", root.resolve("missing").toString()}));

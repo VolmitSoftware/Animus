@@ -19,14 +19,23 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * A shop file at {@code shops/<namespace>/<path>.json}: pages of buy, sell and trade grids. Every problem is
  * reported as {@code $.path: message} and refuses the whole shop.
+ * <p>
+ * A shop with {@code containers} is owned: its {@code owner} keeps the stock in those blocks. Such a shop trades items
+ * for items only; each trade takes its gives from the containers and puts its needs into them.
  */
 public record ShopDocument(String id, long revision, String title, Optional<String> permission, List<Mode> modes, Mode defaultMode,
-                           MatchRule match, boolean closeAfterPurchase, boolean confirm, boolean log, List<Page> pages) {
-    public static final int SCHEMA_VERSION = 1, MAXIMUM_PAGES = 64, MAXIMUM_COMMANDS = 16;
+                           MatchRule match, boolean closeAfterPurchase, boolean confirm, boolean log, List<Page> pages,
+                           Optional<Owner> owner, List<Container> containers) {
+    public static final int SCHEMA_VERSION = 1, MAXIMUM_PAGES = 64, MAXIMUM_COMMANDS = 16, MAXIMUM_CONTAINERS = 8;
+    /** The player who owns an owned shop. {@code name} is the last known name, for messages only. */
+    public record Owner(UUID uuid, Optional<String> name) {}
+    /** A block whose inventory holds an owned shop's stock. */
+    public record Container(String world, int x, int y, int z) {}
     public static final String ID = "[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}";
     private static final String PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
     private static final BigDecimal MAXIMUM_PRICE = new BigDecimal("1000000000000");
@@ -71,8 +80,11 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     }
 
     public ShopDocument {
-        modes = List.copyOf(modes); pages = List.copyOf(pages);
+        modes = List.copyOf(modes); pages = List.copyOf(pages); containers = List.copyOf(containers);
     }
+
+    /** True when the stock lives in containers. */
+    public boolean stocked() { return !containers.isEmpty(); }
 
     /** The entry with this id anywhere in the shop. */
     public Optional<Entry> entry(String entryId) {
@@ -93,7 +105,11 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     public static Result parse(String expectedId, JsonObject object) {
         Reader reader = new Reader();
         reader.fields(object, Set.of("schemaVersion", "revision", "id", "title", "permission", "modes", "defaultMode", "match",
-                "closeAfterPurchase", "confirm", "log", "pages", "imported"), "$");
+                "closeAfterPurchase", "confirm", "log", "pages", "imported", "owner", "containers"), "$");
+        Optional<Owner> owner = reader.owner(object.get("owner"), "$.owner");
+        List<Container> containers = reader.containers(object.get("containers"), "$.containers");
+        if (!containers.isEmpty() && !object.has("owner")) reader.problem("$.owner", "a shop with containers needs an owner");
+        reader.stocked = !containers.isEmpty();
         long schema = reader.integer(object, "schemaVersion", "$", 1, Integer.MAX_VALUE, -1);
         if (schema != SCHEMA_VERSION && schema != -1) reader.problem("$.schemaVersion", "shop schemaVersion " + schema + " is not supported; Animus reads version " + SCHEMA_VERSION);
         if (!object.has("schemaVersion")) reader.problem("$.schemaVersion", "expected integer 1");
@@ -133,11 +149,54 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             for (int index = 0; index < array.size(); index++) reader.page(array.get(index), "$.pages[" + index + "]", entryIds).ifPresent(pages::add);
         }
         if (!reader.problems.isEmpty()) return new Result(Optional.empty(), reader.problems);
-        return new Result(Optional.of(new ShopDocument(id, revision, title, permission, modes, defaultMode, match, close, confirm, log, pages)), List.of());
+        return new Result(Optional.of(new ShopDocument(id, revision, title, permission, modes, defaultMode, match, close, confirm, log, pages, owner, containers)), List.of());
     }
 
     private static final class Reader {
         final List<String> problems = new ArrayList<>();
+        boolean stocked;
+
+        Optional<Owner> owner(JsonElement value, String path) {
+            if (value == null) return Optional.empty();
+            if (!value.isJsonObject()) { problem(path, "expected {\"uuid\": \"...\", \"name\": \"...\"}"); return Optional.empty(); }
+            JsonObject object = value.getAsJsonObject();
+            fields(object, Set.of("uuid", "name"), path);
+            Optional<String> text = string(object, "uuid", path, true);
+            UUID uuid = null;
+            try { if (text.isPresent() && UUID.fromString(text.get()).toString().equals(text.get())) uuid = UUID.fromString(text.get()); }
+            catch (IllegalArgumentException invalid) { uuid = null; }
+            if (text.isPresent() && uuid == null) problem(path + ".uuid", "expected canonical player UUID");
+            Optional<String> name = object.has("name") ? string(object, "name", path, true) : Optional.empty();
+            return uuid == null ? Optional.empty() : Optional.of(new Owner(uuid, name));
+        }
+
+        List<Container> containers(JsonElement value, String path) {
+            List<Container> containers = new ArrayList<>();
+            if (value == null) return containers;
+            if (!value.isJsonArray() || value.getAsJsonArray().isEmpty() || value.getAsJsonArray().size() > MAXIMUM_CONTAINERS) {
+                problem(path, "expected an array of 1 to " + MAXIMUM_CONTAINERS + " containers");
+                return containers;
+            }
+            JsonArray array = value.getAsJsonArray();
+            for (int index = 0; index < array.size(); index++) {
+                String containerPath = path + "[" + index + "]";
+                JsonElement element = array.get(index);
+                if (!element.isJsonObject()) { problem(containerPath, "expected {\"world\": \"...\", \"x\": 0, \"y\": 64, \"z\": 0}"); continue; }
+                JsonObject object = element.getAsJsonObject();
+                fields(object, Set.of("world", "x", "y", "z"), containerPath);
+                int before = problems.size();
+                Optional<String> world = string(object, "world", containerPath, true);
+                for (String axis : List.of("x", "y", "z")) if (!object.has(axis)) problem(containerPath + "." + axis, "expected integer");
+                int x = (int) integer(object, "x", containerPath, -30_000_000, 30_000_000, 0);
+                int y = (int) integer(object, "y", containerPath, -2048, 2048, 0);
+                int z = (int) integer(object, "z", containerPath, -30_000_000, 30_000_000, 0);
+                Container container = new Container(world.orElse(""), x, y, z);
+                if (problems.size() != before) continue;
+                if (containers.contains(container)) problem(containerPath, "this container is listed twice");
+                else containers.add(container);
+            }
+            return containers;
+        }
 
         void problem(String path, String message) { problems.add(path + ": " + message); }
 
@@ -213,6 +272,11 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             boolean drop = bool(object, "dropWhenFull", path, false);
             Optional<Discount> discount = discount(object.get("discount"), path + ".discount");
             Optional<MatchRule> match = match(object, path);
+            if (stocked) {
+                if (type != Type.TRADE && type != Type.STATIC) problem(path + ".type", "a container shop has only trade and static entries");
+                if (object.has("price") && price.signum() > 0) problem(path + ".price", "a container shop trades items for items; remove the price");
+                if (stock.isPresent()) problem(path + ".stock", "a container shop's stock is its containers");
+            }
             if (problems.size() != before || item == null) return Optional.empty();
             return Optional.of(new Entry(id, type, item, display, price, allowStack, sellPartial, needs, gives, commands, limit, stock, permission,
                     broadcast, close, drop, discount, match));

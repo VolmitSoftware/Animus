@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "importerVersion": 1,
+  "importId": "8bf7068417eff2c0c33b9727d4f368cd4f0e3d0ac4ed139e2bd74fbe0c6ebc53",
+  "sourceSha256": "b325111394220d25b7f5c506800c7cebb0d031f2a0e6699792b14966d836789e",
+  "citizensSha256": "75da4c22aee6e4db7e6fb57af88cd4f9c00291b9be311212b6658af63dbd3441",
+  "notice": "Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.",
+  "dataVersion": "4|4189",
+  "shops": 6,
+  "npcs": 1,
+  "types": {
+    "admin": 6
+  },
+  "objects": {
+    "citizen": 3,
+    "sign": 1,
+    "villager": 1,
+    "virtual": 1
+  },
+  "offers": {
+    "total": 8,
+    "trade": 5,
+    "static": 2,
+    "skipped": 1
+  },
+  "items": {
+    "total": 16,
+    "withComponents": 3,
+    "preservedOnly": 1,
+    "dataVersions": {
+      "3700": 2,
+      "4082": 2,
+      "4189": 12
+    }
+  },
+  "currency": {
+    "config": false,
+    "item": {
+      "id": "minecraft:emerald",
+      "count": 1
+    },
+    "highItem": {
+      "id": "minecraft:emerald_block",
+      "count": 1
+    },
+    "highValue": 9,
+    "highMinimumCost": 20,
+    "tradeLog": "disabled"
+  },
+  "links": {
+    "inCitizensSave": 2,
+    "notInCitizensSave": 1,
+    "unchecked": 0
+  },
+  "bindings": [
+    {
+      "shopkeeper": 1,
+      "shop": "shopkeepers:shop-1",
+      "citizensUuid": "3f0c2b1e-0000-4000-8000-000000000001",
+      "status": "in-citizens-save",
+      "citizensId": 0,
+      "npc": "citizens-0"
+    },
+    {
+      "shopkeeper": 2,
+      "shop": "shopkeepers:shop-2",
+      "citizensUuid": "3f0c2b1e-0000-4000-8000-0000000000ff",
+      "status": "not-in-citizens-save"
+    },
+    {
+      "shopkeeper": 5,
+      "shop": "shopkeepers:shop-5",
+      "citizensId": 7,
+      "status": "in-citizens-save",
+      "citizensUuid": "3f0c2b1e-0000-4000-8000-000000000007",
+      "npc": "citizens-7"
+    }
+  ],
+  "shopMap": {
+    "shopkeepers:shop-1": {
+      "shopkeeper": 1,
+      "document": "shops/shopkeepers/shop-1.json",
+      "entries": 2
+    },
+    "shopkeepers:shop-2": {
+      "shopkeeper": 2,
+      "document": "shops/shopkeepers/shop-2.json",
+      "entries": 1
+    },
+    "shopkeepers:shop-3": {
+      "shopkeeper": 3,
+      "document": "shops/shopkeepers/shop-3.json",
+      "entries": 2,
+      "npc": "npcs/shopkeepers/shopkeeper-3.json"
+    },
+    "shopkeepers:shop-4": {
+      "shopkeeper": 4,
+      "document": "shops/shopkeepers/shop-4.json",
+      "entries": 1
+    },
+    "shopkeepers:shop-5": {
+      "shopkeeper": 5,
+      "document": "shops/shopkeepers/shop-5.json",
+      "entries": 0
+    },
+    "shopkeepers:shop-6": {
+      "shopkeeper": 6,
+      "document": "shops/shopkeepers/shop-6.json",
+      "entries": 1
+    }
+  },
+  "issues": [
+    "7: shop type custom-shop is not converted; kept in source.yml",
+    "note: not a shopkeeper id; kept in source.yml"
+  ],
+  "documents": {
+    "shops/shopkeepers/shop-1.json": "02ff276807f7196b89b6621fa0b66f5366ed8dfe7f3daf37be865b4784a8a20f",
+    "shops/shopkeepers/shop-2.json": "cddaeb89a085e0cb5bd97e3fe723df73156b863ef1dc27584420859980ba8179",
+    "shops/shopkeepers/shop-3.json": "3d5169c609554750960197490cd352a5b645582444c40f65ace69d6e14ef64c9",
+    "npcs/shopkeepers/shopkeeper-3.json": "6e9df58f0a0895853a05b367387b2ff4318e64dcee8fed453b4fcc21d05adb89",
+    "shops/shopkeepers/shop-4.json": "d193717db50269bf96394a9fd5109207b1c72baa8fd1dbba03558736d4d9bef8",
+    "shops/shopkeepers/shop-5.json": "fa38c2ca460b46b946e2a313c146e0ed3afba504fd07bc43625d0fd15daf1228",
+    "shops/shopkeepers/shop-6.json": "9e7f320080b8b9f97f746917305384981d992a4b24d66f09c7b718304abc0c0c"
+  }
+}

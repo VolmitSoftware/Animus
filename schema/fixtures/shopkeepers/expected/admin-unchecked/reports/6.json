@@ -1,0 +1,31 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/customField": "UNSUPPORTED_PRESERVED",
+    "/name": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/recipes/1": "CONVERTED",
+    "/snapshots": "UNSUPPORTED_PRESERVED",
+    "/tradePerm": "REQUIRES_REVIEW",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/tradePerm: not a permission node Animus accepts; the shop is open to everyone; set permission by hand",
+    "/snapshots: shopkeeper snapshots are kept in source.yml only",
+    "/customField: kept in source.yml",
+    "a virtual shopkeeper has no object; open the shop with /animus shop open shopkeepers:shop-6"
+  ],
+  "counts": {
+    "UNSUPPORTED_PRESERVED": 2,
+    "CONVERTED": 10,
+    "REQUIRES_REVIEW": 1
+  },
+  "shopkeeper": 6,
+  "shop": "shopkeepers:shop-6"
+}

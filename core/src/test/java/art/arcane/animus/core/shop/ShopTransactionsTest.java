@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -256,5 +257,49 @@ class ShopTransactionsTest {
         assertEquals(1, journal.size());
         assertEquals(4, journal.getFirst().used());
         assertEquals(NOW.plusSeconds(86400).toEpochMilli(), journal.getFirst().windowEnd());
+    }
+
+    @Test void aContainerTradeTakesTheGivesFromTheContainerAndStoresTheNeeds() {
+        MockInventory inventory = new MockInventory().with(0, Stack.of("minecraft:emerald", 12)).with(1, Stack.of("minecraft:gold_ingot", 2));
+        MockInventory chest = new MockInventory(27).with(5, Stack.of("minecraft:diamond", 3));
+        ShopTransactions.Outcome outcome = transactions(Economy.none("none")).perform("town:baker", prepare(shop("trade", TRADE)), buyer(inventory, Set.of()), false, Optional.of(chest));
+        assertEquals(Status.DONE, outcome.status());
+        assertEquals(1, inventory.total("minecraft:diamond"));
+        assertEquals(2, inventory.total("minecraft:emerald"));
+        assertEquals(2, chest.total("minecraft:diamond"));
+        assertEquals(10, chest.total("minecraft:emerald"));
+        assertEquals(2, chest.total("minecraft:gold_ingot"));
+    }
+
+    @Test void anEmptyContainerIsOutOfStockAndChangesNothing() {
+        MockInventory inventory = new MockInventory().with(0, Stack.of("minecraft:emerald", 12)).with(1, Stack.of("minecraft:gold_ingot", 2));
+        MockInventory chest = new MockInventory(27);
+        Stack[] before = inventory.copy();
+        assertEquals(Status.OUT_OF_STOCK, transactions(economy).perform("town:baker", prepare(shop("trade", TRADE)), buyer(inventory, Set.of()), false, Optional.of(chest)).status());
+        assertArrayEquals(before, inventory.copy());
+        assertArrayEquals(new MockInventory(27).copy(), chest.copy());
+    }
+
+    @Test void aFullContainerRefusesAndRestoresBothSides() {
+        MockInventory inventory = new MockInventory().with(0, Stack.of("minecraft:emerald", 12)).with(1, Stack.of("minecraft:gold_ingot", 2));
+        MockInventory chest = new MockInventory(2).with(0, Stack.of("minecraft:diamond", 1)).with(1, Stack.of("minecraft:stone", 64));
+        Stack[] player = inventory.copy(), stock = chest.copy();
+        assertEquals(Status.CONTAINER_FULL, transactions(economy).perform("town:baker", prepare(shop("trade", TRADE)), buyer(inventory, Set.of()), false, Optional.of(chest)).status());
+        assertArrayEquals(player, inventory.copy());
+        assertArrayEquals(stock, chest.copy());
+    }
+
+    @Test void aContainerTradeIntoAFullPlayerInventoryRestoresTheContainer() {
+        MockInventory inventory = new MockInventory(3).with(0, Stack.of("minecraft:emerald", 12)).with(1, Stack.of("minecraft:gold_ingot", 4)).with(2, Stack.of("minecraft:stone", 64));
+        MockInventory chest = new MockInventory(27).with(0, Stack.of("minecraft:diamond", 1));
+        Stack[] player = inventory.copy(), stock = chest.copy();
+        assertEquals(Status.INVENTORY_FULL, transactions(economy).perform("town:baker", prepare(shop("trade", TRADE)), buyer(inventory, Set.of()), false, Optional.of(chest)).status());
+        assertArrayEquals(player, inventory.copy());
+        assertArrayEquals(stock, chest.copy());
+    }
+
+    @Test void containerShopsOnlyTradeItemsForItems() {
+        economy.give(ALEX, "100");
+        assertEquals(Status.NOT_TRADABLE, transactions(economy).perform("town:baker", prepare(shop("buy", BREAD)), buyer(new MockInventory(), Set.of()), false, Optional.of(new MockInventory(27))).status());
     }
 }

@@ -18,6 +18,32 @@ bool javaIsWhitespace(int point) {
 /// `String.isBlank()`.
 bool javaIsBlank(String text) => text.runes.every(javaIsWhitespace);
 
+/// `String.strip()`: leading and trailing `Character.isWhitespace` removed. Every whitespace character is in the BMP.
+String javaStrip(String text) {
+  int start = 0;
+  int end = text.length;
+  while (start < end && javaIsWhitespace(text.codeUnitAt(start))) {
+    start++;
+  }
+  while (end > start && javaIsWhitespace(text.codeUnitAt(end - 1))) {
+    end--;
+  }
+  return text.substring(start, end);
+}
+
+/// `String.trim()`: leading and trailing characters up to U+0020 removed.
+String javaTrim(String text) {
+  int start = 0;
+  int end = text.length;
+  while (start < end && text.codeUnitAt(start) <= 0x20) {
+    start++;
+  }
+  while (end > start && text.codeUnitAt(end - 1) <= 0x20) {
+    end--;
+  }
+  return text.substring(start, end);
+}
+
 /// `Character.isISOControl(int)`.
 bool javaIsIsoControl(int point) => point <= 0x1F || (point >= 0x7F && point <= 0x9F);
 

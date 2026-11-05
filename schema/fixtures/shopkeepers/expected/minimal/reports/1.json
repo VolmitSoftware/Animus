@@ -1,0 +1,22 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/recipes/1": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "a new minecraft:wandering_trader NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+  ],
+  "counts": {
+    "CONVERTED": 9
+  },
+  "shopkeeper": 1,
+  "shop": "shopkeepers:shop-1"
+}

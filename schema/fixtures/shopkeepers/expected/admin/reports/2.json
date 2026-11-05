@@ -1,0 +1,25 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/object/npcId": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/recipes/1": "CONVERTED",
+    "/tradePerm": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "the Citizens NPC is not in the Citizens save given; the binding waits for an NPC with that identity"
+  ],
+  "counts": {
+    "CONVERTED": 12
+  },
+  "shopkeeper": 2,
+  "shop": "shopkeepers:shop-2"
+}

@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-12",
+  "title": "Swapper",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "log": true,
+  "owner": {
+    "uuid": "00000000-0000-4000-8000-00000000a1e5",
+    "name": "Alex"
+  },
+  "containers": [
+    {
+      "world": "world",
+      "x": 31,
+      "y": 64,
+      "z": 5
+    },
+    {
+      "world": "world",
+      "x": 31,
+      "y": 65,
+      "z": 5
+    }
+  ],
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:ender_pearl",
+            "count": 4
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:string",
+                "count": 1
+              },
+              "amount": 16
+            },
+            {
+              "item": {
+                "id": "minecraft:bone",
+                "count": 1
+              },
+              "amount": 8
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:ender_pearl",
+                "count": 1
+              },
+              "amount": 4
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 12,
+    "uniqueId": "0b5e3d8a-1111-4c2a-9e6f-00000000000c",
+    "type": "trade",
+    "location": {
+      "world": "world",
+      "x": 30,
+      "y": 64,
+      "z": 5,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "citizen",
+      "npcId": "9d1e0000-0000-4000-8000-000000000012"
+    }
+  }
+}

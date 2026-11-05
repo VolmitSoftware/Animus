@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-5",
+  "title": "Old Guard",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 1
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 5,
+    "uniqueId": "6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0005",
+    "type": "admin",
+    "location": {
+      "world": "world",
+      "x": 5,
+      "y": 64,
+      "z": 5,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "citizen",
+      "npcId": 7
+    }
+  }
+}

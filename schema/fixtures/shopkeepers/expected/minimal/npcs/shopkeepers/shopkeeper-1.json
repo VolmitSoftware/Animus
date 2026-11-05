@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "d52d42c9-1e34-36b1-b171-93d69aaaf298",
+  "id": "shopkeeper-1",
+  "group": "shopkeepers",
+  "name": "Wanderer",
+  "type": "minecraft:wandering_trader",
+  "spawned": false,
+  "position": {
+    "world": "world",
+    "x": -2.5,
+    "y": 70,
+    "z": 12.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "migration": {
+    "importId": "ab16161aa47ba56239f749a2dda40fcc4c264cada17c8b335154cadb2f8c18ab",
+    "source": "Shopkeepers",
+    "shopkeeper": 1,
+    "originalSpawned": true
+  },
+  "modules": {
+    "animus:shop": {
+      "shop": "shopkeepers:shop-1",
+      "openOn": "right",
+      "reviewAccepted": false,
+      "imported": {
+        "source": "Shopkeepers",
+        "shopkeeper": 1
+      }
+    }
+  }
+}

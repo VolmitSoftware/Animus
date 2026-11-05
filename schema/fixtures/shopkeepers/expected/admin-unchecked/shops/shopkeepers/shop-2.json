@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-2",
+  "title": "VIP Trader",
+  "permission": "town.shop.vip",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:golden_apple",
+            "count": 1
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:gold_ingot",
+                "count": 1
+              },
+              "amount": 8
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:golden_apple",
+                "count": 1
+              },
+              "amount": 1
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 2,
+    "uniqueId": "6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0002",
+    "type": "admin",
+    "location": {
+      "world": "world",
+      "x": 120,
+      "y": 70,
+      "z": 4,
+      "yaw": -45.5
+    },
+    "object": {
+      "type": "citizen",
+      "npcId": "3f0c2b1e-0000-4000-8000-0000000000ff"
+    }
+  }
+}

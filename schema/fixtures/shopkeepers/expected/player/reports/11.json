@@ -1,0 +1,33 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/chestx": "CONVERTED",
+    "/chesty": "CONVERTED",
+    "/chestz": "CONVERTED",
+    "/name": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/object/wallSign": "UNSUPPORTED_PRESERVED",
+    "/offers/1": "CONVERTED",
+    "/offers/2": "UNSUPPORTED_PRESERVED",
+    "/owner": "CONVERTED",
+    "/owner uuid": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/offers/2: price 99 is more than one stack of the currency item, which Shopkeepers also skips",
+    "/object/wallSign: kept in the shop's imported section",
+    "a sign shopkeeper gets no NPC; open the shop with /animus shop open shopkeepers:shop-11 or bind it to an NPC"
+  ],
+  "counts": {
+    "CONVERTED": 15,
+    "UNSUPPORTED_PRESERVED": 2
+  },
+  "shopkeeper": 11,
+  "shop": "shopkeepers:shop-11"
+}

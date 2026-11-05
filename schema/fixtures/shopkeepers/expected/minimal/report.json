@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "importerVersion": 1,
+  "importId": "ab16161aa47ba56239f749a2dda40fcc4c264cada17c8b335154cadb2f8c18ab",
+  "sourceSha256": "3d59da66139f158cc1de8432c42fe8b4e2dc8399138186f6ed1913914b8e06fa",
+  "notice": "Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.",
+  "dataVersion": null,
+  "shops": 1,
+  "npcs": 1,
+  "types": {
+    "admin": 1
+  },
+  "objects": {
+    "wandering-trader": 1
+  },
+  "offers": {
+    "total": 1,
+    "trade": 1,
+    "static": 0,
+    "skipped": 0
+  },
+  "items": {
+    "total": 2,
+    "withComponents": 0,
+    "preservedOnly": 0,
+    "dataVersions": {}
+  },
+  "currency": {
+    "config": false,
+    "item": {
+      "id": "minecraft:emerald",
+      "count": 1
+    },
+    "highItem": {
+      "id": "minecraft:emerald_block",
+      "count": 1
+    },
+    "highValue": 9,
+    "highMinimumCost": 20,
+    "tradeLog": "disabled"
+  },
+  "links": {
+    "inCitizensSave": 0,
+    "notInCitizensSave": 0,
+    "unchecked": 0
+  },
+  "bindings": [],
+  "shopMap": {
+    "shopkeepers:shop-1": {
+      "shopkeeper": 1,
+      "document": "shops/shopkeepers/shop-1.json",
+      "entries": 1,
+      "npc": "npcs/shopkeepers/shopkeeper-1.json"
+    }
+  },
+  "issues": [],
+  "documents": {
+    "shops/shopkeepers/shop-1.json": "7c546a66c5aa38dd2132e2cd81dcf821e0f4a9a757d621db8ecab28a8d20f05d",
+    "npcs/shopkeepers/shopkeeper-1.json": "0e575d50058bff8c6ad37ac0ae99239fb0b93573df7cd441012b87da6dc1534d"
+  }
+}

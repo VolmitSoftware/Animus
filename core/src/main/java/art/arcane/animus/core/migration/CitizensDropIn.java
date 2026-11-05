@@ -32,9 +32,9 @@ import java.util.function.BooleanSupplier;
  * Call it from the serial file lane.
  */
 public final class CitizensDropIn {
-    /** What the platform knows: its plugins folder, if it has one, and whether Citizens itself is running. */
-    public record Host(Optional<Path> pluginsDirectory, BooleanSupplier citizensEnabled) {
-        public static final Host NONE = new Host(Optional.empty(), () -> false);
+    /** What the platform knows: its plugins folder, if it has one, and whether Citizens and Shopkeepers are running. */
+    public record Host(Optional<Path> pluginsDirectory, BooleanSupplier citizensEnabled, BooleanSupplier shopkeepersEnabled) {
+        public static final Host NONE = new Host(Optional.empty(), () -> false, () -> false);
     }
     /** A file or folder the flow found. {@code label} is how it is shown to the operator. */
     public record Found(Path path, String label) {}
@@ -77,6 +77,12 @@ public final class CitizensDropIn {
         JsonObject state = state();
         boolean citizens = host.citizensEnabled().getAsBoolean();
         if (citizens && (sources.saves().isPresent() || applied(state))) return Optional.of("Citizens migration: " + CITIZENS_RUNNING);
+        Optional<ShopkeepersDropIn.Found> shopkeepers = ShopkeepersDropIn.find(store, host.pluginsDirectory());
+        if (shopkeepers.isPresent() && !ShopkeepersDropIn.applied(state)) {
+            if (host.shopkeepersEnabled().getAsBoolean()) return Optional.of("Shopkeepers migration: " + ShopkeepersDropIn.RUNNING);
+            if (sources.saves().isEmpty() || applied(state))
+                return Optional.of("Shopkeepers migration: found " + shopkeepers.get().save().label() + ". Run /animus import citizens to preview it. Nothing is installed until you apply it.");
+        }
         if (applied(state)) {
             int pending = pending(state).values().stream().mapToInt(Integer::intValue).sum();
             return pending == 0 ? Optional.empty() : Optional.of("Citizens migration: applied; " + pending + " reviewed settings are still off. Check them with /animus import citizens review");
@@ -121,9 +127,23 @@ public final class CitizensDropIn {
             } else throw new IOException("import citizens [reject|replace|duplicate <label>] [oldWorld=newWorld ...] | apply | review | accept <category...|all> | rollback");
         }
         JsonObject previous = state();
-        if (applied(previous)) throw new IOException("A Citizens import is already applied. Roll it back with /animus import citizens rollback before staging another.");
         Sources sources = find();
-        if (sources.saves().isEmpty()) throw new IOException("No Citizens save found. Put saves.yml in " + store.resolve("imports") + ", or leave plugins/Citizens/saves.yml in place after removing Citizens.");
+        Optional<ShopkeepersDropIn.Found> shopkeepers = ShopkeepersDropIn.find(store, host.pluginsDirectory());
+        boolean shopkeepersApplied = ShopkeepersDropIn.applied(previous);
+        if (applied(previous) || sources.saves().isEmpty()) {
+            if (shopkeepers.isEmpty() || shopkeepersApplied) {
+                if (applied(previous) || shopkeepersApplied) throw new IOException("A Citizens import is already applied. Roll it back with /animus import citizens rollback before staging another.");
+                throw new IOException("No Citizens save found and no Shopkeepers save found. Put saves.yml in " + store.resolve("imports") + " or a Shopkeepers save.yml in "
+                        + store.resolve("imports/shopkeepers") + ", or leave plugins/Citizens/saves.yml or plugins/Shopkeepers/data/save.yml in place after removing the plugin.");
+            }
+            JsonObject state = applied(previous) ? previous : new JsonObject();
+            state.addProperty("schemaVersion", 1);
+            List<String> lines = new ArrayList<>(ShopkeepersDropIn.stage(store, shopkeepers.get(), sources.saves().map(Found::path), state));
+            lines.add(applied(previous) ? "The shops bind to the Citizens NPCs already installed. Nothing installed yet." : "No Citizens save: Citizens shopkeepers bind when a Citizens import is applied later. Nothing installed yet.");
+            lines.add(host.shopkeepersEnabled().getAsBoolean() ? ShopkeepersDropIn.RUNNING : "Next: /animus import citizens apply");
+            writeState(state);
+            return lines;
+        }
         Found save = sources.saves().get();
         CitizensImporter.Preview preview = new CitizensImporter().preview(save.path(), store, worlds);
         if (preview.valid() != preview.records())
@@ -169,20 +189,50 @@ public final class CitizensDropIn {
         state.add("schematics", schematics);
         if (!sources.schematics().isEmpty())
             lines.add("Schematics: " + schematics.size() + " .schem/.nbt files copy into schematics/ on apply" + (legacy > 0 ? "; " + legacy + " old .schematic files must be saved again as .schem first" : ""));
+        if (shopkeepersApplied) {
+            state.add("shopkeepers", previous.get("shopkeepers").deepCopy());
+            state.add("transactions", previous.get("transactions").deepCopy());
+            lines.add("Shopkeepers shops are already installed; their Citizens shopkeepers bind when this import is applied.");
+        } else if (shopkeepers.isPresent()) lines.addAll(ShopkeepersDropIn.stage(store, shopkeepers.get(), Optional.of(save.path()), state));
         lines.add("Nothing installed. Full report: " + preview.directory().resolve("report.json"));
         if (host.citizensEnabled().getAsBoolean()) lines.add(CITIZENS_RUNNING);
+        else if (ShopkeepersDropIn.staged(state) && host.shopkeepersEnabled().getAsBoolean()) lines.add(ShopkeepersDropIn.RUNNING);
         else lines.add("Next: /animus import citizens apply");
         writeState(state);
         return lines;
     }
 
     List<String> apply() throws IOException {
-        refuseWhileCitizensRuns();
         JsonObject state = state();
-        if (!state.has("applicationId")) throw new IOException("Nothing staged. Run /animus import citizens first.");
-        if (applied(state)) throw new IOException("Already applied. Use /animus import citizens review, accept or rollback.");
+        boolean citizensPending = state.has("applicationId") && !applied(state);
+        boolean shopkeepersPending = ShopkeepersDropIn.staged(state);
+        if (!citizensPending && !shopkeepersPending) {
+            if (applied(state) || ShopkeepersDropIn.applied(state)) throw new IOException("Already applied. Use /animus import citizens review, accept or rollback.");
+            throw new IOException("Nothing staged. Run /animus import citizens first.");
+        }
+        if (citizensPending) refuseWhileCitizensRuns();
+        if (shopkeepersPending && host.shopkeepersEnabled().getAsBoolean()) throw new IOException(ShopkeepersDropIn.RUNNING);
+        List<String> lines = citizensPending ? applyCitizens(state) : new ArrayList<>();
+        JsonArray transactions = state.has("transactions") ? state.getAsJsonArray("transactions") : new JsonArray();
+        try {
+            if (shopkeepersPending) lines.addAll(ShopkeepersDropIn.apply(store, state, npcs.all(), transactions));
+            else lines.addAll(ShopkeepersDropIn.bindPending(store, state, npcs.all(), transactions));
+        } catch (IOException | RuntimeException failure) {
+            if (!citizensPending) throw failure;
+            lines.add("Shopkeepers import failed and nothing of it was installed: " + failure.getMessage() + ". The Citizens import stays applied; fix the cause and run /animus import citizens apply again.");
+            return lines;
+        }
+        state.add("transactions", transactions);
+        writeState(state);
+        List<String> errors = npcs.reload();
+        if (!errors.isEmpty()) lines.add("Definition problems after reload: " + String.join("; ", errors));
+        if (!citizensPending) lines.add("Shops stay closed on their NPCs and new mob NPCs stay despawned. Next: /animus import citizens review, then accept shops and spawn");
+        return lines;
+    }
+
+    private List<String> applyCitizens(JsonObject state) throws IOException {
         String importId = state.get("importId").getAsString();
-        JsonArray transactions = new JsonArray();
+        JsonArray transactions = state.has("transactions") ? state.getAsJsonArray("transactions") : new JsonArray();
         String definitions = ImportApplications.apply(store, importId, state.get("applicationId").getAsString());
         transactions.add(definitions);
         List<String> lines = new ArrayList<>();
@@ -224,15 +274,17 @@ public final class CitizensDropIn {
 
     List<String> rollback() throws IOException {
         JsonObject state = state();
-        if (!applied(state)) throw new IOException("No applied Citizens import to roll back.");
+        boolean citizens = applied(state);
+        if (!citizens && !ShopkeepersDropIn.applied(state)) throw new IOException("No applied Citizens import to roll back.");
         List<String> lines = new ArrayList<>();
         JsonArray transactions = state.getAsJsonArray("transactions");
         for (int index = transactions.size() - 1; index >= 0; index--) {
             String transaction = transactions.get(index).getAsString();
             lines.add("Rolled back " + transaction + "; inverse " + store.rollback(transaction));
         }
+        ShopkeepersDropIn.rolledBack(state);
         int kept = 0;
-        for (JsonElement value : state.getAsJsonArray("copiedSchematics")) {
+        for (JsonElement value : state.has("copiedSchematics") ? state.getAsJsonArray("copiedSchematics") : new JsonArray()) {
             Path file = store.resolve(value.getAsJsonObject().get("path").getAsString());
             if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && sha256(file).equals(value.getAsJsonObject().get("sha256").getAsString())) Files.delete(file);
             else kept++;
@@ -240,7 +292,7 @@ public final class CitizensDropIn {
         if (kept > 0) lines.add(kept + " copied schematics changed since the import and were kept");
         state.remove("transactions");
         state.remove("copiedSchematics");
-        state.addProperty("state", "rolled-back");
+        if (citizens) state.addProperty("state", "rolled-back");
         writeState(state);
         List<String> errors = npcs.reloadAfterRollback();
         if (!errors.isEmpty()) lines.add("Definition problems after reload: " + String.join("; ", errors));
@@ -250,21 +302,23 @@ public final class CitizensDropIn {
 
     List<String> review() throws IOException {
         JsonObject state = state();
-        if (!applied(state)) throw new IOException("No applied Citizens import. Run /animus import citizens, then apply.");
+        boolean citizens = applied(state);
+        if (!citizens && !ShopkeepersDropIn.applied(state)) throw new IOException("No applied Citizens import. Run /animus import citizens, then apply.");
         List<String> lines = new ArrayList<>();
         Map<String, Integer> pending = pending(state);
-        lines.add("Citizens import " + state.get("importId").getAsString().substring(0, 12) + ": " + imported(state).size() + " NPCs installed");
+        if (citizens) lines.add("Citizens import " + state.get("importId").getAsString().substring(0, 12) + ": " + imported(state).size() + " NPCs installed");
+        ShopkeepersDropIn.reviewLine(state).ifPresent(lines::add);
         for (String category : CATEGORIES)
             lines.add(category + ": " + pending.get(category) + " waiting" + switch (category) {
                 case "spawn" -> " (NPCs Citizens had spawned; others stay despawned)";
                 case "combat" -> " (Sentinel settings in animus:combat)";
                 case "riding" -> " (controllable NPCs in animus:riding)";
-                case "shops" -> " (dtlTraders shops in animus:shop)";
+                case "shops" -> " (dtlTraders and Shopkeepers shops in animus:shop)";
                 default -> " (Builder sections in animus:builder; builds still start with /animus build start)";
             });
         Map<String, Integer> preserved = preserved(state);
         lines.add("Kept but not run: " + (preserved.isEmpty() ? "nothing" : counts(preserved)));
-        lines.add("Report: " + state.get("report").getAsString() + "; per-NPC reports under imports/" + state.get("importId").getAsString() + "/reports/");
+        if (citizens) lines.add("Report: " + state.get("report").getAsString() + "; per-NPC reports under imports/" + state.get("importId").getAsString() + "/reports/");
         lines.add("Accept after checking: /animus import citizens accept <" + String.join("|", CATEGORIES) + "|all>");
         return lines;
     }
@@ -272,7 +326,7 @@ public final class CitizensDropIn {
     List<String> accept(List<String> requested) throws IOException {
         refuseWhileCitizensRuns();
         JsonObject state = state();
-        if (!applied(state)) throw new IOException("No applied Citizens import to review.");
+        if (!applied(state) && !ShopkeepersDropIn.applied(state)) throw new IOException("No applied Citizens import to review.");
         Set<String> categories = new java.util.LinkedHashSet<>();
         for (String category : requested) {
             String lowered = category.toLowerCase(Locale.ROOT);
@@ -383,11 +437,13 @@ public final class CitizensDropIn {
     }
 
     private List<NpcDefinition> imported(JsonObject state) {
-        String importId = state.get("importId").getAsString();
+        Set<String> importIds = new java.util.HashSet<>();
+        if (state.has("importId")) importIds.add(state.get("importId").getAsString());
+        if (ShopkeepersDropIn.applied(state)) ShopkeepersDropIn.importId(state).ifPresent(importIds::add);
         return npcs.all().stream().filter((NpcDefinition definition) -> {
             JsonObject json = definition.json();
             return json.has("migration") && json.get("migration").isJsonObject() && json.getAsJsonObject("migration").has("importId")
-                    && json.getAsJsonObject("migration").get("importId").getAsString().equals(importId);
+                    && importIds.contains(json.getAsJsonObject("migration").get("importId").getAsString());
         }).toList();
     }
 

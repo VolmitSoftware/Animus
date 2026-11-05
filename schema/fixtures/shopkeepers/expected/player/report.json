@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "importerVersion": 1,
+  "importId": "35f22dc9ce424ada9c3ffde6493574b12fdc3a184eea3fb4d95bcc4de6395d27",
+  "sourceSha256": "1ad1369513283726a44d198ab0a0f94388afcbc1e761bbc4f780a5b1c3563c08",
+  "configSha256": "fa0989ce99526a144db8f9b672d0d7f0dbdcf2c9cd4f7f2a5be53d21257fd03e",
+  "notice": "Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.",
+  "dataVersion": "4|4189",
+  "shops": 6,
+  "npcs": 3,
+  "types": {
+    "book": 1,
+    "buy": 1,
+    "sell": 3,
+    "trade": 1
+  },
+  "objects": {
+    "citizen": 1,
+    "cow": 1,
+    "hanging-sign": 1,
+    "sign": 1,
+    "villager": 1,
+    "zombie": 1
+  },
+  "offers": {
+    "total": 9,
+    "trade": 5,
+    "static": 1,
+    "skipped": 3
+  },
+  "items": {
+    "total": 10,
+    "withComponents": 1,
+    "preservedOnly": 0,
+    "dataVersions": {
+      "4189": 10
+    }
+  },
+  "currency": {
+    "config": true,
+    "item": {
+      "id": "minecraft:gold_nugget",
+      "count": 1
+    },
+    "highItem": {
+      "id": "minecraft:gold_ingot",
+      "count": 1
+    },
+    "highValue": 9,
+    "highMinimumCost": 20,
+    "tradeLog": "csv"
+  },
+  "links": {
+    "inCitizensSave": 0,
+    "notInCitizensSave": 0,
+    "unchecked": 1
+  },
+  "bindings": [
+    {
+      "shopkeeper": 12,
+      "shop": "shopkeepers:shop-12",
+      "citizensUuid": "9d1e0000-0000-4000-8000-000000000012",
+      "status": "unchecked"
+    }
+  ],
+  "shopMap": {
+    "shopkeepers:shop-10": {
+      "shopkeeper": 10,
+      "document": "shops/shopkeepers/shop-10.json",
+      "entries": 2,
+      "npc": "npcs/shopkeepers/shopkeeper-10.json"
+    },
+    "shopkeepers:shop-11": {
+      "shopkeeper": 11,
+      "document": "shops/shopkeepers/shop-11.json",
+      "entries": 1
+    },
+    "shopkeepers:shop-12": {
+      "shopkeeper": 12,
+      "document": "shops/shopkeepers/shop-12.json",
+      "entries": 1
+    },
+    "shopkeepers:shop-13": {
+      "shopkeeper": 13,
+      "document": "shops/shopkeepers/shop-13.json",
+      "entries": 0
+    },
+    "shopkeepers:shop-14": {
+      "shopkeeper": 14,
+      "document": "shops/shopkeepers/shop-14.json",
+      "entries": 1,
+      "npc": "npcs/shopkeepers/shopkeeper-14.json"
+    },
+    "shopkeepers:shop-15": {
+      "shopkeeper": 15,
+      "document": "shops/shopkeepers/shop-15.json",
+      "entries": 1,
+      "npc": "npcs/shopkeepers/shopkeeper-15.json"
+    }
+  },
+  "issues": [],
+  "documents": {
+    "shops/shopkeepers/shop-10.json": "cd79761fdaeacdcb7fad3bbddd521eed42873ed6eeb1908d5c044a8ba08a2fc0",
+    "npcs/shopkeepers/shopkeeper-10.json": "3e0c161752bf620cbe4afbe4d05b78aa7497c0430b5317eae119747717416a59",
+    "shops/shopkeepers/shop-11.json": "78c0ee0d8edc622650c1aea288f55242d097bd3c7457a6def8b1604dc2d8d5fd",
+    "shops/shopkeepers/shop-12.json": "ff37f258c2e62b94a40ec760dd1fa0e8c28527b4ecd62753fcd7bb34bd2d692f",
+    "shops/shopkeepers/shop-13.json": "9c9e89f9fa5bf44b70b9c91d140981dd41ffdb3da03a1b0f38745966add38ae2",
+    "shops/shopkeepers/shop-14.json": "5f041abefb4ab1f825b8898eb0972ebb42771f0b7350b44d627a4c053ba053d7",
+    "npcs/shopkeepers/shopkeeper-14.json": "5263402d2a284244a4f2f512c9fb423ef248bae66710b6e093abae8c464c5102",
+    "shops/shopkeepers/shop-15.json": "3c463d5e74dc57d174b75f7c6d4ce5d9378e0a6195e8b9f1eeeab1ae08fd05ae",
+    "npcs/shopkeepers/shopkeeper-15.json": "dacc98f5e610978fae91459403e6ff24469eb97c5f1877af8dcdfc362fdc42fb"
+  }
+}

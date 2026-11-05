@@ -74,4 +74,11 @@ public interface ScreenHost<P, S> {
     Optional<S> stack(NpcItem item, Optional<String> name, List<String> lore, List<String> errors);
     void drop(P player, S stack);
     Economy economy();
+    /**
+     * Opens an owned shop's containers on this thread for one trade, after checking that each block still holds an
+     * inventory and that protection lets the shop's owner open it. A platform without container shops refuses.
+     */
+    default art.arcane.animus.core.shop.ShopStock<S> stock(art.arcane.animus.core.shop.ShopDocument shop) {
+        return art.arcane.animus.core.shop.ShopStock.refused("this platform has no container shops");
+    }
 }

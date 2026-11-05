@@ -79,6 +79,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     private volatile ScreenManager<Player, ItemStack> manager;
     private final Map<UUID, Map<String, Lane>> bars = new ConcurrentHashMap<>();
     private final Method teleportAsync, entityScheduler, entityExecute;
+    private final BukkitShopStock stocks;
 
     /**
      * @param later runs work on the player's owner on a later tick; false when it cannot be scheduled
@@ -99,6 +100,15 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
             execute = Class.forName("io.papermc.paper.threadedregions.scheduler.EntityScheduler").getMethod("execute", org.bukkit.plugin.Plugin.class, Runnable.class, Runnable.class, long.class);
         } catch (ReflectiveOperationException notFolia) { scheduler = null; execute = null; }
         teleportAsync = async; entityScheduler = scheduler; entityExecute = execute;
+        java.util.function.BiPredicate<UUID, Location> ownerMayOpen = (UUID owner, Location at) -> true;
+        if (server.getPluginManager().isPluginEnabled("WorldGuard")) {
+            try { ownerMayOpen = WorldGuardContainerAccess.create(server); }
+            catch (RuntimeException | LinkageError failure) {
+                logger.warning("WorldGuard is installed but its API could not be used (" + failure.getClass().getSimpleName() + "); container shops stay closed");
+                ownerMayOpen = (UUID owner, Location at) -> false;
+            }
+        }
+        stocks = new BukkitShopStock(server, ownerMayOpen);
     }
 
     /** Vault when its plugin is installed; nothing from Vault is loaded otherwise. */
@@ -300,6 +310,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     @Override public Optional<ItemStack> stack(NpcItem item, Optional<String> name, List<String> lore, List<String> errors) { return BukkitItems.stack(item, name, lore, errors); }
     @Override public void drop(Player player, ItemStack stack) { player.getWorld().dropItemNaturally(player.getLocation(), stack); }
     @Override public Economy economy() { return economy.get(); }
+    @Override public art.arcane.animus.core.shop.ShopStock<ItemStack> stock(art.arcane.animus.core.shop.ShopDocument shop) { return stocks.open(shop); }
 
     private static Optional<Window> window(InventoryView view) {
         return view.getTopInventory().getHolder() instanceof Window window ? Optional.of(window) : Optional.empty();

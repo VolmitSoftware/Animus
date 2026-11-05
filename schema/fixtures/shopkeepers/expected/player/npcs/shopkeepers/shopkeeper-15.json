@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0b5e3d8a-1111-4c2a-9e6f-00000000000f",
+  "id": "shopkeeper-15",
+  "group": "shopkeepers",
+  "name": "Hired Hand",
+  "type": "minecraft:zombie",
+  "spawned": false,
+  "position": {
+    "world": "world",
+    "x": 60.5,
+    "y": 64,
+    "z": 5.5,
+    "yaw": 0.0,
+    "pitch": 0
+  },
+  "migration": {
+    "importId": "35f22dc9ce424ada9c3ffde6493574b12fdc3a184eea3fb4d95bcc4de6395d27",
+    "source": "Shopkeepers",
+    "shopkeeper": 15,
+    "originalSpawned": true
+  },
+  "modules": {
+    "animus:shop": {
+      "shop": "shopkeepers:shop-15",
+      "openOn": "right",
+      "reviewAccepted": false,
+      "imported": {
+        "source": "Shopkeepers",
+        "shopkeeper": 15
+      }
+    },
+    "shopkeepers:review": {
+      "baby": true
+    }
+  }
+}

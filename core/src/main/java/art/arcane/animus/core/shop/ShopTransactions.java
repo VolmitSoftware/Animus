@@ -26,7 +26,7 @@ import java.util.function.Supplier;
 public final class ShopTransactions<S> {
     public enum Status {
         DONE, NOT_TRADABLE, NO_PERMISSION, LIMIT_REACHED, OUT_OF_STOCK, ECONOMY_UNAVAILABLE, INSUFFICIENT_FUNDS, INVENTORY_FULL,
-        NOT_ENOUGH_ITEMS, NOTHING_TO_SELL, PAYMENT_FAILED, FAILED
+        NOT_ENOUGH_ITEMS, NOTHING_TO_SELL, PAYMENT_FAILED, FAILED, CONTAINER_FULL, CONTAINER_UNAVAILABLE
     }
     public record Need<S>(S stack, int amount) {}
     /** An entry with its platform stacks built once: a one-item stack of the goods, and the trade lists. */
@@ -56,9 +56,16 @@ public final class ShopTransactions<S> {
     public ShopLedger ledger() { return ledger; }
 
     /** {@code fullStack} is a shift click: a maximum-size stack when the entry allows it. */
-    public Outcome perform(String shop, Prepared<S> prepared, Buyer<S> buyer, boolean fullStack) {
+    public Outcome perform(String shop, Prepared<S> prepared, Buyer<S> buyer, boolean fullStack) { return perform(shop, prepared, buyer, fullStack, Optional.empty()); }
+
+    /**
+     * With {@code stock}, the opened containers of an owned shop: only trades run, the gives leave the stock and the
+     * needs enter it, and both storages change together or not at all.
+     */
+    public Outcome perform(String shop, Prepared<S> prepared, Buyer<S> buyer, boolean fullStack, Optional<TradeInventory<S>> stock) {
         ShopDocument.Entry entry = prepared.entry();
         if (entry.type() == ShopDocument.Type.STATIC) return Outcome.of(Status.NOT_TRADABLE);
+        if (stock.isPresent() && entry.type() != ShopDocument.Type.TRADE) return Outcome.of(Status.NOT_TRADABLE);
         if (entry.permission().isPresent() && !buyer.permitted().test(entry.permission().get())) return Outcome.of(Status.NO_PERMISSION);
         Instant now = clock.get();
         int base = entry.item().count();
@@ -91,7 +98,8 @@ public final class ShopTransactions<S> {
         Outcome outcome = switch (entry.type()) {
             case BUY -> buy(prepared, buyer, inventory, units, price, money);
             case SELL -> sell(prepared, buyer, inventory, units, price, money, rule);
-            case TRADE -> trade(prepared, buyer, inventory, price, money, rule);
+            case TRADE -> stock.isPresent() ? stocked(prepared, buyer, inventory, InventoryTransaction.begin(stock.get(), items), rule)
+                    : trade(prepared, buyer, inventory, price, money, rule);
             case COMMAND -> command(buyer, inventory, price, money);
             case STATIC -> Outcome.of(Status.NOT_TRADABLE);
         };
@@ -168,6 +176,36 @@ public final class ShopTransactions<S> {
         }
         drop(buyer, overflow);
         return new Outcome(Status.DONE, 1, price, Optional.empty());
+    }
+
+    /** An owned shop's trade: item for item between the buyer and the shop's containers, never money. */
+    private Outcome stocked(Prepared<S> prepared, Buyer<S> buyer, InventoryTransaction<S> inventory, InventoryTransaction<S> stock, MatchRule rule) {
+        List<S> overflow = new java.util.ArrayList<>();
+        try {
+            for (Need<S> give : prepared.gives())
+                if (!stock.remove(give.stack(), give.amount(), MatchRule.STRICT)) { both(inventory, stock); return Outcome.of(Status.OUT_OF_STOCK); }
+            for (Need<S> need : prepared.needs())
+                if (!inventory.remove(need.stack(), need.amount(), rule)) { both(inventory, stock); return Outcome.of(Status.NOT_ENOUGH_ITEMS); }
+            for (Need<S> need : prepared.needs())
+                if (!stock.add(need.stack(), need.amount())) { both(inventory, stock); return Outcome.of(Status.CONTAINER_FULL); }
+            for (Need<S> give : prepared.gives()) {
+                if (prepared.entry().dropWhenFull()) overflow.addAll(inventory.addOrOverflow(give.stack(), give.amount()));
+                else if (!inventory.add(give.stack(), give.amount())) { both(inventory, stock); return Outcome.of(Status.INVENTORY_FULL); }
+            }
+            stock.commit();
+            inventory.commit();
+        } catch (RuntimeException failure) {
+            both(inventory, stock);
+            return new Outcome(Status.FAILED, 0, BigDecimal.ZERO, Optional.of(reason(failure)));
+        }
+        drop(buyer, overflow);
+        return new Outcome(Status.DONE, 1, BigDecimal.ZERO, Optional.empty());
+    }
+
+    private static <S> void both(InventoryTransaction<S> inventory, InventoryTransaction<S> stock) {
+        try { stock.rollback(); }
+        catch (RuntimeException ignored) { /* The player's storage is still restored below. */ }
+        finally { inventory.rollback(); }
     }
 
     private Outcome command(Buyer<S> buyer, InventoryTransaction<S> inventory, BigDecimal price, boolean money) {

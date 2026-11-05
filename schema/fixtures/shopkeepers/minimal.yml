@@ -1,0 +1,17 @@
+'1':
+  uniqueId: not-a-uuid
+  name: Wanderer
+  world: world
+  x: -3
+  y: 70
+  z: 12
+  type: admin
+  object:
+    type: wandering-trader
+  recipes:
+    '1':
+      resultItem:
+        id: minecraft:compass
+      item1:
+        id: emerald
+        count: 3

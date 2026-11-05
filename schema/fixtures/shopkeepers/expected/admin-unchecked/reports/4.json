@@ -1,0 +1,32 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/object/glowingText": "UNSUPPORTED_PRESERVED",
+    "/object/type": "CONVERTED",
+    "/object/wallSign": "UNSUPPORTED_PRESERVED",
+    "/open": "CONVERTED_WITH_CHANGES",
+    "/recipes/1": "CONVERTED_WITH_CHANGES",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/open: the shop was closed; its offers show but do not trade until you change them to trade entries",
+    "/recipes/1: converted as a display entry; the shop cannot trade yet",
+    "/object/wallSign: kept in the shop's imported section",
+    "/object/glowingText: kept in the shop's imported section",
+    "a sign shopkeeper gets no NPC; open the shop with /animus shop open shopkeepers:shop-4 or bind it to an NPC"
+  ],
+  "counts": {
+    "CONVERTED": 9,
+    "UNSUPPORTED_PRESERVED": 2,
+    "CONVERTED_WITH_CHANGES": 2
+  },
+  "shopkeeper": 4,
+  "shop": "shopkeepers:shop-4"
+}

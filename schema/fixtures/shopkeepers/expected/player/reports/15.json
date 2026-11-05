@@ -1,0 +1,40 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/containers": "CONVERTED",
+    "/expiration": "UNSUPPORTED_PRESERVED",
+    "/forHire": "UNSUPPORTED_PRESERVED",
+    "/hirecost": "UNSUPPORTED_PRESERVED",
+    "/members": "UNSUPPORTED_PRESERVED",
+    "/name": "CONVERTED",
+    "/notifyOnTrades": "UNSUPPORTED_PRESERVED",
+    "/object/baby": "REQUIRES_REVIEW",
+    "/object/type": "CONVERTED",
+    "/offers/1": "CONVERTED",
+    "/owner": "CONVERTED",
+    "/owner uuid": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/notifyOnTrades: kept in the shop's imported section; Animus does not use it",
+    "/forHire: kept in the shop's imported section; Animus does not use it",
+    "/hirecost: kept in the shop's imported section; Animus does not use it",
+    "/members: kept in the shop's imported section; Animus does not use it",
+    "/expiration: kept in the shop's imported section; Animus does not use it",
+    "/object/baby: mob settings are kept in the NPC's shopkeepers:review section",
+    "a new minecraft:zombie NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+  ],
+  "counts": {
+    "CONVERTED": 13,
+    "UNSUPPORTED_PRESERVED": 5,
+    "REQUIRES_REVIEW": 1
+  },
+  "shopkeeper": 15,
+  "shop": "shopkeepers:shop-15"
+}

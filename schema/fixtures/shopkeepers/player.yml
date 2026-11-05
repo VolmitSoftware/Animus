@@ -1,0 +1,188 @@
+data-version: 4|4189
+'10':
+  uniqueId: 0b5e3d8a-1111-4c2a-9e6f-00000000000a
+  name: ''
+  owner uuid: 00000000-0000-4000-8000-00000000a1e5
+  owner: Alex
+  world: world
+  x: 10
+  y: 64
+  z: 5
+  yaw: 270.0
+  type: sell
+  object:
+    type: villager
+  containers:
+  - type: stock-and-earnings
+    world: world
+    x: 11
+    y: 64
+    z: 5
+  offers:
+    '1':
+      item:
+        DataVersion: 4189
+        id: minecraft:cooked_beef
+        count: 8
+      price: 30
+    '2':
+      item:
+        DataVersion: 4189
+        id: minecraft:diamond
+        count: 1
+      price: 5
+    '3':
+      item:
+        DataVersion: 4189
+        id: minecraft:netherite_ingot
+        count: 1
+      price: 700
+'11':
+  uniqueId: 0b5e3d8a-1111-4c2a-9e6f-00000000000b
+  name: Grain Buyer
+  owner uuid: 00000000-0000-4000-8000-00000000b0b0
+  owner: Bob
+  world: world
+  x: 20
+  y: 64
+  z: 5
+  yaw: 0.0
+  type: buy
+  object:
+    type: sign
+    wallSign: false
+  chestx: 20
+  chesty: 63
+  chestz: 5
+  offers:
+    '1':
+      item:
+        DataVersion: 4189
+        id: minecraft:wheat
+        count: 16
+      price: 2
+    '2':
+      item:
+        DataVersion: 4189
+        id: minecraft:hay_block
+        count: 1
+      price: 99
+'12':
+  uniqueId: 0b5e3d8a-1111-4c2a-9e6f-00000000000c
+  name: Swapper
+  owner uuid: 00000000-0000-4000-8000-00000000a1e5
+  owner: Alex
+  world: world
+  x: 30
+  y: 64
+  z: 5
+  yaw: 0.0
+  type: trade
+  object:
+    type: citizen
+    npcId: 9d1e0000-0000-4000-8000-000000000012
+  containers:
+  - type: stock
+    world: world
+    x: 31
+    y: 64
+    z: 5
+  - type: earnings
+    world: world
+    x: 31
+    y: 65
+    z: 5
+  offers:
+    '1':
+      resultItem:
+        DataVersion: 4189
+        id: minecraft:ender_pearl
+        count: 4
+      item1:
+        DataVersion: 4189
+        id: minecraft:string
+        count: 16
+      item2:
+        DataVersion: 4189
+        id: minecraft:bone
+        count: 8
+'13':
+  uniqueId: 0b5e3d8a-1111-4c2a-9e6f-00000000000d
+  name: Library
+  owner uuid: 00000000-0000-4000-8000-00000000a1e5
+  owner: Alex
+  world: world
+  x: 40
+  y: 64
+  z: 5
+  yaw: 0.0
+  type: book
+  object:
+    type: hanging-sign
+  containers:
+  - type: stock-and-earnings
+    world: world
+    x: 41
+    y: 64
+    z: 5
+  offers:
+    '1':
+      book: Server Guide
+      price: 10
+'14':
+  uniqueId: 0b5e3d8a-1111-4c2a-9e6f-00000000000e
+  name: Ownerless
+  world: world
+  x: 50
+  y: 64
+  z: 5
+  yaw: 0.0
+  type: player
+  object:
+    type: cow
+  offers:
+    '1':
+      item:
+        DataVersion: 4189
+        id: minecraft:milk_bucket
+        count: 1
+      price: 3
+'15':
+  uniqueId: 0b5e3d8a-1111-4c2a-9e6f-00000000000f
+  name: Hired Hand
+  owner uuid: 00000000-0000-4000-8000-00000000c0de
+  owner: Casey
+  world: world
+  x: 60
+  y: 64
+  z: 5
+  yaw: 0.0
+  type: sell
+  notifyOnTrades: false
+  forHire: true
+  hirecost:
+    DataVersion: 4189
+    id: minecraft:emerald
+    count: 32
+  members:
+  - uuid: 00000000-0000-4000-8000-00000000d00d
+    name: Dana
+    access: trade
+  expiration: '2026-12-01T00:00:00Z'
+  object:
+    type: zombie
+    baby: true
+  containers:
+  - world: world
+    x: 61
+    y: 64
+    z: 5
+  offers:
+    '1':
+      item:
+        DataVersion: 4189
+        id: minecraft:rotten_flesh
+        count: 10
+        components:
+          minecraft:custom_name: '"Snack"'
+      price: 1
