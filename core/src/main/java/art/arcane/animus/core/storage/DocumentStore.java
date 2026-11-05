@@ -18,6 +18,7 @@ public final class DocumentStore implements AutoCloseable {
             + "|state/builds/[a-z0-9][a-z0-9_-]{0,63}(?:/undo-[0-9]{5})?\\.json|state/editor/changes/[A-Za-z0-9_-]{16,128}\\.json"
             + "|state/rig-catalog/last-valid/(?:rigs|animations)/[a-z0-9_-]+/[a-z0-9_/-]+\\.json";
     private static final long MAX_TRANSACTION_BYTES = 256L * 1024 * 1024;
+    static { WriteNotices.preload(); }
     private final Path root;
     private final FileChannel lockChannel;
     private final FileLock lock;
@@ -127,7 +128,7 @@ public final class DocumentStore implements AutoCloseable {
                 && !relative.startsWith("state/rig-catalog/last-valid/"))
             throw new IOException("Not a generated document path: " + relative);
         Path target = resolve(relative);
-        if (Files.deleteIfExists(target)) syncDirectory(target.getParent());
+        delete(target);
     }
 
     private String publish(String id, List<Change> changes, boolean receipt) throws IOException {
@@ -276,7 +277,7 @@ public final class DocumentStore implements AutoCloseable {
             Path target = resolve(entry.get("path").getAsString());
             String after = transactionValue(entry, "after", version);
             if (Objects.equals(read(entry.get("path").getAsString()), after)) continue;
-            if (after == null) { Files.deleteIfExists(target); syncDirectory(target.getParent()); }
+            if (after == null) delete(target);
             else atomic(target, after);
         }
         String id = journal.get("id").getAsString();
@@ -342,6 +343,7 @@ public final class DocumentStore implements AutoCloseable {
         return resolved;
     }
 
+    /** Announced to {@link WriteNotices} before and after the move, so the hotload watcher never mistakes it for a hand edit. */
     public static void atomic(Path path, String value) throws IOException {
         createDirectoriesDurably(path.toAbsolutePath().getParent());
         Path temporary = Files.createTempFile(path.getParent(), ".animus-", ".tmp");
@@ -351,9 +353,21 @@ public final class DocumentStore implements AutoCloseable {
                 while (bytes.hasRemaining()) output.write(bytes);
                 output.force(true);
             }
-            Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            WriteNotices.written(path, value);
+            try { Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING); }
+            catch (IOException | RuntimeException failure) { WriteNotices.touched(path); throw failure; }
+            WriteNotices.written(path, value);
             syncDirectory(path.getParent());
         } finally { Files.deleteIfExists(temporary); }
+    }
+
+    private static void delete(Path target) throws IOException {
+        WriteNotices.written(target, null);
+        boolean deleted;
+        try { deleted = Files.deleteIfExists(target); }
+        catch (IOException | RuntimeException failure) { WriteNotices.touched(target); throw failure; }
+        WriteNotices.written(target, null);
+        if (deleted) syncDirectory(target.getParent());
     }
 
     /** Persist each newly created directory entry before a journal can reference files beneath it. */

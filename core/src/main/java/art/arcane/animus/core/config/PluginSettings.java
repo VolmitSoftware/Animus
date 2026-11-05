@@ -17,7 +17,7 @@ import java.util.List;
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
                              ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
-                             NavigationSettings navigation) {
+                             NavigationSettings navigation, HotloadSettings hotload) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -44,6 +44,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("editor", editorDefaults());
             document.add("rigs", new Gson().toJsonTree(RigSettings.DEFAULT));
             document.add("navigation", new Gson().toJsonTree(NavigationSettings.DEFAULT));
+            document.add("hotload", new Gson().toJsonTree(HotloadSettings.DEFAULT));
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -55,11 +56,17 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
     }
 
     private static PluginSettings readToml(Path path) throws IOException {
-        try {
-            String text = JsonDocuments.read(path);
-            if (text.length() > 256 * 1024) throw new IOException("Plugin settings exceed 256 KiB");
-            return validate(TomlCodec.toJsonElement(text), path);
-        } catch (IOException | RuntimeException e) { throw new IOException("Cannot load " + path + ": " + e.getMessage(), e); }
+        try { return parse(JsonDocuments.read(path), path); }
+        catch (IOException | RuntimeException e) { throw new IOException("Cannot load " + path + ": " + e.getMessage(), e); }
+    }
+
+    /** Settings from TOML text, as a hotload reads them; errors name {@code label} and the field. */
+    public static PluginSettings parse(String text, Path label) throws IOException {
+        if (text.length() > 256 * 1024) throw new IOException("Plugin settings exceed 256 KiB");
+        JsonElement data;
+        try { data = TomlCodec.toJsonElement(text); }
+        catch (IOException | RuntimeException invalid) { throw new IOException(label + ": invalid TOML: " + invalid.getMessage(), invalid); }
+        return validate(data, label);
     }
 
     private static PluginSettings validate(JsonElement data, Path path) throws IOException {
@@ -128,8 +135,21 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             relaySettings = relay(table(data.getAsJsonObject(), "editor"));
             editorSettings = EditorSettings.parse(table(data.getAsJsonObject(), "editor"));
         } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": editor: " + e.getMessage(), e); }
+        HotloadSettings hotloadSettings;
+        try { hotloadSettings = hotload(table(data.getAsJsonObject(), "hotload")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": hotload: " + e.getMessage(), e); }
         return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
-                relaySettings, editorSettings, rigSettings, navigationSettings);
+                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings);
+    }
+
+    private static HotloadSettings hotload(JsonObject document) {
+        HotloadSettings defaults = HotloadSettings.DEFAULT;
+        for (String key : document.keySet())
+            if (!java.util.Set.of("enabled", "sound", "maximumFiles", "readsPerPoll", "maximumFileBytes").contains(key))
+                throw new IllegalArgumentException(key + " is not a hotload setting");
+        return new HotloadSettings(bool(document, "enabled", defaults.enabled()), bool(document, "sound", defaults.sound()),
+                integer(document, "maximumFiles", defaults.maximumFiles()), integer(document, "readsPerPoll", defaults.readsPerPoll()),
+                integer(document, "maximumFileBytes", defaults.maximumFileBytes()));
     }
 
     private static NavigationSettings navigation(JsonObject document) {
