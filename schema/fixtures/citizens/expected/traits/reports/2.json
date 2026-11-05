@@ -4,6 +4,7 @@
     "/traits/sittrait: sitting shows only on player bodies; kept for review",
     "/traits/sneak: sneaking shows only on player bodies; kept for review"
   ],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",

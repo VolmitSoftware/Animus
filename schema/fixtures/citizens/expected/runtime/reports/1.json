@@ -1,0 +1,30 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/lookclose/enabled": "CONVERTED",
+    "/traits/waypoints/provider": "CONVERTED",
+    "/traits/waypoints/wander/delay": "CONVERTED",
+    "/traits/waypoints/wander/pathfind": "REQUIRES_REVIEW",
+    "/traits/waypoints/wander/xrange": "CONVERTED",
+    "/traits/waypoints/wander/yrange": "CONVERTED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_town",
+      "to": "town"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

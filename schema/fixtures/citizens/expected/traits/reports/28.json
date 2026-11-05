@@ -4,6 +4,7 @@
     "/traits/hologramtrait/lines: only the first 16 lines are shown",
     "/traits/poses: default pose missing is not in the list; kept for review"
   ],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",

@@ -1,0 +1,81 @@
+{
+  "name": "Gate Patrol",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000300",
+  "navigator": {
+    "speedmodifier": 0.4000000059604645,
+    "pathfindingrange": 60.0
+  },
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_town",
+      "x": 0.5,
+      "y": 64.0,
+      "z": 0.5
+    },
+    "lookclose": {
+      "range": 5.0,
+      "randomPitchRange": [
+        0.0,
+        0.0
+      ],
+      "randomYawRange": [
+        0.0,
+        360.0
+      ]
+    },
+    "waypoints": {
+      "provider": "linear",
+      "linear": {
+        "points": {
+          "0": {
+            "location": {
+              "world": "old_town",
+              "worldid": "11111111-2222-3333-4444-555555555555",
+              "x": 2.3,
+              "y": 64.0,
+              "z": 2.7
+            }
+          },
+          "1": {
+            "location": {
+              "world": "old_town",
+              "x": 12.0,
+              "y": 64.5,
+              "z": -4.0
+            },
+            "triggers": {
+              "0": {
+                "type": "delay",
+                "delay": 40
+              },
+              "1": {
+                "type": "chat",
+                "lines": [
+                  "Halt!"
+                ],
+                "radius": -1.0
+              }
+            }
+          },
+          "2": {
+            "location": {
+              "world": "elsewhere",
+              "x": 1.0,
+              "y": 70.0,
+              "z": 1.0
+            }
+          },
+          "3": {
+            "location": {
+              "world": "old_town",
+              "x": 60.0,
+              "y": 64.0,
+              "z": 2.0
+            }
+          }
+        }
+      }
+    }
+  }
+}

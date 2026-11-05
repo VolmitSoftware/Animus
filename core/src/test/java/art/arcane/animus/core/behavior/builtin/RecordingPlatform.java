@@ -26,6 +26,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     volatile RuntimeException failure;
     volatile List<ChoiceOption> presentedOptions = List.of();
     volatile String presentedToken;
+    volatile Optional<String> playerName = Optional.of("Steve");
     private volatile Runnable tick;
     private volatile CompletableFuture<Void> route;
     private volatile boolean onOwner;
@@ -77,6 +78,10 @@ final class RecordingPlatform implements BehaviorPlatform {
         presentedToken = token;
         presentedOptions = options;
         return delivered;
+    }
+    @Override public Optional<String> playerName(UUID player) {
+        if (!onOwner) throw new AssertionError("Platform call off the owner tick: name");
+        return playerName;
     }
     @Override public void runCommand(CommandSource source, Optional<UUID> player, String command) { record("command:" + source + ":" + command); }
     @Override public String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed) {

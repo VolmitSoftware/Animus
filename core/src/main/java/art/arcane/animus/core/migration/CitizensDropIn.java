@@ -40,7 +40,7 @@ public final class CitizensDropIn {
     public record Found(Path path, String label) {}
     public record Sources(Optional<Found> saves, Optional<Found> traders, List<Found> schematics) {}
     /** The categories {@code /animus import citizens accept} turns on, in the order they are listed. */
-    public static final List<String> CATEGORIES = List.of("spawn", "combat", "riding", "shops", "builder");
+    public static final List<String> CATEGORIES = List.of("spawn", "patrols", "combat", "riding", "shops", "builder");
     public static final String STATE = "imports/citizens/state.json";
     static final String CITIZENS_RUNNING = "Citizens is still enabled. Animus will not apply, accept or run imported Citizens NPCs while it is, so no NPC runs twice. Stop the server, remove Citizens from plugins/, start it again and rerun this command.";
     private static final Set<String> DENIZEN = Set.of("assignment", "triggers", "constants", "denizen_flags", "denizenflags");
@@ -267,7 +267,9 @@ public final class CitizensDropIn {
         lines.addFirst("Installed " + state.get("importId").getAsString().substring(0, 12) + " dormant; transaction " + definitions);
         if (!copied.isEmpty()) lines.add("Copied " + copied.size() + " schematics into schematics/");
         if (!errors.isEmpty()) lines.add("Definition problems after reload: " + String.join("; ", errors));
-        lines.add("Every NPC is installed at its Citizens position and stays despawned; combat, riding, shops and builds stay off.");
+        lines.add("Every NPC is installed at its Citizens position and stays despawned; patrols, combat, riding, shops and builds stay off.");
+        int behaviors = imported(state).stream().mapToInt((NpcDefinition definition) -> definition.json().has("behaviors") ? definition.json().getAsJsonArray("behaviors").size() : 0).sum();
+        if (behaviors > 0) lines.add("Generated text and command behaviors are in behaviors/citizens/; load them with /animus behaviors reload");
         lines.add("Next: /animus import citizens review, then /animus import citizens accept all (or one category at a time)");
         return lines;
     }
@@ -306,11 +308,15 @@ public final class CitizensDropIn {
         if (!citizens && !ShopkeepersDropIn.applied(state)) throw new IOException("No applied Citizens import. Run /animus import citizens, then apply.");
         List<String> lines = new ArrayList<>();
         Map<String, Integer> pending = pending(state);
-        if (citizens) lines.add("Citizens import " + state.get("importId").getAsString().substring(0, 12) + ": " + imported(state).size() + " NPCs installed");
+        if (citizens) {
+            lines.add("Citizens import " + state.get("importId").getAsString().substring(0, 12) + ": " + imported(state).size() + " NPCs installed");
+            lines.add(converted(imported(state).stream().map(NpcDefinition::json).toList()));
+        }
         ShopkeepersDropIn.reviewLine(state).ifPresent(lines::add);
         for (String category : CATEGORIES)
             lines.add(category + ": " + pending.get(category) + " waiting" + switch (category) {
-                case "spawn" -> " (NPCs Citizens had spawned; others stay despawned)";
+                case "spawn" -> " (NPCs Citizens had spawned; others stay despawned. Look-close and text start with them)";
+                case "patrols" -> " (Citizens waypoints in animus:navigation)";
                 case "combat" -> " (Sentinel settings in animus:combat)";
                 case "riding" -> " (controllable NPCs in animus:riding)";
                 case "shops" -> " (dtlTraders and Shopkeepers shops in animus:shop)";
@@ -318,6 +324,7 @@ public final class CitizensDropIn {
             });
         Map<String, Integer> preserved = preserved(state);
         lines.add("Kept but not run: " + (preserved.isEmpty() ? "nothing" : counts(preserved)));
+        commandLine(imported(state).stream().map(NpcDefinition::json).toList()).ifPresent(lines::add);
         if (citizens) lines.add("Report: " + state.get("report").getAsString() + "; per-NPC reports under imports/" + state.get("importId").getAsString() + "/reports/");
         lines.add("Accept after checking: /animus import citizens accept <" + String.join("|", CATEGORIES) + "|all>");
         return lines;
@@ -383,6 +390,7 @@ public final class CitizensDropIn {
                 boolean despawned = original != null && original.isJsonPrimitive() && original.getAsJsonPrimitive().isBoolean() && !original.getAsBoolean();
                 yield !despawned && !json.get("spawned").getAsBoolean();
             }
+            case "patrols" -> unreviewed(modules, "animus:navigation");
             case "combat" -> unreviewed(modules, "animus:combat");
             case "riding" -> unreviewed(modules, "animus:riding");
             case "shops" -> unreviewed(modules, "animus:shop");
@@ -394,6 +402,7 @@ public final class CitizensDropIn {
     private static void acceptCategory(JsonObject json, String category) {
         if (category.equals("spawn")) { json.addProperty("spawned", true); return; }
         String module = switch (category) {
+            case "patrols" -> "animus:navigation";
             case "combat" -> "animus:combat";
             case "riding" -> "animus:riding";
             case "shops" -> "animus:shop";
@@ -427,13 +436,51 @@ public final class CitizensDropIn {
             JsonObject modules = definition.getAsJsonObject("modules");
             if (modules == null || !modules.has("citizens:review") || !modules.get("citizens:review").isJsonObject()) continue;
             JsonObject traits = modules.getAsJsonObject("citizens:review");
-            if (traits.has("waypoints")) counts.merge("waypoints", 1, Integer::sum);
-            if (traits.has("commandtrait")) counts.merge("commands", 1, Integer::sum);
-            if (traits.has("text")) counts.merge("text", 1, Integer::sum);
-            if (traits.has("lookclose")) counts.merge("lookclose", 1, Integer::sum);
+            List<String> behaviors = behaviors(definition);
+            if (traits.has("waypoints") && !modules.has("animus:navigation")) counts.merge("waypoints", 1, Integer::sum);
+            if (traits.has("commandtrait") && behaviors.stream().noneMatch((String id) -> id.startsWith("citizens:commands-"))) counts.merge("commands", 1, Integer::sum);
+            if (traits.has("text") && behaviors.stream().noneMatch((String id) -> id.startsWith("citizens:text-"))) counts.merge("text", 1, Integer::sum);
+            if (traits.has("lookclose") && !modules.has("animus:look-close")) counts.merge("lookclose", 1, Integer::sum);
             if (traits.keySet().stream().anyMatch((String trait) -> DENIZEN.contains(trait) || trait.startsWith("denizen"))) counts.merge("denizen", 1, Integer::sum);
         }
         return counts;
+    }
+
+    private static List<String> behaviors(JsonObject definition) {
+        List<String> ids = new ArrayList<>();
+        if (definition.has("behaviors") && definition.get("behaviors").isJsonArray())
+            for (JsonElement id : definition.getAsJsonArray("behaviors")) if (id.isJsonPrimitive()) ids.add(id.getAsString());
+        return ids;
+    }
+
+    /** What converted into something Animus runs: routes, look-close and generated behaviors. */
+    static String converted(List<JsonObject> definitions) {
+        int routes = 0, points = 0, look = 0, text = 0, commands = 0;
+        for (JsonObject definition : definitions) {
+            JsonObject modules = definition.has("modules") && definition.get("modules").isJsonObject() ? definition.getAsJsonObject("modules") : new JsonObject();
+            if (modules.has("animus:navigation") && modules.get("animus:navigation").isJsonObject()) {
+                routes++;
+                JsonObject navigation = modules.getAsJsonObject("animus:navigation");
+                for (String field : List.of("points", "guides"))
+                    if (navigation.has(field) && navigation.get(field).isJsonArray()) points += navigation.getAsJsonArray(field).size();
+            }
+            if (modules.has("animus:look-close")) look++;
+            for (String id : behaviors(definition)) {
+                if (id.startsWith("citizens:text-")) text++;
+                else if (id.startsWith("citizens:commands-")) commands++;
+            }
+        }
+        return "Converted: " + routes + " patrol routes (" + points + " points), look-close on " + look + " NPCs, " + text + " text and " + commands + " command behaviors";
+    }
+
+    /** The review line for generated command behaviors, which the command allow-list keeps denied. */
+    static Optional<String> commandLine(List<JsonObject> definitions) {
+        List<String> ids = new ArrayList<>();
+        for (JsonObject definition : definitions)
+            for (String id : behaviors(definition)) if (id.startsWith("citizens:commands-")) ids.add(id);
+        if (ids.isEmpty()) return Optional.empty();
+        return Optional.of("Commands: " + ids.size() + " behaviors stay denied until listed in config.toml [behaviors.actions] commandBehaviors (for example "
+                + ids.getFirst() + "), or commandNamespaces = [\"citizens\"] for all of them; check each command in behaviors/citizens/ first, then restart");
     }
 
     private List<NpcDefinition> imported(JsonObject state) {
@@ -461,9 +508,11 @@ public final class CitizensDropIn {
         for (String path : summary.getAsJsonObject("documents").keySet())
             if (path.startsWith("npcs/")) staged.add(JsonDocuments.object(JsonDocuments.read(preview.directory().resolve(path))));
         List<String> lines = new ArrayList<>();
+        lines.add(converted(staged));
         lines.add("Off until accepted: " + counts(pending(staged)) + "; the rest stay despawned");
         Map<String, Integer> preserved = preserved(staged);
         lines.add("Kept, not run: " + (preserved.isEmpty() ? "nothing" : counts(preserved)));
+        commandLine(staged).ifPresent(lines::add);
         lines.add("Distinct traits: " + summary.getAsJsonObject("traits").size() + "; warnings: " + summary.getAsJsonArray("migrationWarnings").size()
                 + "; unresolved NPC references: " + summary.get("unresolvedReferences").getAsInt());
         return lines;

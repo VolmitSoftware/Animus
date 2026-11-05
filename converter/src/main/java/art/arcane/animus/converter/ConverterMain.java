@@ -60,6 +60,7 @@ public final class ConverterMain {
             }
             CitizensImporter.Preview preview = importer.preview(Path.of(args[1]), Path.of(args[2]), worlds);
             return "Preview " + preview.id() + " (converter v" + preview.converterVersion() + ")" + "\nRecords: " + preview.records() + ", valid: " + preview.valid() + ", unique skins: " + preview.skins()
+                    + "\nConverted: " + preview.conversions()
                     + "\nMigration warnings: " + preview.warningCount()
                     + "\nReport: " + preview.directory().resolve("report.json") + "\nNo NPCs activated. Inspect reports before explicit apply.";
         }

@@ -200,7 +200,7 @@
     {
       "id": "animus:command",
       "kind": "action",
-      "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+      "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -616,7 +616,7 @@
     {
       "id": "animus:say",
       "kind": "action",
-      "description": "Sends dialogue text to the triggering player or to nearby players.",
+      "description": "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -742,7 +742,7 @@
     {
       "id": "animus:set-quest-state",
       "kind": "action",
-      "description": "Sets a quest stage.",
+      "description": "Sets a quest stage to value, or to a random stage from zero to below random.",
       "privileged": false,
       "available": true,
       "reason": "available",
@@ -765,11 +765,25 @@
         },
         "value": {
           "type": "integer",
-          "required": true,
+          "required": false,
           "minimum": 0,
           "maximum": 1000000000000
+        },
+        "random": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 1000000
         }
-      }
+      },
+      "oneOfRequired": [
+        [
+          "value"
+        ],
+        [
+          "random"
+        ]
+      ]
     },
     {
       "id": "animus:spawn-particle",

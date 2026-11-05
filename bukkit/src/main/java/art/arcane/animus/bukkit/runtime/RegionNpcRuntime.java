@@ -128,7 +128,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         Map<RegionBudget.Kind, Integer> limits = new EnumMap<>(RegionBudget.Kind.class);
         limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, 16); limits.put(RegionBudget.Kind.MOTION_CELLS, 2048);
         limits.put(RegionBudget.Kind.CAPTURE, 256); limits.put(RegionBudget.Kind.VIEWERS, settings.updatesPerTick());
-        limits.put(RegionBudget.Kind.PACKETS, RegionViewer.PACKETS_PER_REGION); limits.put(RegionBudget.Kind.WAKES, 16);
+        limits.put(RegionBudget.Kind.PACKETS, RegionViewer.PACKETS_PER_REGION); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, 32);
         rigs = runtime.isRunning() ? runtime.rigSettings() : art.arcane.animus.core.config.RigSettings.DEFAULT;
         limits.put(RegionBudget.Kind.RIG_PLANS, rigs.plansPerTick());
         budget = new RegionBudget(regions, limits);
