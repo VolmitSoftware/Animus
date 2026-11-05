@@ -23,13 +23,21 @@ import java.util.function.BooleanSupplier;
  * straight up or down while it holds a ladder, vine or scaffolding, and stands on the top of a scaffolding column.
  */
 public final class PathPlanner {
-    public enum Status { FOUND, UNREACHABLE, BUDGET_EXHAUSTED, CANCELLED, UNAVAILABLE_TERRAIN }
+    /** PARTIAL only answers a partial search: its path ends at the reachable place closest to a goal it could not reach. */
+    public enum Status { FOUND, PARTIAL, UNREACHABLE, BUDGET_EXHAUSTED, CANCELLED, UNAVAILABLE_TERRAIN }
     public enum Motion { START, WALK, STEP, JUMP, FALL, SWIM, FLY, CLIMB }
-    public record Limits(int maximumVisitedNodes, int maximumFrontier, int maximumPathLength) {
+    /**
+     * Search budgets. A partial search may name a goal outside its capture: when the goal is not reached it answers
+     * {@link Status#PARTIAL} with the path to the reachable place closest to the goal.
+     */
+    public record Limits(int maximumVisitedNodes, int maximumFrontier, int maximumPathLength, boolean partial) {
         public Limits {
             if (maximumVisitedNodes < 1 || maximumVisitedNodes > 100000 || maximumFrontier < 1 || maximumFrontier > 100000
                     || maximumPathLength < 1 || maximumPathLength > 100000)
                 throw new IllegalArgumentException("Path budgets must be within 1..100000");
+        }
+        public Limits(int maximumVisitedNodes, int maximumFrontier, int maximumPathLength) {
+            this(maximumVisitedNodes, maximumFrontier, maximumPathLength, false);
         }
     }
     /**
@@ -60,15 +68,19 @@ public final class PathPlanner {
         Objects.requireNonNull(profile, "profile"); Objects.requireNonNull(limits, "limits"); Objects.requireNonNull(cancelled, "cancelled");
         Search search = new Search(snapshot, profile, cancelled);
         if (cancelled.getAsBoolean()) return result(Status.CANCELLED, 0, 0, false);
-        Place from = search.resolve(start, true), to = search.resolve(goal, false);
+        boolean partial = limits.partial();
+        Place from = search.resolve(start, true);
+        // A partial search only aims at a goal outside its capture; one inside it is reached exactly when it can be.
+        Place to = partial && !snapshot.contains(goal.x(), goal.y(), goal.z()) ? new Place(Kind.UNKNOWN, goal.y(), false) : search.resolve(goal, false);
         if (cancelled.getAsBoolean()) return result(Status.CANCELLED, 0, 0, search.unavailable);
-        if (from.kind() == Kind.UNKNOWN || to.kind() == Kind.UNKNOWN) return result(Status.UNAVAILABLE_TERRAIN, 0, 0, true);
-        if (from.kind() == Kind.BLOCKED || to.kind() == Kind.BLOCKED) return result(Status.UNREACHABLE, 0, 0, search.unavailable);
-        BlockPos origin = new BlockPos(start.x(), floor(from.y()), start.z()), target = new BlockPos(goal.x(), floor(to.y()), goal.z());
+        if (from.kind() == Kind.UNKNOWN || (!partial && to.kind() == Kind.UNKNOWN)) return result(Status.UNAVAILABLE_TERRAIN, 0, 0, true);
+        if (from.kind() == Kind.BLOCKED || (!partial && to.kind() == Kind.BLOCKED)) return result(Status.UNREACHABLE, 0, 0, search.unavailable);
+        BlockPos origin = new BlockPos(start.x(), floor(from.y()), start.z());
+        BlockPos target = to.kind() == Kind.OPEN ? new BlockPos(goal.x(), floor(to.y()), goal.z()) : null, aim = target == null ? goal : target;
         PriorityQueue<Node> frontier = new PriorityQueue<>(ORDER);
         Map<BlockPos, Node> best = new HashMap<>();
         Set<BlockPos> closed = new HashSet<>();
-        Node initial = new Node(origin, from.y(), from.y(), from.swimming(), null, Motion.START, 0, origin.distance(target), 1);
+        Node initial = new Node(origin, from.y(), from.y(), from.swimming(), null, Motion.START, 0, origin.distance(aim), 1), closest = initial;
         frontier.add(initial); best.put(origin, initial);
         int visited = 0, peak = 1;
         boolean pathLimited = false;
@@ -76,15 +88,11 @@ public final class PathPlanner {
             if (cancelled.getAsBoolean()) return result(Status.CANCELLED, visited, peak, search.unavailable);
             Node current = frontier.poll();
             if (best.get(current.feet()) != current || closed.contains(current.feet())) continue;
-            if (visited == limits.maximumVisitedNodes()) return result(Status.BUDGET_EXHAUSTED, visited, peak, search.unavailable);
+            if (visited == limits.maximumVisitedNodes())
+                return partial ? closest(snapshot, initial, closest, visited, peak) : result(Status.BUDGET_EXHAUSTED, visited, peak, search.unavailable);
             visited++; closed.add(current.feet());
-            if (current.feet().equals(target)) {
-                List<Step> path = new ArrayList<>();
-                for (Node node = current; node != null; node = node.parent())
-                    path.add(new Step(node.feet(), node.y(), node.peak(), node.motion(), node.swimming()));
-                Collections.reverse(path);
-                return new Result(Status.FOUND, path, visited, peak, search.unavailable);
-            }
+            if (current.estimate() < closest.estimate() - EPSILON) closest = current;
+            if (current.feet().equals(target)) return new Result(Status.FOUND, path(current), visited, peak, search.unavailable);
             List<Edge> neighbors = search.neighbors(current);
             if (cancelled.getAsBoolean()) return result(Status.CANCELLED, visited, peak, search.unavailable);
             for (Edge edge : neighbors) {
@@ -95,16 +103,34 @@ public final class PathPlanner {
                 double cost = current.cost() + current.feet().distance(edge.target());
                 Node prior = best.get(edge.target());
                 if (prior != null && prior.cost() <= cost) continue;
-                if (frontier.size() == limits.maximumFrontier()) return result(Status.BUDGET_EXHAUSTED, visited, peak, search.unavailable);
-                Node next = new Node(edge.target(), edge.y(), edge.peak(), edge.swimming(), current, edge.motion(), cost, edge.target().distance(target), length);
+                if (frontier.size() == limits.maximumFrontier())
+                    return partial ? closest(snapshot, initial, closest, visited, peak) : result(Status.BUDGET_EXHAUSTED, visited, peak, search.unavailable);
+                Node next = new Node(edge.target(), edge.y(), edge.peak(), edge.swimming(), current, edge.motion(), cost, edge.target().distance(aim), length);
                 best.put(edge.target(), next); frontier.add(next); peak = Math.max(peak, frontier.size());
             }
         }
         if (cancelled.getAsBoolean()) return result(Status.CANCELLED, visited, peak, search.unavailable);
-        return result(pathLimited ? Status.BUDGET_EXHAUSTED : search.unavailable ? Status.UNAVAILABLE_TERRAIN : Status.UNREACHABLE,
+        if (partial) return closest(snapshot, initial, closest, visited, peak);
+        // The edge of the capture reads as unavailable too; only an unloaded chunk means the answer may change later.
+        return result(pathLimited ? Status.BUDGET_EXHAUSTED : search.unavailable && !snapshot.everyChunkAvailable() ? Status.UNAVAILABLE_TERRAIN : Status.UNREACHABLE,
                 visited, peak, search.unavailable);
     }
 
+    /**
+     * A partial search's answer. The edge of its own capture always reads as unavailable, so only a chunk that was not
+     * loaded makes a search that got nowhere wait for terrain instead of reporting the way blocked.
+     */
+    private static Result closest(VoxelSnapshot snapshot, Node initial, Node closest, int visited, int peak) {
+        boolean unloaded = !snapshot.everyChunkAvailable();
+        if (closest != initial) return new Result(Status.PARTIAL, path(closest), visited, peak, unloaded);
+        return result(unloaded ? Status.UNAVAILABLE_TERRAIN : Status.UNREACHABLE, visited, peak, unloaded);
+    }
+    private static List<Step> path(Node end) {
+        List<Step> path = new ArrayList<>();
+        for (Node node = end; node != null; node = node.parent()) path.add(new Step(node.feet(), node.y(), node.peak(), node.motion(), node.swimming()));
+        Collections.reverse(path);
+        return path;
+    }
     private static Result result(Status status, int visited, int peak, boolean unavailable) { return new Result(status, List.of(), visited, peak, unavailable); }
     private static int floor(double value) { return (int) Math.floor(value + EPSILON); }
 

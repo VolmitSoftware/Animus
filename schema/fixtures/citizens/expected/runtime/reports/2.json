@@ -2,8 +2,7 @@
   "citizensId": 2,
   "presentationWarnings": [],
   "runtimeWarnings": [
-    "/traits/lookclose/range: look ranges above 64 blocks became 64; lower it in animus:look-close if that is too far",
-    "/traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them; add guide points between them in the route editor"
+    "/traits/lookclose/range: look ranges above 64 blocks became 64; lower it in animus:look-close if that is too far"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

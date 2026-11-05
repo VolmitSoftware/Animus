@@ -13,8 +13,8 @@ import java.util.Set;
 /**
  * How one NPC walks wherever it walks: the definition's {@code movement} object. A route's own speed wins over
  * {@code speed}. {@code avoidWater} false lets a walking route cross water at the surface; {@code fly} makes routes fly.
- * {@code stepHeight} and {@code maximumFall} replace the body's own climb and drop. A leg longer than {@code pathRange}
- * counts as unreachable, a point within {@code arrivalMargin} counts as reached, and {@code stuck} decides what an NPC
+ * {@code stepHeight} and {@code maximumFall} replace the body's own climb and drop. Each plan reaches at most {@code pathRange};
+ * a longer leg is walked in {@link LongLeg} segments of that reach. A point within {@code arrivalMargin} counts as reached, and {@code stuck} decides what an NPC
  * that has not moved closer for {@code afterTicks} does: teleport to the point it walks to, or stop.
  */
 public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean fly, OptionalDouble stepHeight, OptionalInt maximumFall,
@@ -103,11 +103,6 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
     /** Whether the NPC at {@code at} counts as having reached {@code goal}: within the arrival margin, when one is set. */
     public boolean arrived(art.arcane.animus.core.virtual.Vec3 at, art.arcane.animus.core.virtual.Vec3 goal) {
         return arrivalMargin.isPresent() && at.distance(goal) <= arrivalMargin.getAsDouble();
-    }
-
-    /** Whether a leg from {@code at} to {@code goal} is longer than the NPC plans paths for. */
-    public boolean outOfRange(art.arcane.animus.core.virtual.Vec3 at, art.arcane.animus.core.virtual.Vec3 goal) {
-        return pathRange.isPresent() && at.distance(goal) > pathRange.getAsDouble();
     }
 
     /** Whether a leg that has made no progress for {@code idleTicks} counts as stuck. */

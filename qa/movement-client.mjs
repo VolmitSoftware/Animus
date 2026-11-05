@@ -138,12 +138,15 @@ try {
   passed('administrator cancellation stops authoritative movement without a late arrival');
 
   await owner.reset();
-  await owner.route({ x: 8.5, y: 61, z: 3.5 }, 'walk', 1);
+  const obstructedRoute = await owner.route({ x: 8.5, y: 61, z: 3.5 }, 'walk', 1);
   await owner.until(s => s.state === 'moving' && s.position.x > .55);
+  const obstructedFrom = owner.events.length;
   await owner.command('fill 4 61 0 4 64 7 stone', /filled/i);
-  const blocked = await owner.until(s => /^(blocked|failed)/.test(s.state));
-  assert(blocked.state.startsWith('blocked:'), blocked.text); assert(blocked.position.x <= 3.70001);
-  passed('new obstruction stops a previously planned route before virtual hitbox penetration', { position: blocked.position, state: blocked.state });
+  const replanned = await owner.until(s => s.route === obstructedRoute && (s.state === 'arrived' || /^(blocked|failed)/.test(s.state)), id, 60_000);
+  assert.equal(replanned.state, 'arrived', replanned.text);
+  const around = owner.events.slice(obstructedFrom).filter(e => e.event === 'move' && e.id === owner.body().id);
+  assert(!around.some(e => e.x + .3 > 4.000001 && e.x - .3 < 4.999999 && e.z - .3 < 7.999999 && e.y < 64.999999), 'Wire body must never enter the new wall');
+  passed('new obstruction makes a planned route plan again around it without virtual hitbox penetration', { position: replanned.position });
   await owner.command('fill 4 61 0 4 64 7 air', /filled/i);
 
   await owner.reset();

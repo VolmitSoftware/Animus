@@ -59,7 +59,7 @@ class CitizensDropInTest {
     @AfterEach void clearGuard() { CitizensGuard.clear(); }
 
     private CitizensDropIn dropIn(DocumentStore store, NpcRepository npcs) {
-        return new CitizensDropIn(store, npcs, new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), citizens::get, () -> false));
+        return new CitizensDropIn(store, npcs, new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), citizens::get, () -> false, () -> false));
     }
 
     private static String joined(List<String> lines) { return String.join("\n", lines); }
@@ -320,7 +320,7 @@ class CitizensDropInTest {
         List<CatalogChange> reloads = new ArrayList<>();
         try (AnimusRuntime runtime = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root.resolve("plugins/Animus")))) {
             runtime.start();
-            runtime.importHost(new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), citizens::get, () -> false));
+            runtime.importHost(new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), citizens::get, () -> false, () -> false));
             runtime.catalogs((CatalogChange change, java.util.function.Consumer<String> problems) -> reloads.add(change));
             Administration admin = new Administration(runtime);
             admin.execute(new String[]{"import", "citizens"});

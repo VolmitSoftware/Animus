@@ -1,5 +1,7 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.migration.CitizensDropIn;
@@ -70,9 +72,12 @@ public final class EditorApi implements EditorRequestHandler {
     public CompletionStage<EditorResponse> handle(EditorRequest request) {
         Map<String, String> cors = cors(request);
         CompletionStage<EditorResponse> answer;
+        AnimusMetrics metrics = AnimusMetrics.current();
+        long started = metrics.start();
         try { answer = route(request); }
         catch (EditorError refused) { answer = CompletableFuture.completedFuture(EditorReplies.error(refused)); }
         catch (RuntimeException failure) { answer = CompletableFuture.completedFuture(internal(failure)); }
+        finally { metrics.stop(Subsystem.EDITOR, started); }
         return answer.handle((EditorResponse response, Throwable failure) -> {
             EditorResponse result = response;
             if (failure != null) {

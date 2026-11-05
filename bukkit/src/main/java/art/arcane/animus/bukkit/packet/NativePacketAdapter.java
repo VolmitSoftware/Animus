@@ -16,6 +16,9 @@ import art.arcane.animus.core.control.ControlInput;
 import art.arcane.animus.core.control.ControlInbox;
 import art.arcane.animus.core.mount.SeatGeometry;
 import art.arcane.animus.core.virtual.DragonBody;
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Load;
+import art.arcane.animus.core.metrics.PacketKind;
 import io.netty.channel.*;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -60,6 +63,8 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final UUID[] displayUuids;
         private final UUID seatUuid = UUID.randomUUID();
         private final Object[] nameTeam;
+        /** This body's traffic, bound on its first write so probe bodies never register. */
+        private volatile Load traffic;
         private Body(NativePacketAdapter owner, int entityId, int baseIds, UUID uuid, String typeKey, double width, double height,
                      SeatGeometry seat, Object nativeType, Object playerInfo, BodyLook look, Object[] nameTeam) {
             this.owner = owner; this.entityId = entityId; this.reservedIds = baseIds + look.extraIds(); this.uuid = uuid;
@@ -77,6 +82,11 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         public double height() { return height; }
         public SeatGeometry seat() { return seat; }
         public int[] entityIds() { return java.util.stream.IntStream.range(0, reservedIds).map(offset -> entityId + offset).toArray(); }
+        private Load traffic() {
+            Load bound = traffic;
+            if (bound == null) traffic = bound = owner.metrics.npc(uuid);
+            return bound;
+        }
     }
     /** A rig's display bones on one body. IDs come from the server allocator in blocks of at most 16. */
     public static final class Bones implements BodyTransport.Bones {
@@ -103,6 +113,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     private final String handlerName = "animus_virtual_" + UUID.randomUUID().toString().replace("-", "");
     private final String riderUnavailable;
     private final Scheduler owner;
+    private final AnimusMetrics metrics = AnimusMetrics.current();
     private volatile boolean closed;
 
     private NativePacketAdapter(Plugin plugin, String version, Scheduler owner) throws ReflectiveOperationException {
@@ -205,7 +216,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         ensureOpen();
         Objects.requireNonNull(scheduler); Objects.requireNonNull(interaction);
         Channel channel = nativeApi.channel(viewer);
-        Session session = new Session(viewer, channel, scheduler, interaction);
+        Session session = new Session(viewer, channel, scheduler, interaction, metrics.viewer(viewer.getUniqueId(), viewer.getName()));
         Session previous = sessions.put(viewer.getUniqueId(), session);
         if (previous != null) retire(previous);
         try {
@@ -237,7 +248,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         submit(session, result, false, () -> {
             if (session.spawning.get(body.entityId) != presentation) throw new CancellationException("Body spawn was cancelled");
             List<Object> packets = nativeApi.spawnPackets(body, pose);
-            write(session, packets).whenComplete((nothing, failure) -> {
+            write(session, body, PacketKind.SPAWN, packets).whenComplete((nothing, failure) -> {
                 boolean published = false;
                 synchronized (session) {
                     boolean stillSpawning = session.spawning.remove(body.entityId, presentation);
@@ -271,7 +282,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             if (body.seatId >= 0) packets.add(nativeApi.seatMove(body, pose));
             packets.add(nativeApi.move(body, pose));
             packets.add(nativeApi.rotateHead(body.entityId, BodyRules.wireYaw(body.typeKey, pose.yaw())));
-            write(session, packets).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, body, PacketKind.MOVE, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -310,7 +321,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 session.rosters.put(vehicle.entityId, roster);
                 packet = nativeApi.passengers(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId)));
             }
-            write(session, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, vehicle, PacketKind.PASSENGERS, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -326,7 +337,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
             if (session.visible.get(dragon.entityId) != presentation) throw new CancellationException("Dragon was despawned");
-            write(session, List.of(nativeApi.dragonPhase(dragon.entityId, phase))).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, dragon, PacketKind.METADATA, List.of(nativeApi.dragonPhase(dragon.entityId, phase))).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -341,7 +352,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
             if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
-            write(session, List.of(nativeApi.swing(body.entityId))).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, body, PacketKind.METADATA, List.of(nativeApi.swing(body.entityId))).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -362,7 +373,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         CompletableFuture<Void> result = new CompletableFuture<>();
         submit(session, result, false, () -> {
             if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned before equipment");
-            write(session, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, body, PacketKind.EQUIPMENT, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -411,7 +422,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             int[] base = session.rosters.getOrDefault(body.entityId, body.displayIds.clone());
             packets.add(nativeApi.passengers(body.entityId, withBones(base, bones)));
             if (hideBody && nativeApi.presentation != null) packets.add(nativeApi.metadataPacket.newInstance(body.entityId, List.of(nativeApi.presentation.visibility(body.look, true))));
-            write(session, packets).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         result.whenComplete((nothing, failure) -> { if (failure != null) session.bones.remove(body.entityId, bones); });
         return result;
@@ -431,7 +442,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 if (indices[i] < 0 || indices[i] >= bones.ids.length) throw new IllegalArgumentException("Unknown bone index " + indices[i]);
                 packets.add(nativeApi.metadataPacket.newInstance(bones.ids[indices[i]], nativeApi.bones.transform(transforms[i], Math.max(0, durations[i]))));
             }
-            write(session, packets).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, bones.body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -450,7 +461,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 packets.add(nativeApi.passengers(bones.body.entityId, base));
                 if (nativeApi.presentation != null) packets.add(nativeApi.metadataPacket.newInstance(bones.body.entityId, List.of(nativeApi.presentation.visibility(bones.body.look, false))));
             }
-            write(session, packets).whenComplete((nothing, failure) -> complete(result, failure));
+            write(session, bones.body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;
     }
@@ -554,8 +565,9 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         });
     }
 
-    private CompletionStage<Void> write(Session session, List<Object> packets) {
+    private CompletionStage<Void> write(Session session, Body body, PacketKind kind, List<Object> packets) {
         if (!session.channel.isActive()) return unwatched("Viewer connection is closed");
+        metrics.sent(session.traffic, body == null ? null : body.traffic(), kind, packets.size());
         List<CompletableFuture<Void>> results = new ArrayList<>(packets.size());
         try {
             for (Object packet : packets) {
@@ -579,7 +591,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             packets.add(nativeApi.removeEntities.newInstance((Object) ids));
             if (body.playerInfo != null) packets.add(nativeApi.removePlayerInfo.newInstance(List.of(body.uuid)));
             if (body.nameTeam != null) packets.add(body.nameTeam[1]);
-            return write(session, packets);
+            return write(session, body, PacketKind.DESPAWN, packets);
         } catch (ReflectiveOperationException e) { return CompletableFuture.failedFuture(e); }
     }
     private boolean hasNewerPresentation(Session original, Presentation presentation) {
@@ -640,8 +652,9 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             Body body = presentation.body;
             try {
                 long now = System.nanoTime();
-                if (now - session.lastInputNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS || !session.inputScheduled.compareAndSet(false, true)) return;
+                if (now - session.lastInputNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS || !session.inputScheduled.compareAndSet(false, true)) { metrics.inbound(session.traffic, false); return; }
                 session.lastInputNanos = now;
+                metrics.inbound(session.traffic, true);
                 String hand = attack ? "none" : String.valueOf(nativeApi.interactHand.invoke(message));
                 boolean secondary = !attack && (boolean) nativeApi.interactSecondary.invoke(message);
                 Interaction event = new Interaction(body, attack ? BodyTransport.Action.ATTACK : BodyTransport.Action.INTERACT, hand, secondary, now);
@@ -683,9 +696,11 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final ConcurrentMap<Integer, Bones> bones = new ConcurrentHashMap<>();
         private final ConcurrentMap<Integer, int[]> rosters = new ConcurrentHashMap<>();
         private final AtomicReference<ControlSubscription> control = new AtomicReference<>();
+        private final Load traffic;
         private long lastInputNanos = Long.MIN_VALUE / 2; // Accessed exclusively by the channel event loop.
-        private Session(Player viewer, Channel channel, Scheduler scheduler, Consumer<Interaction> interactions) {
+        private Session(Player viewer, Channel channel, Scheduler scheduler, Consumer<Interaction> interactions, Load traffic) {
             this.viewerId = viewer.getUniqueId(); this.viewer = viewer; this.channel = channel; this.scheduler = scheduler; this.interactions = interactions;
+            this.traffic = traffic;
         }
     }
 

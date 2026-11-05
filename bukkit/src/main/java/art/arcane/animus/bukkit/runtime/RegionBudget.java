@@ -24,6 +24,7 @@ final class RegionBudget {
     private final ThreadLocal<Window> windows = ThreadLocal.withInitial(Window::new);
     private final Map<Object, Turns> turns = new ConcurrentHashMap<>(), combatTurns = new ConcurrentHashMap<>();
     private final AtomicInteger refusedRoutes = new AtomicInteger();
+    private volatile long shortAtNanos = Long.MIN_VALUE;
 
     RegionBudget(RegionScheduler regions, Map<Kind, Integer> limits) {
         this.regions = Objects.requireNonNull(regions);
@@ -83,6 +84,12 @@ final class RegionBudget {
         RegionScheduler.Tick tick = regions.tick();
         Turns entry = tick == null ? null : turns();
         if (entry != null) entry.pressure.shortOfBudget(tick.number());
+        shortAtNanos = System.nanoTime();
+    }
+    /** Any thread: some region's authoritative packets waited for budget within the last second, for diagnostics. */
+    boolean recentlyShortOfPackets() {
+        long at = shortAtNanos;
+        return at != Long.MIN_VALUE && System.nanoTime() - at < 1_000_000_000L;
     }
     /** Cosmetic work (look-close, rig sampling and bones, hologram text refresh) may run on this region now; true away from a region thread. */
     boolean cosmeticAllowed() {

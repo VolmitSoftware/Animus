@@ -1,5 +1,12 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.command.DebugCommands;
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.DebugWatch;
+import art.arcane.animus.core.metrics.MetricsSnapshot;
+import art.arcane.animus.core.metrics.Subsystem;
+import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.AnimusSplash;
 import art.arcane.animus.core.BuildIdentity;
@@ -88,6 +95,7 @@ public final class AnimusModRuntime {
         volatile BehaviorCommands behaviors;
         AnimusCommands commands;
         volatile EditorService editor;
+        final DebugWatch watch = new DebugWatch();
         art.arcane.animus.core.hotload.HotloadService hotload;
         volatile boolean stopping;
     }
@@ -101,6 +109,7 @@ public final class AnimusModRuntime {
         if (running != null) throw new IllegalStateException(BuildIdentity.NAME + " is already running");
         RuntimeEnvironment environment = new RuntimeEnvironment(platform, MinecraftVersion.current(), dataDirectory);
         Running next = new Running();
+        AnimusMetrics measured = AnimusMetrics.restart();
         try {
             next.runtime = new AnimusRuntime(environment, (Throwable failure) -> LOGGER.error("Animus file cleanup failed", failure));
             next.runtime.start();
@@ -128,19 +137,19 @@ public final class AnimusModRuntime {
                     art.arcane.animus.core.gui.GlossBridge.absent("Gloss is a Bukkit plugin and cannot run on mod servers"), LOGGER::info);
             art.arcane.animus.core.hire.HireService<ServerPlayer, ItemStack> hires = new art.arcane.animus.core.hire.HireService<>(next.runtime, next.shops.screens(), next.living, files,
                     next.combat.hireGuarding(), LOGGER::info);
-            next.ticks.every(hires::tick);
+            next.ticks.every(measured.timed(Subsystem.BEHAVIORS, hires::tick));
             LOGGER.info(hires.status());
             art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
             art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> holoService = next.guis;
             next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) ->
                     hires.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
-            next.ticks.every(() -> {
+            next.ticks.every(measured.timed(Subsystem.GUI, () -> {
                 for (UUID viewer : screenService.screens().viewing()) {
                     ServerPlayer online = server.getPlayerList().getPlayer(viewer);
                     if (online != null) screenService.screens().tick(online);
                 }
                 for (ServerPlayer online : List.copyOf(server.getPlayerList().getPlayers())) holoService.tick(online);
-            });
+            }));
             next.shops.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {});
             next.guis.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {});
             LOGGER.info(next.shops.status());
@@ -179,7 +188,20 @@ public final class AnimusModRuntime {
             }
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
                     next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
-                            "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files)), () -> owner.stopping));
+                            "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files),
+                            "debug", new DebugCommands(() -> measured, owner.watch,
+                                    (String id) -> owner.runtime.isRunning() ? owner.runtime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
+                                    () -> { EditorService active = owner.editor; return active == null ? List.of("Editor: off") : active.status(); })), () -> owner.stopping));
+            measured.extra("combat.waiting", next.combat::waiting);
+            measured.extra("combat.load", next.combat::load);
+            measured.extra("editor.streams", () -> { EditorService active = owner.editor; return active == null ? 0 : active.eventStreams(); });
+            measured.listen((MetricsSnapshot snapshot) -> owner.watch.publish(snapshot, (UUID id, String line) -> {
+                ServerPlayer player = server.getPlayerList().getPlayer(id);
+                if (player == null || owner.stopping) return false;
+                owner.screens.actionBar(player, RichText.colorize(line));
+                return true;
+            }));
+            next.ticks.every(measured::serverTick);
             next.extensions.start();
             startEditor(server, next, files);
             running = next;
@@ -205,6 +227,7 @@ public final class AnimusModRuntime {
 
     private static void close(Running active) {
         active.stopping = true;
+        active.watch.clear();
         if (active.hotload != null) active.hotload.close();
         EditorService editor = active.editor;
         active.editor = null;
