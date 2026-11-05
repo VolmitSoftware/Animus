@@ -25,6 +25,7 @@ class EditorRelaySettingsTest {
             String toml = Files.readString(root.resolve("config.toml"));
             assertTrue(toml.contains("[editor]"), toml);
             assertTrue(toml.contains("relayUrl = \"wss://relay.animus.volmitsoftware.com\""), toml);
+            assertTrue(toml.contains("relayEnabled = false"), toml);
         }
     }
 

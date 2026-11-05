@@ -13,7 +13,7 @@ import java.util.Set;
 public record EditorRelaySettings(boolean enabled, String url, int reconnectMinSeconds, int reconnectMaxSeconds, int frameBytes,
                                   int concurrentRequests) {
     public static final String DEFAULT_URL = "wss://relay.animus.volmitsoftware.com";
-    public static final EditorRelaySettings DEFAULT = new EditorRelaySettings(true, DEFAULT_URL, 1, 60, 1024 * 1024, 64);
+    public static final EditorRelaySettings DEFAULT = new EditorRelaySettings(false, DEFAULT_URL, 1, 60, 1024 * 1024, 64);
     private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "[::1]", "::1");
 
     public EditorRelaySettings {
