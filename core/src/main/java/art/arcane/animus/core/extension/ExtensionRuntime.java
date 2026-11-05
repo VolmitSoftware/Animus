@@ -1,7 +1,11 @@
 package art.arcane.animus.core.extension;
 
 import art.arcane.animus.api.*;
+import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.CatalogChange;
 import art.arcane.animus.core.config.ModuleSettings;
+import art.arcane.animus.core.config.PluginSettings;
+import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.behavior.BehaviorInvoker;
 import art.arcane.animus.core.behavior.HostBehaviorInvoker;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
@@ -13,30 +17,36 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 
-/** One startup batch. Lifecycle callbacks run on its management worker; revocation never waits for them. */
+/**
+ * One startup batch. Lifecycle callbacks run on its management worker; revocation never waits for them. A hotload of
+ * {@code [modules]} applies live through {@link #settings(ModuleSettings)}.
+ */
 public final class ExtensionRuntime implements AutoCloseable {
     public enum State { NEW, STARTING, READY, DISABLED, FAILED, STOPPING, STOPPED }
     public record Status(State state, String failure, StartupModules.Lifecycle lifecycle,
                          StartupModules.Cleanup cleanup, ModuleHost.InvocationStatus invocations) {}
 
     private final Path directory;
-    private final ModuleSettings settings;
+    private volatile ModuleSettings settings;
     private final Platform platform;
     private final ModuleHost host;
     private final Consumer<String> report;
     private final Consumer<State> initializationObserver;
     private final BehaviorInvoker behaviorInvoker;
     private final BuiltinCapabilities builtins;
-    // Private submission only: one startup, one shutdown, then at most one scheduled cleanup poll.
+    // Private submission only: one startup (or one later first load after a hotload enables modules), one shutdown, then at most one scheduled cleanup poll.
     private final ScheduledThreadPoolExecutor management;
     private volatile StartupModules loader;
     private volatile State state = State.NEW;
     private volatile String failure = "none";
-    private boolean started, closing, initializationReported;
+    private boolean started, closing, initializationReported, builtinsInstalled;
+    private AutoCloseable settingsListener = () -> {};
+    private Runnable behaviorReload = () -> {};
     private int cleanupDelaySeconds = 1;
     private boolean reportedRetention;
 
@@ -99,14 +109,16 @@ public final class ExtensionRuntime implements AutoCloseable {
                 return;
             }
             state = State.DISABLED;
-            if (builtins == null) host.revoke();
         }
         installBuiltins();
         initialized(State.DISABLED);
     }
 
     private void installBuiltins() {
-        if (builtins == null) return;
+        synchronized (this) {
+            if (builtins == null || builtinsInstalled) return;
+            builtinsInstalled = true;
+        }
         Outcome<ModuleHost.ModuleStatus> installed = host.installBuiltin(builtins, builtins);
         if (installed.status() != Outcome.Status.OK)
             report.accept("Built-in behavior capabilities unavailable: " + installed.diagnostics().stream().map(Diagnostic::code).toList());
@@ -123,8 +135,17 @@ public final class ExtensionRuntime implements AutoCloseable {
             loader = next;
             if (isClosing()) return; // The already queued shutdown owns even an unconsumed discovery plan.
             List<StartupModules.Status> results = next.start();
-            synchronized (this) { if (!closing) state = State.READY; }
-            initialized(State.READY);
+            State terminal;
+            boolean late;
+            synchronized (this) {
+                // A hotload may have switched modules off while they loaded; they stay loaded and suspended.
+                terminal = settings.enabled() ? State.READY : State.DISABLED;
+                host.suspendModules(terminal == State.DISABLED);
+                if (!closing) state = terminal;
+                late = initializationReported;
+            }
+            initialized(terminal);
+            if (late) toggled();
             results.forEach(result -> report.accept("Module " + result.id() + " [" + result.archive() + "]: "
                     + result.state() + " | " + result.reason()));
         } catch (Exception | LinkageError | AssertionError error) {
@@ -151,6 +172,62 @@ public final class ExtensionRuntime implements AutoCloseable {
     }
 
     private synchronized boolean isClosing() { return closing; }
+
+    /**
+     * Follows hotloads of {@code [modules]} until close, and reloads behaviors after modules switch on or off so their
+     * capability checks see the change. Call once, after construction.
+     */
+    public void follow(AnimusRuntime runtime) {
+        AutoCloseable listener = runtime.onSettings((PluginSettings next) -> settings(next.modules()));
+        synchronized (this) {
+            settingsListener = listener;
+            behaviorReload = () -> runtime.catalogs().reload(new CatalogChange(Set.of(DocumentKind.BEHAVIOR), Set.of(), false));
+        }
+    }
+
+    /**
+     * A hotload of {@code [modules]}. Limits apply to the next invocation. {@code enabled = false} suspends discovered
+     * modules: no new calls, triggers or interaction notices reach them, work already admitted finishes, and built-in
+     * capabilities stay available. {@code enabled = true} resumes them, or loads them the first time when the server
+     * started with modules off. Module archives are read once per server start, so a changed jar still needs a restart.
+     */
+    public void settings(ModuleSettings next) {
+        Objects.requireNonNull(next);
+        host.limits(next.maximumInvocations(), Duration.ofMillis(next.invocationTimeoutMillis()), Duration.ofMillis(next.deliveryBudgetMillis()));
+        boolean load = false, changed = false;
+        synchronized (this) {
+            boolean was = settings.enabled();
+            settings = next;
+            if (closing || !started || was == next.enabled()) return;
+            if (state == State.READY && !next.enabled()) {
+                host.suspendModules(true);
+                state = State.DISABLED;
+                changed = true;
+            } else if (state == State.DISABLED && next.enabled()) {
+                if (loader != null) {
+                    host.suspendModules(false);
+                    state = State.READY;
+                    changed = true;
+                } else {
+                    state = State.STARTING;
+                    load = true;
+                }
+            }
+        }
+        report.accept(next.enabled() ? "Modules enabled by config.toml" : "Modules disabled by config.toml; built-in capabilities stay available");
+        if (load) {
+            try { management.execute(this::load); }
+            catch (RejectedExecutionException stopping) { synchronized (this) { if (!closing) state = State.DISABLED; } }
+        }
+        if (changed) toggled();
+    }
+
+    private void toggled() {
+        Runnable reload;
+        synchronized (this) { reload = behaviorReload; }
+        try { reload.run(); }
+        catch (RuntimeException failure) { report.accept("Behavior reload after a module switch failed: " + failure.getMessage()); }
+    }
 
     public Status status() {
         StartupModules current = loader;
@@ -185,6 +262,7 @@ public final class ExtensionRuntime implements AutoCloseable {
             }
             @Override public BehaviorCatalog.Capability module(String id) {
                 if (!admitting()) return new BehaviorCatalog.Capability(false, "modules-not-ready");
+                if (host.modulesSuspended()) return new BehaviorCatalog.Capability(false, "modules-disabled: set [modules] enabled = true in config.toml");
                 for (ModuleHost.ModuleStatus module : host.modules()) {
                     if (!module.manifest().id().equals(id)) continue;
                     return module.state() == ModuleHost.State.ACTIVE ? BehaviorCatalog.Capability.present()
@@ -232,6 +310,8 @@ public final class ExtensionRuntime implements AutoCloseable {
     @Override public synchronized void close() {
         if (closing) return;
         closing = true;
+        try { settingsListener.close(); }
+        catch (Exception ignored) { /* Removing a listener from a list does not fail. */ }
         state = State.STOPPING;
         host.revoke();
         management.execute(this::stop);
