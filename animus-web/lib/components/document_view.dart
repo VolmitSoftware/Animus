@@ -4,6 +4,8 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../logic/inspect/inspect_schemas.dart';
+import '../logic/inspect/json_completion.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../state/workspace_route.dart';
@@ -12,6 +14,9 @@ import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
 import 'gui/shop_editor.dart';
+import 'inspect/behavior_editor.dart';
+import 'inspect/json_code_editor.dart';
+import 'inspect/npc_inspector.dart';
 import 'npc_preview.dart';
 
 /// Kinds with a visual editor and a painted or 3D preview.
@@ -29,8 +34,24 @@ class DocumentPane extends StatefulWidget {
     this.onDelete,
     this.skinDocument,
     this.editor,
+    this.serverDiagnostics = const <Diagnostic>[],
+    this.liveSchemas,
+    this.workspaceDocuments = const <AnimusDocument>[],
     super.key,
   });
+
+  /// Every document of the workspace, for completing references (an NPC's
+  /// behaviors and skin).
+  final List<AnimusDocument> workspaceDocuments;
+
+  /// Diagnostics the connected server returned for this document's draft
+  /// (validate, preview or apply), shown beside the browser's own.
+  final List<Diagnostic> serverDiagnostics;
+
+  /// The connected server's `GET /v1/schemas` map (schema name to schema),
+  /// which includes loaded modules; null offline, where the embedded
+  /// generated schemas apply.
+  final Map<String, Object?>? liveSchemas;
 
   /// Visual editor edits; null keeps the document read-only in Visual.
   final JsonEdit? onJson;
@@ -155,7 +176,8 @@ class _DocumentPaneState extends State<DocumentPane> {
   }
 
   Widget _diagnostics(AnimusDocument document) {
-    if (document.diagnostics.isEmpty) {
+    final List<Diagnostic> server = component.serverDiagnostics;
+    if (document.diagnostics.isEmpty && server.isEmpty) {
       return const dom.p(classes: 'animus-ok', <Widget>[Component.text('Valid against the shared schema.')]);
     }
     return dom.ul(classes: 'animus-diagnostics', <Widget>[
@@ -164,8 +186,23 @@ class _DocumentPaneState extends State<DocumentPane> {
           dom.code(<Widget>[Component.text(diagnostic.path)]),
           Component.text(' ${diagnostic.message}'),
         ]),
+      for (final Diagnostic diagnostic in server.take(50))
+        dom.li(classes: 'is-${diagnostic.severity.name} is-server', <Widget>[
+          const dom.span(classes: 'animus-tag is-server', <Widget>[Component.text('server')]),
+          dom.code(<Widget>[Component.text(diagnostic.path)]),
+          Component.text(' ${diagnostic.message}'),
+        ]),
     ]);
   }
+
+  InspectSchemas get _schemas => InspectSchemas.from(component.liveSchemas);
+
+  List<Diagnostic> _allDiagnostics(AnimusDocument document) => <Diagnostic>[...document.diagnostics, ...component.serverDiagnostics];
+
+  List<String> _ids(DocumentKind kind) => <String>[
+        for (final AnimusDocument other in component.workspaceDocuments)
+          if (other.kind == kind) other.id,
+      ];
 
   Widget _visual(AnimusDocument document) {
     final Object? json = document.json;
@@ -177,6 +214,19 @@ class _DocumentPaneState extends State<DocumentPane> {
         DocumentKind.menu => MenuEditor(document: document, onJson: onJson),
         _ => HologramEditor(document: document, onJson: onJson),
       };
+    }
+    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.npc) {
+      return NpcInspector(
+        document: document,
+        onJson: onJson,
+        schemas: _schemas,
+        diagnostics: _allDiagnostics(document),
+        behaviorIds: _ids(DocumentKind.behavior),
+        skinIds: _ids(DocumentKind.skin),
+      );
+    }
+    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.behavior) {
+      return BehaviorEditor(document: document, onJson: onJson, schemas: _schemas, diagnostics: _allDiagnostics(document));
     }
     if (json is! Map<String, Object?>) {
       return const dom.section(classes: 'animus-panel', <Widget>[Component.text('The document is not a JSON object.')]);
@@ -224,13 +274,21 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _code(AnimusDocument document) {
     final String text = _draft ?? document.source;
+    final InspectSchemas schemas = _schemas;
+    final ValueHints? hints = switch (document.kind) {
+      DocumentKind.behavior => behaviorHints,
+      DocumentKind.npc => npcHints(behaviorIds: _ids(DocumentKind.behavior), skinIds: _ids(DocumentKind.skin)),
+      _ => null,
+    };
     return dom.section(classes: 'animus-panel animus-code', <Widget>[
-      TextArea(
-        value: text,
-        rows: 28,
-        minHeight: '24rem',
-        fullWidth: true,
+      JsonCodeEditor(
+        text: text,
         onChanged: _edit,
+        schema: schemas.forKind(document.kind),
+        catalog: document.kind == DocumentKind.behavior ? schemas.catalog : null,
+        hints: hints,
+        diagnostics: document.diagnostics,
+        serverDiagnostics: component.serverDiagnostics,
       ),
       dom.div(classes: 'animus-row', <Widget>[
         Button.primary(
