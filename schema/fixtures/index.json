@@ -152,7 +152,7 @@
       "id": "town:golem",
       "expect": {
         "schema": true,
-        "java": null
+        "java": true
       }
     },
     {
@@ -161,7 +161,7 @@
       "id": "town:golem/walk",
       "expect": {
         "schema": true,
-        "java": null
+        "java": true
       }
     },
     {
@@ -170,7 +170,7 @@
       "id": "town:golem/wave",
       "expect": {
         "schema": true,
-        "java": null
+        "java": true
       }
     },
     {
@@ -179,7 +179,25 @@
       "id": "town:golem/bow",
       "expect": {
         "schema": true,
-        "java": null
+        "java": true
+      }
+    },
+    {
+      "path": "documents/rig/parent-after-child.json",
+      "kind": "rig",
+      "id": "town:golem",
+      "expect": {
+        "schema": true,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/animation/keyframes-out-of-order.json",
+      "kind": "animation",
+      "id": "town:golem/walk",
+      "expect": {
+        "schema": true,
+        "java": false
       }
     }
   ],

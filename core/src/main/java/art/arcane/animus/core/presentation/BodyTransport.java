@@ -72,5 +72,28 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     ControlSubscription subscribeControl(P viewer);
     /** Moves the real rider's server position without a client teleport. */
     void placeRider(P rider, double x, double y, double z);
+
+    /** A rig's display bones for one body. Their native IDs are fixed when they are created; they never join the body's own IDs. */
+    interface Bones {
+        int count();
+        int[] entityIds();
+    }
+    /** Whether this transport can present rig bones; false leaves rigged NPCs on their plain body. */
+    default boolean bonesAvailable() { return false; }
+    /** Reserves display entity IDs for a rig's visible bones on this body, in {@code displays} order. Validates block states. */
+    default Bones createBones(Body body, List<BoneDisplay<I>> displays) { throw new IllegalStateException("Rig display bones are unavailable on this server"); }
+    /**
+     * Spawns the bones riding the visible body, at their first transforms with no interpolation, and adds them to the
+     * body's passenger roster; every later roster of the body keeps them. {@code hideBody} makes the body itself invisible.
+     */
+    default CompletionStage<Void> showBones(P viewer, Body body, Bones bones, BodyPose pose, List<art.arcane.animus.core.rig.DisplayTransform> transforms, boolean hideBody) {
+        return java.util.concurrent.CompletableFuture.failedFuture(new IllegalStateException("Rig display bones are unavailable on this server"));
+    }
+    /** One metadata packet per listed bone: the new transform, interpolated over that bone's ticks from the next client tick. */
+    default CompletionStage<Void> moveBones(P viewer, Bones bones, int[] indices, art.arcane.animus.core.rig.DisplayTransform[] transforms, int[] durations) {
+        return java.util.concurrent.CompletableFuture.failedFuture(new IllegalStateException("Rig display bones are unavailable on this server"));
+    }
+    /** Removes the bones from the viewer and the roster. Despawning the body, forgetting the viewer and closing remove them as well. */
+    default CompletionStage<Void> hideBones(P viewer, Bones bones) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     @Override void close();
 }
