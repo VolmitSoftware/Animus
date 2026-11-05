@@ -6,7 +6,7 @@ RUN dart pub get --enforce-lockfile
 COPY analysis_options.yaml ./
 COPY bin ./bin
 COPY lib ./lib
-RUN dart compile exe bin/relay.dart -o /output/animus-relay
+RUN mkdir -p /output && dart compile exe bin/relay.dart -o /output/animus-relay
 
 # Distroless with glibc for the AOT binary; runs as uid 65532 (nonroot).
 FROM gcr.io/distroless/cc-debian12:nonroot
