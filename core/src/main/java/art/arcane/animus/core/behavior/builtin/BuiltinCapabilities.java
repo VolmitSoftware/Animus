@@ -21,6 +21,7 @@ import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.AppearanceChange
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.BuildOperation;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.Audience;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.ChoiceOption;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.CombatOperation;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.CommandSource;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.NpcStatus;
@@ -287,7 +288,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 });
         action("choices", Effect.WORLD, "Presents clickable options to the triggering player and publishes the validated click.",
                 schema(string("id", 64) + "," + string("prompt", 512) + "," + integer("lifetimeSeconds", 1, 600)
-                                + ",\"options\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":8,\"items\":" + schema(string("id", 32) + "," + string("text", 128), required("id", "text")) + "}",
+                                + ",\"options\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":8,\"items\":" + schema(string("id", 32) + "," + string("text", 128) + "," + string("color", 16) + "," + string("hover", 256)
+                                + "," + choice("style", "bold", "italic", "underlined", "plain"), required("id", "text")) + "}",
                         required("id", "prompt", "options")),
                 BuiltinCapabilities::checkChoices, this::presentChoices);
         action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
@@ -417,7 +419,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         List<ChoiceOption> options = new ArrayList<>();
         for (JsonElement option : call.arguments.getAsJsonArray("options")) {
             JsonObject entry = option.getAsJsonObject();
-            options.add(new ChoiceOption(entry.get("id").getAsString(), entry.get("text").getAsString()));
+            options.add(new ChoiceOption(entry.get("id").getAsString(), entry.get("text").getAsString(), text(entry, "color"), text(entry, "hover"), text(entry, "style")));
         }
         long seconds = call.arguments.has("lifetimeSeconds") ? call.arguments.get("lifetimeSeconds").getAsLong() : settings.choiceLifetimeSeconds();
         return onOwner(call, () -> {
@@ -499,6 +501,15 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             if (!id.matches(IDENTIFIER)) problems.add(problem("$.options", "choice-option-id", "Option ids use lowercase letters, digits, _ or -"));
             if (!seen.add(id)) problems.add(problem("$.options", "choice-option-duplicate", "Option ids must be unique"));
             plainText(entry, "text", problems);
+            if (entry.has("color") && RichText.colourCode(entry.get("color").getAsString()).isEmpty())
+                problems.add(problem("$.options", "choice-option-color", "color is a colour name such as green, a code such as a, or #RRGGBB"));
+            if (entry.has("style") && !DialogueFormat.STYLES.contains(entry.get("style").getAsString()))
+                problems.add(problem("$.options", "choice-option-style", "style is bold, italic, underlined or plain"));
+            if (entry.has("hover")) {
+                String hover = entry.get("hover").getAsString();
+                if (hover.isBlank() || hover.codePoints().anyMatch((int glyph) -> glyph != '\n' && Character.isISOControl(glyph)))
+                    problems.add(problem("$.options", "argument-control-characters", "hover must not be blank or contain control characters other than new lines"));
+            }
         }
     }
 

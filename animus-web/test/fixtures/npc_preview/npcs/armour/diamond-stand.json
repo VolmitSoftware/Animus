@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "faa3706a-1e8d-59be-83f8-b0c1082633f3",
+  "id": "diamond-stand",
+  "group": "armour",
+  "name": "Diamond stand",
+  "type": "minecraft:armor_stand",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 38.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "armorStand": {
+    "small": true,
+    "arms": true
+  },
+  "equipment": {
+    "head": {
+      "id": "minecraft:diamond_helmet"
+    },
+    "chest": {
+      "id": "minecraft:diamond_chestplate"
+    },
+    "legs": {
+      "id": "minecraft:diamond_leggings"
+    },
+    "feet": {
+      "id": "minecraft:diamond_boots"
+    }
+  }
+}

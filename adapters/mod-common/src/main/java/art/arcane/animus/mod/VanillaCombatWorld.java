@@ -1,5 +1,6 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.combat.CombatLoadout;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatTarget;
@@ -206,7 +207,7 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
     }
     @Override public void tell(UUID player, String speaker, String message) {
         ServerPlayer online = server.getPlayerList().getPlayer(player);
-        if (online != null) online.sendSystemMessage(Component.literal("[" + speaker + "]: " + message));
+        if (online != null) online.sendSystemMessage(ModText.component(DialogueFormat.speech(speaker, message)));
     }
     @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon) {
         ServerLevel level = terrain.level(from.world());

@@ -399,6 +399,90 @@
       "definition": "pairing-payload",
       "valid": true,
       "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-event.0.json",
+      "definition": "relay-event",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-close.0.json",
+      "definition": "relay-close",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-challenge.0.json",
+      "definition": "relay-challenge",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-register.0.json",
+      "definition": "relay-register",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-registered.0.json",
+      "definition": "relay-registered",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-subscribe.0.json",
+      "definition": "relay-subscribe",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-subscribed.0.json",
+      "definition": "relay-subscribed",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-status.0.json",
+      "definition": "relay-status",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-error.0.json",
+      "definition": "relay-error",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-response.1.json",
+      "definition": "relay-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-request.1.json",
+      "definition": "relay-request",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/relay-event.0.json",
+      "definition": "relay-event",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/relay-request.0.json",
+      "definition": "relay-request",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/relay-register.0.json",
+      "definition": "relay-register",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
     }
   ],
   "pairing": "editor/pairing.json",

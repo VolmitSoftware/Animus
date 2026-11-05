@@ -4,7 +4,7 @@
   "uuid": "bd597713-d058-5d6d-8e53-b61643e687bb",
   "id": "quest-giver",
   "group": "examples",
-  "name": "Quest Giver",
+  "name": "&eQuest Giver",
   "type": "minecraft:player",
   "spawned": true,
   "position": {

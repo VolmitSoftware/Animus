@@ -47,7 +47,7 @@ public record BoneDisplay<I>(Kind kind, I item, byte itemContext, String block, 
     public static <I> BoneDisplay<I> of(RigDocument.Visual visual) {
         return switch (visual.type()) {
             case BLOCK -> new BoneDisplay<>(Kind.BLOCK, null, (byte) 0, visual.block().orElseThrow(), null, (byte) 0, 0, false, 0);
-            case TEXT -> new BoneDisplay<>(Kind.TEXT, null, (byte) 0, null, BodyLook.legacy(visual.text().orElseThrow()), billboard(visual.billboard()),
+            case TEXT -> new BoneDisplay<>(Kind.TEXT, null, (byte) 0, null, art.arcane.animus.core.text.RichText.colorize(visual.text().orElseThrow()), billboard(visual.billboard()),
                     visual.background(), visual.shadow(), visual.lineWidth());
             default -> throw new IllegalArgumentException("Item and empty bones are not built here");
         };

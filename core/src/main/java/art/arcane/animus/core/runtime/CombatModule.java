@@ -116,6 +116,11 @@ public final class CombatModule implements AutoCloseable {
         return "Combat " + args[1] + ": " + result.status() + " " + result.detail();
     }
 
+    /** Whether the NPC guards this player or NPC now. */
+    public boolean guards(UUID npc, UUID charge) {
+        return engine != null && engine.guarded(npc).map((TargetRef ref) -> ref.id().equals(charge)).orElse(false);
+    }
+
     /** Behavior operations. A refusal carries the reason back to the behavior. */
     public String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) {
         if (engine == null) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "combat-unavailable", "Combat module " + unavailable);

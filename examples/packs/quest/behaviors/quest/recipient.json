@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "id": "quest:recipient",
   "entry": "main",
   "routines": {
@@ -36,7 +36,7 @@
                 "type": "action",
                 "capability": "animus:say",
                 "arguments": {
-                  "text": "A letter for me? Tell the sender it arrived safely."
+                  "text": "&eA letter for me?&f Tell the sender it arrived safely. &a✔"
                 }
               }
             ]
@@ -45,7 +45,7 @@
             "type": "action",
             "capability": "animus:say",
             "arguments": {
-              "text": "Nothing for me today."
+              "text": "&7Nothing for me today."
             }
           }
         }

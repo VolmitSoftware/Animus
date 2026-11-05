@@ -22,6 +22,7 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
     private static final int MOVE_VERTICAL = 7;
     private static final int PROBE_CELLS = 256;
     private static final double MAXIMUM_KNOCKBACK = 1.5;
+    private static final int[] TELEPORT_LIFTS = {0, 1, -1, 2, -2};
     protected final PersistedNpcService<P, I> living;
     private final TerrainReader host;
 
@@ -63,7 +64,20 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
             catch (IllegalArgumentException | IllegalStateException inactive) { /* no patrol to resume */ }
         });
     }
-    @Override public boolean teleport(UUID npc, WorldPosition destination) { return relocate(npc, destination); }
+    /**
+     * Places the NPC on clear, supported ground at the destination, trying the destination's block column a little up
+     * and down, in any loaded world. Unlike a step this is not swept, so it can cover any distance.
+     */
+    @Override public boolean teleport(UUID npc, WorldPosition destination) {
+        Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
+        if (active.isEmpty()) return false;
+        Vec3 point = destination.point();
+        for (int lift : TELEPORT_LIFTS) {
+            WorldPosition spot = new WorldPosition(destination.world(), new Vec3(point.x(), Math.floor(point.y()) + lift, point.z()));
+            if (living.relocate(active.get().id(), spot)) return true;
+        }
+        return false;
+    }
     @Override public void face(UUID npc, Vec3 point) {
         living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {
             try { living.lookAt(active.id(), new WorldPosition(active.state().position().world(), point)); }

@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
@@ -297,7 +298,7 @@ final class RegionViewer {
         NpcRuntime.InteractionListener<Player> listener = host.interactions;
         if (listener != null && listener.interacted(player, actor.uuid, action == VirtualNpcInteractionEvent.Action.ATTACK, input.secondaryAction())) return;
         if (actor.publication.ride() && action == VirtualNpcInteractionEvent.Action.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
-            player.sendMessage("Cannot ride " + actor.spec.name() + ": " + RegionNpcRuntime.RIDING_UNAVAILABLE);
+            player.sendMessage(RichText.colorize("&cCannot ride &r" + actor.spec.name() + "&c: " + RegionNpcRuntime.RIDING_UNAVAILABLE));
             return;
         }
         if (player.hasPermission("animus.admin")) {

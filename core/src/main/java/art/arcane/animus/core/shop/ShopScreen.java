@@ -2,7 +2,7 @@ package art.arcane.animus.core.shop;
 
 import art.arcane.animus.core.config.ShopSettings;
 import art.arcane.animus.core.gui.GuiModel;
-import art.arcane.animus.core.gui.GuiText;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.Screen;
 import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.gui.ScreenHost;
@@ -58,13 +58,13 @@ public final class ShopScreen<P, S> implements Screen {
     public static <P, S> Optional<Screen> open(ShopDocument shop, ScreenManager<P, S>.Viewer viewer, Context<S> context) {
         ScreenHost<P, S> host = viewer.host();
         if (shop.permission().isPresent() && !host.permitted(viewer.player(), shop.permission().get())) {
-            host.message(viewer.player(), GuiText.colorize(context.settings().message("shopPermission")));
+            host.message(viewer.player(), RichText.colorize(context.settings().message("shopPermission")));
             return Optional.empty();
         }
         List<ShopDocument.Page> pages = shop.pages().stream().filter((ShopDocument.Page candidate) -> candidate.permission().map((String node) -> host.permitted(viewer.player(), node)).orElse(true)).toList();
         List<ShopDocument.Mode> modes = shop.modes().stream().filter((ShopDocument.Mode candidate) -> pages.stream().anyMatch((ShopDocument.Page visible) -> !visible.grid(candidate).isEmpty())).toList();
         if (pages.isEmpty() || modes.isEmpty()) {
-            host.message(viewer.player(), GuiText.colorize(context.settings().message("noPages")));
+            host.message(viewer.player(), RichText.colorize(context.settings().message("noPages")));
             return Optional.empty();
         }
         return Optional.of(new ShopScreen<>(shop, viewer, context, pages, modes));
@@ -95,7 +95,7 @@ public final class ShopScreen<P, S> implements Screen {
             control(base + 8, icon, "mode", List.of(text("modeHint")), items, () -> mode = modes.get((modes.indexOf(mode) + 1) % modes.size()));
         }
         String title = shop.title() + (pages.size() > 1 ? " &8(" + (page + 1) + "/" + pages.size() + ")" : "");
-        return new ScreenFrame(GuiText.colorize(title), "9x" + rows, 9, rows, items);
+        return new ScreenFrame(RichText.colorize(title), "9x" + rows, 9, rows, items);
     }
 
     @Override public void click(int slot, GuiModel.Click click) {
@@ -120,7 +120,7 @@ public final class ShopScreen<P, S> implements Screen {
         ScreenHost<P, S> host = viewer.host();
         P player = viewer.player();
         Optional<ShopTransactions.Prepared<S>> ready = prepare(entry);
-        if (ready.isEmpty()) { host.message(player, GuiText.colorize(text("failed").replace("{reason}", "an item in this entry does not exist on this server"))); return; }
+        if (ready.isEmpty()) { host.message(player, RichText.colorize(text("failed").replace("{reason}", "an item in this entry does not exist on this server"))); return; }
         ShopTransactions.Buyer<S> buyer = new ShopTransactions.Buyer<>(viewer.id(), (String node) -> host.permitted(player, node), host.inventory(player),
                 (S stack) -> host.drop(player, stack));
         ShopTransactions.Outcome outcome = context.transactions().perform(shop.id(), ready.get(), buyer, fullStack);
@@ -146,7 +146,7 @@ public final class ShopScreen<P, S> implements Screen {
             case PAYMENT_FAILED -> "paymentFailed";
             case FAILED -> "failed";
         };
-        host.message(player, GuiText.colorize(fill(text(key), item, price, outcome.detail().orElse(""))));
+        host.message(player, RichText.colorize(fill(text(key), item, price, outcome.detail().orElse(""))));
         if (!outcome.done()) return;
         String name = host.name(player);
         for (ShopDocument.ShopCommand command : entry.commands()) {
@@ -154,26 +154,26 @@ public final class ShopScreen<P, S> implements Screen {
                     .replace("{amount}", Integer.toString(outcome.units())).replace("{price}", outcome.price().toPlainString());
             host.command(command.source() == ShopDocument.CommandSource.PLAYER ? Optional.of(player) : Optional.empty(), line);
         }
-        entry.broadcast().filter((String text) -> !text.isBlank()).ifPresent((String text) -> host.broadcast(GuiText.colorize(fill(text.replace("{player}", name), item, price, ""))));
+        entry.broadcast().filter((String text) -> !text.isBlank()).ifPresent((String text) -> host.broadcast(RichText.colorize(fill(text.replace("{player}", name), item, price, ""))));
         if (shop.log()) context.store().ifPresent((ShopStateStore store) -> store.log(shop.id(), name + " (" + viewer.id() + ") "
-                + entry.type().name().toLowerCase(Locale.ROOT) + " " + entry.id() + ": " + GuiText.plain(item) + " for " + outcome.price().toPlainString()
+                + entry.type().name().toLowerCase(Locale.ROOT) + " " + entry.id() + ": " + RichText.plain(item) + " for " + outcome.price().toPlainString()
                 + " on page \"" + pages.get(page).name() + "\""));
         if (entry.closeAfterPurchase() || shop.closeAfterPurchase()) viewer.close();
     }
 
     private ScreenFrame confirmFrame() {
         Map<Integer, ScreenFrame.Item> items = new LinkedHashMap<>();
-        items.put(CONFIRM, new ScreenFrame.Item(item("minecraft:lime_wool"), Optional.of(GuiText.colorize(text("confirm"))), List.of(), Optional.empty()));
+        items.put(CONFIRM, new ScreenFrame.Item(item("minecraft:lime_wool"), Optional.of(RichText.colorize(text("confirm"))), List.of(), Optional.empty()));
         items.put(ITEM, display(pending.entry(), context.clock().get()));
-        items.put(CANCEL, new ScreenFrame.Item(item("minecraft:red_wool"), Optional.of(GuiText.colorize(text("cancel"))), List.of(), Optional.empty()));
-        return new ScreenFrame(GuiText.colorize(text("confirmTitle")), "9x3", 9, 3, items);
+        items.put(CANCEL, new ScreenFrame.Item(item("minecraft:red_wool"), Optional.of(RichText.colorize(text("cancel"))), List.of(), Optional.empty()));
+        return new ScreenFrame(RichText.colorize(text("confirmTitle")), "9x3", 9, 3, items);
     }
 
     private void control(int slot, String icon, String key, List<String> lore, Map<Integer, ScreenFrame.Item> items, Runnable action) {
         String name = key.equals("mode") ? text("mode").replace("{mode}", modeName(mode)) : text(key);
         List<String> coloured = new ArrayList<>();
-        for (String line : lore) coloured.add(GuiText.colorize(line));
-        items.put(slot, new ScreenFrame.Item(item(icon), Optional.of(GuiText.colorize(name)), coloured, Optional.empty()));
+        for (String line : lore) coloured.add(RichText.colorize(line));
+        items.put(slot, new ScreenFrame.Item(item(icon), Optional.of(RichText.colorize(name)), coloured, Optional.empty()));
         shown.remove(slot);
         controls.put(slot, action);
     }
@@ -208,8 +208,8 @@ public final class ShopScreen<P, S> implements Screen {
             lore.add(text("stockLine").replace("{left}", Long.toString(Math.max(0, entry.stock().get().maximum() - ledger.stockUsed(shop.id(), entry.id(), now)))));
         if (entry.permission().isPresent() && !viewer.host().permitted(viewer.player(), entry.permission().get())) lore.add(text("lockedLine"));
         List<String> coloured = new ArrayList<>();
-        for (String line : lore) coloured.add(GuiText.colorize(line));
-        return new ScreenFrame.Item(entry.item(), entry.display().name().map(GuiText::colorize), coloured, Optional.empty());
+        for (String line : lore) coloured.add(RichText.colorize(line));
+        return new ScreenFrame.Item(entry.item(), entry.display().name().map(RichText::colorize), coloured, Optional.empty());
     }
 
     private Optional<ShopTransactions.Prepared<S>> prepare(ShopDocument.Entry entry) {
@@ -231,7 +231,7 @@ public final class ShopScreen<P, S> implements Screen {
             for (ShopTransactions.Need<S> give : ready.gives()) parts.add(viewer.host().items().describe(give.stack(), give.amount()));
             return String.join(", ", parts);
         }
-        String name = entry.display().name().map(GuiText::plain).orElse(null);
+        String name = entry.display().name().map(RichText::plain).orElse(null);
         int count = units > 0 ? units : entry.item().count();
         return name != null && entry.type() == ShopDocument.Type.COMMAND ? name : viewer.host().items().describe(ready.goods(), count);
     }

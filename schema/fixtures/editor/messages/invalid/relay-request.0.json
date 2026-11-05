@@ -1,0 +1,6 @@
+{
+  "type": "request",
+  "id": 0,
+  "method": "PUT",
+  "path": "/api/v1/x"
+}

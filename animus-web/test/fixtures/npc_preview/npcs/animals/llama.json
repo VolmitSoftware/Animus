@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "6a708832-7baf-5a7d-bf04-807144b0cfd3",
+  "id": "llama",
+  "group": "animals",
+  "name": "Spitter",
+  "type": "minecraft:llama",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 20.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "body": {
+      "id": "minecraft:red_carpet"
+    }
+  }
+}

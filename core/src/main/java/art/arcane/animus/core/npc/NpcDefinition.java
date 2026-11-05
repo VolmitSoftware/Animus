@@ -90,6 +90,8 @@ public final class NpcDefinition {
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { art.arcane.animus.core.rig.RigReference.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.hire.HireTerms.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
         }
         return List.copyOf(errors);
     }

@@ -21,9 +21,12 @@ final class NativeBones {
     private final Object itemStack, itemContext, blockState, text, lineWidth, background, styleFlags;
     private final Constructor<?> vector, quaternion;
     private final Object itemDisplayType, blockDisplayType, textDisplayType;
+    /** Styles text the way holograms are styled; null leaves plain text. */
+    private final NativePresentation presentation;
 
-    NativeBones(Method dataValue, String craftPackage, Object itemDisplayType, Object blockDisplayType, Object textDisplayType) throws ReflectiveOperationException {
+    NativeBones(Method dataValue, String craftPackage, Object itemDisplayType, Object blockDisplayType, Object textDisplayType, NativePresentation presentation) throws ReflectiveOperationException {
         this.dataValue = dataValue;
+        this.presentation = presentation;
         this.itemDisplayType = itemDisplayType; this.blockDisplayType = blockDisplayType; this.textDisplayType = textDisplayType;
         Class<?> display = Class.forName("net.minecraft.world.entity.Display");
         Class<?> item = Class.forName("net.minecraft.world.entity.Display$ItemDisplay");
@@ -69,7 +72,7 @@ final class NativeBones {
                 values.add(dataValue.invoke(null, blockState, data.getClass().getMethod("getState").invoke(data)));
             }
             case TEXT -> {
-                values.add(dataValue.invoke(null, text, literal.invoke(null, bone.text())));
+                values.add(dataValue.invoke(null, text, presentation != null ? presentation.component(bone.text()) : literal.invoke(null, bone.text())));
                 values.add(dataValue.invoke(null, billboard, bone.billboard()));
                 values.add(dataValue.invoke(null, lineWidth, bone.lineWidth()));
                 values.add(dataValue.invoke(null, background, bone.background()));

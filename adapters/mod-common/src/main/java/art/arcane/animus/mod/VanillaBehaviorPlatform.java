@@ -1,5 +1,6 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
@@ -24,10 +25,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.network.chat.Style;
 import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
@@ -78,26 +76,14 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     }
     @Override public int say(NpcHandle npc, Audience audience, String text) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
-        Component line = Component.literal(active.name() + ": " + text);
+        Component line = ModText.component(DialogueFormat.speech(active.name(), text));
         return deliver(audience, active.state().position(), false, (ServerPlayer viewer) -> viewer.sendSystemMessage(line));
     }
     @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) {
         NpcRuntime.ActiveNpc active = require(npc);
-        Component message = Component.literal(active.name() + ": " + prompt);
-        Component buttons = choiceButtons(token, List.copyOf(options));
+        Component message = ModText.component(DialogueFormat.speech(active.name(), prompt));
+        Component buttons = ModText.parts(DialogueFormat.buttons(BuildIdentity.ID, token, List.copyOf(options)));
         return living.players().deliver(player, (ServerPlayer online) -> { online.sendSystemMessage(message); online.sendSystemMessage(buttons); }) ? 1 : 0;
-    }
-    /** Option text stays literal: it is placed in a component, never parsed for formatting codes. */
-    static Component choiceButtons(String token, List<ChoiceOption> options) {
-        MutableComponent line = Component.empty();
-        boolean first = true;
-        for (ChoiceOption option : options) {
-            if (!first) line.append(Component.literal("  "));
-            first = false;
-            line.append(Component.literal("[" + option.text() + "]").withStyle(Style.EMPTY.withClickEvent(
-                    new ClickEvent.RunCommand("/" + BuildIdentity.ID + " choice " + token + " " + option.id()))));
-        }
-        return line;
     }
     @Override public void runCommand(CommandSource source, Optional<UUID> player, String command) {
         CommandSourceStack stack;
