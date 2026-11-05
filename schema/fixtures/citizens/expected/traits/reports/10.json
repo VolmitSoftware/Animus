@@ -13,6 +13,9 @@
     "/traits/location/z": "CONVERTED",
     "/traits/mounttrait/mountedon": "REQUIRES_REVIEW"
   },
+  "reasons": {
+    "/traits/mounttrait/mountedon": "the NPC this one rides is ambiguous in the save; set animus:mount by hand"
+  },
   "worldRemaps": [
     {
       "source": "/traits/location",

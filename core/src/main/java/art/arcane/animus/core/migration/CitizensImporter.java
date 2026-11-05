@@ -18,7 +18,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 9;
+    public static final int CONVERTER_VERSION = 10;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. Groups other than {@code citizens} come from converter version 7.
@@ -28,6 +28,8 @@ public final class CitizensImporter {
     /** A generated behavior of converter version 8 and later. */
     static final String BEHAVIOR_PATH = "behaviors/citizens/(?:text|commands)-[0-9]+\\.json";
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
+    /** A mapper's decision for one report field and everything under it, with the one-line reason a report shows. */
+    record Note(Status status, String reason) {}
     public record Preview(String id, Path directory, int records, int valid, int skins, JsonObject summary) {
         public Preview { summary = summary.deepCopy(); }
         @Override public JsonObject summary() { return summary.deepCopy(); }
@@ -96,8 +98,9 @@ public final class CitizensImporter {
                 JsonArray migrationWarnings = new JsonArray();
                 for (JsonElement inferred : citizensDefaults.getAsJsonArray("inferred")) {
                     boolean value = citizensDefaults.getAsJsonObject("lookclose").get(inferred.getAsString()).getAsBoolean();
-                    if (value != CitizensBehaviors.LOOK_DEFAULTS.get(inferred.getAsString())) migrationWarnings.add("lookclose/" + inferred.getAsString() + ": Citizens writes it only when it differs from the server default and this save writes only "
-                            + !value + ", so an unset value means " + value);
+                    if (value != CitizensBehaviors.LOOK_DEFAULTS.get(inferred.getAsString())) migrationWarnings.add("lookclose/" + inferred.getAsString() + ": this save only ever writes "
+                            + !value + ", so NPCs without the field are converted with " + value + " (the server default that wrote the save); if that default was "
+                            + !value + ", set " + inferred.getAsString() + " in animus:look-close on those NPCs");
                 }
                 int remappedLocations = 0;
                 int resolvedReferences = 0;
@@ -167,10 +170,7 @@ public final class CitizensImporter {
                     // A skin is only drawn on a player body; any other body keeps it under citizens:review.
                     boolean skinApplied = traits.has("skintrait") && definition.get("type").getAsString().equals(BodyRules.PLAYER);
                     List<String> presentationWarnings = new ArrayList<>(presentation.warnings());
-                    if (traits.has("skintrait") && !skinApplied) {
-                        presentationWarnings.add("/traits/skintrait: skins show only on player bodies; kept for review");
-                        increment(conversions, "skinsKept");
-                    }
+                    if (traits.has("skintrait") && !skinApplied) increment(conversions, "skinsKept");
                     for (String warning : presentationWarnings) migrationWarnings.add("citizens-" + key + ": " + warning);
                     JsonObject modules = new JsonObject();
                     if (traits.has("sentinel")) {
@@ -211,11 +211,15 @@ public final class CitizensImporter {
                     conversions.addProperty("routeGuides", conversions.get("routeGuides").getAsInt() + runtime.guides());
                     runtime.lookClose().ifPresent((JsonObject look) -> {
                         modules.add("animus:look-close", look);
-                        increment(conversions, "lookClose");
+                        if (look.get("enabled").getAsBoolean()) increment(conversions, "lookClose");
                     });
                     for (String behavior : runtime.behaviors()) increment(conversions, behavior.startsWith("citizens:text-") ? "textBehaviors" : "commandBehaviors");
                     for (CitizensBehaviors.Document document : runtime.documents()) { writeBundle(temporary, document.path(), document.content(), manifest); behaviorDocuments++; }
                     for (String warning : runtime.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
+                    CitizensTraits.Result state = CitizensTraits.map(definition.get("type").getAsString(), record, reviewed, modules.has("animus:combat"), references);
+                    for (Map.Entry<String, JsonElement> field : state.fields().entrySet()) definition.add(field.getKey(), field.getValue());
+                    if (!state.migration().isEmpty()) migration.add("skin", state.migration());
+                    for (String warning : state.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
                     // This review copy applies only known location transformations. Exact originals stay in records/ and source.yml.
                     if (skinApplied) reviewed.remove("skintrait");
                     modules.add("citizens:review", reviewed);
@@ -234,12 +238,19 @@ public final class CitizensImporter {
                     JsonObject fields = new JsonObject();
                     Set<String> convertedFields = new HashSet<>(presentation.converted());
                     convertedFields.addAll(runtime.converted());
-                    classify(record, "", fields, convertedFields);
-                    if (!skinApplied) for (String path : fields.keySet()) if (path.startsWith("/traits/skintrait/")) fields.addProperty(path, Status.UNSUPPORTED_PRESERVED.name());
+                    convertedFields.addAll(state.converted());
+                    Map<String, Note> notes = new HashMap<>(presentation.notes());
+                    notes.putAll(runtime.notes());
+                    notes.putAll(state.notes());
+                    if (traits.has("skintrait") && !skinApplied)
+                        notes.put("/traits/skintrait", new Note(Status.UNSUPPORTED_PRESERVED, "skins show only on player bodies; this one is kept for when the NPC becomes a player"));
+                    JsonObject reasons = new JsonObject();
+                    classify(record, "", fields, convertedFields, notes, reasons);
                     report.add("presentationWarnings", GSON.toJsonTree(presentationWarnings));
                     report.add("runtimeWarnings", GSON.toJsonTree(runtime.warnings()));
                     report.addProperty("fieldPathFormat", "json-pointer");
                     report.add("fields", fields);
+                    report.add("reasons", reasons);
                     report.add("worldRemaps", worldRemaps);
                     report.add("references", references);
                     List<String> errors = new ArrayList<>(validate(definition));
@@ -271,7 +282,7 @@ public final class CitizensImporter {
                 JsonObject sourceFields = new JsonObject();
                 JsonObject sourceMetadata = new JsonObject();
                 root.entrySet().stream().filter(e -> !e.getKey().equals("npc")).forEach(e -> sourceMetadata.add(e.getKey(), e.getValue().deepCopy()));
-                if (!sourceMetadata.isEmpty()) classify(sourceMetadata, "", sourceFields, Set.of());
+                if (!sourceMetadata.isEmpty()) classify(sourceMetadata, "", sourceFields, Set.of(), Map.of(), new JsonObject());
                 summary.add("sourceFields", sourceFields);
                 summary.add("idMap", mapping);
                 summary.add("documents", manifest);
@@ -470,30 +481,58 @@ public final class CitizensImporter {
         return List.copyOf(errors);
     }
 
-    private static void classify(JsonElement value, String path, JsonObject fields, Set<String> converted) {
+    /** Location fields Animus reads directly: the facing is one yaw for head and body, and the world is matched by name. */
+    private static final Set<String> LOCATION = Set.of("/uuid", "/name", "/traits/type", "/traits/location/world", "/traits/location/x", "/traits/location/y",
+            "/traits/location/z", "/traits/location/yaw", "/traits/location/pitch", "/traits/location/bodyYaw", "/traits/location/worldid");
+
+    /**
+     * Gives every leaf of the record a status: converted paths first, then the nearest note on the path or one of its
+     * parents, then the trait's own rule. Every field that is not converted gets a one-line reason in {@code reasons}.
+     */
+    private static void classify(JsonElement value, String path, JsonObject fields, Set<String> converted, Map<String, Note> notes, JsonObject reasons) {
         if (value.isJsonObject() && !value.getAsJsonObject().isEmpty()) {
-            value.getAsJsonObject().entrySet().forEach(e -> classify(e.getValue(), path + "/" + pointer(e.getKey()), fields, converted));
-        } else if (value.isJsonArray() && !value.getAsJsonArray().isEmpty()) {
-            for (int i = 0; i < value.getAsJsonArray().size(); i++) classify(value.getAsJsonArray().get(i), path + "/" + i, fields, converted);
-        } else {
-            Status status = Status.UNSUPPORTED_PRESERVED;
-            if (converted.contains(path)) status = Status.CONVERTED;
-            else if (Set.of("/uuid", "/name", "/traits/type", "/traits/location/world", "/traits/location/x", "/traits/location/y", "/traits/location/z", "/traits/location/yaw", "/traits/location/pitch").contains(path)) status = Status.CONVERTED;
-            else if (path.startsWith("/traits/")) {
-                String[] parts = path.substring(8).split("/", 3);
-                String trait = parts[0];
-                if (trait.equals("sentinel") && parts.length > 1) status = switch (SentinelMapping.disposition(parts[1])) {
-                    case CONVERTED -> Status.CONVERTED;
-                    case UNSUPPORTED, STATISTIC -> Status.UNSUPPORTED_PRESERVED;
-                    case UNKNOWN -> Status.REQUIRES_INTEGRATION;
-                };
-                else if (INTEGRATIONS.contains(trait) || trait.startsWith("denizen")) status = Status.REQUIRES_INTEGRATION;
-                else if (trait.equals("skintrait")) status = Status.CONVERTED;
-                else if (trait.equals("trader")) status = parts.length > 1 && Set.of("guiName", "converted-to-v5").contains(parts[1]) ? Status.CONVERTED : Status.REQUIRES_INTEGRATION;
-                else if (REVIEW.contains(trait)) status = Status.REQUIRES_REVIEW;
-            }
-            fields.addProperty(path, status.name());
+            value.getAsJsonObject().entrySet().forEach(e -> classify(e.getValue(), path + "/" + pointer(e.getKey()), fields, converted, notes, reasons));
+            return;
         }
+        if (value.isJsonArray() && !value.getAsJsonArray().isEmpty()) {
+            for (int i = 0; i < value.getAsJsonArray().size(); i++) classify(value.getAsJsonArray().get(i), path + "/" + i, fields, converted, notes, reasons);
+            return;
+        }
+        Note note = converted.contains(path) || LOCATION.contains(path) ? new Note(Status.CONVERTED, "") : nearest(path, notes);
+        if (note == null) note = rule(path, value);
+        fields.addProperty(path, note.status().name());
+        if (!note.reason().isEmpty()) reasons.addProperty(path, note.reason());
+    }
+
+    private static Note nearest(String path, Map<String, Note> notes) {
+        for (String at = path; !at.isEmpty(); at = at.substring(0, at.lastIndexOf('/'))) {
+            Note note = notes.get(at);
+            if (note != null) return note;
+        }
+        return null;
+    }
+
+    /** The status and reason of a field no mapper decided on. */
+    private static Note rule(String path, JsonElement value) {
+        if (!path.startsWith("/traits/")) return new Note(Status.UNSUPPORTED_PRESERVED, "Citizens field with no Animus equivalent; kept in records/");
+        String[] parts = path.substring(8).split("/", 3);
+        String trait = parts[0];
+        // An empty trait keeps Citizens' defaults, which are also Animus' defaults.
+        if (parts.length == 1 && (value.isJsonObject() || value.isJsonArray())) return new Note(Status.CONVERTED, "");
+        if (trait.equals("sentinel") && parts.length > 1) return switch (SentinelMapping.disposition(parts[1])) {
+            case CONVERTED -> new Note(Status.CONVERTED, "");
+            case STATISTIC -> new Note(Status.UNSUPPORTED_PRESERVED, "Sentinel's record of past fights; history, not a setting");
+            case UNSUPPORTED -> new Note(Status.UNSUPPORTED_PRESERVED, "Sentinel setting with no animus:combat equivalent; kept in the combat review data");
+            case UNKNOWN -> new Note(Status.REQUIRES_INTEGRATION, "Sentinel field this converter does not know; kept in the combat review data");
+        };
+        if (trait.equals("assignment") || trait.equals("triggers") || trait.startsWith("denizen") || trait.equals("constants"))
+            return new Note(Status.REQUIRES_INTEGRATION, "Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand");
+        if (INTEGRATIONS.contains(trait)) return new Note(Status.REQUIRES_INTEGRATION, "needs a plugin integration Animus does not have");
+        if (trait.equals("skintrait")) return new Note(Status.CONVERTED, "");
+        if (trait.equals("trader")) return parts.length > 1 && Set.of("guiName", "converted-to-v5").contains(parts[1]) ? new Note(Status.CONVERTED, "")
+                : new Note(Status.REQUIRES_INTEGRATION, "dtlTraders data; convert it with the dtlTraders shop import");
+        if (REVIEW.contains(trait)) return new Note(Status.REQUIRES_REVIEW, "not converted; check it in citizens:review");
+        return new Note(Status.UNSUPPORTED_PRESERVED, "trait " + trait + " has no Animus equivalent; kept in citizens:review");
     }
 
     private static String pointer(String key) { return key.replace("~", "~0").replace("/", "~1"); }

@@ -63,7 +63,7 @@ class CitizensImporterTest {
         assertEquals("frog", review.getAsJsonObject("skintrait").get("textureRaw").getAsString());
         JsonObject report = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/2.json")));
         assertEquals("UNSUPPORTED_PRESERVED", report.getAsJsonObject("fields").get("/traits/skintrait/textureRaw").getAsString());
-        assertTrue(report.getAsJsonArray("presentationWarnings").toString().contains("/traits/skintrait"));
+        assertTrue(report.getAsJsonObject("reasons").get("/traits/skintrait/textureRaw").getAsString().contains("player bodies"));
         assertEquals(1, preview.summary().getAsJsonObject("conversions").get("skinsKept").getAsInt());
         assertTrue(preview.conversions().contains("skins kept for review 1"));
         JsonObject player = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/world-r0_-1/citizens-1.json")));

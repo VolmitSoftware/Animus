@@ -7,12 +7,14 @@ This is a development inventory, not a release-parity claim. To run a migration,
 | UUID, readable ID, Citizens numeric ID | Converted; explicit ID map | Definition identity supported |
 | Name, type, main world/location | Converted; optional world mapping. Converter version 7 and later put each definition in `npcs/<world>-r<x>_<z>/citizens-<id>.json`, named after its world after mapping and the region file it stands in | Names up to 256 characters. Short plain player names use the player nameplate; longer or coloured player names and every non-player name show in a packet-only text display. See [appearance](runtime.md#appearance-text-and-inventory) |
 | Skins (489 traits, 409 unique complete documents) | Texture/signature/settings preserved and deduplicated. Converter version 9 and later: a skin on a body other than `minecraft:player` is kept in `citizens:review` and counted as kept for review, because only player bodies show skins | Signed textures shown by the persisted runtime; all 409 skins showed correctly in a live migration of the reference save on Paper 26.3 |
-| Equipment (123) | All eight slots convert to `equipment`; a cosmetic item replaces its slot. Item id, count and damage convert; other item data is kept in the item's `imported` field | Shown to every viewer from the definition, across restart. Kept item data (names, lore, enchantment glint, custom model data) is not shown. Equipment does not change combat damage or armor |
-| Inventory (121) | Slots 0–71 convert to `inventory` slot for slot, with the same item rules | Stored for behaviors and modules to read; never rendered. Shops and chest GUIs are separate documents ([shops](shops.md), [chest GUIs](gui.md)) and never read the NPC's inventory |
+| Equipment (123) | All eight slots convert to `equipment`; a cosmetic item replaces its slot. Converter version 10 and later read Citizens' item meta and write item components: name, lore, enchantments, unbreakable, damage, repair cost, custom model data, item model, dye colour, shield and banner patterns, potion, map id and persistent data (custom items such as ItemsAdder's use the model and data components). Meta keys with no component (item flags, the server's `internal` data) stay in the item's `imported` field and are reported per item. A HorseModifiers saddle or armour fills an empty `saddle` or `body` slot | Shown to every viewer from the definition, across restart; the server parses the components, so enchantment glint, patterns, colours and custom models show. Equipment does not change combat damage or armor |
+| Inventory (121) | Slots 0–71 convert to `inventory` slot for slot, with the same item rules. Version 10 also reads the list form Citizens writes | Stored for behaviors and modules to read; never rendered. Shops and chest GUIs are separate documents ([shops](shops.md), [chest GUIs](gui.md)) and never read the NPC's inventory |
 | Waypoints (318) | Converter version 8 and later: `linear`, `guided` and `wander` become a disabled `animus:navigation` route with world mappings applied; `delay` triggers become point waits. In the reference, 298 NPCs get a route (288 guided, 9 linear, 1 wander) with 3,963 points and 26,059 guides; the other 20 have no points. Other providers and triggers are kept and reported | `/animus import citizens accept patrols` turns routes on. Guided routes walk to random destinations through guides; legs are limited to 32 blocks across and 8 up or down, and the report counts destinations no guide reaches (37 in 29 NPCs of the reference). See [migrating](migrating-from-citizens.md#patrols) |
-| Look-close (495) | Converter version 8 and later: an enabled trait becomes `animus:look-close` with range, line of sight and look-while-walking. The reference writes only `enabled: false`, so the 493 others are on | Active once the NPC is spawned; no review of its own. Random looking, head-only, per-player, NPC targets (6 in the reference) and filters are reported and not run |
-| Holograms (91) | Lines convert to `hologram.lines` in order; at most 16 lines of 256 characters | One packet-only text display above the NPC for every viewer. Lines are evenly spaced; line margins, line height, view ranges, renderer settings and placeholders are kept for review and not applied |
-| Poses (3), sneak (1), sit (1), armor stand (3) | The default named pose sets the facing; `sneak` becomes `sneaking`, `sittrait` becomes `sitting`; armor stand parts and angles convert | Sneaking, sleeping, swimming and sitting on player bodies; other body types stand. Armor stand size, arms, base plate, visibility and limb angles are shown. Marker and gravity are kept for review. Other named poses are kept and not applied |
+| Look-close (495) | Converter version 8 and later: the trait becomes `animus:look-close` with range, line of sight and look-while-walking. The reference writes only `enabled: false`, so the 493 others are on. Version 10 also converts NPC targets (`npcs`) and random looking (`randomLook` with its delay and yaw and pitch ranges, off unless Citizens had it on), and writes a disabled module for a disabled trait | Active once the NPC is spawned; no review of its own. With `npcs` it looks at the nearest other NPC when no player is in range; with `randomLook` on it turns to a random facing every delay. Head-only, linked-body, per-player and filters are reported and not run |
+| Holograms (91) | Lines convert to `hologram.lines`, top line first: Citizens lists them bottom-up, and version 10 reverses them (earlier versions kept Citizens' order, which showed them upside down). At most 16 lines of 256 characters. Version 10 also converts line margins, line height, view range, billboard, shadow, see-through and interpolation | One packet-only text display for every viewer with the hologram's billboard, shadow, see-through, view range and interpolation. With a line height or margins each line gets its own display, stacked as Citizens stacks them. Placeholders are not filled in |
+| Poses (3), sneak (1), sneaking (1), sit (1), armor stand (3) | The default named pose sets the facing; `sneak` and the `sneaking` extension trait become `sneaking`, `sittrait` becomes `sitting`; armor stand parts and angles convert | Sneaking, sleeping, swimming and sitting on player bodies; other body types stand. Armor stand size, arms, base plate, visibility and limb angles are shown. Marker and gravity are kept for review. Other named poses are kept and not applied: Animus has no named poses |
+| NPC metadata and state (version 10) | `glowing`, `using-held-item`, `removefromplayerlist`, scoreboard colour and tags, `gravity`, negative `age`, cached skin owner and `protected`/`collidable`/`minecraft-ai` convert to `glowing`, `usingItem`, `listed`, `teamColor`, `tags`, `gravity: false`, `baby: true` and `migration.skin`. Citizens' own `CITIZENS_NPC` tag is dropped. Rotation's `immediate` matches Animus. `spawned` is the definition's dormant state | Glow, team colour on the glow and name, baby bodies, a raised held item and the tab-list entry show to every viewer on Paper, Spigot, Folia and mod servers. An NPC with `gravity: false` hovers. Mobs never target packet bodies, so `targetable: true` (4 in the reference) and vanilla AI (`minecraft-ai: true`, 2) stay preserved with that reason |
+| Navigator (495) | Version 10: speed, `avoidwater`, fall distance, pathfinding range, distance margin, stationary ticks and the default stuck action (with `disable-default-stuck-action`), `flyable` and the `step_height` attribute convert to the definition's `movement` | Routes walk at the NPC's speed when the route sets none, cross water at the surface unless `avoidWater`, climb and drop by its step height and fall distance, count a point as reached within the margin, and teleport to the point a leg is stuck on after the stationary ticks, as Citizens' default stuck action does. Routes do not open doors; `pathfinder-open-doors` (17) is reported |
 | Non-player NPCs (12) | Type converted | Every observed type has a packet body; names and hologram lines show in a text display; armor stand parts show; horse armor and saddle use the `body` and `saddle` slots |
 | Text (2) | Converter version 8 and later: the behavior `citizens:text-<id>` in `behaviors/citizens/`, with a proximity or right-click trigger and `animus:say`; random or turn-taking lines | Runs once the NPC is spawned and behaviors are loaded. One cooldown per NPC; speech bubbles and held-item requirements are reported |
 | Commands (`commandtrait`, none in the reference) | Converter version 8 and later: the behavior `citizens:commands-<id>` with right- and left-click triggers, permission checks, delays and cooldowns, using `animus:command` | Denied until the behavior is on the `commandBehaviors` allow-list. Sneak clicks, NPC-run commands, use limits and costs are reported and not converted |
@@ -23,8 +25,9 @@ This is a development inventory, not a release-parity claim. To run a migration,
 | Builder and Constructor (none in the reference) | Builder's `builder` trait converts to an `animus:builder` section, disabled pending review; Constructor's `constructor` trait is kept for review and its keys are reported | [Building](building.md) runs a reviewed section with `/animus build start <npc-id>`. Builder `.schematic` files must be saved again as `.schem` |
 | Denizen flags (24), assignment/trigger records (8 each) | The records stay in `citizens:review`. With the Denizen folder beside the save, the import converts the scripts into `denizen:` behaviors bound to the assigned NPCs, and flag values into behavior state. See [migrating from Citizens](migrating-from-citizens.md#denizen) | Behaviors run once `accept denizen` lists them. On the private reference (2026-11-05): 157 scripts, 56 behaviors for 6 NPCs, 222 of 2,195 command lines converted, 137 flag values imported and 65 kept, all 56 behaviors valid offline; the browser converter gives the same output hash |
 | Denizen scripts (separate `plugins/Denizen/scripts`) | Assignment, interact and task scripts convert; world, procedure, command and data scripts are kept with reasons | Lines using definitions, loops over computed values or tags with no placeholder are kept and listed per file and line |
-| Mounts (2) | Preserved; UUID references resolved | Resolved references apply from definitions on exact Paper/Spigot: passengers for every viewer, across restart. Unresolved ones stay preserved and reported. See [mounted NPCs](runtime.md#mounted-npcs) |
-| Controllable (1) | Converter version 7 and later: an enabled trait becomes `animus:riding` with `enabled` and `reviewAccepted` false; the trait stays in `citizens:review` | `/animus import citizens accept riding` turns it on. See [riding](runtime.md#riding-an-npc) |
+| Sentinel statistics (`stats_*`) | Preserved as history, not settings | Not used |
+| Mounts (2) | UUID references resolved; version 10 reports a resolved `mountedon` as converted | Resolved references apply from definitions on exact Paper/Spigot: passengers for every viewer, across restart. Unresolved ones stay preserved and reported. See [mounted NPCs](runtime.md#mounted-npcs) |
+| Controllable (1) | Converter version 7 and later: an enabled trait becomes `animus:riding` with `enabled` and `reviewAccepted` false; the trait stays in `citizens:review`. A disabled trait (the reference's one) converts to nothing | `/animus import citizens accept riding` turns it on. See [riding](runtime.md#riding-an-npc) |
 | Dragons (3 bodies) | Preserved; type converted | Packet body with correct facing, phase and part-based hits; no AI. See [presentation](runtime.md#ender-dragon-presentation) |
 | Missing/unknown modules and traits | Preserved as JSON and in original archive | Trusted Java modules load at startup; module workflows and JSON behaviors (manual and triggered) pass live checks on all nine Paper, Spigot and Folia targets. Unknown imported settings remain unexecuted |
 
@@ -34,36 +37,36 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 
 | Trait | Records | Classification beyond converted fields |
 |---|---:|---|
-| age | 2 | Unsupported, preserved |
+| age | 2 | Negative age converts to `baby: true` on bodies with a baby form |
 | armorstandtrait | 3 | Converted to `armorStand`; marker and gravity preserved |
 | assignment | 8 | Requires integration; converted from the Denizen scripts when they are present |
-| attributetrait | 13 | Unsupported, preserved |
-| controllable | 1 | Requires review |
+| attributetrait | 13 | `step_height` converted to `movement.stepHeight`; other attributes preserved |
+| controllable | 1 | Converted (disabled trait) |
 | denizen_flags | 24 | Requires integration; true/false and whole-number values import as NPC behavior state |
-| equipment | 123 | Converted to `equipment`; extra item data preserved |
-| gravity | 4 | Unsupported, preserved |
-| hologramtrait | 91 | Lines converted to `hologram`; layout settings preserved |
-| horsemodifiers | 4 | Unsupported, preserved |
-| inventory | 121 | Converted to `inventory`; extra item data preserved |
-| location | 495 | Main world/coordinates converted; other fields preserved for review |
-| lookclose | 495 | Converted to `animus:look-close` when enabled; unsupported options preserved |
-| mounttrait | 2 | Requires review |
+| equipment | 123 | Converted to `equipment` with item components; meta without a component preserved per item |
+| gravity | 4 | Converted to `gravity` |
+| hologramtrait | 91 | Lines, margins and renderer settings converted to `hologram` |
+| horsemodifiers | 4 | Saddle and armour converted to equipment slots; colour, style and chest require review |
+| inventory | 121 | Converted to `inventory` with item components |
+| location | 495 | Converted, including the world id and body yaw |
+| lookclose | 495 | Converted to `animus:look-close`; head-only, linked-body, per-player and filters require review |
+| mounttrait | 2 | Converted when the reference resolves |
 | owner | 388 | Player UUID converted to `owner` |
-| poses | 3 | Default pose converted to the facing; other poses preserved |
-| rotationtrait | 1 | Unsupported, preserved |
-| scoreboardtrait | 495 | Unsupported, preserved |
-| sentinel | 103 | Converted to combat settings; disabled pending review |
+| poses | 3 | Default pose converted to the facing; other named poses preserved |
+| rotationtrait | 1 | Converted when immediate or default; gradual turning requires review |
+| scoreboardtrait | 495 | Colour converted to `teamColor`, tags to `tags` |
+| sentinel | 103 | Converted to combat settings; disabled pending review; statistics preserved |
 | sittrait | 1 | Converted to `pose: sitting` |
 | skintrait | 489 | Converted to skin documents for player bodies; kept in `citizens:review` on other bodies; opt-in signed-texture proof |
 | sneak | 1 | Converted to `pose: sneaking` |
-| sneaking | 1 | Unsupported, preserved |
-| spawned | 11 | Requires review; candidate spawned=false |
-| targetable | 24 | Unsupported, preserved |
+| sneaking | 1 | Converted to `pose: sneaking` |
+| spawned | 11 | Converted; imported NPCs stay dormant until applied |
+| targetable | 24 | `false` converted; `true` preserved, mobs never target packet bodies |
 | text | 2 | Converted to a generated `citizens:text-<id>` behavior |
 | trader | 0 | `guiName` and `converted-to-v5` converted to `animus:shop`; version 3 stock requires the shop importer |
 | triggers | 8 | Requires integration |
 | type | 495 | Converted identifier; opt-in packet proof for all observed types |
-| waypoints | 318 | Converted to an `animus:navigation` route, disabled pending review; unsupported providers and triggers preserved |
+| waypoints | 318 | Converted to an `animus:navigation` route, disabled pending review. Point facing and world ids, and triggers on guides (which Citizens never runs), count as converted; settings of a provider the NPC does not use and unsupported triggers are preserved |
 
 ## Sentinel settings
 

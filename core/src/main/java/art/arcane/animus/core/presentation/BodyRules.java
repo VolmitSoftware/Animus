@@ -27,10 +27,16 @@ public final class BodyRules {
 
     /** A body's own text display always stays in its roster, after every other passenger. */
     public static int[] withText(int[] roster, int displayId) {
-        if (displayId < 0) return roster;
+        return displayId < 0 ? roster : withText(roster, new int[]{displayId});
+    }
+
+    /** A body's own text displays always stay in its roster, after every other passenger, in row order. */
+    public static int[] withText(int[] roster, int[] displayIds) {
+        if (displayIds.length == 0) return roster;
+        // The rows count as one passenger slot: a body keeps room for its text however many rows it has.
         if (roster.length + 1 > MAX_PASSENGER_IDS) throw new IllegalArgumentException("Passenger list must contain at most " + MAX_PASSENGER_IDS + " bodies");
-        int[] result = Arrays.copyOf(roster, roster.length + 1);
-        result[roster.length] = displayId;
+        int[] result = Arrays.copyOf(roster, roster.length + displayIds.length);
+        System.arraycopy(displayIds, 0, result, roster.length, displayIds.length);
         return result;
     }
 
@@ -50,6 +56,27 @@ public final class BodyRules {
         if (name == null || name.isBlank() || name.length() > 16 || name.codePoints().anyMatch(Character::isISOControl))
             throw new IllegalArgumentException("Player profile name must contain 1..16 characters without control characters");
     }
+
+    /** Which vanilla class holds a body type's baby flag: each keeps its own {@code DATA_BABY_ID}. */
+    public enum BabyFlag { AGEABLE, ZOMBIE, PIGLIN, ZOGLIN }
+    private static final Set<String> AGEABLE = Set.of("minecraft:armadillo", "minecraft:axolotl", "minecraft:bee", "minecraft:camel", "minecraft:cat",
+            "minecraft:chicken", "minecraft:cow", "minecraft:mooshroom", "minecraft:dolphin", "minecraft:donkey", "minecraft:fox", "minecraft:frog",
+            "minecraft:goat", "minecraft:glow_squid", "minecraft:happy_ghast", "minecraft:hoglin", "minecraft:horse", "minecraft:llama", "minecraft:mule",
+            "minecraft:ocelot", "minecraft:panda", "minecraft:parrot", "minecraft:pig", "minecraft:polar_bear", "minecraft:rabbit", "minecraft:sheep",
+            "minecraft:skeleton_horse", "minecraft:sniffer", "minecraft:squid", "minecraft:strider", "minecraft:trader_llama", "minecraft:turtle",
+            "minecraft:villager", "minecraft:wandering_trader", "minecraft:wolf", "minecraft:zombie_horse", "minecraft:camel_husk", "minecraft:nautilus",
+            "minecraft:zombie_nautilus");
+    private static final Set<String> ZOMBIES = Set.of("minecraft:zombie", "minecraft:husk", "minecraft:drowned", "minecraft:zombie_villager");
+
+    /** The class whose baby flag a body type uses; empty for bodies with no baby form. */
+    public static java.util.Optional<BabyFlag> babyFlag(String type) {
+        if (AGEABLE.contains(type)) return java.util.Optional.of(BabyFlag.AGEABLE);
+        if (ZOMBIES.contains(type)) return java.util.Optional.of(BabyFlag.ZOMBIE);
+        if (type.equals("minecraft:piglin")) return java.util.Optional.of(BabyFlag.PIGLIN);
+        if (type.equals("minecraft:zoglin")) return java.util.Optional.of(BabyFlag.ZOGLIN);
+        return java.util.Optional.empty();
+    }
+    public static boolean canBeBaby(String type) { return babyFlag(type).isPresent(); }
 
     /** The vanilla {@code EquipmentSlot} constant name. */
     public static String nativeSlot(EquipmentSlot slot) {
