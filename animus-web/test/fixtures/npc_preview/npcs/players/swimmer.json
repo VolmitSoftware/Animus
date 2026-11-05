@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "c9df6c03-2ed6-5b56-8df3-3b8cfd940919",
+  "id": "swimmer",
+  "group": "players",
+  "name": "Swimmer",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 6.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "pose": "swimming"
+}

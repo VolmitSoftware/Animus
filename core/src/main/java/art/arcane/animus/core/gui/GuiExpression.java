@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -245,13 +246,13 @@ public final class GuiExpression {
                 if (digits != Math.rint(digits) || digits < 0 || digits > 20) throw new Invalid("fixed digits must be a whole number 0-20");
                 yield String.format(Locale.ROOT, "%." + (int) digits + "f", num(values.get(0)));
             }
-            case "plain" -> { arity(call, values, 1); yield GuiText.plain(text(values.get(0))); }
+            case "plain" -> { arity(call, values, 1); yield RichText.plain(text(values.get(0))); }
             case "readable" -> { arity(call, values, 1); yield readable(text(values.get(0))); }
             case "align" -> {
                 arity(call, values, 3);
                 String value = text(values.get(0));
                 int width = (int) num(values.get(1));
-                int pad = Math.max(0, width - GuiText.plain(value).length());
+                int pad = Math.max(0, width - RichText.plain(value).length());
                 String mode = text(values.get(2));
                 yield switch (mode) {
                     case "right" -> " ".repeat(pad) + value;
@@ -290,7 +291,7 @@ public final class GuiExpression {
     }
 
     private static double parseNumber(String text) {
-        String plain = GuiText.plain(text).replace(",", "");
+        String plain = RichText.plain(text).replace(",", "");
         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("-?\\d+(\\.\\d+)?").matcher(plain);
         if (!matcher.find()) throw new Invalid("'" + text + "' contains no number");
         return Double.parseDouble(matcher.group());

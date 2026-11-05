@@ -1,6 +1,6 @@
 package art.arcane.animus.mod;
 
-import art.arcane.animus.core.gui.GuiText;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.DisplayEntity;
@@ -214,20 +214,7 @@ final class VanillaDisplayTransport implements DisplayTransport<ServerPlayer> {
     }
 
     /** A chat component of the styled runs, so hex colours render on every client. */
-    static Component component(String coloured) {
-        MutableComponent root = Component.empty();
-        for (GuiText.Span span : GuiText.spans(coloured)) {
-            Style style = Style.EMPTY;
-            if (span.rgb() >= 0) style = style.withColor(span.rgb());
-            if (span.bold()) style = style.withBold(true);
-            if (span.italic()) style = style.withItalic(true);
-            if (span.underlined()) style = style.withUnderlined(true);
-            if (span.strikethrough()) style = style.withStrikethrough(true);
-            if (span.obfuscated()) style = style.withObfuscated(true);
-            root.append(Component.literal(span.text()).setStyle(style));
-        }
-        return root;
-    }
+    static Component component(String coloured) { return ModText.component(coloured); }
 
     private void send(Session session, List<Packet<ClientGamePacketListener>> packets) {
         if (!session.viewer.connection.isAcceptingMessages()) return;

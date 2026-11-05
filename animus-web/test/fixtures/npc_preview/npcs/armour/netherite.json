@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "a1edbfe8-3016-576b-a7ab-e1bc67e64f67",
+  "id": "netherite",
+  "group": "armour",
+  "name": "Netherite",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 30.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "head": {
+      "id": "minecraft:netherite_helmet"
+    },
+    "chest": {
+      "id": "minecraft:netherite_chestplate"
+    },
+    "legs": {
+      "id": "minecraft:netherite_leggings"
+    },
+    "feet": {
+      "id": "minecraft:netherite_boots"
+    }
+  }
+}

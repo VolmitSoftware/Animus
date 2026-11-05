@@ -1,0 +1,128 @@
+@font-face {
+  font-family: "Minecraft";
+  src: url("../assets/fonts/minecraft/Minecraft-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.animus-npc-preview {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.animus-npc-preview-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.animus-npc-skin-url {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.animus-npc-skin-url > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.animus-mc-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  min-height: 16rem;
+  max-height: 72vh;
+  overflow: hidden;
+  border: 1px solid var(--animus-border);
+  border-radius: var(--animus-radius);
+  background: #9ebff5;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.animus-mc-stage:active {
+  cursor: grabbing;
+}
+
+.animus-mc-gl-host,
+.animus-mc-gl-host canvas,
+.animus-mc-text-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.animus-mc-gl-host canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.animus-mc-text-layer {
+  pointer-events: none;
+}
+
+.animus-mc-text {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  font-family: "Minecraft", var(--font-mono);
+  line-height: 1.25;
+  white-space: pre;
+  text-align: center;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0 0.125em;
+}
+
+.animus-mc-text.is-nameplate {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.animus-mc-text-line {
+  text-shadow: none;
+}
+
+.animus-mc-problem {
+  position: absolute;
+  inset: auto 0.75rem 0.75rem 0.75rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--animus-radius);
+  background: rgba(0, 0, 0, 0.7);
+  color: #ffffff;
+}
+
+.animus-npc-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.animus-npc-facts dt {
+  color: var(--animus-muted);
+}
+
+.animus-npc-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.animus-npc-notes {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--animus-muted);
+}
+
+@media (max-width: 760px) {
+  .animus-mc-stage {
+    aspect-ratio: 3 / 4;
+  }
+}

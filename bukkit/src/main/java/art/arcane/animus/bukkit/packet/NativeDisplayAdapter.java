@@ -1,7 +1,8 @@
 package art.arcane.animus.bukkit.packet;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.bukkit.gui.BukkitScreens;
-import art.arcane.animus.core.gui.GuiText;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import art.arcane.animus.core.presentation.DisplayTransport;
@@ -397,9 +398,9 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         /** A chat component of the styled runs, so hex colours render on every client. */
         private Object component(String coloured) throws ReflectiveOperationException {
             Object root = empty.invoke(null);
-            for (GuiText.Span span : GuiText.spans(coloured)) {
+            for (RichText.Run span : RichText.runs(coloured)) {
                 Object style = emptyStyle;
-                if (span.rgb() >= 0) style = withColor.invoke(style, span.rgb());
+                if (span.rgb().isPresent()) style = withColor.invoke(style, span.rgb().getAsInt());
                 if (span.bold()) style = withBold.invoke(style, Boolean.TRUE);
                 if (span.italic()) style = withItalic.invoke(style, Boolean.TRUE);
                 if (span.underlined()) style = withUnderlined.invoke(style, Boolean.TRUE);

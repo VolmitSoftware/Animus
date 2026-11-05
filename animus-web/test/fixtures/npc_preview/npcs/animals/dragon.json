@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "f0d56451-9306-51f5-9b80-83361f5ef64b",
+  "id": "dragon",
+  "group": "animals",
+  "name": "Ender",
+  "type": "minecraft:ender_dragon",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 24.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "hologram": {
+    "lines": [
+      "&5Boss"
+    ]
+  }
+}

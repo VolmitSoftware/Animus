@@ -108,7 +108,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
             next.menu = menu;
             fill(menu, frame);
             return menu;
-        }, Component.literal(frame.title())));
+        }, ModText.component(frame.title())));
         if (id.isEmpty() || next.menu == null) return Optional.empty();
         return Optional.of(next);
     }
@@ -149,12 +149,12 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         }
     }
 
-    @Override public void message(ServerPlayer player, String text) { player.sendSystemMessage(Component.literal(text)); }
-    @Override public void actionBar(ServerPlayer player, String text) { player.sendSystemMessage(Component.literal(text), true); }
+    @Override public void message(ServerPlayer player, String text) { player.sendSystemMessage(ModText.component(text)); }
+    @Override public void actionBar(ServerPlayer player, String text) { player.sendSystemMessage(ModText.component(text), true); }
     @Override public void title(ServerPlayer player, String title, String subtitle, int fadeIn, int stay, int fadeOut) {
         player.connection.send(new ClientboundSetTitlesAnimationPacket(fadeIn, stay, fadeOut));
-        if (!subtitle.isEmpty()) player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(subtitle)));
-        player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(title)));
+        if (!subtitle.isEmpty()) player.connection.send(new ClientboundSetSubtitleTextPacket(ModText.component(subtitle)));
+        player.connection.send(new ClientboundSetTitleTextPacket(ModText.component(title)));
     }
     @Override public void sound(ServerPlayer player, String sound, String source, float volume, float pitch) {
         Identifier id = Identifier.tryParse(sound.contains(":") ? sound : "minecraft:" + sound);
@@ -171,7 +171,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         ParseResults<CommandSourceStack> parsed = commands.getDispatcher().parse(command, source);
         commands.performCommand(parsed, command);
     }
-    @Override public void broadcast(String text) { server.getPlayerList().broadcastSystemMessage(Component.literal(text), false); }
+    @Override public void broadcast(String text) { server.getPlayerList().broadcastSystemMessage(ModText.component(text), false); }
 
     @Override public Optional<Pose> pose(ServerPlayer player) {
         Set<String> worlds = new HashSet<>();
@@ -267,7 +267,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         return Optional.of(stack);
     }
 
-    private static Component plain(String text) { return Component.literal(text).setStyle(Style.EMPTY.withItalic(false)); }
+    private static Component plain(String text) { return ModText.component(text, Style.EMPTY.withItalic(false)); }
 
     @Override public void drop(ServerPlayer player, ItemStack stack) {
         ItemEntity entity = new ItemEntity(player.level(), player.getX(), player.getEyeY() - 0.3, player.getZ(), stack);

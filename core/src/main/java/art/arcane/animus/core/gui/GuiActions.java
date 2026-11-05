@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.GuiModel.Action;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.inventory.Economy;
@@ -110,10 +111,10 @@ public final class GuiActions<P, S> {
             case GuiModel.Command command -> host.command(command.source() == GuiModel.CommandSource.PLAYER ? Optional.of(player) : Optional.empty(),
                     command.command().render(scope));
             case GuiModel.Sound sound -> host.sound(player, sound.sound(), sound.source(), sound.volume(), sound.pitch());
-            case GuiModel.Message message -> host.message(player, GuiText.colorize(message.message().render(scope)));
-            case GuiModel.Title title -> host.title(player, GuiText.colorize(title.title().render(scope)),
-                    title.subtitle().map((GuiTemplate text) -> GuiText.colorize(text.render(scope))).orElse(""), title.fadeInTicks(), title.stayTicks(), title.fadeOutTicks());
-            case GuiModel.ActionBar bar -> host.actionBar(player, GuiText.colorize(bar.text().render(scope)));
+            case GuiModel.Message message -> host.message(player, RichText.colorize(message.message().render(scope)));
+            case GuiModel.Title title -> host.title(player, RichText.colorize(title.title().render(scope)),
+                    title.subtitle().map((GuiTemplate text) -> RichText.colorize(text.render(scope))).orElse(""), title.fadeInTicks(), title.stayTicks(), title.fadeOutTicks());
+            case GuiModel.ActionBar bar -> host.actionBar(player, RichText.colorize(bar.text().render(scope)));
             case GuiModel.Close ignored -> { context.close(); return false; }
             case GuiModel.Navigate navigate -> {
                 return context.navigate(navigate, navigate.target().map((GuiTemplate text) -> text.render(scope).trim()).orElse(""));
@@ -157,9 +158,9 @@ public final class GuiActions<P, S> {
                     try { progress = (float) Math.clamp(Double.parseDouble(bar.progress().get().render(scope).trim()), 0, 1); }
                     catch (NumberFormatException invalid) { progress = 1; }
                 }
-                host.bossBar(player, bar.lane(), GuiText.colorize(bar.title().render(scope)), progress, bar.color(), bar.style(), bar.ticks());
+                host.bossBar(player, bar.lane(), RichText.colorize(bar.title().render(scope)), progress, bar.color(), bar.style(), bar.ticks());
             }
-            case GuiModel.Broadcast broadcast -> host.broadcast(player, GuiText.colorize(broadcast.message().render(scope)), broadcast.scope(), broadcast.radius(), broadcast.permission());
+            case GuiModel.Broadcast broadcast -> host.broadcast(player, RichText.colorize(broadcast.message().render(scope)), broadcast.scope(), broadcast.radius(), broadcast.permission());
             case GuiModel.Effect effect -> { return host.effect(player, effect.effect(), effect.ticks(), effect.amplifier()); }
             case GuiModel.Particle particle -> {
                 Optional<double[]> at = particle.atLocation() ? context.location()
@@ -229,7 +230,7 @@ public final class GuiActions<P, S> {
         InventoryTransaction<S> transaction = InventoryTransaction.begin(context.host().inventory(context.player()), context.host().items());
         if (stack.isEmpty() || amount <= 0 || !transaction.remove(stack.get(), amount, rule)) {
             transaction.rollback();
-            take.denyMessage().ifPresent((GuiTemplate text) -> context.host().message(context.player(), GuiText.colorize(text.render(scope))));
+            take.denyMessage().ifPresent((GuiTemplate text) -> context.host().message(context.player(), RichText.colorize(text.render(scope))));
             return false;
         }
         transaction.commit();
@@ -249,7 +250,7 @@ public final class GuiActions<P, S> {
             case WITHDRAW -> economy.has(context.id(), amount) && economy.withdraw(context.id(), amount);
             case DEPOSIT -> economy.deposit(context.id(), amount);
         };
-        if (!ok) action.denyMessage().ifPresent((GuiTemplate text) -> context.host().message(context.player(), GuiText.colorize(text.render(scope))));
+        if (!ok) action.denyMessage().ifPresent((GuiTemplate text) -> context.host().message(context.player(), RichText.colorize(text.render(scope))));
         return ok;
     }
 

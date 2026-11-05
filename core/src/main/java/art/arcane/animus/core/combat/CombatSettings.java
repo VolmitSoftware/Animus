@@ -40,8 +40,14 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
     public record Targeting(double scanRange, int scanIntervalTicks, int reactionTicks, int memoryTicks, boolean retainTarget, boolean fightBack, LineOfSight lineOfSight) {}
     public record Avoidance(double range, boolean fleeWhenAttacked, Optional<Location> returnPoint) {}
     public record Squad(Optional<String> name, double alertRange) {}
-    /** @param assist attack whatever the guarded player or NPC attacks */
-    public record Guard(Optional<UUID> player, Optional<UUID> npc, double followDistance, double pointRange, boolean assist) {}
+    /**
+     * @param pointRange      how far behind the charge the guard aims
+     * @param assist          attack whatever the guarded player or NPC attacks
+     * @param catchUpDistance teleport near the charge beyond this distance or across worlds; 0 never teleports
+     * @param replanDistance  how far the charge moves before the guard replans its walk
+     */
+    public record Guard(Optional<UUID> player, Optional<UUID> npc, double followDistance, double pointRange, boolean assist,
+                        double catchUpDistance, double replanDistance) {}
     /** @param region a protection region the fight must stay inside, where a protection plugin provides regions */
     public record Pursuit(boolean closeChase, boolean rangedChase, double speed, double giveUpRange, double leashRange, boolean returnToPost, boolean teleportWhenStuck,
                           int replanTicks, Optional<String> region) {}
@@ -208,11 +214,12 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         return new Squad(reader.has("name") ? Optional.of(reader.string("name", "")) : Optional.empty(), reader.number("alertRange", 16, 1, 64));
     }
     private static Guard guard(Reader reader) {
-        reader.known("player", "npc", "followDistance", "pointRange", "assist");
+        reader.known("player", "npc", "followDistance", "pointRange", "assist", "catchUpDistance", "replanDistance");
         Optional<UUID> player = reader.uuid("player");
         Optional<UUID> npc = reader.uuid("npc");
         if (player.isPresent() && npc.isPresent()) throw new IllegalArgumentException(reader.path() + ": guard either a player or an npc");
-        return new Guard(player, npc, reader.number("followDistance", 7, 1, 64), reader.number("pointRange", 4, 0, 16), reader.bool("assist", false));
+        return new Guard(player, npc, reader.number("followDistance", 7, 1, 64), reader.number("pointRange", 4, 0, 16), reader.bool("assist", false),
+                reader.number("catchUpDistance", 24, 0, 256), reader.number("replanDistance", 1.5, 0.25, 16));
     }
     private static Pursuit pursuit(Reader reader) {
         reader.known("closeChase", "rangedChase", "speed", "giveUpRange", "leashRange", "returnToPost", "teleportWhenStuck", "replanTicks", "region");

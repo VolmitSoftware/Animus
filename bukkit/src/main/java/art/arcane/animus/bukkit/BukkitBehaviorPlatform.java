@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.api.Outcome;
@@ -92,16 +93,17 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
 
     @Override public int say(NpcHandle npc, Audience audience, String text) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
-        String line = active.name() + ": " + text;
+        String line = DialogueFormat.speech(active.name(), text);
         return deliver(audience, active.state().position(), false, viewer -> viewer.sendMessage(line));
     }
 
     @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) {
         NpcRuntime.ActiveNpc active = require(npc);
-        List<ChoiceOption> copied = List.copyOf(options);
+        String line = DialogueFormat.speech(active.name(), prompt);
+        net.md_5.bungee.api.chat.BaseComponent[] buttons = BukkitChoiceMessages.components(DialogueFormat.buttons(BuildIdentity.ID, token, List.copyOf(options)));
         return living.players().deliver(player, online -> {
-            online.sendMessage(active.name() + ": " + prompt);
-            online.spigot().sendMessage(BukkitChoiceMessages.options(BuildIdentity.ID, token, copied));
+            online.sendMessage(line);
+            online.spigot().sendMessage(buttons);
         }) ? 1 : 0;
     }
 

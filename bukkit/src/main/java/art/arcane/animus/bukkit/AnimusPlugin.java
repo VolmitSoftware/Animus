@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.hire.HireService;
 import art.arcane.animus.api.Platform;
 import art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
@@ -74,7 +75,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private BukkitScreens screens;
     private volatile ShopService<Player, ItemStack> shops;
     private volatile HoloService<Player, ItemStack> guis;
-    private AutoCloseable screenTicks;
+    private AutoCloseable screenTicks, hireTicks;
     private final DialogueTriggers dialogueTriggers = new DialogueTriggers(() -> {
         BehaviorCommands current = behaviors;
         return current == null ? null : current.triggers();
@@ -122,10 +123,13 @@ public final class AnimusPlugin extends JavaPlugin {
             DisplayTransport<Player> displays = NativeDisplayAdapter.create(this, environment.minecraftVersion(), (Player player, Runnable task) -> replies.reply(player, task));
             guis = new HoloService<>(runtime, shops, displays, living, commands, BukkitGlossBridge.load(this), message -> getLogger().info(message));
             getServer().getPluginManager().registerEvents(new BukkitHoloEvents(guis), this);
+            HireService<Player, ItemStack> hireDesk = new HireService<>(runtime, shops.screens(), living, commands, combat.hireGuarding(), message -> getLogger().info(message));
+            hireTicks = ownerTicks.apply(hireDesk::tick);
+            getLogger().info(hireDesk.status());
             ShopService<Player, ItemStack> screenService = shops;
             HoloService<Player, ItemStack> holoService = guis;
             living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) ->
-                    screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
+                    hireDesk.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             NpcRuntime<Player, ItemStack> owners = living;
             screenTicks = ownerTicks.apply(() -> {
                 for (UUID viewer : screenService.screens().viewing()) owners.players().deliver(viewer, screenService.screens()::tick);
@@ -175,8 +179,9 @@ public final class AnimusPlugin extends JavaPlugin {
         animusCommands = null;
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
-        if (screenTicks != null) {
-            try { screenTicks.close(); }
+        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks)) {
+            if (ticks == null) continue;
+            try { ticks.close(); }
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }
         }
         if (screens != null) screens.closeAll();

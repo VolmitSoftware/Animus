@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "f6725fa2-1eaf-58c3-b4af-ae7c6e80f9eb",
+  "id": "copper",
+  "group": "armour",
+  "name": "Copper",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 32.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "head": {
+      "id": "minecraft:copper_helmet"
+    },
+    "chest": {
+      "id": "minecraft:copper_chestplate"
+    },
+    "legs": {
+      "id": "minecraft:copper_leggings"
+    },
+    "feet": {
+      "id": "minecraft:copper_boots"
+    }
+  }
+}

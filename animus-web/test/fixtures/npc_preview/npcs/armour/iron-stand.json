@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "f213b638-4bec-5349-bbc4-0403bbfb3a96",
+  "id": "iron-stand",
+  "group": "armour",
+  "name": "Iron stand",
+  "type": "minecraft:armor_stand",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 36.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "armorStand": {
+    "arms": true
+  },
+  "equipment": {
+    "head": {
+      "id": "minecraft:iron_helmet"
+    },
+    "chest": {
+      "id": "minecraft:iron_chestplate"
+    },
+    "legs": {
+      "id": "minecraft:iron_leggings"
+    },
+    "feet": {
+      "id": "minecraft:iron_boots"
+    }
+  }
+}

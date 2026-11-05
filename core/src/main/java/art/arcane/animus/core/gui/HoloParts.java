@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -112,7 +113,7 @@ public final class HoloParts {
     /** Plain characters of the widest line, for the automatic width of a text click area. */
     static int widest(List<String> lines) {
         int widest = 0;
-        for (String line : lines) widest = Math.max(widest, GuiText.plain(line).length());
+        for (String line : lines) widest = Math.max(widest, RichText.plain(line).length());
         return widest;
     }
 }

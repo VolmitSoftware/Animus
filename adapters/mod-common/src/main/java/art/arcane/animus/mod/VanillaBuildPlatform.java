@@ -12,7 +12,6 @@ import java.util.Objects;
 import java.util.Optional;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -123,7 +122,7 @@ final class VanillaBuildPlatform implements BuildService.Platform<ServerPlayer, 
 
     @Override public void takeHeld(ServerPlayer player, int count) { player.getMainHandItem().shrink(count); }
 
-    @Override public void tell(ServerPlayer player, String message) { player.sendSystemMessage(Component.literal(message)); }
+    @Override public void tell(ServerPlayer player, String message) { player.sendSystemMessage(ModText.component(message)); }
 
     private ServerLevel loaded(String world, BlockPos at) {
         ServerLevel level = terrain.level(world);

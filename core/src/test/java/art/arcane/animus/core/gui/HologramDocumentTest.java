@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,7 @@ class HologramDocumentTest {
         HologramRender.Render render = HologramRender.build(hologram, hologram.lines(), hologram.style(), scope, 10.5, 65, -4.5);
         assertEquals(4, render.rows(), "one text row, two blank rows for a 0.5 block item, one text row");
         DisplayEntity.Text text = (DisplayEntity.Text) render.entities().get("text").content();
-        assertEquals("Welcome Alex\n \n \nClick me", GuiText.plain(text.text()));
+        assertEquals("Welcome Alex\n \n \nClick me", RichText.plain(text.text()));
         DisplayEntity item = render.entities().get("line:0");
         assertInstanceOf(DisplayEntity.Item.class, item.content());
         assertEquals(65 + 0.25 * 4 - 0.25 * 2, item.y(), 1.0E-9, "the item sits in the middle of its two rows");
@@ -119,13 +120,5 @@ class HologramDocumentTest {
         for (Map.Entry<String, String> entry : cases.entrySet())
             assertEquals(entry.getValue(), GuiExpression.text(GuiExpression.parse(entry.getKey(), java.util.Set.of()).evaluate((String name) -> null)), entry.getKey());
         assertThrows(GuiExpression.Invalid.class, () -> GuiExpression.parse("marquee('&aX', 3, 0)", java.util.Set.of()).evaluate((String name) -> null));
-    }
-
-    @Test void spansSplitSectionCodes() {
-        List<GuiText.Span> spans = GuiText.spans(GuiText.colorize("&#FF8800&lHot &rcold &7grey"));
-        assertEquals(3, spans.size());
-        assertEquals(new GuiText.Span("Hot ", 0xFF8800, true, false, false, false, false), spans.get(0));
-        assertEquals(new GuiText.Span("cold ", -1, false, false, false, false, false), spans.get(1));
-        assertEquals(new GuiText.Span("grey", 0xAAAAAA, false, false, false, false, false), spans.get(2));
     }
 }

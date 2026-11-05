@@ -1,5 +1,6 @@
 package art.arcane.animus.core.presentation;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcPose;
@@ -7,7 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * What one body shows. {@code text} renders in a text display riding the body; a sitting body rides a hidden seat.
@@ -18,18 +18,16 @@ public record BodyLook(String profileName, Optional<String> text, boolean hidePr
     public static final int SEAT_FLAGS = 0x10 | 0x08;
     public static final byte BILLBOARD_CENTER = 3;
     public static final int LINE_WIDTH = 4096;
-    private static final Pattern CODE = Pattern.compile("&([0-9a-fk-orA-FK-OR])");
-    private static final Pattern FORMATTED = Pattern.compile("[&§][0-9a-fk-orA-FK-OR]");
 
     public int extraIds() { return (text.isPresent() ? 1 : 0) + (seated() ? 1 : 0); }
     public boolean seated() { return pose == NpcPose.SITTING; }
 
     public static BodyLook of(UUID uuid, String typeKey, String name, NpcAppearance appearance) {
         boolean player = typeKey.equals(BodyRules.PLAYER);
-        boolean nativeName = player && appearance.nameplateVisible() && fitsProfile(name) && !FORMATTED.matcher(name).find();
+        boolean nativeName = player && appearance.nameplateVisible() && fitsProfile(name) && !RichText.formatted(name);
         List<String> lines = new ArrayList<>();
-        for (String line : appearance.hologram()) lines.add(legacy(line));
-        if (appearance.nameplateVisible() && !nativeName) lines.add(legacy(name));
+        for (String line : appearance.hologram()) lines.add(line(lines, line));
+        if (appearance.nameplateVisible() && !nativeName) lines.add(line(lines, name));
         String profile = player && fitsProfile(name) ? name : uuid.toString().replace("-", "").substring(0, 16);
         Optional<String> text = lines.isEmpty() ? Optional.empty() : Optional.of(String.join("\n", lines));
         return new BodyLook(profile, text, player && !nativeName, nativeName && text.isPresent(), appearance.pose(), appearance.armorStand());
@@ -45,7 +43,12 @@ public record BodyLook(String profileName, Optional<String> text, boolean hidePr
         catch (IllegalArgumentException tooLong) { return false; }
     }
 
-    public static String legacy(String text) { return CODE.matcher(text).replaceAll("§$1"); }
+    /** A colorized line that starts unstyled when an earlier line set a style, so one line never tints the next. */
+    private static String line(List<String> earlier, String text) {
+        String coloured = RichText.colorize(text);
+        for (String before : earlier) if (before.indexOf(RichText.SECTION) >= 0) return "§r" + coloured;
+        return coloured;
+    }
 
     public static byte sharedFlags(NpcPose pose, boolean invisible) {
         int flags = switch (pose) { case SNEAKING -> 0x02; case SWIMMING -> 0x10; default -> 0; };

@@ -29,8 +29,13 @@ public interface BehaviorPlatform {
     record Audience(Optional<UUID> player, double radius) {
         public Audience { Objects.requireNonNull(player); }
     }
-    record ChoiceOption(String id, String text) {
-        public ChoiceOption { Objects.requireNonNull(id); Objects.requireNonNull(text); }
+    /** A clickable answer. Colour, hover and style are optional; {@link DialogueFormat} fills sensible defaults. */
+    record ChoiceOption(String id, String text, Optional<String> colour, Optional<String> hover, Optional<String> style) {
+        public ChoiceOption {
+            Objects.requireNonNull(id); Objects.requireNonNull(text);
+            Objects.requireNonNull(colour); Objects.requireNonNull(hover); Objects.requireNonNull(style);
+        }
+        public ChoiceOption(String id, String text) { this(id, text, Optional.empty(), Optional.empty(), Optional.empty()); }
     }
     record AppearanceChange(Optional<String> name, Optional<String> skin, boolean reset) {
         public AppearanceChange { Objects.requireNonNull(name); Objects.requireNonNull(skin); }
@@ -56,7 +61,7 @@ public interface BehaviorPlatform {
     NpcStatus npcStatus(NpcHandle npc);
     /** An empty player asks whether any player is within the radius. */
     boolean playerInRange(NpcHandle npc, Optional<UUID> player, double radius);
-    /** Returns the number of viewers reached. */
+    /** Returns the number of viewers reached. The text is raw definition text; format it with {@link DialogueFormat#speech}. */
     int say(NpcHandle npc, Audience audience, String text);
     /** Returns the number of viewers reached. The token identifies the pending prompt in its clickable responses. */
     int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options);

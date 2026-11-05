@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "id": "dialogue:innkeeper",
   "entry": "main",
   "routines": {
@@ -26,15 +26,18 @@
             "capability": "animus:choices",
             "arguments": {
               "id": "topic",
-              "prompt": "Back again? What will it be?",
+              "prompt": "Back again? &7What will it be?",
               "options": [
                 {
                   "id": "room",
-                  "text": "A room for the night"
+                  "text": "A room for the night",
+                  "color": "aqua",
+                  "hover": "&7Rent a bed upstairs for the night"
                 },
                 {
                   "id": "leave",
-                  "text": "Nothing, thanks"
+                  "text": "Nothing, thanks",
+                  "hover": "&7Say goodbye and walk away"
                 }
               ]
             }
@@ -44,19 +47,24 @@
             "capability": "animus:choices",
             "arguments": {
               "id": "topic",
-              "prompt": "Welcome to the Crooked Lantern. What will it be?",
+              "prompt": "Welcome to the &6Crooked Lantern&f. What will it be?",
               "options": [
                 {
                   "id": "rumours",
-                  "text": "Heard any rumours?"
+                  "text": "Heard any rumours?",
+                  "color": "gold",
+                  "hover": "&7Ask what the regulars are whispering about"
                 },
                 {
                   "id": "room",
-                  "text": "A room for the night"
+                  "text": "A room for the night",
+                  "color": "aqua",
+                  "hover": "&7Rent a bed upstairs for the night"
                 },
                 {
                   "id": "leave",
-                  "text": "Nothing, thanks"
+                  "text": "Nothing, thanks",
+                  "hover": "&7Say goodbye and walk away"
                 }
               ]
             }
@@ -71,7 +79,7 @@
           "type": "action",
           "capability": "animus:say",
           "arguments": {
-            "text": "Lights in the old mine, three nights running."
+            "text": "&eLights in the old mine&f, three nights running."
           }
         },
         {
@@ -79,15 +87,18 @@
           "capability": "animus:choices",
           "arguments": {
             "id": "mine",
-            "prompt": "Want to know more?",
+            "prompt": "Want to know &emore&f?",
             "options": [
               {
                 "id": "yes",
-                "text": "Tell me more"
+                "text": "Tell me more",
+                "color": "green",
+                "hover": "&7Hear the rest of the story"
               },
               {
                 "id": "no",
-                "text": "That is enough"
+                "text": "That is enough",
+                "hover": "&7Change the subject"
               }
             ]
           }
@@ -101,7 +112,7 @@
           "type": "action",
           "capability": "animus:say",
           "arguments": {
-            "text": "The miners left in a hurry. Their tools are still down there."
+            "text": "The miners left in a hurry. &7&oTheir tools are still down there."
           }
         },
         {
@@ -118,21 +129,21 @@
       "type": "action",
       "capability": "animus:say",
       "arguments": {
-        "text": "Suit yourself. Few people ask twice."
+        "text": "Suit yourself. &7Few people ask twice."
       }
     },
     "room": {
       "type": "action",
       "capability": "animus:say",
       "arguments": {
-        "text": "Upstairs, second door. Mind the step."
+        "text": "Upstairs, &esecond door&f. &7Mind the step."
       }
     },
     "leave": {
       "type": "action",
       "capability": "animus:say",
       "arguments": {
-        "text": "Safe roads."
+        "text": "&aSafe roads, friend."
       }
     }
   },

@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.GuiModel.Action;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import java.util.ArrayList;
@@ -276,7 +277,7 @@ final class MenuSession<P, S> {
             case MenuDocument.Slider slider -> slider.label().render(scope);
             default -> icon(draft) instanceof MenuDocument.TextIcon icon ? icon.text().render(scope) : "";
         };
-        if (!text.isEmpty()) for (String row : GuiText.colorize(text).split("\n", -1)) rows.add(row);
+        if (!text.isEmpty()) for (String row : RichText.colorize(text).split("\n", -1)) rows.add(row);
         return new Placed(key, component, data, local, scope, tab, list, List.copyOf(rows));
     }
 
@@ -306,7 +307,7 @@ final class MenuSession<P, S> {
                             centre[0], centre[1] - 0.05 * scale, centre[2], yaw, 0, item.style().display(scale, 0, 0, 0, moveTicks)));
                     if (stack.item().count() > 1) {
                         String badge = item.countFormat().map((GuiTemplate format) -> format.render(piece.scope())).orElse("{count}").replace("{count}", Integer.toString(stack.item().count()));
-                        out.put(piece.key() + ":count", new DisplayEntity(0, NONE, HoloParts.Style.MENU.text(GuiText.colorize(badge)), centre[0], centre[1] - 0.37 * scale - TEXT_LINE / 2,
+                        out.put(piece.key() + ":count", new DisplayEntity(0, NONE, HoloParts.Style.MENU.text(RichText.colorize(badge)), centre[0], centre[1] - 0.37 * scale - TEXT_LINE / 2,
                                 centre[2], yaw, 0, HoloParts.Style.MENU.display(scale, 0, 0, 0, moveTicks)));
                     }
                 }
@@ -321,7 +322,7 @@ final class MenuSession<P, S> {
             if (piece.data() instanceof MenuDocument.Button button && button.tooltip().isPresent()) {
                 MenuDocument.Tooltip tip = button.tooltip().get();
                 if (hovered.getOrDefault(piece.key(), 0) > tip.delayTicks() && !tip.lines().isEmpty()) {
-                    List<String> rows = tip.lines().stream().map((GuiTemplate line) -> GuiText.colorize(line.render(piece.scope()))).toList();
+                    List<String> rows = tip.lines().stream().map((GuiTemplate line) -> RichText.colorize(line.render(piece.scope()))).toList();
                     double above = size(piece)[1] / 2 + 0.08;
                     text(out, piece.key() + ":tooltip", rows, tip.style(), new double[]{centre[0] - normal[0] * 0.05, centre[1] + above + TEXT_LINE * rows.size() / 2, centre[2] - normal[2] * 0.05},
                             yaw, 1, 0);

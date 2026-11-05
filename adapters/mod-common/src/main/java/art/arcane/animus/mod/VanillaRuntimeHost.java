@@ -20,7 +20,6 @@ import java.util.function.Consumer;
 import net.minecraft.commands.arguments.item.ItemParser;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -83,7 +82,7 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     @Override public float yaw(ServerPlayer player) { return player.getYRot(); }
     @Override public float pitch(ServerPlayer player) { return player.getXRot(); }
     @Override public boolean permitted(ServerPlayer player, String node) { return permitted(player.permissions(), node); }
-    @Override public void tell(ServerPlayer player, String message) { player.sendSystemMessage(Component.literal(message)); }
+    @Override public void tell(ServerPlayer player, String message) { player.sendSystemMessage(ModText.component(message)); }
     @Override public List<ServerPlayer> playersNear(WorldPosition at, double radius, int limit) {
         ServerLevel level = terrain.level(at.world());
         List<ServerPlayer> result = new ArrayList<>();

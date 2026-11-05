@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.Platform;
 import art.arcane.animus.core.RuntimeEnvironment;
@@ -122,7 +123,7 @@ class HoloServiceTest {
     /** Some box of the menu: the server picks the component by where the viewer aims, not by which box was hit. */
     private int box(String text) {
         for (DisplayEntity entity : displays.of(alex))
-            if (entity.content() instanceof DisplayEntity.Text shown && GuiText.plain(shown.text()).equals(text)) {
+            if (entity.content() instanceof DisplayEntity.Text shown && RichText.plain(shown.text()).equals(text)) {
                 for (DisplayEntity hitbox : displays.hitboxes(alex))
                     if (Math.abs(hitbox.x() - entity.x()) < 1.0E-6 && Math.abs(hitbox.z() - entity.z()) < 0.2) return hitbox.id();
             }
@@ -138,13 +139,13 @@ class HoloServiceTest {
         tick(1);
         assertTrue(displays.texts(alex).containsAll(List.of("Hello", "OFF", "Volume 5")), displays.texts(alex).toString());
         DisplayEntity hello = displays.of(alex).stream().filter((DisplayEntity entity) -> entity.content() instanceof DisplayEntity.Text text
-                && GuiText.plain(text.text()).equals("Hello")).findFirst().orElseThrow();
+                && RichText.plain(text.text()).equals("Hello")).findFirst().orElseThrow();
         assertEquals(0, hello.x(), 1.0E-9);
         assertEquals(2, hello.z(), 1.0E-9, "the menu is two blocks in front of the viewer");
         look(0, 65.5, 2);
         tick(2);
         DisplayEntity hovered = displays.of(alex).stream().filter((DisplayEntity entity) -> entity.content() instanceof DisplayEntity.Text text
-                && GuiText.plain(text.text()).equals("Hello")).findFirst().orElseThrow();
+                && RichText.plain(text.text()).equals("Hello")).findFirst().orElseThrow();
         assertEquals(1.9, hovered.z(), 1.0E-6, "a hovered button moves toward the viewer by its highlight");
         displays.click(alex, box("Hello"), false);
         assertEquals(List.of("hi Alex"), alex.messages);
@@ -159,7 +160,7 @@ class HoloServiceTest {
         look(1, 65.5, 2);
         displays.click(alex, box("Hello"), false);
         assertNotNull(alex.frame, "the inventory action opens the chest GUI in the menu's namespace");
-        assertEquals("Counter", GuiText.plain(alex.frame.title()));
+        assertEquals("Counter", RichText.plain(alex.frame.title()));
         tick(1);
         assertTrue(displays.of(alex).isEmpty(), "opening the chest GUI closed the menu");
     }

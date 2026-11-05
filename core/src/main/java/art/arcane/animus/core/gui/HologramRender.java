@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import java.util.ArrayList;
@@ -48,7 +49,7 @@ final class HologramRender {
         for (HologramDocument.Line line : lines) {
             boolean shown = line.show().test(scope);
             if (line instanceof HologramDocument.TextLine text) {
-                String rendered = GuiText.colorize(text.text().render(scope));
+                String rendered = RichText.colorize(text.text().render(scope));
                 String[] parts = rendered.split("\n", -1);
                 if (shown) for (String part : parts) rows.add(part);
                 else if (objects) for (int index = 0; index < parts.length; index++) rows.add("");
