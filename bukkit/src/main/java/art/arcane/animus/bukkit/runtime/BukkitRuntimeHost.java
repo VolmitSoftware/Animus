@@ -60,10 +60,9 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
                                                                PersistedNpcService.Settings settings, NativePacketAdapter.Scheduler replies) {
         BukkitRuntimeHost host = new BukkitRuntimeHost(plugin, minecraftVersion, replies);
         host.service = new PersistedNpcService<>(host, runtime, io, settings);
-        if (host.service.available()) {
-            plugin.getServer().getPluginManager().registerEvents(host, plugin);
-            plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(host.service::terrainChanged), plugin);
-        }
+        // Registered even while disabled: every handler checks availability, and a hotload may enable the runtime.
+        plugin.getServer().getPluginManager().registerEvents(host, plugin);
+        plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(host.service::terrainChanged), plugin);
         return host.service;
     }
 

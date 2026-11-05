@@ -8,7 +8,9 @@ import art.arcane.animus.core.navigation.NavigationLimits;
  * collision cells their steps read, {@code planningStartsPerTick} the new path plans, and {@code wakeChecksPerTick} how
  * many sleeping routes look for a nearby player. {@code planningJobs} bounds the path plans in progress at once and
  * {@code captureReadsPerTick} the terrain reads those plans make per tick. A route with no player within {@code [npcs] viewDistance} sleeps and
- * uses none of these until a player comes near. There is no limit on how many routes exist.
+ * uses none of these until a player comes near. There is no limit on how many routes exist. A hotload applies from the
+ * owner's next tick (on Folia, each region's next tick); routes and plans in progress continue, and a lowered
+ * {@code planningJobs} only refuses new plans until fewer are in progress.
  */
 public record NavigationSettings(int routesPerTick, int motionCellsPerTick, int planningStartsPerTick, int wakeChecksPerTick,
                                  int planningJobs, int captureReadsPerTick) {

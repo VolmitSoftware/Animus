@@ -52,6 +52,8 @@ public final class BukkitNavigationBridge implements AutoCloseable {
         return work.plan(world, bounds, start, goal, profile, searchLimits);
     }
     public int outstandingJobs() { return work.outstandingJobs(); }
+    /** New limits for later plans; plans in progress continue. Any thread. */
+    public void limits(NavigationLimits next) { work.limits(next); }
 
     @Override public synchronized void close() {
         if (closed) return;
