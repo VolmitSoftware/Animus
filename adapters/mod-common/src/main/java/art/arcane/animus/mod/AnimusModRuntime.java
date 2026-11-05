@@ -88,6 +88,7 @@ public final class AnimusModRuntime {
         volatile BehaviorCommands behaviors;
         AnimusCommands commands;
         volatile EditorService editor;
+        art.arcane.animus.core.hotload.HotloadService hotload;
         volatile boolean stopping;
     }
 
@@ -163,6 +164,11 @@ public final class AnimusModRuntime {
             next.runtime.catalogs(new art.arcane.animus.core.RuntimeCatalogs(new art.arcane.animus.core.RuntimeCatalogs.Parts(next.runtime, next.living::refresh,
                     () -> owner.behaviors, () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
                     () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}), LOGGER::info)));
+            BuiltinCapabilities actions = next.builtins;
+            next.runtime.onSettings((art.arcane.animus.core.config.PluginSettings settingsNow) -> actions.settings(settingsNow.behaviors().actions()));
+            next.hotload = new art.arcane.animus.core.hotload.HotloadService(new art.arcane.animus.core.hotload.HotloadService.Parts(next.runtime, files, server::execute, next.living,
+                    new ModOperators(server), screenService::refreshOpen, LOGGER::info));
+            next.hotload.start();
             TriggerDispatcher triggers = next.behaviors.triggers();
             if (triggers != null) {
                 if (next.living.available()) { triggers.connect(); next.living.bindTriggers(triggers); }
@@ -199,6 +205,7 @@ public final class AnimusModRuntime {
 
     private static void close(Running active) {
         active.stopping = true;
+        if (active.hotload != null) active.hotload.close();
         EditorService editor = active.editor;
         active.editor = null;
         if (editor != null) editor.close();

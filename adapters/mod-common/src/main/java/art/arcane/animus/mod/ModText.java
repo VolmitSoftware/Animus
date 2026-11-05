@@ -17,9 +17,14 @@ final class ModText {
     static MutableComponent component(String text) { return component(text, Style.EMPTY); }
 
     /** {@code base} styles every run first, so a window item name can stay upright while its codes still colour it. */
-    static MutableComponent component(String text, Style base) {
+    static MutableComponent component(String text, Style base) { return styled(RichText.runs(text), base); }
+
+    /** Text that is already section-coded, such as hotload lines, whose values must not be read as colour codes again. */
+    static MutableComponent section(String coloured) { return styled(RichText.sectionRuns(coloured), Style.EMPTY); }
+
+    private static MutableComponent styled(List<RichText.Run> runs, Style base) {
         MutableComponent root = Component.empty();
-        for (RichText.Run run : RichText.runs(text)) {
+        for (RichText.Run run : runs) {
             Style style = base;
             if (run.rgb().isPresent()) style = style.withColor(TextColor.fromRgb(run.rgb().getAsInt()));
             if (run.bold()) style = style.withBold(Boolean.TRUE);
