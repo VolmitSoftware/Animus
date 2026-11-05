@@ -1,5 +1,8 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.runtime.NpcPresentation;
+import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.packet.NativeViewerEpoch;
@@ -108,7 +111,7 @@ final class RegionViewer {
         int sent = 0;
         Map<Long, Boolean> delivered = new HashMap<>();
         Predicate<ChunkPosition> sentChunk = chunk -> chunk.world().equals(at.world())
-                && delivered.computeIfAbsent(ChunkDelivery.key(chunk.x(), chunk.z()), ignored -> host.regions.sent(player, chunk.x(), chunk.z()));
+                && delivered.computeIfAbsent(ChunkPosition.key(chunk.x(), chunk.z()), ignored -> host.regions.sent(player, chunk.x(), chunk.z()));
         for (Presented body : List.copyOf(visible.values())) if (!eligible(body.actor.publication, at, sentChunk)) retire(body);
         while (!retirements.isEmpty() && sent < packetBudget) {
             Presented body = retirements.removeFirst(); sent++;
@@ -155,7 +158,7 @@ final class RegionViewer {
     }
     private void spawn(RegionActor actor, RegionActor.Publication now) {
         try {
-            NativePacketAdapter.Body body = NpcPresentation.body(host.packets, now.spec(), now.name(), now.skin());
+            NativePacketAdapter.Body body = host.packets.createBody(now.spec().definition().uuid(), now.spec().type(), now.name(), now.spec().appearance(), now.skin());
             Presented presented = new Presented(actor, body, now);
             visible.put(actor.uuid, presented); presentationOrder.addLast(presented);
             nativeIds += presented.ids; pendingSpawns++; shown.incrementAndGet();
@@ -168,7 +171,7 @@ final class RegionViewer {
                 try { guard.bind(body.entityId(), actor.publication.snapshot()); presented.bound = true; }
                 catch (RuntimeException invalid) { host.fail(this, PersistedNpcService.concise(invalid)); }
             }));
-        } catch (ReflectiveOperationException | RuntimeException failure) { host.fail(this, PersistedNpcService.concise(failure)); }
+        } catch (RuntimeException failure) { host.fail(this, PersistedNpcService.concise(failure)); }
     }
     private void move(Presented body, RegionActor.Publication now) {
         body.moving = true;
@@ -256,9 +259,9 @@ final class RegionViewer {
         }
     }
 
-    private static NativePacketAdapter.Pose pose(RegionActor.Publication now) {
+    private static BodyPose pose(RegionActor.Publication now) {
         WorldPosition position = now.snapshot().position(); Vec3 point = position.point();
-        return new NativePacketAdapter.Pose(UUID.fromString(position.world()), point.x(), point.y(), point.z(), now.yaw(), now.pitch(), now.onGround());
+        return new BodyPose(position.world(), point.x(), point.y(), point.z(), now.yaw(), now.pitch(), now.onGround());
     }
     static WorldPosition position(Location location) {
         return new WorldPosition(location.getWorld().getUID().toString(), new Vec3(location.getX(), location.getY(), location.getZ()));

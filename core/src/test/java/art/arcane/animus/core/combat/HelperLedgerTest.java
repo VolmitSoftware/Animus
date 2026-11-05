@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class HelperLedgerTest {
     private static HelperLedger.Shot shot(UUID helper, UUID owner) {
-        return new HelperLedger.Shot(helper, owner, Optional.empty(), 1, 0, true, 10, Vec3.ZERO);
+        return new HelperLedger.Shot(helper, owner, Optional.empty(), 1, 0, true, Optional.empty(), 10, Vec3.ZERO);
     }
     @Test void aShotCanBeClaimedOnlyOnce() {
         HelperLedger ledger = new HelperLedger(4, 2);

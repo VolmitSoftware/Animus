@@ -1,8 +1,16 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.runtime.NpcPresentation;
+import art.arcane.animus.core.runtime.DefinitionSpec;
+import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.runtime.NpcRuntime;
+import art.arcane.animus.core.presentation.BodySkin;
+import art.arcane.animus.core.runtime.DefinitionQueue;
+import art.arcane.animus.core.runtime.SkinDocuments;
+
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.navigation.BukkitNavigationBridge;
-import art.arcane.animus.bukkit.navigation.NavigationLimits;
+import art.arcane.animus.core.navigation.NavigationLimits;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.packet.NativeViewerEpoch;
 import art.arcane.animus.core.AnimusRuntime;
@@ -59,7 +67,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  * live NPC state. A dormant NPC starts on its region when its chunk loads or a player nearby is on the same region.
  * Riding, mounted NPCs and combat stay unavailable here.
  */
-public final class RegionNpcRuntime implements NpcRuntime, Listener {
+public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Listener {
     static final String RIDING_UNAVAILABLE = "riding is unavailable on Folia: the rider and the NPC have separate owners and a ride has no region handoff yet";
     static final String MOUNTS_UNAVAILABLE = "mounted NPCs are unavailable on Folia: a vehicle and its passengers have separate owners and seat coupling has no region handoff yet";
     static final int MAX_ISSUED_IDS = 8192;
@@ -142,7 +150,7 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
     @Override public boolean available() { return !closed && packets != null; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { triggers = Objects.requireNonNull(dispatcher); }
     @Override public void refresh() { refresh.set(true); }
-    @Override public PlayerAccess players() { return players; }
+    @Override public PlayerAccess<Player> players() { return players; }
 
     @Override public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
@@ -173,7 +181,7 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
     }
     @Override public List<String> validateActivation(NpcDefinition definition) {
         if (!available()) return List.of("NPC runtime " + (closed ? "closed" : unavailable));
-        return DefinitionSpec.validate(Objects.requireNonNull(definition), geometries.keySet(), this::worldId);
+        return DefinitionSpec.validate(Objects.requireNonNull(definition), geometries.keySet(), this::worldKey, DefinitionItems::stack);
     }
     @Override public String rideStatus() { return "Riding unavailable: " + RIDING_UNAVAILABLE; }
     @Override public boolean stopRider(String playerName) { throw new IllegalStateException(RIDING_UNAVAILABLE); }
@@ -241,6 +249,10 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
 
     Geometry geometry(String type) { return geometries.get(type); }
     World world(String id) { return regions.world(id); }
+    private String worldKey(String name) {
+        UUID id = worldId(name);
+        return id == null ? null : id.toString();
+    }
     private UUID worldId(String name) {
         World world;
         try { world = plugin.getServer().getWorld(UUID.fromString(name)); }
@@ -359,7 +371,7 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
         if (available()) regions.execute(player, () -> admit(player), () -> {});
     }
 
-    private final PlayerAccess players = new PlayerAccess() {
+    private final PlayerAccess<Player> players = new PlayerAccess<Player>() {
         @Override public boolean online(UUID player) { return online.containsKey(player); }
         @Override public Optional<Player> owned(UUID player) {
             Player online = RegionNpcRuntime.this.online.get(player);
@@ -446,8 +458,8 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
         }
         SkinRead pending = skinReads.get(change.id());
         if (pending != null && pending.spec.definition() != definition) { pending.cancelled = true; skinReads.remove(change.id()); pending = null; }
-        DefinitionSpec spec;
-        try { spec = DefinitionSpec.parse(definition, geometries.keySet(), this::worldId); }
+        DefinitionSpec<ItemStack> spec;
+        try { spec = DefinitionSpec.parse(definition, geometries.keySet(), this::worldKey, DefinitionItems::stack); }
         catch (IllegalArgumentException invalid) {
             if (actor != null) actor.error = invalid.getMessage(); else definitionErrors.put(change.id(), invalid.getMessage());
             return true;
@@ -474,7 +486,7 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
         }
         apply(read.spec, read.skin);
     }
-    private void apply(DefinitionSpec spec, NativePacketAdapter.Skin skin) {
+    private void apply(DefinitionSpec<ItemStack> spec, BodySkin skin) {
         String id = spec.definition().id();
         definitionErrors.remove(id);
         RegionActor.Desired desired = new RegionActor.Desired(spec, skin);
@@ -561,8 +573,8 @@ public final class RegionNpcRuntime implements NpcRuntime, Listener {
     }
 
     private final class SkinRead implements Runnable {
-        final DefinitionSpec spec; volatile boolean cancelled; NativePacketAdapter.Skin skin; String failure;
-        SkinRead(DefinitionSpec spec) { this.spec = spec; }
+        final DefinitionSpec<ItemStack> spec; volatile boolean cancelled; BodySkin skin; String failure;
+        SkinRead(DefinitionSpec<ItemStack> spec) { this.spec = spec; }
         @Override public void run() {
             try { if (!cancelled && !closed) skin = SkinDocuments.read(runtime.documents(), spec.skin()); }
             catch (Exception problem) { failure = PersistedNpcService.concise(problem); }

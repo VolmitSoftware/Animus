@@ -1,6 +1,6 @@
 # Persisted virtual NPC runtime
 
-The initial runtime connects JSON definitions to independent virtual state and per-viewer packet presentations on Spigot and Paper **26.1.2, 26.2 and 26.3**. It creates no world-registered NPC body. On Folia each NPC runs on the region that owns its chunk; see [persisted NPCs on Folia](folia-runtime.md) for what differs there, including riding, mounts and combat, which stay unavailable. [Implementation evidence](implementation.md) identifies which artifact and scenarios were actually tested; source availability alone is not a release gate.
+The initial runtime connects JSON definitions to independent virtual state and per-viewer packet presentations on Spigot and Paper **26.1.2, 26.2 and 26.3**, and on Fabric, NeoForge and Forge servers for the same versions; see [mod servers](mod-servers.md) for what differs there. It creates no world-registered NPC body. On Folia each NPC runs on the region that owns its chunk; see [persisted NPCs on Folia](folia-runtime.md) for what differs there, including riding, mounts and combat, which stay unavailable. [Implementation evidence](implementation.md) identifies which artifact and scenarios were actually tested; source availability alone is not a release gate.
 
 ## Activation and editing
 

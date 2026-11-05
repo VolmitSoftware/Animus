@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.navigation;
 
+import art.arcane.animus.core.navigation.ChunkOwnership;
+
 import art.arcane.animus.core.navigation.*;
 import art.arcane.animus.core.virtual.Vec3;
 import org.bukkit.Bukkit;
@@ -25,7 +27,7 @@ public final class LiveMovementProbe {
         return (x, y, z) -> {
             if (y < world.getMinHeight() || y >= world.getMaxHeight() || !world.isChunkLoaded(Math.floorDiv(x, 16), Math.floorDiv(z, 16)))
                 return VoxelSnapshot.Cell.UNAVAILABLE;
-            return CollisionCells.of(world.getBlockAt(x, y, z));
+            return BlockCells.of(world.getBlockAt(x, y, z));
         };
     }
     /** Region owner only: an unowned or unloaded chunk reads as unavailable and is never touched. */
@@ -35,7 +37,7 @@ public final class LiveMovementProbe {
             int chunkX = Math.floorDiv(x, 16), chunkZ = Math.floorDiv(z, 16);
             if (y < world.getMinHeight() || y >= world.getMaxHeight() || !owned.owns(chunkX, chunkZ) || !world.isChunkLoaded(chunkX, chunkZ))
                 return VoxelSnapshot.Cell.UNAVAILABLE;
-            return CollisionCells.of(world.getBlockAt(x, y, z));
+            return BlockCells.of(world.getBlockAt(x, y, z));
         };
     }
 }

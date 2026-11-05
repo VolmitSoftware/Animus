@@ -60,22 +60,22 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 
 ## Sentinel settings
 
-Each Sentinel record becomes a disabled `modules["animus:combat"]` with `enabled` and `reviewAccepted` set to `false`. Accept the review by setting both to `true` after checking the result; until then the NPC neither fights nor takes combat damage. The unchanged Sentinel record stays in `citizens:review` and in the import archive. Converter version 3 and later write this mapping; per-field reports mark converted fields `CONVERTED`, kept fields `UNSUPPORTED_PRESERVED`, and fields unknown at the pinned source `REQUIRES_INTEGRATION`.
+Each Sentinel record becomes a disabled `modules["animus:combat"]` with `enabled` and `reviewAccepted` set to `false`. Accept the review by setting both to `true` after checking the result; until then the NPC neither fights nor takes combat damage. The unchanged Sentinel record stays in `citizens:review` and in the import archive. Converter version 5 and later write this mapping (version 3 and 4 wrote an earlier one); per-field reports mark converted fields `CONVERTED`, kept fields `UNSUPPORTED_PRESERVED`, and fields unknown at the pinned source `REQUIRES_INTEGRATION`.
 
 The module keeps three things apart:
 
 - The converted settings, described in [combat.md](combat.md). A field missing from a save means Sentinel's own default, so those defaults are written out rather than replaced by Animus defaults.
-- `preservedSettings`: every unsupported or unknown field, plus the original value of any converted field that could not be represented exactly (out of range, malformed, regular-expression names, item data, unresolvable guarded NPC). Nothing here runs.
+- `preservedSettings`: every unsupported or unknown field, plus the original value of any converted field that could not be represented exactly (out of range, malformed, invalid patterns, target entries with no equivalent rule, item data, unresolvable guarded NPC). Nothing here runs.
 - `historicalStatistics`: the 16 `stats_*` counters, as imported. They are not updated.
 
 `migrationReport` lists which source fields converted, which are unsupported or unknown, and a note for every value that was adjusted.
 
-Of the 69 persisted fields at the pinned source, 44 settings convert, 9 settings are unsupported and kept, and 16 statistics are kept separately.
+Of the 69 persisted fields at the pinned source, 51 settings convert, 2 settings are unsupported and kept (`autoswitch`, `weapon_redirect_map`), and 16 statistics are kept separately.
 
 | Sentinel field | Combat setting | Notes |
 | --- | --- | --- |
-| `allTargets`, `allIgnores`, `allAvoids` | `targets`, `ignores`, `avoids` | Categories (`PLAYERS`, `NPCS`, `MONSTERS`, `MOBS`, `PASSIVE_MOBS`), entity types, plain player/NPC/entity names, `squad:` and `uuid:` entries convert. Patterns, items, groups, events, statuses, `OWNER` and other entries are kept. |
-| `range` | `targeting.scanRange` | Limited to 64. |
+| `allTargets`, `allIgnores`, `allAvoids` | `targets`, `ignores`, `avoids` | See the target list table below. |
+| `range` | `targeting.scanRange` | Limited to 256; the server's `maximumScanRange` (default 100) applies at runtime. |
 | `realistic`, `ignore_los` | `targeting.lineOfSight` | `ignore_los` gives `ignored`, else `realistic` gives `field_of_view`, else `required`. |
 | `enemyTargetTime`, `reaction_slowdown`, `retain_target`, `fightback` | `targeting.memoryTicks`, `reactionTicks`, `retainTarget`, `fightBack` | Ticks. |
 | `avoidRange`, `runaway`, `avoidReturnPoint` | `avoidance.range`, `fleeWhenAttacked`, `returnPoint` | |
@@ -84,22 +84,45 @@ Of the 69 persisted fields at the pinned source, 44 settings convert, 9 settings
 | `guardedNPC` | `guard.npc` | Resolved to the guarded NPC's UUID in the same import, and to the copy's UUID when applied as a copy; otherwise kept. A guarded player takes precedence. |
 | `guard_distance_minimum`, `guard_selection_range` | `guard.followDistance`, `pointRange` | |
 | `chaseRange` | `pursuit.leashRange`, `giveUpRange` | |
-| `speed` | `pursuit.speed` | 1 means walking speed, 4.3 blocks per second; limited to 1–5. |
+| `speed` | `pursuit.speed` | 1 means walking speed, 4.3 blocks per second; limited to 1–10. The server's `maximumSpeed` (default 8) applies at runtime. |
 | `close_chase`, `ranged_chase`, `disable_teleporting` | `pursuit.closeChase`, `rangedChase`, `teleportWhenStuck` | |
-| `damage` | `melee.damage`, `ranged.damage` | `-1` (from equipment) becomes 1 and is kept; `0` disables melee. |
+| `worldguard_region` | `pursuit.region` | Checked through WorldGuard on Bukkit; unavailable with a diagnostic elsewhere. |
+| `damage` | `melee.damage`, `ranged.damage` | `-1` (the default) becomes `fromEquipment: true` on both; `0` disables melee. |
+| `weapon_damage_map` | `melee.weaponDamage` | Material names become `minecraft:` item ids. |
 | `attackRate`, `attackRateRanged` | `melee.cooldownTicks`, `ranged.cooldownTicks` | Ticks. |
 | `reach` | `melee.reach` | Limited to 6. |
-| `projectileRange`, `accuracy`, `safeShot` | `ranged.range`, `inaccuracy`, `safeShot` | Ranged attacks are enabled when the imported equipment holds a bow or crossbow. |
+| `projectileRange`, `accuracy`, `safeShot` | `ranged.range`, `inaccuracy`, `safeShot` | Ranged attacks are enabled when the imported held item is a weapon: bow or crossbow (`arrow`), spectral arrow, trident, blaze rod (`fireball`), snowball, egg or wither skeleton skull (`wither_skull`). A held potion is not converted, because its effect is item data. |
+| `needsAmmo` | `ranged.useAmmo` | Counts the imported inventory. |
 | `health` | `defense.maximumHealth` | Maximum, not current health. |
-| `armor` | `defense.armor` | `-1` (from equipment) becomes 0 and is kept. |
+| `armor` | `defense.armor` | `-1` (the default) becomes `armorFromEquipment: true`. |
 | `invincible`, `protected`, `protectFromRange`, `allow_knockback`, `healRate` | `defense.invincible`, `protectedFromIgnored`, `protectFromRange`, `knockback`, `healRateTicks` | `protected` means protection from ignored targets, not region protection. |
 | `drops`, `dropChances` | `death.drops` | Plain items with their chances convert; items with extra data keep the whole original list. |
 | `enemyDrops`, `death_xp` | `death.victimDrops`, `experience` | |
-| `respawnTime`, `spawnPoint` | `respawn.delayTicks`, `locations` | `-1` never respawns. |
+| `respawnTime`, `spawnPoint` | `respawn.delayTicks`, `locations` | `0` keeps the NPC dead (`delayTicks: -1`). Below 0 also sets `deleteOnDeath: true`, so the definition is deleted when the NPC dies, as one transaction that `/animus rollback` undoes. |
+| `greeting_text`, `warning_text`, `greet_range`, `greet_rate` | `greetings.friendly`, `hostile`, `range`, `cooldownTicks` | Empty text means no line. |
 
-Unsupported and kept: `worldguard_region`, `needsAmmo`, `autoswitch`, `weapon_damage_map`, `weapon_redirect_map`, `warning_text`, `greeting_text`, `greet_range`, `greet_rate`.
+Target list entries:
 
-Observed in the private reference, 21 of the 22 settings convert; `warning_text` (60 records) is kept. The seven observed statistics are kept separately.
+| Sentinel entry | Rule | Notes |
+| --- | --- | --- |
+| `targets`: categories and entity names | `categories`, `entityTypes` | `PLAYERS`, `NPCS`, `MONSTERS`, `MOBS`, `PASSIVE_MOBS`; about 80 entity names with plural aliases. |
+| `targets`: `OWNER` | `owner: true` | Matches the definition's `owner`, which the import takes from the Citizens owner. Every new Sentinel NPC ignores its owner, so imported guards never attack it. |
+| `byPlayerName`, `byNpcName`, `byEntityName` | `patterns.players`, `npcs`, `names` | Sentinel names are case-insensitive regular expressions that match anywhere, so they stay patterns. An invalid pattern is kept. |
+| `byHeldItem`, `byOffhandItem`, `byEquippedItem` | `items.mainHand`, `offHand`, `worn` | `name:` and `lore:` matchers are kept. |
+| `byGroup` | `groups` | |
+| `byOther` `squad:`, `uuid:` | `squads`, `players` | |
+| `byOther` `healthabove:`, `healthbelow:` | `healthAbove`, `healthBelow` | Several thresholds become the widest one, which matches the same targets. |
+| `byOther` `potion:` | `effects` | Old Bukkit effect names such as `INCREASE_DAMAGE` become their current ids. |
+| `byOther` `permission:` | `permissions` | |
+| `byAllInOne` | `all` | A combined list converts only when every entry in it does. |
+| `byMultiple` | `together` | Each entry becomes one part; a group needs 2 to 8 parts. |
+| `byEvent` `pvp`, `pve`, `eve`, `pvnpc`, `pvsentinel`, `npcvnpc` | `events.kinds` | `player_hurts_player`, `player_hurts_mob`, `mob_hurts_mob`, `player_hurts_npc` (both `pvnpc` and `pvsentinel`, since only combat NPCs can be hurt) and `npc_hurts_npc`. Not available in ignores. |
+| `byEvent` `pv:<target>`, `ev:<target>` | `events.playerAttacks`, `anyAttacks` | |
+| `byEvent` `message:<text>` | `chat` | |
+| `byEvent` `guarded_fight` | `guard.assist: true` | In target lists only. |
+| `byInventoryItem`, `byStatus`, `byOther` from other plugins (`sbteam`, `npc_owned_by`, Towny, Factions and others) | Kept | No equivalent rule. |
+
+Observed in the private reference, all 22 settings now convert, including `warning_text` (60 records) into `greetings.hostile`. The seven observed statistics are kept separately.
 
 | Field | Records | Field | Records |
 |---|---:|---|---:|
@@ -148,7 +171,7 @@ The locally cached Mojang 26.1.2 and 26.3 classes expose `ServerboundInteractPac
 | Runtime-6 Folia unavailable-feature rejection + recovery |27 pass, stable8|27 pass, beta7|27 pass, alpha6|
 | Mounts, real riders and dragon presentation (Paper/Spigot) | Unit tests and exact-jar checks; not yet run on a live server | Same | Same |
 | Mounts, real riders and dragon presentation (Folia) | Unavailable with a diagnostic | Unavailable with a diagnostic | Unavailable with a diagnostic |
-| Fabric/Forge/NeoForge NPC runtime | Deferred | Deferred | Deferred |
+| Fabric, NeoForge and Forge NPC runtime, commands, behaviors, combat ([mod servers](mod-servers.md)) | Builds and unit tests; not yet run on a live server | Same | Same |
 
 The presentation codec audit runs `node qa/protocol-client/audit-presentation.mjs --version <version>` after a build. It feeds the plugin's own pose, armor stand, text display, seat and team packets through each exact vanilla server jar's codecs; the 26.1.2 and 26.2 runs used the 26.3 server libraries. It does not start a server or show anything on a client. Exact server and plugin hashes, commands, and machine-readable direct-test evidence are retained locally under `.qa/platform-tests/evidence-index.json`. Separate Multiplexor reports live under `.qa/multiplexor-workspace/animus-evidence/`; see the [runner guide](multiplexor.md). Reproduce with `qa/platform-smoke.py`; the selected release channel is explicit. Lifecycle checks use synthetic dormant definitions and are separate from gameplay checks. All six owned servers were shut down after verification.
 

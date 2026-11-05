@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.combat.NamePattern;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -31,16 +32,24 @@ final class SentinelMapping {
     private static final Set<String> CONVERTED = Set.of("allTargets", "allIgnores", "allAvoids", "avoidRange", "enemyTargetTime", "fightback", "realistic", "ignore_los", "retain_target",
             "reaction_slowdown", "runaway", "chaseRange", "speed", "close_chase", "ranged_chase", "squad", "guard_distance_minimum", "guard_selection_range", "guardedNPC", "guardingUpper",
             "guardingLower", "avoidReturnPoint", "disable_teleporting", "damage", "attackRate", "attackRateRanged", "range", "reach", "safeShot", "accuracy", "projectileRange", "health", "armor",
-            "invincible", "protected", "protectFromRange", "allow_knockback", "healRate", "drops", "dropChances", "enemyDrops", "death_xp", "respawnTime", "spawnPoint");
-    private static final Set<String> UNSUPPORTED = Set.of("worldguard_region", "needsAmmo", "autoswitch", "weapon_damage_map", "weapon_redirect_map", "warning_text", "greeting_text", "greet_range", "greet_rate");
-    private static final Set<String> STATISTICS = Set.of("stats_ticksSpawned", "stats_timesSpawned", "stats_arrowsFired", "stats_potionsThrow", "stats_fireballsFired", "stats_snowballsThrown", "stats_eggsThrown",
-            "stats_skullsThrown", "stats_llamaSpitShot", "stats_shulkerBulletsShot", "stats_evokerFangsSpawned", "stats_pearlsUsed", "stats_punches", "stats_attackAttempts", "stats_damageTaken", "stats_damageGiven");
+            "invincible", "protected", "protectFromRange", "allow_knockback", "healRate", "drops", "dropChances", "enemyDrops", "death_xp", "respawnTime", "spawnPoint",
+            "worldguard_region", "needsAmmo", "weapon_damage_map", "warning_text", "greeting_text", "greet_range", "greet_rate");
+    private static final Set<String> UNSUPPORTED = Set.of("autoswitch", "weapon_redirect_map");
     private static final String GUARD_REFERENCE = "/traits/sentinel/guardedNPC";
     private static final double WALKING_SPEED = 4.3;
     private static final Map<String, String> CATEGORIES = Map.of("PLAYER", "players", "PLAYERS", "players", "NPC", "npcs", "NPCS", "npcs",
             "MONSTER", "monsters", "MONSTERS", "monsters", "MOB", "mobs", "MOBS", "mobs", "PASSIVE_MOB", "animals", "PASSIVE_MOBS", "animals");
     private static final Map<String, String> ENTITY_ALIASES = Map.of("ENDERMEN", "enderman", "SNOWMEN", "snow_golem", "SNOWMAN", "snow_golem", "IRON_GOLEMS", "iron_golem",
             "ZOMBIE_PIGMEN", "zombified_piglin", "PIGZOMBIE", "zombified_piglin", "MUSHROOM_COW", "mooshroom");
+    private static final Map<String, String> EFFECT_ALIASES = Map.ofEntries(Map.entry("SLOW", "slowness"), Map.entry("FAST_DIGGING", "haste"),
+            Map.entry("SLOW_DIGGING", "mining_fatigue"), Map.entry("INCREASE_DAMAGE", "strength"), Map.entry("HEAL", "instant_health"), Map.entry("HARM", "instant_damage"),
+            Map.entry("JUMP", "jump_boost"), Map.entry("CONFUSION", "nausea"), Map.entry("DAMAGE_RESISTANCE", "resistance"));
+    private static final Map<String, String> FIGHTS = Map.of("pvp", "player_hurts_player", "pve", "player_hurts_mob", "eve", "mob_hurts_mob",
+            "pvnpc", "player_hurts_npc", "pvsentinel", "player_hurts_npc", "npcvnpc", "npc_hurts_npc");
+    private static final Map<String, String> HELD_WEAPONS = Map.of("bow", "arrow", "crossbow", "arrow", "trident", "trident", "blaze_rod", "fireball",
+            "snowball", "snowball", "snow_ball", "snowball", "egg", "egg", "spectral_arrow", "spectral_arrow", "wither_skeleton_skull", "wither_skull");
+    private static final Map<String, String> LABEL_KINDS = Map.of("player", "byPlayerName", "npc", "byNpcName", "entityname", "byEntityName", "helditem", "byHeldItem",
+            "offhand", "byOffhandItem", "equipped", "byEquippedItem", "group", "byGroup");
 
     static Disposition disposition(String field) {
         if (CONVERTED.contains(field)) return Disposition.CONVERTED;
@@ -80,6 +89,214 @@ final class SentinelMapping {
         return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isString() ? value.getAsString() : null;
     }
 
+    /** Where a Sentinel target list lands: target and avoid lists accept event rules, ignores do not, nested lists match one entity. */
+    private enum Scope { TARGETS, AVOIDS, IGNORES, NESTED }
+
+    /** Converts one Sentinel target list: the rules that apply and the entries that have no equivalent. */
+    private static final class RuleList {
+        final JsonObject rules = new JsonObject();
+        final JsonObject residue = new JsonObject();
+        boolean assist;
+
+        RuleList(JsonObject list, Scope scope) {
+            for (Map.Entry<String, JsonElement> entry : list.entrySet()) {
+                String kind = entry.getKey();
+                if (kind.equals("byAllInOne") || kind.equals("byMultiple")) {
+                    nestedLists(kind, entry.getValue(), scope);
+                    continue;
+                }
+                List<String> values = strings(entry.getValue());
+                if (values == null) {
+                    residue.add(kind, entry.getValue().deepCopy());
+                    continue;
+                }
+                JsonArray leftover = new JsonArray();
+                for (String value : values) {
+                    if (kind.equals("byEvent") && value.equals("guarded_fight") && scope == Scope.TARGETS) assist = true;
+                    else if (!rule(kind, value, rules, scope)) leftover.add(value);
+                }
+                if (!leftover.isEmpty()) residue.add(kind, leftover);
+            }
+        }
+
+        private void nestedLists(String kind, JsonElement value, Scope scope) {
+            List<JsonElement> lists = new ArrayList<>();
+            if (value.isJsonArray()) value.getAsJsonArray().forEach(lists::add);
+            else if (value.isJsonObject()) lists.addAll(value.getAsJsonObject().asMap().values());
+            else {
+                residue.add(kind, value.deepCopy());
+                return;
+            }
+            JsonArray leftover = new JsonArray();
+            for (JsonElement nested : lists) {
+                Optional<JsonElement> converted = Optional.empty();
+                if (nested.isJsonObject() && scope != Scope.NESTED) {
+                    converted = kind.equals("byAllInOne") ? allInOne(nested.getAsJsonObject())
+                            : scope == Scope.IGNORES ? Optional.empty() : together(nested.getAsJsonObject());
+                }
+                if (converted.isEmpty()) leftover.add(nested.deepCopy());
+                else {
+                    String into = kind.equals("byAllInOne") ? "all" : "together";
+                    if (!rules.has(into)) rules.add(into, new JsonArray());
+                    rules.getAsJsonArray(into).add(converted.get());
+                }
+            }
+            if (!leftover.isEmpty()) residue.add(kind, leftover);
+        }
+
+        /** One entity must match every entry, so the list converts only when every entry does. */
+        private static Optional<JsonElement> allInOne(JsonObject list) {
+            RuleList nested = new RuleList(list, Scope.NESTED);
+            return nested.residue.isEmpty() && !nested.rules.isEmpty() ? Optional.of(nested.rules) : Optional.empty();
+        }
+
+        /** Each entry is checked off by a different entity; the group completes when all are. */
+        private static Optional<JsonElement> together(JsonObject list) {
+            JsonArray parts = new JsonArray();
+            for (Map.Entry<String, JsonElement> entry : list.entrySet()) {
+                List<String> values = strings(entry.getValue());
+                if (values == null) return Optional.empty();
+                for (String value : values) {
+                    JsonObject part = new JsonObject();
+                    if (!rule(entry.getKey(), value, part, Scope.NESTED)) return Optional.empty();
+                    parts.add(part);
+                }
+            }
+            return parts.size() >= 2 && parts.size() <= 8 ? Optional.of(parts) : Optional.empty();
+        }
+    }
+
+    private static boolean rule(String kind, String value, JsonObject rules, Scope scope) {
+        switch (kind) {
+            case "targets" -> {
+                String upper = value.toUpperCase(Locale.ROOT);
+                if (upper.equals("OWNER")) {
+                    rules.addProperty("owner", true);
+                    return true;
+                }
+                String category = CATEGORIES.get(upper);
+                if (category != null) return add(rules, "categories", category);
+                Optional<String> type = entityType(value);
+                return type.isPresent() && add(rules, "entityTypes", type.get());
+            }
+            case "byPlayerName" -> { return pattern(rules, "patterns", "players", value); }
+            case "byNpcName" -> { return pattern(rules, "patterns", "npcs", value); }
+            case "byEntityName" -> { return pattern(rules, "patterns", "names", value); }
+            case "byHeldItem" -> { return item(rules, "mainHand", value); }
+            case "byOffhandItem" -> { return item(rules, "offHand", value); }
+            case "byEquippedItem" -> { return item(rules, "worn", value); }
+            case "byGroup" -> { return value.matches("[A-Za-z0-9_.-]{1,64}") && add(rules, "groups", value); }
+            case "byOther" -> { return other(value, rules); }
+            case "byEvent" -> { return scope == Scope.TARGETS || scope == Scope.AVOIDS ? event(value, rules) : false; }
+            default -> { return false; }
+        }
+    }
+
+    private static boolean other(String value, JsonObject rules) {
+        int colon = value.indexOf(':');
+        if (colon <= 0 || colon == value.length() - 1) return false;
+        String prefix = value.substring(0, colon).toLowerCase(Locale.ROOT);
+        String rest = value.substring(colon + 1);
+        switch (prefix) {
+            case "squad" -> { return add(rules, "squads", rest); }
+            case "uuid" -> { return canonicalUuid(rest) && add(rules, "players", rest); }
+            case "healthabove", "healthbelow" -> {
+                double percent;
+                try { percent = Double.parseDouble(rest); }
+                catch (NumberFormatException invalid) { return false; }
+                if (!Double.isFinite(percent) || percent < 0 || percent > 100) return false;
+                String key = prefix.equals("healthabove") ? "healthAbove" : "healthBelow";
+                if (rules.has(key)) {
+                    double current = rules.get(key).getAsDouble();
+                    percent = prefix.equals("healthabove") ? Math.min(current, percent) : Math.max(current, percent);
+                }
+                rules.addProperty(key, percent);
+                return true;
+            }
+            case "potion" -> {
+                String upper = rest.toUpperCase(Locale.ROOT);
+                if (!upper.matches("[A-Z_]{2,48}")) return false;
+                return add(rules, "effects", "minecraft:" + EFFECT_ALIASES.getOrDefault(upper, upper.toLowerCase(Locale.ROOT)));
+            }
+            case "permission" -> { return rest.matches("[A-Za-z0-9_.*-]{1,128}") && add(rules, "permissions", rest); }
+            default -> { return false; }
+        }
+    }
+
+    private static boolean event(String value, JsonObject rules) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        String fight = FIGHTS.get(lower);
+        JsonObject events = rules.has("events") ? rules.getAsJsonObject("events") : new JsonObject();
+        boolean converted = false;
+        if (fight != null) {
+            if (!events.has("kinds")) events.add("kinds", new JsonArray());
+            if (!events.getAsJsonArray("kinds").contains(new JsonPrimitive(fight))) events.getAsJsonArray("kinds").add(fight);
+            converted = true;
+        } else if (lower.startsWith("message:") || lower.startsWith("message,")) {
+            String message = value.substring("message:".length());
+            if (message.isBlank() || message.length() > 128) return false;
+            return add(rules, "chat", message);
+        } else if (lower.startsWith("pv:") || lower.startsWith("ev:")) {
+            String into = lower.startsWith("pv:") ? "playerAttacks" : "anyAttacks";
+            JsonObject attacked = events.has(into) ? events.getAsJsonObject(into) : new JsonObject();
+            if (!label(value.substring(3), attacked)) return false;
+            events.add(into, attacked);
+            converted = true;
+        }
+        if (converted) rules.add("events", events);
+        return converted;
+    }
+
+    /** A single Sentinel target label such as {@code zombies}, {@code player:Bob} or {@code healthbelow:50}. */
+    private static boolean label(String label, JsonObject rules) {
+        int colon = label.indexOf(':');
+        if (colon < 0) return rule("targets", label, rules, Scope.NESTED);
+        String prefix = label.substring(0, colon).toLowerCase(Locale.ROOT);
+        String kind = LABEL_KINDS.get(prefix);
+        return kind != null ? rule(kind, label.substring(colon + 1), rules, Scope.NESTED) : other(label, rules);
+    }
+
+    private static boolean pattern(JsonObject rules, String section, String key, String value) {
+        try { NamePattern.compile(value, "$"); }
+        catch (IllegalArgumentException invalid) { return false; }
+        if (!rules.has(section)) rules.add(section, new JsonObject());
+        return add(rules.getAsJsonObject(section), key, value);
+    }
+    /** Item matchers on display names and lore have no equivalent; plain matchers apply to the item id. */
+    private static boolean item(JsonObject rules, String slot, String value) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("name:") || lower.startsWith("lore:")) return false;
+        return pattern(rules, "items", slot, value);
+    }
+    private static boolean add(JsonObject rules, String key, String value) {
+        if (!rules.has(key)) rules.add(key, new JsonArray());
+        if (!rules.getAsJsonArray(key).contains(new JsonPrimitive(value))) rules.getAsJsonArray(key).add(value);
+        return true;
+    }
+    private static boolean canonicalUuid(String value) {
+        try { return UUID.fromString(value).toString().equals(value); }
+        catch (IllegalArgumentException invalid) { return false; }
+    }
+    private static Optional<String> entityType(String name) {
+        String upper = name.toUpperCase(Locale.ROOT);
+        if (!upper.matches("[A-Z_]{2,48}")) return Optional.empty();
+        String alias = ENTITY_ALIASES.get(upper);
+        if (alias != null) return Optional.of("minecraft:" + alias);
+        String singular = upper;
+        if (upper.endsWith("CHES") || upper.endsWith("XES")) singular = upper.substring(0, upper.length() - 2);
+        else if (upper.endsWith("S") && !upper.endsWith("SS")) singular = upper.substring(0, upper.length() - 1);
+        return Optional.of("minecraft:" + singular.toLowerCase(Locale.ROOT));
+    }
+    private static List<String> strings(JsonElement value) {
+        if (!value.isJsonArray()) return null;
+        List<String> result = new ArrayList<>();
+        for (JsonElement entry : value.getAsJsonArray()) {
+            if (text(entry) == null) return null;
+            result.add(entry.getAsString());
+        }
+        return result;
+    }
+
     private static final class Converter {
         private final JsonObject source;
         private final JsonElement equipment;
@@ -90,6 +307,7 @@ final class SentinelMapping {
         private final JsonArray unsupported = new JsonArray();
         private final JsonArray unknown = new JsonArray();
         private final List<String> notes = new ArrayList<>();
+        private boolean assist;
 
         Converter(JsonObject source, JsonElement equipment, JsonArray references) {
             this.source = source;
@@ -122,6 +340,7 @@ final class SentinelMapping {
             defense();
             death();
             respawn();
+            greetings();
             for (String field : source.keySet()) {
                 if (disposition(field) == Disposition.CONVERTED && !preserved.has(field)) converted.add(field);
             }
@@ -145,6 +364,10 @@ final class SentinelMapping {
         private void keep(String field, String why) {
             preserved.add(field, source.get(field).deepCopy());
             notes.add(field + ": " + why);
+        }
+        private boolean present(String field) {
+            JsonElement value = source.get(field);
+            return value != null && !value.isJsonNull();
         }
         private double number(String field, double fallback, double minimum, double maximum) {
             JsonElement value = source.get(field);
@@ -175,90 +398,29 @@ final class SentinelMapping {
         }
 
         private void targetLists() {
-            rules("allTargets", "targets");
-            rules("allIgnores", "ignores");
-            rules("allAvoids", "avoids");
+            rules("allTargets", "targets", Scope.TARGETS);
+            rules("allIgnores", "ignores", Scope.IGNORES);
+            rules("allAvoids", "avoids", Scope.AVOIDS);
         }
-        private void rules(String field, String into) {
+        private void rules(String field, String into, Scope scope) {
             JsonElement list = source.get(field);
             if (list == null) return;
             if (!list.isJsonObject()) {
                 keep(field, "not a target list");
                 return;
             }
-            JsonObject residue = new JsonObject();
-            JsonObject rules = new JsonObject();
-            for (Map.Entry<String, JsonElement> entry : list.getAsJsonObject().entrySet()) {
-                List<String> values = strings(entry.getValue());
-                JsonArray leftover = new JsonArray();
-                if (values == null) {
-                    residue.add(entry.getKey(), entry.getValue().deepCopy());
-                    continue;
-                }
-                for (String value : values) {
-                    if (!convertRule(entry.getKey(), value, rules)) leftover.add(value);
-                }
-                if (!leftover.isEmpty()) residue.add(entry.getKey(), leftover);
-            }
-            if (!rules.isEmpty()) module.add(into, rules);
-            if (!residue.isEmpty()) {
-                preserved.add(field, residue);
+            RuleList result = new RuleList(list.getAsJsonObject(), scope);
+            if (result.assist) assist = true;
+            if (!result.rules.isEmpty()) module.add(into, result.rules);
+            if (!result.residue.isEmpty()) {
+                preserved.add(field, result.residue);
                 notes.add(field + ": some entries have no equivalent rule and are not applied");
             }
-        }
-        private static boolean convertRule(String kind, String value, JsonObject rules) {
-            switch (kind) {
-                case "targets" -> {
-                    String category = CATEGORIES.get(value.toUpperCase(Locale.ROOT));
-                    if (category != null) return add(rules, "categories", category);
-                    Optional<String> type = entityType(value);
-                    return type.isPresent() && add(rules, "entityTypes", type.get());
-                }
-                case "byPlayerName" -> { return plainName(value) && add(rules, "players", value); }
-                case "byNpcName" -> { return plainName(value) && add(rules, "npcs", value); }
-                case "byEntityName" -> { return plainName(value) && add(rules, "names", value); }
-                case "byOther" -> {
-                    if (value.startsWith("squad:") && value.length() > 6) return add(rules, "squads", value.substring(6));
-                    if (value.startsWith("uuid:") && canonicalUuid(value.substring(5))) return add(rules, "players", value.substring(5));
-                    return false;
-                }
-                default -> { return false; }
-            }
-        }
-        private static boolean add(JsonObject rules, String key, String value) {
-            if (!rules.has(key)) rules.add(key, new JsonArray());
-            rules.getAsJsonArray(key).add(value);
-            return true;
-        }
-        /** Sentinel treats these as patterns. Only text with no pattern syntax converts to an exact name. */
-        private static boolean plainName(String value) { return value.matches("[A-Za-z0-9_ ]{1,64}"); }
-        private static boolean canonicalUuid(String value) {
-            try { return UUID.fromString(value).toString().equals(value); }
-            catch (IllegalArgumentException invalid) { return false; }
-        }
-        private static Optional<String> entityType(String name) {
-            String upper = name.toUpperCase(Locale.ROOT);
-            if (upper.equals("OWNER") || !upper.matches("[A-Z_]{2,48}")) return Optional.empty();
-            String alias = ENTITY_ALIASES.get(upper);
-            if (alias != null) return Optional.of("minecraft:" + alias);
-            String singular = upper;
-            if (upper.endsWith("CHES") || upper.endsWith("XES")) singular = upper.substring(0, upper.length() - 2);
-            else if (upper.endsWith("S") && !upper.endsWith("SS")) singular = upper.substring(0, upper.length() - 1);
-            return Optional.of("minecraft:" + singular.toLowerCase(Locale.ROOT));
-        }
-        private static List<String> strings(JsonElement value) {
-            if (!value.isJsonArray()) return null;
-            List<String> result = new ArrayList<>();
-            for (JsonElement entry : value.getAsJsonArray()) {
-                if (text(entry) == null) return null;
-                result.add(entry.getAsString());
-            }
-            return result;
         }
 
         private void targeting() {
             JsonObject section = section("targeting");
-            section.addProperty("scanRange", number("range", 20, 1, 64));
+            section.addProperty("scanRange", number("range", 20, 1, 256));
             section.addProperty("reactionTicks", ticks("reaction_slowdown", 0, 0, 200));
             section.addProperty("memoryTicks", ticks("enemyTargetTime", 0, 0, 1200));
             section.addProperty("retainTarget", flag("retain_target", false));
@@ -302,6 +464,7 @@ final class SentinelMapping {
             JsonObject section = section("guard");
             section.addProperty("followDistance", number("guard_distance_minimum", 7, 1, 64));
             section.addProperty("pointRange", number("guard_selection_range", 4, 0, 16));
+            if (assist) section.addProperty("assist", true);
             Optional<Long> upper = exactLong("guardingUpper");
             Optional<Long> lower = exactLong("guardingLower");
             boolean player = false;
@@ -342,16 +505,21 @@ final class SentinelMapping {
             JsonObject section = section("pursuit");
             double range = number("chaseRange", 100, 1, 256);
             section.addProperty("leashRange", range);
-            section.addProperty("giveUpRange", Math.min(range, 128));
+            section.addProperty("giveUpRange", range);
             double speed = number("speed", 1, 0, Double.MAX_VALUE);
             double blocksPerSecond = speed * WALKING_SPEED;
-            double limited = Math.max(1, Math.min(5, blocksPerSecond));
+            double limited = Math.max(1, Math.min(10, blocksPerSecond));
             if (limited != blocksPerSecond && !preserved.has("speed")) keep("speed", blocksPerSecond + " blocks per second is outside movement limits; using " + limited);
             section.addProperty("speed", limited);
             section.addProperty("closeChase", flag("close_chase", true));
             section.addProperty("rangedChase", flag("ranged_chase", false));
             section.addProperty("teleportWhenStuck", !flag("disable_teleporting", false));
             section.addProperty("returnToPost", true);
+            if (present("worldguard_region")) {
+                String region = text(source.get("worldguard_region"));
+                if (region != null && region.matches("[A-Za-z0-9_,'+/-]{1,64}")) section.addProperty("region", region);
+                else keep("worldguard_region", "not a usable region name");
+            }
         }
         private void attacks() {
             JsonObject melee = section("melee");
@@ -363,26 +531,50 @@ final class SentinelMapping {
                 melee.addProperty("damage", damage);
                 ranged.addProperty("damage", damage);
             } else if (damage < 0) {
-                melee.addProperty("damage", 1);
-                if (source.has("damage")) keep("damage", "derived from equipment, which is not simulated; using 1");
+                melee.addProperty("fromEquipment", true);
+                ranged.addProperty("fromEquipment", true);
             } else {
                 melee.addProperty("enabled", false);
             }
-            ranged.addProperty("enabled", holdsBow());
+            weaponDamage(melee);
+            Optional<String> weapon = heldWeapon();
+            ranged.addProperty("enabled", weapon.isPresent());
+            weapon.ifPresent((String name) -> ranged.addProperty("weapon", name));
             ranged.addProperty("cooldownTicks", ticks("attackRateRanged", 30, 1, 1200));
-            ranged.addProperty("range", number("projectileRange", 64, 1, 64));
+            ranged.addProperty("range", number("projectileRange", 100, 1, 256));
             ranged.addProperty("inaccuracy", number("accuracy", 0, 0, 16));
             ranged.addProperty("safeShot", flag("safeShot", true));
+            ranged.addProperty("useAmmo", flag("needsAmmo", false));
         }
-        private boolean holdsBow() {
-            if (equipment == null || !equipment.isJsonObject()) return false;
+        private void weaponDamage(JsonObject melee) {
+            JsonElement map = source.get("weapon_damage_map");
+            if (map == null || map.isJsonNull()) return;
+            if (!map.isJsonObject() || map.getAsJsonObject().size() > 64) {
+                keep("weapon_damage_map", "not a map of at most 64 items");
+                return;
+            }
+            JsonObject converted = new JsonObject();
+            for (Map.Entry<String, JsonElement> entry : map.getAsJsonObject().entrySet()) {
+                String item = "minecraft:" + entry.getKey().toLowerCase(Locale.ROOT).replace("minecraft:", "");
+                JsonElement value = entry.getValue();
+                if (!item.matches("[a-z0-9_.-]+:[a-z0-9_./-]+") || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()
+                        || !Double.isFinite(value.getAsDouble()) || value.getAsDouble() < 0 || value.getAsDouble() > 100) {
+                    keep("weapon_damage_map", "an entry is not an item with damage 0..100");
+                    return;
+                }
+                converted.addProperty(item, value.getAsDouble());
+            }
+            if (!converted.isEmpty()) melee.add("weaponDamage", converted);
+        }
+        /** The ranged weapon the imported held item fires, as Sentinel chooses it. Potions need their effect and are not converted. */
+        private Optional<String> heldWeapon() {
+            if (equipment == null || !equipment.isJsonObject()) return Optional.empty();
             JsonElement hand = equipment.getAsJsonObject().get("hand");
-            if (hand == null || !hand.isJsonObject()) return false;
+            if (hand == null || !hand.isJsonObject()) return Optional.empty();
             String type = text(hand.getAsJsonObject().get("type"));
             if (type == null) type = text(hand.getAsJsonObject().get("id"));
-            if (type == null) return false;
-            String item = type.toLowerCase(Locale.ROOT).replace("minecraft:", "");
-            return item.equals("bow") || item.equals("crossbow");
+            if (type == null) return Optional.empty();
+            return Optional.ofNullable(HELD_WEAPONS.get(type.toLowerCase(Locale.ROOT).replace("minecraft:", "")));
         }
         private void defense() {
             JsonObject section = section("defense");
@@ -390,7 +582,7 @@ final class SentinelMapping {
             double armor = source.has("armor") ? number("armor", -1, -1, 1) : -1;
             if (armor < 0) {
                 section.addProperty("armor", 0);
-                if (source.has("armor")) keep("armor", "derived from equipment, which is not simulated; using 0");
+                section.addProperty("armorFromEquipment", true);
             } else {
                 section.addProperty("armor", armor);
             }
@@ -444,14 +636,39 @@ final class SentinelMapping {
             rule.addProperty("chance", probability);
             return Optional.of(rule);
         }
+        /** Sentinel keeps an NPC with a respawn time of 0 dead, and deletes one with a negative time when it dies. */
         private void respawn() {
             JsonObject section = section("respawn");
-            section.addProperty("delayTicks", ticks("respawnTime", 100, -1, 72000));
+            double time = number("respawnTime", 100, -Double.MAX_VALUE, 72000);
+            if (time < 0) {
+                section.addProperty("delayTicks", -1);
+                section.addProperty("deleteOnDeath", true);
+            } else {
+                long ticks = Math.round(time);
+                section.addProperty("delayTicks", ticks == 0 ? -1 : ticks);
+            }
             location("spawnPoint").ifPresent((JsonObject point) -> {
                 JsonArray locations = new JsonArray();
                 locations.add(point);
                 section.add("locations", locations);
             });
+        }
+        /** Empty text means no line in Sentinel. */
+        private void greetings() {
+            JsonObject section = section("greetings");
+            line("greeting_text").ifPresent((String text) -> section.addProperty("friendly", text));
+            line("warning_text").ifPresent((String text) -> section.addProperty("hostile", text));
+            section.addProperty("range", number("greet_range", 10, 1, 64));
+            section.addProperty("cooldownTicks", ticks("greet_rate", 100, 0, 72000));
+        }
+        private Optional<String> line(String field) {
+            if (!present(field)) return Optional.empty();
+            String text = text(source.get(field));
+            if (text == null || text.length() > 256 || text.codePoints().anyMatch(Character::isISOControl)) {
+                keep(field, "not a line of at most 256 characters");
+                return Optional.empty();
+            }
+            return text.isBlank() ? Optional.empty() : Optional.of(text);
         }
     }
 
