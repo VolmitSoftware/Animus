@@ -215,7 +215,19 @@ Rigs and animations load at startup and on `/animus reload` or `/animus rigs rel
 
 A viewer short of budget sends the newest transforms on later ticks with the interpolation that is left. Bones are cosmetic: hits use the body's hitbox.
 
-`/animus pack build` turns every Blockbench model at `models/<namespace>/<name>.bbmodel` into `pack/out/animus-rigs.zip` (with its SHA-1 beside it) and the same files as a folder in `pack/out/pack/` for merging into a server pack. Each group becomes a bone and its cubes one item model, chosen by `assets/animus/items/rig_bone.json` from the item's `custom_model_data` string `namespace:name/bone`. The zip is reproducible and declares pack formats 84 to 97 (26.1.2 to 26.3). The matching rig and one animation per Blockbench animation are written to `pack/out/documents/`; copy them into `rigs/` and `animations/`. Only embedded PNG textures are read, nothing is fetched, and files over 8 MiB, more than 64 models, 64 groups, 4,096 cubes or 16 textures per model are refused. Cube rotations outside one axis in 22.5 degree steps are dropped with a warning, and Molang keyframe values are skipped.
+### Resource pack layout
+
+Bones that show vanilla items and blocks need no pack. A custom bone shows `minecraft:paper` with `item_model="animus:<rig path>/<bone>"`, where the rig path is the rig id after its colon (`town:golem` gives `animus:golem/head`). The pack sources live in the data folder under `pack/assets/`, laid out as a resource pack's `assets/`:
+
+| Data-folder path | What it is |
+| --- | --- |
+| `pack/assets/animus/items/<rig path>/<bone>.json` | Item definition: `{"model": {"type": "minecraft:model", "model": "animus:item/<rig path>/<bone>"}}` |
+| `pack/assets/animus/models/item/<rig path>/<bone>.json` | The bone's cubes as an item model, centred on the bone's pivot at (8, 8, 8) and shrunk to the -16..32 model bounds when needed; the bone's visual `scale` makes up the difference |
+| `pack/assets/animus/textures/item/<rig path>/<texture>.png` | Embedded Blockbench textures |
+
+The editor's Blockbench import and rig export write exactly these files; copy an exported `<rig>-server-files.zip` into the data folder. The server reads `models/<namespace>/<name>.bbmodel` too and converts each into rig `namespace:name` with the same rules as the editor: every group is a bone, a cube rotation that is not one axis in 22.5 degree steps up to 45 becomes a bone of its own, and the model turns 180 degrees to face +Z (pivots `(-x, y, -z) / 16`, rotations `(-x, y, -z)`; item displays turn their models back). `schema/fixtures/pack/` pins the result for both.
+
+`/animus pack build` makes `pack/out/animus-rigs.zip`, a resource pack of `pack.mcmeta` plus every file under `pack/assets/` (as `assets/...`) and the files made from `models/`. A file already under `pack/assets/` wins over one made from a model. The zip holds stored entries in sorted path order, each dated 1980-01-01 00:00, so the same files give the same bytes; its SHA-1 is written beside it as `animus-rigs.zip.sha1`. `pack.mcmeta` is `{"pack": {"description": "Animus rig models", "min_format": 84, "max_format": 97}}`, covering 26.1.2 (84), 26.2 (88) and 26.3 (97). The same files are written as a folder in `pack/out/pack/` for merging into a server pack, and the rigs and animations made from models go to `pack/out/documents/`; copy them into `rigs/` and `animations/`. Only embedded PNG textures are read and nothing is fetched. Models over 16 MiB, more than 64 models, 64 bones, 4,096 cubes, 16 textures of 4 MiB or 1,024 pixels wide, 64 animations, 256 keyframes per channel or 16,384 source files are refused. Molang keyframe values play as 0, and catmullrom and bezier keyframes play as `ease_in_out`.
 
 ## Ender dragon presentation
 

@@ -312,8 +312,8 @@ public final class AnimusCommands {
                 java.nio.file.Path data = active.rigs().data();
                 try {
                     art.arcane.animus.core.rig.pack.RigPackBuilder.Result result = art.arcane.animus.core.rig.pack.RigPackBuilder.build(
-                            data.resolve("models"), data.resolve("pack/out"), art.arcane.animus.core.rig.pack.RigPackBuilder.Limits.DEFAULT);
-                    reply(sender, "Pack built: models=" + result.models() + " bones=" + result.bones() + " sha1=" + result.sha1() + " -> pack/out/" + result.zip().getFileName());
+                            data, data.resolve("pack/out"), art.arcane.animus.core.rig.pack.RigPackBuilder.Limits.DEFAULT);
+                    reply(sender, "Pack built: models=" + result.models() + " files=" + result.files() + " sha1=" + result.sha1() + " -> pack/out/" + result.zip().getFileName());
                     reply(sender, "Rig and animation documents for the models are in pack/out/documents; copy them into rigs/ and animations/ to use them.");
                     result.problems().stream().limit(20).forEach((String problem) -> reply(sender, "Pack: " + problem));
                     if (result.problems().size() > 20) reply(sender, "Pack: " + (result.problems().size() - 20) + " more problems not shown");
