@@ -2,7 +2,7 @@
 
 A Manager for all things NPC.
 
-Animus provides durable JSON NPC definitions, administration commands, staged imports, and a bounded virtual NPC runtime on the exact Spigot/Paper targets. Create and import leave NPCs dormant; explicit spawn activates a validated definition. Initial movement, reusable waypoint routes, manual real-target combat and ordinary-zombie targeting have explicit capability limits. Folia rendering, behavior workflows and the full combat module remain unfinished. See the [runtime guide](docs/runtime.md) for commands and [implementation evidence](docs/implementation.md) for the exact tested artifacts.
+Animus provides durable JSON NPC definitions, administration commands, staged imports, a bounded virtual NPC runtime, JSON behaviors, navigation, combat, shops, chest GUIs and a browser editor on Paper, Spigot and Folia, and on Fabric, NeoForge and Forge servers. Create and import leave NPCs dormant; explicit spawn activates a validated definition. On Folia, riding, mounts, combat and builds are unavailable. The editor runs at https://animus-editor.web.app; see [deployment](docs/deployment.md). See the [runtime guide](docs/runtime.md) for commands and [implementation evidence](docs/implementation.md) for the exact tested artifacts.
 
 The target releases are Minecraft **26.1.2, 26.2, and 26.3**, using **Java 25**. Fabric, NeoForge and Forge servers run the same runtime as a server-side mod; see [mod servers](docs/mod-servers.md). API compilation is not gameplay certification. See [compatibility](docs/compatibility.md) and [implementation evidence](docs/implementation.md).
 
@@ -25,9 +25,9 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
 
 Use the supported Bukkit deliverable in `build/distributions/`: `Animus v0.1.0 [CraftBukkit] 26.1.2-26.3.jar`. The converter is in `converter/build/install/converter/`, with archives under `converter/build/distributions/`. `build/artifacts.json` records the distribution's exact platforms and versions (or all platform distributions when opted in).
 
-The Java extension API, sources and JavaDoc are prepared separately in `build/api/`. See [trusted modules](docs/modules.md) and the [reference module](examples/modules/reference/README.md). NPCs can open [shops](docs/shops.md) and [chest GUIs](docs/gui.md) written in Gloss's inventory format; a dtlTraders importer converts existing shops. Startup module loading and canonical/custom-package verification are complete locally; the new Multiplexor server matrix is in progress.
+The Java extension API, sources and JavaDoc are prepared separately in `build/api/`. See [trusted modules](docs/modules.md) and the [reference module](examples/modules/reference/README.md). NPCs can open [shops](docs/shops.md) and [chest GUIs](docs/gui.md) written in Gloss's inventory format; a dtlTraders importer converts existing shops. Module loading passes live checks on every Paper, Spigot and Folia target.
 
-For isolated builds, artifact delivery, managed server checks and client scenarios, follow the [Multiplexor verification guide](docs/multiplexor.md). [Benchmark preparation](docs/benchmark.md) supplies reproducible synthetic workloads; measurements are still pending. Native packet checks use exact-version clients attached to Multiplexor-managed servers where its standard client lacks protocol data.
+For isolated builds, artifact delivery, managed server checks and client scenarios, follow the [Multiplexor verification guide](docs/multiplexor.md). [Benchmark preparation](docs/benchmark.md) supplies reproducible synthetic workloads; no performance has been measured yet. Native packet checks use exact-version clients attached to Multiplexor-managed servers where its standard client lacks protocol data.
 
 The build automatically uses a sibling/ancestor VolmLib checkout. Override with `-PlocalVolmLibDirectory=/path/to/VolmLib`, `VOLMLIB_DIR`, or `-PuseLocalVolmLib=false` for published dependencies.
 
@@ -131,6 +131,9 @@ viewDistance = 48
 maximumVisible = 64
 maximumViewers = 256
 updatesPerTick = 16
+packetsPerTick = 32
+pendingSpawnsPerViewer = 8
+lookUpdatesPerTick = 32
 
 [files]
 maximumOperations = 32
@@ -151,7 +154,7 @@ Older files use defaults for missing `[files]` and `[modules]` tables. See [modu
 
 ## Experimental packet proof
 
-Set `packetProofEnabled = true` in TOML and restart an isolated Bukkit/Paper test server. The proof requires `animus.admin`, is viewer-only, and expires after two minutes. It does not activate persisted definitions. Folia deliberately reports it unavailable until region-safe world snapshots and ownership transfer are implemented.
+Set `packetProofEnabled = true` in TOML and restart an isolated Bukkit/Paper test server. The proof requires `animus.admin`, is viewer-only, and expires after two minutes. It does not activate persisted definitions. Folia reports it unavailable; use the Folia preview below, or saved NPCs.
 
 Folia has a separate, limited `/animus foliaproof` stationary player preview. See [Folia preview commands and limits](docs/folia-preview.md) and the exact verification status in [implementation evidence](docs/implementation.md). Saved NPCs on Folia run on the region that owns their chunk; riding, mounts and combat stay unavailable there. See [persisted NPCs on Folia](docs/folia-runtime.md).
 

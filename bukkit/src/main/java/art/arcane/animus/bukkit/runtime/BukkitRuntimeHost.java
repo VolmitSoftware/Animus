@@ -14,7 +14,6 @@ import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.runtime.RuntimeHost;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -98,17 +97,6 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     @Override public float pitch(Player player) { return player.getLocation().getPitch(); }
     @Override public boolean permitted(Player player, String node) { return player.hasPermission(node); }
     @Override public void tell(Player player, String message) { player.sendMessage(RichText.colorize(message)); }
-    @Override public List<Player> playersNear(WorldPosition at, double radius, int limit) {
-        World world = terrain.world(at.world());
-        List<Player> result = new ArrayList<>();
-        if (world == null) return result;
-        Location center = new Location(world, at.point().x(), at.point().y(), at.point().z());
-        for (Player candidate : world.getPlayers()) {
-            if (result.size() >= limit) break;
-            if (candidate.getLocation().distanceSquared(center) <= radius * radius) result.add(candidate);
-        }
-        return result;
-    }
     @Override public boolean teleport(Player player, WorldPosition destination, float yaw, float pitch) {
         World world = terrain.world(destination.world());
         if (world == null) return false;

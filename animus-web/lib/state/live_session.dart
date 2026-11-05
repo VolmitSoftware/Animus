@@ -71,6 +71,15 @@ class PreviewState {
       : null;
 }
 
+/// Plain words for the `reason` of a `closing` event, keeping the code.
+String closingReason(Object? reason) => switch (reason) {
+      'limit' => 'this editor fell too far behind on server events (limit); it reconnects and reloads what changed',
+      'token-revoked' => 'the pairing was revoked (token-revoked)',
+      'token-expired' => 'the pairing expired (token-expired)',
+      'server-stopping' => 'the server is stopping (server-stopping)',
+      _ => '$reason',
+    };
+
 enum NoticeLevel { info, success, warning, error }
 
 class LiveNotice {
@@ -448,17 +457,31 @@ class LiveSession {
             if (draft.change?['source'] != null)
               draft.key: (path: store.document(draft.kind, draft.id)?.path ?? documentPath(draft.kind, draft.id), source: draft.change!['source']),
         };
-        final ApiResponse? response = await _call(
-          ApiRequest('POST', '/v1/changes', body: <String, Object?>{
-            'idempotencyKey': key,
-            'documents': _changes(drafts),
-            if (message != null && message.isNotEmpty) 'message': message,
-          }),
-          'apply',
-        );
-        if (response == null) return;
-        await _outcome(response, pending, sent);
+        await _settling(key, () async {
+          final ApiResponse? response = await _call(
+            ApiRequest('POST', '/v1/changes', body: <String, Object?>{
+              'idempotencyKey': key,
+              'documents': _changes(drafts),
+              if (message != null && message.isNotEmpty) 'message': message,
+            }),
+            'apply',
+          );
+          if (response != null) await _outcome(response, pending, sent);
+        });
       });
+
+  /// Keys whose answer this session is reading now; their `change` events
+  /// are left to that answer.
+  final Set<String> _answering = <String>{};
+
+  Future<void> _settling(String key, Future<void> Function() work) async {
+    _answering.add(key);
+    try {
+      await work();
+    } finally {
+      _answering.remove(key);
+    }
+  }
 
   Future<void> _outcome(ApiResponse response, PendingChange pending, Map<String, ({String path, Object? source})>? sent) async {
     final ChangeOutcome? outcome = ChangeOutcome.parse(response.body);
@@ -531,12 +554,13 @@ class LiveSession {
         final String key = _newKey();
         final PendingChange pending = PendingChange(idempotencyKey: key, documents: change?.documents ?? const <String>[], sentAt: _now().toUtc(), undoOf: changeId);
         await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: <PendingChange>[...binding.pending, pending]), undoable: false);
-        final ApiResponse? response = await _call(
-          ApiRequest('POST', '/v1/changes/${Uri.encodeComponent(changeId)}/undo', body: <String, Object?>{'idempotencyKey': key}),
-          'undo',
-        );
-        if (response == null) return;
-        await _outcome(response, pending, null);
+        await _settling(key, () async {
+          final ApiResponse? response = await _call(
+            ApiRequest('POST', '/v1/changes/${Uri.encodeComponent(changeId)}/undo', body: <String, Object?>{'idempotencyKey': key}),
+            'undo',
+          );
+          if (response != null) await _outcome(response, pending, null);
+        });
       });
 
   /// Spawns or despawns NPCs (`group/id`) on the server, one request each
@@ -577,6 +601,8 @@ class LiveSession {
       if (response == null) return;
       final Object? body = response.body;
       if (!response.ok || body is! Map<String, Object?>) continue;
+      // A change event may have settled it while the status was on its way.
+      if (_pendingOf(pending.idempotencyKey) == null) continue;
       switch (body['status']) {
         case 'applied' || 'conflict' || 'invalid':
           await _outcome(ApiResponse(200, body['result']), pending, null);
@@ -584,9 +610,27 @@ class LiveSession {
           await _dropPending(pending.idempotencyKey);
           _notice(NoticeLevel.warning, 'A change set sent before the connection dropped never reached the server. Your drafts are unchanged; apply again.');
         default:
-          _notice(NoticeLevel.info, 'A change set is still being written on the server.');
+          _notice(NoticeLevel.info, 'A change set is still being written on the server; it settles when the server reports it.');
       }
     }
+  }
+
+  PendingChange? _pendingOf(String key) {
+    for (final PendingChange change in binding?.pending ?? const <PendingChange>[]) {
+      if (change.idempotencyKey == key) return change;
+    }
+    return null;
+  }
+
+  /// A `change` event for a change set whose answer was lost settles it
+  /// like that answer would have.
+  Future<void> _changeEvent(Object? result) async {
+    if (result is! Map<String, Object?>) return;
+    final Object? key = result['idempotencyKey'];
+    if (key is! String || _answering.contains(key)) return;
+    final PendingChange? pending = _pendingOf(key);
+    if (pending == null) return;
+    await _settling(key, () => _outcome(ApiResponse(200, result), pending, null));
   }
 
   void _conflicts(List<ServerConflict> found) {
@@ -732,8 +776,10 @@ class LiveSession {
           if (raw is Map<String, Object?>) serverDiagnostics['${raw['kind']}:${raw['id']}'] = diagnosticsOf(raw['diagnostics']);
         }
         _changed();
+      case 'change':
+        await _changeEvent(event['result']);
       case 'closing':
-        _notice(NoticeLevel.warning, 'The server is closing the connection: ${event['reason']}.');
+        _notice(NoticeLevel.warning, 'The server is closing the connection: ${closingReason(event['reason'])}.');
     }
   }
 

@@ -2,7 +2,7 @@
 
 This harness tests explicitly requested JSON programs against existing NPC definitions on the private behavior owner thread. Targets are Paper, Spigot and Folia 26.1.2, 26.2 and 26.3. All physical NPC services stay disabled. It grants no world access, automatic trigger, preview, privileged command, durable quest state or general Folia simulation.
 
-`acceptance.json` lists 26 required live gates. They remain unverified until a complete managed report and independent audit pass. The older runtime10 evidence and the initial proposal under `.qa/next-behavior-qa` remain unchanged; neither establishes this new live gate.
+`acceptance.json` lists the 26 required live checks. All 26 pass on Paper, Spigot and Folia 26.1.2, 26.2 and 26.3 on merged master, run through `qa/multiplexor/gate.py`.
 
 ## Build inputs
 

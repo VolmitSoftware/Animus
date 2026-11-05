@@ -175,7 +175,7 @@ final class RegionActor implements RegionOwner.Body {
         if (rig == null || !state.snapshot().active()) return;
         boolean walking = route != null && route.execution != null && !route.execution.finished();
         for (RigPlayback.Finished done : rig.tick(turns, walking)) host.animationFinished(uuid, done.animation(), done.layer());
-        if (rig.due(turns, yaw) && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs.sampleTicks(), System.nanoTime());
+        if (rig.due(turns, yaw) && host.budget.cosmeticAllowed() && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs.sampleTicks(), System.nanoTime());
     }
     void playAnimation(String animation, double speed, Optional<String> loop, int layer) {
         Optional<AnimationDocument.Loop> mode = loop.map((String text) -> AnimationDocument.Loop.parse(text)
@@ -328,7 +328,7 @@ final class RegionActor implements RegionOwner.Body {
         LookClose look = lookClose;
         if (look == null || turns < nextLook || mount || !navigable()) return;
         if (!look.whileNavigating() && (routeRead != null || (route != null && (route.plan != null || route.execution != null)))) return;
-        if (host.budget.take(RegionBudget.Kind.LOOKS, 1) == 0) return;
+        if (!host.budget.cosmeticAllowed() || host.budget.take(RegionBudget.Kind.LOOKS, 1) == 0) return;
         nextLook = turns + LookClose.INTERVAL_TICKS;
         WorldPosition at = state.snapshot().position();
         World world = host.world(at.world());

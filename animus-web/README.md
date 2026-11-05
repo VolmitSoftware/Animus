@@ -66,7 +66,7 @@ A paired server opens as a server workspace (`#/server/<id>`), next to the local
 - Apply: every changed draft (edited, new or deleted) as one change set with its base revision and hash. When the server's version moved, nothing is written and each document opens in a three-way merge (base, mine, server): fields only one side changed merge by themselves, and each field both changed keeps the side picked. Use merge moves the draft onto the server's revision for the next apply.
 - Undo last apply: the server's rollback receipt for the last applied change set.
 
-Unanswered change sets are kept with the workspace. After a reconnect (or a reload) the editor asks the server what became of each by its idempotency key, and reports one that never arrived. Catalog events refresh documents that were not edited here; edited ones are marked changed on server, with a Merge button. The server's own schemas (with its modules) drive the inspectors while connected.
+Unanswered change sets are kept with the workspace. After a reconnect (or a reload) the editor asks the server what became of each by its idempotency key, and reports one that never arrived; one the server is still writing settles from its `change` event. An event stream the server closed because the editor fell 256 events behind (reason `limit`) is explained, reconnected and followed by a fresh catalog load. Catalog events refresh documents that were not edited here; edited ones are marked changed on server, with a Merge button. The server's own schemas (with its modules) drive the inspectors while connected.
 
 ## Importing on a server
 
@@ -139,4 +139,12 @@ Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. Th
 
 ## Deploying
 
-Not yet. The deploy workflow arrives with the hosting phase. `firebase.json` already sets the cache rules, the single rewrite to `/index.html` and the security headers; scripts load only from the site, so the app runs without arcane_jaspr's inline fallback scripts.
+The editor is live at https://animus-editor.web.app. To deploy a new build from this folder (full steps, the relay and the server settings are in [docs/deployment.md](../docs/deployment.md)):
+
+```sh
+dart run tool/extract_minecraft_world_assets.dart --jar=<26.3 client jar> --version=26.3
+dart run jaspr_cli:jaspr build
+GOOGLE_APPLICATION_CREDENTIALS=<service account path> npx -y firebase-tools deploy --only hosting --project animus-editor --non-interactive
+```
+
+Never paste, print or commit the service account key. `firebase.json` sets the cache rules, the single rewrite to `/index.html` and the security headers; scripts load only from the site, so the app runs without arcane_jaspr's inline fallback scripts. The relay deploys separately to Cloud Run; see [relay/README.md](relay/README.md#cloud-run).
