@@ -47,6 +47,11 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     /** Connect during startup. A later call replaces the listener. */
     void interactions(InteractionListener<P> listener);
     String status();
+    /**
+     * On the caller's owner: cosmetic updates such as hologram text animation may send now. False while NPC moves and
+     * despawns are waiting for packet budget; see {@link PresentationPressure}.
+     */
+    boolean cosmeticAllowed();
     /** Connect during startup, before the first NPC can activate. */
     void bindTriggers(TriggerDispatcher dispatcher);
     void refresh();

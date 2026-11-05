@@ -84,12 +84,15 @@ class DefinitionSpecTest {
     }
 
     @Test void settingsCannotExceedHardQueueAndVisibilityCeilings() {
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, Double.NaN, 64, 256, 16));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 7, 64, 256, 16));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 257, 64, 256, 16));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 129, 256, 16));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 1025, 16));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 65));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, Double.NaN, 64, 256, 16, 32, 8, 32));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 7, 64, 256, 16, 32, 8, 32));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 257, 64, 256, 16, 32, 8, 32));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 129, 256, 16, 32, 8, 32));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 1025, 16, 32, 8, 32));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 65, 32, 8, 32));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 0, 8, 32));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 32, 65, 32));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 32, 8, 1025));
     }
 
     @Test void acceptedTomlBudgetEndpointsConstructRuntimeSettings(@TempDir Path directory) throws Exception {
@@ -109,8 +112,7 @@ class DefinitionSpecTest {
                                         updatesPerTick = %d
                                         """.formatted(enabled, distance, visible, viewers, updates));
                                 var config = PluginSettings.load(store).npcs();
-                                var runtime = new PersistedNpcService.Settings(config.enabled(), config.viewDistance(),
-                                        config.maximumVisible(), config.maximumViewers(), config.updatesPerTick());
+                                var runtime = PersistedNpcService.Settings.from(config);
                                 assertEquals(enabled, runtime.enabled());
                                 assertEquals(distance, runtime.viewDistance());
                                 assertEquals(visible, runtime.maximumVisible());

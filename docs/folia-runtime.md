@@ -1,6 +1,6 @@
 # Persisted NPCs on Folia
 
-On Folia 26.1.2, 26.2 and 26.3, saved NPC definitions run on the region that owns each NPC's chunk. The commands, definitions, limits and events are the same as in the [persisted runtime](runtime.md). This page describes what differs. The source compiles against all three exact APIs and passes its unit tests; it has not yet been run on a live Folia server, so [implementation evidence](implementation.md) does not yet list it.
+On Folia 26.1.2, 26.2 and 26.3, saved NPC definitions run on the region that owns each NPC's chunk. The commands, definitions, limits and events are the same as in the [persisted runtime](runtime.md). This page describes what differs. Live checks pass on all three Folia builds: activation, triggers, behavior actions, a patrol crossing chunk owners, riding, mounts and combat reported unavailable, and a clean disable. Two truly separate regions could not be observed with a real client, because Folia merges adjacent loaded chunks into one region.
 
 ## What runs
 
@@ -58,7 +58,8 @@ The per-tick limits of the persisted runtime apply to each region tick rather th
 | New path plans | `[navigation] planningStartsPerTick` (16) |
 | Terrain capture units | `[navigation] captureReadsPerTick` (2048) |
 | Viewer updates | `updatesPerTick`; with more viewers, they take turns |
-| Packet operations | 32, shared equally by the viewers updating |
+| Packet operations | `[npcs] packetsPerTick` (32), shared equally by the viewers updating |
+| Look-close turns | `[npcs] lookUpdatesPerTick` (32) |
 | NPC starts | 16 |
 
 `maximumViewers`, `viewDistance`, 10,000 active NPCs, 8 concurrent route and appearance reads, 8 definition skin reads and 8 path plans are server-wide. `maximumVisible` applies to each viewer, and each NPC queues at most 32 actions. Work over a limit waits for the next tick.

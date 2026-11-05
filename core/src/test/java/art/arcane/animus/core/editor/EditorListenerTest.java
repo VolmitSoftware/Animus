@@ -2,15 +2,19 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.storage.JsonDocuments;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.cert.X509Certificate;
@@ -18,6 +22,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
@@ -115,6 +120,106 @@ class EditorListenerTest {
             harness.api.revoke(token.substring(4, token.indexOf('.')), "token-revoked");
             assertEquals("closing", JsonDocuments.object(frames.poll(5, TimeUnit.SECONDS)).get("type").getAsString());
             assertEquals(1000, closed.get(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void websocket_slowConsumerAtQueueLimit_closesWithLimitReason() throws Exception {
+        EditorSettings settings = settings(freePort(), "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            String token = harness.token();
+            LinkedBlockingQueue<String> frames = new LinkedBlockingQueue<>();
+            CompletableFuture<Integer> closed = new CompletableFuture<>();
+            WebSocket socket = HttpClient.newHttpClient().newWebSocketBuilder().header("Origin", EditorHarness.ORIGIN)
+                    .buildAsync(URI.create("ws://127.0.0.1:" + listener.port() + "/animus/v1/events"), new WebSocket.Listener() {
+                        @Override public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                            frames.add(data.toString());
+                            webSocket.request(1);
+                            return null;
+                        }
+
+                        @Override public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+                            closed.complete(statusCode);
+                            return null;
+                        }
+                    }).get(5, TimeUnit.SECONDS);
+            socket.sendText("{\"type\":\"auth\",\"token\":\"" + token + "\"}", true).get(5, TimeUnit.SECONDS);
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (harness.api.parts().events().open() == 0 && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(1, harness.api.parts().events().open());
+            // No tick drains the stream: it falls a whole queue behind, then one more event overflows it.
+            for (int i = 0; i <= EditorEvents.QUEUE_LIMIT; i++) {
+                JsonObject event = new JsonObject();
+                event.addProperty("type", "preview");
+                event.addProperty("previewId", "prev_" + String.format("%08d", i));
+                event.addProperty("state", "expired");
+                harness.api.parts().events().publish(event);
+            }
+            JsonObject closing = JsonDocuments.object(frames.poll(5, TimeUnit.SECONDS));
+            assertEquals("closing", closing.get("type").getAsString(), "the backlog is dropped, not sent ahead of the reason");
+            assertEquals("limit", closing.get("reason").getAsString());
+            assertEquals(1000, closed.get(5, TimeUnit.SECONDS), "a clean close, not a protocol error");
+            assertEquals(0, harness.api.parts().events().open());
+        }
+    }
+
+    @Test
+    void apply_connectionDroppedMidApply_resolvesThroughChangeStatus() throws Exception {
+        EditorSettings settings = settings(freePort(), "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            String token = harness.token();
+            String key = "key-0000000000000042";
+            JsonObject current = EditorHarness.json(harness.send("GET", "/v1/documents/npc/examples/greeter", token, null));
+            JsonObject source = current.getAsJsonObject("source").deepCopy();
+            source.addProperty("name", "Dropped");
+            JsonObject change = new JsonObject();
+            change.addProperty("kind", "npc");
+            change.addProperty("id", "examples/greeter");
+            change.add("baseRevision", current.get("revision"));
+            change.add("baseHash", current.get("hash"));
+            change.add("source", source);
+            JsonArray documents = new JsonArray();
+            documents.add(change);
+            JsonObject set = new JsonObject();
+            set.addProperty("idempotencyKey", key);
+            set.add("documents", documents);
+            byte[] body = set.toString().getBytes(StandardCharsets.UTF_8);
+            // Hold the file lane so the apply is still queued when its connection drops.
+            CountDownLatch release = new CountDownLatch(1);
+            harness.lane.execute(() -> {
+                try { release.await(); }
+                catch (InterruptedException stopped) { Thread.currentThread().interrupt(); }
+            });
+            try (Socket client = new Socket("127.0.0.1", listener.port())) {
+                String head = "POST /animus/v1/changes HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: " + EditorHarness.ORIGIN + "\r\nAuthorization: Bearer " + token
+                        + "\r\nX-Animus-Counter: " + harness.nextCounter() + "\r\nContent-Type: application/json\r\nContent-Length: " + body.length + "\r\n\r\n";
+                OutputStream output = client.getOutputStream();
+                output.write(head.getBytes(StandardCharsets.US_ASCII));
+                output.write(body);
+                output.flush();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (!harness.api.parts().changes().pending(key) && System.nanoTime() < deadline) Thread.sleep(10);
+                assertTrue(harness.api.parts().changes().pending(key));
+            }
+            // The editor never saw the answer; after reconnecting it asks for the key's status instead of sending again.
+            HttpClient http = HttpClient.newHttpClient();
+            HttpRequest status = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + listener.port() + "/animus/v1/changes/" + key))
+                    .header("Origin", EditorHarness.ORIGIN).header("Authorization", "Bearer " + token).build();
+            assertEquals("pending", JsonDocuments.object(http.send(status, HttpResponse.BodyHandlers.ofString()).body()).get("status").getAsString());
+            release.countDown();
+            String settled = "pending";
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (settled.equals("pending") && System.nanoTime() < deadline) {
+                settled = JsonDocuments.object(http.send(status, HttpResponse.BodyHandlers.ofString()).body()).get("status").getAsString();
+                if (settled.equals("pending")) Thread.sleep(10);
+            }
+            assertEquals("applied", settled, "the server finishes an apply whose client went away");
+            assertTrue(harness.read("npcs/examples/greeter.json").contains("\"Dropped\""));
+            assertEquals(1, harness.host.applied.size(), "written once");
         }
     }
 

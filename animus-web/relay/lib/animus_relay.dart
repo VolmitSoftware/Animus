@@ -3,6 +3,7 @@
 library;
 
 export 'src/relay_broker.dart';
+export 'src/relay_channel_sink.dart';
 export 'src/relay_frame.dart';
 export 'src/relay_limits.dart';
 export 'src/relay_server.dart';

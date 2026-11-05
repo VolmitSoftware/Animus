@@ -117,6 +117,23 @@ void main() {
     expect(phases, containsAllInOrder(<ConnectionPhase>[ConnectionPhase.online, ConnectionPhase.reconnecting, ConnectionPhase.connecting, ConnectionPhase.online]));
   });
 
+  test('should reconnect over the relay and open a new stream when the server closes a slow stream at its limit', () async {
+    network.down.add(ConnectionPath.direct);
+    await connection.connect();
+    expect(connection.status.path, ConnectionPath.relay);
+    final List<String?> messages = <String?>[];
+    connection.statuses.listen((ConnectionStatus status) => messages.add(status.message));
+    final FakeSubscription slow = network.lastStream;
+    slow.emit(<String, Object?>{'type': 'closing', 'reason': 'limit'});
+    await slow.end('limit');
+    await settle();
+    expect(messages, contains('the server closed the stream: limit'));
+    expect(connection.status.phase, ConnectionPhase.online, reason: 'a limit close is not a pairing problem');
+    expect(connection.status.path, ConnectionPath.relay);
+    expect(network.streams, hasLength(2));
+    expect(network.lastStream.isOpen, isTrue);
+  });
+
   test('should back off and retry when both paths are down', () async {
     network.down.addAll(ConnectionPath.values);
     await connection.connect();

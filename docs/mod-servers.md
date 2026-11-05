@@ -54,11 +54,11 @@ Each of the nine jars ran on a dedicated server with a headless protocol client 
 
 | Loader | 26.1.2 | 26.2 | 26.3 |
 |---|---|---|---|
-| Fabric 0.19.5 | Smoke set passes | Smoke set passes | Full set passes |
-| NeoForge 26.1.2.116 / 26.2.0.89 / 26.3.0.33-beta | Smoke set passes | Smoke set passes | Full set passes |
-| Forge 64.1.4 / 65.1.3 / 66.0.8 | Smoke set passes | Smoke set passes | Full set passes |
+| Fabric 0.19.5 | Basic set passes | Basic set passes | Full set passes |
+| NeoForge 26.1.2.116 / 26.2.0.89 / 26.3.0.33-beta | Basic set passes | Basic set passes | Full set passes |
+| Forge 64.1.4 / 65.1.3 / 66.0.8 | Basic set passes | Basic set passes | Full set passes |
 
-The smoke set spawns and renders an NPC, fires an interaction trigger, navigates, rides with steering and a sneak dismount, and restarts the server with the NPC kept. The full set is the Paper live suite: rendering with skins, text lines and poses, triggers, behavior actions and choices, durable state across a graceful restart and a kill, NPC passengers, riding (mount, steer, walls, sneak dismount, logout, teleport, death, a second viewer), dragons, terrain and water walking, combat (melee, arrows, fireballs, guard, pursuit, leash, death and respawn), the example packs, a tiny `.nbt` build with undo, and an item-for-item shop trade. It also checks the mod-only results in [what differs](#what-differs-from-bukkit) (`protection=none`, pursuit regions and money unavailable) and that a far teleport, a short teleport, a trip to the nether and a reconnect each rebuild the NPC for that player, and that an NPC placed in `minecraft:the_nether` shows only there.
+The basic set (scenario `smoke` in `qa/multiplexor/live-features.mjs`) spawns and renders an NPC, fires an interaction trigger, navigates, rides with steering and a sneak dismount, and restarts the server with the NPC kept. The full set is the Paper live suite: rendering with skins, text lines and poses, triggers, behavior actions and choices, durable state across a graceful restart and a kill, NPC passengers, riding (mount, steer, walls, sneak dismount, logout, teleport, death, a second viewer), dragons, terrain and water walking, combat (melee, arrows, fireballs, guard, pursuit, leash, death and respawn), the example packs, a tiny `.nbt` build with undo, and an item-for-item shop trade. It also checks the mod-only results in [what differs](#what-differs-from-bukkit) (`protection=none`, pursuit regions and money unavailable) and that a far teleport, a short teleport, a trip to the nether and a reconnect each rebuild the NPC for that player, and that an NPC placed in `minecraft:the_nether` shows only there.
 
 These checks do not cover an integrated singleplayer or LAN server, or what a graphical client draws: skin layers, text display placement, animation smoothness, the dragon model and the shop window's look. They need a person with a real client. The Forge dedicated server also tries to announce itself on the LAN; on a host without a network route it logs a `LanServerPinger` warning, which comes from Forge and not from Animus.
 

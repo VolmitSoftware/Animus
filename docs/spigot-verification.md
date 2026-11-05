@@ -1,5 +1,7 @@
 # Exact Spigot verification
 
+On merged master, Spigot 26.1.2, 26.2 and 26.3 pass the same live gameplay, module, import and behavior checks as Paper; see [current status](implementation.md#current-status). The runtime sections below are earlier checkpoints, kept as a record of the official builds and artifact hashes.
+
 Spigot runtime verification uses Multiplexor's managed BuildTools provider, followed by isolated managed server lifecycle and native-codec client suites. API compilation alone does not establish runtime compatibility.
 
 - [x] Locate and inspect Multiplexor's managed BuildTools implementation and documentation.
