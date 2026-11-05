@@ -106,6 +106,7 @@
 - Walking routes open and close wooden doors, fence gates and trapdoors (`movement.openDoors`); `targetableByMobs` lets nearby melee hostile mobs attack an NPC on Paper and Spigot; definition `poses` and the `animus:pose` action; WorldGuard `use` checks for doors NPCs open.
 - `/animus status` shows the main budgets in effect.
 - Editor: offline workspaces (blank or with the example packs), a guided New page for every document kind with behavior templates, rename, duplicate and confirmed delete, one-click fixes, rig animation playback in the NPC preview, a behavior dry run with server-only steps listed as not run, and push or pull between a local workspace and a paired server.
+- Builders place doors, beds, tall plants, double chests, extended pistons and dripleaf columns as one unit, paid once; they put up, climb and take down scaffolding to reach high blocks (`scaffolding` build option); walking NPCs climb ladders, vines and scaffolding.
 
 ### Changed
 
@@ -162,9 +163,11 @@
 - Mob control covers husks, drowned, zombie villagers and vindicators; Citizens converter v11 converts door opening, targetable, vanilla AI and named poses.
 - Every `config.toml` key applies live (only `npcs.enabled` on Folia still needs a restart): a lowered budget lets work in flight finish, editor listener and relay changes restart only that part with paired tokens kept, and `[modules] enabled` switches modules live (changing a module jar still needs a restart).
 - Editor undo steps are kept in IndexedDB and survive a reload.
+- Undo and clearing treat multi-block objects as one group.
 
 ### Fixed
 
+- A builder standing inside its target block walks aside instead of teleporting.
 - A valid NPC edit is no longer refused because another NPC file is invalid.
 - Imported Citizens routes with no saved `avoidwater` swim across water as Citizens does.
 - Citizens hologram lines import in the right order.
