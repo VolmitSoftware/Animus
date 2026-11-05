@@ -8,7 +8,8 @@ import art.arcane.animus.bukkit.combat.BukkitCombatBridge;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.combat.CombatLimits;
 import art.arcane.animus.bukkit.combat.MobProfile;
-import art.arcane.animus.bukkit.combat.WorldGuardProtection;
+import art.arcane.animus.bukkit.protection.RegionCombatProtection;
+import art.arcane.animus.bukkit.protection.RegionFlags;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
@@ -70,19 +71,9 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     /** {@code living} is the main-thread runtime, and null on Folia, where combat stays unavailable. */
     RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService<Player, ItemStack> living, String version, boolean folia) {
         this.plugin = plugin; this.runtime = runtime; this.living = living;
-        ProtectionAdapter adapter = ProtectionAdapter.NONE;
-        String name = "none installed";
-        if (plugin.getServer().getPluginManager().isPluginEnabled("WorldGuard")) {
-            try {
-                adapter = WorldGuardProtection.create(plugin.getServer());
-                name = "WorldGuard region flags";
-            } catch (RuntimeException | LinkageError failure) {
-                String reason = "WorldGuard is installed but its API could not be used (" + failure.getClass().getSimpleName() + "); all combat damage is denied";
-                adapter = request -> { throw new IllegalStateException(reason); };
-                name = reason;
-            }
-        }
-        protectionName = name;
+        RegionFlags.Binding regions = RegionFlags.bind(plugin.getServer());
+        ProtectionAdapter adapter = regions == null ? ProtectionAdapter.NONE : new RegionCombatProtection(regions.flags());
+        protectionName = regions == null ? "none installed" : regions.describe("all combat damage is denied");
         world = folia ? null : new BukkitCombatWorld(plugin, living);
         module = new CombatModule(runtime, living, world, adapter, folia ? BukkitCombatBridge.FOLIA_UNAVAILABLE : null,
                 (String message) -> plugin.getLogger().warning(message), (UUID id) -> plugin.getServer().getPlayer(id) != null);

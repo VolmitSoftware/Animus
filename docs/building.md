@@ -105,7 +105,7 @@ A build waits on its own, and starts again on its own, when:
 
 Every block change asks the platform's protection first. If the answer is no, the block is skipped and counted under `denied`; if protection fails or gives no answer, the change is refused.
 
-- On Bukkit and Paper with WorldGuard, the NPC is asked about as a non-member, as in [combat](combat.md#protection): the `build` flag and `block-place` (or `block-break` when a block turns to air) must not be denied at the block. If WorldGuard is installed but cannot be used, every change is refused. Other claim plugins are not asked.
+- On Bukkit and Paper with WorldGuard, the NPC is asked about as a non-member, as in [combat](combat.md#protection), and may change a block only where a non-member player could: outside every region, or where `build` and `block-place` (or `block-break` when a block turns to air) are allowed at the block. A region without those flags is closed to the NPC, as it is to any non-member. If WorldGuard is installed but disabled (at startup or later) or cannot be used, every change is refused. Other claim plugins are not asked.
 - Without WorldGuard, and on Fabric, NeoForge and Forge servers, which have no standard protection API, every change is allowed. `/animus build` shows which protection is in use.
 
 ## Behaviors

@@ -13,11 +13,13 @@ repositories {
     maven { url = uri('https://hub.spigotmc.org/nexus/content/repositories/snapshots/') }
     maven {
         url = uri('https://maven.enginehub.org/repo/')
-        content { includeGroup('com.sk89q.worldguard'); includeGroup('com.sk89q.worldedit') }
+        content { includeGroup('com.sk89q.worldguard'); includeGroup('com.sk89q.worldedit'); includeGroup('com.sk89q.worldedit.worldedit-libs'); includeGroup('com.sk89q.worldguard.worldguard-libs') }
     }
 }
 configurations { packetApi; protectionApi; economyApi }
 configurations.compileOnly.extendsFrom(configurations.packetApi, configurations.protectionApi, configurations.economyApi)
+// WorldGuard's own flag resolution checks how protection/WorldGuardRegionFlags asks about NPCs.
+configurations.testImplementation.extendsFrom(configurations.protectionApi)
 dependencies {
     compileOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
     packetApi('io.netty:netty-transport:4.2.16.Final')
@@ -30,6 +32,8 @@ dependencies {
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
     testImplementation('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
     testRuntimeOnly('io.netty:netty-transport:4.2.16.Final')
+    testRuntimeOnly('com.sk89q.worldedit.worldedit-libs:core:7.3.15') { transitive = false }
+    testRuntimeOnly('com.sk89q.worldguard.worldguard-libs:core:7.0.14') { transitive = false }
 }
 tasks.named('processResources').configure {
     inputs.properties(animus + [apiVersion: '26.1.2'])
