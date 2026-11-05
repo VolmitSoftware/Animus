@@ -89,6 +89,7 @@
 - Navigation routes take `order` (`sequence`, `pingpong`, `random`, `wander`), per-point `waitTicks`, `guides`, `linkDistance` and `wander`; `animus:set-quest-state` accepts `random`; `animus:say` and `animus:command` fill in `{player_name}`.
 - Shopkeepers `save.yml` import through `/animus import citizens`, with Citizens links resolved in either import order, mob shopkeepers as dormant NPCs, and a matching browser converter; `converter shopkeepers-preview` and `shopkeepers-apply`.
 - Owned container shops (`owner`, `containers`) with atomic, protection-checked item-for-item trades; shop messages `containerFull` and `containerUnavailable`.
+- Editor: import a Citizens saves.yml, Shopkeepers save.yml and config.yml, and dtlTraders files on a paired server through `/v1/imports`, then review, apply, accept categories and roll back; hologram and menu previews play `|animation.id|` text animations; `preview-response` lists the live NPCs a preview hides.
 
 ### Changed
 
@@ -129,9 +130,12 @@
 - Pairing codes accept `ws://` relay URLs on loopback for local development.
 - Converter version 7 puts imported NPCs in `npcs/<world>-r<x>_<z>/` folders; controllable NPCs import with riding disabled, imported shops wait for review, and imported NPCs stay despawned while Citizens is enabled.
 - The Citizens converter is version 8, so every import ID changes.
+- The editor uses the server's `namespace:path` ids for holograms and text animations, including Gloss bundles; saved workspaces are moved on load.
 
 ### Fixed
 
+- A live NPC replaced by a preview no longer fires triggers for the previewing player or sends them its speech, sounds or particles.
+- After a relay failover the editor switches back to the direct path when it recovers.
 - Guards no longer freeze after stepping onto a partial block such as a dirt path, farmland or slab; catch-up teleports land on partial blocks, and a stalled guard catches up and logs why once.
 - Guards no longer freeze after stepping onto a partial block such as a dirt path, farmland or slab; catch-up teleports land on partial blocks, and a stalled guard catches up and logs why once.
 - Logging out while riding on a mod server no longer warns about a closed connection.
