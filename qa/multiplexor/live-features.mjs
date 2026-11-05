@@ -37,7 +37,7 @@ const defaultScenarios = project === 'folia' ? 'folia' : MOD ? (version === '26.
 const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
-assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal)-${project}-${dashed}$`).test(name), 'Instance name must bind the requested platform/version');
+assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold)-${project}-${dashed}$`).test(name), 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
 const pluginInstances = path.join(workspace, 'consumers/plugin-consumers/instances');
@@ -114,7 +114,7 @@ class Server {
     writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|mod)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|mod)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -200,10 +200,9 @@ class Server {
       }, 25);
       setTimeout(() => { clearInterval(poll); resolve(null); }, 90_000);
     });
-    const child = spawn(binary, [...rootArgs, '--consumer', consumer, 'runtime', 'stop', name, '--graceful'], { env: muxEnvironment(), stdio: 'ignore', cwd: MAIN ? workspace : undefined });
-    const closed = new Promise(resolve => child.on('exit', resolve));
+    await this.cmd('stop');
     const leftover = await threads;
-    await closed;
+    for (let i = 0; i < 900 && (await portOpen(this.port) || this.pidOf()); i++) await delay(100);
     note(`threads after disable: ${JSON.stringify(leftover)}`);
     this.lastThreads = leftover;
     assert.equal(await portOpen(this.port), false, 'Server port still open after stop');
@@ -2190,6 +2189,92 @@ async function building() {
   await owner.close();
 }
 
+// ---- scenario: scaffolding ------------------------------------------------------------------
+
+// x 30..34, y 61..74, z -38..-34: a floor, a door, a bed, two tall flowers and a stone pillar whose top no ground reaches.
+const SCAFFOLD = { npc: 'rigger', file: 'live-scaffold.nbt', origin: [30, 61, -38] };
+async function scaffolding() {
+  const owner = await join(OWNER.name, 'creative');
+  await check('npc places whole objects and climbs scaffolding it takes down again', async () => {
+    const [ox, oy, oz] = SCAFFOLD.origin;
+    const area = `${ox - 4} ${oy} ${oz - 4} ${ox + 8} ${oy + 18} ${oz + 8}`;
+    const file = path.join(data, 'schematics', SCAFFOLD.file);
+    let created = false;
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      const made = spawnSync('python3', ['-I', path.join(root, 'qa/multiplexor/make-scaffold-nbt.py'), file], { encoding: 'utf8' });
+      assert.equal(made.status, 0, made.stderr);
+      const blocks = JSON.parse(made.stdout).blocks.map(b => ({ x: ox + b.pos[0], y: oy + b.pos[1], z: oz + b.pos[2], id: b.name }));
+      await server.cmd(`fill ${area} air`, /Successfully filled|No blocks were filled/);
+      await owner.tp(ox + 2.5, oy, oz + 9.5);
+      const uuid = await server.npc(SCAFFOLD.npc, 'minecraft:player', ox + 2.5, oy, oz + 7.5, 'Rigger');
+      created = true;
+      await until(async () => { const n = await inspect(SCAFFOLD.npc); return { ok: /: active/.test(n.line), line: n.line.slice(0, 160) }; }, 15_000, 'rigger never became active');
+      const body = await owner.body(uuid);
+      const watched = owner.events.length, from = logText().length;
+      const startPattern = new RegExp(`Started build ${SCAFFOLD.npc}[^\\n]*|Cannot start build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
+      const started = plain((await server.cmd(`animus build start ${SCAFFOLD.npc} ${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`, startPattern))[0]);
+      assert.match(started, new RegExp(`^Started build ${SCAFFOLD.npc}: live-scaffold\\.nbt 42 steps from ${ox} ${oy} ${oz} to ${ox + 4} ${oy + 13} ${oz + 4}`));
+      let most = 0;
+      await until(async () => {
+        const s = await buildStatus(SCAFFOLD.npc);
+        most = Math.max(most, Number(s.match(/scaffolding=(\d+)/)?.[1] ?? 0));
+        return { ok: /: finished /.test(s), s };
+      }, 300_000, 'the build did not finish');
+      await server.waitLog(new RegExp(`Build ${SCAFFOLD.npc} finished`), from, 5_000);
+      const status = await buildStatus(SCAFFOLD.npc);
+      assert.match(status, /: finished 42\/42 \(100%\)/);
+      assert.match(status, /placed=46 skipped=0 denied=0 no-item=0 refused=0/);
+      assert(!/scaffolding=/.test(status), status);
+      const wrong = [];
+      for (const b of blocks) if (!await blockIs(b.x, b.y, b.z, b.id)) wrong.push(`${b.x},${b.y},${b.z}!=${b.id}`);
+      assert.deepEqual(wrong, []);
+      // Every packet of block changes the owner saw, in order; one packet is one tick of one chunk section.
+      const packets = owner.events.slice(watched).filter(e => e.event === 'blocks');
+      const key = c => `${c.x},${c.y},${c.z}`;
+      const pairs = [[[2, 1, 0], [2, 2, 0], 'door'], [[0, 1, 1], [0, 1, 2], 'bed'], [[4, 1, 0], [4, 2, 0], 'sunflower'], [[4, 1, 1], [4, 2, 1], 'rose bush']];
+      const together = [];
+      for (const [a, b, label] of pairs) {
+        const first = `${ox + a[0]},${oy + a[1]},${oz + a[2]}`, second = `${ox + b[0]},${oy + b[1]},${oz + b[2]}`;
+        const packet = packets.find(p => p.cells.some(c => (key(c) === first || key(c) === second) && c.state !== 'minecraft:air'));
+        assert(packet, `${label} never arrived`);
+        const keys = packet.cells.filter(c => c.state !== 'minecraft:air').map(key);
+        assert(keys.includes(first) && keys.includes(second), `${label} halves arrived apart: ${JSON.stringify(packet.cells)}`);
+        together.push(label);
+      }
+      const placedScaffold = new Map(), cleared = new Set();
+      for (const p of packets) for (const c of p.cells) {
+        if (c.state.startsWith('minecraft:scaffolding')) { placedScaffold.set(key(c), c); cleared.delete(key(c)); }
+        else if (placedScaffold.has(key(c)) && c.state === 'minecraft:air') cleared.add(key(c));
+      }
+      assert(placedScaffold.size >= 6, `only ${placedScaffold.size} scaffolding blocks seen`);
+      const standing = [...placedScaffold.keys()].filter(k => !cleared.has(k));
+      assert.deepEqual(standing, [], 'scaffolding left standing');
+      for (const c of placedScaffold.values()) assert(await blockIs(c.x, c.y, c.z, 'minecraft:air'), `scaffolding at ${key(c)} still in the world`);
+      // The NPC climbed: its body rose well above the ground, in small steps.
+      const moves = owner.events.slice(watched).filter(e => e.event === 'move' && e.id === body.id);
+      const top = Math.max(...moves.map(m => m.y));
+      assert(top >= oy + 9, `the rigger only reached y=${top}`);
+      let jump = 0;
+      for (let i = 1; i < moves.length; i++) jump = Math.max(jump, Math.abs(moves[i].y - moves[i - 1].y));
+      const undo = plain((await server.cmd(`animus build ${SCAFFOLD.npc} undo`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      assert.match(undo, new RegExp(`^Undoing \\d+ changes of build ${SCAFFOLD.npc}`));
+      const undone = await until(async () => { const s = await buildStatus(SCAFFOLD.npc); return { ok: /: undone /.test(s), s }; }, 30_000, 'undo did not finish');
+      assert.match(undone.s, /restored=\d+ kept=0/);
+      const left = [];
+      for (const b of blocks) if (!await blockIs(b.x, b.y, b.z, 'minecraft:air')) left.push(`${b.x},${b.y},${b.z}`);
+      for (const c of placedScaffold.values()) if (!await blockIs(c.x, c.y, c.z, 'minecraft:air')) left.push(`scaffold ${key(c)}`);
+      assert.deepEqual(left, []);
+      return `${started.slice(0, 80)}; together: ${together.join(', ')}; scaffolding ${placedScaffold.size} cells, most standing ${most}, all removed; rigger top y=${top.toFixed(2)}, largest vertical step ${jump.toFixed(2)}; undo ${undone.s.match(/restored=\d+ kept=\d+/)[0]}`;
+    } finally {
+      await server.cmd(`fill ${area} air`, /Successfully filled|No blocks were filled/);
+      if (created) await server.cmd(`animus delete ${SCAFFOLD.npc}`, /Deleted|Unknown/);
+      if (existsSync(file)) unlinkSync(file);
+    }
+  });
+  await owner.close();
+}
+
 // ---- scenario: shops ------------------------------------------------------------------------
 
 // Slot 11 of a 3-row page; the bottom row (18..26) holds the controls, and only close (slot 22) shows
@@ -2582,7 +2667,7 @@ async function guardsoak() {
   server.floor = null;
 }
 
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, building, shops, folia, smoke, worlds, guardsoak };
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, building, scaffolding, shops, folia, smoke, worlds, guardsoak };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line) || (MOD && /[Mm]ixin[^\n]*(?:fail|error|could not|not applied)/i.test(line)));
