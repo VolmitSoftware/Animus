@@ -37,7 +37,7 @@ assert '.qa' in args.workspace.parts, 'Dedicated QA workspace required'
 repo = Path(__file__).resolve().parents[2]
 name = f'animus-{args.project}-{args.version.replace(".", "-")}'
 if args.instance_name:
-    assert re.fullmatch(r'animus-r[1-9][0-9]*-'+args.project+'-'+re.escape(args.version.replace('.','-')),args.instance_name), 'Instance name must bind the requested platform/version'
+    assert re.fullmatch(r'animus-(?:r[1-9][0-9]*|gate)-'+args.project+'-'+re.escape(args.version.replace('.','-')),args.instance_name), 'Instance name must bind the requested platform/version'
     name = args.instance_name
 instance = args.workspace / 'consumers/plugin-consumers/instances' / name
 assert instance.is_dir(), 'First provision this exact instance with managed-runtime.py'

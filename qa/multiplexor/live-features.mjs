@@ -20,10 +20,12 @@ const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
 const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs,appearance')).split(',');
-const name = `animus-live-${project}-${version.replaceAll('.', '-')}`;
+const name = args.get('instance-name') ?? `animus-live-${project}-${version.replaceAll('.', '-')}`;
+assert(new RegExp(`^animus-(?:live|gate-live)-${project}-${version.replaceAll('.', '-')}$`).test(name), 'Instance name must bind the requested platform/version');
 const instances = path.join(workspace, 'consumers/plugin-consumers/instances');
 const instance = path.join(instances, name), data = path.join(instance, 'plugins/Animus'), logFile = path.join(instance, 'logs/latest.log');
 const session = `mc-plugin-${name}`;
+const serverLibraries = path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
 const OWNER = { uuid: 'b2b7d4ea-c517-3a19-8a16-ee03e26cbe9f', name: 'AnimusProofQA' };
 const PEER = { uuid: '262b16de-d06b-325b-b115-4ad978f962f2', name: 'AnimusProofPeer' };
 const FORBIDDEN = /moved too quickly|moved wrongly|Flying is not enabled|was kicked/i;
@@ -54,8 +56,15 @@ function muxEnvironment() {
   if (buildHome) environment.MULTIPLEXOR_BUILD_HOME = buildHome;
   return environment;
 }
+// Multiplexor serializes workspace commands; a concurrent target's command makes this one retry briefly.
+const BUSY = /Another network command is running|Another project operation owns the workspace/;
 function mux(...command) {
-  const done = spawnSync(binary, ['--root', workspace, '--consumer', 'plugin', ...command], { encoding: 'utf8', env: muxEnvironment() });
+  const deadline = Date.now() + 30_000;
+  let done = spawnSync(binary, ['--root', workspace, '--consumer', 'plugin', ...command], { encoding: 'utf8', env: muxEnvironment() });
+  while (done.status && BUSY.test(done.stderr + done.stdout) && Date.now() < deadline) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    done = spawnSync(binary, ['--root', workspace, '--consumer', 'plugin', ...command], { encoding: 'utf8', env: muxEnvironment() });
+  }
   if (done.status) throw new Error(`multiplexor ${command.slice(0, 2).join(' ')}: ${(done.stderr || done.stdout).slice(0, 400)}`);
   return done.stdout;
 }
@@ -82,7 +91,7 @@ class Server {
     copyFileSync(path.join(template, 'eula.txt'), path.join(instance, 'eula.txt'));
     const plugins = path.join(instance, 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && path.basename(instance).startsWith('animus-live-'));
+    assert(data.startsWith(instances) && /^animus-(?:gate-)?live-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     for (const entry of readdirSync(plugins)) if (/^Animus.*\.jar$/.test(entry)) unlinkSync(path.join(plugins, entry));
@@ -1607,7 +1616,7 @@ async function combat() {
   });
   await owner.close();
   if (fixture) await check('qa/combat-client.mjs', async () => {
-    const done = spawnSync('node', [path.join(root, 'qa/combat-client.mjs'), '--version', version, '--port', String(server.port), '--libraries', path.join(instance, 'libraries'), '--results', results, '--event-fixture', '--id', 'combat-live'], { encoding: 'utf8', timeout: 300_000 });
+    const done = spawnSync('node', [path.join(root, 'qa/combat-client.mjs'), '--version', version, '--port', String(server.port), '--libraries', serverLibraries, '--results', results, '--event-fixture', '--id', 'combat-live'], { encoding: 'utf8', timeout: 300_000 });
     writeFileSync(path.join(results, 'combat-client.out'), (done.stdout ?? '') + (done.stderr ?? ''));
     const passed = (done.stdout ?? '').split('\n').filter(line => line.includes('"status":"passed"')).length;
     assert.equal(done.status, 0, `exit ${done.status}; ${(done.stdout + done.stderr).split('\n').filter(Boolean).slice(-3).join(' | ').slice(0, 500)}`);
@@ -1731,10 +1740,13 @@ async function packs() {
     const reload = await server.reload();
     await owner.chat('All quiet.', from, 90_000);
     const seconds = ((Date.now() - started) / 1000).toFixed(0);
-    const trace = plain(await server.capture('animus behaviors trace patroller', /Behavior trace[^\n]*/, 400));
-    const round = trace.split('\n').find(line => /trigger=patrol:route#rounds/.test(line)) ?? '';
+    // The closing say finishes on a later tick than its chat delivery, so the round may still read active for a moment.
+    await until(async () => {
+      const trace = plain(await server.capture('animus behaviors trace patroller', /Behavior trace[^\n]*/, 400));
+      const line = trace.split('\n').find(text => /trigger=patrol:route#rounds/.test(text)) ?? trace.slice(0, 400);
+      return { ok: /state=COMPLETED/.test(line), round: line };
+    }, 10_000, 'round never completed');
     const end = await inspect('patroller');
-    assert(/state=COMPLETED/.test(round), round || trace.slice(0, 400));
     assert(Math.hypot(end.x - .5, end.z - .5) < .8, end.line.slice(0, 200));
     await owner.tp(-7.5, 64, 3);
     const clickAt = await click(owner, greeter);
@@ -1796,17 +1808,18 @@ async function packs() {
     const attacker = await summon(22, 'minecraft:zombie', 18, 64, 14, sturdy(20, true));
     const defended = await until(async () => ({ ok: await entityCount('@e[type=zombie,nbt={UUID:[I;22,0,0,1]}]') === 0 }), 40000, 'bodyguard did not kill the attacker');
     await delay(2200);
-    const near = await inspect('bodyguard');
     from = await click(owner, bodyguard);
     const dismissed = await choose(owner, from, 'dismiss');
     await owner.chat('Stay safe out there.', dismissed.after);
     const status = await combatOf('bodyguard');
+    // Sampled after dismissal: a follow step that was already under way may land before it.
+    const near = await inspect('bodyguard');
     await owner.tp(25, 64, -15);
     await delay(5000);
     const stayed = await inspect('bodyguard');
     await gamemode('creative');
     assert(/target=none/.test(status), status);
-    assert(Math.hypot(stayed.x - near.x, stayed.z - near.z) < 2, `followed after dismissal: ${near.line.slice(0, 120)} -> ${stayed.line.slice(0, 120)}`);
+    assert(Math.hypot(stayed.x - near.x, stayed.z - near.z) < 2, `followed after dismissal: ${near.line.match(/position=[^;]*/)?.[0]} -> ${stayed.line.match(/position=[^;]*/)?.[0]}`);
     return `followed to ${followed.n.match(/position=[^;]*/)?.[0]}; attacker killed=${defended.ok}; after dismiss ${status}`;
   });
   const shop = uuidOf('shopkeeper');
@@ -1863,8 +1876,7 @@ try {
   await server.properties();
   const skin = args.get('skin-file');
   if (skin) { mkdirSync(path.join(data, 'skins'), { recursive: true }); copyFileSync(skin, path.join(data, 'skins', path.basename(skin))); }
-  const libraries = path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
-  const harnessArgs = new Map([['version', version], ['port', String(server.port)], ['libraries', libraries], ['results', results]]);
+  const harnessArgs = new Map([['version', version], ['port', String(server.port)], ['libraries', serverLibraries], ['results', results]]);
   await server.start();
   harness = prepareNative(harnessArgs, import.meta.url, 'live');
   for (const scenario of scenarios) {
