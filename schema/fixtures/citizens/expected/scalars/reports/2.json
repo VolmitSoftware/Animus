@@ -11,6 +11,7 @@
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED"
   },
+  "reasons": {},
   "worldRemaps": [
     {
       "source": "/traits/location",

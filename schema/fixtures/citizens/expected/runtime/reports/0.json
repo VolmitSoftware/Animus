@@ -3,7 +3,7 @@
   "presentationWarnings": [],
   "runtimeWarnings": [
     "/traits/waypoints/linear: 1 points in another world or without usable coordinates were left out",
-    "/traits/waypoints/linear: 2 legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one until points are added between them",
+    "/traits/waypoints/linear: 2 legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one; add points between them in the route editor",
     "/traits/waypoints/linear: chat waypoint triggers are not supported; kept in citizens:review"
   ],
   "fieldPathFormat": "json-pointer",
@@ -11,17 +11,17 @@
     "/name": "CONVERTED",
     "/uuid": "CONVERTED",
     "/navigator/speedmodifier": "CONVERTED",
-    "/navigator/pathfindingrange": "UNSUPPORTED_PRESERVED",
+    "/navigator/pathfindingrange": "CONVERTED",
     "/traits/type": "CONVERTED",
     "/traits/location/world": "CONVERTED",
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
     "/traits/lookclose/range": "CONVERTED",
-    "/traits/lookclose/randomPitchRange/0": "REQUIRES_REVIEW",
-    "/traits/lookclose/randomPitchRange/1": "REQUIRES_REVIEW",
-    "/traits/lookclose/randomYawRange/0": "REQUIRES_REVIEW",
-    "/traits/lookclose/randomYawRange/1": "REQUIRES_REVIEW",
+    "/traits/lookclose/randomPitchRange/0": "CONVERTED",
+    "/traits/lookclose/randomPitchRange/1": "CONVERTED",
+    "/traits/lookclose/randomYawRange/0": "CONVERTED",
+    "/traits/lookclose/randomYawRange/1": "CONVERTED",
     "/traits/waypoints/provider": "CONVERTED",
     "/traits/waypoints/linear/points/0/location/world": "CONVERTED",
     "/traits/waypoints/linear/points/0/location/worldid": "REQUIRES_REVIEW",
@@ -45,6 +45,16 @@
     "/traits/waypoints/linear/points/3/location/x": "CONVERTED",
     "/traits/waypoints/linear/points/3/location/y": "CONVERTED",
     "/traits/waypoints/linear/points/3/location/z": "CONVERTED"
+  },
+  "reasons": {
+    "/traits/waypoints/linear/points/0/location/worldid": "not converted; check it in citizens:review",
+    "/traits/waypoints/linear/points/1/triggers/1/type": "not converted; check it in citizens:review",
+    "/traits/waypoints/linear/points/1/triggers/1/lines/0": "not converted; check it in citizens:review",
+    "/traits/waypoints/linear/points/1/triggers/1/radius": "not converted; check it in citizens:review",
+    "/traits/waypoints/linear/points/2/location/world": "not converted; check it in citizens:review",
+    "/traits/waypoints/linear/points/2/location/x": "not converted; check it in citizens:review",
+    "/traits/waypoints/linear/points/2/location/y": "not converted; check it in citizens:review",
+    "/traits/waypoints/linear/points/2/location/z": "not converted; check it in citizens:review"
   },
   "worldRemaps": [
     {

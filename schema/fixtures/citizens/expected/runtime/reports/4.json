@@ -16,6 +16,9 @@
     "/traits/waypoints/provider": "CONVERTED",
     "/traits/waypoints/spiral/turns": "REQUIRES_REVIEW"
   },
+  "reasons": {
+    "/traits/waypoints/spiral/turns": "not converted; check it in citizens:review"
+  },
   "worldRemaps": [
     {
       "source": "/traits/location",

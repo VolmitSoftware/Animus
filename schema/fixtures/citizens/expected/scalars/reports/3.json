@@ -8,6 +8,9 @@
     "/uuid": "CONVERTED",
     "/traits": "UNSUPPORTED_PRESERVED"
   },
+  "reasons": {
+    "/traits": "Citizens field with no Animus equivalent; kept in records/"
+  },
   "worldRemaps": [],
   "references": [],
   "validationErrors": [
