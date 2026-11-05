@@ -46,7 +46,7 @@ The schemas check structure. The Java parsers stay authoritative: `fixtures/docu
 
 ## Pairing codes
 
-A pairing code is `ANM1.` followed by the payload JSON (`pairing-payload` in `editor-v1.schema.json`) in base64url without padding. Fields are written in the order `v`, `directUrl`, `relayUrl`, `fingerprint`, `serverKey`, `tokenId`, `secret`, `expiresAt`, `label`, `serverName`, without whitespace, so a decoded code encodes to the same text. A code needs `directUrl`, `relayUrl` or both. `directUrl` is `https://`, or `http://` only on `127.0.0.1` or `localhost`. `relayUrl` is `wss://`. `fingerprint` is `sha256:` and the hex SHA-256 of the raw 32-byte Ed25519 key in `serverKey`. The link is `https://animus-editor.web.app/#/pair/<code>`. `core/.../editor/PairingCode.java` implements this.
+A pairing code is `ANM1.` followed by the payload JSON (`pairing-payload` in `editor-v1.schema.json`) in base64url without padding. Fields are written in the order `v`, `directUrl`, `relayUrl`, `fingerprint`, `serverKey`, `tokenId`, `secret`, `expiresAt`, `label`, `serverName`, without whitespace, so a decoded code encodes to the same text. A code needs `directUrl`, `relayUrl` or both. `directUrl` is `https://`, or `http://` only on `127.0.0.1` or `localhost`. `relayUrl` is `wss://`, or `ws://` only on `127.0.0.1` or `localhost` for a relay run locally. `fingerprint` is `sha256:` and the hex SHA-256 of the raw 32-byte Ed25519 key in `serverKey`. The link is `https://animus-editor.web.app/#/pair/<code>`. `core/.../editor/PairingCode.java` implements this.
 
 ## Relay frames
 
