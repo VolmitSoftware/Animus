@@ -34,8 +34,8 @@ final class McStageController extends ChangeNotifier {
 
   McScene _scene = McScene.empty;
   List<NpcText> _texts = const <NpcText>[];
-  McCamera _camera = mcCameraFraming(const McBounds(McVec3(-0.5, 0, -0.5), McVec3(0.5, 1.8, 0.5)));
-  McCamera _home = mcCameraFraming(const McBounds(McVec3(-0.5, 0, -0.5), McVec3(0.5, 1.8, 0.5)));
+  McCamera _camera = mcCameraFraming(const McBounds(McVec3(-0.5, 0, -0.5), McVec3(0.5, 1.8, 0.5)).corners);
+  McCamera _home = mcCameraFraming(const McBounds(McVec3(-0.5, 0, -0.5), McVec3(0.5, 1.8, 0.5)).corners);
 
   /// Frames rendered so far; the browser check reads `data-frames`.
   int frames = 0;
@@ -64,18 +64,34 @@ final class McStageController extends ChangeNotifier {
     notifyListeners();
   }
 
+  List<McVec3> _frame = const <McVec3>[];
+  double _yawDeg = 0;
+  double _aspect = 4 / 3;
+
   /// Shows [scene]; [frame] moves the home framing to the new subject (and
   /// the camera with it when the camera was home).
   void show(McScene scene, List<NpcText> texts, {required double yawDeg, bool frame = false}) {
     _scene = scene;
     _texts = texts;
-    final McBounds? bounds = scene.bounds;
-    if (bounds != null) {
-      final McCamera home = mcCameraFraming(bounds, yawDeg: yawDeg + 180);
-      if (frame || _camera == _home) _camera = home;
-      _home = home;
-    }
+    _frame = scene.frame;
+    _yawDeg = yawDeg;
+    _reframe(force: frame);
     notifyListeners();
+  }
+
+  /// The stage's width over height; a home camera refits to it.
+  set aspect(double value) {
+    if (!(value > 0) || (value - _aspect).abs() < 1e-3) return;
+    _aspect = value;
+    _reframe();
+    notifyListeners();
+  }
+
+  void _reframe({bool force = false}) {
+    if (_frame.isEmpty) return;
+    final McCamera home = mcCameraFraming(_frame, yawDeg: _yawDeg + 180, aspect: _aspect);
+    if (force || _camera == _home) _camera = home;
+    _home = home;
   }
 
   void resetCamera() => camera = _home;
@@ -228,6 +244,7 @@ class _McStageState extends State<McStage> {
       _widthPx = rect.width;
       _heightPx = rect.height;
     });
+    if (rect.height > 0) _c.aspect = rect.width / rect.height;
     _invalidate();
   }
 
@@ -370,23 +387,22 @@ class _McStageState extends State<McStage> {
 
   // --- text layer ----------------------------------------------------------
 
-  /// Each text block centred over its anchor, sized for its depth: the client
-  /// draws name tags and text displays at 1/40 block per font pixel.
+  /// Each text block centred over its anchor, sized for its depth by
+  /// [mcTextFontPx], the same rule for nameplates and text displays.
   List<Widget> _textLayer() {
     if (_widthPx <= 0 || _heightPx <= 0) return const <Widget>[];
     final List<Widget> out = <Widget>[];
     for (final NpcText text in _c.texts) {
       final McVec3? at = mcProjectToPixels(_c.camera, text.anchor, widthPx: _widthPx, heightPx: _heightPx);
       if (at == null) continue;
-      final double fontPx = mcPixelsPerBlock(_heightPx, at.z) * 0.025;
-      if (fontPx < 0.5) continue;
+      final double fontPx = mcTextFontPx(_heightPx, at.z);
       out.add(dom.div(
         classes: 'animus-mc-text${text.nameplate ? ' is-nameplate' : ''}',
         attributes: const <String, String>{'data-text': 'true'},
         styles: dom.Styles(raw: <String, String>{
           'left': '${at.x.toStringAsFixed(1)}px',
           'top': '${at.y.toStringAsFixed(1)}px',
-          'font-size': '${(fontPx * 8).toStringAsFixed(2)}px',
+          'font-size': '${fontPx.toStringAsFixed(2)}px',
           'z-index': '${(1000 - at.z * 10).round().clamp(0, 1000)}',
         }),
         <Widget>[
