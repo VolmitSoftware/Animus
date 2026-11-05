@@ -1,0 +1,9 @@
+{
+  "description": "Synthetic Denizen data folders shared by core's DenizenGoldenTest and animus-web's denizen_converter_test. Each case converts folder (a Denizen data folder with scripts/, server_flags.dat and player_flags/) against the optional citizens save; expected/<name>/ is the exact staged imports/denizen/<importId>/ tree. Every file under invalid/ is a Citizens save that must be rejected.",
+  "cases": [
+    {"name": "town", "folder": "town/Denizen", "citizens": "town/saves.yml"},
+    {"name": "town-unbound", "folder": "town/Denizen"},
+    {"name": "minimal", "folder": "minimal/Denizen"}
+  ],
+  "invalid": "invalid"
+}
