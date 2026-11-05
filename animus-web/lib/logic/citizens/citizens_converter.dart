@@ -11,7 +11,9 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
+import 'citizens_traits.dart';
 import 'definition_validation.dart';
+import 'field_notes.dart';
 import 'java_json.dart';
 import 'java_lang.dart';
 import 'presentation.dart';
@@ -23,7 +25,7 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 9;
+const int citizensConverterVersion = 10;
 
 const String _notice =
     'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.';
@@ -33,9 +35,10 @@ const Set<String> _review = <String>{
   'skintrait', 'location', 'owner', 'equipment', 'inventory', 'waypoints', 'text', 'hologramtrait', 'poses', 'lookclose', 'type', //
   'spawned', 'mounttrait', 'controllable', builderTrait, constructorTrait,
 };
+/// Location fields Animus reads directly: the facing is one yaw for head and body, and the world is matched by name.
 const Set<String> _convertedPaths = <String>{
   '/uuid', '/name', '/traits/type', '/traits/location/world', '/traits/location/x', '/traits/location/y', '/traits/location/z', //
-  '/traits/location/yaw', '/traits/location/pitch',
+  '/traits/location/yaw', '/traits/location/pitch', '/traits/location/bodyYaw', '/traits/location/worldid',
 };
 
 /// A converted saves.yml: [files] maps each path under `imports/<id>/` to its text.
@@ -146,7 +149,8 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final String field = inferred.asPrimitive.asString;
     final bool value = (defaults.get('lookclose')! as JObject).get(field)!.asPrimitive.asBoolean;
     if (value != lookDefaults[field]) {
-      migrationWarnings.addString('lookclose/$field: Citizens writes it only when it differs from the server default and this save writes only ${!value}, so an unset value means $value');
+      migrationWarnings.addString('lookclose/$field: this save only ever writes ${!value}, so NPCs without the field are converted with $value (the server default that wrote the save); '
+          'if that default was ${!value}, set $field in animus:look-close on those NPCs');
     }
   }
   int remappedLocations = 0;
@@ -234,10 +238,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     // A skin is only drawn on a player body; any other body keeps it under citizens:review.
     final bool skinApplied = traits.has('skintrait') && definition.get('type')!.asPrimitive.asString == 'minecraft:player';
     final List<String> presentationWarnings = List<String>.of(presentation.warnings);
-    if (traits.has('skintrait') && !skinApplied) {
-      presentationWarnings.add('/traits/skintrait: skins show only on player bodies; kept for review');
-      _increment(conversions, 'skinsKept');
-    }
+    if (traits.has('skintrait') && !skinApplied) _increment(conversions, 'skinsKept');
     for (final String warning in presentationWarnings) {
       migrationWarnings.addString('citizens-$key: $warning');
     }
@@ -285,7 +286,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     conversions.addInt('routeGuides', (conversions.get('routeGuides')! as JInt).value.toInt() + runtime.guides);
     if (runtime.lookClose != null) {
       modules.add('animus:look-close', runtime.lookClose);
-      _increment(conversions, 'lookClose');
+      if ((runtime.lookClose!.get('enabled')! as JBool).value) _increment(conversions, 'lookClose');
     }
     for (final String behavior in runtime.behaviors) {
       _increment(conversions, behavior.startsWith('citizens:text-') ? 'textBehaviors' : 'commandBehaviors');
@@ -295,6 +296,14 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
       behaviorDocuments++;
     }
     for (final String warning in runtime.warnings) {
+      migrationWarnings.addString('citizens-$key: $warning');
+    }
+    final TraitsResult state = mapTraits(definition.get('type')!.asPrimitive.asString, record, reviewed, modules.has('animus:combat'), references);
+    for (final MapEntry<String, JElement> field in state.fields.entries) {
+      definition.add(field.key, field.value);
+    }
+    if (state.migration.isNotEmpty) migration.add('skin', state.migration);
+    for (final String warning in state.warnings) {
       migrationWarnings.addString('citizens-$key: $warning');
     }
     if (skinApplied) reviewed.remove('skintrait');
@@ -311,16 +320,17 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final JObject report = JObject();
     report.addInt('citizensId', numeric);
     final JObject fields = JObject();
-    _classify(record, '', fields, <String>{...presentation.converted, ...runtime.converted});
-    if (!skinApplied) {
-      for (final String path in fields.keys.toList()) {
-        if (path.startsWith('/traits/skintrait/')) fields.addString(path, 'UNSUPPORTED_PRESERVED');
-      }
+    final Map<String, FieldNote> notes = <String, FieldNote>{...presentation.notes, ...runtime.notes, ...state.notes};
+    if (traits.has('skintrait') && !skinApplied) {
+      notes['/traits/skintrait'] = const FieldNote(unsupportedPreserved, 'skins show only on player bodies; this one is kept for when the NPC becomes a player');
     }
+    final JObject reasons = JObject();
+    _classify(record, '', fields, <String>{...presentation.converted, ...runtime.converted, ...state.converted}, notes, reasons);
     report.add('presentationWarnings', JArray(<JElement>[for (final String warning in presentationWarnings) JString(warning)]));
     report.add('runtimeWarnings', JArray(<JElement>[for (final String warning in runtime.warnings) JString(warning)]));
     report.addString('fieldPathFormat', 'json-pointer');
     report.add('fields', fields);
+    report.add('reasons', reasons);
     report.add('worldRemaps', worldRemaps);
     report.add('references', references);
     final List<String> errors = List<String>.of(validateDefinition(definition));
@@ -357,7 +367,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   for (final MapEntry<String, JElement> entry in root.entries) {
     if (entry.key != 'npc') sourceMetadata.add(entry.key, entry.value.deepCopy());
   }
-  if (sourceMetadata.isNotEmpty) _classify(sourceMetadata, '', sourceFields, const <String>{});
+  if (sourceMetadata.isNotEmpty) _classify(sourceMetadata, '', sourceFields, const <String>{}, const <String, FieldNote>{}, JObject());
   summary.add('sourceFields', sourceFields);
   summary.add('idMap', mapping);
   summary.add('documents', manifest);
@@ -417,43 +427,61 @@ JObject _identityMap(JObject records) {
 
 String _pointer(String key) => key.replaceAll('~', '~0').replaceAll('/', '~1');
 
-void _classify(JElement value, String path, JObject fields, Set<String> converted) {
+/// Every leaf gets a status: converted paths first, then the nearest note on the path or a parent, then the trait's rule.
+void _classify(JElement value, String path, JObject fields, Set<String> converted, Map<String, FieldNote> notes, JObject reasons) {
   if (value is JObject && value.isNotEmpty) {
     for (final MapEntry<String, JElement> entry in value.entries) {
-      _classify(entry.value, '$path/${_pointer(entry.key)}', fields, converted);
+      _classify(entry.value, '$path/${_pointer(entry.key)}', fields, converted, notes, reasons);
     }
     return;
   }
   if (value is JArray && value.isNotEmpty) {
     for (int i = 0; i < value.length; i++) {
-      _classify(value[i], '$path/$i', fields, converted);
+      _classify(value[i], '$path/$i', fields, converted, notes, reasons);
     }
     return;
   }
-  String status = 'UNSUPPORTED_PRESERVED';
-  if (converted.contains(path) || _convertedPaths.contains(path)) {
-    status = 'CONVERTED';
-  } else if (path.startsWith('/traits/')) {
-    final List<String> split = path.substring(8).split('/');
-    final List<String> parts = split.length > 3 ? <String>[split[0], split[1], split.sublist(2).join('/')] : split;
-    final String trait = parts[0];
-    if (trait == 'sentinel' && parts.length > 1) {
-      status = switch (sentinelDisposition(parts[1])) {
-        Disposition.converted => 'CONVERTED',
-        Disposition.unsupported || Disposition.statistic => 'UNSUPPORTED_PRESERVED',
-        Disposition.unknown => 'REQUIRES_INTEGRATION',
-      };
-    } else if (_integrations.contains(trait) || trait.startsWith('denizen')) {
-      status = 'REQUIRES_INTEGRATION';
-    } else if (trait == 'skintrait') {
-      status = 'CONVERTED';
-    } else if (trait == 'trader') {
-      status = parts.length > 1 && (parts[1] == 'guiName' || parts[1] == 'converted-to-v5') ? 'CONVERTED' : 'REQUIRES_INTEGRATION';
-    } else if (_review.contains(trait)) {
-      status = 'REQUIRES_REVIEW';
-    }
+  final FieldNote note =
+      converted.contains(path) || _convertedPaths.contains(path) ? const FieldNote(statusConverted, '') : (_nearest(path, notes) ?? _rule(path, value));
+  fields.addString(path, note.status);
+  if (note.reason.isNotEmpty) reasons.addString(path, note.reason);
+}
+
+FieldNote? _nearest(String path, Map<String, FieldNote> notes) {
+  for (String at = path; at.isNotEmpty; at = at.substring(0, at.lastIndexOf('/'))) {
+    final FieldNote? note = notes[at];
+    if (note != null) return note;
   }
-  fields.addString(path, status);
+  return null;
+}
+
+/// The status and reason of a field no mapper decided on.
+FieldNote _rule(String path, JElement value) {
+  if (!path.startsWith('/traits/')) return const FieldNote(unsupportedPreserved, 'Citizens field with no Animus equivalent; kept in records/');
+  final List<String> split = path.substring(8).split('/');
+  final List<String> parts = split.length > 3 ? <String>[split[0], split[1], split.sublist(2).join('/')] : split;
+  final String trait = parts[0];
+  if (parts.length == 1 && (value is JObject || value is JArray)) return const FieldNote(statusConverted, '');
+  if (trait == 'sentinel' && parts.length > 1) {
+    return switch (sentinelDisposition(parts[1])) {
+      Disposition.converted => const FieldNote(statusConverted, ''),
+      Disposition.statistic => const FieldNote(unsupportedPreserved, "Sentinel's record of past fights; history, not a setting"),
+      Disposition.unsupported => const FieldNote(unsupportedPreserved, 'Sentinel setting with no animus:combat equivalent; kept in the combat review data'),
+      Disposition.unknown => const FieldNote(requiresIntegration, 'Sentinel field this converter does not know; kept in the combat review data'),
+    };
+  }
+  if (trait == 'assignment' || trait == 'triggers' || trait.startsWith('denizen') || trait == 'constants') {
+    return const FieldNote(requiresIntegration, 'Denizen data; its scripts are not in the save, so rewrite them as Animus behaviors by hand');
+  }
+  if (_integrations.contains(trait)) return const FieldNote(requiresIntegration, 'needs a plugin integration Animus does not have');
+  if (trait == 'skintrait') return const FieldNote(statusConverted, '');
+  if (trait == 'trader') {
+    return parts.length > 1 && (parts[1] == 'guiName' || parts[1] == 'converted-to-v5')
+        ? const FieldNote(statusConverted, '')
+        : const FieldNote(requiresIntegration, 'dtlTraders data; convert it with the dtlTraders shop import');
+  }
+  if (_review.contains(trait)) return const FieldNote(requiresReview, 'not converted; check it in citizens:review');
+  return FieldNote(unsupportedPreserved, 'trait $trait has no Animus equivalent; kept in citizens:review');
 }
 
 void _remapKnownLocations(JObject traits, Map<String, String> worlds, JArray changes) {

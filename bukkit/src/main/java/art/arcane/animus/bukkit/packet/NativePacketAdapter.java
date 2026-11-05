@@ -58,8 +58,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final SeatGeometry seat;
         private final Object nativeType, playerInfo;
         private final BodyLook look;
-        private final int displayId, seatId;
-        private final UUID displayUuid = UUID.randomUUID(), seatUuid = UUID.randomUUID();
+        private final int seatId;
+        private final int[] displayIds;
+        private final UUID[] displayUuids;
+        private final UUID seatUuid = UUID.randomUUID();
         private final Object[] nameTeam;
         /** This body's traffic, bound on its first write so probe bodies never register. */
         private volatile Load traffic;
@@ -68,8 +70,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             this.owner = owner; this.entityId = entityId; this.reservedIds = baseIds + look.extraIds(); this.uuid = uuid;
             this.typeKey = typeKey; this.width = width; this.height = height; this.seat = seat; this.nativeType = nativeType; this.playerInfo = playerInfo;
             this.look = look; this.nameTeam = nameTeam;
-            displayId = look.text().isPresent() ? entityId + baseIds : -1;
-            seatId = look.seated() ? entityId + baseIds + (look.text().isPresent() ? 1 : 0) : -1;
+            displayIds = new int[look.rows().size()];
+            displayUuids = new UUID[displayIds.length];
+            for (int row = 0; row < displayIds.length; row++) { displayIds[row] = entityId + baseIds + row; displayUuids[row] = UUID.randomUUID(); }
+            seatId = look.seated() ? entityId + baseIds + displayIds.length : -1;
         }
         public int entityId() { return entityId; }
         public UUID uuid() { return uuid; }
@@ -193,9 +197,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         if (!typeKey.equals("minecraft:player") && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
         Object type = nativeApi.entityType(typeKey);
         int reserved = BodyRules.reservedIds(typeKey);
-        Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, look.profileName(), skin) : null;
+        Object playerInfo = typeKey.equals("minecraft:player") ? nativeApi.playerInfo(uuid, look.profileName(), skin, look.traits().listed()) : null;
         int entityId = nativeApi.ids.reserve(reserved + look.extraIds());
-        Object[] team = look.hideProfileName() ? nativeApi.presentation.hiddenNameTeam(entityId, look.profileName()) : null;
+        Object[] team = look.team() && nativeApi.presentation != null
+                ? nativeApi.presentation.bodyTeam(entityId, typeKey.equals("minecraft:player") ? look.profileName() : uuid.toString(), look) : null;
         return new Body(this, entityId, reserved, uuid, typeKey, ((Number) nativeApi.typeWidth.invoke(type)).doubleValue(),
                 ((Number) nativeApi.typeHeight.invoke(type)).doubleValue(), nativeApi.seat(type), type, playerInfo, look, team);
     }
@@ -307,7 +312,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         int realRiderId = realRider == null ? BodyRules.NO_REAL_RIDER : realRider.getEntityId();
         submit(session, result, authoritative, () -> {
             List<Integer> passengerIds = requested.stream().map(Body::entityId).toList();
-            int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayId);
+            int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayIds);
             Object packet;
             synchronized (session) {
                 for (Presentation presentation : presentations)
@@ -414,7 +419,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 values.addAll(nativeApi.bones.transform(transforms.get(i), 0));
                 packets.add(nativeApi.metadataPacket.newInstance(bones.ids[i], values));
             }
-            int[] base = session.rosters.getOrDefault(body.entityId, body.displayId >= 0 ? new int[]{body.displayId} : new int[0]);
+            int[] base = session.rosters.getOrDefault(body.entityId, body.displayIds.clone());
             packets.add(nativeApi.passengers(body.entityId, withBones(base, bones)));
             if (hideBody && nativeApi.presentation != null) packets.add(nativeApi.metadataPacket.newInstance(body.entityId, List.of(nativeApi.presentation.visibility(body.look, true))));
             write(session, body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
@@ -452,7 +457,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             packets.add(nativeApi.removeEntities.newInstance((Object) bones.ids.clone()));
             Presentation presentation = session.visible.get(bones.body.entityId);
             if (presentation != null && presentation.body == bones.body) {
-                int[] base = session.rosters.getOrDefault(bones.body.entityId, bones.body.displayId >= 0 ? new int[]{bones.body.displayId} : new int[0]);
+                int[] base = session.rosters.getOrDefault(bones.body.entityId, bones.body.displayIds.clone());
                 packets.add(nativeApi.passengers(bones.body.entityId, base));
                 if (nativeApi.presentation != null) packets.add(nativeApi.metadataPacket.newInstance(bones.body.entityId, List.of(nativeApi.presentation.visibility(bones.body.look, false))));
             }
@@ -901,11 +906,11 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             return result;
         }
         @SuppressWarnings({"unchecked", "rawtypes"})
-        private Object playerInfo(UUID uuid, String name, BodySkin skin) throws ReflectiveOperationException {
+        private Object playerInfo(UUID uuid, String name, BodySkin skin, boolean listed) throws ReflectiveOperationException {
             Object values = multimapCreate.invoke(null);
             if (skin != null) multimapPut.invoke(values, "textures", property.newInstance("textures", skin.textureValue(), skin.signature()));
             Object gameProfile = profile.newInstance(uuid, name, propertyMap.newInstance(values));
-            Object entry = playerInfoEntry.newInstance(uuid, gameProfile, false, 0, survival, null, true, 0, null);
+            Object entry = playerInfoEntry.newInstance(uuid, gameProfile, listed, 0, survival, null, true, 0, null);
             EnumSet actions = EnumSet.noneOf(playerInfoAction);
             for (String action : List.of("ADD_PLAYER", "UPDATE_GAME_MODE", "UPDATE_LISTED", "UPDATE_LATENCY", "UPDATE_DISPLAY_NAME", "UPDATE_HAT", "UPDATE_LIST_ORDER"))
                 actions.add(Enum.valueOf(playerInfoAction, action));
@@ -933,13 +938,16 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             packets.add(rotateHead(body.entityId, yaw));
             List<Object> values = new ArrayList<>();
             if (body.playerInfo != null) values.add(dataValueCreate.invoke(null, playerSkinAccessor, (byte) 0x7f));
-            if (presentation != null) values.addAll(presentation.bodyValues(look));
+            if (presentation != null) values.addAll(presentation.bodyValues(look, body.typeKey));
             if (!values.isEmpty()) packets.add(metadataPacket.newInstance(body.entityId, values));
-            if (body.displayId >= 0) {
-                packets.add(addEntity.newInstance(body.displayId, body.displayUuid, pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, zeroVelocity, 0d));
+            if (body.displayIds.length > 0) {
                 double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate());
-                packets.add(metadataPacket.newInstance(body.displayId, presentation.textValues(look.text().orElseThrow(), lift)));
-                packets.add(passengers(body.entityId, new int[]{body.displayId}));
+                for (int row = 0; row < body.displayIds.length; row++) {
+                    BodyLook.TextRow text = look.rows().get(row);
+                    packets.add(addEntity.newInstance(body.displayIds[row], body.displayUuids[row], pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, zeroVelocity, 0d));
+                    packets.add(metadataPacket.newInstance(body.displayIds[row], presentation.textValues(text.text(), lift + text.offset(), look.style())));
+                }
+                packets.add(passengers(body.entityId, body.displayIds.clone()));
             }
             if (body.seatId >= 0) packets.add(passengers(body.seatId, new int[]{body.entityId}));
             return packets;

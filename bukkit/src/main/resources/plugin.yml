@@ -27,3 +27,6 @@ permissions:
   animus.admin:
     description: Manage NPCs, movement, combat, builds, modules, behaviors, imports, and backups.
     default: op
+  animus.hotload.notify:
+    description: Hear the ding and see each change when a data file is hotloaded or refused.
+    default: op

@@ -53,6 +53,8 @@ import art.arcane.animus.core.editor.EditorHost;
 import art.arcane.animus.core.editor.EditorService;
 import art.arcane.animus.core.editor.RuntimeEditorHost;
 import art.arcane.animus.core.RuntimeCatalogs;
+import art.arcane.animus.core.config.PluginSettings;
+import art.arcane.animus.core.hotload.HotloadService;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
@@ -110,6 +112,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private final DebugWatch debugWatch = new DebugWatch();
     private AutoCloseable metricsTicks;
     private volatile ReactBridge react;
+    private HotloadService hotload;
 
 
     @Override
@@ -198,6 +201,13 @@ public final class AnimusPlugin extends JavaPlugin {
             runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, owners::refresh, () -> behaviors,
                     () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
                     () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}), (String message) -> getLogger().info(message))));
+            BuiltinCapabilities actions = builtins;
+            runtime.onSettings((PluginSettings next) -> actions.settings(next.behaviors().actions()));
+            hotload = new HotloadService(new HotloadService.Parts(runtime, commands, (Runnable task) -> {
+                        if (!replies.reply(getServer().getConsoleSender(), task)) throw new RejectedExecutionException("the server refused console work");
+                    }, living, new BukkitOperators(this, replies), screenService::refreshOpen,
+                    (String message) -> getLogger().info(message)));
+            hotload.start();
             TriggerDispatcher triggers = behaviors.triggers();
             if (triggers != null) {
                 if (living.available()) { triggers.connect(); living.bindTriggers(triggers); }
@@ -256,6 +266,7 @@ public final class AnimusPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         stopping = true;
+        if (hotload != null) { hotload.close(); hotload = null; }
         CitizensGuard.clear();
         EditorService activeEditor = editor;
         editor = null;

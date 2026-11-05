@@ -536,8 +536,25 @@ public final class BehaviorSchemaGenerator {
         properties.add("range", described(range("number", LookClose.MINIMUM_RANGE, LookClose.MAXIMUM_RANGE), "Blocks. 10 by default."));
         properties.add("lineOfSight", described(type("boolean"), "Only look at players it can see."));
         properties.add("whileNavigating", described(type("boolean"), "Also look while following a route."));
+        properties.add("npcs", described(type("boolean"), "Also look at the nearest other NPC when no player is in range."));
+        JsonObject random = described(type("object"), "With nobody to look at, turn to a random facing every delayTicks.");
+        random.addProperty("additionalProperties", false);
+        JsonObject randomProperties = new JsonObject();
+        randomProperties.add("enabled", described(type("boolean"), "True by default."));
+        randomProperties.add("delayTicks", described(range("integer", 1, LookClose.MAXIMUM_RANDOM_DELAY), "Ticks between random turns. 60 by default."));
+        randomProperties.add("yaw", described(angles(-360, 360), "[minimum, maximum] yaw in degrees. [0, 360] by default."));
+        randomProperties.add("pitch", described(angles(-90, 90), "[minimum, maximum] pitch in degrees. [0, 0] by default."));
+        random.add("properties", randomProperties);
+        properties.add("randomLook", random);
         look.add("properties", properties);
         return look;
+    }
+    private static JsonObject angles(int minimum, int maximum) {
+        JsonObject array = type("array");
+        array.add("items", range("number", minimum, maximum));
+        array.addProperty("minItems", 2);
+        array.addProperty("maxItems", 2);
+        return array;
     }
     private static JsonObject mount() {
         JsonObject mount = described(type("object"), "Rides another NPC.");

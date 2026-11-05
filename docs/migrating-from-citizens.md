@@ -19,6 +19,8 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
 
    This converts the save, stages a reviewed plan and prints the counts: NPCs, valid definitions, skins, folders, the patrols, look-close and behaviors it made, what stays off and what is kept but not run. Nothing is installed. A definition counts as valid only when it also passes the spawn checks that do not depend on the server, such as a skin needing a player body. A spawned NPC that still cannot start is logged once as a warning that names the field. The full report is `imports/<import-id>/report.json`, with one report per NPC under `reports/`.
 
+   Each NPC report gives every Citizens field a status under `fields`: `CONVERTED`, `REQUIRES_REVIEW` (Animus has a near equivalent you should check), `UNSUPPORTED_PRESERVED` (kept in `citizens:review` and `records/`, not run) or `REQUIRES_INTEGRATION` (needs data that is not in the save, such as Denizen scripts). `reasons` gives the one-line reason for each field that is not converted, and for converted fields that change nothing in Citizens either. The migration warnings in `report.json` list only things you should act on, each saying what to do.
+
    Options: world mappings such as `world_old=world` when a world has a new name, and a mode for NPCs that already exist in Animus: `reject` (the default, refuse any collision), `replace` (update definitions from an earlier import) or `duplicate <label>` (install a second copy under `npcs/copy-<label>/`). For example `/animus import citizens replace world_old=world`.
 7. Apply:
 

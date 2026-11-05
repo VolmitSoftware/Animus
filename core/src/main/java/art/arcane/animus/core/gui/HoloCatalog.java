@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.shop.ShopCatalog;
 import art.arcane.animus.core.storage.JsonDocumentTree;
 import art.arcane.animus.core.storage.JsonDocuments;
 import java.io.IOException;
@@ -57,6 +58,28 @@ public record HoloCatalog(Map<String, HologramDocument> holograms, Map<String, M
             });
         }
         return new HoloCatalog(holograms, menus, animations, problems);
+    }
+
+    /**
+     * This catalog plus each document of {@code previous} that no longer loads while its file is still there, so a
+     * broken edit keeps the last valid version. Deleted files drop their documents; command refusals are never kept.
+     */
+    public HoloCatalog retaining(HoloCatalog previous, Path data, Predicate<String> commandsAllowed) {
+        Map<String, TextAnimation> keptAnimations = new TreeMap<>(animations);
+        for (Map.Entry<String, TextAnimation> entry : previous.animations.entrySet())
+            if (!keptAnimations.containsKey(entry.getKey()) && ShopCatalog.present(data, GuiKind.ANIMATION.folder(), entry.getKey()))
+                keptAnimations.put(entry.getKey(), entry.getValue());
+        Map<String, HologramDocument> keptHolograms = new TreeMap<>(holograms);
+        for (Map.Entry<String, HologramDocument> entry : previous.holograms.entrySet())
+            if (!keptHolograms.containsKey(entry.getKey()) && ShopCatalog.present(data, GuiKind.HOLOGRAM.folder(), entry.getKey())
+                    && (!entry.getValue().hasCommands() || commandsAllowed.test(entry.getKey())))
+                keptHolograms.put(entry.getKey(), entry.getValue());
+        Map<String, MenuDocument> keptMenus = new TreeMap<>(menus);
+        for (Map.Entry<String, MenuDocument> entry : previous.menus.entrySet())
+            if (!keptMenus.containsKey(entry.getKey()) && ShopCatalog.present(data, GuiKind.MENU.folder(), entry.getKey())
+                    && (!entry.getValue().hasCommands() || commandsAllowed.test(entry.getKey())))
+                keptMenus.put(entry.getKey(), entry.getValue());
+        return new HoloCatalog(keptHolograms, keptMenus, keptAnimations, problems);
     }
 
     /**

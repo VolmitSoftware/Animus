@@ -15,13 +15,18 @@ import java.util.Optional;
  * armor stand parts. Every viewer is shown the same thing, and it is restored from the definition after a restart.
  */
 public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> hologram, boolean nameplateVisible,
-                            NpcPose pose, Optional<ArmorStandLook> armorStand) {
+                            NpcPose pose, Optional<ArmorStandLook> armorStand, HologramStyle hologramStyle, BodyTraits traits) {
     public static final int MAX_TEXT = 256, MAX_LINES = 16;
     public static final NpcAppearance PLAIN = new NpcAppearance(Map.of(), List.of(), true, NpcPose.STANDING, Optional.empty());
 
     public NpcAppearance {
         equipment = Map.copyOf(equipment); hologram = List.copyOf(hologram);
-        Objects.requireNonNull(pose); Objects.requireNonNull(armorStand);
+        Objects.requireNonNull(pose); Objects.requireNonNull(armorStand); Objects.requireNonNull(hologramStyle); Objects.requireNonNull(traits);
+    }
+
+    /** An appearance with the default hologram style and body traits. */
+    public NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> hologram, boolean nameplateVisible, NpcPose pose, Optional<ArmorStandLook> armorStand) {
+        this(equipment, hologram, nameplateVisible, pose, armorStand, HologramStyle.DEFAULT, BodyTraits.DEFAULT);
     }
 
     /** Names and text lines: at most 256 UTF-16 units, no control characters. */
@@ -58,24 +63,28 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
             }
         }
         List<String> lines = new ArrayList<>();
+        HologramStyle style = HologramStyle.DEFAULT;
         if (definition.has("hologram")) {
             JsonElement value = definition.get("hologram");
             if (!value.isJsonObject()) errors.add("$.hologram: expected object");
             else {
                 JsonObject hologram = value.getAsJsonObject();
-                for (String key : hologram.keySet()) if (!key.equals("lines")) errors.add("$.hologram." + key + ": unknown field");
+                for (String key : hologram.keySet()) if (!HologramStyle.FIELDS.contains(key)) errors.add("$.hologram." + key + ": unknown field");
                 JsonElement declared = hologram.get("lines");
+                List<HologramStyle.Margin> margins = new ArrayList<>();
                 if (declared == null || !declared.isJsonArray()) errors.add("$.hologram.lines: expected array");
                 else if (declared.getAsJsonArray().size() > MAX_LINES) errors.add("$.hologram.lines: expected at most " + MAX_LINES + " lines");
                 else {
                     JsonArray array = declared.getAsJsonArray();
                     for (int i = 0; i < array.size(); i++) {
-                        JsonElement line = array.get(i);
-                        if (!line.isJsonPrimitive() || !line.getAsJsonPrimitive().isString()) errors.add("$.hologram.lines[" + i + "]: expected string");
-                        else if (!displayText(line.getAsString())) errors.add("$.hologram.lines[" + i + "]: expected at most " + MAX_TEXT + " characters without control characters");
-                        else lines.add(line.getAsString());
+                        String path = "$.hologram.lines[" + i + "]";
+                        Optional<String> line = HologramStyle.line(array.get(i), path, margins, errors);
+                        if (line.isEmpty()) continue;
+                        if (!displayText(line.get())) errors.add(path + ": expected at most " + MAX_TEXT + " characters without control characters");
+                        else lines.add(line.get());
                     }
                 }
+                style = HologramStyle.read(hologram, margins, errors);
             }
         }
         boolean nameplate = true;
@@ -102,6 +111,8 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
             if (!type.equals("minecraft:armor_stand")) errors.add("$.armorStand: available only for minecraft:armor_stand bodies");
             else armorStand = ArmorStandLook.parse(definition.get("armorStand"), errors);
         }
-        return new NpcAppearance(equipment, lines, nameplate, pose, armorStand);
+        BodyTraits traits = BodyTraits.read(definition, errors);
+        if (lines.size() != style.margins().size()) style = HologramStyle.DEFAULT;
+        return new NpcAppearance(equipment, lines, nameplate, pose, armorStand, style, traits);
     }
 }

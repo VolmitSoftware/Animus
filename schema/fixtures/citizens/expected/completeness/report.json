@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 10,
+  "fieldPathFormat": "json-pointer",
+  "importId": "033401d4e0b6d477db02237cb6d9ff2ad982bbcccb8697dff1551c2f8118c927",
+  "sourceSha256": "b176c69d42c067fecc12d5932b7202aa2fa932991e4be1d21a13bc4ba0d43ee1",
+  "worldMap": {},
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "records": 2,
+  "valid": 2,
+  "skins": 0,
+  "behaviors": 0,
+  "conversions": {
+    "routes": 1,
+    "routePoints": 2,
+    "routeGuides": 1,
+    "lookClose": 1,
+    "textBehaviors": 0,
+    "commandBehaviors": 0,
+    "skinsKept": 0
+  },
+  "citizensDefaults": {
+    "lookclose": {
+      "enabled": false,
+      "realisticlooking": true,
+      "disablewhilenavigating": true
+    },
+    "inferred": [
+      "realisticlooking"
+    ]
+  },
+  "traits": {
+    "type": 2,
+    "location": 2,
+    "equipment": 1,
+    "inventory": 1,
+    "hologramtrait": 1,
+    "lookclose": 2,
+    "scoreboardtrait": 1,
+    "attributetrait": 1,
+    "rotationtrait": 1,
+    "sneaking": 1,
+    "waypoints": 1,
+    "age": 1,
+    "gravity": 1,
+    "horsemodifiers": 1,
+    "targetable": 1,
+    "spawned": 1,
+    "controllable": 1,
+    "mounttrait": 1,
+    "poses": 1,
+    "sneak": 1
+  },
+  "types": {
+    "player": 1,
+    "horse": 1
+  },
+  "sentinelFields": {},
+  "sentinelMapping": {},
+  "issues": [],
+  "migrationWarnings": [
+    "lookclose/realisticlooking: this save only ever writes false, so NPCs without the field are converted with true (the server default that wrote the save); if that default was false, set realisticlooking in animus:look-close on those NPCs"
+  ],
+  "remappedLocations": 0,
+  "resolvedReferences": 1,
+  "unresolvedReferences": 0,
+  "sourceFields": {},
+  "idMap": {
+    "0": "0a1b2c3d-0000-4000-8000-000000000500",
+    "1": "0a1b2c3d-0000-4000-8000-000000000501"
+  },
+  "documents": {
+    "npcs/town-r0_0/citizens-0.json": "96bfa8c4585eba4f88d1db0abf99f4c2744bd520044da9585bec1d5e97dc3fb9",
+    "npcs/town-r0_0/citizens-1.json": "ff2fee1b8d74377ec9cd02f49848c743bc09a9a0aba84f84d29c3966fe948d17"
+  }
+}
