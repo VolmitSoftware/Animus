@@ -57,6 +57,30 @@ class PluginSettingsTest {
             assertTrue(error.getMessage().contains("bones is not a rig setting"), error.getMessage());
         }
     }
+    @Test void hotloadSettingsAreReadFromTomlAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(HotloadSettings.DEFAULT, PluginSettings.load(store).hotload());
+            assertTrue(Files.readString(root.resolve("config.toml")).contains("[hotload]"));
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[hotload]\nenabled = false\nsound = false\nreadsPerPoll = 8\n");
+            HotloadSettings hotload = PluginSettings.load(store).hotload();
+            assertFalse(hotload.enabled());
+            assertFalse(hotload.sound());
+            assertEquals(8, hotload.readsPerPoll());
+            assertEquals(HotloadSettings.DEFAULT.maximumFiles(), hotload.maximumFiles());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[hotload]\nmaximumFileBytes = 10\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("hotload: maximumFileBytes must be within 1024..16777216"), error.getMessage());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[hotload]\nding = true\n");
+            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("ding is not a hotload setting"), error.getMessage());
+        }
+    }
+    @Test void parsedTextNamesTheLabelAndTheField() {
+        IOException error = assertThrows(IOException.class, () -> PluginSettings.parse("statusMessage = 'x'\n[npcs]\nviewDistance = 'far'\n", Path.of("config.toml")));
+        assertEquals("config.toml: npcs: viewDistance must be an integer", error.getMessage());
+        error = assertThrows(IOException.class, () -> PluginSettings.parse("statusMessage = 'x'\n[npcs\nviewDistance = 1\n", Path.of("config.toml")));
+        assertTrue(error.getMessage().startsWith("config.toml: invalid TOML"), error.getMessage());
+    }
     @Test void navigationBudgetsAreReadFromTomlAndBounded() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             assertEquals(NavigationSettings.DEFAULT, PluginSettings.load(store).navigation());

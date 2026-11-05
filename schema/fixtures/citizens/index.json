@@ -27,6 +27,11 @@
       "worldMap": {
         "world": "Survival World"
       }
+    },
+    {
+      "name": "completeness",
+      "source": "completeness.yml",
+      "worldMap": {}
     }
   ],
   "invalid": "invalid"

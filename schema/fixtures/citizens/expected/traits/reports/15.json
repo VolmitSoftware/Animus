@@ -9,6 +9,9 @@
     "/traits/type": "CONVERTED",
     "/traits/sentinel": "REQUIRES_INTEGRATION"
   },
+  "reasons": {
+    "/traits/sentinel": "needs a plugin integration Animus does not have"
+  },
   "worldRemaps": [],
   "references": [],
   "validationErrors": [

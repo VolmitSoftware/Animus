@@ -13,6 +13,13 @@
     "/traits/constructor/layers/0": "REQUIRES_REVIEW",
     "/traits/constructor/layers/1": "REQUIRES_REVIEW"
   },
+  "reasons": {
+    "/traits/builder": "not converted; check it in citizens:review",
+    "/traits/constructor/schematic": "not converted; check it in citizens:review",
+    "/traits/constructor/speed": "not converted; check it in citizens:review",
+    "/traits/constructor/layers/0": "not converted; check it in citizens:review",
+    "/traits/constructor/layers/1": "not converted; check it in citizens:review"
+  },
   "worldRemaps": [],
   "references": [],
   "validationErrors": [

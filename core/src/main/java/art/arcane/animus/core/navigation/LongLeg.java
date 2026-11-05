@@ -2,6 +2,7 @@ package art.arcane.animus.core.navigation;
 
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.Objects;
+import java.util.OptionalDouble;
 
 /**
  * One route leg of any length, planned as a chain of captures that each fit the navigation voxel budget. A leg that fits
@@ -44,14 +45,20 @@ public final class LongLeg {
     private static final double PROGRESS = 1, DETOUR = 3;
     private static final int VOXELS = NavigationLimits.DEFAULT.maximumCaptureVoxels(), MINIMUM_TALL = 18;
     private final Vec3 goal;
-    private final double hullWidth, hullHeight;
+    private final double hullWidth, hullHeight, range;
     private double best;
     /** Plans since the body last got closer; the turn of the next plan; the turn of the last detour walked. */
     private int tries, turn, side;
     private Vec3 from;
 
-    public LongLeg(Vec3 origin, Vec3 goal, double hullWidth, double hullHeight) {
+    public LongLeg(Vec3 origin, Vec3 goal, double hullWidth, double hullHeight) { this(origin, goal, hullWidth, hullHeight, OptionalDouble.empty()); }
+    /**
+     * @param pathRange the NPC's {@code movement.pathRange}: how far one plan may reach. A goal farther away is still
+     *                  walked to, in segments that each reach at most this far.
+     */
+    public LongLeg(Vec3 origin, Vec3 goal, double hullWidth, double hullHeight, OptionalDouble pathRange) {
         this.goal = Objects.requireNonNull(goal, "goal"); this.hullWidth = hullWidth; this.hullHeight = hullHeight;
+        range = Objects.requireNonNull(pathRange, "pathRange").orElse(Double.POSITIVE_INFINITY);
         best = Objects.requireNonNull(origin, "origin").distance(goal);
         from = origin;
     }
@@ -63,8 +70,9 @@ public final class LongLeg {
     public Request request(Vec3 at) {
         from = Objects.requireNonNull(at, "at");
         BlockPos target = BlockPos.containing(goal);
-        if (turn == 0 && fits(at, goal, hullWidth, hullHeight)) return new Request(exact(at, goal, hullWidth, hullHeight), target, DIRECT, true);
-        CaptureBounds bounds = toward(at, goal, hullWidth, hullHeight, TURNS[turn]);
+        if (turn == 0 && at.distance(goal) <= range && fits(at, goal, hullWidth, hullHeight))
+            return new Request(exact(at, goal, hullWidth, hullHeight), target, DIRECT, true);
+        CaptureBounds bounds = toward(at, goal, hullWidth, hullHeight, TURNS[turn], range);
         if (turn == 0) return new Request(bounds, target, SEGMENT, false);
         // A turned plan aims along its turn, at the far side of its capture, so it explores instead of hugging the obstacle.
         double angle = Math.atan2(goal.z() - at.z(), goal.x() - at.x()) + Math.toRadians(TURNS[turn]);
@@ -119,12 +127,13 @@ public final class LongLeg {
     /**
      * A square box of the full voxel budget that holds the feet near one side and reaches towards the goal, turned by the
      * turn in degrees. Straight up or down only a turn moves it off centre. Climbing legs get most of their height above
-     * the feet, descending legs below, level legs both.
+     * the feet, descending legs below, level legs both. A path range shorter than the box narrows it to that reach.
      */
-    static CaptureBounds toward(Vec3 at, Vec3 goal, double hullWidth, double hullHeight, double turn) {
+    static CaptureBounds toward(Vec3 at, Vec3 goal, double hullWidth, double hullHeight, double turn, double range) {
         BlockPos feet = BlockPos.containing(at);
         int margin = margin(hullWidth), body = (int) Math.ceil(hullHeight);
         int tall = Math.max(MINIMUM_TALL, body + 12), side = (int) Math.floor(Math.sqrt(VOXELS / (double) tall));
+        if (range < side) side = Math.max(2 * margin + 3, (int) Math.floor(range) + 1);
         int half = (side - 1) / 2, reach = Math.max(0, half - margin - 1);
         int centreX = feet.x(), centreZ = feet.z();
         double dx = goal.x() - at.x(), dz = goal.z() - at.z();

@@ -19,21 +19,24 @@ import java.util.*;
  */
 final class CitizensPresentation {
     record Facing(double yaw, double pitch) {}
-    record Result(JsonObject fields, Optional<Facing> facing, List<String> warnings, Set<String> converted) {
-        Result { fields = fields.deepCopy(); warnings = List.copyOf(warnings); converted = Set.copyOf(converted); }
+    record Result(JsonObject fields, Optional<Facing> facing, List<String> warnings, Set<String> converted, Map<String, CitizensImporter.Note> notes) {
+        Result { fields = fields.deepCopy(); warnings = List.copyOf(warnings); converted = Set.copyOf(converted); notes = Map.copyOf(notes); }
         @Override public JsonObject fields() { return fields.deepCopy(); }
     }
     private static final Map<String, EquipmentSlot> SLOTS = Map.of("hand", EquipmentSlot.MAIN_HAND, "off_hand", EquipmentSlot.OFF_HAND,
             "helmet", EquipmentSlot.HEAD, "chestplate", EquipmentSlot.CHEST, "leggings", EquipmentSlot.LEGS, "boots", EquipmentSlot.FEET,
             "body", EquipmentSlot.BODY, "saddle", EquipmentSlot.SADDLE);
     private static final Set<String> ITEM_BASICS = Set.of("type", "type_key", "type_namespace", "id", "amount", "durability", "data");
-    private static final Set<String> HOLOGRAM_EXTRAS = Set.of("lineHeight", "viewRange", "verticalViewRange", "hologramUpdateRate", "default_renderer");
+    /** Citizens renderer settings per hologram line, with the Animus hologram field each becomes. */
+    private static final Map<String, String> RENDERER = Map.of("billboard", "billboard", "seeThrough", "seeThrough", "shadowed", "shadowed",
+            "interpolationDelay", "interpolationDelay", "interpolationDuration", "interpolationDuration");
     private static final List<String> STAND_PARTS = List.of("head", "body", "leftArm", "rightArm", "leftLeg", "rightLeg");
 
     private final String type;
     private final JsonObject traits, record, fields = new JsonObject();
     private final List<String> warnings = new ArrayList<>();
     private final Set<String> converted = new HashSet<>();
+    private final Map<String, CitizensImporter.Note> notes = new HashMap<>();
     private Facing facing;
 
     private CitizensPresentation(String type, JsonObject traits, JsonObject record) { this.type = type; this.traits = traits; this.record = record; }
@@ -43,12 +46,12 @@ final class CitizensPresentation {
         mapping.equipment(); mapping.inventory(); mapping.hologram(); mapping.pose(); mapping.armorStand(); mapping.facing(); mapping.owner(); mapping.nameplate();
         List<String> sorted = new ArrayList<>(mapping.warnings);
         Collections.sort(sorted);
-        return new Result(mapping.fields, Optional.ofNullable(mapping.facing), sorted, mapping.converted);
+        return new Result(mapping.fields, Optional.ofNullable(mapping.facing), sorted, mapping.converted, mapping.notes);
     }
 
     private void equipment() {
         JsonObject equipment = object(traits.get("equipment"));
-        if (equipment == null) return;
+        if (equipment == null) { Map<EquipmentSlot, JsonObject> shown = new EnumMap<>(EquipmentSlot.class); horse(shown); store(shown); return; }
         Map<EquipmentSlot, JsonObject> shown = new EnumMap<>(EquipmentSlot.class);
         for (Map.Entry<String, JsonElement> entry : equipment.entrySet()) {
             String key = entry.getKey(), path = "/traits/equipment/" + key;
@@ -62,18 +65,42 @@ final class CitizensPresentation {
             if (cosmetic) warnings.add(path + ": cosmetic item shown in " + slot.key() + (equipment.has(realKey) ? " instead of /traits/equipment/" + realKey : ""));
             shown.put(slot, item.get());
         }
+        horse(shown);
+        store(shown);
+    }
+
+    private void store(Map<EquipmentSlot, JsonObject> shown) {
         if (shown.isEmpty()) return;
         JsonObject result = new JsonObject();
         shown.forEach((EquipmentSlot slot, JsonObject item) -> result.add(slot.key(), item));
         fields.add("equipment", result);
     }
 
+    /** A horse's saddle and armour from HorseModifiers fill the saddle and body slots that Equipment left empty. */
+    private void horse(Map<EquipmentSlot, JsonObject> shown) {
+        JsonObject horse = object(traits.get("horsemodifiers"));
+        if (horse == null) return;
+        for (Map.Entry<String, EquipmentSlot> part : List.of(Map.entry("saddle", EquipmentSlot.SADDLE), Map.entry("armor", EquipmentSlot.BODY))) {
+            if (!horse.has(part.getKey()) || horse.get(part.getKey()).isJsonNull()) continue;
+            String path = "/traits/horsemodifiers/" + part.getKey();
+            if (shown.containsKey(part.getValue())) {
+                notes.put(path, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "the Equipment trait already fills this slot"));
+                continue;
+            }
+            item(horse.get(part.getKey()), path, warnings, converted).ifPresent((JsonObject item) -> shown.put(part.getValue(), item));
+        }
+    }
+
     private void inventory() {
-        JsonObject inventory = object(traits.get("inventory"));
-        if (inventory == null) return;
+        JsonElement declared = traits.get("inventory");
+        if (declared == null || !(declared.isJsonObject() || declared.isJsonArray())) return;
+        List<Map.Entry<String, JsonElement>> entries = new ArrayList<>();
+        if (declared.isJsonArray()) for (int i = 0; i < declared.getAsJsonArray().size(); i++) entries.add(Map.entry(Integer.toString(i), declared.getAsJsonArray().get(i)));
+        else entries.addAll(declared.getAsJsonObject().entrySet());
         TreeMap<Integer, JsonObject> slots = new TreeMap<>();
-        for (Map.Entry<String, JsonElement> entry : inventory.entrySet()) {
+        for (Map.Entry<String, JsonElement> entry : entries) {
             String path = "/traits/inventory/" + entry.getKey();
+            if (entry.getValue().isJsonNull()) { converted.add(path); continue; }
             if (!entry.getKey().matches("0|[1-9][0-9]{0,3}")) { warnings.add(path + ": not a slot number; kept for review"); continue; }
             int slot = Integer.parseInt(entry.getKey());
             if (slot >= NpcInventory.MAX_SIZE) { warnings.add(path + ": slot outside 0.." + (NpcInventory.MAX_SIZE - 1) + "; kept for review"); continue; }
@@ -106,83 +133,201 @@ final class CitizensPresentation {
         item.addProperty("id", id);
         item.addProperty("count", count);
         long damage = integer(source.has("durability") ? source.get("durability") : source.get("data"), 0);
-        if (damage > 0) item.addProperty("components", "[damage=" + damage + "]");
-        boolean extra = source.keySet().stream().anyMatch((String key) -> !ITEM_BASICS.contains(key));
-        if (extra) {
-            if (JsonDocuments.write(source).getBytes(StandardCharsets.UTF_8).length > NpcItem.MAX_IMPORTED_BYTES)
-                problems.add(path + ": item data beyond id, count and damage is too large to copy; kept for review");
-            else {
-                item.add("imported", source.deepCopy());
-                problems.add(path + ": item data beyond id, count and damage kept in imported; it is not shown");
-            }
+        CitizensItems.Result meta = CitizensItems.read(source, damage);
+        boolean shown = true;
+        if (meta.components().isPresent() && meta.components().get().length() > NpcItem.MAX_COMPONENTS) {
+            notes.put(path + "/meta", new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "the item's components are longer than "
+                    + NpcItem.MAX_COMPONENTS + " characters; the item shows without them"));
+            shown = false;
+        } else meta.components().ifPresent((String text) -> item.addProperty("components", text));
+        Set<String> other = new TreeSet<>();
+        for (String key : source.keySet()) if (!ITEM_BASICS.contains(key) && !key.equals("meta") && !key.equals("editable_components")) other.add(key);
+        if (source.has("meta")) {
+            if (!meta.readable()) {
+                notes.put(path + "/meta", new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "the item meta could not be read; the item shows without it"));
+                problems.add(path + ": the item's name, enchantments and other data could not be read, so it shows as a plain " + id + "; set the item again in the editor if it matters");
+            } else if (!meta.unmapped().isEmpty())
+                notes.put(path + "/meta", new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW,
+                        "item meta " + String.join(", ", new TreeSet<>(meta.unmapped())) + " has no item component here; kept in the item's imported data"));
+            else if (shown) paths.add(path + "/meta");
+        }
+        if (source.has("editable_components")) notes.put(path + "/editable_components", new CitizensImporter.Note(CitizensImporter.Status.CONVERTED,
+                "Citizens' copy of the item name and lore, read with the meta"));
+        for (String key : other) notes.put(path + "/" + CitizensBehaviors.pointer(key), new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW,
+                "item field " + key + " has no item component here; kept in the item's imported data"));
+        if (!other.isEmpty() || !meta.readable() || !meta.unmapped().isEmpty() || !shown) {
+            if (JsonDocuments.write(source).getBytes(StandardCharsets.UTF_8).length <= NpcItem.MAX_IMPORTED_BYTES) item.add("imported", source.deepCopy());
         }
         for (String key : source.keySet()) if (ITEM_BASICS.contains(key)) paths.add(path + "/" + key);
         return Optional.of(item);
     }
 
+    /**
+     * Citizens keeps hologram lines bottom-up: line 0 sits just above the name. Animus lists them top-down, so the
+     * order is reversed. Margins and the first line's renderer settings become the hologram's own.
+     */
     private void hologram() {
         JsonObject hologram = object(traits.get("hologramtrait"));
         if (hologram == null) return;
+        String base = "/traits/hologramtrait";
         JsonElement declared = hologram.get("lines");
-        List<Map.Entry<String, JsonElement>> entries = new ArrayList<>();
-        if (declared != null && declared.isJsonArray()) {
-            for (int i = 0; i < declared.getAsJsonArray().size(); i++) entries.add(Map.entry(Integer.toString(i), declared.getAsJsonArray().get(i)));
-        } else if (object(declared) != null) {
-            for (Map.Entry<String, JsonElement> entry : object(declared).entrySet()) if (entry.getKey().matches("0|[1-9][0-9]{0,8}")) entries.add(entry);
-            entries.sort(Comparator.comparingInt((Map.Entry<String, JsonElement> entry) -> Integer.parseInt(entry.getKey())));
-        }
-        boolean extras = hologram.keySet().stream().anyMatch(HOLOGRAM_EXTRAS::contains);
+        List<Map.Entry<String, JsonElement>> entries = CitizensBehaviors.entries(declared);
         JsonArray lines = new JsonArray();
+        JsonObject style = new JsonObject();
+        JsonObject first = null;
+        List<JsonElement> shown = new ArrayList<>();
         for (Map.Entry<String, JsonElement> entry : entries) {
-            String path = "/traits/hologramtrait/lines/" + entry.getKey();
+            String path = base + "/lines/" + CitizensBehaviors.pointer(entry.getKey());
             String line = text(entry.getValue());
             String linePath = path;
             JsonObject structured = object(entry.getValue());
+            double top = 0, bottom = 0;
             if (structured != null) {
-                for (String key : structured.keySet()) if (!key.equals("text") && !key.isEmpty()) extras = true;
                 String key = structured.has("text") ? "text" : "";
                 line = text(structured.get(key));
                 linePath = path + "/" + key;
+                JsonObject margin = object(structured.get("margin"));
+                if (margin != null) {
+                    Double t = number(margin.get("top")), b = number(margin.get("bottom"));
+                    if (t != null) { top = clampMargin(t, path + "/margin/top"); converted.add(path + "/margin/top"); }
+                    if (b != null) { bottom = clampMargin(b, path + "/margin/bottom"); converted.add(path + "/margin/bottom"); }
+                }
+                JsonObject renderer = object(structured.get("renderer"));
+                if (renderer != null) {
+                    if (first == null) first = renderer;
+                    for (Map.Entry<String, JsonElement> setting : renderer.entrySet()) {
+                        String at = path + "/renderer/" + CitizensBehaviors.pointer(setting.getKey());
+                        if (!RENDERER.containsKey(setting.getKey())) {
+                            notes.put(at, new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "renderer setting " + setting.getKey() + " has no hologram equivalent"));
+                            continue;
+                        }
+                        if (renderer == first) continue;
+                        if (setting.getValue().equals(first.get(setting.getKey()))) converted.add(at);
+                        else notes.put(at, new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "every hologram line shares one style; the bottom line's " + setting.getKey() + " is used"));
+                    }
+                }
+                for (String field : structured.keySet())
+                    if (!Set.of("text", "", "margin", "renderer").contains(field))
+                        notes.put(path + "/" + CitizensBehaviors.pointer(field), new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "line setting " + field + " has no hologram equivalent"));
             }
-            if (line == null) { warnings.add(path + ": line has no text; kept for review"); continue; }
-            if (lines.size() == NpcAppearance.MAX_LINES) { warnings.add("/traits/hologramtrait/lines: only the first " + NpcAppearance.MAX_LINES + " lines are shown"); break; }
+            if (line == null) { warnings.add(path + ": the line has no text and was left out; add it in the editor if it is needed"); continue; }
+            if (lines.size() == NpcAppearance.MAX_LINES) { warnings.add(base + "/lines: only the bottom " + NpcAppearance.MAX_LINES + " lines are shown; move the others into fewer lines"); break; }
             String cleaned = line.codePoints().map((int point) -> Character.isISOControl(point) ? ' ' : point)
                     .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append).toString();
-            if (!cleaned.equals(line)) warnings.add(path + ": control characters shown as spaces");
             if (cleaned.length() > NpcAppearance.MAX_TEXT) {
                 int end = Character.isHighSurrogate(cleaned.charAt(NpcAppearance.MAX_TEXT - 1)) ? NpcAppearance.MAX_TEXT - 1 : NpcAppearance.MAX_TEXT;
                 cleaned = cleaned.substring(0, end);
-                warnings.add(path + ": shortened to " + NpcAppearance.MAX_TEXT + " characters");
+                warnings.add(path + ": shortened to " + NpcAppearance.MAX_TEXT + " characters; shorten the line in the editor");
             }
+            JsonElement shownLine;
+            if (top != 0 || bottom != 0) {
+                JsonObject object = new JsonObject();
+                object.addProperty("text", cleaned);
+                if (top != 0) object.addProperty("marginTop", top);
+                if (bottom != 0) object.addProperty("marginBottom", bottom);
+                shownLine = object;
+            } else shownLine = new com.google.gson.JsonPrimitive(cleaned);
+            shown.add(shownLine);
             lines.add(cleaned);
             converted.add(linePath);
         }
-        if (extras) warnings.add("/traits/hologramtrait: line margins, line height, view ranges and renderer settings are kept for review; lines use uniform spacing");
+        if (first != null) for (Map.Entry<String, JsonElement> setting : first.entrySet()) {
+            String field = RENDERER.get(setting.getKey());
+            if (field == null) continue;
+            String at = base + "/lines/" + entries.get(firstIndex(entries)).getKey() + "/renderer/" + CitizensBehaviors.pointer(setting.getKey());
+            JsonElement value = setting.getValue();
+            if (field.equals("billboard")) {
+                String billboard = text(value) == null ? "" : text(value).toLowerCase(Locale.ROOT);
+                if (!art.arcane.animus.core.npc.HologramStyle.BILLBOARDS.contains(billboard)) {
+                    notes.put(at, new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "billboard " + text(value) + " is not one Animus knows"));
+                    continue;
+                }
+                if (!billboard.equals("center")) style.addProperty("billboard", billboard);
+            } else if (field.startsWith("interpolation")) {
+                Double ticks = number(value);
+                if (ticks == null) continue;
+                long whole = Math.max(0, Math.min(art.arcane.animus.core.npc.HologramStyle.MAX_INTERPOLATION, (long) Math.floor(ticks)));
+                if (whole != 0) style.addProperty(field, whole);
+            } else {
+                Boolean flag = bool(value);
+                if (flag == null) continue;
+                if (flag) style.addProperty(field, true);
+            }
+            converted.add(at);
+        }
+        Double height = number(hologram.get("lineHeight"));
+        if (height != null) {
+            if (height >= 0 && height <= art.arcane.animus.core.npc.HologramStyle.MAX_LINE_HEIGHT) style.addProperty("lineHeight", height);
+            else if (height >= 0) {
+                style.addProperty("lineHeight", art.arcane.animus.core.npc.HologramStyle.MAX_LINE_HEIGHT);
+                warnings.add(base + "/lineHeight: lines more than 4 blocks apart became 4 apart; lower lineHeight in the editor if that matters");
+            }
+            converted.add(base + "/lineHeight");
+        }
+        Double range = number(hologram.get("viewRange"));
+        if (range != null) {
+            if (range >= 1) style.addProperty("viewRange", Math.min(art.arcane.animus.core.npc.HologramStyle.MAX_VIEW_RANGE, range));
+            converted.add(base + "/viewRange");
+        }
+        if (hologram.has("hologramUpdateRate")) notes.put(base + "/hologramUpdateRate", new CitizensImporter.Note(CitizensImporter.Status.CONVERTED,
+                "Animus hologram text has no placeholders to refresh"));
+        if (hologram.has("verticalViewRange")) notes.put(base + "/verticalViewRange", new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW,
+                "holograms are hidden by distance only, not by height"));
+        if (hologram.has("default_renderer")) notes.put(base + "/default_renderer", new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW,
+                "Animus draws every hologram line as text"));
         if (lines.isEmpty()) return;
+        JsonArray ordered = new JsonArray();
+        for (int index = shown.size() - 1; index >= 0; index--) ordered.add(shown.get(index));
         JsonObject result = new JsonObject();
-        result.add("lines", lines);
+        result.add("lines", ordered);
+        for (Map.Entry<String, JsonElement> entry : style.entrySet()) result.add(entry.getKey(), entry.getValue());
         fields.add("hologram", result);
+    }
+
+    private static int firstIndex(List<Map.Entry<String, JsonElement>> entries) {
+        for (int index = 0; index < entries.size(); index++) {
+            JsonObject line = object(entries.get(index).getValue());
+            if (line != null && object(line.get("renderer")) != null) return index;
+        }
+        return 0;
+    }
+
+    private double clampMargin(double margin, String path) {
+        double limit = art.arcane.animus.core.npc.HologramStyle.MAX_MARGIN;
+        if (Math.abs(margin) <= limit) return margin;
+        warnings.add(path + ": margins beyond 4 blocks became 4; adjust the line in the editor if that matters");
+        return margin < 0 ? -limit : limit;
     }
 
     private void pose() {
         boolean player = type.equals("minecraft:player");
         JsonObject sneak = object(traits.get("sneak"));
-        boolean sneaking = sneak != null && Boolean.TRUE.equals(bool(sneak.get("sneaking")));
+        JsonObject extension = object(traits.get("sneaking"));
+        String sneakPath = sneak != null && Boolean.TRUE.equals(bool(sneak.get("sneaking"))) ? "/traits/sneak/sneaking"
+                : extension != null && Boolean.TRUE.equals(bool(extension.get("sneaking"))) ? "/traits/sneaking/sneaking" : null;
+        boolean sneaking = sneakPath != null;
+        for (String path : List.of("/traits/sneak/sneaking", "/traits/sneaking/sneaking")) {
+            JsonObject owner = object(traits.get(path.split("/")[2]));
+            if (owner != null && Boolean.FALSE.equals(bool(owner.get("sneaking")))) converted.add(path);
+        }
         JsonObject sit = object(traits.get("sittrait"));
         boolean sitting = sit != null && sit.get("sittingAt") != null && !sit.get("sittingAt").isJsonNull();
-        if (sneaking && !player) { warnings.add("/traits/sneak: sneaking shows only on player bodies; kept for review"); sneaking = false; }
+        if (sneaking && !player) {
+            notes.put(sneakPath, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "sneaking shows only on player bodies"));
+            sneaking = false;
+        }
         if (sitting && !player) { warnings.add("/traits/sittrait: sitting shows only on player bodies; kept for review"); sitting = false; }
         if (sitting && object(traits.get("mounttrait")) != null && object(traits.get("mounttrait")).has("mountedon")) {
             warnings.add("/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"); sitting = false;
         }
-        if (sneaking && sitting) warnings.add("/traits/sneak: sitting is shown instead of sneaking");
+        if (sneaking && sitting) notes.put(sneakPath, new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED, "the NPC sits, which is shown instead of sneaking"));
         if (sitting) {
             fields.addProperty("pose", "sitting");
             converted.add("/traits/sittrait/sittingAt");
             object(sit.get("sittingAt")).keySet().forEach((String key) -> converted.add("/traits/sittrait/sittingAt/" + key));
         } else if (sneaking) {
             fields.addProperty("pose", "sneaking");
-            converted.add("/traits/sneak/sneaking");
+            converted.add(sneakPath);
         }
     }
 

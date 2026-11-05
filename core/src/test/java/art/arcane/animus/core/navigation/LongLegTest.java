@@ -43,7 +43,9 @@ class LongLegTest {
 
     /** Plans and walks one leg until it arrives, is blocked or waits for terrain; every step is checked against the live world. */
     private static Run walk(World world, Loaded loaded, Vec3 start, Vec3 goal, MovementProfile profile) {
-        LongLeg leg = new LongLeg(start, goal, WIDTH, HEIGHT);
+        return walk(new LongLeg(start, goal, WIDTH, HEIGHT), world, loaded, start, goal, profile);
+    }
+    private static Run walk(LongLeg leg, World world, Loaded loaded, Vec3 start, Vec3 goal, MovementProfile profile) {
         Vec3 at = start;
         List<CaptureBounds> captures = new ArrayList<>();
         MotionValidator.Sampler live = (int x, int y, int z) -> loaded.chunk(Math.floorDiv(x, 16), Math.floorDiv(z, 16)) ? world.at(x, y, z) : Cell.UNAVAILABLE;
@@ -105,6 +107,16 @@ class LongLegTest {
         arrived(walk(world, start, goal, WALKER), goal);
         Run down = walk(world, goal, start, WALKER);
         arrived(down, start);
+    }
+    @Test void aShortPathRangeStillWalksALongLegInSegmentsOfThatReach() {
+        World world = ground(LongLegTest::hills);
+        Vec3 start = new Vec3(.5, hills(0, 0), .5), goal = new Vec3(120.5, hills(120, 0), .5);
+        LongLeg leg = new LongLeg(start, goal, WIDTH, HEIGHT, java.util.OptionalDouble.of(10));
+        Run run = walk(leg, world, (int x, int z) -> true, start, goal, WALKER);
+        arrived(run, goal);
+        // A segment box is the range wide; the last, exact plan spans at most the range plus room for the body at both ends.
+        assertTrue(run.captures().stream().allMatch((CaptureBounds bounds) -> bounds.sizeX() <= 15 && bounds.sizeZ() <= 15), "every plan reaches at most the path range");
+        assertTrue(run.plans() > 8, "short plans: " + run.plans());
     }
     @Test void aFlierRisesThirtyBlocksStraightUp() {
         World world = ground((int x, int z) -> 64);
