@@ -92,6 +92,8 @@ class CitizensDropInTest {
             assertTrue(staged.contains("3 NPCs, 3 valid"), staged);
             assertTrue(staged.contains("npcs/world-r0_-1/ 1") && staged.contains("npcs/world-r0_0/ 1") && staged.contains("npcs/world_nether-r0_0/ 1"), staged);
             assertTrue(staged.contains("1 shops"), staged);
+            assertTrue(staged.contains("Off until accepted: spawn 2, combat 1, riding 1, shops 1, builder 0"), staged);
+            assertTrue(staged.contains("Kept, not run: denizen 1, waypoints 1"), staged);
             assertTrue(staged.contains("1 .schem/.nbt files") && staged.contains("1 old .schematic"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
             assertTrue(npcs.all().isEmpty());

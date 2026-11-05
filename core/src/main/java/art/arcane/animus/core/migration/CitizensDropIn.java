@@ -142,7 +142,7 @@ public final class CitizensDropIn {
         List<String> lines = new ArrayList<>();
         lines.add("Citizens save " + save.label() + ": " + preview.records() + " NPCs, " + preview.valid() + " valid, " + preview.skins() + " unique skins; converter v" + preview.converterVersion());
         lines.add("Folders: " + groups(preview.summary()));
-        lines.addAll(summaryLines(preview.summary()));
+        lines.addAll(summaryLines(preview));
         lines.add("Application " + application.mode() + ": " + application.records() + " definitions, " + application.replacements() + " replacements");
         if (sources.traders().isPresent()) {
             ShopImporter.Preview shops = new ShopImporter().preview(sources.traders().get().path(), Optional.of(save.path()), store);
@@ -263,7 +263,7 @@ public final class CitizensDropIn {
                 default -> " (Builder sections in animus:builder; builds still start with /animus build start)";
             });
         Map<String, Integer> preserved = preserved(state);
-        lines.add("Kept but not run: " + (preserved.isEmpty() ? "nothing" : String.join(", ", preserved.entrySet().stream().map((Map.Entry<String, Integer> entry) -> entry.getKey() + " " + entry.getValue()).toList())));
+        lines.add("Kept but not run: " + (preserved.isEmpty() ? "nothing" : counts(preserved)));
         lines.add("Report: " + state.get("report").getAsString() + "; per-NPC reports under imports/" + state.get("importId").getAsString() + "/reports/");
         lines.add("Accept after checking: /animus import citizens accept <" + String.join("|", CATEGORIES) + "|all>");
         return lines;
@@ -355,21 +355,22 @@ public final class CitizensDropIn {
         return value != null && value.isJsonObject() && !new JsonPrimitive(true).equals(value.getAsJsonObject().get("reviewAccepted"));
     }
 
-    private Map<String, Integer> pending(JsonObject state) {
+    private Map<String, Integer> pending(JsonObject state) { return pending(imported(state).stream().map(NpcDefinition::json).toList()); }
+    private Map<String, Integer> preserved(JsonObject state) { return preserved(imported(state).stream().map(NpcDefinition::json).toList()); }
+
+    static Map<String, Integer> pending(List<JsonObject> definitions) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         CATEGORIES.forEach((String category) -> counts.put(category, 0));
-        for (NpcDefinition definition : imported(state)) {
-            JsonObject json = definition.json();
+        for (JsonObject json : definitions)
             for (String category : CATEGORIES) if (waiting(json, category)) counts.merge(category, 1, Integer::sum);
-        }
         return counts;
     }
 
     /** Citizens data that converts to nothing Animus runs: counted by the traits kept in citizens:review. */
-    private Map<String, Integer> preserved(JsonObject state) {
+    static Map<String, Integer> preserved(List<JsonObject> definitions) {
         Map<String, Integer> counts = new TreeMap<>();
-        for (NpcDefinition definition : imported(state)) {
-            JsonObject modules = definition.json().getAsJsonObject("modules");
+        for (JsonObject definition : definitions) {
+            JsonObject modules = definition.getAsJsonObject("modules");
             if (modules == null || !modules.has("citizens:review") || !modules.get("citizens:review").isJsonObject()) continue;
             JsonObject traits = modules.getAsJsonObject("citizens:review");
             if (traits.has("waypoints")) counts.merge("waypoints", 1, Integer::sum);
@@ -397,21 +398,23 @@ public final class CitizensDropIn {
         return String.join(", ", folders.entrySet().stream().map((Map.Entry<String, Integer> entry) -> "npcs/" + entry.getKey() + "/ " + entry.getValue()).toList());
     }
 
-    static List<String> summaryLines(JsonObject summary) {
+    /** The review counts of a staged preview, the same numbers {@code review} shows after apply. */
+    static List<String> summaryLines(CitizensImporter.Preview preview) throws IOException {
+        JsonObject summary = preview.summary();
+        List<JsonObject> staged = new ArrayList<>();
+        for (String path : summary.getAsJsonObject("documents").keySet())
+            if (path.startsWith("npcs/")) staged.add(JsonDocuments.object(JsonDocuments.read(preview.directory().resolve(path))));
         List<String> lines = new ArrayList<>();
-        JsonObject traits = summary.getAsJsonObject("traits");
-        int sentinel = traits.has("sentinel") ? traits.get("sentinel").getAsInt() : 0;
-        int controllable = traits.has("controllable") ? traits.get("controllable").getAsInt() : 0;
-        int trader = traits.has("trader") ? traits.get("trader").getAsInt() : 0;
-        int builder = traits.has(BuilderMapping.BUILDER_TRAIT) ? traits.get(BuilderMapping.BUILDER_TRAIT).getAsInt() : 0;
-        int waypoints = traits.has("waypoints") ? traits.get("waypoints").getAsInt() : 0;
-        int commands = traits.has("commandtrait") ? traits.get("commandtrait").getAsInt() : 0;
-        int denizen = 0;
-        for (String trait : traits.keySet()) if (DENIZEN.contains(trait) || trait.startsWith("denizen")) denizen = Math.max(denizen, traits.get(trait).getAsInt());
-        lines.add("Off until accepted: combat " + sentinel + ", riding " + controllable + ", shops " + trader + ", builder " + builder + "; every NPC stays despawned until spawn is accepted");
-        lines.add("Kept, not run: waypoints " + waypoints + ", commands " + commands + ", Denizen " + denizen + " (largest Denizen trait count)");
-        lines.add("Distinct traits: " + traits.size() + "; warnings: " + summary.getAsJsonArray("migrationWarnings").size() + "; unresolved NPC references: " + summary.get("unresolvedReferences").getAsInt());
+        lines.add("Off until accepted: " + counts(pending(staged)) + "; the rest stay despawned");
+        Map<String, Integer> preserved = preserved(staged);
+        lines.add("Kept, not run: " + (preserved.isEmpty() ? "nothing" : counts(preserved)));
+        lines.add("Distinct traits: " + summary.getAsJsonObject("traits").size() + "; warnings: " + summary.getAsJsonArray("migrationWarnings").size()
+                + "; unresolved NPC references: " + summary.get("unresolvedReferences").getAsInt());
         return lines;
+    }
+
+    private static String counts(Map<String, Integer> counts) {
+        return String.join(", ", counts.entrySet().stream().map((Map.Entry<String, Integer> entry) -> entry.getKey() + " " + entry.getValue()).toList());
     }
 
     private void refuseWhileCitizensRuns() throws IOException { if (host.citizensEnabled().getAsBoolean()) throw new IOException(CITIZENS_RUNNING); }
