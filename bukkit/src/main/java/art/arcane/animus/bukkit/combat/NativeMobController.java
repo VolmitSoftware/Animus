@@ -8,8 +8,13 @@ import java.util.concurrent.CancellationException;
 import org.bukkit.entity.*;
 import org.bukkit.plugin.Plugin;
 
-/** Exact-version access to an EXISTING real zombie. No entity constructor or fake attack target is used. */
+/**
+ * Exact-version access to an EXISTING real hostile mob whose AI runs on goal selectors. No entity constructor or fake
+ * attack target is used. Brain-driven mobs such as piglins and ranged mobs such as skeletons are not controlled.
+ */
 final class NativeMobController {
+    /** Melee hostile mobs whose AI is held entirely by their goal selectors, so suspending and restoring them is exact. */
+    static final Set<EntityType> TYPES = Set.of(EntityType.ZOMBIE, EntityType.HUSK, EntityType.DROWNED, EntityType.ZOMBIE_VILLAGER, EntityType.VINDICATOR);
     private static final Map<UUID, Object> CLAIMS = new ConcurrentHashMap<>();
     private final Method handle, navigation, goals, unwrap, priority, addGoal, removeGoal, getPath, copyPath, nodeCount, nodePos;
     private final Method stop, createPath, movePath, getX, getZ, setMaxNodes;
@@ -41,8 +46,8 @@ final class NativeMobController {
     }
 
     Lease acquire(Mob mob) throws ReflectiveOperationException {
-        if (mob.getType() != EntityType.ZOMBIE || !mob.isValid() || mob.isDead() || !mob.hasAI() || !mob.isAware())
-            throw new IllegalArgumentException("Control requires a live, aware, AI-enabled ordinary zombie");
+        if (!TYPES.contains(mob.getType()) || !mob.isValid() || mob.isDead() || !mob.hasAI() || !mob.isAware())
+            throw new IllegalArgumentException("Control requires a live, aware, AI-enabled zombie, husk, drowned, zombie villager or vindicator");
         if (CLAIMS.size() >= 128) throw new IllegalStateException("Global mob ownership limit reached");
         Object token = new Object();
         if (CLAIMS.putIfAbsent(mob.getUniqueId(), token) != null) throw new IllegalStateException("Mob is already controlled by Animus");

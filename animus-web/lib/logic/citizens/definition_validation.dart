@@ -18,7 +18,7 @@ const Set<String> _itemFields = <String>{'id', 'count', 'components', 'imported'
 const Set<String> _hologramFields = <String>{'lines', 'lineHeight', 'viewRange', 'billboard', 'shadowed', 'seeThrough', 'interpolationDelay', 'interpolationDuration'};
 const Set<String> _lineFields = <String>{'text', 'marginTop', 'marginBottom'};
 const Set<String> _billboards = <String>{'center', 'fixed', 'vertical', 'horizontal'};
-const Set<String> _movementFields = <String>{'speed', 'avoidWater', 'fly', 'stepHeight', 'maximumFall', 'pathRange', 'arrivalMargin', 'stuck'};
+const Set<String> _movementFields = <String>{'speed', 'avoidWater', 'fly', 'openDoors', 'stepHeight', 'maximumFall', 'pathRange', 'arrivalMargin', 'stuck'};
 
 /// `NpcAppearance.displayText`.
 bool displayText(String? text) => text != null && text.length <= maxText && !text.runes.any(javaIsIsoControl);
@@ -76,6 +76,7 @@ List<String> validateDefinition(JObject object) {
   _appearance(object, errors);
   _inventory(object, errors);
   _movement(object, errors);
+  _namedPoses(object, errors);
   if (object.has('modules') && object.get('modules') is! JObject) errors.add(r'$.modules: expected object');
   return errors;
 }
@@ -258,7 +259,7 @@ void _movement(JObject definition, List<String> errors) {
     return;
   }
   _decimal(value, 'speed', r'$.movement', 1, 5, 'blocks/second', errors);
-  for (final String key in const <String>['avoidWater', 'fly']) {
+  for (final String key in const <String>['avoidWater', 'fly', 'openDoors']) {
     if (value.has(key) && value.get(key) is! JBool) errors.add('\$.movement.$key: expected boolean');
   }
   _decimal(value, 'stepHeight', r'$.movement', 0, 1.5, 'blocks', errors);
@@ -280,6 +281,43 @@ void _movement(JObject definition, List<String> errors) {
   for (final String key in value.keys) {
     if (!_movementFields.contains(key)) errors.add('\$.movement.$key: unknown field');
   }
+}
+
+/// `NamedPoses.read`.
+void _namedPoses(JObject definition, List<String> errors) {
+  final JElement? value = definition.get('poses');
+  if (value == null) return;
+  if (value is! JObject) {
+    errors.add(r'$.poses: expected object');
+    return;
+  }
+  if (value.length > 64) {
+    errors.add(r'$.poses: expected at most 64 poses');
+    return;
+  }
+  for (final MapEntry<String, JElement> entry in value.entries) {
+    final String path = '\$.poses.${entry.key}';
+    if (!RegExp(r'^[a-z0-9][a-z0-9_-]{0,31}$').hasMatch(entry.key)) {
+      errors.add('$path: expected a name of 1-32 lowercase letters, digits, _ or -');
+      continue;
+    }
+    final JElement pose = entry.value;
+    if (pose is! JObject) {
+      errors.add('$path: expected object');
+      continue;
+    }
+    for (final String key in pose.keys) {
+      if (key != 'yaw' && key != 'pitch') errors.add('$path.$key: unknown field');
+    }
+    _angle(pose, 'yaw', 360, path, errors);
+    _angle(pose, 'pitch', 90, path, errors);
+  }
+}
+
+void _angle(JObject pose, String key, int limit, String path, List<String> errors) {
+  final JElement? value = pose.get(key);
+  if (value == null && key == 'pitch') return;
+  if (value is! JNumber || !value.asDouble.isFinite || value.asDouble.abs() > limit) errors.add('$path.$key: expected -$limit..$limit degrees');
 }
 
 void _armorStand(JElement value, List<String> errors) {

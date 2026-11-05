@@ -352,8 +352,16 @@ This adapter is separate from the [combat module](combat.md), which handles targ
 A definition's `movement` object applies wherever the NPC walks a route:
 
 ```json
-"movement": {"speed": 1.29, "avoidWater": false, "fly": false, "stepHeight": 1, "maximumFall": 1, "pathRange": 60,
+"movement": {"speed": 1.29, "avoidWater": false, "fly": false, "openDoors": true, "stepHeight": 1, "maximumFall": 1, "pathRange": 60,
              "arrivalMargin": 0.5, "stuck": {"afterTicks": 120, "teleport": true}}
 ```
 
-`speed` (1–5 blocks per second) is used by a route that sets no speed of its own. `avoidWater: false` lets a walking route cross water at the surface; `fly` makes routes fly. `stepHeight` (0–1.5) and `maximumFall` (0–16) replace the body's own climb and drop. Each plan reaches at most `pathRange` (1–256 blocks); a longer leg is walked in segments of that reach. A point within `arrivalMargin` (0–4 blocks) counts as reached. With `stuck`, a waypoint leg that has not moved closer for `afterTicks` (1–12000), or cannot be planned, either teleports the NPC to its point and goes on (`teleport: true`, Citizens' default stuck action) or ends as before. Every field is optional; without `movement` routes behave as they always have.
+`speed` (1–5 blocks per second) is used by a route that sets no speed of its own. `avoidWater: false` lets a walking route cross water at the surface; `fly` makes routes fly. With `openDoors` a walking route plans through closed wooden and copper doors, fence gates and upper trapdoors: the NPC opens each one for real just before it reaches it, after protection allows it (WorldGuard's `use` flag and any module protection hook; a failed check refuses), and closes it once it is clear, or when the route ends, is cancelled, sleeps or the NPC despawns. A refused door ends the leg as blocked. Iron doors and trapdoors stay closed, and a door the NPC did not open is never closed by it. On Folia the region that owns the door's chunk changes it. `stepHeight` (0–1.5) and `maximumFall` (0–16) replace the body's own climb and drop. Each plan reaches at most `pathRange` (1–256 blocks); a longer leg is walked in segments of that reach. A point within `arrivalMargin` (0–4 blocks) counts as reached.  A point within `arrivalMargin` (0–4 blocks) counts as reached. With `stuck`, a waypoint leg that has not moved closer for `afterTicks` (1–12000), or cannot be planned, either teleports the NPC to its point and goes on (`teleport: true`, Citizens' default stuck action) or ends as before. Every field is optional; without `movement` routes behave as they always have.
+
+A definition's `poses` names look directions the behavior action `animus:pose` turns the NPC to:
+
+```json
+"poses": {"rest": {"yaw": 90, "pitch": 0}, "door": {"yaw": -180, "pitch": 10}}
+```
+
+Names are 1–32 lowercase letters, digits, `_` or `-`; at most 64 poses. `yaw` is -360–360 degrees and `pitch` -90–90, 0 by default. A pose only turns the head and body like `animus:look`; look-close turns the NPC back on its next look. Citizens' named poses convert here.

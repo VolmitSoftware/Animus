@@ -13,8 +13,8 @@ import java.util.function.Consumer;
 @FunctionalInterface
 public interface BuildProtection {
     enum Decision { ALLOW, DENY }
-    /** {@code PLACE} puts a block where air or another block was; {@code BREAK} leaves air. */
-    enum Action { PLACE, BREAK }
+    /** {@code PLACE} puts a block where air or another block was; {@code BREAK} leaves air; {@code USE} opens or closes a door, fence gate or trapdoor. */
+    enum Action { PLACE, BREAK, USE }
 
     record Request(UUID npc, Optional<UUID> startedBy, String world, BlockPos at, Action action) {
         public Request {

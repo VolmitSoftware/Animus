@@ -45,6 +45,6 @@ public final class BodyMobility {
     }
     private static MovementProfile profile(Set<MovementProfile.Mode> modes, double width, double height, boolean climber) {
         boolean climbs = climber && modes.contains(MovementProfile.Mode.WALK);
-        return new MovementProfile(modes, width, height, width > 1 ? LARGE_STEP : ORDINARY_STEP, JUMP, FALL, true, climbs);
+        return new MovementProfile(modes, width, height, width > 1 ? LARGE_STEP : ORDINARY_STEP, JUMP, FALL, true, climbs, false);
     }
 }

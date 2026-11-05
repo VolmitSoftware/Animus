@@ -379,7 +379,6 @@ final class CitizensPresentation {
                 if (!Double.isFinite(yaw) || !Double.isFinite(pitch)) break;
                 facing = new Facing(yaw, Math.max(-90, Math.min(90, pitch)));
                 converted.add("/traits/poses/defaultPose");
-                warnings.add("/traits/poses: default pose " + wanted + " sets the facing; other named poses are kept for review");
                 return;
             } catch (NumberFormatException invalid) { break; }
         }

@@ -33,13 +33,12 @@
     "/traits/hologramtrait/lines/15": "CONVERTED",
     "/traits/hologramtrait/lines/16": "REQUIRES_REVIEW",
     "/traits/poses/defaultPose": "REQUIRES_REVIEW",
-    "/traits/poses/list/0": "UNSUPPORTED_PRESERVED"
+    "/traits/poses/list/0": "CONVERTED"
   },
   "reasons": {
     "/traits/metadata/nameplate-visible": "trait metadata has no Animus equivalent; kept in citizens:review",
     "/traits/hologramtrait/lines/16": "not converted; check it in citizens:review",
-    "/traits/poses/defaultPose": "not converted; check it in citizens:review",
-    "/traits/poses/list/0": "named poses are used by Citizens pose commands; Animus has no named poses, only the default facing"
+    "/traits/poses/defaultPose": "not converted; check it in citizens:review"
   },
   "worldRemaps": [],
   "references": [],

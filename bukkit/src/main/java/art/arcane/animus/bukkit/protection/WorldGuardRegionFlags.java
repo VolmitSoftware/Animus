@@ -99,6 +99,7 @@ final class WorldGuardRegionFlags implements RegionFlags {
             case BLOCK_PLACE -> Flags.BLOCK_PLACE;
             case BLOCK_BREAK -> Flags.BLOCK_BREAK;
             case CHEST_ACCESS -> Flags.CHEST_ACCESS;
+            case USE -> Flags.USE;
         };
     }
 }
