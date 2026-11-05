@@ -26,10 +26,11 @@ import java.util.Set;
 final class GuiParser {
     /** Gloss action types that Animus runs. */
     static final Set<String> SUPPORTED = Set.of("command", "sound", "message", "title", "actionbar", "close", "navigate", "inventory",
-            "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call");
+            "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call",
+            "teleport", "bossbar", "broadcast", "effect", "particle", "parallel", "repeat");
     /** Gloss action types with no Animus meaning. */
-    static final Set<String> GLOSS_ONLY = Set.of("teleport", "connect", "bossbar", "surface", "prompt", "dialog", "book", "parallel",
-            "repeat", "emit", "broadcast", "effect", "particle", "setState", "addState", "clearState", "sky", "camera", "glow");
+    static final Set<String> GLOSS_ONLY = Set.of("connect", "surface", "prompt", "dialog", "book", "emit", "setState", "addState",
+            "clearState", "sky", "camera", "glow");
     static final Set<String> ANIMUS = Set.of("animus:open-shop");
     private static final Set<String> COMMON_FIELDS = Set.of("type", "trigger", "when", "cooldownTicks");
     private static final Map<String, Set<String>> ACTION_FIELDS = Map.ofEntries(
@@ -42,15 +43,23 @@ final class GuiParser {
             Map.entry("delay", Set.of("ticks")), Map.entry("sequence", Set.of("steps", "skippable", "once", "onSkip")),
             Map.entry("if", Set.of("when", "then", "else")), Map.entry("switch", Set.of("on", "cases", "default")),
             Map.entry("chance", Set.of("percent", "then", "else")), Map.entry("cooldown", Set.of("key", "ticks", "then", "else")),
-            Map.entry("stop", Set.of()), Map.entry("call", Set.of("action")), Map.entry("animus:open-shop", Set.of("shop")));
+            Map.entry("stop", Set.of()), Map.entry("call", Set.of("action")), Map.entry("animus:open-shop", Set.of("shop")),
+            Map.entry("teleport", Set.of("world", "x", "y", "z", "yaw", "pitch")),
+            Map.entry("bossbar", Set.of("id", "title", "progress", "color", "style", "ticks", "priority")),
+            Map.entry("broadcast", Set.of("message", "scope", "radius", "permission")), Map.entry("effect", Set.of("effect", "ticks", "amplifier", "target")),
+            Map.entry("particle", Set.of("particle", "count", "offset", "at")), Map.entry("parallel", Set.of("branches")),
+            Map.entry("repeat", Set.of("times", "everyTicks", "steps", "while")));
     /** Holographic-menu presentation fields Gloss accepts on components; a chest window has nothing to draw them with. */
     private static final Set<String> MENU_ONLY = Set.of("highlightModifier", "hoverDurationTicks", "hoverEasing", "hitbox", "tooltip");
     private static final Set<String> ICON_FIELDS = Set.of("type", "style", "item", "count", "customModelValue", "name", "lore", "countFormat", "player", "refreshTicks");
 
     private final List<String> problems;
     private final Set<String> roots;
+    private final boolean located;
 
-    GuiParser(List<String> problems, Set<String> roots) { this.problems = problems; this.roots = roots; }
+    GuiParser(List<String> problems, Set<String> roots) { this(problems, roots, false); }
+    /** {@code located}: the document has a place in the world, so particles may spawn {@code at} it. */
+    GuiParser(List<String> problems, Set<String> roots, boolean located) { this.problems = problems; this.roots = roots; this.located = located; }
 
     void problem(String path, String message) { problems.add(path + ": " + message); }
 
@@ -263,6 +272,73 @@ final class GuiParser {
                 if (name.isPresent() && !name.get().matches("[A-Za-z0-9_-]{1,64}")) problem(path + ".action", "expected [A-Za-z0-9_-]{1,64}");
                 yield name.map((String called) -> new GuiModel.Call(common, called)).orElse(null);
             }
+            case "teleport" -> {
+                Optional<String> world = string(object, "world", path);
+                if (world.isPresent() && !world.get().matches("[a-z0-9._-]+:[a-z0-9/._-]+")) problem(path + ".world", "expected a world key such as minecraft:overworld");
+                Optional<Double> x = decimal(object, "x", path, -3.0E7, 3.0E7), y = decimal(object, "y", path, -2048, 4096), z = decimal(object, "z", path, -3.0E7, 3.0E7);
+                Optional<Double> yaw = decimal(object, "yaw", path, -360, 360), pitch = decimal(object, "pitch", path, -90, 90);
+                yield world.isPresent() && x.isPresent() && y.isPresent() && z.isPresent() && yaw.isPresent() && pitch.isPresent()
+                        ? new GuiModel.Teleport(common, world.get(), x.get(), y.get(), z.get(), yaw.get().floatValue(), pitch.get().floatValue()) : null;
+            }
+            case "bossbar" -> {
+                Optional<String> lane = string(object, "id", path);
+                if (lane.isPresent() && lane.get().isBlank()) problem(path + ".id", "expected a non-blank lane id");
+                Optional<GuiTemplate> title = template(object, "title", path, scopeRoots);
+                Optional<GuiTemplate> progress = object.has("progress") ? template(object, "progress", path, scopeRoots) : Optional.empty();
+                progress.filter(GuiTemplate::constant).ifPresent((GuiTemplate constant) -> {
+                    try { double number = Double.parseDouble(constant.source().trim()); if (!(number >= 0 && number <= 1)) throw new NumberFormatException(); }
+                    catch (NumberFormatException invalid) { problem(path + ".progress", "expected a number from 0 to 1"); }
+                });
+                String color = object.has("color") ? choice(object, "color", path, Set.of("pink", "blue", "red", "green", "yellow", "purple", "white")).orElse("white") : "white";
+                String style = object.has("style") ? choice(object, "style", path, Set.of("solid", "segmented_6", "segmented_10", "segmented_12", "segmented_20")).orElse("solid") : "solid";
+                int ticks = object.has("ticks") ? integer(object, "ticks", path, 0, 1200).orElse(100) : 100;
+                if (object.has("priority")) choice(object, "priority", path, Set.of("ambient", "notice", "status", "progress", "interactive", "modal", "pinned"));
+                yield lane.isPresent() && title.isPresent() ? new GuiModel.BossBar(common, lane.get(), title.get(), progress, color, style, ticks) : null;
+            }
+            case "broadcast" -> {
+                Optional<GuiTemplate> message = template(object, "message", path, scopeRoots);
+                String scope = object.has("scope") ? choice(object, "scope", path, Set.of("server", "world", "radius")).orElse("server") : "server";
+                double radius = 0;
+                if (scope.equals("radius")) radius = decimal(object, "radius", path, Double.MIN_VALUE, 1024).orElse(16.0);
+                else if (object.has("radius")) problem(path + ".radius", "radius needs scope radius");
+                Optional<String> permission = object.has("permission") ? string(object, "permission", path) : Optional.empty();
+                double range = radius;
+                yield message.map((GuiTemplate text) -> new GuiModel.Broadcast(common, text, scope, range, permission)).orElse(null);
+            }
+            case "effect" -> {
+                Optional<String> effect = string(object, "effect", path);
+                if (effect.isPresent() && !effect.get().matches("([a-z0-9_.-]+:)?[a-z0-9_./-]+")) problem(path + ".effect", "expected an effect key such as minecraft:speed");
+                Optional<Integer> ticks = integer(object, "ticks", path, 1, 1_728_000);
+                int amplifier = object.has("amplifier") ? integer(object, "amplifier", path, 0, 255).orElse(0) : 0;
+                if (object.has("target")) choice(object, "target", path, Set.of("viewer", "subject", "source"))
+                        .filter((String target) -> !target.equals("viewer"))
+                        .ifPresent((String target) -> problem(path + ".target", "target '" + target + "' belongs to Gloss behaviors; Animus applies effects to the viewer"));
+                yield effect.isPresent() && ticks.isPresent() ? new GuiModel.Effect(common, effect.get(), ticks.get(), amplifier) : null;
+            }
+            case "particle" -> {
+                Optional<String> particle = string(object, "particle", path);
+                if (particle.isPresent() && !particle.get().matches("([a-z0-9_.-]+:)?[a-z0-9_./-]+")) problem(path + ".particle", "expected a particle key such as minecraft:flame");
+                int count = object.has("count") ? integer(object, "count", path, 1, 1000).orElse(1) : 1;
+                double offset = object.has("offset") ? decimal(object, "offset", path, 0, 64).orElse(0.0) : 0;
+                String at = object.has("at") ? choice(object, "at", path, Set.of("viewer", "subject", "source", "location")).orElse("viewer") : "viewer";
+                if (at.equals("subject") || at.equals("source")) problem(path + ".at", "at '" + at + "' belongs to Gloss behaviors; use viewer or location");
+                if (at.equals("location") && !located) problem(path + ".at", "a chest window has no location; use viewer");
+                yield particle.map((String key) -> new GuiModel.Particle(common, key, count, offset, at.equals("location"))).orElse(null);
+            }
+            case "parallel" -> {
+                List<List<Action>> branches = new ArrayList<>();
+                JsonElement list = object.get("branches");
+                if (list == null || !list.isJsonArray() || list.getAsJsonArray().isEmpty()) problem(path + ".branches", "expected a non-empty array of action lists");
+                else for (int index = 0; index < list.getAsJsonArray().size(); index++)
+                    branches.add(actions(list.getAsJsonArray().get(index), path + ".branches[" + index + "]", scopeRoots, true));
+                yield new GuiModel.Parallel(common, branches);
+            }
+            case "repeat" -> {
+                int times = integer(object, "times", path, 1, 100_000).orElse(1);
+                int every = object.has("everyTicks") ? integer(object, "everyTicks", path, 0, 1_728_000).orElse(0) : 0;
+                Optional<GuiExpression> condition = object.has("while") ? expression(object, "while", path, scopeRoots) : Optional.empty();
+                yield new GuiModel.Repeat(common, times, every, actions(object.get("steps"), path + ".steps", scopeRoots, true), condition);
+            }
             case "animus:open-shop" -> {
                 Optional<String> shop = string(object, "shop", path);
                 if (shop.isPresent() && !shop.get().matches("[a-z0-9_-]+:[a-z0-9_/-]+")) problem(path + ".shop", "expected a shop id such as town:baker");
@@ -364,4 +440,6 @@ final class GuiParser {
     }
 
     Set<String> roots() { return roots; }
+    /** The same problem list and location with other expression roots, for list templates. */
+    GuiParser with(Set<String> otherRoots) { return new GuiParser(problems, otherRoots, located); }
 }

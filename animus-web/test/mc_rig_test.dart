@@ -189,7 +189,7 @@ void main() {
   group('camera', () {
     test('the home framing keeps the subject on screen', () {
       const McBounds subject = McBounds(McVec3(-0.4, 0, -0.3), McVec3(0.4, 2.4, 0.3));
-      final McCamera camera = mcCameraFraming(subject, yawDeg: 210);
+      final McCamera camera = mcCameraFraming(subject.corners, yawDeg: 210);
       for (final double x in <double>[subject.min.x, subject.max.x]) {
         for (final double y in <double>[subject.min.y, subject.max.y]) {
           final McVec3 at = mcProjectToPixels(camera, McVec3(x, y, 0), widthPx: 400, heightPx: 300)!;
@@ -197,11 +197,19 @@ void main() {
           expect(at.y, inInclusiveRange(0, 300));
         }
       }
-      expectVec(mcProjectToPixels(camera, subject.centre, widthPx: 400, heightPx: 300)!, McVec3(200, 150, camera.distance), within: 1e-6);
+      final McVec3 centre = mcProjectToPixels(camera, subject.centre, widthPx: 400, heightPx: 300)!;
+      expect(centre.x, closeTo(200, 1e-6));
+      expect(centre.y, closeTo(150, 1e-6));
+    });
+
+    test('text keeps the client scale and a readable floor', () {
+      expect(mcTextFontPx(600, 2), closeTo(mcPixelsPerBlock(600, 2) * 0.2, 1e-9));
+      expect(mcTextFontPx(600, 2), greaterThan(mcTextMinFontPx));
+      expect(mcTextFontPx(600, 200), mcTextMinFontPx);
     });
 
     test('orbit and dolly stay inside their clamps', () {
-      final McCamera camera = mcCameraFraming(const McBounds(McVec3(-1, 0, -1), McVec3(1, 2, 1)));
+      final McCamera camera = mcCameraFraming(const McBounds(McVec3(-1, 0, -1), McVec3(1, 2, 1)).corners);
       expect(camera.orbitBy(0, 100000).pitchDeg, 89);
       expect(camera.dollyBy(1e6).distance, mcCameraMaxDistance);
       expect(camera.dollyBy(-1e6).distance, mcCameraMinDistance);

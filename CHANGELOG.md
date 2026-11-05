@@ -73,6 +73,11 @@
 - Outbound editor relay client for all platforms, configured by the relay keys in `[editor]` of `config.toml` and off by default; server editor identity in `state/editor/identity.json`.
 - `animus:hire` NPC module: a chest window to hire a bodyguard for items or money, with durable contracts, renewal and hirer-only dismissal.
 - Answer buttons in `animus:choices` take optional `color`, `hover` and `style`; guard settings `catchUpDistance` and `replanDistance`.
+- Editor: 3D NPC preview covering every presented body type, the five definition poses, all eight equipment slots, armor stand parts and angles, nameplates and text display lines, with an orbit camera; skins from skin documents (arm model) or a PNG file or URL; `tool/extract_minecraft_world_assets.dart` generates the preview's Minecraft assets from a 26.3 client jar, not committed.
+- Web editor server API at `/animus/v1` with pairing, scoped tokens, validate, preview, all-or-nothing applies with conflicts, retry-safe status and undo, imports, spawn and live events; optional embedded listener with operator-supplied TLS (plain HTTP only on 127.0.0.1); `/animus editor pair|tokens|revoke|status`; `[editor]` settings.
+- Editor: rig editor with a bone tree, display bone inspector, stage gizmos, keyframe timeline with easing and loop modes, and playback on the shared sampler; Blockbench `.bbmodel` import into rigs, animations and item model sources; workspace zip export and per-rig server files export.
+- Gloss holograms, holographic menus and text animations, drawn with packet-only displays for each player on Bukkit, Folia and mod servers; the `modules["animus:gui"]` NPC binding; `animus:open-gui` takes `kind`; Gloss actions `teleport`, `bossbar`, `broadcast`, `effect`, `particle`, `parallel` and `repeat`; Gloss text animation functions and `time.*`.
+- Optional Gloss bridge, and Gloss folder and gloss-web bundle import and export through `/animus gui import|export gloss|file`; Gloss `[RRGGBB]` colour shorthand.
 
 ### Changed
 
@@ -108,6 +113,7 @@
 - NPC speech reads `Name » text`, and answers are coloured buttons with hover text.
 - Guards walk to a point behind their charge, replan as it moves, and teleport to catch up across distance or worlds.
 - Example packs restyled; personal-guard is hired through `animus:hire`.
+- `/animus gui` covers menus, holograms and animations; ids without a namespace resolve in the referring document's namespace.
 
 ### Fixed
 

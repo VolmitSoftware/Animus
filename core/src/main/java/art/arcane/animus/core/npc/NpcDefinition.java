@@ -88,6 +88,8 @@ public final class NpcDefinition {
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { art.arcane.animus.core.shop.ShopBinding.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.gui.GuiBinding.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { art.arcane.animus.core.hire.HireTerms.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
         }

@@ -124,7 +124,30 @@ final class McBounds {
   final McVec3 min;
   final McVec3 max;
 
+  /// The box around [points]; a unit box at the origin when there are none.
+  factory McBounds.of(Iterable<McVec3> points) {
+    double minX = double.infinity, minY = double.infinity, minZ = double.infinity;
+    double maxX = -double.infinity, maxY = -double.infinity, maxZ = -double.infinity;
+    for (final McVec3 p in points) {
+      minX = math.min(minX, p.x);
+      minY = math.min(minY, p.y);
+      minZ = math.min(minZ, p.z);
+      maxX = math.max(maxX, p.x);
+      maxY = math.max(maxY, p.y);
+      maxZ = math.max(maxZ, p.z);
+    }
+    if (minX > maxX) return const McBounds(McVec3(-0.5, 0, -0.5), McVec3(0.5, 1, 0.5));
+    return McBounds(McVec3(minX, minY, minZ), McVec3(maxX, maxY, maxZ));
+  }
+
   McVec3 get centre => (min + max) * 0.5;
+
+  /// The eight corners.
+  List<McVec3> get corners => <McVec3>[
+    for (final double x in <double>[min.x, max.x])
+      for (final double y in <double>[min.y, max.y])
+        for (final double z in <double>[min.z, max.z]) McVec3(x, y, z),
+  ];
   McVec3 get size => max - min;
 
   McBounds union(McBounds other) => McBounds(
@@ -139,13 +162,30 @@ final class McBounds {
   int get hashCode => Object.hash(min, max);
 }
 
-/// The home framing for a subject: looking at its centre from the front
-/// (yaw 180 looks back along -Z at a body facing +Z), a little from above,
-/// far enough that the bounding sphere fits the vertical field of view.
-McCamera mcCameraFraming(McBounds bounds, {double yawDeg = 180, double pitchDeg = 12}) {
-  final double radius = math.max(0.5, bounds.size.length / 2);
-  final double distance = radius / math.sin(mcStageFovYDeg * _degToRad / 2) * 1.1;
-  return McCamera(pivot: bounds.centre, yawDeg: yawDeg, pitchDeg: pitchDeg, distance: distance).clamped();
+/// How much of the view the framed box may cover, per axis.
+const double mcFramingFill = 0.86;
+
+/// The home framing for a subject: looking at the centre of [points] from
+/// the front (yaw 180 looks back along -Z at a body facing +Z), a little
+/// from above, as close as it can stand while every point stays inside
+/// [mcFramingFill] of a view of width / height [aspect]. Points, not a box:
+/// a dragon's tail far behind it does not push the camera back the way its
+/// bounding box's empty near corners would. A player and a dragon therefore
+/// fill the view alike.
+McCamera mcCameraFraming(List<McVec3> points, {double yawDeg = 180, double pitchDeg = 12, double aspect = 4 / 3}) {
+  final McBounds box = McBounds.of(points);
+  final McCamera aim = McCamera(pivot: box.centre, yawDeg: yawDeg, pitchDeg: pitchDeg, distance: 1);
+  final McVec3 f = aim.forward, r = aim.right, u = aim.up;
+  final double tanY = math.tan(mcStageFovYDeg * _degToRad / 2) * mcFramingFill;
+  final double tanX = tanY * (aspect > 0 ? aspect : 1);
+  double distance = mcCameraMinDistance;
+  for (final McVec3 point in points) {
+    final McVec3 c = point - box.centre;
+    // A point at depth d + c.f must satisfy |c.u| <= tanY (d + c.f).
+    distance = math.max(distance, c.dot(u).abs() / tanY - c.dot(f));
+    distance = math.max(distance, c.dot(r).abs() / tanX - c.dot(f));
+  }
+  return aim.copyWith(distance: distance).clamped();
 }
 
 /// OpenGL projection for a [widthPx] x [heightPx] viewport.
@@ -164,3 +204,13 @@ McVec3? mcProjectToPixels(McCamera camera, McVec3 point, {required double widthP
 /// CSS pixels one block covers at [depthBlocks] from the eye.
 double mcPixelsPerBlock(double heightPx, double depthBlocks) =>
     depthBlocks <= 0 ? 0 : heightPx / (2 * math.tan(mcStageFovYDeg * _degToRad / 2) * depthBlocks);
+
+/// Smallest CSS font size the text layer draws at, so a name over a far or
+/// large body stays readable.
+const double mcTextMinFontPx = 13;
+
+/// CSS font size for world text at [depthBlocks]: the client draws name tags
+/// and text displays at 1/40 block per font pixel, 8 font pixels to the em,
+/// floored at [mcTextMinFontPx]. Every text block uses this one rule.
+double mcTextFontPx(double heightPx, double depthBlocks) =>
+    math.max(mcTextMinFontPx, mcPixelsPerBlock(heightPx, depthBlocks) * 0.025 * 8);

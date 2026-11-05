@@ -330,7 +330,7 @@ This follows React rather than Gloss. Gloss's long-poll snapshot relay suits who
 
 ### Pairing and credentials
 
-- `/animus web pair [label] [scopes=...] [expires=7d]` (needs `animus.admin`) prints a link: `https://animus.volmitsoftware.com/#/pair/ANM1.<base64url JSON>`. The JSON holds `directUrl` (if any), `relayUrl`, the server public key and fingerprint, a token id and a one-time pairing secret. The secret lives only in the URL fragment, which browsers never send to the host.
+- `/animus editor pair [label] [scopes=...] [groups=...] [expires=7d]` (needs `animus.admin`) prints a link: `https://animus-editor.web.app/#/pair/ANM1.<base64url JSON>`. The JSON holds `directUrl` (if any), `relayUrl`, the server public key and fingerprint, a token id and a one-time pairing secret. The secret lives only in the URL fragment, which browsers never send to the host.
 - The browser exchanges the pairing secret once for a token (`POST /v1/pair`). The pairing secret expires after 10 minutes or first use.
 - Tokens are a random id plus 32 random bytes. Animus stores only a SHA-256 hash, the label, the issuing admin's UUID, scopes, creation time, expiry and last use, in `state/editor/tokens.json`. Comparison is constant time.
 - Scopes:
@@ -346,7 +346,7 @@ This follows React rather than Gloss. Gloss's long-poll snapshot relay suits who
   | `admin` | Token management and module status |
 
   Pairing defaults to `read validate preview apply:npcs apply:behaviors apply:gui apply:rigs` and 7 days. Tokens can also be limited to NPC groups (`groups=town,harbor`).
-- `/animus web list` and `/animus web revoke <id|all>` manage tokens. Revocation closes the token's open connections at once. Removing `animus.admin` from the issuing player revokes their tokens at the next check (on connect and every 60 s).
+- `/animus editor tokens` and `/animus editor revoke <id|all>` manage tokens, and `/animus editor status` shows the listener, the relay and open streams. The names are the same on every platform. Revocation closes the token's open connections at once. Removing `animus.admin` from the issuing player revokes their tokens at the next check (on connect and every 60 s).
 - Mutating requests carry `X-Animus-Counter`, a strictly increasing number per token, as React does, so a captured request cannot be replayed.
 - Origin checks: the direct listener and the relay accept only origins in `allowedOrigins` (default `https://animus.volmitsoftware.com` and `http://127.0.0.1:8098` for local development). Requests with another `Origin` are refused with `origin-not-allowed`. There are no wildcards and no cookies.
 - Audit: every pairing, revocation, validate, preview, apply, undo and import is appended to `state/editor/audit/<yyyy-mm-dd>.jsonl` with token id, admin UUID, address, path, documents touched and result. Files older than `auditDays` (default 30) are removed at startup.
@@ -410,7 +410,7 @@ Request bodies 4 MiB (imports 16 MiB), change sets 512 documents, 8 concurrent r
 ```toml
 [editor]
 enabled = true
-editorUrl = "https://animus.volmitsoftware.com"
+editorUrl = "https://animus-editor.web.app"
 listenerEnabled = false
 listenAddress = "127.0.0.1"
 port = 9797
@@ -423,12 +423,24 @@ relayReconnectMinSeconds = 1
 relayReconnectMaxSeconds = 60
 relayFrameBytes = 1048576
 relayConcurrentRequests = 64
-allowedOrigins = ["https://animus.volmitsoftware.com"]
+allowedOrigins = ["https://animus-editor.web.app", "http://127.0.0.1:8098"]
 tokenDays = 7
 auditDays = 30
+requestBodyBytes = 4194304
+importBodyBytes = 16777216
+changeSetDocuments = 512
+concurrentRequestsPerToken = 8
+requestsPerSecond = 20
+pairAttemptsPerMinute = 10
+openConnections = 64
+eventFramesPerSecond = 20
+previewsPerServer = 4
+npcsPerPreview = 64
+previewMinutes = 15
+idempotencyHours = 24
 ```
 
-The HTTP server library is an implementation choice for phase 1; React uses Javalin on Jetty. Whatever is used is shaded and relocated like the rest of Animus's dependencies, and the API code sits in `core/` behind a small transport interface so the mod ports can reuse it.
+The listener is Animus's own small HTTP/1.1 and WebSocket server on virtual threads (no extra library to shade), in `core/` behind `EditorRequestHandler`, so Bukkit, the mod loaders and the relay client share every handler. A listener on a non-loopback address refuses to start without `tlsCertificate` and `tlsPrivateKey` (PEM chain and unencrypted PKCS#8 key; relative paths are under the data folder). Unknown `[editor]` keys are refused at startup.
 
 ## 7. Hosting and deployment
 

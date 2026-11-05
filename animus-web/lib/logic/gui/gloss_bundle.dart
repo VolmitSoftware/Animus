@@ -9,8 +9,8 @@ import 'dart:math' as math;
 
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../state/editor_store.dart';
 import '../data_folder.dart';
-import '../data_folder_export.dart';
 import 'gui_json.dart';
 
 const String glossBundleFormat = 'gloss-editor-workspace';
@@ -86,7 +86,7 @@ GlossImport readGlossBundle(String raw) {
     final String glossId = asString(doc['runtimeId']) ?? title;
     final String? id = animusIdForGloss(kind, glossId);
     final String? path = id == null ? null : documentPath(kind, id);
-    if (id == null || path == null) {
+    if (id == null || path == null || locateDocument(path) != DocumentLocation(kind, id)) {
       skipped.add('$title: id "$glossId" has no Animus file name');
       continue;
     }

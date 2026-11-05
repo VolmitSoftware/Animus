@@ -71,6 +71,10 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant}) {
       texts.add(NpcText(anchor: McVec3(0, bottom, 0), lines: <String>[text], nameplate: false, styled: _styled(text)));
     } else if (line is Map<String, Object?>) {
       final McVec3 centre = McVec3(0, bottom + row / 2, 0);
+      if (!sampleCondition(line['show'])) {
+        top = bottom;
+        continue;
+      }
       if (line['text'] is String) {
         final String text = line['text']! as String;
         texts.add(NpcText(anchor: McVec3(0, bottom, 0), lines: <String>[text], nameplate: false, styled: _styled(text)));
@@ -101,7 +105,7 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant}) {
     top = bottom;
   }
   return GuiScene(
-    scene: McScene(nodes, bounds: McBounds(const McVec3(-1, 0.8, -0.5), McVec3(1, 1.4 + height, 0.5))),
+    scene: McScene(nodes, frame: _corners(McBounds(const McVec3(-1, 0.8, -0.5), McVec3(1, 1.4 + height, 0.5)))),
     texts: texts,
     notes: notes,
   );
@@ -111,7 +115,7 @@ double _rowHeight(Object? line) {
   if (line == null) return guiTextRowBlocks;
   if (line is String) return guiTextRowBlocks * line.split('\n').length;
   if (line is Map<String, Object?> && line['text'] is String) return guiTextRowBlocks * (line['text']! as String).split('\n').length;
-  return guiItemRowBlocks;
+  return line is Map<String, Object?> ? (asDouble(line['scale']) ?? guiItemRowBlocks) : guiItemRowBlocks;
 }
 
 /// A holographic menu in front of a viewer: the menu centre is [offset] from
@@ -143,6 +147,11 @@ GuiScene menuScene(JsonMap doc, {String? selected}) {
             scope: GuiSampleScope(extra: <String, Object?>{if (entry != null) variable: entry is num ? entry.toDouble() : entry}));
       }
       if (source is! List<Object?>) notes.add('$label: the list source needs the server; three sample entries are shown.');
+      return;
+    }
+    if (type == 'slider') {
+      final String text = renderTemplate(asString(data['label']) ?? '${asString(data['var']) ?? 'value'}: ?', scope: scope);
+      texts.add(NpcText(anchor: at, lines: text.split('\n'), nameplate: false, styled: _styled(text)));
       return;
     }
     if (type == 'tabs') {
@@ -204,8 +213,15 @@ GuiScene menuScene(JsonMap doc, {String? selected}) {
     place(id, asMap(component['data']), position, id);
   }
   return GuiScene(
-    scene: McScene(nodes, bounds: bounds ?? const McBounds(McVec3(-1, 0.5, -0.5), McVec3(1, 2.5, 0.5))),
+    scene: McScene(nodes, frame: _corners(bounds ?? const McBounds(McVec3(-1, 0.5, -0.5), McVec3(1, 2.5, 0.5)))),
     texts: texts,
     notes: notes,
   );
 }
+
+/// The eight corners of [box], the points the stage camera frames.
+List<McVec3> _corners(McBounds box) => <McVec3>[
+      for (final double x in <double>[box.min.x, box.max.x])
+        for (final double y in <double>[box.min.y, box.max.y])
+          for (final double z in <double>[box.min.z, box.max.z]) McVec3(x, y, z),
+    ];

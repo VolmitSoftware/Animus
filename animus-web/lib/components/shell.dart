@@ -1,11 +1,11 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../logic/data_folder.dart';
-import '../logic/data_folder_export.dart';
 import '../logic/gui/gloss_bundle.dart';
 import '../logic/gui/gui_catalog.dart';
 import '../logic/gui/gui_json.dart';
@@ -17,6 +17,8 @@ import '../state/editor_store.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
 import 'document_view.dart';
+import 'rig/rig_actions.dart';
+import 'rig/rig_editor.dart';
 
 /// Kinds listed in the sidebar, in this order.
 const List<DocumentKind> listedKinds = <DocumentKind>[
@@ -86,37 +88,27 @@ class _EditorShellState extends State<EditorShell> {
     return stem.isEmpty ? 'animus' : stem;
   }
 
-  void _exportZip(WorkspaceSnapshot workspace) {
-    downloadBytes('${_fileStem(workspace)}.zip', exportDataFolderZip(workspace.documents), 'application/zip');
-    final int invalid = workspace.documents.where((AnimusDocument document) => !document.valid).length;
-    if (invalid > 0) {
-      ArcaneSonner.warning('Exported ${workspace.documents.length} documents; $invalid still need repair and the server will refuse them.');
-    } else {
-      ArcaneSonner.success('Exported ${workspace.documents.length} documents as a data folder zip.');
-    }
-  }
-
   void _exportGloss(WorkspaceSnapshot workspace) {
     final GlossExport exported = writeGlossBundle(workspace.documents);
     if (exported.exported == 0) {
       ArcaneSonner.warning('No chest GUIs, menus, holograms or presets Gloss can run.${exported.skipped.isEmpty ? '' : ' Skipped: ${exported.skipped.join('; ')}'}');
       return;
     }
-    downloadBytes('${_fileStem(workspace)}.gloss-workspace.json', utf8.encode(exported.bundle), 'application/json');
+    downloadBytes('${_fileStem(workspace)}.gloss-workspace.json', utf8.encode(exported.bundle), type: 'application/json');
     ArcaneSonner.success('Exported ${exported.exported} documents as a Gloss workspace bundle.'
         '${exported.skipped.isEmpty ? '' : ' Skipped ${exported.skipped.length}: ${exported.skipped.join('; ')}'}');
   }
 
   Future<void> _importGloss() async {
-    final (String, String)? picked = await pickTextFile();
+    final (String, Uint8List)? picked = await pickFile('.json,application/json');
     if (picked == null) return;
-    final GlossImport imported = readGlossBundle(picked.$2);
+    final GlossImport imported = readGlossBundle(utf8.decode(picked.$2, allowMalformed: true));
     if (imported.error != null) {
       ArcaneSonner.error(imported.error!);
       return;
     }
-    await component.store.putDocuments(<(DocumentLocation, String, String)>[
-      for (final GlossImportedDocument document in imported.documents) (document.location, document.path, document.source),
+    await component.store.commit(documents: <DocumentChange>[
+      for (final GlossImportedDocument document in imported.documents) DocumentChange(document.location.kind, document.location.id, document.source),
     ]);
     final int invalid = imported.documents
         .where((GlossImportedDocument d) => !(component.store.document(d.location.kind, d.location.id)?.valid ?? false))
@@ -132,26 +124,26 @@ class _EditorShellState extends State<EditorShell> {
   Future<void> _create(WorkspaceSnapshot workspace, DocumentKind kind) async {
     final Set<String> taken = <String>{for (final AnimusDocument document in workspace.documents) if (document.kind == kind) document.id};
     final String id = newDocumentId(kind, taken);
-    await component.store.putDocuments(<(DocumentLocation, String, String)>[
-      (DocumentLocation(kind, id), documentPath(kind, id)!, prettyJson(newDocument(kind, id))),
-    ]);
+    await component.store.commit(documents: <DocumentChange>[DocumentChange(kind, id, prettyJson(newDocument(kind, id)))]);
     component.onNavigate(DocumentRoute(workspace.id, kind, id));
   }
 
   Future<String?> _rename(WorkspaceSnapshot workspace, AnimusDocument document, String id) async {
     if (id == document.id) return null;
-    final String? path = documentPath(document.kind, id);
-    if (path == null) {
+    if (locateDocument(documentPath(document.kind, id)) != DocumentLocation(document.kind, id)) {
       return document.kind == DocumentKind.inventory || document.kind == DocumentKind.shop
           ? 'Use namespace:path with a-z, 0-9, _ and -, such as town:menu.'
           : 'Use a path with a-z, 0-9, _, - and /, such as town/welcome.';
     }
+    if (component.store.document(document.kind, id) != null) return '${document.kind.label}: $id already exists.';
     final Object? json = document.json;
     final String source = document.kind == DocumentKind.shop && json is Map<String, Object?> && json['id'] is String
         ? prettyJson(<String, Object?>{...json, 'id': id})
         : document.source;
-    final bool moved = await component.store.renameDocument(document.kind, document.id, id, path, source);
-    if (!moved) return '${document.kind.label}: $id already exists.';
+    await component.store.commit(documents: <DocumentChange>[
+      DocumentChange(document.kind, document.id, null),
+      DocumentChange(document.kind, id, source),
+    ]);
     component.onNavigate(DocumentRoute(workspace.id, document.kind, id));
     return null;
   }
@@ -196,10 +188,17 @@ class _EditorShellState extends State<EditorShell> {
         ),
         if (workspace != null) ...<Widget>[
           Button.secondary(
+            label: 'Import .bbmodel',
+            icon: ArcaneIcon.upload(),
+            size: ButtonSize.small,
+            disabled: _busy,
+            onPressed: () => _importBbmodel(workspace),
+          ),
+          Button.secondary(
             label: 'Export zip',
             icon: ArcaneIcon.download(),
             size: ButtonSize.small,
-            onPressed: () => _exportZip(workspace),
+            onPressed: () => exportWorkspace(workspace),
           ),
           Button.ghost(
             label: 'Import Gloss bundle',
@@ -276,17 +275,21 @@ class _EditorShellState extends State<EditorShell> {
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
             onJson: guiKinds.contains(document.kind)
-                ? (Object? json, {String? coalesce}) => component.store.editJson(document.kind, document.id, json, coalesce: coalesce)
+                ? (Object? json, {String? coalesce}) => component.store.commit(
+                      documents: <DocumentChange>[DocumentChange(document.kind, document.id, prettyJson(json))],
+                      coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',
+                    )
                 : null,
             onRename: guiKinds.contains(document.kind) ? (String id) => _rename(workspace, document, id) : null,
             onDelete: guiKinds.contains(document.kind)
                 ? () async {
-                    await component.store.removeDocument(document.kind, document.id);
+                    await component.store.commit(documents: <DocumentChange>[DocumentChange(document.kind, document.id, null)]);
                     component.onNavigate(WorkspaceRoute(workspace.id));
                     ArcaneSonner.info('Deleted ${document.id}. Undo brings it back.');
                   }
                 : null,
             skinDocument: _skinOf(document),
+            editor: _rigEditor(workspace, document),
           )
         else if (selected != null)
           dom.section(classes: 'animus-panel', <Widget>[
@@ -386,6 +389,46 @@ class _EditorShellState extends State<EditorShell> {
           ]),
         ]),
     ]);
+  }
+
+  Future<void> _importBbmodel(WorkspaceSnapshot workspace) async {
+    setState(() => _busy = true);
+    try {
+      String namespace = 'animus';
+      for (final AnimusDocument document in workspace.documents) {
+        if (document.kind == DocumentKind.rig && document.id.contains(':')) {
+          namespace = document.id.substring(0, document.id.indexOf(':'));
+          break;
+        }
+      }
+      final String? id = await importBbmodelFile(component.store, namespace);
+      if (id != null) component.onNavigate(DocumentRoute(workspace.id, DocumentKind.rig, id));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The rig editor for a rig, or for an animation whose rig is here.
+  Widget? _rigEditor(WorkspaceSnapshot workspace, AnimusDocument document) {
+    final Object? json = document.json;
+    AnimusDocument? rig;
+    String? animation;
+    if (document.kind == DocumentKind.rig) {
+      rig = document;
+    } else if (document.kind == DocumentKind.animation && json is Map<String, Object?> && json['rig'] is String) {
+      rig = component.store.document(DocumentKind.rig, json['rig']! as String);
+      animation = document.id;
+    }
+    if (rig == null || rig.json is! Map<String, Object?>) return null;
+    final DocumentRoute? current = component.route is DocumentRoute ? component.route as DocumentRoute : null;
+    return RigEditor(
+      key: ValueKey<String>('rig-editor:${rig.id}'),
+      store: component.store,
+      rig: rig,
+      animationId: animation,
+      onOpen: (DocumentKind kind, String id) =>
+          component.onNavigate(DocumentRoute(workspace.id, kind, id, current?.view ?? ViewMode.visual)),
+    );
   }
 
   AnimusDocument? _skinOf(AnimusDocument document) {

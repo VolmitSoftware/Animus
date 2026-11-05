@@ -40,6 +40,34 @@ public interface ScreenHost<P, S> {
     void command(Optional<P> player, String command);
     void broadcast(String text);
 
+    /**
+     * Where a player stands and looks. {@code worlds} holds every name the player's world answers to (its name, key
+     * and the identity NPC positions use), so a hologram anchor written either way matches.
+     */
+    record Pose(java.util.Set<String> worlds, double x, double y, double z, double eyeY, float yaw, float pitch, boolean sneaking) {
+        public Pose { worlds = java.util.Set.copyOf(worlds); }
+        public boolean in(String world) { return worlds.contains(world); }
+    }
+    /** The player's pose, or empty when it cannot be read on this thread. */
+    Optional<Pose> pose(P player);
+    /** {@code world} is a {@code namespace:key} or world name. False when that world is not loaded or the move was refused. */
+    boolean teleport(P player, String world, double x, double y, double z, float yaw, float pitch);
+    /**
+     * Shows a boss bar on the named lane for {@code ticks}, replacing the lane's previous bar; 0 ticks hides the lane.
+     * {@code color} is pink, blue, red, green, yellow, purple or white; {@code style} solid or segmented_6, 10, 12 or 20.
+     */
+    void bossBar(P player, String lane, String title, float progress, String color, String style, int ticks);
+    /** False when the effect is unknown on this server. */
+    boolean effect(P player, String effect, int ticks, int amplifier);
+    /** Spawns particles only this player sees. False when the particle is unknown or needs data. */
+    boolean particle(P player, String particle, int count, double spread, double x, double y, double z);
+    /**
+     * Sends coloured text to the players in scope: {@code server}, {@code world} (the source's world) or
+     * {@code radius} blocks around the source, optionally only those with a permission. Each send runs on its
+     * recipient's owner.
+     */
+    void broadcast(P source, String text, String scope, double radius, Optional<String> permission);
+
     TradeInventory<S> inventory(P player);
     ItemOps<S> items();
     /** A real stack for an item, or empty after adding a field error. Name and lore are already coloured. */

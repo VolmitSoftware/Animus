@@ -16,7 +16,7 @@ import java.util.List;
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
-                             ShopSettings shops, EditorRelaySettings relay) {
+                             ShopSettings shops, EditorRelaySettings relay, EditorSettings editor) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -112,9 +112,13 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         try { shopSettings = shops(table(data.getAsJsonObject(), "shops")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": shops: " + e.getMessage(), e); }
         EditorRelaySettings relaySettings;
-        try { relaySettings = relay(table(data.getAsJsonObject(), "editor")); }
-        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": editor: " + e.getMessage(), e); }
-        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings, relaySettings);
+        EditorSettings editorSettings;
+        try {
+            relaySettings = relay(table(data.getAsJsonObject(), "editor"));
+            editorSettings = EditorSettings.parse(table(data.getAsJsonObject(), "editor"));
+        } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": editor: " + e.getMessage(), e); }
+        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
+                relaySettings, editorSettings);
     }
 
     private static BuildSettings builds(JsonObject document) {
@@ -135,7 +139,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
 
     private static JsonObject editorDefaults() {
         EditorRelaySettings defaults = EditorRelaySettings.DEFAULT;
-        JsonObject editor = new JsonObject();
+        JsonObject editor = EditorSettings.DEFAULT.toJson();
         editor.addProperty("relayEnabled", defaults.enabled());
         editor.addProperty("relayUrl", defaults.url());
         return editor;

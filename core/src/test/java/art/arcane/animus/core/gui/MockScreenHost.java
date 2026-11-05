@@ -29,6 +29,8 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         public final List<Stack> dropped = new ArrayList<>();
         public ScreenFrame frame;
         public Object window;
+        public ScreenHost.Pose pose;
+        public final List<String> effects = new ArrayList<>();
         public int opened, closed;
         public Player(String name) { this.name = name; this.id = UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     }
@@ -64,6 +66,28 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         if (player.isPresent()) player.get().commands.add(command); else console.add(command);
     }
     @Override public void broadcast(String text) { broadcasts.add(RichText.plain(text)); }
+    @Override public Optional<ScreenHost.Pose> pose(Player player) { return Optional.ofNullable(player.pose); }
+    @Override public boolean teleport(Player player, String world, double x, double y, double z, float yaw, float pitch) {
+        if (world.equals("missing:world")) return false;
+        player.effects.add("teleport:" + world + ":" + (int) x + "," + (int) y + "," + (int) z);
+        if (player.pose != null) player.pose = new ScreenHost.Pose(Set.of(world), x, y, z, y + 1.62, yaw, pitch, player.pose.sneaking());
+        return true;
+    }
+    @Override public void bossBar(Player player, String lane, String title, float progress, String color, String style, int ticks) {
+        player.effects.add("bossbar:" + lane + ":" + RichText.plain(title) + ":" + progress + ":" + color + ":" + style + ":" + ticks);
+    }
+    @Override public boolean effect(Player player, String effect, int ticks, int amplifier) {
+        if (effect.endsWith("unknown")) return false;
+        player.effects.add("effect:" + effect + ":" + ticks + ":" + amplifier);
+        return true;
+    }
+    @Override public boolean particle(Player player, String particle, int count, double spread, double x, double y, double z) {
+        player.effects.add("particle:" + particle + ":" + count + "@" + Math.round(x) + "," + Math.round(y) + "," + Math.round(z));
+        return true;
+    }
+    @Override public void broadcast(Player source, String text, String scope, double radius, Optional<String> permission) {
+        broadcasts.add(scope + (permission.map((String node) -> "[" + node + "]").orElse("")) + ":" + RichText.plain(text));
+    }
     @Override public TradeInventory<Stack> inventory(Player player) { return player.inventory; }
     @Override public ItemOps<Stack> items() { return MockInventory.OPS; }
     @Override public Optional<Stack> stack(NpcItem item, Optional<String> name, List<String> lore, List<String> errors) {

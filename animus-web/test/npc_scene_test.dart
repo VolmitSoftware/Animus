@@ -6,7 +6,9 @@ import 'package:animus_editor/mc/npc/mc_text.dart';
 import 'package:animus_editor/mc/npc/npc_look.dart';
 import 'package:animus_editor/mc/npc/npc_scene.dart';
 import 'package:animus_editor/mc/npc/npc_skin.dart';
+import 'package:animus_editor/mc/rigs/mc_player_rig.dart';
 import 'package:animus_editor/mc/rigs/mc_rigs.dart';
+import 'package:animus_editor/mc/scene/mc_camera.dart';
 import 'package:animus_editor/mc/scene/mc_math.dart';
 import 'package:animus_editor/mc/scene/mc_scene.dart';
 import 'package:test/test.dart';
@@ -206,7 +208,7 @@ void main() {
         final NpcScene scene = npcScene(NpcLook.fromDefinition(jsonDecode(file.readAsStringSync()) as Map<String, Object?>));
         expect(scene.presentable, isTrue, reason: file.path);
         expect(scene.scene.nodes, isNotEmpty, reason: file.path);
-        expect(scene.scene.bounds, isNotNull, reason: file.path);
+        expect(scene.scene.frame, isNotEmpty, reason: file.path);
       }
       final NpcScene zombie = npcScene(NpcLook.fromDefinition(<String, Object?>{'type': 'minecraft:zombie', 'name': 'Z'}));
       expect(zombie.presentable, isFalse);
@@ -224,6 +226,117 @@ void main() {
       expect(sneaking.signature, isNot(standing.signature));
       expect(turned.signature, standing.signature);
       expect(turned.transform.m, isNot(standing.transform.m));
+    });
+  });
+
+  group('armour slots', () {
+    const Map<String, String> materials = <String, String>{
+      'leather': 'leather',
+      'chainmail': 'chainmail',
+      'iron': 'iron',
+      'golden': 'gold',
+      'diamond': 'diamond',
+      'netherite': 'netherite',
+      'copper': 'copper',
+    };
+    const Map<String, (NpcSlot, McArmorLayer, Set<String>)> pieces = <String, (NpcSlot, McArmorLayer, Set<String>)>{
+      'helmet': (NpcSlot.head, McArmorLayer.head, <String>{'head'}),
+      'chestplate': (NpcSlot.chest, McArmorLayer.chest, <String>{'body', 'right_arm', 'left_arm'}),
+      'leggings': (NpcSlot.legs, McArmorLayer.legs, <String>{'body', 'right_leg', 'left_leg'}),
+      'boots': (NpcSlot.feet, McArmorLayer.feet, <String>{'right_leg', 'left_leg'}),
+    };
+
+    for (final String type in <String>['minecraft:player', 'minecraft:armor_stand']) {
+      test('every material and slot on $type draws as its armour layer', () {
+        for (final MapEntry<String, String> material in materials.entries) {
+          for (final MapEntry<String, (NpcSlot, McArmorLayer, Set<String>)> piece in pieces.entries) {
+            final (NpcSlot slot, McArmorLayer layer, Set<String> parts) = piece.value;
+            final String id = 'minecraft:${material.key}_${piece.key}';
+            final NpcScene scene = npcScene(NpcLook.fromDefinition(<String, Object?>{
+              'type': type,
+              'name': 'Wearer',
+              'equipment': <String, Object?>{slot.key: <String, Object?>{'id': id, 'components': '[dyed_color=16711680]'}},
+            }));
+            final McSceneNode? node = byKey(scene)['equipment:${slot.key}'];
+            expect(node, isA<McRigNode>(), reason: '$type $id');
+            final McRigNode rig = node! as McRigNode;
+            expect(rig.rig.id, 'armor_${layer.name}', reason: '$type $id');
+            expect(rig.rig.allParts.where((part) => part.boxes.isNotEmpty).map((part) => part.name).toSet(), parts, reason: '$type $id');
+            final String folder = slot == NpcSlot.legs ? 'humanoid_leggings' : 'humanoid';
+            expect(rig.textureId, 'entity/equipment/$folder/${material.value}', reason: '$type $id');
+            expect(mcEntityTextureIds, contains(rig.textureId));
+            final bool leather = material.key == 'leather';
+            expect(rig.tint, leather ? <double>[1, 0, 0] : <double>[1, 1, 1], reason: '$type $id');
+            expect(byKey(scene).containsKey('equipment:${slot.key}:overlay'), leather, reason: '$type $id');
+            if (leather) expect(mcEntityTextureIds, contains('${rig.textureId}_overlay'));
+            expect(scene.scene.nodes.whereType<McItemNode>(), isEmpty, reason: '$type $id');
+            expect(scene.notes, isEmpty, reason: '$type $id');
+          }
+        }
+      });
+    }
+
+    test('the turtle helmet is head armour; boots in another slot are not drawn', () {
+      final NpcScene turtle = npcScene(NpcLook.fromDefinition(<String, Object?>{
+        'type': 'minecraft:player',
+        'name': 'Diver',
+        'equipment': <String, Object?>{
+          'head': <String, Object?>{'id': 'minecraft:turtle_helmet'},
+          'legs': <String, Object?>{'id': 'minecraft:iron_boots'},
+        },
+      }));
+      expect((byKey(turtle)['equipment:head']! as McRigNode).textureId, 'entity/equipment/humanoid/turtle_scute');
+      expect(byKey(turtle).containsKey('equipment:legs'), isFalse);
+      expect(turtle.notes.single, contains('legs: minecraft:iron_boots'));
+    });
+
+    test('layers ride the body: the player layer scale and pivots, the stand its own', () {
+      final McRigNode player = byKey(sceneOf('npcs/armour/leather.json'))['equipment:feet']! as McRigNode;
+      final McRigNode stand = byKey(sceneOf('npcs/armour/leather-stand.json'))['equipment:feet']! as McRigNode;
+      expect(player.rig.scale, 0.9375);
+      expect(player.rig.part('right_leg')!.pivot.y, 12);
+      expect(stand.rig.scale, 1);
+      expect(stand.rig.part('right_leg')!.pivot.y, 11);
+      final McRigNode small = byKey(sceneOf('npcs/armour/diamond-stand.json'))['equipment:feet']! as McRigNode;
+      expect(small.rig.id, 'armor_feet_small');
+    });
+  });
+
+  group('framing', () {
+    /// The share of a 4:3 view the framed points span, on the tighter axis.
+    double fill(NpcScene scene) {
+      const double w = 800, h = 600;
+      final McCamera camera = mcCameraFraming(scene.scene.frame, yawDeg: 180, aspect: w / h);
+      double minX = double.infinity, maxX = -double.infinity, minY = double.infinity, maxY = -double.infinity;
+      for (final McVec3 point in scene.scene.frame) {
+        final McVec3 at = mcProjectToPixels(camera, point, widthPx: w, heightPx: h)!;
+        expect(at.x, inInclusiveRange(-1, w + 1));
+        expect(at.y, inInclusiveRange(-1, h + 1));
+        minX = at.x < minX ? at.x : minX;
+        maxX = at.x > maxX ? at.x : maxX;
+        minY = at.y < minY ? at.y : minY;
+        maxY = at.y > maxY ? at.y : maxY;
+      }
+      final double x = (maxX - minX) / w, y = (maxY - minY) / h;
+      return x > y ? x : y;
+    }
+
+    test('text on the body is framed; text floating well above it is not', () {
+      final NpcScene hero = sceneOf('npcs/players/hero.json');
+      final double heroTop = hero.scene.frame.map((McVec3 p) => p.y).reduce((double a, double b) => a > b ? a : b);
+      expect(heroTop, closeTo(1.8 + 0.55 + 2 * 0.25, 1e-9));
+      final NpcScene dragon = sceneOf('npcs/animals/dragon.json');
+      final double dragonTop = dragon.scene.frame.map((McVec3 p) => p.y).reduce((double a, double b) => a > b ? a : b);
+      expect(dragon.texts.single.anchor.y, closeTo(8.3, 1e-9));
+      expect(dragonTop, lessThan(8.3 - mcFramedTextGap));
+    });
+
+    test('every body fills the view about as much as the player does', () {
+      final double player = fill(sceneOf('npcs/players/hero.json'));
+      expect(player, greaterThan(0.6));
+      for (final String path in <String>['npcs/animals/dragon.json', 'npcs/animals/horse.json', 'npcs/animals/turtle.json', 'npcs/stands/tiny.json']) {
+        expect(fill(sceneOf(path)), closeTo(player, 0.15), reason: path);
+      }
     });
   });
 

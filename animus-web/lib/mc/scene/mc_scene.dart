@@ -4,8 +4,8 @@
 library;
 
 import '../assets/mc_display_pose.dart';
+import '../assets/mc_model_resolver.dart';
 import '../rigs/mc_rig.dart';
-import 'mc_camera.dart';
 import 'mc_math.dart';
 
 sealed class McSceneNode {
@@ -72,8 +72,45 @@ final class McItemNode extends McSceneNode {
   String get signature => 'item:$itemId:${pose.name}:$leftHand';
 }
 
+/// A block model the way a block display draws it: the default blockstate
+/// variant, the block's corner at the mesh origin, one block across.
+final class McBlockNode extends McSceneNode {
+  const McBlockNode({required super.key, required this.blockKey, required super.transform, super.glint});
+
+  /// Bare block key (`carved_pumpkin`), block state properties stripped.
+  final String blockKey;
+
+  @override
+  String get signature => 'block:$blockKey';
+}
+
+/// Elements that are not in the asset pack (an item model from the
+/// workspace's resource pack sources) drawn with one runtime texture that
+/// spans the whole image. Mesh space is the model's, in blocks.
+final class McModelNode extends McSceneNode {
+  const McModelNode({
+    required super.key,
+    required this.model,
+    required this.textureId,
+    required this.modelSignature,
+    required super.transform,
+    super.glint,
+  });
+
+  final McResolvedModel model;
+
+  /// A runtime image id registered with the asset loader.
+  final String textureId;
+
+  /// Decides the mesh: the model source and the texture variable drawn.
+  final String modelSignature;
+
+  @override
+  String get signature => 'model:$modelSignature';
+}
+
 final class McScene {
-  McScene(this.nodes, {this.bounds}) : byKey = <String, McSceneNode>{} {
+  McScene(this.nodes, {this.frame = const <McVec3>[]}) : byKey = <String, McSceneNode>{} {
     for (final McSceneNode node in nodes) {
       if (byKey.containsKey(node.key)) {
         throw ArgumentError.value(node.key, 'key', 'duplicate scene node key');
@@ -87,6 +124,7 @@ final class McScene {
   final List<McSceneNode> nodes;
   final Map<String, McSceneNode> byKey;
 
-  /// What the home camera frames, world blocks.
-  final McBounds? bounds;
+  /// Points the home camera keeps in view, world blocks: the body's mesh
+  /// and the text above it.
+  final List<McVec3> frame;
 }
