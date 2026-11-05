@@ -1315,15 +1315,25 @@
           "bindings": {
             "type": "bindings",
             "required": false
+          },
+          "expressions": {
+            "type": "expressions",
+            "required": false,
+            "description": "Fills null placeholders in arguments with expression results, keyed by JSON Pointer."
+          },
+          "templates": {
+            "type": "templates",
+            "required": false,
+            "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer."
           }
         }
       },
       "condition": {
-        "description": "Tests a capability, then runs then or else.",
+        "description": "Tests a capability or an expression, then runs then or else.",
         "fields": {
           "capability": {
             "type": "capability",
-            "required": true,
+            "required": false,
             "description": "A condition capability, namespace:name."
           },
           "arguments": {
@@ -1334,6 +1344,23 @@
           "bindings": {
             "type": "bindings",
             "required": false
+          },
+          "expressions": {
+            "type": "expressions",
+            "required": false,
+            "description": "Fills null placeholders in arguments with expression results, keyed by JSON Pointer."
+          },
+          "templates": {
+            "type": "templates",
+            "required": false,
+            "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer."
+          },
+          "expression": {
+            "type": "expression",
+            "required": false,
+            "maxLength": 4096,
+            "pattern": "\\S",
+            "description": "Tested instead of a capability; must be true or false."
           },
           "then": {
             "type": "node",
@@ -1360,14 +1387,24 @@
         }
       },
       "repeat": {
-        "description": "Runs its body a fixed number of times.",
+        "description": "Runs its body a fixed or computed number of times.",
         "fields": {
           "count": {
             "type": "integer",
             "required": true,
-            "minimum": 0,
-            "maximum": 128,
-            "description": "How many times the body runs."
+            "description": "How many times the body runs: 0 to 128, or an operand computed when the loop starts."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "index": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives the 0-based pass number."
           },
           "body": {
             "type": "node",
@@ -1375,6 +1412,75 @@
             "description": "The repeated step."
           }
         }
+      },
+      "foreach": {
+        "description": "Runs its body once for each item of a list or map.",
+        "fields": {
+          "list": {
+            "type": "value",
+            "required": true,
+            "description": "An operand that evaluates to a list or map."
+          },
+          "as": {
+            "type": "variable",
+            "required": true,
+            "description": "An execution variable that receives each item."
+          },
+          "index": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives the 0-based pass number."
+          },
+          "key": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives each map key."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "body": {
+            "type": "node",
+            "required": true,
+            "description": "The repeated step."
+          }
+        }
+      },
+      "while": {
+        "description": "Runs its body while an expression is true.",
+        "fields": {
+          "expression": {
+            "type": "expression",
+            "required": true,
+            "maxLength": 4096,
+            "pattern": "\\S",
+            "description": "Checked before every pass; must be true or false."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "body": {
+            "type": "node",
+            "required": true,
+            "description": "The repeated step."
+          }
+        }
+      },
+      "break": {
+        "description": "Leaves the innermost loop.",
+        "fields": {}
+      },
+      "continue": {
+        "description": "Starts the next pass of the innermost loop.",
+        "fields": {}
       },
       "parallel": {
         "description": "Runs independent branches, then joins them.",
@@ -1393,6 +1499,26 @@
             "type": "routine",
             "required": true,
             "description": "A routine of this document."
+          },
+          "arguments": {
+            "type": "arguments",
+            "required": false,
+            "description": "Declared variables assigned before the routine runs, each from a literal or operand."
+          },
+          "result": {
+            "type": "variable",
+            "required": false,
+            "description": "A declared variable that receives the routine's return value."
+          }
+        }
+      },
+      "return": {
+        "description": "Ends the current routine, optionally with a value.",
+        "fields": {
+          "value": {
+            "type": "value",
+            "required": false,
+            "description": "The value the routine returns to its call's result."
           }
         }
       },
@@ -1408,7 +1534,7 @@
           "value": {
             "type": "value",
             "required": true,
-            "description": "A literal of the variable's type, or {\"variable\": \"name\"} of the same type."
+            "description": "A literal of the variable's type, or an operand converted to it."
           }
         }
       }
@@ -1417,7 +1543,10 @@
       "boolean",
       "integer",
       "decimal",
-      "string"
+      "string",
+      "list",
+      "map",
+      "any"
     ],
     "variableScopes": [
       "execution",
