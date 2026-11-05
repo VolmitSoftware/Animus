@@ -137,6 +137,8 @@ This example requires a module providing `example:wave` and `example:bow`. Every
 | `timer` | `intervalTicks`: 1 to 72,000. | The interval passes while the NPC is active. |
 | `dialogue_choice` | `dialogue`. Optional `choice`. | A viewer's click on that prompt from this NPC passes validation. |
 | `module` | `key`: a `namespace:name` trigger. | The owning module publishes that trigger. |
+| `build_finished` | None. | A build this NPC leads or helps with places its last block. See [building](building.md). |
+| `build_paused` | None. | A build this NPC works on is paused by command, or starts waiting for unloaded terrain, materials or an active builder. |
 
 Interaction, proximity and dialogue executions carry the viewer's UUID, and module executions carry the UUID the module supplied. The other events carry no player. Triggers pass no other event data to the routine. Trigger-started runs use the same scoped variables as manual runs, and `player` and `relationship` variables resolve from the triggering player. Every routine a behavior's triggers start shares that behavior's variables. A trigger with no player cannot start a behavior declaring such a variable: that start is counted under `START_FAILED`, and `/animus behaviors triggers` shows the most recent refusal with its exact field. Spawn, despawn, damage, death, waypoint and timer triggers never have a player, so `/animus behaviors validate` warns with `behavior-trigger-needs-player` on each such trigger in that behavior. The behavior is still accepted, since its other triggers may work. A `module` trigger depends on what its module supplies and is not flagged.
 
@@ -241,6 +243,7 @@ This greeter faces the player who started it, asks a question, and records that 
 | `animus:set-equipment` | `slot` (`main_hand`, `off_hand`, `head`, `chest`, `legs`, `feet`, `body`), optional `item` | Shows the item, such as `minecraft:iron_sword`. Without `item`, clears the slot. Equipment declared in the definition returns after restart or a definition change. |
 | `animus:play-sound` | `sound`, optional `volume` (0-4), `pitch` (0.5-2), `audience`, `radius` | Plays the sound at the NPC for its audience only. |
 | `animus:spawn-particle` | `particle`, optional `count` (1-64), `spread` (0-8), `audience`, `radius` | Shows the particle at the NPC to its audience only. Particles that need extra data are rejected. |
+| `animus:build` | `operation` (`start`, `pause`, `resume`, `cancel`, `undo`). For `start` only: `schematic` (a file in the `schematics` folder; without it the NPC's saved `animus:builder` section is used), `x`, `y`, `z` (all or none; none builds where the NPC stands), `rotation` (0, 90, 180 or 270), `mirror` (`none`, `x`, `z`), `anchor` (`center`, `corner`, `schematic`), `pattern`, `materials` (`creative`, `donate`), `excavate`, `ignoreAir`, `ignoreLiquids` | Drives the NPC's [build](building.md). A start answers once the schematic starts loading; loading errors go to the server log. Protection still applies. Unavailable on Folia. |
 | `animus:combat-control` | `operation` (`enable`, `disable`, `target`, `release`, `guard`), `target` (an entity or NPC UUID, or `player` for the triggering player): required for `target`, optional for `guard`, refused otherwise | Drives the [combat module](combat.md#behaviors-and-commands). Needs enabled combat settings; protection still applies. |
 | `animus:set-flag` | `name`, optional `scope`, optional `value` (default true) | Sets the flag. |
 | `animus:set-quest-state` | `name`, `value`, optional `scope` | Sets the stage. |
@@ -330,7 +333,7 @@ Accepted ranges are 1-256 actions per tick, 1-64 per NPC per tick and no more th
 
 World and player work waits in a bounded queue and runs on the server's owner thread. Past the per-tick or per-NPC budget, an action waits for a later tick. A full queue fails the action as `BUSY`, which ends that run. Waiting is included in the module invocation deadline (`modules.invocationTimeoutMillis`), except for a navigate with `wait`, which has its own timeout. An action that misses the deadline fails its run and is dropped without running, and unlike a Java module the built-in capabilities are not suspended.
 
-A preview run refuses `command`, `combat-control`, `navigate`, `stop-navigation`, `look`, `set-appearance`, `set-equipment`, `choices` and every flag or quest write. `say`, `play-sound` and `spawn-particle` work in a preview only for the viewer's own `trigger` audience. Conditions still read normally.
+A preview run refuses `command`, `combat-control`, `build`, `navigate`, `stop-navigation`, `look`, `set-appearance`, `set-equipment`, `choices` and every flag or quest write. `say`, `play-sound` and `spawn-particle` work in a preview only for the viewer's own `trigger` audience. Conditions still read normally.
 
 ## Packs
 

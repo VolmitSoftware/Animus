@@ -53,6 +53,15 @@ public sealed interface TriggerEvent {
         @Override public TriggerKind kind() { return TriggerKind.DIALOGUE_CHOICE; }
         @Override public Optional<UUID> player() { return Optional.of(viewer); }
     }
+    /** Published to every NPC on a build's team. */
+    record BuildFinished(UUID npc) implements TriggerEvent {
+        public BuildFinished { Objects.requireNonNull(npc); }
+        @Override public TriggerKind kind() { return TriggerKind.BUILD_FINISHED; }
+    }
+    record BuildPaused(UUID npc) implements TriggerEvent {
+        public BuildPaused { Objects.requireNonNull(npc); }
+        @Override public TriggerKind kind() { return TriggerKind.BUILD_PAUSED; }
+    }
     record Module(UUID npc, Optional<UUID> player, Capabilities.Key key) implements TriggerEvent {
         public Module { Objects.requireNonNull(npc); Objects.requireNonNull(player); Objects.requireNonNull(key); }
         @Override public TriggerKind kind() { return TriggerKind.MODULE; }

@@ -1,6 +1,7 @@
 package art.arcane.animus.core.behavior.builtin;
 
 import art.arcane.animus.api.NpcHandle;
+import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.virtual.Vec3;
@@ -21,6 +22,7 @@ import java.util.function.Consumer;
 public interface BehaviorPlatform {
     enum CommandSource { CONSOLE, PLAYER }
     enum CombatOperation { ENABLE, DISABLE, TARGET, RELEASE, GUARD }
+    enum BuildOperation { START, PAUSE, RESUME, CANCEL, UNDO }
     record NpcStatus(boolean spawned, double health) {}
     /** A present player addresses only that viewer. An empty player addresses every viewer within the radius. */
     record Audience(Optional<UUID> player, double radius) {
@@ -76,4 +78,11 @@ public interface BehaviorPlatform {
     int playSound(NpcHandle npc, Audience audience, SoundEffect sound);
     int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect particle);
     void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target);
+    /**
+     * Starts or steers the NPC's build. {@code options} are build option words such as {@code rotation=90}. A start
+     * without a schematic uses the NPC's saved builder section. Returns a short JSON result.
+     */
+    default String build(NpcHandle npc, BuildOperation operation, Optional<String> schematic, Optional<Vec3> origin, java.util.Map<String, String> options) {
+        throw new CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "build-unavailable", "Building is not available on this platform");
+    }
 }
