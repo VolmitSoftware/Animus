@@ -29,6 +29,10 @@ import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.editor.EditorCommands;
+import art.arcane.animus.core.editor.EditorHost;
+import art.arcane.animus.core.editor.EditorService;
+import art.arcane.animus.core.editor.RuntimeEditorHost;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
@@ -81,6 +85,7 @@ public final class AnimusPlugin extends JavaPlugin {
         return current == null ? null : current.triggers();
     });
     private volatile boolean stopping;
+    private volatile EditorService editor;
 
 
     @Override
@@ -163,9 +168,11 @@ public final class AnimusPlugin extends JavaPlugin {
             extras.put("gui", guis.command());
             if (foliaProof != null) extras.put("foliaproof", new FoliaProofCommand());
             extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsUnavailable)));
+            extras.put("editor", new EditorCommands(() -> editor, commands));
             animusCommands = new AnimusCommands(new AnimusCommands.Services(runtime, commands, living, () -> behaviors, extensions, builtins,
                     combat::execute, extras, () -> stopping));
             extensions.start();
+            startEditor(modulePlatform);
             printSplash(AnimusSplash.render(environment, getServer().getVersion(), true));
         } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {
             getLogger().log(Level.SEVERE, "Failed to start " + BuildIdentity.NAME, exception);
@@ -176,6 +183,9 @@ public final class AnimusPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         stopping = true;
+        EditorService activeEditor = editor;
+        editor = null;
+        if (activeEditor != null) activeEditor.close();
         animusCommands = null;
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
@@ -211,6 +221,32 @@ public final class AnimusPlugin extends JavaPlugin {
         AnimusCommands active = animusCommands;
         if (active == null) return List.of();
         return active.complete(new BukkitActor(sender, replies), arguments);
+    }
+
+    /** The web editor API: the embedded listener and the relay client, both off until config.toml enables them. */
+    private void startEditor(Platform modulePlatform) {
+        NpcRuntime<Player, ItemStack> owners = living;
+        ShopService<Player, ItemStack> guiService = shops;
+        java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> {
+            Map<String, EditorHost.Feature> available = new HashMap<>();
+            available.put("combat", combat.status().toLowerCase(Locale.ROOT).contains("unavailable") ? EditorHost.Feature.no(combat.status()) : EditorHost.Feature.yes());
+            available.put("builds", buildsUnavailable == null ? EditorHost.Feature.yes() : EditorHost.Feature.no(buildsUnavailable));
+            available.put("gloss", getServer().getPluginManager().isPluginEnabled("Gloss") ? EditorHost.Feature.yes() : EditorHost.Feature.no("Gloss is not installed"));
+            available.put("placeholderapi", getServer().getPluginManager().isPluginEnabled("PlaceholderAPI") ? EditorHost.Feature.yes() : EditorHost.Feature.no("PlaceholderAPI is not installed"));
+            return available;
+        };
+        EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, () -> behaviors, extensions,
+                () -> guiService.reload(catalog -> {}), modulePlatform.name().toLowerCase(Locale.ROOT), "", features,
+                (Player player) -> player.hasPermission("animus.admin"), Optional.empty(), "viewer-private NPC presentation is not built for Bukkit yet",
+                (String message) -> getLogger().info(message))), (String message) -> getLogger().info(message));
+        try {
+            service.start();
+            editor = service;
+            service.status().forEach(getLogger()::info);
+        } catch (IOException | RuntimeException failure) {
+            getLogger().log(Level.WARNING, "The web editor API could not start", failure);
+            service.close();
+        }
     }
 
     /** Builds run on the main thread only; Folia gives every NPC its own region owner, so they are unavailable there. */
