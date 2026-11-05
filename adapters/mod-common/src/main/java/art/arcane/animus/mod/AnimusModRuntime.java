@@ -174,6 +174,11 @@ public final class AnimusModRuntime {
             running = next;
             ModHooks.attach(this);
             LOGGER.info(AnimusSplash.render(environment, platform + " / Minecraft " + environment.minecraftVersion(), true));
+            AnimusRuntime started = next.runtime;
+            files.execute(() -> {
+                try { new art.arcane.animus.core.migration.CitizensDropIn(started.documents(), started.npcs(), started.importHost()).startupNotice().ifPresent(LOGGER::info); }
+                catch (IOException | RuntimeException failure) { LOGGER.warn("Citizens migration check failed: {}", failure.getMessage()); }
+            });
         } catch (IOException | RuntimeException | LinkageError failure) {
             LOGGER.error("Could not start " + BuildIdentity.NAME, failure);
             close(next);

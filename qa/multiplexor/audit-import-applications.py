@@ -216,7 +216,7 @@ class ImportAuditor(base.Auditor):
             path = f'npcs/copy-qa/citizens-{legacy}-qa.json'; value = json.loads(copies[path])
             require(value['uuid'] == copy_plan['uuidMap'][original_uuid] == expected_uuid and value['revision'] == 1, 'Duplicate identity differs')
             require(before[path] == after[path] == copies[path], 'Duplicate bytes changed during replacement')
-            source = read(data / f'imports/{baseline}/npcs/citizens/citizens-{legacy}.json')
+            source = read(data / f'imports/{baseline}/npcs/world/citizens-{legacy}.json')
             require(value['modules'] == source['modules'], 'Opaque module configuration changed')
             refs = value['migration']['references']; require(len(refs) == len(source['migration']['references']), 'Reference count changed')
             for old, new in zip(source['migration']['references'], refs):
@@ -224,10 +224,10 @@ class ImportAuditor(base.Auditor):
                 if old['status'] == 'resolved': expected.update(npcUuid=copy_plan['uuidMap'][old['npcUuid']], npcId=old['npcId'] + '-qa')
                 require(new == expected, 'Duplicate reference mapping changed')
         for path, content in after.items():
-            if path.startswith('npcs/citizens/'):
+            if path.startswith('npcs/world/'):
                 revision = json.loads(before[path])['revision'] + 1 if path in before else 1
                 require(json.loads(content)['revision'] == revision, 'Replacement revision does not advance correctly')
-        require(json.loads(before['npcs/citizens/citizens-900001.json'])['name'] == 'QAConcurrent', 'Concurrent edit snapshot missing')
+        require(json.loads(before['npcs/world/citizens-900001.json'])['name'] == 'QAConcurrent', 'Concurrent edit snapshot missing')
         self.transition(self.journal(data, state['baseTransaction']), {}, state['baselineSnapshot'])
         copied = dict(state['baselineSnapshot']); copied.update({k: v for k, v in state['beforeReplacement'].items() if '/copy-qa/' in k})
         self.transition(self.journal(data, state['copyTransaction']), state['baselineSnapshot'], copied)

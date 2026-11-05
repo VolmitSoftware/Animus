@@ -10,6 +10,8 @@ Default import application still rejects identity/path collisions. The new `stag
 
 Labels use1–32 lowercase letters, digits, `_` or `-`. A different copy needs a different label. Cross-path identity collisions and exhausted revisions reject replacement. Every imported definition remains dormant, and imported combat remains disabled and unreviewed. Original records and unknown review data are preserved; duplication cannot translate arbitrary embedded references whose meaning is unknown.
 
+The [drop-in Citizens migration](migrating-from-citizens.md) runs the same steps without IDs: `/animus import citizens [mode] [old=new ...]` previews the save it finds and stages a plan, `/animus import citizens apply` applies that plan (and any dtlTraders shops), and `/animus import citizens rollback` undoes it. It records what it did in `imports/citizens/state.json`.
+
 On the server, use an administrator account:
 
 ```text

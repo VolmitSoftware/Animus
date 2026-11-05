@@ -143,7 +143,7 @@ def main():
         before = tree(data)
         cli('validate', data, pattern='Valid NPC definitions: 3')
         assert tree(data) == before
-        record = data/'npcs/citizens/citizens-900001.json'
+        record = data/'npcs/world/citizens-900001.json'
         original = record.read_bytes()
         invalid = json.loads(original); invalid['position']['x'] = 'bad'
         record.write_text(json.dumps(invalid, indent=2)+'\n')
@@ -176,7 +176,7 @@ def main():
         changed_snapshot = API['snapshot'](data)
         cli('apply-plan', data, updated, stale, expected=1, pattern='Application no longer matches current definitions|Conflict:')
         API['assert_snapshot'](data, changed_snapshot)
-        assert not (data/'npcs/citizens/citizens-900004.json').exists()
+        assert not (data/'npcs/world/citizens-900004.json').exists()
         cli('apply-plan', data, baseline, base_app, expected=1, pattern='Already-applied application has changed or missing output')
         API['assert_snapshot'](data, changed_snapshot)
         passed('collision-stale-review-and-modified-repeat-reject-without-partial-write')
@@ -187,7 +187,7 @@ def main():
         replacement_tx = apply(updated, replacement)
         for path, definition in API['definitions'](data).items():
             API['checkpoint'](data, path)
-            if path.startswith('npcs/citizens/'):
+            if path.startswith('npcs/world/'):
                 assert definition['revision'] == (prior[path]['revision']+1 if path in prior else 1)
         assert len(API['definitions'](data)) == 7
         assert apply(updated, replacement) == 'already-applied'
