@@ -1,6 +1,7 @@
 package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.combat.CombatWorld;
+import art.arcane.animus.core.navigation.BodyTerrain;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.TerrainReader;
@@ -9,6 +10,8 @@ import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,8 +26,11 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
     private static final int PROBE_CELLS = 256;
     private static final double MAXIMUM_KNOCKBACK = 1.5;
     private static final int[] TELEPORT_LIFTS = {0, 1, -1, 2, -2};
+    private static final double SETTLE_CLIMB = 1 - 0.0001;
     protected final PersistedNpcService<P, I> living;
     private final TerrainReader host;
+    /** The last refusal per NPC, cleared by the next accepted move; one entry per combat NPC at most. */
+    private final Map<UUID, String> refusals = new HashMap<>();
 
     protected RuntimeCombatWorld(PersistedNpcService<P, I> living, TerrainReader host) {
         this.living = Objects.requireNonNull(living);
@@ -45,12 +51,20 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         Vec3 clamped = new Vec3(origin.x() + clamp(delta.x(), MOVE_HORIZONTAL), Math.floor(origin.y() + clamp(delta.y(), MOVE_VERTICAL)), origin.z() + clamp(delta.z(), MOVE_HORIZONTAL));
         try {
             living.navigate(active.get().id(), new WorldPosition(goal.world(), clamped), MovementProfile.Mode.WALK, speed);
+            refusals.remove(npc);
             return MoveStatus.ACCEPTED;
         } catch (IllegalArgumentException refused) {
+            refusals.put(npc, "refused: " + refused.getMessage());
             return MoveStatus.REJECTED;
         } catch (IllegalStateException busy) {
+            refusals.put(npc, "busy: " + busy.getMessage());
             return MoveStatus.BUSY;
         }
+    }
+    @Override public String movement(UUID npc) {
+        String refused = refusals.get(npc);
+        if (refused != null) return refused;
+        return living.combatant(npc).map((NpcRuntime.ActiveNpc active) -> living.navigationStatus(active.id())).orElse("inactive");
     }
     @Override public void stop(UUID npc) {
         living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {
@@ -59,6 +73,7 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         });
     }
     @Override public void release(UUID npc) {
+        refusals.remove(npc);
         living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {
             try { living.resumePatrol(active.id()); }
             catch (IllegalArgumentException | IllegalStateException inactive) { /* no patrol to resume */ }
@@ -72,11 +87,26 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         if (active.isEmpty()) return false;
         Vec3 point = destination.point();
+        Hitbox bounds = active.get().state().bounds();
+        double width = PersistedNpcService.hullWidth(bounds.max().x() - bounds.min().x()), height = PersistedNpcService.hullHeight(bounds.max().y() - bounds.min().y());
+        boolean readable = host.worldLoaded(destination.world());
         for (int lift : TELEPORT_LIFTS) {
             WorldPosition spot = new WorldPosition(destination.world(), new Vec3(point.x(), Math.floor(point.y()) + lift, point.z()));
-            if (living.relocate(active.get().id(), spot)) return true;
+            // A block whose top is below a full block (a path, farmland, a slab) holds the body at its own top.
+            WorldPosition settled = readable ? settle(host.collision(destination.world()), width, height, spot).orElse(spot) : spot;
+            if (living.relocate(active.get().id(), settled)) return true;
         }
         return false;
+    }
+    /**
+     * The surface a body would stand on in the block named by the spot: a path, farmland, slab or full block top inside
+     * {@code [y, y + 1)}. Empty when nothing there holds it or the terrain cannot be read.
+     */
+    static Optional<WorldPosition> settle(MotionValidator.Sampler terrain, double width, double height, WorldPosition spot) {
+        Vec3 point = spot.point();
+        BodyTerrain.Rest rest = new BodyTerrain(width, height, false, PROBE_CELLS, terrain).rest(point.x(), point.z(), Math.floor(point.y()), SETTLE_CLIMB, 0, false);
+        if (rest.kind() != BodyTerrain.Kind.GROUND) return Optional.empty();
+        return Optional.of(new WorldPosition(spot.world(), new Vec3(point.x(), rest.feet(), point.z())));
     }
     @Override public void face(UUID npc, Vec3 point) {
         living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {

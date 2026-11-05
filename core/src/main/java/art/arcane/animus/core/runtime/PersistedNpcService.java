@@ -603,9 +603,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (!origin.world().equals(destination.world())) throw new IllegalArgumentException("Navigation requires the same world");
         if (Math.abs(delta.x()) > 32 || Math.abs(delta.z()) > 32 || Math.abs(delta.y()) > 8)
             throw new IllegalArgumentException("Route leg exceeds32 horizontal/8 vertical block bounds; use intermediate waypoints");
-        if (mode == MovementProfile.Mode.WALK && (Math.abs(origin.point().y() - Math.rint(origin.point().y())) > .000001
-                || destination.point().y() != Math.rint(destination.point().y())))
-            throw new IllegalArgumentException("Walking requires integer feet height; partial-block support is unavailable");
+        // The origin may rest on a partial surface (path, farmland, slab) where an earlier route ended; the goal names a block.
+        if (mode == MovementProfile.Mode.WALK && destination.point().y() != Math.rint(destination.point().y()))
+            throw new IllegalArgumentException("Walking goals require integer feet height");
         captureBounds(origin, destination, hullWidth, hullHeight);
     }
     public static CaptureBounds captureBounds(WorldPosition origin, WorldPosition destination, double hullWidth, double hullHeight) {
