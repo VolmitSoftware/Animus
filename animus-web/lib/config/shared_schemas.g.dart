@@ -268,7 +268,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "v": {"const": 1},
         "directUrl": {"type": "string", "pattern": "^(https://|http://127\\.0\\.0\\.1(:\\d+)?(/|$)|http://localhost(:\\d+)?(/|$))", "description": "HTTPS, or plain HTTP only on loopback."},
-        "relayUrl": {"type": "string", "pattern": "^wss://"},
+        "relayUrl": {"type": "string", "pattern": "^(wss://|ws://127\\.0\\.0\\.1(:\\d+)?(/|$)|ws://localhost(:\\d+)?(/|$))", "description": "WSS, or plain WS only on loopback for local development."},
         "fingerprint": {"$ref": "#/$defs/fingerprint"},
         "serverKey": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$", "description": "Raw 32-byte Ed25519 public key, base64url without padding."},
         "tokenId": {"$ref": "#/$defs/tokenId"},
