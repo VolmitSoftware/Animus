@@ -431,7 +431,7 @@ The directory may be a data folder, with `behaviors/`, `packs/` and `npcs/`, or 
 
 ## Moving imported flags and assignments
 
-Imported NPCs keep their Denizen flags, assignments and trigger records as preserved data, and Animus does not run or translate them. To bring that logic across, write a behavior and add it to the NPC's `behaviors` list. The concepts map like this:
+Imported NPCs keep their Denizen flags, assignments and trigger records as preserved data. When the Denizen folder is beside the Citizens save, the import converts the scripts and flag values itself; see [Denizen](migrating-from-citizens.md#denizen). For what it keeps, or for logic you rewrite by hand, write a behavior and add it to the NPC's `behaviors` list. The concepts map like this:
 
 | Imported | Behavior |
 | --- | --- |
@@ -447,7 +447,7 @@ Imported NPCs keep their Denizen flags, assignments and trigger records as prese
 | `execute` | `animus:command`, behind the allow-list. |
 | Expiring flags, lists, maps, tags and arbitrary script commands | No equivalent. |
 
-Existing flag values are not copied into Animus state; behaviors start from unset flags. Flags and quest stages belong to the behavior's namespace, so every behavior of one pack shares them.
+The Denizen import copies true/false and whole-number flag values into the `denizen` namespace; a hand-written behavior in another namespace starts from unset flags. Flags and quest stages belong to the behavior's namespace, so every behavior of one pack shares them.
 
 A click-and-answer dialogue:
 

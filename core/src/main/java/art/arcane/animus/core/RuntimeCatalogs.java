@@ -1,5 +1,7 @@
 package art.arcane.animus.core;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.editor.DocumentKind;
@@ -40,6 +42,13 @@ public final class RuntimeCatalogs implements CatalogReloads {
     public RuntimeCatalogs(Parts parts) { this.parts = Objects.requireNonNull(parts); }
 
     @Override public void reload(CatalogChange change, Consumer<String> reported) {
+        AnimusMetrics metrics = AnimusMetrics.current();
+        long started = metrics.start();
+        try { apply(change, reported); }
+        finally { metrics.stop(Subsystem.HOTLOAD, started); }
+    }
+
+    private void apply(CatalogChange change, Consumer<String> reported) {
         if (touches(change, NPCS)) {
             try {
                 List<String> problems = change.rollback() ? parts.runtime().npcs().reloadAfterRollback() : parts.runtime().npcs().reload();

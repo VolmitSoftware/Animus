@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "behavior": "animus:quests/denizen",
+  "scope": "global",
+  "values": {
+    "ticks": {
+      "type": "integer",
+      "value": 15
+    }
+  }
+}

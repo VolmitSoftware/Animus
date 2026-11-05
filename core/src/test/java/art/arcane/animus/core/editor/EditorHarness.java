@@ -120,7 +120,7 @@ final class EditorHarness implements AutoCloseable {
     /** Whether the drop-in import sees Citizens as still running. */
     volatile boolean citizensRunning;
     final art.arcane.animus.core.migration.CitizensDropIn.Host importHost =
-            new art.arcane.animus.core.migration.CitizensDropIn.Host(Optional.empty(), () -> citizensRunning, () -> false);
+            new art.arcane.animus.core.migration.CitizensDropIn.Host(Optional.empty(), () -> citizensRunning, () -> false, () -> false);
     private long counter;
 
     EditorHarness(Path directory) throws IOException { this(directory, EditorSettings.DEFAULT); }

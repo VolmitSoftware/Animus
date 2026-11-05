@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/gate_task",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "capability": "animus:flag-state",
+          "arguments": {
+            "name": "event_open",
+            "scope": "global"
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "The gate is open."
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "event_open",
+            "scope": "global",
+            "value": false
+          }
+        },
+        {
+          "type": "wait",
+          "ticks": 30
+        },
+        {
+          "type": "action",
+          "capability": "animus:navigate",
+          "arguments": {
+            "x": 4.0,
+            "y": 64.0,
+            "z": 8.0
+          }
+        }
+      ]
+    }
+  }
+}

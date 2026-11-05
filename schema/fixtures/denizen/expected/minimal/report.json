@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 1,
+  "importId": "70bd709210d29537942a14544c1a50796e21cd97fcd955aae4958e12cc273411",
+  "notice": "Data conversion only. Generated behaviors are listed on no NPC until the denizen review is accepted, and commands stay denied until allow-listed.",
+  "sources": {
+    "scripts/hello.yml": "9cbb647a2894c1e8bc0b731849ea11747520373965ffce4c263e963e5d96330b"
+  },
+  "behaviors": 1,
+  "containers": {
+    "task": {
+      "total": 1,
+      "converted": 1,
+      "partial": 0,
+      "preserved": 0
+    }
+  },
+  "commands": {
+    "execute": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "narrate": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "wait": {
+      "converted": 1,
+      "preserved": 0
+    }
+  },
+  "events": {},
+  "tags": {
+    "player.name": {
+      "mapped": 1,
+      "unmapped": 0
+    }
+  },
+  "flags": {
+    "imported": {
+      "global": 0,
+      "npc": 0,
+      "player": 0,
+      "relationship": 0
+    },
+    "preserved": 0
+  },
+  "bindings": {},
+  "npcUuids": {},
+  "behaviorStatus": {
+    "denizen:task/hello_task": "complete"
+  },
+  "commandBehaviors": [
+    "denizen:task/hello_task"
+  ],
+  "sounds": {},
+  "issues": [],
+  "preserved": [],
+  "documents": {
+    "behaviors/denizen/task/hello_task.json": "a3d831edff9fc1a2b62fbcebb31e7556ec9c8536ac2acbae7e2f9a5e34e9acb1"
+  }
+}
