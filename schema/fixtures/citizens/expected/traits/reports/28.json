@@ -1,7 +1,7 @@
 {
   "citizensId": 28,
   "presentationWarnings": [
-    "/traits/hologramtrait/lines: only the first 16 lines are shown",
+    "/traits/hologramtrait/lines: only the bottom 16 lines are shown; move the others into fewer lines",
     "/traits/poses: default pose missing is not in the list; kept for review"
   ],
   "runtimeWarnings": [],
@@ -33,7 +33,13 @@
     "/traits/hologramtrait/lines/15": "CONVERTED",
     "/traits/hologramtrait/lines/16": "REQUIRES_REVIEW",
     "/traits/poses/defaultPose": "REQUIRES_REVIEW",
-    "/traits/poses/list/0": "REQUIRES_REVIEW"
+    "/traits/poses/list/0": "UNSUPPORTED_PRESERVED"
+  },
+  "reasons": {
+    "/traits/metadata/nameplate-visible": "trait metadata has no Animus equivalent; kept in citizens:review",
+    "/traits/hologramtrait/lines/16": "not converted; check it in citizens:review",
+    "/traits/poses/defaultPose": "not converted; check it in citizens:review",
+    "/traits/poses/list/0": "named poses are used by Citizens pose commands; Animus has no named poses, only the default facing"
   },
   "worldRemaps": [],
   "references": [],

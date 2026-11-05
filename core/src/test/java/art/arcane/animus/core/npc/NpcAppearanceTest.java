@@ -72,7 +72,7 @@ class NpcAppearanceTest {
                 errors("minecraft:player", "\"hologram\":{\"lines\":[\"" + "a".repeat(257) + "\"]}"));
         assertEquals(List.of("$.hologram.lines[1]: expected at most 256 characters without control characters"),
                 errors("minecraft:player", "\"hologram\":{\"lines\":[\"ok\",\"two\\nlines\"]}"));
-        assertEquals(List.of("$.hologram.lines[0]: expected string"), errors("minecraft:player", "\"hologram\":{\"lines\":[3]}"));
+        assertEquals(List.of("$.hologram.lines[0]: expected string or object with text"), errors("minecraft:player", "\"hologram\":{\"lines\":[3]}"));
         assertEquals(List.of("$.hologram.spacing: unknown field"), errors("minecraft:player", "\"hologram\":{\"lines\":[],\"spacing\":1}"));
         assertEquals(List.of(), errors("minecraft:player", "\"hologram\":{\"lines\":[\"" + "a".repeat(256) + "\"]}"));
     }
@@ -154,5 +154,41 @@ class NpcAppearanceTest {
                 errors("minecraft:player", "\"tags\":[\"a\",\"b\",\"Guard\",\"_x\",7]"));
         assertEquals(List.of("$.tags[1]" + pattern), errors("minecraft:player", "\"tags\":[\"a\",\"" + "x".repeat(33) + "\"]"));
         assertEquals(List.of("$.tags[3]: duplicate tag"), errors("minecraft:player", "\"tags\":[\"a\",\"b\",\"c\",\"a\"]"));
+    }
+
+    @Test void hologramStyleAndLineMarginsParse() throws IOException {
+        NpcAppearance look = NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:villager", """
+                "hologram":{"lines":["Top",{"text":"Bottom","marginTop":0.1,"marginBottom":0.25}],"lineHeight":0.4,"viewRange":24,
+                            "billboard":"vertical","shadowed":true,"seeThrough":true,"interpolationDelay":2,"interpolationDuration":5}
+                """))));
+        assertEquals(List.of("Top", "Bottom"), look.hologram());
+        HologramStyle style = look.hologramStyle();
+        assertEquals("vertical", style.billboard());
+        assertTrue(style.shadowed());
+        assertTrue(style.seeThrough());
+        assertEquals(24, style.viewRange().orElseThrow());
+        assertEquals(0.4, style.lineHeight().orElseThrow());
+        assertEquals(2, style.interpolationDelay());
+        assertEquals(5, style.interpolationDuration());
+        assertEquals(List.of(new HologramStyle.Margin(0, 0), new HologramStyle.Margin(0.1, 0.25)), style.margins());
+        assertEquals(HologramStyle.DEFAULT, NpcAppearance.PLAIN.hologramStyle());
+    }
+
+    @Test void hologramStyleRejectsOutOfRangeValues() {
+        assertEquals(List.of("$.hologram.lines[0].colour: unknown field", "$.hologram.lines[0].marginTop: expected -4..4 blocks",
+                        "$.hologram.lineHeight: expected 0..4 blocks", "$.hologram.viewRange: expected 1..512 blocks",
+                        "$.hologram.billboard: expected center, fixed, vertical or horizontal", "$.hologram.interpolationDuration: expected 0..1200 ticks"),
+                errors("minecraft:villager", """
+                        "hologram":{"lines":[{"text":"x","marginTop":9,"colour":1}],"billboard":"up","lineHeight":5,"viewRange":0,"interpolationDuration":-1}
+                        """));
+    }
+
+    @Test void bodyTraitsParseAndValidate() throws IOException {
+        NpcAppearance look = NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:cow",
+                "\"glowing\":true,\"teamColor\":\"dark_red\",\"baby\":true,\"usingItem\":true,\"listed\":true,\"gravity\":false"))));
+        assertEquals(new BodyTraits(true, Optional.of("dark_red"), true, true, true, false), look.traits());
+        assertEquals(BodyTraits.DEFAULT, NpcAppearance.PLAIN.traits());
+        assertEquals(List.of("$.glowing: expected boolean", "$.teamColor: expected a team colour such as red, dark_aqua or gold"),
+                errors("minecraft:cow", "\"glowing\":1,\"teamColor\":\"pink\""));
     }
 }

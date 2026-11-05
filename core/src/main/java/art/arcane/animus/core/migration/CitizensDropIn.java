@@ -5,6 +5,7 @@ import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.WriteNotices;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -301,6 +302,7 @@ public final class CitizensDropIn {
             if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) continue;
             Files.createDirectories(target.getParent());
             Files.copy(Path.of(schematic.get("source").getAsString()), target);
+            WriteNotices.touched(target);
             JsonObject entry = new JsonObject();
             entry.addProperty("path", "schematics/" + schematic.get("name").getAsString());
             entry.addProperty("sha256", sha256(target));
@@ -338,7 +340,10 @@ public final class CitizensDropIn {
         int kept = 0;
         for (JsonElement value : state.has("copiedSchematics") ? state.getAsJsonArray("copiedSchematics") : new JsonArray()) {
             Path file = store.resolve(value.getAsJsonObject().get("path").getAsString());
-            if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && sha256(file).equals(value.getAsJsonObject().get("sha256").getAsString())) Files.delete(file);
+            if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && sha256(file).equals(value.getAsJsonObject().get("sha256").getAsString())) {
+                Files.delete(file);
+                WriteNotices.written(file, null);
+            }
             else kept++;
         }
         if (kept > 0) lines.add(kept + " copied schematics changed since the import and were kept");

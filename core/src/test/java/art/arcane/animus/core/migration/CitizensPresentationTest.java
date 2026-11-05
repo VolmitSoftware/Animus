@@ -37,13 +37,15 @@ class CitizensPresentationTest {
         assertEquals(List.of("/traits/equipment/cosmetic_boots: cosmetic item shown in feet instead of /traits/equipment/boots"), result.warnings());
     }
 
-    @Test void itemMetadataIsKeptOpaqueWithAnExactWarning() {
+    @Test void unreadableItemMetadataIsKeptWithAnActionableWarning() {
         String sword = "{\"type\":\"diamond_sword\",\"amount\":1,\"meta\":{\"encoded-meta\":{\"\":\"rO0AB\"}},\"editable_components\":{\"display_name\":\"Excalibur\",\"edited\":false}}";
         CitizensPresentation.Result result = map("player", "{\"equipment\":{\"hand\":" + sword + "}}");
         JsonObject hand = result.fields().getAsJsonObject("equipment").getAsJsonObject("main_hand");
         assertEquals("minecraft:diamond_sword", hand.get("id").getAsString());
         assertEquals(JsonParser.parseString(sword), hand.get("imported"));
-        assertEquals(List.of("/traits/equipment/hand: item data beyond id, count and damage kept in imported; it is not shown"), result.warnings());
+        assertEquals(List.of("/traits/equipment/hand: the item's name, enchantments and other data could not be read, so it shows as a plain minecraft:diamond_sword;"
+                + " set the item again in the editor if it matters"), result.warnings());
+        assertEquals(CitizensImporter.Status.REQUIRES_REVIEW, result.notes().get("/traits/equipment/hand/meta").status());
     }
 
     @Test void unusableItemsStayOnlyInTheReviewCopy() {
@@ -69,27 +71,29 @@ class CitizensPresentationTest {
         CitizensPresentation.Result result = map("player", """
                 {"hologramtrait":{"lines":{"1":{"text":"second","margin":{"top":0.5}},"0":"&6first","10":"third"},"lineHeight":0.4,"viewRange":32}}
                 """);
-        assertEquals("{\"lines\":[\"&6first\",\"second\",\"third\"]}", result.fields().get("hologram").toString());
-        assertEquals(List.of("/traits/hologramtrait: line margins, line height, view ranges and renderer settings are kept for review; lines use uniform spacing"), result.warnings());
+        assertEquals("{\"lines\":[\"third\",{\"text\":\"second\",\"marginTop\":0.5},\"&6first\"],\"lineHeight\":0.4,\"viewRange\":32.0}", result.fields().get("hologram").toString());
+        assertEquals(List.of(), result.warnings());
         CitizensPresentation.Result tooMany = map("player", "{\"hologramtrait\":{\"lines\":{" + String.join(",", java.util.stream.IntStream.range(0, 18).mapToObj(i -> "\"" + i + "\":\"l" + i + "\"").toList()) + "}}}");
         assertEquals(16, tooMany.fields().getAsJsonObject("hologram").getAsJsonArray("lines").size());
-        assertEquals(List.of("/traits/hologramtrait/lines: only the first 16 lines are shown"), tooMany.warnings());
+        assertEquals("l0", tooMany.fields().getAsJsonObject("hologram").getAsJsonArray("lines").get(15).getAsString());
+        assertEquals(List.of("/traits/hologramtrait/lines: only the bottom 16 lines are shown; move the others into fewer lines"), tooMany.warnings());
         CitizensPresentation.Result longLine = map("player", "{\"hologramtrait\":{\"lines\":{\"0\":\"" + "a".repeat(300) + "\"}}}");
         assertEquals(256, longLine.fields().getAsJsonObject("hologram").getAsJsonArray("lines").get(0).getAsString().length());
-        assertEquals(List.of("/traits/hologramtrait/lines/0: shortened to 256 characters"), longLine.warnings());
+        assertEquals(List.of("/traits/hologramtrait/lines/0: shortened to 256 characters; shorten the line in the editor"), longLine.warnings());
     }
 
     @Test void posesSneakSitAndArmorStandMap() {
         assertEquals("sneaking", map("player", "{\"sneak\":{\"sneaking\":true}}").fields().get("pose").getAsString());
         assertFalse(map("player", "{\"sneak\":{\"sneaking\":false}}").fields().has("pose"));
-        assertFalse(map("player", "{\"sneaking\":{\"sneaking\":true}}").fields().has("pose"));
+        assertEquals("sneaking", map("player", "{\"sneaking\":{\"sneaking\":true}}").fields().get("pose").getAsString());
         assertEquals("sitting", map("player", "{\"sittrait\":{\"sittingAt\":{\"world\":\"w\",\"x\":1,\"y\":2,\"z\":3}}}").fields().get("pose").getAsString());
         CitizensPresentation.Result mounted = map("player", "{\"sittrait\":{\"sittingAt\":{\"x\":1}},\"mounttrait\":{\"mountedon\":\"00000000-0000-0000-0000-000000000002\"}}");
         assertFalse(mounted.fields().has("pose"));
         assertEquals(List.of("/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"), mounted.warnings());
         CitizensPresentation.Result horse = map("horse", "{\"sneak\":{\"sneaking\":true}}");
         assertFalse(horse.fields().has("pose"));
-        assertEquals(List.of("/traits/sneak: sneaking shows only on player bodies; kept for review"), horse.warnings());
+        assertEquals(List.of(), horse.warnings());
+        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, horse.notes().get("/traits/sneak/sneaking").status());
         CitizensPresentation.Result stand = map("armor_stand", """
                 {"armorstandtrait":{"head":{"x":0.5,"y":0,"z":-0.25},"hasarms":false,"small":true,"visible":false,"marker":true,"gravity":false}}
                 """);
@@ -155,6 +159,30 @@ class CitizensPresentationTest {
         assertEquals("CONVERTED", fields.get("/traits/hologramtrait/lines/0").getAsString());
         assertEquals("CONVERTED", fields.get("/traits/sneak/sneaking").getAsString());
         assertEquals(CitizensImporter.CONVERTER_VERSION, preview.converterVersion());
-        assertEquals(9, CitizensImporter.CONVERTER_VERSION);
+        assertEquals(10, CitizensImporter.CONVERTER_VERSION);
+    }
+
+    @Test void hologramRendererSettingsMarginsAndListInventoriesMap() {
+        CitizensPresentation.Result result = map("player", """
+                {"hologramtrait":{"lines":[{"text":"bottom","margin":{"top":0.0,"bottom":0.25},"renderer":{"billboard":"VERTICAL","seeThrough":true,"shadowed":false,
+                 "interpolationDelay":0,"interpolationDuration":3}},{"text":"top","margin":{"top":0.0,"bottom":0.0},"renderer":{"billboard":"FIXED","seeThrough":true}}]},
+                 "inventory":[{"type":"bread","amount":2},null,{"type":"stone","amount":1}]}
+                """);
+        assertEquals("{\"lines\":[\"top\",{\"text\":\"bottom\",\"marginBottom\":0.25}],\"billboard\":\"vertical\",\"seeThrough\":true,\"interpolationDuration\":3}",
+                result.fields().get("hologram").toString());
+        assertTrue(result.converted().contains("/traits/hologramtrait/lines/0/renderer/shadowed"));
+        assertTrue(result.converted().contains("/traits/hologramtrait/lines/1/renderer/seeThrough"));
+        assertEquals(CitizensImporter.Status.REQUIRES_REVIEW, result.notes().get("/traits/hologramtrait/lines/1/renderer/billboard").status());
+        assertEquals("{\"0\":{\"id\":\"minecraft:bread\",\"count\":2},\"2\":{\"id\":\"minecraft:stone\",\"count\":1}}",
+                result.fields().getAsJsonObject("inventory").get("slots").toString());
+        assertTrue(result.converted().contains("/traits/inventory/1"));
+    }
+
+    @Test void horseSaddleAndArmourFillEmptySlots() {
+        CitizensPresentation.Result result = map("horse", "{\"horsemodifiers\":{\"saddle\":{\"type\":\"saddle\",\"amount\":1},\"armor\":{\"type\":\"iron_horse_armor\",\"amount\":1},\"color\":\"WHITE\"}}");
+        JsonObject equipment = result.fields().getAsJsonObject("equipment");
+        assertEquals("minecraft:saddle", equipment.getAsJsonObject("saddle").get("id").getAsString());
+        assertEquals("minecraft:iron_horse_armor", equipment.getAsJsonObject("body").get("id").getAsString());
+        assertTrue(result.converted().contains("/traits/horsemodifiers/saddle/type"));
     }
 }

@@ -16,6 +16,11 @@ import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BoneDisplay;
 import art.arcane.animus.core.rig.DisplayTransform;
+import art.arcane.animus.mod.mixin.LivingDataAccess;
+import art.arcane.animus.mod.mixin.ZoglinDataAccess;
+import art.arcane.animus.mod.mixin.PiglinDataAccess;
+import art.arcane.animus.mod.mixin.ZombieDataAccess;
+import art.arcane.animus.mod.mixin.AgeableDataAccess;
 import art.arcane.animus.mod.mixin.BlockDisplayDataAccess;
 import art.arcane.animus.mod.mixin.ItemDisplayDataAccess;
 import art.arcane.animus.core.presentation.BodyTransport;
@@ -42,6 +47,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -90,8 +96,10 @@ import org.joml.Vector3f;
 final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStack> {
     static final class Body implements BodyTransport.Body {
         private final VanillaBodyTransport owner;
-        private final int entityId, reservedIds, displayId, seatId;
-        private final UUID uuid, displayUuid = UUID.randomUUID(), seatUuid = UUID.randomUUID();
+        private final int entityId, reservedIds, seatId;
+        private final int[] displayIds;
+        private final UUID uuid, seatUuid = UUID.randomUUID();
+        private final UUID[] displayUuids;
         private final String typeKey;
         private final double width, height;
         private final SeatGeometry seat;
@@ -107,8 +115,10 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             this.owner = owner; this.entityId = entityId; this.reservedIds = baseIds + look.extraIds(); this.uuid = uuid; this.typeKey = typeKey;
             this.type = type; this.width = type.getWidth(); this.height = type.getHeight(); this.seat = seat; this.playerInfo = playerInfo;
             this.look = look; this.nameTeam = nameTeam;
-            displayId = look.text().isPresent() ? entityId + baseIds : -1;
-            seatId = look.seated() ? entityId + baseIds + (look.text().isPresent() ? 1 : 0) : -1;
+            displayIds = IntStream.range(0, look.rows().size()).map((int row) -> entityId + baseIds + row).toArray();
+            displayUuids = new UUID[displayIds.length];
+            for (int row = 0; row < displayUuids.length; row++) displayUuids[row] = UUID.randomUUID();
+            seatId = look.seated() ? entityId + baseIds + displayIds.length : -1;
         }
         @Override public int entityId() { return entityId; }
         @Override public UUID uuid() { return uuid; }
@@ -219,9 +229,9 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (!player && skin != null) throw new IllegalArgumentException("Skin textures apply only to player bodies");
         EntityType<?> type = entityType(typeKey);
         int reserved = BodyRules.reservedIds(typeKey);
-        ClientboundPlayerInfoUpdatePacket info = player ? playerInfo(uuid, look.profileName(), skin) : null;
+        ClientboundPlayerInfoUpdatePacket info = player ? playerInfo(uuid, look.profileName(), skin, look.traits().listed()) : null;
         int entityId = ids.reserve(reserved + look.extraIds());
-        List<Packet<ClientGamePacketListener>> team = look.hideProfileName() ? hiddenNameTeam(entityId, look.profileName()) : null;
+        List<Packet<ClientGamePacketListener>> team = look.team() ? bodyTeam(entityId, player ? look.profileName() : uuid.toString(), look) : null;
         return new Body(this, entityId, reserved, uuid, typeKey, type, seat(type), info, look, team);
     }
     private static SeatGeometry seat(EntityType<?> type) {
@@ -229,11 +239,11 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Vec3 seat = points.getClamped(EntityAttachment.PASSENGER, 0, 0f), attached = points.getClamped(EntityAttachment.VEHICLE, 0, 0f);
         return new SeatGeometry(seat.x(), seat.y(), seat.z(), attached.y());
     }
-    private static ClientboundPlayerInfoUpdatePacket playerInfo(UUID uuid, String name, BodySkin skin) {
+    private static ClientboundPlayerInfoUpdatePacket playerInfo(UUID uuid, String name, BodySkin skin, boolean listed) {
         Multimap<String, Property> values = ArrayListMultimap.create();
         if (skin != null) values.put("textures", new Property("textures", skin.textureValue(), skin.signature()));
         GameProfile profile = new GameProfile(uuid, name, new PropertyMap(values));
-        ClientboundPlayerInfoUpdatePacket.Entry entry = new ClientboundPlayerInfoUpdatePacket.Entry(uuid, profile, false, 0, GameType.SURVIVAL, null, true, 0, null);
+        ClientboundPlayerInfoUpdatePacket.Entry entry = new ClientboundPlayerInfoUpdatePacket.Entry(uuid, profile, listed, 0, GameType.SURVIVAL, null, true, 0, null);
         EnumSet<ClientboundPlayerInfoUpdatePacket.Action> actions = EnumSet.of(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER,
                 ClientboundPlayerInfoUpdatePacket.Action.UPDATE_GAME_MODE, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LISTED,
                 ClientboundPlayerInfoUpdatePacket.Action.UPDATE_LATENCY, ClientboundPlayerInfoUpdatePacket.Action.UPDATE_DISPLAY_NAME,
@@ -242,14 +252,38 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         ((PlayerInfoUpdateAccess) packet).animus$entries(List.of(entry));
         return packet;
     }
-    /** A team that hides one profile name tag; its own name never collides with a real team. */
-    private static List<Packet<ClientGamePacketListener>> hiddenNameTeam(int entityId, String profileName) {
+    /**
+     * A team of one body that hides its profile name tag when the look asks, and colours its name and glow with the
+     * team colour. Its own name never collides with a real team.
+     */
+    private static List<Packet<ClientGamePacketListener>> bodyTeam(int entityId, String member, BodyLook look) {
         Scoreboard board = new Scoreboard();
-        PlayerTeam hidden = new PlayerTeam(board, "animus-" + Integer.toHexString(entityId));
-        hidden.setNameTagVisibility(Team.Visibility.NEVER);
-        hidden.setCollisionRule(Team.CollisionRule.NEVER);
-        board.addPlayerToTeam(profileName, hidden);
-        return List.of(ClientboundSetPlayerTeamPacket.createAddOrModifyPacket(hidden, true), ClientboundSetPlayerTeamPacket.createRemovePacket(hidden));
+        PlayerTeam team = new PlayerTeam(board, "animus-" + Integer.toHexString(entityId));
+        team.setNameTagVisibility(look.hideProfileName() ? Team.Visibility.NEVER : Team.Visibility.ALWAYS);
+        team.setCollisionRule(Team.CollisionRule.NEVER);
+        look.traits().teamColor().ifPresent((String color) -> teamColor(team, color));
+        board.addPlayerToTeam(member, team);
+        return List.of(ClientboundSetPlayerTeamPacket.createAddOrModifyPacket(team, true), ClientboundSetPlayerTeamPacket.createRemovePacket(team));
+    }
+
+    /**
+     * Sets a team colour by name. 26.1 takes a {@code ChatFormatting}; later versions take an optional {@code TeamColor};
+     * both enums use the same constant names. A colour this server cannot set leaves the team uncoloured.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void teamColor(PlayerTeam team, String color) {
+        String constant = color.toUpperCase(java.util.Locale.ROOT);
+        for (java.lang.reflect.Method method : PlayerTeam.class.getMethods()) {
+            if (!method.getName().equals("setColor") || method.getParameterCount() != 1) continue;
+            Class<?> parameter = method.getParameterTypes()[0];
+            try {
+                if (parameter.isEnum()) method.invoke(team, Enum.valueOf((Class) parameter, constant));
+                else if (parameter == Optional.class)
+                    method.invoke(team, Optional.of(Enum.valueOf((Class) Class.forName("net.minecraft.world.scores.TeamColor"), constant)));
+                else continue;
+                return;
+            } catch (ReflectiveOperationException | IllegalArgumentException unavailable) { return; }
+        }
     }
 
     @Override public CompletionStage<Void> watch(ServerPlayer viewer, Consumer<Interaction> interactions) {
@@ -296,7 +330,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         for (Body passenger : requested) if (session.visible.get(passenger.entityId) != passenger) return failed("Passenger is not visible to this viewer");
         List<Integer> passengerIds = requested.stream().map((Body passenger) -> passenger.entityId).toList();
         int realRiderId = realRider == null ? BodyRules.NO_REAL_RIDER : realRider.getId();
-        int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayId);
+        int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayIds);
         if (!connected(session)) return unwatched(CONNECTION_CLOSED);
         try { session.passengers.replace(vehicle.entityId, passengerIds); }
         catch (IllegalArgumentException invalid) { return CompletableFuture.failedFuture(invalid); }
@@ -427,7 +461,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             packets.add(new ClientboundSetEntityDataPacket(bones.ids[i], values));
         }
         session.bones.put(body.entityId, bones);
-        int[] base = session.rosters.getOrDefault(body.entityId, body.displayId >= 0 ? new int[]{body.displayId} : new int[0]);
+        int[] base = session.rosters.getOrDefault(body.entityId, body.displayIds.clone());
         packets.add(passengersPacket(body.entityId, withBones(base, bones)));
         if (hideBody) packets.add(new ClientboundSetEntityDataPacket(body.entityId, List.of(visibility(body.look, true))));
         send(session, body, PacketKind.RIG_BONES, packets);
@@ -457,7 +491,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(3);
         packets.add(new ClientboundRemoveEntitiesPacket(bones.ids.clone()));
         if (session.visible.get(bones.body.entityId) == bones.body) {
-            int[] base = session.rosters.getOrDefault(bones.body.entityId, bones.body.displayId >= 0 ? new int[]{bones.body.displayId} : new int[0]);
+            int[] base = session.rosters.getOrDefault(bones.body.entityId, bones.body.displayIds.clone());
             packets.add(passengersPacket(bones.body.entityId, base));
             packets.add(new ClientboundSetEntityDataPacket(bones.body.entityId, List.of(visibility(bones.body.look, false))));
         }
@@ -487,7 +521,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
     private static SynchedEntityData.DataValue<Byte> visibility(BodyLook look, boolean hidden) {
         boolean invisible = hidden || look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        return SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), BodyLook.sharedFlags(look.pose(), invisible));
+        return SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), BodyLook.sharedFlags(look.pose(), invisible, look.traits().glowing()));
     }
 
     @Override public void placeRider(ServerPlayer rider, double x, double y, double z) {
@@ -547,22 +581,32 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         packets.add(rotateHead(body.entityId, yaw));
         List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
         if (body.playerInfo != null) values.add(SynchedEntityData.DataValue.create(AvatarDataAccess.animus$skinLayers(), (byte) 0x7f));
-        values.addAll(bodyValues(look));
+        values.addAll(bodyValues(look, body.typeKey));
         if (!values.isEmpty()) packets.add(new ClientboundSetEntityDataPacket(body.entityId, values));
-        if (body.displayId >= 0) {
-            packets.add(new ClientboundAddEntityPacket(body.displayId, body.displayUuid, pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, Vec3.ZERO, 0d));
+        if (body.displayIds.length > 0) {
             double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate());
-            packets.add(new ClientboundSetEntityDataPacket(body.displayId, textValues(look.text().orElseThrow(), lift)));
-            packets.add(passengersPacket(body.entityId, new int[]{body.displayId}));
+            for (int row = 0; row < body.displayIds.length; row++) {
+                BodyLook.TextRow text = look.rows().get(row);
+                packets.add(new ClientboundAddEntityPacket(body.displayIds[row], body.displayUuids[row], pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, Vec3.ZERO, 0d));
+                packets.add(new ClientboundSetEntityDataPacket(body.displayIds[row], textValues(text.text(), lift + text.offset(), look.style())));
+            }
+            packets.add(passengersPacket(body.entityId, body.displayIds.clone()));
         }
         if (body.seatId >= 0) packets.add(passengersPacket(body.seatId, new int[]{body.entityId}));
         return packets;
     }
-    private static List<SynchedEntityData.DataValue<?>> bodyValues(BodyLook look) {
+    private static List<SynchedEntityData.DataValue<?>> bodyValues(BodyLook look, String typeKey) {
         List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        byte flags = BodyLook.sharedFlags(look.pose(), invisible);
+        byte flags = BodyLook.sharedFlags(look.pose(), invisible, look.traits().glowing());
         if (flags != 0) values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), flags));
+        if (look.traits().usingItem()) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(true)));
+        if (look.traits().baby()) BodyRules.babyFlag(typeKey).ifPresent((BodyRules.BabyFlag flag) -> values.add(SynchedEntityData.DataValue.create(switch (flag) {
+            case AGEABLE -> AgeableDataAccess.animus$baby();
+            case ZOMBIE -> ZombieDataAccess.animus$baby();
+            case PIGLIN -> PiglinDataAccess.animus$baby();
+            case ZOGLIN -> ZoglinDataAccess.animus$baby();
+        }, Boolean.TRUE)));
         if (look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING)
             values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), Pose.valueOf(BodyLook.nativePose(look.pose()))));
         if (look.armorStand().isPresent()) {
@@ -582,11 +626,16 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         }
         return values;
     }
-    private static List<SynchedEntityData.DataValue<?>> textValues(String content, double lift) {
-        return List.of(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), (Component) ModText.component(content)),
-                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$billboard(), BodyLook.BILLBOARD_CENTER),
+    private static List<SynchedEntityData.DataValue<?>> textValues(String content, double lift, BodyLook.TextStyle style) {
+        List<SynchedEntityData.DataValue<?>> values = new ArrayList<>(List.of(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), (Component) ModText.component(content)),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$billboard(), style.billboard()),
                 SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$lineWidth(), BodyLook.LINE_WIDTH),
-                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$translation(), new Vector3f(0f, (float) lift, 0f)));
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$translation(), new Vector3f(0f, (float) lift, 0f))));
+        if (style.flags() != 0) values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$styleFlags(), style.flags()));
+        if (style.viewRange() != 1f) values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$viewRange(), style.viewRange()));
+        if (style.interpolationDelay() != 0) values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$interpolationStart(), style.interpolationDelay()));
+        if (style.interpolationDuration() != 0) values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$transformInterpolation(), style.interpolationDuration()));
+        return values;
     }
     private static List<SynchedEntityData.DataValue<?>> seatValues() {
         return List.of(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), (byte) 0x20),
