@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.config.NavigationSettings;
+import art.arcane.animus.core.runtime.NavigationPressure;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.DefinitionSpec;
 import art.arcane.animus.core.runtime.PersistedNpcService;
@@ -86,6 +88,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final FoliaRegions regions;
     final RegionBudget budget;
     final art.arcane.animus.core.config.RigSettings rigs;
+    final NavigationSettings navigationSettings;
+    /** Global region thread only: whether route turns were refused for a while across regions. */
+    private final NavigationPressure navigationPressure = new NavigationPressure();
+    private volatile String navigationPressureStatus = "none";
     final SpatialNpcIndex index = new SpatialNpcIndex(MAX_ACTIVE);
     final Map<String, RegionActor> actors = new ConcurrentHashMap<>();
     final Map<UUID, RegionActor> byUuid = new ConcurrentHashMap<>();
@@ -126,7 +132,9 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         viewerSlots = new Semaphore(settings.maximumViewers());
         previews = new ViewerPreviews(io, runtime.documents());
         Map<RegionBudget.Kind, Integer> limits = new EnumMap<>(RegionBudget.Kind.class);
-        limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, 16); limits.put(RegionBudget.Kind.MOTION_CELLS, 2048);
+        navigationSettings = runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT;
+        limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, navigationSettings.routesPerTick());
+        limits.put(RegionBudget.Kind.MOTION_CELLS, navigationSettings.motionCellsPerTick()); limits.put(RegionBudget.Kind.ROUTE_PLANS, navigationSettings.planningStartsPerTick());
         limits.put(RegionBudget.Kind.CAPTURE, 256); limits.put(RegionBudget.Kind.VIEWERS, settings.updatesPerTick());
         limits.put(RegionBudget.Kind.PACKETS, RegionViewer.PACKETS_PER_REGION); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, 32);
         rigs = runtime.isRunning() ? runtime.rigSettings() : art.arcane.animus.core.config.RigSettings.DEFAULT;
@@ -171,7 +179,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
         int visible = 0;
         for (RegionViewer viewer : viewers.values()) visible += viewer.shown.get();
+        int sleeping = 0;
+        for (RegionActor actor : actors.values()) if (actor.routeSleeping) sleeping++;
         return "NPC runtime ready on Folia regions | active=" + index.size() + " | dormant=" + Math.max(0, actors.size() - index.size())
+                + " | routes-sleeping=" + sleeping + " | navigation-pressure=" + navigationPressureStatus
                 + " | viewers=" + viewers.size() + " | visible=" + visible + " | handoffs=" + transfers.size() + " | file-reads=" + reads.get()
                 + " | accepted=" + accepted.get() + " | rejected=" + rejected.get() + " | path-jobs=" + navigation.outstandingJobs()
                 + " | riding, mounts and combat unavailable on Folia" + (lastFailure == null ? "" : " | last-error=" + lastFailure);
@@ -336,10 +347,18 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         map.computeIfPresent(chunk, (key, set) -> { set.remove(actor); return set.isEmpty() ? null : set; });
     }
 
-    /** Viewer owner only: wakes dormant NPCs in loaded chunks that this player's region owns. */
+    /**
+     * Viewer owner only: wakes dormant NPCs in loaded chunks that this player's region owns, and marks every active NPC
+     * within view distance as watched, on any region, so its patrol keeps walking (see {@link RegionActor#watched()}).
+     */
     void wakeNear(Player player, WorldPosition at) {
         World world = player.getWorld();
         int radius = (int) Math.ceil(settings.viewDistance() / 16), centerX = Math.floorDiv((int) Math.floor(at.point().x()), 16), centerZ = Math.floorDiv((int) Math.floor(at.point().z()), 16);
+        long now = System.nanoTime();
+        for (int x = centerX - radius; x <= centerX + radius; x++) for (int z = centerZ - radius; z <= centerZ + radius; z++) {
+            Set<RegionActor> active = anchored.get(new ChunkPosition(at.world(), x, z));
+            if (active != null) for (RegionActor actor : active) actor.watchedNanos = now;
+        }
         for (int x = centerX - radius; x <= centerX + radius; x++) for (int z = centerZ - radius; z <= centerZ + radius; z++) {
             Set<RegionActor> waiting = resting.get(new ChunkPosition(at.world(), x, z));
             if (waiting == null || !regions.owns(world, x, z, x, z) || !world.isChunkLoaded(x, z)) continue;
@@ -431,6 +450,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (!available()) return;
         controlTicks++;
         try {
+            navigationPressure.observe(controlTicks, budget.drainRefusedRoutes(), "routesPerTick=" + navigationSettings.routesPerTick()
+                    + ", motionCellsPerTick=" + navigationSettings.motionCellsPerTick() + ", planningStartsPerTick=" + navigationSettings.planningStartsPerTick()
+                    + " per region in [navigation] of config.toml").ifPresent(plugin.getLogger()::warning);
+            navigationPressureStatus = navigationPressure.describe();
+            if (controlTicks % 1200 == 0) budget.forgetIdleRegions(System.nanoTime());
             for (int i = 0; i < MAX_READS; i++) { SkinRead read = skinCompletions.poll(); if (read == null) break; finishSkin(read); }
             boolean forced = refresh.getAndSet(false);
             Map<String, NpcDefinition> snapshot = runtime.npcs().snapshot();

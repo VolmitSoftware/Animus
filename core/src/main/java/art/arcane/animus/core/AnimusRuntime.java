@@ -177,6 +177,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.ShopSettings shopSettings() { return settings().shops(); }
     public synchronized BuildSettings buildSettings() { return settings().builds(); }
     public synchronized art.arcane.animus.core.config.RigSettings rigSettings() { return settings().rigs(); }
+    public synchronized art.arcane.animus.core.config.NavigationSettings navigationSettings() { return settings().navigation(); }
     public synchronized art.arcane.animus.core.config.EditorSettings editorSettings() { return settings().editor(); }
     public synchronized art.arcane.animus.core.config.EditorRelaySettings editorRelaySettings() { return settings().relay(); }
     public RuntimeEnvironment environment() { return environment; }
