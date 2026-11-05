@@ -37,6 +37,12 @@ void navigate(String hash) {
   if (web.window.location.hash != hash) web.window.location.hash = hash;
 }
 
+/// Moves to [hash] without leaving the current address in history (a
+/// pairing link's secret, for one).
+void replaceHash(String hash) {
+  if (web.window.location.hash != hash) web.window.location.replace(hash);
+}
+
 /// Calls [listener] on every hash change; returns a function that stops it.
 void Function() onHashChange(void Function(String hash) listener) {
   final JSFunction callback = ((web.Event _) => listener(web.window.location.hash)).toJS;

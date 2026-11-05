@@ -103,6 +103,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     final AnimusRuntime runtime;
     private final Executor io;
     private final Settings settings;
+    private final ViewerPreviews previews;
     private final AtomicBoolean refresh = new AtomicBoolean(true);
     private final DefinitionQueue definitions = new DefinitionQueue();
     private final Deque<DefinitionQueue.Change> changes = new ArrayDeque<>();
@@ -156,6 +157,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     public PersistedNpcService(RuntimeHost<P, I> host, AnimusRuntime runtime, Executor io, Settings settings) {
         this.host = Objects.requireNonNull(host); this.runtime = Objects.requireNonNull(runtime);
         this.io = Objects.requireNonNull(io); this.settings = Objects.requireNonNull(settings);
+        previews = new ViewerPreviews(io, runtime.documents());
         completions = new ArrayBlockingQueue<>(settings.maximumViewers() * (MAX_PENDING_PER_VIEWER + 2));
         rigSettings = runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT;
         if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
@@ -260,6 +262,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         catch (RuntimeException rejectedWork) { return false; }
     }
     @Override public PlayerAccess<P> players() { return players; }
+    @Override public ViewerPreviews previews() { return previews; }
     @Override public WorldPosition navigationOrigin(String id) { return navigable(id).state.snapshot().position(); }
     @Override public UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond) {
         Value value = navigable(id); Objects.requireNonNull(destination); Objects.requireNonNull(mode);
@@ -1016,7 +1019,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         Predicate<ChunkPosition> visibleChunk = (ChunkPosition chunk) -> chunk.world().equals(at.world()) && delivered.computeIfAbsent(ChunkPosition.key(chunk.x(), chunk.z()),
                 (Long ignored) -> host.chunkLoaded(at.world(), chunk.x(), chunk.z()) && host.chunkSent(viewer.player, chunk.x(), chunk.z()));
         for (Presented body : List.copyOf(viewer.visible.values()))
-            if (!eligible(body.value, at, visibleChunk)) retire(viewer, body);
+            if (!eligible(viewer, body.value, at, visibleChunk)) retire(viewer, body);
         while (!viewer.retirements.isEmpty() && sent < packetBudget) {
             Presented body = viewer.retirements.removeFirst(); sent++;
             packets.despawn(viewer.player, body.body).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
@@ -1047,6 +1050,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             }
             sent += mountRuntime.update(viewer, packetBudget - sent);
         }
+        if (viewer.ready && sent < packetBudget)
+            sent += viewer.preview.update(viewer.player, packets, at, settings.viewDistance(), visibleChunk,
+                    (NpcDefinition definition) -> DefinitionSpec.parse(definition, geometries.keySet(), this::world, host::item),
+                    (Runnable completion) -> enqueue(viewer, () -> { if (current(viewer)) completion.run(); }), viewer.nativeIds, packetBudget - sent);
         if (!viewer.ready || !viewer.retirements.isEmpty() || sent >= packetBudget || viewer.pendingSpawns >= MAX_PENDING_PER_VIEWER
                 || viewer.visible.size() >= settings.maximumVisible()) return sent;
         int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(settings.maximumVisible() - viewer.visible.size(), MAX_PENDING_PER_VIEWER - viewer.pendingSpawns));
@@ -1056,16 +1063,18 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             if (capacity == 0) break;
             Entry entry = byUuid.get(snapshot.npcId()); Value value = entry == null ? null : entry.value;
             if (value == null || viewer.visible.containsKey(snapshot.npcId()) || viewer.retiring.containsKey(snapshot.npcId())
-                    || viewer.nativeIds + nativeIds(value) > 256 || !eligible(value, at, visibleChunk)) continue;
+                    || viewer.nativeIds + viewer.preview.reservedIds() + nativeIds(value) > 256 || !eligible(viewer, value, at, visibleChunk)) continue;
             spawn(viewer, value); sent++; capacity--;
             if (!current(viewer)) break;
         }
         return sent;
     }
-    private boolean eligible(Value value, WorldPosition at, Predicate<ChunkPosition> delivered) {
+    /** A live NPC a preview stands in for stays hidden from that viewer only. */
+    private boolean eligible(Viewer viewer, Value value, WorldPosition at, Predicate<ChunkPosition> delivered) {
         Entry entry = byUuid.get(value.spec.definition().uuid());
         VirtualNpcState.Snapshot snapshot = value.state.snapshot();
-        return entry != null && entry.value == value && snapshot.active() && snapshot.position().world().equals(at.world())
+        return entry != null && entry.value == value && snapshot.active() && !previews.hides(viewer.id, entry.id, value.spec.definition().uuid())
+                && snapshot.position().world().equals(at.world())
                 && snapshot.position().point().distance(at.point()) <= settings.viewDistance() && delivered.test(snapshot.position().chunk());
     }
     private void spawn(Viewer viewer, Value value) {
@@ -1129,7 +1138,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private boolean eligibleNow(Viewer viewer, Value value) {
         if (!current(viewer) || !host.online(viewer.player) || host.dead(viewer.player)) return false;
         WorldPosition at = host.position(viewer.player);
-        return eligible(value, at, (ChunkPosition chunk) -> host.chunkLoaded(at.world(), chunk.x(), chunk.z()) && host.chunkSent(viewer.player, chunk.x(), chunk.z()));
+        return eligible(viewer, value, at, (ChunkPosition chunk) -> host.chunkLoaded(at.world(), chunk.x(), chunk.z()) && host.chunkSent(viewer.player, chunk.x(), chunk.z()));
     }
     private void retire(Viewer viewer, Presented body) {
         if (body.retired) return;
@@ -1145,6 +1154,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
 
     private void interact(Viewer viewer, BodyTransport.Interaction input) {
         if (!current(viewer) || host.dead(viewer.player)) return;
+        // Preview bodies are inert: no trigger, listener, selection, GUI, shop, ride or damage.
+        if (viewer.preview.owns(input.body().uuid())) return;
         Presented body = viewer.visible.get(input.body().uuid());
         if (body == null || body.body != input.body() || !body.bound || body.retired || !eligibleNow(viewer, body.value)) { rejected++; return; }
         // A command publication can precede the bounded reconciliation pass: deletion/despawn still revokes hits immediately.
@@ -1224,8 +1235,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     public void joined(P player) { if (available()) admissions = host.onlinePlayers().iterator(); }
     /** A player left the server. */
     public void quit(P player) {
-        if (!available()) return;
         UUID id = host.id(player);
+        previews.left(id);
+        if (!available()) return;
         riders.playerLeaving(player, "offline");
         disconnect(player); selections.remove(id);
         if (triggers != null) triggers.forget(id);
@@ -1255,6 +1267,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (closed) return;
         if (mountRuntime != null) mountRuntime.close();
         closed = true;
+        previews.close();
         closeQuietly(ticker);
         for (Route route : List.copyOf(routeOrder)) stopRoute(route.value, "cancelled: runtime shutdown");
         routeOrder.clear(); supportOrder.clear(); rigOrder.clear(); if (navigation != null) navigation.close();
@@ -1320,7 +1333,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         Presented(Value value, BodyTransport.Body body) { this.value = value; this.body = body; }
     }
     final class Viewer {
-        final P player; final String world; final ViewerSession guard;
+        final P player; final UUID id; final String world; final ViewerSession guard; final PreviewBodies<P, I> preview;
         final Map<UUID, Presented> visible = new HashMap<>(), retiring = new HashMap<>();
         final Deque<Presented> retirements = new ArrayDeque<>();
         final Deque<Presented> presentationOrder = new ArrayDeque<>();
@@ -1329,7 +1342,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         boolean ready, rosterDirty; volatile boolean failed;
         long rosterRevision = -1;
         Viewer(P player) {
-            this.player = player; world = host.position(player).world();
+            this.player = player; id = host.id(player); world = host.position(player).world();
+            preview = new PreviewBodies<>(previews, id);
             guard = new ViewerSession(host.id(player), UUID.randomUUID(), new ViewerSession.Limits(settings.maximumVisible(), MAX_ISSUED_IDS, 100_000_000L, 4.5));
         }
     }

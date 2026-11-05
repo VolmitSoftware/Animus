@@ -8,6 +8,7 @@ import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.ModuleHost;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.runtime.NpcRuntime;
+import art.arcane.animus.core.runtime.ViewerPreviews;
 import java.io.IOException;
 import java.util.EnumSet;
 import java.util.List;
@@ -25,8 +26,8 @@ import java.util.function.Supplier;
 
 /**
  * The editor host every platform shares: it reaches the persisted NPC runtime, behaviors, modules and GUIs through their
- * core interfaces. A platform supplies only its name, extra features, the admin permission check and, when it has one,
- * a preview presenter.
+ * core interfaces. A platform supplies only its name, extra features and the admin permission check; previews come
+ * from the NPC runtime's viewer-private presentation.
  *
  * @param <P> the platform's online player
  */
@@ -34,7 +35,7 @@ public final class RuntimeEditorHost<P> implements EditorHost {
     /** What the platform passes in. {@code reloadGuis} reloads chest GUIs and shops after an apply. */
     public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, Supplier<BehaviorCommands> behaviors, ExtensionRuntime extensions,
                            Runnable reloadGuis, String platform, String serverName, Supplier<Map<String, Feature>> features, Predicate<P> admin,
-                           Optional<PreviewPresenter> previews, String previewsUnavailable, Consumer<String> log) {
+                           Consumer<String> log) {
         public Parts { Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(log); }
     }
 
@@ -101,7 +102,17 @@ public final class RuntimeEditorHost<P> implements EditorHost {
         };
     }
 
-    @Override public Optional<PreviewPresenter> previews() { return parts.previews(); }
+    @Override public Optional<PreviewPresenter> previews() {
+        if (!parts.living().available()) return Optional.empty();
+        ViewerPreviews previews = parts.living().previews();
+        return Optional.of(new PreviewPresenter() {
+            @Override public CompletionStage<Void> present(String previewId, UUID viewer, List<NpcDefinition> npcs, Consumer<String> ended) {
+                return previews.present(previewId, viewer, npcs, ended);
+            }
 
-    @Override public String previewsUnavailable() { return parts.previewsUnavailable(); }
+            @Override public void end(String previewId) { previews.end(previewId); }
+        });
+    }
+
+    @Override public String previewsUnavailable() { return parts.living().status(); }
 }

@@ -63,6 +63,8 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     default Optional<ActiveNpc> voice(UUID npc) { return active(npc).or(() -> combatant(npc)); }
     String navigationStatus(String id);
     PlayerAccess<P> players();
+    /** Viewer-private previews this runtime presents; inert packet bodies shown to one player only. */
+    ViewerPreviews previews();
 
     /**
      * Runs work on the NPC's owner, now when the caller already owns it. False when the NPC is not active anywhere.

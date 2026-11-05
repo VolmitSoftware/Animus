@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../model/animus_document.dart';
+import '../model/server_binding.dart';
 
 /// A local workspace: drafts of documents opened from a data folder. Drafts
 /// live only in the browser; the server holds none.
@@ -12,6 +13,7 @@ class WorkspaceSnapshot {
     required this.generation,
     required this.documents,
     this.resources = const <String, Uint8List>{},
+    this.server,
   });
 
   final String id;
@@ -26,12 +28,18 @@ class WorkspaceSnapshot {
   /// resource pack sources under `pack/assets/` (item models, textures).
   final Map<String, Uint8List> resources;
 
-  WorkspaceSnapshot next({String? name, List<AnimusDocument>? documents, Map<String, Uint8List>? resources}) => WorkspaceSnapshot(
+  /// Set for a server workspace: documents opened from a paired server, with
+  /// the server version each draft started from.
+  final ServerBinding? server;
+
+  WorkspaceSnapshot next({String? name, List<AnimusDocument>? documents, Map<String, Uint8List>? resources, ServerBinding? server}) =>
+      WorkspaceSnapshot(
         id: id,
         name: name ?? this.name,
         generation: generation + 1,
         documents: documents ?? this.documents,
         resources: resources ?? this.resources,
+        server: server ?? this.server,
       );
 
   String encode() => jsonEncode(<String, Object?>{
@@ -44,6 +52,7 @@ class WorkspaceSnapshot {
           'resources': <String, String>{
             for (final String path in resources.keys.toList()..sort()) path: base64Encode(resources[path]!),
           },
+        if (server != null) 'server': server!.toJson(),
       });
 
   static WorkspaceSnapshot decode(String text) {
@@ -62,17 +71,21 @@ class WorkspaceSnapshot {
           for (final MapEntry<String, Object?> entry in (json['resources']! as Map<String, Object?>).entries)
             if (entry.value is String) entry.key: base64Decode(entry.value! as String),
       },
+      server: json['server'] is Map<String, Object?> ? ServerBinding.fromJson(json['server']! as Map<String, Object?>) : null,
     );
   }
 }
 
 class WorkspaceSummary {
-  const WorkspaceSummary(this.id, this.name, this.generation, this.documentCount);
+  const WorkspaceSummary(this.id, this.name, this.generation, this.documentCount, {this.serverId});
 
   final String id;
   final String name;
   final int generation;
   final int documentCount;
+
+  /// The paired server a server workspace belongs to.
+  final String? serverId;
 }
 
 /// Another tab (or an older copy) saved the workspace first.
@@ -134,4 +147,4 @@ class MemoryWorkspaceRepository implements WorkspaceRepository {
 }
 
 WorkspaceSummary summarize(WorkspaceSnapshot snapshot) =>
-    WorkspaceSummary(snapshot.id, snapshot.name, snapshot.generation, snapshot.documents.length);
+    WorkspaceSummary(snapshot.id, snapshot.name, snapshot.generation, snapshot.documents.length, serverId: snapshot.server?.serverId);

@@ -1,0 +1,272 @@
+/* Inspectors: the NPC inspector, the behavior node tree and the JSON code view. */
+
+.animus-inspector {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.animus-inspect-object,
+.animus-control-stack,
+.animus-capability {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-inspect-const {
+  padding-top: 0.375rem;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.animus-inspect-item,
+.animus-routine {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border: 1px solid var(--animus-border);
+  border-radius: var(--animus-radius);
+  min-width: 0;
+}
+
+.animus-kept-json {
+  min-height: 2.25rem;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
+.animus-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.0625rem 0.4rem;
+  border: 1px solid var(--animus-border);
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--animus-muted);
+}
+
+.animus-tag.is-server {
+  border-color: #4d8ef7;
+  color: #8cb4fa;
+}
+
+/* Behavior nodes: nested cards with a full border, never a side stripe. */
+
+.animus-node {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border: 1px solid var(--animus-border);
+  border-radius: var(--animus-radius);
+  background: rgba(128, 128, 128, 0.04);
+  min-width: 0;
+}
+
+.animus-node.has-error {
+  border-color: var(--animus-error);
+}
+
+.animus-node-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.animus-node-caption {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--animus-muted);
+  min-width: 3.5rem;
+}
+
+.animus-node-help {
+  flex: 1 1 10rem;
+  font-size: 0.75rem;
+  color: var(--animus-muted);
+  min-width: 0;
+}
+
+.animus-node-body,
+.animus-node-list,
+.animus-node-slot {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-node-list,
+.animus-node-slot {
+  padding-inline-start: 0.75rem;
+}
+
+/* JSON code view. */
+
+.animus-code-editor {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-code-frame {
+  --animus-code-line: 1.45;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  border: 1px solid var(--animus-border);
+  border-radius: 0.375rem;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.animus-code-gutter {
+  overflow: hidden;
+  height: 34rem;
+  box-sizing: border-box;
+  padding: 0.5rem 0;
+  border-inline-end: 1px solid var(--animus-border);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: var(--animus-code-line);
+  color: var(--animus-muted);
+  text-align: end;
+  user-select: none;
+}
+
+.animus-code-line {
+  padding: 0 0.5rem 0 0.75rem;
+}
+
+.animus-code-line.has-mark {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.animus-code-line.has-mark::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-end: 0.375rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.animus-code-line.is-error {
+  color: var(--animus-error);
+  background: rgba(229, 72, 77, 0.12);
+}
+
+.animus-code-line.is-warning,
+.animus-code-line.is-info {
+  color: #d8a338;
+}
+
+.animus-code-line.is-server::before {
+  border-radius: 1px;
+}
+
+.animus-code-input {
+  position: relative;
+  min-width: 0;
+}
+
+.animus-code-area {
+  display: block;
+  width: 100%;
+  height: 34rem;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: var(--animus-code-line);
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  resize: none;
+}
+
+.animus-code-area:focus-visible {
+  outline: 2px solid var(--ring, #4d8ef7);
+  outline-offset: -2px;
+}
+
+.animus-code-completions {
+  right: auto;
+  width: min(22rem, 100%);
+  max-width: 100%;
+}
+
+.animus-code-completions li {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.animus-code-completions li span {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.animus-code-status {
+  font-size: 0.75rem;
+}
+
+.animus-code-problems {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  display: grid;
+  gap: 0.25rem;
+  max-height: 14rem;
+  overflow: auto;
+  border: 1px solid var(--animus-border);
+  border-radius: var(--animus-radius);
+}
+
+.animus-code-problems li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8125rem;
+  min-width: 0;
+}
+
+.animus-code-problems li.is-error > span:last-child {
+  color: var(--animus-error);
+}
+
+.animus-code-problems code {
+  overflow-wrap: anywhere;
+}
+
+.animus-diagnostics li.is-server {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+@media (max-width: 520px) {
+  .animus-code-gutter,
+  .animus-code-area {
+    height: 24rem;
+  }
+
+  .animus-node-list,
+  .animus-node-slot {
+    padding-inline-start: 0.25rem;
+  }
+
+  .animus-code-completions {
+    width: 100%;
+  }
+}

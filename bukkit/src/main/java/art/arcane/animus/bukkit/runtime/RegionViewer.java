@@ -4,6 +4,7 @@ import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.runtime.PreviewBodies;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.rig.DisplayTransform;
@@ -38,6 +39,7 @@ import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Vector;
 
 /**
@@ -52,6 +54,7 @@ final class RegionViewer {
     final UUID id, world;
     final NativeViewerEpoch.Stamp epoch;
     final ViewerSession guard;
+    final PreviewBodies<Player, ItemStack> preview;
     private final Map<UUID, Presented> visible = new HashMap<>(), retiring = new HashMap<>();
     private final Deque<Presented> retirements = new ArrayDeque<>(), presentationOrder = new ArrayDeque<>();
     private final ConcurrentLinkedQueue<Runnable> completions = new ConcurrentLinkedQueue<>();
@@ -68,6 +71,7 @@ final class RegionViewer {
     RegionViewer(RegionNpcRuntime host, Player player, NativeViewerEpoch.Stamp epoch) {
         this.host = host; this.player = player; this.epoch = epoch;
         id = player.getUniqueId(); world = player.getWorld().getUID();
+        preview = new PreviewBodies<>(host.previews, id);
         guard = new ViewerSession(id, UUID.randomUUID(), new ViewerSession.Limits(host.settings.maximumVisible(), RegionNpcRuntime.MAX_ISSUED_IDS, 100_000_000L, 4.5));
     }
 
@@ -142,6 +146,9 @@ final class RegionViewer {
                 if (now.rig() != null || body.rigIdentity != 0) { sent += presentRig(body, now, packetBudget - sent, rigBudget); if (!host.current(this)) return sent; }
             }
         }
+        if (ready && sent < packetBudget)
+            sent += preview.update(player, host.packets, at, host.settings.viewDistance(), sentChunk, host::previewSpec,
+                    (Runnable completion) -> enqueue(() -> { if (host.current(this)) completion.run(); }), nativeIds, packetBudget - sent);
         if (!ready || !retirements.isEmpty() || sent >= packetBudget || pendingSpawns >= MAX_PENDING_SPAWNS || visible.size() >= host.settings.maximumVisible()) return sent;
         int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(host.settings.maximumVisible() - visible.size(), MAX_PENDING_SPAWNS - pendingSpawns));
         SpatialNpcIndex.Scan scan = host.index.scan(new SpatialNpcIndex.Query(at, host.settings.viewDistance()), cursor, new SpatialNpcIndex.Budget(32, Math.max(1, capacity * 2)), sentChunk);
@@ -151,14 +158,15 @@ final class RegionViewer {
             RegionActor actor = host.byUuid.get(candidate.npcId());
             RegionActor.Publication now = actor == null ? null : actor.publication;
             if (now == null || visible.containsKey(candidate.npcId()) || retiring.containsKey(candidate.npcId())
-                    || nativeIds + now.ids() > 256 || !eligible(now, at, sentChunk)) continue;
+                    || nativeIds + preview.reservedIds() + now.ids() > 256 || !eligible(now, at, sentChunk)) continue;
             spawn(actor, now); sent++; capacity--;
             if (!host.current(this)) break;
         }
         return sent;
     }
+    /** A live NPC a preview stands in for stays hidden from this viewer only. */
     private boolean eligible(RegionActor.Publication now, WorldPosition at, Predicate<ChunkPosition> sentChunk) {
-        return now.live() && now.snapshot().position().world().equals(at.world())
+        return now.live() && !host.previews.hides(id, now.spec().definition().id(), now.spec().definition().uuid()) && now.snapshot().position().world().equals(at.world())
                 && now.snapshot().position().point().distance(at.point()) <= host.settings.viewDistance() && sentChunk.test(now.snapshot().position().chunk());
     }
     private boolean eligibleNow(RegionActor actor) {
@@ -266,6 +274,8 @@ final class RegionViewer {
     /** Player owner only, from the packet adapter's scheduler. */
     void interact(NativePacketAdapter.Interaction input) {
         if (!host.current(this) || !host.regions.owns(player) || player.isDead()) return;
+        // Preview bodies are inert: no event, trigger, listener, selection, GUI, shop or damage.
+        if (preview.owns(input.body().uuid())) return;
         Presented body = visible.get(input.body().uuid());
         if (body == null || body.body != input.body() || !body.bound || body.retired || !eligibleNow(body.actor)) { host.rejected.incrementAndGet(); return; }
         RegionActor actor = body.actor;
