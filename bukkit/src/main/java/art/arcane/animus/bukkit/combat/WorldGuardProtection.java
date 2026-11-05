@@ -11,7 +11,10 @@ import com.sk89q.worldguard.bukkit.WorldGuardPlugin;
 import com.sk89q.worldguard.protection.association.RegionAssociable;
 import com.sk89q.worldguard.protection.flags.Flags;
 import com.sk89q.worldguard.protection.flags.StateFlag;
+import com.sk89q.worldguard.protection.managers.RegionManager;
+import com.sk89q.worldguard.protection.regions.ProtectedRegion;
 import com.sk89q.worldguard.protection.regions.RegionQuery;
+import java.util.Optional;
 import java.util.UUID;
 import org.bukkit.Location;
 import org.bukkit.Server;
@@ -63,6 +66,16 @@ public final class WorldGuardProtection implements ProtectionAdapter {
                 yield Decision.ALLOW;
             }
         };
+    }
+
+    /** Whether the position is inside the named region of its world; empty when that world has no such region. */
+    @Override public Optional<Boolean> inRegion(String region, WorldPosition position) {
+        Location at = location(position);
+        if (at == null) return Optional.empty();
+        RegionManager regions = WorldGuard.getInstance().getPlatform().getRegionContainer().get(BukkitAdapter.adapt(at.getWorld()));
+        ProtectedRegion found = regions == null ? null : regions.getRegion(region);
+        if (found == null) return Optional.empty();
+        return Optional.of(found.contains(at.getBlockX(), at.getBlockY(), at.getBlockZ()));
     }
 
     private static Decision both(Decision first, Decision second) {

@@ -2,6 +2,7 @@ package art.arcane.animus.mod.mixin;
 
 import art.arcane.animus.mod.ModHooks;
 import java.util.Set;
+import net.minecraft.network.chat.PlayerChatMessage;
 import net.minecraft.network.protocol.game.ServerboundAttackPacket;
 import net.minecraft.network.protocol.game.ServerboundClientTickEndPacket;
 import net.minecraft.network.protocol.game.ServerboundInteractPacket;
@@ -42,6 +43,12 @@ public abstract class GamePacketHooks {
     @Inject(method = "handleClientTickEnd", at = @At("HEAD"))
     private void animus$tickEnd(ServerboundClientTickEndPacket packet, CallbackInfo callback) {
         if (ModHooks.owner(player)) ModHooks.tickEnd(player);
+    }
+
+    /** A chat message that passed validation, on the server thread just before it is broadcast. Optional so a loader patch cannot stop the server. */
+    @Inject(method = "broadcastChatMessage", at = @At("HEAD"), require = 0)
+    private void animus$chat(PlayerChatMessage message, CallbackInfo callback) {
+        if (ModHooks.owner(player)) ModHooks.chat(player, message.signedContent());
     }
 
     @Inject(method = "teleport(Lnet/minecraft/world/entity/PositionMoveRotation;Ljava/util/Set;)V", at = @At("HEAD"))

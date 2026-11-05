@@ -6,6 +6,7 @@ import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.behavior.builtin.PlatformRefusals;
+import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
@@ -13,6 +14,7 @@ import art.arcane.animus.core.shop.ShopService;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
@@ -41,15 +43,19 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     private final Server server;
     private final NpcRuntime<Player, ItemStack> living;
     private final RuntimeCombatService combat;
+    private final BuildService<Player, ItemStack> builds;
+    private final Supplier<String> buildsUnavailable;
     private final Function<Runnable, AutoCloseable> ticks;
     private final Supplier<ShopService<Player, ItemStack>> shops;
 
-    BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, Function<Runnable, AutoCloseable> ticks,
-                           Supplier<ShopService<Player, ItemStack>> shops) {
+    BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, BuildService<Player, ItemStack> builds,
+                           Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<ShopService<Player, ItemStack>> shops) {
         this.shops = shops;
         server = plugin.getServer();
         this.living = living;
         this.combat = combat;
+        this.builds = builds;
+        this.buildsUnavailable = buildsUnavailable;
         this.ticks = ticks;
     }
 
@@ -195,6 +201,13 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     @Override public void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target) {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> combat.operate(active.state().npcId(), operation, target));
+    }
+
+    @Override public String build(NpcHandle npc, BuildOperation operation, Optional<String> schematic, Optional<Vec3> origin, Map<String, String> options) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        String reason = buildsUnavailable.get();
+        if (builds == null || reason != null) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "build-unavailable", "Builds " + (reason == null ? "are unavailable" : reason));
+        return builds.behavior(active.id(), operation, schematic, origin, options);
     }
 
     private NpcRuntime.ActiveNpc require(NpcHandle npc) {

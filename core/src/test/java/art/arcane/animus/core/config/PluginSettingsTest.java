@@ -40,6 +40,19 @@ class PluginSettingsTest {
             assertTrue(error.getMessage().contains("combat: targetScansPerTick must be within 1..64"), error.getMessage());
         }
     }
+    @Test void buildLimitsAreReadFromTomlAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(BuildSettings.DEFAULT, PluginSettings.load(store).builds());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[builds]\nplacementsPerTick = 4\nmaximumUndoEntries = 0\n");
+            BuildSettings builds = PluginSettings.load(store).builds();
+            assertEquals(4, builds.placementsPerTick());
+            assertEquals(0, builds.maximumUndoEntries());
+            assertEquals(BuildSettings.DEFAULT.maximumVolume(), builds.maximumVolume());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[builds]\nmaximumVolume = 20000000\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("builds: maximumVolume must be within 1..16000000"), error.getMessage());
+        }
+    }
     @Test void extensionSettingsAreTomlAndDoNotRewriteExistingFilesOrModuleData() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             String toml = "# Existing operator comments\nstatusMessage = 'Test'\n[files]\nmaximumOperations = 8\n"

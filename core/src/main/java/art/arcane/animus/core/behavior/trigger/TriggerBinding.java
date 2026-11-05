@@ -21,7 +21,7 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     public record Proximity(Phase phase, double radius) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.PROXIMITY; }
     }
-    /** Spawn, despawn, damage or death: events with no further filter. */
+    /** Spawn, despawn, damage, death and build events: events with no further filter. */
     public record Lifecycle(TriggerKind kind) implements Spec {}
     public record Waypoint(OptionalInt waypoint) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.WAYPOINT; }

@@ -85,6 +85,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private static final int RECONCILE_WORK = 64, PACKET_WORK = 32, MAX_PENDING_PER_VIEWER = 8, MAX_ISSUED_IDS = 8192;
     private static final int MAX_ROUTES = 32, NAVIGATION_UPDATES = 16, NAVIGATION_CELLS = 2048, MOTION_CELLS = 256;
     private static final double HULL_WIDTH_LIMIT = 4, HULL_HEIGHT_LIMIT = 8;
+    /** Fastest route leg in blocks per second; combat pursuit is limited further by {@code [combat] maximumSpeed}. */
+    public static final double MAXIMUM_SPEED = 10;
     final RuntimeHost<P, I> host;
     final AnimusRuntime runtime;
     private final Executor io;
@@ -290,6 +292,37 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (value == null || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(entry.id))) return Optional.empty();
         return Optional.of(new ActiveNpc(entry.id, value.displayName, value.state.snapshot()));
     }
+    /** The NPC is following a route now. */
+    public boolean routing(String id) {
+        if (!available()) return false;
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        return value != null && (value.route != null || value.routeTask != null);
+    }
+    /** Swings the NPC's arm for everyone who sees it. */
+    public void swing(String id) {
+        if (!available()) return;
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        if (value == null) return;
+        for (Viewer viewer : viewers.values()) {
+            Presented body = viewer.visible.get(value.spec.definition().uuid());
+            if (body != null && body.value == value && body.bound && !body.retired) packets.swing(viewer.player, body.body);
+        }
+    }
+    /** Moves an active NPC at once onto clear, supported, loaded ground in its own world; false leaves it in place. */
+    public boolean relocate(String id, WorldPosition destination) {
+        Optional<CombatBinding> binding = combat(id);
+        if (binding.isEmpty() || !binding.get().state().snapshot().active()) return false;
+        WorldPosition from = binding.get().state().snapshot().position();
+        if (!from.world().equals(destination.world()) || !host.worldLoaded(destination.world())) return false;
+        int chunkX = Math.floorDiv((int) Math.floor(destination.point().x()), 16), chunkZ = Math.floorDiv((int) Math.floor(destination.point().z()), 16);
+        if (!host.chunkLoaded(destination.world(), chunkX, chunkZ)) return false;
+        Hitbox box = binding.get().state().snapshot().bounds();
+        MotionValidator.Result clear = MotionValidator.check(destination.point(), destination.point(), hullWidth(box.max().x() - box.min().x()),
+                hullHeight(box.max().y() - box.min().y()), MotionValidator.Medium.GROUND, true, MOTION_CELLS, host.collision(destination.world()));
+        if (!clear.clear()) return false;
+        binding.get().changed().accept(binding.get().state().move(destination));
+        return true;
+    }
     public float yaw(UUID npc) {
         owner(); Entry entry = byUuid.get(npc);
         return entry == null || entry.value == null ? 0 : entry.value.yaw;
@@ -441,7 +474,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     /** Shared by every runtime: one bounded route leg in the NPC's own world. */
     public static void validateLeg(WorldPosition origin, WorldPosition destination, MovementProfile.Mode mode, double speed, double hullWidth, double hullHeight) {
         Vec3 delta = destination.point().subtract(origin.point());
-        if (!Double.isFinite(speed) || speed < 1 || speed > 5) throw new IllegalArgumentException("Navigation speed must be1..5 blocks/second");
+        if (!Double.isFinite(speed) || speed < 1 || speed > MAXIMUM_SPEED) throw new IllegalArgumentException("Navigation speed must be1..10 blocks/second");
         if (!origin.world().equals(destination.world())) throw new IllegalArgumentException("Navigation requires the same world");
         if (Math.abs(delta.x()) > 32 || Math.abs(delta.z()) > 32 || Math.abs(delta.y()) > 8)
             throw new IllegalArgumentException("Route leg exceeds32 horizontal/8 vertical block bounds; use intermediate waypoints");

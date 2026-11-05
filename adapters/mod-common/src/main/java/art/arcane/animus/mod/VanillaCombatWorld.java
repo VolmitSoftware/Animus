@@ -1,7 +1,9 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.combat.CombatLoadout;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatTarget;
+import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
@@ -14,6 +16,7 @@ import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -30,15 +33,20 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageType;
 import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
-import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -56,6 +64,11 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
     private final VanillaTerrain terrain;
     private final Set<UUID> helpers = new HashSet<>();
     private final Set<UUID> suppressedDrops = new HashSet<>();
+    /** Entity type ids, looked up in the registry because the type constants moved between Minecraft versions. */
+    private static final Map<RangedWeapon, String> PROJECTILES = Map.of(RangedWeapon.ARROW, "minecraft:arrow",
+            RangedWeapon.SPECTRAL_ARROW, "minecraft:spectral_arrow", RangedWeapon.TRIDENT, "minecraft:trident", RangedWeapon.SNOWBALL, "minecraft:snowball",
+            RangedWeapon.EGG, "minecraft:egg", RangedWeapon.FIREBALL, "minecraft:fireball", RangedWeapon.SMALL_FIREBALL, "minecraft:small_fireball",
+            RangedWeapon.WITHER_SKULL, "minecraft:wither_skull", RangedWeapon.LLAMA_SPIT, "minecraft:llama_spit", RangedWeapon.POTION, "minecraft:splash_potion");
 
     VanillaCombatWorld(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, VanillaTerrain terrain) {
         super(living, terrain);
@@ -104,7 +117,25 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         return Optional.of(new CombatTarget(new TargetRef(kind, creature.getUUID()), BuiltInRegistries.ENTITY_TYPE.getKey(creature.getType()).toString(), name,
                 new WorldPosition(ModWorldKeys.key(creature.level()), new Vec3(at.x(), at.y(), at.z())),
                 new Hitbox(new Vec3(box.minX, box.minY, box.minZ), new Vec3(box.maxX, box.maxY, box.maxZ)),
-                creature.getHealth(), categories, "", Optional.empty()));
+                creature.getHealth(), categories, "", Optional.empty(), details(creature)));
+    }
+
+    /** What item, health and effect rules read from a real entity. */
+    private static CombatTarget.Details details(LivingEntity creature) {
+        List<String> worn = new ArrayList<>();
+        for (EquipmentSlot slot : List.of(EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET)) {
+            ItemStack stack = creature.getItemBySlot(slot);
+            if (!stack.isEmpty()) worn.add(item(stack));
+        }
+        Set<String> effects = new HashSet<>();
+        for (MobEffectInstance effect : creature.getActiveEffects()) {
+            Identifier id = BuiltInRegistries.MOB_EFFECT.getKey(effect.getEffect().value());
+            if (id != null) effects.add(id.toString());
+        }
+        return new CombatTarget.Details(creature.getMaxHealth(), item(creature.getMainHandItem()), item(creature.getOffhandItem()), worn, effects);
+    }
+    private static String item(ItemStack stack) {
+        return stack.isEmpty() ? CombatLoadout.EMPTY : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
     }
 
     @Override public List<CombatTarget> nearbyReal(WorldPosition center, double radius, int limit) {
@@ -161,17 +192,35 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         return new DamageOutcome(DamageStatus.APPLIED, applied, victim.isDeadOrDying() || victim.getHealth() <= 0);
     }
 
-    @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity) {
+    @Override public boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect) {
+        Entity entity = entity(target.ref().id());
+        Identifier id = Identifier.tryParse(effect.id());
+        if (!(entity instanceof LivingEntity victim) || victim.isRemoved() || victim.isDeadOrDying() || id == null) return false;
+        Optional<Holder.Reference<MobEffect>> type = BuiltInRegistries.MOB_EFFECT.get(id);
+        return type.isPresent() && victim.addEffect(new MobEffectInstance(type.get(), effect.durationTicks(), effect.amplifier()));
+    }
+    @Override public boolean permitted(TargetRef player, String node) {
+        if (player.kind() != TargetKind.PLAYER) return false;
+        ServerPlayer online = server.getPlayerList().getPlayer(player.id());
+        return online != null && VanillaRuntimeHost.permitted(online.permissions(), node);
+    }
+    @Override public void tell(UUID player, String speaker, String message) {
+        ServerPlayer online = server.getPlayerList().getPlayer(player);
+        if (online != null) online.sendSystemMessage(Component.literal("[" + speaker + "]: " + message));
+    }
+    @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon) {
         ServerLevel level = terrain.level(from.world());
         Vec3 point = from.point();
         if (level == null || !level.getChunkSource().hasChunk(((int) Math.floor(point.x())) >> 4, ((int) Math.floor(point.z())) >> 4)) return Optional.empty();
         if (velocity.distance(Vec3.ZERO) < .0001) return Optional.empty();
-        Arrow arrow = new Arrow(level, point.x(), point.y(), point.z(), new ItemStack(Items.ARROW), null);
-        arrow.pickup = AbstractArrow.Pickup.DISALLOWED;
-        arrow.setDeltaMovement(vanilla(velocity));
-        if (!level.addFreshEntity(arrow)) return Optional.empty();
-        helpers.add(arrow.getUUID());
-        return Optional.of(arrow.getUUID());
+        EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.tryParse(PROJECTILES.get(weapon)));
+        if (!(type.create(level, EntitySpawnReason.TRIGGERED) instanceof Projectile projectile)) return Optional.empty();
+        if (projectile instanceof AbstractArrow arrow) arrow.pickup = AbstractArrow.Pickup.DISALLOWED;
+        projectile.setPos(point.x(), point.y(), point.z());
+        projectile.setDeltaMovement(vanilla(velocity));
+        if (!level.addFreshEntity(projectile)) return Optional.empty();
+        helpers.add(projectile.getUUID());
+        return Optional.of(projectile.getUUID());
     }
     @Override public Optional<Vec3> helperPosition(UUID helper) {
         Entity entity = helpers.contains(helper) ? entity(helper) : null;

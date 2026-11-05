@@ -122,95 +122,76 @@ Steps 1 to 7 are built; see [shops](shops.md) and [chest GUIs](gui.md). Step 8 r
 
 ## 2. Sentinel (combat)
 
-Animus already has a Sentinel-style combat module ([combat.md](combat.md)) and a field-by-field importer ([compatibility.md](compatibility.md#sentinel-settings)). This section lists only what is still missing or partial. Sentinel is open source; facts below come from the pinned commit [96672f1](https://github.com/mcmonkeyprojects/Sentinel/tree/96672f1b03f2182d11f8e3188cae24b9cdaf14a8) used in [upstream-inventory.md](upstream-inventory.md), its [README](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/README.md) and [plugin.yml](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/resources/plugin.yml).
+Animus has a Sentinel-style combat module ([combat.md](combat.md)) and a field-by-field importer ([compatibility.md](compatibility.md#sentinel-settings)). This section lists what each Sentinel feature maps to and what is still missing. Sentinel is open source; facts below come from the pinned commit [96672f1](https://github.com/mcmonkeyprojects/Sentinel/tree/96672f1b03f2182d11f8e3188cae24b9cdaf14a8) used in [upstream-inventory.md](upstream-inventory.md), its [README](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/README.md) and [plugin.yml](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/resources/plugin.yml).
 
-### Import defects found
+### Import defects (fixed)
 
-These change how imported NPCs behave and should be fixed before any new feature.
-
-| Problem | Sentinel behavior | Animus behavior | Fix |
-| --- | --- | --- | --- |
-| `respawnTime: 0` | The NPC stays dead and is marked not spawned ([onDeath](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelTrait.java)) | Converts to `delayTicks: 0`, which respawns at once | Convert 0 to `-1` |
-| `respawnTime` below 0 | The NPC is deleted on death | Never respawns, but is not deleted | Add `respawn.deleteOnDeath` or report the difference in `migrationReport` |
-| `OWNER` ignore | Added to every new Sentinel's ignores, so it never attacks its owner ([onAttach](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelTrait.java)) | Kept unsupported, so an imported guard that targets players can attack its owner | Add an `owner` rule that uses the definition's `owner` |
+| Problem | Sentinel behavior | Animus now |
+| --- | --- | --- |
+| `respawnTime: 0` | The NPC stays dead and is marked not spawned ([onDeath](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelTrait.java)) | Converts to `delayTicks: -1`: the NPC stays dead |
+| `respawnTime` below 0 | The NPC is deleted on death | Converts to `delayTicks: -1` with `deleteOnDeath: true`: the definition is deleted through the normal transaction path, and the log names the transaction that `/animus rollback` undoes |
+| `OWNER` ignore | Added to every new Sentinel's ignores, so it never attacks its owner ([onAttach](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelTrait.java)) | Converts to `ignores.owner: true`, matched against the definition's `owner` |
 
 ### Feature table
 
-| Feature | What it does | Animus status | Proposed Animus design |
+| Feature | What it does | Animus status | Animus design |
 | --- | --- | --- | --- |
-| Basic categories and entity types | `PLAYERS`, `NPCS`, `MONSTERS`, `MOBS`, `PASSIVE_MOBS`, and about 80 entity names with plural aliases | covered | Already converted |
-| `OWNER` target and ignore | The NPC's Citizens owner | missing | Rule entry `owner: true` |
-| Name patterns | `player:`, `npc:` and `entityname:` are regular expressions | partial | Animus matches exact names. Add `patterns` lists with a bounded regex engine |
-| Held and worn items | `helditem:`, `offhand:`, `equipped:`, `in_inventory:` item matchers | missing | Rule `items` with slot and material or pattern |
-| Permission groups | `group:` through Vault | missing | Rule `groups` through a permission adapter |
-| Permission nodes | `permission:` | missing | Rule `permissions` |
-| Health | `healthabove:` and `healthbelow:` percentage | missing | Rule `health` with `above` and `below` |
-| Potion effects | `potion:` | missing | Rule `effects` |
-| Scoreboard | `sbteam:`, `sbscoreabove:`, `sbscorebelow:` | missing | Rule `teams` and `scores` |
-| Mob status | `status:angry`, `status:passive` | missing | Rule `status` |
-| NPCs owned by | `npc_owned_by:<target>` | missing | Rule `ownedBy` with a nested rule |
-| Squad and UUID | `squad:`, `uuid:` | covered | Already converted |
-| Combined rules | `multi:` (several separate targets together) and `allinone:` (one entity matches all parts) | missing | Rule `all` (one entity, all parts) and `together` (several entities) |
-| Fight events | `event:pvp`, `pve`, `eve`, `pvnpc`, `pvsentinel`, `npcvnpc`, `pv:<target>`, `ev:<target>` target whoever starts that kind of fight nearby | missing | Rule `events` evaluated from Bukkit damage events within scan range |
-| Guarded fight | `event:guarded_fight` attacks what the guarded player attacks | partial | Animus guards defend their charge; add `guard.assist` |
-| Chat trigger | `event:message:<text>` targets a visible player whose chat contains the text | missing | Rule `chat` with a substring list |
-| Other plugins | Towny, Factions, SimpleClans, War, SimplePets, BeautyQuests, Denizen procedures | missing | Optional target adapters later; keep entries for review |
+| Basic categories and entity types | `PLAYERS`, `NPCS`, `MONSTERS`, `MOBS`, `PASSIVE_MOBS`, and about 80 entity names with plural aliases | covered | Converted |
+| `OWNER` target and ignore | The NPC's Citizens owner | covered | Rule `owner: true` |
+| Name patterns | `player:`, `npc:` and `entityname:` are regular expressions | covered | Rule `patterns`; compiled once, bounded, invalid patterns refused with the field |
+| Held and worn items | `helditem:`, `offhand:`, `equipped:`, `in_inventory:` item matchers | partial | Rule `items` with `mainHand`, `offHand` and `worn`. Inventory contents and `name:`/`lore:` matchers are kept for review |
+| Permission groups | `group:` through Vault | covered | Rule `groups`, read as the permission `group.<name>` that permission plugins grant |
+| Permission nodes | `permission:` | covered | Rule `permissions` |
+| Health | `healthabove:` and `healthbelow:` percentage | covered | Rules `healthAbove` and `healthBelow` |
+| Potion effects | `potion:` | covered | Rule `effects` |
+| Scoreboard | `sbteam:`, `sbscoreabove:`, `sbscorebelow:` | missing | Kept for review |
+| Mob status | `status:angry`, `status:passive` | missing | Kept for review |
+| NPCs owned by | `npc_owned_by:<target>` | missing | Kept for review |
+| Squad and UUID | `squad:`, `uuid:` | covered | Converted |
+| Combined rules | `multi:` (several separate targets together) and `allinone:` (one entity matches all parts) | covered | Rules `together` and `all` |
+| Fight events | `event:pvp`, `pve`, `eve`, `pvnpc`, `pvsentinel`, `npcvnpc`, `pv:<target>`, `ev:<target>` target whoever starts that kind of fight nearby | covered | Rule `events`; queued and examined within `eventsPerTick` |
+| Guarded fight | `event:guarded_fight` attacks what the guarded player attacks | covered | `guard.assist` |
+| Chat trigger | `event:message:<text>` targets a visible player whose chat contains the text | covered | Rule `chat` |
+| Other plugins | Towny, Factions, SimpleClans, War, SimplePets, BeautyQuests, Denizen procedures | missing | Kept for review; optional target adapters later |
 | Melee and arrows | Melee with reach and rate; bows and crossbows | covered | |
-| Other weapons | Trident, fireball from blaze rod, splash and lingering potions, lightning from nether star, spectral arrows, snowballs, eggs, ender pearls, wither skulls, llama spit, shulker bullets, evoker fangs | missing | `ranged.weapon` values added one at a time, each with one damage authority |
-| Arrow type from inventory | Tipped, spectral or fire arrows set by inventory contents | missing | `ranged.arrow` from definition inventory |
-| Healer NPC | Potions on friendly targets, as in the README healer example | missing | `ranged.weapon: potion` with `effect`, used with health rules |
-| Damage and armor from equipment | `damage: -1` and `armor: -1` use held item and worn armor | partial | Converts to fixed values. Add `fromEquipment: true` using item attributes |
-| Weapon damage map | `weapondamage MATERIAL DAMAGE` | missing | `melee.weaponDamage` map |
-| Weapon redirect | Treat one material as another | missing | `weapons.redirect` map |
-| Ammunition | `needammo` uses arrows and potions from the NPC inventory | missing | `ranged.useAmmo` that reduces definition inventory at runtime only |
-| Auto switch | Swap between bow and sword by distance using inventory items | partial | Animus switches between its own melee and ranged sections. Add showing the matching held item |
-| CrackShot and QualityArmory guns | Fire gun items | missing | Out of scope; keep for review |
-| Greeting and warning | Messages to friendly or hostile players in `greet_range`, every `greet_rate` ticks | missing | `greetings` section with `friendly`, `hostile`, `range`, `cooldownTicks`, or a behavior trigger `combat-greet`. 60 imported records use `warning_text` |
-| WorldGuard region leash | `wgregion` keeps chasing inside one region | missing | `pursuit.region` checked through the existing WorldGuard adapter |
+| Other weapons | Trident, fireball from blaze rod, splash and lingering potions, lightning from nether star, spectral arrows, snowballs, eggs, ender pearls, wither skulls, llama spit, shulker bullets, evoker fangs | partial | `ranged.weapon`: trident, fireball, small fireball, potion, spectral arrow, snowball, egg, wither skull and llama spit, each a tracked helper with one damage authority. Lightning, pearls, shulker bullets and evoker fangs are missing |
+| Arrow type from inventory | Tipped, spectral or fire arrows set by inventory contents | missing | Ammunition counts tipped and spectral arrows, but the arrow fired is always plain |
+| Healer NPC | Potions on friendly targets, as in the README healer example | covered | `ranged.weapon: potion` with a helpful `effect`, used with health rules |
+| Damage and armor from equipment | `damage: -1` and `armor: -1` use held item and worn armor | covered | `melee.fromEquipment`, `ranged.fromEquipment`, `defense.armorFromEquipment`; enchantments are not read |
+| Weapon damage map | `weapondamage MATERIAL DAMAGE` | covered | `melee.weaponDamage` |
+| Weapon redirect | Treat one material as another | missing | Kept for review |
+| Ammunition | `needammo` uses arrows and potions from the NPC inventory | covered | `ranged.useAmmo`; a runtime count, the stored inventory never changes |
+| Auto switch | Swap between bow and sword by distance using inventory items | partial | Animus switches between its own melee and ranged sections; the held item does not change. `autoswitch` is kept for review |
+| CrackShot and QualityArmory guns | Fire gun items | missing | Out of scope; kept for review |
+| Greeting and warning | Messages to friendly or hostile players in `greet_range`, every `greet_rate` ticks | covered | `greetings` with `friendly`, `hostile`, `range` and `cooldownTicks`. The 60 imported `warning_text` records convert |
+| WorldGuard region leash | `wgregion` keeps chasing inside one region | covered on Bukkit | `pursuit.region` through the WorldGuard adapter; unavailable with a diagnostic where no protection plugin provides regions, including mod servers |
 | Path guarding | Guards a Citizens path or point and returns to it | partial | Return to post and patrol resume exist; patrol restarts from the first waypoint |
-| Scan range | Any value; default 20, many servers use 50 to 100 | partial | Limited to 64 |
-| Speed | Speed modifier | partial | Limited to 1 to 5 blocks per second |
+| Scan range | Any value; default 20, many servers use 50 to 100 | covered | Up to 256, capped by `[combat] maximumScanRange` (default 100) |
+| Speed | Speed modifier | covered | Up to 10 blocks per second, capped by `[combat] maximumSpeed` (default 8) |
 | Mobs fight NPCs | Sentinel NPCs are real entities that mobs target | partial | Only the zombie adapter targets NPCs |
 | Player damage rules | Vanilla damage including enchantments, potions and critical hits | partial | Attack attribute and charge only |
-| Kill, respawn, forgive | `/sentinel kill`, `respawn`, `forgive` | partial | `release` acts like forgive. Add `kill` and `respawn` operations |
+| Kill, respawn, forgive | `/sentinel kill`, `respawn`, `forgive` | partial | `release` acts like forgive. `kill` and `respawn` operations are missing |
 | Info and statistics | `/sentinel info`, `stats`, `targets`, `ignores`, `avoids` | partial | `/animus combat <npc> status` exists. Counters are imported but not updated |
 | Death messages | Custom death messages for kills | missing | `death.message` text |
 | Invisible targets | `random.ignore invisible targets` | missing | `targeting.ignoreInvisible` |
-| Armor stand targets | Off by default (`random.allow armor stand targets`) | partial | Armor stands count as mobs; confirm they are excluded by default |
+| Armor stand targets | Off by default (`random.allow armor stand targets`) | covered | Armor stands are not mobs, so they are never targets |
 | Guard damage | Guards cannot hurt the player they guard (`random.no guard damage`) | covered | Guards never target their charge |
-| Explosion blocks | Fireballs and skulls do not break blocks | missing | Needed with explosive weapons |
+| Explosion blocks | Fireballs and skulls do not break blocks | covered | Helper projectiles never explode |
 | Defaults from config | `sentinel defaults.*` in Sentinel's config set new NPC values | missing | Optional `[combat.defaults]` in TOML; imports already write Sentinel defaults |
-| API events | Attack, chase start and end, combat state, no more targets, wants to path | partial | `damage` and `death` triggers exist. Add `combat-start`, `combat-end` and `target-lost` triggers |
+| API events | Attack, chase start and end, combat state, no more targets, wants to path | partial | `damage` and `death` triggers exist. `combat-start`, `combat-end` and `target-lost` triggers are missing |
 | Editing by command | About 55 `/sentinel` subcommands with `sentinel.<name>` permissions and `sentinel.admin` for other owners' NPCs | partial | Animus edits JSON with `animus.admin`. Owner-scoped editing is not planned |
 
 ### Import mapping
 
-The saves.yml path is `npc.<id>.traits.sentinel`; the current mapping is in [compatibility.md](compatibility.md#sentinel-settings). Changes this section adds:
+The saves.yml path is `npc.<id>.traits.sentinel`; the full mapping is in [compatibility.md](compatibility.md#sentinel-settings). Of the 69 persisted fields, 51 settings convert, 2 are kept for review (`autoswitch`, `weapon_redirect_map`) and 16 statistics are kept separately. Inside target lists, `byInventoryItem`, `byStatus`, `name:` and `lore:` item matchers, and `byOther` entries from scoreboards, `npc_owned_by` and other plugins are kept for review.
 
-| Sentinel key | Change |
-| --- | --- |
-| `respawnTime` | 0 becomes `-1`; below 0 sets `deleteOnDeath` or is reported |
-| `allIgnores` containing `OWNER` | Becomes `ignores.owner: true` |
-| `allTargets` and others: `byPlayerName`, `byNpcName`, `byEntityName` | Become `patterns` once regex rules exist |
-| `byHeldItem`, `byOffhandItem`, `byEquippedItem`, `byInventoryItem` | Become `items` rules |
-| `byGroup`, `byStatus`, `byOther` (`healthabove`, `potion`, `permission`, `sbteam`, `npc_owned_by`) | Become the matching new rules |
-| `byEvent` | Becomes `events`, `chat` and `guard.assist` |
-| `byAllInOne`, `byMultiple` | Become `all` and `together` |
-| `warning_text`, `greeting_text`, `greet_range`, `greet_rate` | Become `greetings` |
-| `worldguard_region` | Becomes `pursuit.region` |
-| `needsAmmo`, `autoswitch`, `weapon_damage_map`, `weapon_redirect_map` | Become `ranged.useAmmo`, held-item switching, `melee.weaponDamage`, `weapons.redirect` |
-| `damage: -1`, `armor: -1` | Become `fromEquipment: true` |
+### Remaining work
 
-### Implementation order
-
-1. Fix the three import defects above.
-2. Greetings and warnings (60 imported records use them).
-3. Regex name patterns, item rules, health and permission rules, and `all` combined rules.
-4. Fight event rules and guard assist.
-5. Damage and armor from equipment, weapon damage map and the held item display for switching.
-6. WorldGuard region leash, `kill` and `respawn` operations, and combat start and end triggers.
-7. Extra weapons in this order: potions (healer), trident, snowball and egg, fireball, lightning, the rest.
-8. Optional third-party target adapters.
+1. `kill` and `respawn` operations, and `combat-start`, `combat-end` and `target-lost` triggers.
+2. Lightning, ender pearls, shulker bullets and evoker fangs; arrow type from inventory.
+3. Held-item display when switching, and weapon redirects.
+4. Scoreboard, mob status and `npc_owned_by` rules; invisible-target and death-message settings.
+5. Optional third-party target adapters.
 
 ## 3. Constructor, formerly Builder (NPCs that build)
 
@@ -228,36 +209,36 @@ The linked source repository, github.com/Weefle/Constructor, is not available. C
 
 | Feature | What it does | Animus status | Proposed Animus design |
 | --- | --- | --- | --- |
-| Schematic files | Builder: `.schematic`. Constructor: Sponge `.schem` and structure `.nbt`, own reader as a fallback | missing | Animus reader for Sponge `.schem` versions 2 and 3 and vanilla `.nbt`, no WorldEdit needed; legacy `.schematic` through a one-time conversion |
+| Schematic files | Builder: `.schematic`. Constructor: Sponge `.schem` and structure `.nbt`, own reader as a fallback | covered | Animus reads Sponge `.schem` versions 1 to 3 and vanilla `.nbt` with bounded parsing, no WorldEdit needed. Legacy MCEdit `.schematic` is refused with a message: save it again as `.schem`. See [building](building.md#schematic-files) |
 | Multi-part builds (Constructor) | A YAML file lists parts built in order with offsets | missing | `build` pack file with `parts` and offsets; YAML layout not confirmed |
-| Build module | NPC has a loaded schematic, an origin and options | missing | `animus:builder` module with `schematic`, `origin`, `options` |
-| Origin | NPC position, player position, a set point, or the schematic's own origin. Builder centres X and Z on the origin and trims empty bottom layers | missing | `origin` with `mode` (`npc`, `point`, `schematic`) and `yOffset`; centre rule kept for Builder imports |
-| Rotation (Constructor) | Rotates the build, with block state fixes | missing | `rotation` 0, 90, 180, 270 with block state rotation |
-| Mirroring | Not mentioned | missing (not needed for parity) | Later |
-| Build order | Bottom up in groups of `layers:N`. Within a group: air, base blocks, furniture, redstone, liquids and falling blocks, then decorations. `groupall` groups the whole build | missing | Built-in planner with the same phase order; `layers` and `groupAll` options |
-| Layer pattern | `spiral` (default), `reversespiral`, `linear`, `reverselinear` | missing | `pattern` option |
-| Skip matching blocks | Blocks that already match are skipped. Repair mode replaces changed blocks and removes added ones | missing | Planner compares each block before queuing; `mode: build` or `repair` |
-| Ignore air and liquids | `ignoreair`, `ignoreliquid`; Constructor places air only with both ignore air and excavate | missing | `ignoreAir`, `ignoreLiquids` |
-| Excavate | Clears the site top down before building | missing | `excavate` option; removed blocks are kept as described below |
-| Walking to blocks | NPC walks next to each block, then places it. Teleports after a timeout (default 2 seconds) or when stuck. Walks back at the end | partial | Navigator exists (walking, 30 blocks per request, `teleportWhenStuck`). Add a reach search around each block and `moveTimeoutSeconds` |
-| Build speed | Walking speed plus the timeout; no ticks-per-block setting | partial | Navigator speed 1 to 5; add `blocksPerTick` limits in TOML |
-| Place effects | Swing arm, hold the block (or a pickaxe for air), block sound and particles | partial | `animus:set-equipment`, sound and particle exist. Add arm swing and per-block effect |
-| Containers and signs | Constructor keeps chest, furnace, shulker, sign and banner contents. Builder 0.7.1 does not | missing | Copy block entity data from the schematic |
+| Build module | NPC has a loaded schematic, an origin and options | covered | `animus:builder` definition section with `schematic`, `origin`, `options`; `/animus build start <npc-id>` runs it |
+| Origin | NPC position, player position, a set point, or the schematic's own origin. Builder centres X and Z on the origin and trims empty bottom layers | covered | The leader's block or `at=`; `anchor` `center` (Builder's rule, the default), `corner` or `schematic`; `offset` and `yoffset` |
+| Rotation (Constructor) | Rotates the build, with block state fixes | covered | `rotation` 0, 90, 180, 270 with block state rotation |
+| Mirroring | Not mentioned | covered | `mirror` `x` or `z`, before rotation |
+| Build order | Bottom up in groups of `layers:N`. Within a group: air, base blocks, furniture, redstone, liquids and falling blocks, then decorations. `groupall` groups the whole build | covered | Planner order per group: air (top down), solid, falling, attached and dependent blocks, then water and lava; `layers` and `groupall` |
+| Layer pattern | `spiral` (default), `reversespiral`, `linear`, `reverselinear` | covered | `pattern` option |
+| Skip matching blocks | Blocks that already match are skipped. Repair mode replaces changed blocks and removes added ones | partial | Matching blocks are skipped; repair mode is not built |
+| Ignore air and liquids | `ignoreair`, `ignoreliquid`; Constructor places air only with both ignore air and excavate | covered | `ignoreair`, `ignoreliquids` |
+| Excavate | Clears the site top down before building | covered | `excavate`; removed blocks go into the undo record |
+| Walking to blocks | NPC walks next to each block, then places it. Teleports after a timeout (default 2 seconds) or when stuck. Walks back at the end | covered | Walks to a standing spot within `reach`, moves next to the block after `timeout`; no walk back at the end |
+| Build speed | Walking speed plus the timeout; no ticks-per-block setting | covered | `speed`, `interval` per build; `placementsPerTick` in TOML |
+| Place effects | Swing arm, hold the block (or a pickaxe for air), block sound and particles | covered | Arm swing, held block or pickaxe, place sound; no particles |
+| Containers and signs | Constructor keeps chest, furnace, shulker, sign and banner contents. Builder 0.7.1 does not | missing | Blocks are placed empty; counted and reported by `inspect` |
 | Entities in schematics | Not placed | missing (not needed) | |
-| Physics | Builder places without physics updates | missing | Place without updates, then update each finished group; falling and attached blocks go last |
-| Materials from players | Supply mode: the build waits until players donate the needed items by right click; Builder maps blocks to items with `supply.txt` | missing | `materials.mode: donate` with a needed list as runtime state; click to see the list and donate |
-| Materials list | Constructor has a needed materials screen; Builder shows a chat list | missing | GUI list, shared with the shop screen framework |
+| Physics | Builder places without physics updates | covered | Placed without neighbour updates; falling and attached blocks go after solid blocks |
+| Materials from players | Supply mode: the build waits until players donate the needed items by right click; Builder maps blocks to items with `supply.txt` | covered | `materials=donate`: the build waits with a status message; `/animus build <build> donate` hands over the held stack; the server maps blocks to items |
+| Materials list | Constructor has a needed materials screen; Builder shows a chat list | partial | Chat list from `survey`; no screen |
 | Excavated items | Constructor stores removed blocks and returns them through `/constructor excavated` | missing | Store removed items as NPC state; GUI to collect |
-| Chest or economy sourcing | Not present in either | missing (not needed) | Optional later |
+| Chest or economy sourcing | Not present in either | covered (chest) | `materials=container` takes items from one linked container; no economy |
 | Mark area | Builder places markers at the four corners and restores them later | missing | Packet-only outline, no world change |
 | Preview (Constructor) | Glowing ghost blocks for N seconds, limit 3000 entities | missing | Packet-only block displays per viewer; `previewSeconds`, `maxPreviewBlocks` |
-| Undo (Constructor) | Reverts every placed block, including contents, across sessions | missing | Undo journal stored per build, with the original block and its contents |
-| Teams (Constructor 4) | A leader with workers sharing one build by distance; members persist | missing | `team` list on the leader; the planner hands out blocks by nearest worker |
-| Survey and info | Survey lists needed materials; info shows total, remaining and percent | missing | `/animus build <npc> survey|info` |
-| Pause, cancel, resume after restart | Cancel stops. After restart the build continues, skipping blocks already placed | missing | Build state saved with the NPC; resume rebuilds the queue and skips matching blocks |
-| Start, complete and cancel hooks | Messages, Denizen tasks (Builder `onstart`, `oncomplete`, `oncancel`), Denizen triggers in Constructor | missing | Behavior triggers `build-start`, `build-complete`, `build-cancel` |
-| Protection | Builder never checks. Constructor checks WorldGuard build and break flags and sends test place and break events for other claim plugins, with a bypass permission | missing | Protection adapter that asks before each block; deny skips and reports. Bypass only through settings |
-| Chunk loading | Builder loads chunks as it places | missing | Place only in loaded chunks; wait when a chunk is not loaded, matching the no-terrain-loading rule |
+| Undo (Constructor) | Reverts every placed block, including contents, across sessions | covered | Saved, bounded undo record; blocks changed since are kept; contents are not restored |
+| Teams (Constructor 4) | A leader with workers sharing one build by distance; members persist | covered | `team add|remove`; members take the next block of the current step in order, not by distance |
+| Survey and info | Survey lists needed materials; info shows total, remaining and percent | covered | `survey`; `status` shows steps, percent, counters and an estimate of the time left |
+| Pause, cancel, resume after restart | Cancel stops. After restart the build continues, skipping blocks already placed | covered | `pause`, `resume`, `cancel`; JSON state under `state/builds/` resumes after restart |
+| Start, complete and cancel hooks | Messages, Denizen tasks (Builder `onstart`, `oncomplete`, `oncancel`), Denizen triggers in Constructor | partial | Triggers `build_finished` and `build_paused`, the `animus:build` action, and messages to the player who started the build |
+| Protection | Builder never checks. Constructor checks WorldGuard build and break flags and sends test place and break events for other claim plugins, with a bypass permission | partial | Asks before each block, fails closed; deny skips and counts. WorldGuard only; mod servers have none. No bypass |
+| Chunk loading | Builder loads chunks as it places | covered | Places only in loaded chunks and waits otherwise |
 | GUIs (Constructor) | NPC list, schematic list, parameters, team and preview buttons | missing | Phase 2 GUI; Phase 1 commands |
 | Dynmap refresh | Re-render the area when done | missing (not needed) | |
 
@@ -267,7 +248,7 @@ Builder: `/builder (id) <help|reload|list|load <name>|origin [clear|schematic|me
 
 Constructor: `/constructor load|build [-ignoreAir] [-ignoreLiquid] [-ignoreProtection] [-excavate]|cancel|undo|preview [seconds]|team add|remove|clear|list|npc|list|excavated|info|survey|reload|timeout|supply`. Permissions `constructor.<command>`; `info`, `survey` and `donate` are given to all players by default. Source: [listing](https://api.spiget.org/v2/resources/79683).
 
-Animus equivalents: `/animus build <npc> load|start|cancel|undo|preview|survey|info|team ...` under `animus.admin`, with donating open to any player when the build allows it.
+Animus equivalents, as built: `/animus build start <npc-id> [schematic] [at=...] [option=value...]` and `/animus build <build> status|pause|resume|cancel|undo|survey|donate|team add|remove <npc-id>`, plus `list`, `schematics` and `inspect`, under `animus.admin`. `donate` needs only `animus.build.donate`, given to everyone by default. There is no `preview` or `mark`. See [building](building.md#commands).
 
 ### Import mapping
 
@@ -292,20 +273,24 @@ Builder, trait path `npc.<id>.traits.builder` ([BuilderTrait.java](https://githu
 
 `groupall` and queue position are not saved by Builder, so a resumed build always groups by layer.
 
-Constructor, trait path `npc.<id>.traits.constructor`: key names are not confirmed. The importer should keep the whole trait for review and map Builder-style keys only when it finds them. Team membership is stored in this trait, according to the change log.
+The importer does this mapping into an `animus:builder` section with `reviewAccepted: false`, keeps the whole trait under `animus:builder.imported` and in `citizens:review`, and reports every key it does not convert. The schematic name becomes `<name>.schem`, because Builder's `.schematic` files must be saved again in the Sponge format. `State`, `NeededMaterials`, `ContinueLoc` and the Denizen task names are kept, not run.
 
-Files: Builder schematics are in `plugins/Builder/schematics/` (setting `SchematicsFolder`); Constructor's are in `plugins/Constructor/schematics/`. Import copies them into an Animus schematics folder. Builder `config.yml` texts (`DefaultTexts.*` with `<NPC>`, `<SCHEMATIC>`, `<AMOUNT>`, `<PLAYER>`, `<ITEM>`) map to Animus message templates, and `supply.txt` maps to a materials table.
+Constructor, trait path `npc.<id>.traits.constructor`: key names are not confirmed. The importer keeps the whole trait in `citizens:review`, converts nothing, and reports its keys in the import's migration warnings. Team membership is stored in this trait, according to the change log.
+
+Files: Builder schematics are in `plugins/Builder/schematics/` (setting `SchematicsFolder`); Constructor's are in `plugins/Constructor/schematics/`. The importer does not copy them; copy `.schem` and `.nbt` files into the Animus `schematics` folder by hand. Builder `config.yml` texts (`DefaultTexts.*` with `<NPC>`, `<SCHEMATIC>`, `<AMOUNT>`, `<PLAYER>`, `<ITEM>`) map to Animus message templates, and `supply.txt` maps to a materials table.
 
 ### Implementation order
 
-1. Schematic reader for `.schem` and `.nbt`, and the build planner with phase order, layers, patterns, skip-matching and ignore options.
-2. Block placer with per-tick limits, loaded chunks only, a protection check per block, and block entity contents.
-3. `animus:builder` module, `/animus build` commands, and walking to each block with timeout teleport.
-4. Saved build state, resume after restart, and the Builder trait importer with schematic copy.
-5. Excavation, the undo journal and repair mode.
-6. Donated materials, survey, the materials list and excavated items, using the shared screen framework.
-7. Packet-only preview and mark, rotation, and start, complete and cancel triggers.
-8. Teams, multi-part builds and the Constructor importer once a sample save is available.
+Done: the schematic reader, the planner with phase order, layers, patterns, rotation, mirroring and ignore options, skip-matching, the block placer with per-tick limits, loaded chunks only and a protection check per block, `/animus build` commands, walking with the move timeout, saved state and resume, excavation, the undo record, donated and container materials, survey, teams, the `build_finished` and `build_paused` triggers, the `animus:build` action and the Builder trait importer. See [building](building.md).
+
+Still open:
+
+1. Block entity contents (chests, signs, banners).
+2. Repair mode.
+3. The materials screen and returning dug-out items, using the shared screen framework.
+4. Packet-only preview and mark.
+5. Multi-part builds, and the Constructor importer once a sample save is available.
+6. Folia support, once a build can be handed between regions.
 
 ## Shared work
 

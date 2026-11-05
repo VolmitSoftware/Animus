@@ -44,7 +44,7 @@ class BuiltinCapabilitiesTest {
         @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
     };
     private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "look", "set-appearance",
-            "set-equipment", "play-sound", "spawn-particle", "combat-control", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui");
+            "set-equipment", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui");
     private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state");
 
     private final RecordingPlatform platform = new RecordingPlatform();

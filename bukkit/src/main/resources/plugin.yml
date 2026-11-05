@@ -9,7 +9,7 @@ softdepend: [WorldGuard, Vault]
 commands:
   ${projectId}:
     description: Manages virtual NPCs, definitions and staged Citizens imports.
-    usage: '/<command> [status|list|create|select|inspect|edit|clone|delete|spawn|despawn|navigate|navigation|look|ride|attack|target|combat|proof|modules|behaviors|shop|gui|validate|reload|import|rollback]'
+    usage: '/<command> [status|list|create|select|inspect|edit|clone|delete|spawn|despawn|navigate|navigation|look|ride|attack|target|combat|build|proof|modules|behaviors|shop|gui|validate|reload|import|rollback]'
 
 permissions:
   animus.status:
@@ -18,6 +18,9 @@ permissions:
   animus.ride:
     description: Ride NPCs whose definition opts in with the animus:riding module. A definition may name its own node instead.
     default: op
+  animus.build.donate:
+    description: Donate held items to an NPC build that takes donations.
+    default: true
   animus.admin:
-    description: Manage NPCs, movement, combat, modules, behaviors, imports, and backups.
+    description: Manage NPCs, movement, combat, builds, modules, behaviors, imports, and backups.
     default: op

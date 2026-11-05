@@ -59,6 +59,12 @@
 - Citizens equipment, inventory, hologram, sneak, sit, default pose, armor stand, owner and nameplate visibility data convert to definition fields (converter version 4).
 - Persisted NPCs run on Folia, each owned by the region that owns its chunk, with explicit handoff between chunks. Triggers, behavior actions, navigation and interactions work there.
 - Fabric, NeoForge and Forge servers for 26.1.2, 26.2 and 26.3 run the persisted NPC runtime, commands, behaviors, modules, navigation, mounts, riding and combat as a server-side mod. Worlds are named by dimension; Bukkit world names still resolve.
+- Combat greetings and warnings; pattern, item, health, permission, group, effect, combined, fight-event and chat target rules; guard assist.
+- Trident, fireball, small fireball, snowball, egg, wither skull, llama spit, spectral arrow and potion weapons; healing potions; damage and armor from equipment; weapon damage map; ammunition.
+- WorldGuard pursuit regions; combat scan range up to 256 and speed up to 10, capped by `maximumScanRange` and `maximumSpeed`; `eventsPerTick`.
+- NPCs build Sponge `.schem` (v1-3) and structure `.nbt` schematics with `/animus build`, in phase order, with rotation, mirroring, patterns, layers and excavation; creative, donated and container materials; bounded undo; pause, resume, cancel; teams; resume after restart.
+- `animus:build` action, `build_finished` and `build_paused` triggers, `[builds]` settings and the `animus.build.donate` permission.
+- Builder trait import into `animus:builder`; Constructor traits kept and reported.
 
 ### Changed
 
@@ -82,8 +88,13 @@
 
 - The single-owner NPC runtime, command set, behavior commands and combat module are shared by every platform.
 
+- Sentinel import maps 51 of 69 fields (converter version 5).
+
+- Build changes ask WorldGuard on Bukkit; mod servers allow all build changes; builds are unavailable on Folia.
+
 ### Fixed
 
+- Imported Sentinel NPCs with `respawnTime` 0 stay dead; a negative value deletes the NPC on death, undoable with `/animus rollback`; imported guards never target their owner.
 - A player who logs out while riding is saved at the NPC's feet instead of beside it.
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 

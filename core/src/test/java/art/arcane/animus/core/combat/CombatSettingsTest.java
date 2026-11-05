@@ -59,7 +59,7 @@ class CombatSettingsTest {
         assertField("{\"targeting\":{\"lineOfSight\":\"xray\"}}", "$.modules.animus:combat.targeting.lineOfSight");
         assertField("{\"guard\":{\"player\":\"nope\"}}", "$.modules.animus:combat.guard.player");
         assertField("{\"guard\":{\"player\":\"00000000-0000-0000-0000-000000000001\",\"npc\":\"00000000-0000-0000-0000-000000000002\"}}", "$.modules.animus:combat.guard");
-        assertField("{\"ranged\":{\"weapon\":\"trident\"}}", "$.modules.animus:combat.ranged.weapon");
+        assertField("{\"ranged\":{\"weapon\":\"laser\"}}", "$.modules.animus:combat.ranged.weapon");
         assertField("{\"death\":{\"drops\":[{\"item\":\"iron\",\"chance\":2}]}}", "$.modules.animus:combat.death.drops[0]");
         assertField("{\"respawn\":{\"delayTicks\":-2}}", "$.modules.animus:combat.respawn.delayTicks");
         assertField("{\"unknown\":1}", "$.modules.animus:combat.unknown");

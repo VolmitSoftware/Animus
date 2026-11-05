@@ -11,11 +11,12 @@ import org.yaml.snakeyaml.events.CollectionEndEvent;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import art.arcane.animus.core.building.BuilderModule;
 import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 5;
+    public static final int CONVERTER_VERSION = 6;
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     public record Preview(String id, Path directory, int records, int valid, int skins, JsonObject summary) {
         public Preview { summary = summary.deepCopy(); }
@@ -24,7 +25,8 @@ public final class CitizensImporter {
         public int warningCount() { return summary.has("migrationWarnings") ? summary.getAsJsonArray("migrationWarnings").size() : 0; }
     }
     private static final Set<String> INTEGRATIONS = Set.of("sentinel", "denizen", "assignment", "denizen_flags", "denizenflags", "triggers", "constants");
-    private static final Set<String> REVIEW = Set.of("skintrait", "location", "owner", "equipment", "inventory", "waypoints", "text", "hologramtrait", "poses", "lookclose", "type", "spawned", "mounttrait", "controllable");
+    private static final Set<String> REVIEW = Set.of("skintrait", "location", "owner", "equipment", "inventory", "waypoints", "text", "hologramtrait", "poses", "lookclose", "type", "spawned", "mounttrait", "controllable",
+            BuilderMapping.BUILDER_TRAIT, BuilderMapping.CONSTRUCTOR_TRAIT);
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     public Preview preview(Path source, Path destination, Map<String, String> worldMap) throws IOException {
@@ -155,6 +157,13 @@ public final class CitizensImporter {
                         trader.module().ifPresent((JsonObject shop) -> modules.add("animus:shop", shop));
                         trader.warning().ifPresent((String warning) -> migrationWarnings.add("citizens-" + key + ": " + warning));
                     }
+                    if (traits.has(BuilderMapping.BUILDER_TRAIT)) {
+                        BuilderMapping.Result build = BuilderMapping.convert(reviewed.get(BuilderMapping.BUILDER_TRAIT));
+                        modules.add(BuilderModule.MODULE, build.module());
+                        for (String warning : build.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
+                    }
+                    if (traits.has(BuilderMapping.CONSTRUCTOR_TRAIT))
+                        for (String warning : BuilderMapping.constructor(reviewed.get(BuilderMapping.CONSTRUCTOR_TRAIT))) migrationWarnings.add("citizens-" + key + ": " + warning);
                     // This review copy applies only known location transformations. Exact originals stay in records/ and source.yml.
                     reviewed.remove("skintrait");
                     modules.add("citizens:review", reviewed);

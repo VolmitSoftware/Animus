@@ -40,7 +40,9 @@ import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.ExplosionPrimeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.world.EntitiesUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.projectiles.ProjectileSource;
@@ -178,6 +180,20 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         }
         TargetRef attacker = damager == null ? null : reference(damager);
         if (victim != null && attacker != null) module.engine().realDamaged(victim, attacker);
+    }
+    /** Chat arrives off the main thread; the engine takes it on its own thread and bounds its queue. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void chat(AsyncPlayerChatEvent event) {
+        TargetRef speaker = new TargetRef(TargetKind.PLAYER, event.getPlayer().getUniqueId());
+        String message = event.getMessage();
+        Runnable deliver = () -> { if (module.active()) module.engine().chat(speaker, message); };
+        if (plugin.getServer().isPrimaryThread()) deliver.run();
+        else if (plugin.isEnabled()) plugin.getServer().getScheduler().runTask(plugin, deliver);
+    }
+    /** Helper fireballs and skulls never explode, even if something else makes them hit. */
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void helperExplosion(ExplosionPrimeEvent event) {
+        if (world.helper(event.getEntity())) event.setCancelled(true);
     }
     @EventHandler(priority = EventPriority.HIGH)
     public void death(EntityDeathEvent event) {
