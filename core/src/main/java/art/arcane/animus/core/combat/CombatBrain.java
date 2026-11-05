@@ -797,6 +797,15 @@ final class CombatBrain {
         else target = null;
     }
 
+    /** Drops target, threat and movement and stands where it is; the engine is winding down. */
+    void stand() {
+        threat = null;
+        target = null;
+        forced = false;
+        alertPending = false;
+        finish();
+    }
+
     void release() {
         threat = null;
         Optional<VirtualNpcState.Snapshot> self = world.npc(npc);

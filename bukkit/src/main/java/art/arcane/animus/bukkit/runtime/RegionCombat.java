@@ -59,12 +59,18 @@ import org.bukkit.projectiles.ProjectileSource;
  * routes between owners: hits, heals and squad alerts are messages to the receiving NPC's owner, and fights reach the
  * guards and witnesses that care through their mailboxes. Bukkit events arrive on the thread that owns their subject
  * and touch only that subject before they hand off. Engines draw their per-tick work from the region's budgets.
+ * <p>
+ * {@code [combat]} settings apply live: a hotload publishes them here, the region budgets take them at each region's next
+ * tick, and every NPC's engine swaps them in on its own next turn. Turning combat off winds each engine down on its owner
+ * and closes it once its helpers are gone; turning it on lets each NPC open its engine again.
  */
 public final class RegionCombat implements Listener, AutoCloseable {
     /** At most this many owners hear of one fight or chat line; the rest are dropped and counted. */
     private static final int DELIVERIES_PER_EVENT = 64;
     private final RegionNpcRuntime host;
-    final CombatBudgets budgets;
+    /** The budgets in effect; replaced by a hotload, read by each NPC's owner at the start of its combat turn. */
+    volatile CombatBudgets budgets;
+    private final AutoCloseable settingsListener;
     final ProtectionAdapter protection;
     final Set<UUID> suppressedDrops = ConcurrentHashMap.newKeySet();
     private final String protectionName;
@@ -77,7 +83,8 @@ public final class RegionCombat implements Listener, AutoCloseable {
     private volatile boolean closed;
 
     RegionCombat(RegionNpcRuntime host, CombatBudgets budgets, ProtectionAdapter adapter, String protectionName) {
-        this.host = host; this.budgets = budgets; this.protectionName = protectionName;
+        this.host = host; this.protectionName = protectionName;
+        apply(budgets);
         protection = request -> {
             ProtectionAdapter.Decision decision;
             try { decision = adapter.decide(request); }
@@ -88,12 +95,30 @@ public final class RegionCombat implements Listener, AutoCloseable {
         helperKey = new NamespacedKey(host.plugin, "combat_helper");
         ownerKey = new NamespacedKey(host.plugin, "combat_helper_owner");
         host.plugin.getServer().getPluginManager().registerEvents(this, host.plugin);
+        settingsListener = host.runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> {
+            boolean was = this.budgets.enabled();
+            apply(next.combat());
+            if (was != next.combat().enabled())
+                warn(next.combat().enabled() ? "Combat started: enabled in config.toml" : "Combat stopping: disabled in config.toml; helpers in flight land or expire first");
+        });
     }
+
+    /** Any thread: publishes budgets. Region limits take them at each region's next tick, engines at their next turn. */
+    private void apply(CombatBudgets next) {
+        host.budget.limit(RegionBudget.Kind.COMBAT_BRAINS, next.brainsPerTick());
+        host.budget.limit(RegionBudget.Kind.COMBAT_SCANS, next.targetScansPerTick());
+        host.budget.limit(RegionBudget.Kind.COMBAT_PATHS, next.pathRequestsPerTick());
+        host.budget.limit(RegionBudget.Kind.COMBAT_ALERTS, next.squadAlertsPerTick());
+        host.budget.limit(RegionBudget.Kind.COMBAT_HELPERS, next.helperUpdatesPerTick());
+        budgets = next;
+    }
+    boolean enabled() { return budgets.enabled(); }
 
     String status() {
         int helpers = 0;
         for (RegionActor actor : combatants) { RegionActor.Publication view = actor.publication; if (view != null && view.combat() != null) helpers += view.combat().helpers(); }
-        return "Combat ready on Folia regions | module npcs=" + combatants.size() + " | helpers=" + helpers + " | protection=" + protectionName
+        CombatBudgets budgets = this.budgets;
+        return (budgets.enabled() ? "Combat ready on Folia regions" : "Combat unavailable: disabled in config.toml") + " | module npcs=" + combatants.size() + " | helpers=" + helpers + " | protection=" + protectionName
                 + " | protection-denials=" + denials.get() + " | protection-failures=" + failures.get() + " | owner-messages=" + messages.get()
                 + " | messages-dropped=" + dropped.get() + " | deleted-on-death=" + deleted.get()
                 + " | limits per region tick: brains=" + budgets.brainsPerTick() + ", scans=" + budgets.targetScansPerTick() + ", paths=" + budgets.pathRequestsPerTick();
@@ -123,7 +148,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
 
     /** Owner only: the actor's combat starts here. */
     ActorCombat open(RegionActor actor, art.arcane.animus.core.combat.CombatSettings settings, art.arcane.animus.core.combat.CombatLoadout loadout) {
-        if (closed) return null;
+        if (closed || !enabled()) return null;
         combatants.add(actor);
         return new ActorCombat(actor, this, settings, loadout);
     }
@@ -164,7 +189,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
     }
     /** A fight: guards of either side and NPCs that watch fights hear of it on their own owners. */
     void fought(RegionActor except, TargetRef attacker, TargetRef victim) {
-        if (closed) return;
+        if (closed || !enabled()) return;
         List<RegionActor> audience = new ArrayList<>();
         for (UUID party : List.of(victim.id(), attacker.id())) {
             Set<RegionActor> guards = guardians.get(party);
@@ -241,6 +266,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
 
     /** {@code combat <npc-id> ...}. Status reads the NPC's publication; every change runs on the NPC's owner and is logged. */
     String execute(String[] args) {
+        if (!enabled()) throw new IllegalStateException("Combat module disabled in config.toml");
         if (args.length < 3) throw new IllegalArgumentException(CombatModule.MODULE_USAGE);
         RegionActor actor = host.actors.get(args[1]);
         if (actor == null) throw new IllegalArgumentException("Unknown or inactive NPC: " + args[1]);
@@ -273,6 +299,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
     }
     /** Behavior operations, on the NPC's owner. A refusal carries the reason back to the behavior. */
     String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) {
+        if (!enabled()) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "combat-unavailable", "Combat module disabled in config.toml");
         RegionActor actor = actor(npc);
         if (actor == null || !actor.owner.owned()) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "combat-unavailable", "Combat runs on the NPC's region owner");
         ActorCombat combat = actor.combat();
@@ -304,7 +331,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
             @Override public boolean guards(UUID npc, UUID player) {
                 RegionActor actor = actor(npc);
                 RegionActor.Publication view = actor == null ? null : actor.publication;
-                return view != null && view.combat() != null && player.equals(view.combat().guarded());
+                return enabled() && view != null && view.combat() != null && player.equals(view.combat().guarded());
             }
         };
     }
@@ -353,7 +380,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
     }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void chat(AsyncPlayerChatEvent event) {
-        if (closed || watchers.isEmpty()) return;
+        if (closed || !enabled() || watchers.isEmpty()) return;
         TargetRef speaker = new TargetRef(TargetKind.PLAYER, event.getPlayer().getUniqueId());
         String message = event.getMessage();
         int sent = 0;
@@ -387,6 +414,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
     /** Engines and their helpers belong to the NPCs' owners and stop with them; this stops the routing. */
     @Override public void close() {
         closed = true;
+        try { settingsListener.close(); } catch (Exception ignored) { }
         HandlerList.unregisterAll(this);
         guardians.clear(); watchers.clear(); combatants.clear();
     }

@@ -342,7 +342,7 @@ final class RegionActor implements RegionOwner.Body {
         if (module == null || combatSettings == null) { closeCombat(); return; }
         if (combat != null && !combat.matches(combatSettings, combatLoadout)) closeCombat();
         if (combat == null) combat = module.open(this, combatSettings, combatLoadout);
-        if (combat != null) combat.tick();
+        if (combat != null && !combat.tick()) closeCombat();
     }
     private void closeCombat() {
         ActorCombat current = combat;

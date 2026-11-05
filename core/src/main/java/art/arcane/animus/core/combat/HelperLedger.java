@@ -51,13 +51,16 @@ public final class HelperLedger {
         void moved(Vec3 position) { lastPosition = position; }
     }
 
-    private final int maximum;
-    private final int perOwner;
+    private int maximum;
+    private int perOwner;
     private final Map<UUID, Shot> shots = new HashMap<>();
     private final Map<UUID, Integer> owners = new HashMap<>();
     private final ArrayDeque<UUID> order = new ArrayDeque<>();
 
-    public HelperLedger(int maximum, int perOwner) {
+    public HelperLedger(int maximum, int perOwner) { limits(maximum, perOwner); }
+
+    /** New caps for later launches; shots already tracked stay until they leave the ledger, even above a lowered cap. */
+    public void limits(int maximum, int perOwner) {
         if (maximum < 1 || perOwner < 1) throw new IllegalArgumentException("Helper budgets must be positive");
         this.maximum = maximum;
         this.perOwner = perOwner;
