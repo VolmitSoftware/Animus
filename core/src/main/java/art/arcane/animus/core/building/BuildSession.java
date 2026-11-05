@@ -22,7 +22,8 @@ import java.util.UUID;
  * One build and its NPC team, run on the owner thread one tick at a time. Each NPC claims the next step of the current
  * segment, walks within reach, and places it. A step whose block already matches is skipped, so a resumed build only
  * needs its saved step number. Work waits, never loads terrain, when a chunk is not loaded, and waits for materials
- * when a sourced build runs short. Every change is journaled for undo.
+ * when a sourced build runs short. Every change is journaled for undo. A multi-block object, such as a door or a bed,
+ * is placed, paid for, cleared and undone as one: all its cells change in the same tick, never one half alone.
  */
 public final class BuildSession {
     public static final int SCHEMA_VERSION = 1;
@@ -82,7 +83,8 @@ public final class BuildSession {
     private final Map<String, Optional<String>> held = new HashMap<>();
     private BuildPlan plan;
     private MaterialRules.Need[] needs;
-    private BitSet done = new BitSet();
+    private final Map<String, MaterialRules.Need> partNeeds = new HashMap<>();
+    private BitSet done = new BitSet(), unitSteps = new BitSet();
     private int cursor, totalSteps;
     private State state;
     private String reason = "";
@@ -144,6 +146,8 @@ public final class BuildSession {
         needs = new MaterialRules.Need[next.schematic().palette().size()];
         done = new BitSet(next.size());
         done.set(0, cursor);
+        unitSteps = new BitSet();
+        for (int step = next.excavations(); step < next.size(); step++) if (next.unit(step).isPresent()) unitSteps.set(step);
     }
     /** The plan could not be rebuilt; building stops, undo still works. */
     public void fail(String why) {
@@ -272,7 +276,7 @@ public final class BuildSession {
         Vec3 centre = StandPoints.centre(at);
         double distance = member.position().point().distance(centre);
         boolean timedOut = tick - claim.since > (long) options.moveTimeoutSeconds() * TICKS_PER_SECOND;
-        boolean inside = !plan.target(claim.step).air() && occupies(member, at);
+        boolean inside = !plan.target(claim.step).air() && occupies(member, claim.step);
         if (distance > options.reach() && !timedOut) {
             if (!context.crew().routing(member.id()) && tick >= claim.nextWalk) {
                 claim.nextWalk = tick + WALK_RETRY_TICKS;
@@ -304,25 +308,79 @@ public final class BuildSession {
         if (checked == Check.WAIT) { claims.put(member.id(), claim); return reason; }
         if (checked == Check.DONE) return null;
         BlockPos at = plan.stepPosition(claim.step);
-        String target = plan.target(claim.step).toString();
-        String before = context.world().block(world, at).orElse("minecraft:air");
-        MaterialRules.Need need = plan.excavation(claim.step) ? MaterialRules.Need.FREE : need(plan.paletteIndex(claim.step), context.world());
-        if (!context.world().place(world, at, target)) {
+        List<UndoJournal.Change> changes = changes(claim.step, context.world());
+        int written = 0;
+        for (UndoJournal.Change change : changes) {
+            if (!context.world().place(world, change.at(), change.after())) break;
+            written++;
+        }
+        if (written < changes.size()) {
+            // The platform refused a cell: put back what this object already changed, so no half stays behind.
+            for (int index = written - 1; index >= 0; index--) context.world().place(world, changes.get(index).at(), changes.get(index).before());
             refused++;
             complete(claim.step);
             return null;
         }
-        context.crew().terrainChanged(world, at);
-        if (need.kind() == MaterialRules.Kind.ITEM) consume(need, context.world());
-        journal.record(at, before, target);
-        placed++;
+        boolean clearing = plan.target(claim.step).air();
+        for (UndoJournal.Change change : changes) {
+            context.crew().terrainChanged(world, change.at());
+            if (plan.excavation(claim.step) || air(change.after())) continue;
+            MaterialRules.Need need = partNeed(change.after(), context.world());
+            if (need.kind() == MaterialRules.Kind.ITEM) consume(need, context.world());
+        }
+        if (changes.size() == 1) journal.record(changes.getFirst().at(), changes.getFirst().before(), changes.getFirst().after());
+        else journal.group(changes);
         complete(claim.step);
         nextPlace.put(member.id(), tick + options.placeIntervalTicks());
         context.crew().face(member.id(), new WorldPosition(world, StandPoints.centre(at)));
         context.crew().swing(member.id());
-        context.world().placed(world, at, target, !options.silent());
+        boolean sound = !options.silent();
+        for (UndoJournal.Change change : changes) {
+            if (air(change.after()) && !clearing) continue;
+            placed++;
+            context.world().placed(world, change.at(), change.after(), sound);
+            sound = false;
+        }
         listener.changed(this);
         return null;
+    }
+
+    /**
+     * Every cell the step changes now, in placement order: the cells of its object that do not match yet, then the other
+     * halves of any door, bed or similar object it replaces, which would otherwise be left alone in the world.
+     */
+    private List<UndoJournal.Change> changes(int step, BuildWorld access) {
+        List<UndoJournal.Change> changes = new ArrayList<>(2);
+        List<BlockPos> cells = new ArrayList<>(2);
+        Optional<BuildPlan.Unit> unit = plan.unit(step);
+        if (unit.isPresent()) {
+            for (BuildPlan.Part part : unit.get().parts()) {
+                cells.add(part.at());
+                String current = access.block(world, part.at()).orElse("minecraft:air");
+                String wanted = part.state().toString();
+                if (!current.equals(wanted)) changes.add(new UndoJournal.Change(part.at(), current, wanted));
+            }
+        } else {
+            BlockPos at = plan.stepPosition(step);
+            cells.add(at);
+            changes.add(new UndoJournal.Change(at, access.block(world, at).orElse("minecraft:air"), plan.target(step).toString()));
+        }
+        int replaced = changes.size();
+        for (int index = 0; index < replaced; index++) {
+            UndoJournal.Change change = changes.get(index);
+            Optional<BlockUnits.Partner> partner = PaletteResolver.parse(change.before()).flatMap(BlockUnits::partner);
+            if (partner.isEmpty()) continue;
+            BlockUnits.Partner other = partner.get();
+            BlockPos at = new BlockPos(change.at().x() + other.dx(), change.at().y() + other.dy(), change.at().z() + other.dz());
+            if (cells.contains(at)) continue;
+            Optional<String> current = access.block(world, at);
+            Optional<BlockState> held = current.flatMap(PaletteResolver::parse);
+            if (held.isEmpty() || !held.get().name().equals(other.state().name()) || BlockUnits.partner(held.get())
+                    .filter((BlockUnits.Partner back) -> back.dx() == -other.dx() && back.dy() == -other.dy() && back.dz() == -other.dz()).isEmpty()) continue;
+            cells.add(at);
+            changes.add(new UndoJournal.Change(at, current.get(), "minecraft:air"));
+        }
+        return changes;
     }
 
     /** Whether the step still needs work now, is already settled, or must wait. Settled steps are marked done here. */
@@ -332,24 +390,39 @@ public final class BuildSession {
             reason = "waiting for an unloaded chunk at " + at.x() + " " + at.z();
             return Check.WAIT;
         }
+        Optional<BuildPlan.Unit> unit = plan.unit(step);
+        if (unit.isPresent()) for (BuildPlan.Part part : unit.get().parts())
+            if (!context.world().chunkLoaded(world, Math.floorDiv(part.at().x(), 16), Math.floorDiv(part.at().z(), 16))) {
+                reason = "waiting for an unloaded chunk at " + part.at().x() + " " + part.at().z();
+                return Check.WAIT;
+            }
         Optional<String> current = context.world().block(world, at);
         if (current.isEmpty()) { refused++; complete(step); return Check.DONE; }
-        String target = plan.target(step).toString();
         if (plan.excavation(step)) {
             if (air(current.get()) || current.get().equals(plan.design(step).toString())) { skipped++; complete(step); return Check.DONE; }
-        } else if (current.get().equals(target)) { skipped++; complete(step); return Check.DONE; }
-        BuildProtection.Action action = plan.target(step).air() ? BuildProtection.Action.BREAK : BuildProtection.Action.PLACE;
-        if (!context.protection().allows(new BuildProtection.Request(npc, startedBy, world, at, action))) { denied++; complete(step); return Check.DONE; }
+        } else if (unit.isEmpty() && current.get().equals(plan.target(step).toString())) { skipped++; complete(step); return Check.DONE; }
+        List<UndoJournal.Change> changes = changes(step, context.world());
+        if (changes.isEmpty()) { skipped++; complete(step); return Check.DONE; }
+        for (UndoJournal.Change change : changes) {
+            BuildProtection.Action action = air(change.after()) ? BuildProtection.Action.BREAK : BuildProtection.Action.PLACE;
+            if (!context.protection().allows(new BuildProtection.Request(npc, startedBy, world, change.at(), action))) { denied++; complete(step); return Check.DONE; }
+        }
         if (plan.excavation(step) || options.materials() == BuildOptions.Materials.CREATIVE) return Check.WORK;
-        MaterialRules.Need need = need(plan.paletteIndex(step), context.world());
-        if (need.kind() == MaterialRules.Kind.UNOBTAINABLE) { unobtainable++; complete(step); return Check.DONE; }
-        if (need.kind() == MaterialRules.Kind.FREE) return Check.WORK;
-        long have = available(need.item(), context.world());
-        if (have < 0) { reason = "the material container at " + container() + " is not loaded or not a container"; return Check.WAIT; }
-        if (have < need.count()) {
-            long wanted = remaining().getOrDefault(need.item(), (long) need.count());
-            reason = "needs " + need.count() + " " + need.item() + " (have " + have + ", the rest of the build needs " + wanted + ")";
-            return Check.WAIT;
+        Map<String, Long> wanted = new TreeMap<>();
+        for (UndoJournal.Change change : changes) {
+            if (air(change.after())) continue;
+            MaterialRules.Need need = partNeed(change.after(), context.world());
+            if (need.kind() == MaterialRules.Kind.UNOBTAINABLE) { unobtainable++; complete(step); return Check.DONE; }
+            if (need.kind() == MaterialRules.Kind.ITEM) wanted.merge(need.item(), (long) need.count(), Long::sum);
+        }
+        for (Map.Entry<String, Long> item : wanted.entrySet()) {
+            long have = available(item.getKey(), context.world());
+            if (have < 0) { reason = "the material container at " + container() + " is not loaded or not a container"; return Check.WAIT; }
+            if (have < item.getValue()) {
+                long rest = remaining().getOrDefault(item.getKey(), item.getValue());
+                reason = "needs " + item.getValue() + " " + item.getKey() + " (have " + have + ", the rest of the build needs " + rest + ")";
+                return Check.WAIT;
+            }
         }
         return Check.WORK;
     }
@@ -379,24 +452,49 @@ public final class BuildSession {
     private void revert(Context context) {
         if (undoRemaining <= 0) { finishUndo(); return; }
         while (undoRemaining > 0) {
-            UndoJournal.Entry entry = journal.get(undoRemaining - 1);
-            BlockPos at = entry.position();
-            if (!context.world().chunkLoaded(world, Math.floorDiv(at.x(), 16), Math.floorDiv(at.z(), 16))) {
-                reason = "waiting for an unloaded chunk at " + at.x() + " " + at.z();
-                return;
+            int start = journal.groupStart(undoRemaining - 1), size = undoRemaining - start;
+            for (int index = start; index < undoRemaining; index++) {
+                BlockPos at = journal.get(index).position();
+                if (!context.world().chunkLoaded(world, Math.floorDiv(at.x(), 16), Math.floorDiv(at.z(), 16))) {
+                    reason = "waiting for an unloaded chunk at " + at.x() + " " + at.z();
+                    return;
+                }
             }
             if (!context.budget().revert()) return;
+            for (int extra = 1; extra < size; extra++) context.budget().revert();
             reason = "";
-            undoRemaining--;
-            Optional<String> current = context.world().block(world, at);
-            if (current.isEmpty() || !current.get().equals(entry.after())) { undoSkipped++; continue; }
-            BuildProtection.Action action = air(entry.before()) ? BuildProtection.Action.BREAK : BuildProtection.Action.PLACE;
-            UUID npc = context.crew().member(leader()).map(BuildCrew.Member::uuid).orElse(new UUID(0, 0));
-            if (!context.protection().allows(new BuildProtection.Request(npc, startedBy, world, at, action))) { undoSkipped++; continue; }
-            if (context.world().place(world, at, entry.before())) { reverted++; context.crew().terrainChanged(world, at); } else undoSkipped++;
+            undoRemaining = start;
+            revertGroup(start, size, context);
             listener.changed(this);
         }
         finishUndo();
+    }
+
+    /**
+     * Puts back one group of changes as a whole: when any of its cells changed since, the whole group stays. Scaffolding
+     * the build took down again is left out, and scaffolding still standing is removed; neither is counted.
+     */
+    private void revertGroup(int start, int size, Context context) {
+        List<UndoJournal.Entry> entries = new ArrayList<>(size);
+        for (int index = start; index < start + size; index++) entries.add(journal.get(index));
+        boolean scaffold = entries.getFirst().scaffold();
+        if (scaffold && !air(entries.getFirst().before())) return;
+        for (UndoJournal.Entry entry : entries) {
+            Optional<String> current = context.world().block(world, entry.position());
+            if (current.isEmpty() || !current.get().equals(entry.after())) { if (!scaffold) undoSkipped += size; return; }
+        }
+        UUID npc = context.crew().member(leader()).map(BuildCrew.Member::uuid).orElse(new UUID(0, 0));
+        for (UndoJournal.Entry entry : entries) {
+            BuildProtection.Action action = air(entry.before()) ? BuildProtection.Action.BREAK : BuildProtection.Action.PLACE;
+            if (!context.protection().allows(new BuildProtection.Request(npc, startedBy, world, entry.position(), action))) { if (!scaffold) undoSkipped += size; return; }
+        }
+        for (int index = entries.size() - 1; index >= 0; index--) {
+            UndoJournal.Entry entry = entries.get(index);
+            if (context.world().place(world, entry.position(), entry.before())) {
+                if (!scaffold) reverted++;
+                context.crew().terrainChanged(world, entry.position());
+            } else if (!scaffold) undoSkipped++;
+        }
     }
 
     private void finishUndo() {
@@ -408,6 +506,15 @@ public final class BuildSession {
 
     // Materials
 
+    /** What one cell of an object costs, by the platform's state text. */
+    private MaterialRules.Need partNeed(String state, BuildWorld access) {
+        MaterialRules.Need known = partNeeds.get(state);
+        if (known == null) {
+            known = PaletteResolver.parse(state).map((BlockState parsed) -> MaterialRules.need(parsed, access.item(state))).orElse(MaterialRules.Need.UNOBTAINABLE);
+            if (partNeeds.size() < 4096) partNeeds.put(state, known);
+        }
+        return known;
+    }
     private MaterialRules.Need need(int paletteIndex, BuildWorld access) {
         MaterialRules.Need known = needs[paletteIndex];
         if (known == null) {
@@ -437,7 +544,14 @@ public final class BuildSession {
         Map<String, Long> totals = new TreeMap<>();
         if (plan == null || options.materials() == BuildOptions.Materials.CREATIVE || worldAccess == null) return totals;
         int[] perPalette = new int[needs.length];
-        for (int step = Math.max(cursor, plan.excavations()); step < plan.size(); step++) if (!done.get(step)) perPalette[plan.paletteIndex(step)]++;
+        for (int step = Math.max(cursor, plan.excavations()); step < plan.size(); step++) {
+            if (done.get(step)) continue;
+            if (!unitSteps.get(step)) { perPalette[plan.paletteIndex(step)]++; continue; }
+            for (BuildPlan.Part part : plan.unit(step).orElseThrow().parts()) {
+                MaterialRules.Need need = partNeed(part.state().toString(), worldAccess);
+                if (need.kind() == MaterialRules.Kind.ITEM) totals.merge(need.item(), (long) need.count(), Long::sum);
+            }
+        }
         for (int index = 0; index < perPalette.length; index++) {
             if (perPalette[index] == 0) continue;
             MaterialRules.Need need = need(index, worldAccess);
@@ -507,6 +621,13 @@ public final class BuildSession {
         if (item.equals(held.get(npc))) return;
         held.put(npc, item);
         context.crew().hold(npc, item);
+    }
+    /** The NPC stands in a cell the step fills. */
+    private boolean occupies(BuildCrew.Member member, int step) {
+        Optional<BuildPlan.Unit> unit = plan.unit(step);
+        if (unit.isEmpty()) return occupies(member, plan.stepPosition(step));
+        for (BuildPlan.Part part : unit.get().parts()) if (occupies(member, part.at())) return true;
+        return false;
     }
     private boolean occupies(BuildCrew.Member member, BlockPos at) {
         Vec3 feet = member.position().point();
