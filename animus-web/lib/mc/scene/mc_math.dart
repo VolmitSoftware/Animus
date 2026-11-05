@@ -142,6 +142,16 @@ final class McMat4 {
     );
   }
 
+  /// OpenGL clip space for a box viewed down -Z: inventory icons.
+  factory McMat4.orthographic(double left, double right, double bottom, double top, double near, double far) => McMat4(
+        Float64List.fromList(<double>[
+          2 / (right - left), 0, 0, 0, //
+          0, 2 / (top - bottom), 0, 0, //
+          0, 0, -2 / (far - near), 0, //
+          -(right + left) / (right - left), -(top + bottom) / (top - bottom), -(far + near) / (far - near), 1, //
+        ]),
+      );
+
   /// View matrix: [eye] to the origin, [target] onto -Z, [up] roughly +Y.
   factory McMat4.lookAt(McVec3 eye, McVec3 target, McVec3 up) {
     final McVec3 f = (target - eye).normalized;

@@ -82,6 +82,27 @@ Future<PickedFiles?> pickDirectory() async {
   return PickedFiles(name, contents);
 }
 
+/// Lets the user pick one text file (a Gloss bundle). Null when cancelled.
+Future<(String, String)?> pickTextFile({String accept = '.json,application/json'}) async {
+  final List<web.File>? files = await _pick(accept: accept, directory: false);
+  if (files == null || files.isEmpty) return null;
+  return (files.first.name, (await files.first.text().toDart).toDart);
+}
+
+/// Saves [bytes] as a download called [name].
+void downloadBytes(String name, Uint8List bytes, String mime) {
+  final web.Blob blob = web.Blob(<JSAny>[bytes.toJS].toJS, web.BlobPropertyBag(type: mime));
+  final String url = web.URL.createObjectURL(blob);
+  final web.HTMLAnchorElement anchor = web.document.createElement('a') as web.HTMLAnchorElement
+    ..href = url
+    ..download = name
+    ..style.display = 'none';
+  web.document.body?.append(anchor);
+  anchor.click();
+  anchor.remove();
+  Future<void>.delayed(const Duration(seconds: 30), () => web.URL.revokeObjectURL(url));
+}
+
 Future<List<web.File>?> _pick({required String? accept, required bool directory}) {
   final Completer<List<web.File>?> completer = Completer<List<web.File>?>();
   final web.HTMLInputElement input = web.document.createElement('input') as web.HTMLInputElement;
