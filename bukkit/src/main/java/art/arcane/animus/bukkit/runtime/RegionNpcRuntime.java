@@ -160,7 +160,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
 
     @Override public boolean available() { return !closed && packets != null; }
     @Override public void interactions(InteractionListener<Player> listener) { interactions = listener; }
-    @Override public void bindTriggers(TriggerDispatcher dispatcher) { triggers = Objects.requireNonNull(dispatcher); }
+    @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(previews); triggers = dispatcher; }
     @Override public void refresh() { refresh.set(true); }
     @Override public PlayerAccess<Player> players() { return players; }
     @Override public ViewerPreviews previews() { return previews; }
