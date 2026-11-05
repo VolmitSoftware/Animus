@@ -26,6 +26,9 @@ targets.each { String target, Map<String, Object> properties ->
     if (!target.startsWith('26.') || properties.javaVersion != 25) {
         throw new GradleException("Minecraft ${target} must declare its Java runtime version")
     }
+    if (!(properties.dataPackFormat instanceof Integer)) {
+        throw new GradleException("Minecraft ${target} must declare its data pack format")
+    }
     if (!(properties.forgeRuntimeMappings in ['srg', 'official'])) {
         throw new GradleException("Minecraft ${target} must declare its Forge runtime mappings")
     }

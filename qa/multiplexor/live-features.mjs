@@ -19,16 +19,28 @@ const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) 
 const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
-const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs,appearance,building,shops')).split(',');
-const name = args.get('instance-name') ?? `animus-live-${project}-${version.replaceAll('.', '-')}`;
-assert(new RegExp(`^animus-(?:live|gate-live)-${project}-${version.replaceAll('.', '-')}$`).test(name), 'Instance name must bind the requested platform/version');
-const instances = path.join(workspace, 'consumers/plugin-consumers/instances');
-const instance = path.join(instances, name), data = path.join(instance, 'plugins/Animus'), logFile = path.join(instance, 'logs/latest.log');
-const session = `mc-plugin-${name}`;
-const serverLibraries = path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
+// Fabric, NeoForge and Forge run the mod jar on a vanilla server: data lives in config/animus and no Bukkit fixture exists.
+const MOD = ['fabric', 'neoforge', 'forge'].includes(project);
+const consumer = MOD ? project : 'plugin';
+const FULL = 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs,appearance,building,shops';
+const defaultScenarios = project === 'folia' ? 'folia' : MOD ? (version === '26.3' ? `${FULL},worlds` : 'smoke') : FULL;
+const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
+const dashed = version.replaceAll('.', '-');
+const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
+assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live)-${project}-${dashed}$`).test(name), 'Instance name must bind the requested platform/version');
+assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
+const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
+const pluginInstances = path.join(workspace, 'consumers/plugin-consumers/instances');
+const instance = path.join(instances, name), data = path.join(instance, MOD ? 'config/animus' : 'plugins/Animus'), logFile = path.join(instance, 'logs/latest.log');
+const session = `mc-${consumer}-${name}`;
+// The native client needs vanilla's libraries; a mod server keeps them inside its loader, so borrow the exact Paper template's.
+const serverLibraries = MOD ? path.join(pluginInstances, `animus-paper-${dashed}`, 'libraries') : path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
+const LOADERS = JSON.parse(readFileSync(path.join(root, 'gradle/targets.json'), 'utf8'))[version];
+const loaderVersion = { fabric: LOADERS.fabricLoader, neoforge: LOADERS.neoforge, forge: LOADERS.forge?.replace(`${version}-`, '') }[project];
 const OWNER = { uuid: 'b2b7d4ea-c517-3a19-8a16-ee03e26cbe9f', name: 'AnimusProofQA' };
 const PEER = { uuid: '262b16de-d06b-325b-b115-4ad978f962f2', name: 'AnimusProofPeer' };
-const FORBIDDEN = /moved too quickly|moved wrongly|Flying is not enabled|was kicked/i;
+// A detach to a player who already left is an ordinary failed send, never a warning.
+const FORBIDDEN = /moved too quickly|moved wrongly|Flying is not enabled|was kicked|Rider detach failed/i;
 mkdirSync(results, { recursive: true });
 const driverLog = path.join(results, 'driver.log');
 const note = text => appendFileSync(driverLog, `${new Date().toISOString()} ${text}\n`);
@@ -60,10 +72,10 @@ function muxEnvironment() {
 const BUSY = /Another network command is running|Another project operation owns the workspace/;
 function mux(...command) {
   const deadline = Date.now() + 30_000;
-  let done = spawnSync(binary, ['--root', workspace, '--consumer', 'plugin', ...command], { encoding: 'utf8', env: muxEnvironment() });
+  let done = spawnSync(binary, ['--root', workspace, '--consumer', consumer, ...command], { encoding: 'utf8', env: muxEnvironment() });
   while (done.status && BUSY.test(done.stderr + done.stdout) && Date.now() < deadline) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
-    done = spawnSync(binary, ['--root', workspace, '--consumer', 'plugin', ...command], { encoding: 'utf8', env: muxEnvironment() });
+    done = spawnSync(binary, ['--root', workspace, '--consumer', consumer, ...command], { encoding: 'utf8', env: muxEnvironment() });
   }
   if (done.status) throw new Error(`multiplexor ${command.slice(0, 2).join(' ')}: ${(done.stderr || done.stdout).slice(0, 400)}`);
   return done.stdout;
@@ -79,9 +91,10 @@ class Server {
   // Terrain a scenario keeps across restarts; start() clears the test area and then rebuilds this.
   floor = null;
   provision() {
-    const template = path.join(instances, `animus-${project}-${version.replaceAll('.', '-')}`);
+    const template = path.join(pluginInstances, `animus-${MOD ? 'paper' : project}-${dashed}`);
     if (!existsSync(instance)) {
-      mux('server', 'create', name, '--jar', realpathSync(path.join(template, 'server.jar')), '--type', project, '--mc', version, '--isolated');
+      if (MOD) mux('server', 'create', name, '--type', project, '--mc', version, '--loader', loaderVersion, '--auto-build', '--isolated');
+      else mux('server', 'create', name, '--jar', realpathSync(path.join(template, 'server.jar')), '--type', project, '--mc', version, '--isolated');
       mux('runtime', 'settings', 'set-java', path.join(javaHome, 'bin/java'), '--instance', name);
       mux('runtime', 'settings', 'set-heap', '1G', '--instance', name);
       mux('runtime', 'settings', 'set-preset', 'vanilla', '--instance', name);
@@ -89,18 +102,19 @@ class Server {
     }
     assert.equal(mux('instance', 'isolated', name).trim(), 'true', 'Refusing a shared instance');
     copyFileSync(path.join(template, 'eula.txt'), path.join(instance, 'eula.txt'));
-    const plugins = path.join(instance, 'plugins');
+    const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:gate-)?live-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|mod)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
+    mkdirSync(plugins, { recursive: true });
     for (const entry of readdirSync(plugins)) if (/^Animus.*\.jar$/.test(entry)) unlinkSync(path.join(plugins, entry));
     copyFileSync(plugin, path.join(plugins, path.basename(plugin)));
     // The QA event fixture adds animusqa commands that qa/combat-client.mjs needs.
     if (fixture) copyFileSync(fixture, path.join(plugins, path.basename(fixture)));
     const cached = path.join(process.env.HOME, '.gradle/caches/fabric-loom', version, 'minecraft-server.jar');
-    mkdirSync(path.join(instance, 'cache'), { recursive: true });
-    if (existsSync(cached)) copyFileSync(cached, path.join(instance, 'cache', `mojang_${version}.jar`));
+    if (!MOD) mkdirSync(path.join(instance, 'cache'), { recursive: true });
+    if (!MOD && existsSync(cached)) copyFileSync(cached, path.join(instance, 'cache', `mojang_${version}.jar`));
     writeFileSync(path.join(instance, 'ops.json'), JSON.stringify([{ ...OWNER, level: 4, bypassesPlayerLimit: false }]) + '\n');
     writeFileSync(path.join(instance, 'whitelist.json'), JSON.stringify([OWNER, PEER]) + '\n');
     this.config();
@@ -163,18 +177,20 @@ class Server {
     // Look at the live JVM right after plugin disable: an Animus task or thread left behind would show here.
     const threads = new Promise(resolve => {
       const poll = setInterval(() => {
-        if (logText().slice(from).includes('Disabling Animus')) {
+        // Bukkit logs the plugin disable; a mod server closes Animus on SERVER_STOPPING, before the players are saved.
+        if (MOD ? /Saving players/.test(logText().slice(from)) : logText().slice(from).includes('Disabling Animus')) {
           clearInterval(poll);
           setTimeout(() => {
             const dump = spawnSync(path.join(javaHome, 'bin/jcmd'), [pid, 'Thread.print'], { encoding: 'utf8' }).stdout ?? '';
             const names = dump.split('\n').filter(line => line.startsWith('"')).map(line => line.split('"')[1]);
-            resolve({ jvmThreads: names.length, animus: names.filter(threadName => /animus/i.test(threadName)) });
-          }, 400);
+            // A small mod server can finish exiting before the dump attaches; an exited JVM left nothing behind.
+            resolve(names.length ? { jvmThreads: names.length, animus: names.filter(threadName => /animus/i.test(threadName)) } : { jvmExited: true });
+          }, MOD ? 50 : 400);
         }
       }, 25);
       setTimeout(() => { clearInterval(poll); resolve(null); }, 90_000);
     });
-    const child = spawn(binary, ['--root', workspace, '--consumer', 'plugin', 'runtime', 'stop', name, '--graceful'], { env: muxEnvironment(), stdio: 'ignore' });
+    const child = spawn(binary, ['--root', workspace, '--consumer', consumer, 'runtime', 'stop', name, '--graceful'], { env: muxEnvironment(), stdio: 'ignore' });
     const closed = new Promise(resolve => child.on('exit', resolve));
     const leftover = await threads;
     await closed;
@@ -1535,6 +1551,13 @@ async function combat() {
     note(JSON.stringify(results));
     return Object.entries(results).map(([k, v]) => `${k}=${v.replace(/^Combat [^:]*: /, '').slice(0, 60)}`).join('; ').slice(0, 300);
   });
+  // Mod servers have no protection API: every hit is allowed and pursuit regions report unavailable.
+  if (MOD) await check('protection none and pursuit regions unavailable on a mod server', async () => {
+    const status = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/Combat \w+[^\n]*/)[0];
+    assert(/protection=none \(mod servers have no standard protection API\)/.test(status), status);
+    assert(/mob-control=unavailable on mod servers/.test(status) && /pursuit-regions=unavailable/.test(status), status);
+    return status.slice(status.indexOf('protection='));
+  });
   await check('melee kills a mob; victimDrops false drops nothing', async () => {
     const holding = 'equipment:{mainhand:{id:"minecraft:diamond",count:1}},drop_chances:{mainhand:2.0f}';
     const control = await summon(11, 'minecraft:zombie', -24, 61, -24, `NoAI:1b,${holding}`);
@@ -2066,6 +2089,12 @@ async function shops() {
       await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
     }
   });
+  // Mod servers have no economy API: item trades work, money is reported unavailable.
+  if (MOD) await check('money reported unavailable on a mod server', async () => {
+    const status = plain(await server.capture('animus shop status', /Shops [^\n]*/, 400)).match(/Shops [^\n]*/)[0];
+    assert(/economy=unavailable \(mod servers have no standard economy API\)/.test(status), status);
+    return status.slice(status.indexOf('economy='));
+  });
   await gamemode('creative');
   await owner.close();
 }
@@ -2086,10 +2115,159 @@ async function foliaBuildsRefused() {
   });
 }
 
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, building, shops, folia };
+// ---- scenario: smoke (start, spawn, interact, navigate, ride, restart) ----------------------
+
+async function smoke() {
+  server.behavior('live:smoke', {
+    routines: { main: sayTo('manual'), clicked: sayTo('smoke-click'), arrived: say('smoke-arrived') },
+    triggers: [{ id: 'click', event: 'interaction', routine: 'clicked', cooldownTicks: 0 }, { id: 'walked', event: 'waypoint', routine: 'arrived', cooldownTicks: 0 }],
+  });
+  await server.reload();
+  let owner = await join(OWNER.name, 'survival');
+  await owner.tp(0, 61, 0);
+  const uuid = await server.npc('smoke', 'minecraft:player', 0, 61, 6, 'Smoke', { behaviors: ['live:smoke'] });
+  let body = null;
+  await check('smoke NPC spawns and renders', async () => { body = await owner.body(uuid); return `id=${body.id} at ${body.x},${body.y},${body.z}`; });
+  await check('smoke interaction fires its trigger', async () => {
+    await owner.walk(0, 3);
+    await owner.look(body.x, body.y + .9, body.z);
+    const from = owner.events.length; owner.send('use', { id: body.id });
+    return (await owner.chat('Smoke: smoke-click', from)).text;
+  });
+  await check('smoke navigation arrives', async () => {
+    const from = owner.events.length;
+    await server.cmd('animus navigate smoke 4 61 6 walk 3', /./);
+    await owner.chat('Smoke: smoke-arrived', from, 15_000);
+    const moved = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).at(-1);
+    assert(moved && Math.abs(moved.x - 4.5) < 1, JSON.stringify(moved));
+    return `walked to ${moved.x.toFixed(2)},${moved.z.toFixed(2)}`;
+  });
+  const horse = await server.npc('shorse', 'minecraft:horse', -4, 61, 3, 'Steed', { modules: { 'animus:riding': { enabled: true, speed: 4, leash: 32, lifetimeSeconds: 600 } } });
+  await check('smoke ride: mount, steer, sneak dismount', async () => {
+    const offset = logText().length, steed = await owner.body(horse);
+    await mount(owner, steed);
+    const from = owner.events.length;
+    await owner.look(steed.x, steed.y + 1, steed.z + 30);
+    await owner.keys({ forward: true });
+    await delay(3000);
+    await owner.keys({});
+    const last = owner.events.slice(from).filter(e => e.event === 'move' && e.id === steed.id).at(-1);
+    const distance = last ? Math.hypot(last.x - steed.x, last.z - steed.z) : 0;
+    assert(distance > 4, `moved ${distance}`);
+    const off = owner.events.length;
+    await owner.keys({ shift: true });
+    await dismounted(owner, steed.id, off);
+    await owner.keys({});
+    await delay(500);
+    assert(!/AnimusProofQA on/.test(await rideStatus()));
+    const bad = logText().slice(offset).split('\n').filter(line => FORBIDDEN.test(line));
+    assert.deepEqual(bad, []);
+    return `rode ${distance.toFixed(2)} blocks`;
+  });
+  await owner.close(); await delay(300);
+  await server.stop();
+  await server.start();
+  owner = await join(OWNER.name, 'survival');
+  await owner.tp(0, 61, 0);
+  await check('smoke restart keeps the NPC and its UUID', async () => {
+    const again = await owner.body(uuid);
+    const stored = JSON.parse(readFileSync(path.join(data, 'npcs/live', 'smoke.json'), 'utf8'));
+    assert.equal(stored.uuid, uuid);
+    assert.notEqual(again, null);
+    const line = (await inspect('smoke')).line;
+    assert(/: active/.test(line), line);
+    return line.slice(0, 160);
+  });
+  await owner.close();
+  await server.cmd('animus delete smoke', /Deleted/);
+  await server.cmd('animus delete shorse', /Deleted/);
+}
+
+// ---- scenario: worlds (visibility rebuild on teleport, dimension change, reconnect) --------
+
+async function worlds() {
+  let owner = await join(OWNER.name, 'creative');
+  await owner.tp(0, 61, 0);
+  const uuid = await server.npc('wnpc', 'minecraft:player', 0, 61, 8, 'Wanderer');
+  let body = await owner.body(uuid);
+  await check('far teleport removes the NPC and return rebuilds it with a fresh id', async () => {
+    const old = body, from = owner.events.length;
+    await owner.tp(400, 61, 0);
+    await owner.wait(e => e.event === 'remove' && e.ids.includes(old.id), from);
+    assert(!owner.current(uuid));
+    const back = owner.events.length;
+    await owner.tp(0, 61, 0);
+    body = await owner.body(uuid);
+    assert(owner.events.slice(back).some(e => e.event === 'spawn' && e.uuid === uuid));
+    assert.notEqual(body.id, old.id);
+    const stale = owner.events.length;
+    owner.send('use', { id: old.id });
+    await delay(300);
+    assert(!owner.fatal, owner.fatal?.message);
+    return `old id ${old.id} -> ${body.id}; stale id click ignored (${owner.events.length - stale} events)`;
+  });
+  await check('short teleport keeps or rebuilds the NPC, never loses it', async () => {
+    const old = body, from = owner.events.length;
+    await owner.tp(2, 61, 2);
+    await delay(800);
+    const now = owner.current(uuid);
+    assert(now, 'NPC no longer presented after a short teleport');
+    body = now;
+    const rebuilt = owner.events.slice(from).some(e => e.event === 'spawn' && e.uuid === uuid);
+    return rebuilt ? `rebuilt: id ${old.id} -> ${now.id}` : `kept id ${now.id}`;
+  });
+  await check('dimension change clears presentation and return resubscribes', async () => {
+    const old = body, from = owner.events.length;
+    await server.cmd(`execute in minecraft:the_nether run tp ${OWNER.name} 0 100 0`, /Teleported/);
+    await owner.wait(e => e.event === 'respawn' && String(e.dimension).includes('the_nether'), from);
+    await delay(600);
+    assert(!owner.current(uuid), 'overworld NPC still presented in the nether');
+    assert(!owner.events.slice(from).some(e => e.event === 'spawn' && e.uuid === uuid));
+    const back = owner.events.length;
+    await server.cmd(`execute in minecraft:overworld run tp ${OWNER.name} 0 61 0`, /Teleported/);
+    await owner.wait(e => e.event === 'respawn' && String(e.dimension).includes('overworld'), back);
+    body = await owner.body(uuid);
+    assert.notEqual(body.id, old.id);
+    return `nether and back: ${old.id} -> ${body.id}`;
+  });
+  await check('an NPC in another dimension renders only there', async () => {
+    await server.cmd('execute in minecraft:the_nether run forceload add -16 -16 16 16', /Marked|already|No chunks/);
+    await delay(1000);
+    await server.cmd('execute in minecraft:the_nether run fill -3 99 -3 3 99 3 minecraft:netherrack', /Successfully filled|No blocks were filled/);
+    await server.cmd('execute in minecraft:the_nether run fill -3 100 -3 3 103 3 minecraft:air', /Successfully filled|No blocks were filled/);
+    await server.cmd('animus create wnether minecraft:player minecraft:the_nether 2 100 2 live Netherling', /Created dormant wnether/);
+    await server.cmd('animus spawn wnether', /Spawn requested for wnether/);
+    const nether = JSON.parse(readFileSync(path.join(data, 'npcs/live', 'wnether.json'), 'utf8')).uuid;
+    await delay(800);
+    assert(!owner.current(nether), 'nether NPC presented in the overworld');
+    const from = owner.events.length;
+    await server.cmd(`execute in minecraft:the_nether run tp ${OWNER.name} 0 100 0`, /Teleported/);
+    await owner.wait(e => e.event === 'respawn' && String(e.dimension).includes('the_nether'), from);
+    const seen = await owner.body(nether);
+    const line = (await inspect('wnether')).line;
+    assert(/: active/.test(line), line);
+    const back = owner.events.length;
+    await server.cmd(`execute in minecraft:overworld run tp ${OWNER.name} 0 61 0`, /Teleported/);
+    await owner.wait(e => e.event === 'respawn' && String(e.dimension).includes('overworld'), back);
+    body = await owner.body(uuid);
+    await server.cmd('animus delete wnether', /Deleted/);
+    return `seen in the nether as id ${seen.id}; ${line.slice(0, 120)}`;
+  });
+  await check('reconnect gets a fresh presentation', async () => {
+    const old = body;
+    await owner.close(); await delay(400);
+    owner = await join(OWNER.name, 'creative');
+    body = await owner.body(uuid);
+    return `relogin: ${old.id} -> ${body.id}`;
+  });
+  await owner.close();
+  await server.cmd('animus delete wnpc', /Deleted/);
+}
+
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, building, shops, folia, smoke, worlds };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
-  const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line));
+  const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line) || (MOD && /[Mm]ixin[^\n]*(?:fail|error|could not|not applied)/i.test(line)));
   const warnings = lines.filter(line => /WARN/.test(line) && /Animus/.test(line));
   writeFileSync(path.join(results, `${label}-review.txt`), [...bad, '---', ...warnings].join('\n') + '\n');
   return { bad: bad.length, warnings: warnings.length, sample: bad.slice(0, 3).map(line => line.slice(0, 200)), threadsAfterDisable: server.lastThreads };
