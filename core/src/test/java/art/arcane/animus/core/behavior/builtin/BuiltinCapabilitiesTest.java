@@ -51,12 +51,14 @@ class BuiltinCapabilitiesTest {
     private final RecordingPlatform platform = new RecordingPlatform();
     private final List<String> log = new ArrayList<>();
     private final List<DialogueChoice> dialogue = new ArrayList<>();
+    private final List<Integer> randomBounds = new ArrayList<>();
     private ModuleHost host;
     private BuiltinCapabilities builtins;
 
     private void start(Platform runningOn, long deadlineMillis, BuiltinActionSettings settings) {
         host = new ModuleHost(runningOn, DEFINITIONS, 64, Duration.ofMillis(deadlineMillis));
-        builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), dialogue::add, settings, line -> { synchronized (log) { log.add(line); } });
+        builtins = new BuiltinCapabilities(platform, new MemoryBehaviorState(), dialogue::add, settings, line -> { synchronized (log) { log.add(line); } },
+                (int bound) -> { synchronized (randomBounds) { randomBounds.add(bound); } return bound - 1; });
         Outcome<ModuleHost.ModuleStatus> installed = host.installBuiltin(builtins, builtins);
         assertEquals(Outcome.Status.OK, installed.status(), installed.diagnostics().toString());
     }
@@ -361,6 +363,57 @@ class BuiltinCapabilitiesTest {
         assertTrue(host.capabilityAvailable(key("set-quest-state"), Kind.ACTION, false, false));
         assertEquals(Outcome.Status.OK, action("set-quest-state", "{\"name\":\"main\",\"value\":2}").status());
         assertEquals(Optional.of(true), condition("quest-state", "{\"name\":\"main\",\"equals\":2}", Optional.of(PLAYER)).value());
+    }
+
+    @Test void setQuestStateRandomPicksAStageBelowTheBound() throws Exception {
+        start();
+        Outcome<String> outcome = action("set-quest-state", "{\"name\":\"fortune\",\"random\":6}");
+        assertEquals(Outcome.Status.OK, outcome.status(), outcome.diagnostics().toString());
+        synchronized (randomBounds) { assertEquals(List.of(6), randomBounds); }
+        assertEquals(Optional.of(true), condition("quest-state", "{\"name\":\"fortune\",\"equals\":5}", Optional.of(PLAYER)).value());
+        assertTrue(platform.calls.isEmpty());
+    }
+
+    @Test void setQuestStateNeedsExactlyOneOfValueOrRandom() throws Exception {
+        start();
+        Outcome<String> both = action("set-quest-state", "{\"name\":\"main\",\"value\":1,\"random\":3}");
+        assertEquals(Outcome.Status.INVALID, both.status());
+        assertTrue(both.diagnostics().getFirst().message().contains("random"), both.diagnostics().toString());
+        assertTrue(both.diagnostics().getFirst().message().contains("value"), both.diagnostics().toString());
+        Outcome<String> neither = action("set-quest-state", "{\"name\":\"main\"}");
+        assertEquals(Outcome.Status.INVALID, neither.status());
+        assertTrue(neither.diagnostics().getFirst().message().contains("random"), neither.diagnostics().toString());
+        assertEquals(Outcome.Status.INVALID, action("set-quest-state", "{\"name\":\"main\",\"random\":0}").status());
+        assertEquals(Outcome.Status.INVALID, action("set-quest-state", "{\"name\":\"main\",\"random\":1000001}").status());
+        assertEquals(Outcome.Status.OK, action("set-quest-state", "{\"name\":\"main\",\"random\":1000000}").status());
+        synchronized (randomBounds) { assertEquals(List.of(1_000_000), randomBounds); }
+    }
+
+    @Test void sayAndCommandReplacePlayerNameWithTheTriggeringPlayersName() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        platform.playerName = Optional.of("Alex");
+        Outcome<String> said = action("say", "{\"text\":\"Hello {player_name}, {player_name}!\",\"audience\":\"nearby\"}");
+        assertEquals(Outcome.Status.OK, said.status(), said.diagnostics().toString());
+        Outcome<String> ran = action("command", "{\"command\":\"give {player_name} minecraft:bread 1 {player}\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertEquals(Outcome.Status.OK, ran.status(), ran.diagnostics().toString());
+        assertEquals(List.of("say:false:16.0:Hello Alex, Alex!", "command:CONSOLE:give Alex minecraft:bread 1 " + PLAYER), platform.calls);
+    }
+
+    @Test void playerNameNeedsATriggeringPlayer() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        Outcome<String> said = action("say", "{\"text\":\"Hello {player_name}\",\"audience\":\"nearby\"}", Optional.empty(), false, false, Optional.of("town:greeter"));
+        assertEquals("no-triggering-player", code(said));
+        Outcome<String> ran = action("command", "{\"command\":\"give {player_name} minecraft:bread\"}", Optional.empty(), false, true, Optional.of("town:greeter"));
+        assertEquals("no-triggering-player", code(ran));
+        assertTrue(platform.calls.isEmpty());
+    }
+
+    @Test void unknownPlayerNameRefusesWithoutRunningTheCommand() throws Exception {
+        start(Platform.PAPER, 5000, grants(List.of("town:greeter"), List.of()));
+        platform.playerName = Optional.empty();
+        Outcome<String> ran = action("command", "{\"command\":\"give {player_name} minecraft:bread\"}", Optional.of(PLAYER), false, true, Optional.of("town:greeter"));
+        assertEquals("player-name-unknown", code(ran));
+        assertTrue(platform.calls.isEmpty());
     }
 
     @Test void conditionsReadThePlatform() throws Exception {

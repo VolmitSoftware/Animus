@@ -1,6 +1,9 @@
 {
   "citizensId": 24,
   "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/commandtrait: commands stay denied until citizens:commands-24 is on the [behaviors.actions] commandBehaviors list in config.toml"
+  ],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",
@@ -10,15 +13,15 @@
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
-    "/traits/commandtrait/commands/0/command": "UNSUPPORTED_PRESERVED",
-    "/traits/commandtrait/commands/0/hand": "UNSUPPORTED_PRESERVED",
-    "/traits/commandtrait/commands/0/player": "UNSUPPORTED_PRESERVED",
-    "/traits/commandtrait/commands/0/op": "UNSUPPORTED_PRESERVED",
-    "/traits/commandtrait/commands/0/cooldown": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/command": "CONVERTED",
+    "/traits/commandtrait/commands/0/hand": "CONVERTED",
+    "/traits/commandtrait/commands/0/player": "CONVERTED",
+    "/traits/commandtrait/commands/0/op": "CONVERTED",
+    "/traits/commandtrait/commands/0/cooldown": "CONVERTED",
     "/traits/commandtrait/commands/0/n": "UNSUPPORTED_PRESERVED",
     "/traits/commandtrait/commands/0/delay": "UNSUPPORTED_PRESERVED",
     "/traits/commandtrait/cost": "UNSUPPORTED_PRESERVED",
-    "/traits/commandtrait/executionMode": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/executionMode": "CONVERTED",
     "/traits/assignment/assignment": "REQUIRES_INTEGRATION",
     "/traits/denizen_flags/flags/greeted": "REQUIRES_INTEGRATION",
     "/traits/denizenflags": "REQUIRES_INTEGRATION",

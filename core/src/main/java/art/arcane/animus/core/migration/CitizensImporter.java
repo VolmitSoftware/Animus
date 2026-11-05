@@ -16,14 +16,25 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 7;
+    public static final int CONVERTER_VERSION = 8;
     /** A staged or installed imported definition path; groups other than {@code citizens} come from converter version 7. */
     static final String NPC_PATH = "npcs/[a-z0-9][a-z0-9_-]{0,63}/citizens-[0-9]+\\.json";
-    static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/citizens-[0-9]+|skins/[a-f0-9]{64})\\.json";
+    static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/citizens-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+)\\.json";
+    /** A generated behavior of converter version 8 and later. */
+    static final String BEHAVIOR_PATH = "behaviors/citizens/(?:text|commands)-[0-9]+\\.json";
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     public record Preview(String id, Path directory, int records, int valid, int skins, JsonObject summary) {
         public Preview { summary = summary.deepCopy(); }
         @Override public JsonObject summary() { return summary.deepCopy(); }
+        /** Generated behavior documents in the bundle; none before converter version 8. */
+        public int behaviors() { return summary.has("behaviors") ? summary.get("behaviors").getAsInt() : 0; }
+        /** Counts only: routes and their points, look-close and generated behaviors. */
+        public String conversions() {
+            if (!summary.has("conversions")) return "nothing (converter v" + converterVersion() + ")";
+            JsonObject counts = summary.getAsJsonObject("conversions");
+            return counts.get("routes").getAsInt() + " routes (" + counts.get("routePoints").getAsInt() + " points, " + counts.get("routeGuides").getAsInt() + " guides), look-close "
+                    + counts.get("lookClose").getAsInt() + ", text behaviors " + counts.get("textBehaviors").getAsInt() + ", command behaviors " + counts.get("commandBehaviors").getAsInt();
+        }
         public int converterVersion() { return summary.get("converterVersion").getAsInt(); }
         public int warningCount() { return summary.has("migrationWarnings") ? summary.getAsJsonArray("migrationWarnings").size() : 0; }
     }
@@ -65,6 +76,10 @@ public final class CitizensImporter {
                 summary.add("worldMap", options);
                 summary.addProperty("notice", "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.");
                 JsonObject mapping = identityMap(root.getAsJsonObject("npc"));
+                JsonObject citizensDefaults = CitizensBehaviors.defaults(root.getAsJsonObject("npc"));
+                JsonObject conversions = new JsonObject();
+                for (String counter : List.of("routes", "routePoints", "routeGuides", "lookClose", "textBehaviors", "commandBehaviors")) conversions.addProperty(counter, 0);
+                int behaviorDocuments = 0;
                 Map<String, List<String>> reverseIds = new HashMap<>();
                 mapping.entrySet().forEach(e -> reverseIds.computeIfAbsent(e.getValue().getAsString(), ignored -> new ArrayList<>()).add(e.getKey()));
                 JsonObject counts = new JsonObject();
@@ -73,6 +88,11 @@ public final class CitizensImporter {
                 JsonObject sentinelMapping = new JsonObject();
                 JsonArray issues = new JsonArray();
                 JsonArray migrationWarnings = new JsonArray();
+                for (JsonElement inferred : citizensDefaults.getAsJsonArray("inferred")) {
+                    boolean value = citizensDefaults.getAsJsonObject("lookclose").get(inferred.getAsString()).getAsBoolean();
+                    if (value != CitizensBehaviors.LOOK_DEFAULTS.get(inferred.getAsString())) migrationWarnings.add("lookclose/" + inferred.getAsString() + ": Citizens writes it only when it differs from the server default and this save writes only "
+                            + !value + ", so an unset value means " + value);
+                }
                 int remappedLocations = 0;
                 int resolvedReferences = 0;
                 int unresolvedReferences = 0;
@@ -169,9 +189,24 @@ public final class CitizensImporter {
                     }
                     if (traits.has(BuilderMapping.CONSTRUCTOR_TRAIT))
                         for (String warning : BuilderMapping.constructor(reviewed.get(BuilderMapping.CONSTRUCTOR_TRAIT))) migrationWarnings.add("citizens-" + key + ": " + warning);
+                    CitizensBehaviors.Result runtime = CitizensBehaviors.map(key, definition.get("name").getAsString(), world, reviewed, record, citizensDefaults);
+                    runtime.navigation().ifPresent((JsonObject navigation) -> {
+                        modules.add("animus:navigation", navigation);
+                        increment(conversions, "routes");
+                    });
+                    conversions.addProperty("routePoints", conversions.get("routePoints").getAsInt() + runtime.points());
+                    conversions.addProperty("routeGuides", conversions.get("routeGuides").getAsInt() + runtime.guides());
+                    runtime.lookClose().ifPresent((JsonObject look) -> {
+                        modules.add("animus:look-close", look);
+                        increment(conversions, "lookClose");
+                    });
+                    for (String behavior : runtime.behaviors()) increment(conversions, behavior.startsWith("citizens:text-") ? "textBehaviors" : "commandBehaviors");
+                    for (CitizensBehaviors.Document document : runtime.documents()) { writeBundle(temporary, document.path(), document.content(), manifest); behaviorDocuments++; }
+                    for (String warning : runtime.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
                     // This review copy applies only known location transformations. Exact originals stay in records/ and source.yml.
                     reviewed.remove("skintrait");
                     modules.add("citizens:review", reviewed);
+                    if (!runtime.behaviors().isEmpty()) definition.add("behaviors", GSON.toJsonTree(runtime.behaviors()));
                     definition.add("modules", modules);
                     if (traits.has("skintrait")) {
                         JsonElement skin = traits.get("skintrait");
@@ -184,8 +219,11 @@ public final class CitizensImporter {
                     JsonObject report = new JsonObject();
                     report.addProperty("citizensId", numeric);
                     JsonObject fields = new JsonObject();
-                    classify(record, "", fields, presentation.converted());
+                    Set<String> convertedFields = new HashSet<>(presentation.converted());
+                    convertedFields.addAll(runtime.converted());
+                    classify(record, "", fields, convertedFields);
                     report.add("presentationWarnings", GSON.toJsonTree(presentation.warnings()));
+                    report.add("runtimeWarnings", GSON.toJsonTree(runtime.warnings()));
                     report.addProperty("fieldPathFormat", "json-pointer");
                     report.add("fields", fields);
                     report.add("worldRemaps", worldRemaps);
@@ -204,6 +242,9 @@ public final class CitizensImporter {
                 summary.addProperty("records", numericIds.size());
                 summary.addProperty("valid", valid);
                 summary.addProperty("skins", skins.size());
+                summary.addProperty("behaviors", behaviorDocuments);
+                summary.add("conversions", conversions);
+                summary.add("citizensDefaults", citizensDefaults);
                 summary.add("traits", counts);
                 summary.add("types", types);
                 summary.add("sentinelFields", sentinelFields);
@@ -240,7 +281,8 @@ public final class CitizensImporter {
             int records = summary.get("records").getAsBigDecimal().intValueExact();
             int valid = summary.get("valid").getAsBigDecimal().intValueExact();
             int skins = summary.get("skins").getAsBigDecimal().intValueExact();
-            if (records < 0 || records > 10000 || valid < 0 || valid > records || skins < 0 || skins > records
+            int behaviors = summary.has("behaviors") ? summary.get("behaviors").getAsBigDecimal().intValueExact() : 0;
+            if (records < 0 || records > 10000 || valid < 0 || valid > records || skins < 0 || skins > records || behaviors < 0 || behaviors > 2 * records
                     || !summary.get("documents").isJsonObject() || !summary.get("idMap").isJsonObject()
                     || summary.getAsJsonObject("idMap").size() != records)
                 throw new IOException("Invalid import report counts or manifest");
@@ -274,6 +316,7 @@ public final class CitizensImporter {
         int npcCount = 0;
         Set<String> requiredSkins = new HashSet<>();
         Set<String> bundledSkins = new HashSet<>();
+        int behaviorCount = 0;
         for (var document : documents.entrySet()) {
             String relative = document.getKey();
             if (!relative.matches(BUNDLE_PATH)) throw new IOException("Invalid bundle path: " + relative);
@@ -289,6 +332,10 @@ public final class CitizensImporter {
                 JsonObject json = definition.json();
                 if (json.has("skin")) requiredSkins.add("skins/" + json.get("skin").getAsString() + ".json");
                 npcCount++;
+            } else if (relative.startsWith("behaviors/")) {
+                behaviorCount++;
+                if (before != null && !before.equals(content)) throw new IOException("Behavior collision: " + relative + " exists with other content");
+                if (before != null) continue;
             } else {
                 bundledSkins.add(relative);
                 if (!relative.equals("skins/" + JsonDocuments.hash(content) + ".json")) throw new IOException("Skin hash mismatch");
@@ -297,7 +344,7 @@ public final class CitizensImporter {
             }
             changes.add(new DocumentStore.Change(relative, "missing", content));
         }
-        if (npcCount != preview.records() || bundledSkins.size() != preview.skins() || !bundledSkins.containsAll(requiredSkins))
+        if (npcCount != preview.records() || bundledSkins.size() != preview.skins() || behaviorCount != preview.behaviors() || !bundledSkins.containsAll(requiredSkins))
             throw new IOException("Incomplete import manifest or missing referenced skins");
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);
@@ -527,6 +574,12 @@ public final class CitizensImporter {
             JsonObject combat = combatValue.getAsJsonObject();
             if (!new JsonPrimitive(false).equals(combat.get("enabled")) || !new JsonPrimitive(false).equals(combat.get("reviewAccepted")))
                 throw new IOException("Imported combat must remain disabled and unreviewed");
+        }
+        if (modules != null && modules.has("animus:navigation")) {
+            JsonElement navigation = modules.get("animus:navigation");
+            if (!navigation.isJsonObject() || !new JsonPrimitive(false).equals(navigation.getAsJsonObject().get("enabled"))
+                    || !new JsonPrimitive(false).equals(navigation.getAsJsonObject().get("reviewAccepted")))
+                throw new IOException("Imported patrols must remain disabled and unreviewed");
         }
     }
 

@@ -15,7 +15,8 @@ import java.util.*;
 public final class ImportApplications {
     public record Preview(String importId,String applicationId,Path report,int records,int replacements,String mode) {}
     private record Existing(NpcDefinition definition,String hash) {}
-    private record Bundle(String reportHash,List<NpcDefinition> definitions,Map<String,String> skins) {}
+    /** {@code extras} are the skins and generated behaviors: written when missing, refused when present with other content. */
+    private record Bundle(String reportHash,List<NpcDefinition> definitions,Map<String,String> extras) {}
     private static final String OBJECTS="import-applications";
     private static final class LoadBudget {
         private long bytes;
@@ -48,10 +49,10 @@ public final class ImportApplications {
             SavedCandidate saved=saveCandidate(store,content);candidateReadBytes+=saved.readBytes();
             add(documents,npc.path(),prior==null?"missing":prior.hash(),saved.hash());
         }
-        for(var skin:bundle.skins().entrySet()) {
+        for(var skin:bundle.extras().entrySet()) {
             String before=store.read(skin.getKey());budget.charge(before);
             if(before==null && ++transactionEntries>10_000)throw new IOException("Application exceeds 10000 transaction entries including skins/checkpoints/receipt");
-            if(before!=null && !before.equals(skin.getValue()))throw new IOException("Skin collision: "+skin.getKey());
+            if(before!=null && !before.equals(skin.getValue()))throw new IOException((skin.getKey().startsWith("skins/")?"Skin":"Behavior")+" collision: "+skin.getKey()+" exists with other content");
             SavedCandidate saved=saveCandidate(store,skin.getValue());candidateReadBytes+=saved.readBytes();
             add(documents,skin.getKey(),JsonDocuments.hash(before),saved.hash());
         }
@@ -94,7 +95,7 @@ public final class ImportApplications {
         String label=plan.has("copyLabel")?string(plan,"copyLabel"):null;
         // Recompute against current identities. A new UUID/ID collision outside the edited paths must also reject apply.
         var projected=ImportProjection.project(importId,source.definitions(),current.values().stream().map(Existing::definition).toList(),mode,label);
-        Map<String,String> expected=new TreeMap<>(source.skins());
+        Map<String,String> expected=new TreeMap<>(source.extras());
         for(NpcDefinition definition:projected.definitions()){String content=definition.serialize();budget.charge(content);expected.put(definition.path(),content);}
         if(!expected.equals(candidates))throw new IOException("Application no longer matches current definitions; stage a new preview");
         if(integer(plan,"records")!=projected.definitions().size() || integer(plan,"replacements")!=projected.replacedPaths().size())
@@ -107,7 +108,7 @@ public final class ImportApplications {
             expectedHashes.put(candidate.getKey(),beforeHash);
             // Existing content-addressed skin files are validated above, as in the default importer.
             // Avoid duplicating unchanged payloads in the bounded rollback journal.
-            if(candidate.getKey().startsWith("skins/") && beforeHash.equals("missing"))
+            if(!candidate.getKey().startsWith("npcs/") && beforeHash.equals("missing"))
                 changes.add(new DocumentStore.Change(candidate.getKey(),beforeHash,candidate.getValue()));
         }
         JsonObject installed=new JsonObject();installed.addProperty("schemaVersion",1);installed.addProperty("importId",importId);
@@ -133,7 +134,7 @@ public final class ImportApplications {
         Map<String,String> result=new TreeMap<>();
         for(var entry:documents.entrySet()) {
             String path=entry.getKey();
-            if(!path.matches("(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}|skins/[a-f0-9]{64})\\.json"))throw new IOException("Invalid application target: "+path);
+            if(!path.matches("(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}|skins/[a-f0-9]{64})\\.json") && !path.matches(CitizensImporter.BEHAVIOR_PATH))throw new IOException("Invalid application target: "+path);
             JsonObject descriptor=object(documents,path);String hash=string(descriptor,"objectHash"), before=string(descriptor,"expectedHash");
             if(!before.equals("missing") && !before.matches("[a-f0-9]{64}"))throw new IOException("Invalid expected hash: "+path);
             String encoded=store.immutableJson(OBJECTS,hash);budget.charge(encoded);
@@ -142,7 +143,7 @@ public final class ImportApplications {
             String value=string(saved,"document");budget.charge(value);
             if(path.startsWith("npcs/")) {
                 NpcDefinition npc=NpcDefinition.parse(value);if(!npc.path().equals(path))throw new IOException("Application NPC path mismatch");
-            } else if(!path.equals("skins/"+JsonDocuments.hash(value)+".json"))throw new IOException("Application skin hash mismatch");
+            } else if(path.startsWith("skins/") && !path.equals("skins/"+JsonDocuments.hash(value)+".json"))throw new IOException("Application skin hash mismatch");
             result.put(path,value);
         }
         return result;
@@ -163,8 +164,8 @@ public final class ImportApplications {
         String report=store.read(prefix+"report.json");budget.charge(report);JsonObject summary=preview.summary();
         if(integer(summary,"schemaVersion")!=1 || preview.records()==0 || preview.records()!=preview.valid())throw new IOException("Import has validation errors");
         JsonObject documents=object(summary,"documents"), ids=object(summary,"idMap");
-        if(documents.size()!=preview.records()+preview.skins() || documents.size()>9_999)throw new IOException("Invalid or oversized import manifest");
-        List<NpcDefinition> definitions=new ArrayList<>();Map<String,String> skins=new TreeMap<>();Set<String> required=new HashSet<>();
+        if(documents.size()!=preview.records()+preview.skins()+preview.behaviors() || documents.size()>9_999)throw new IOException("Invalid or oversized import manifest");
+        List<NpcDefinition> definitions=new ArrayList<>();Map<String,String> skins=new TreeMap<>(), behaviors=new TreeMap<>();Set<String> required=new HashSet<>();
         for(var entry:documents.entrySet()) {
             String path=entry.getKey();
             if(!path.matches(CitizensImporter.BUNDLE_PATH))throw new IOException("Invalid bundle path: "+path);
@@ -176,13 +177,15 @@ public final class ImportApplications {
                 int oldId=integer(object(data,"migration"),"citizensId");
                 if(!npc.uuid().toString().equals(string(ids,Integer.toString(oldId))))throw new IOException("Import identity map mismatch");
                 if(data.has("skin"))required.add("skins/"+string(data,"skin")+".json");definitions.add(npc);
-            } else {
+            } else if(path.startsWith("behaviors/")) behaviors.put(path,value);
+            else {
                 if(!path.equals("skins/"+JsonDocuments.hash(value)+".json"))throw new IOException("Skin hash mismatch");
                 skins.put(path,value);
             }
         }
-        if(definitions.size()!=preview.records() || skins.size()!=preview.skins() || !skins.keySet().containsAll(required))throw new IOException("Incomplete import bundle");
-        return new Bundle(JsonDocuments.hash(report),List.copyOf(definitions),Map.copyOf(skins));
+        if(definitions.size()!=preview.records() || skins.size()!=preview.skins() || behaviors.size()!=preview.behaviors() || !skins.keySet().containsAll(required))throw new IOException("Incomplete import bundle");
+        Map<String,String> extras=new TreeMap<>(skins);extras.putAll(behaviors);
+        return new Bundle(JsonDocuments.hash(report),List.copyOf(definitions),Map.copyOf(extras));
     }
     private record SavedCandidate(String hash,long readBytes) {}
     private static SavedCandidate saveCandidate(DocumentStore store,String content) throws IOException {

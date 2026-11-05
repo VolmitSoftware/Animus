@@ -3,6 +3,7 @@
   "presentationWarnings": [
     "/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"
   ],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",

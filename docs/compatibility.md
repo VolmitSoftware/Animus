@@ -9,11 +9,13 @@ This is a development inventory, not a release-parity claim. To run a migration,
 | Skins (489 traits, 409 unique complete documents) | Texture/signature/settings preserved and deduplicated | Signed textures in persisted runtime and opt-in proof; see artifact-specific evidence |
 | Equipment (123) | All eight slots convert to `equipment`; a cosmetic item replaces its slot. Item id, count and damage convert; other item data is kept in the item's `imported` field | Shown to every viewer from the definition, across restart. Kept item data (names, lore, enchantment glint, custom model data) is not shown. Equipment does not change combat damage or armor |
 | Inventory (121) | Slots 0–71 convert to `inventory` slot for slot, with the same item rules | Stored for behaviors and modules to read; never rendered. Shops and chest GUIs are separate documents ([shops](shops.md), [chest GUIs](gui.md)) and never read the NPC's inventory |
-| Waypoints (318), look behavior (495) | Preserved for review | Known locations remapped; native movement/look/JSON routes verified on exact Paper/Spigot targets; imported traits are not executed |
+| Waypoints (318) | Converter version 8 and later: `linear`, `guided` and `wander` become a disabled `animus:navigation` route with world mappings applied; `delay` triggers become point waits. In the reference, 298 NPCs get a route (288 guided, 9 linear, 1 wander) with 3,963 points and 26,059 guides; the other 20 have no points. Other providers and triggers are kept and reported | `/animus import citizens accept patrols` turns routes on. Guided routes walk to random destinations through guides; legs are limited to 32 blocks across and 8 up or down, and the report counts destinations no guide reaches (37 in 29 NPCs of the reference). See [migrating](migrating-from-citizens.md#patrols) |
+| Look-close (495) | Converter version 8 and later: an enabled trait becomes `animus:look-close` with range, line of sight and look-while-walking. The reference writes only `enabled: false`, so the 493 others are on | Active once the NPC is spawned; no review of its own. Random looking, head-only, per-player, NPC targets (6 in the reference) and filters are reported and not run |
 | Holograms (91) | Lines convert to `hologram.lines` in order; at most 16 lines of 256 characters | One packet-only text display above the NPC for every viewer. Lines are evenly spaced; line margins, line height, view ranges, renderer settings and placeholders are kept for review and not applied |
 | Poses (3), sneak (1), sit (1), armor stand (3) | The default named pose sets the facing; `sneak` becomes `sneaking`, `sittrait` becomes `sitting`; armor stand parts and angles convert | Sneaking, sleeping, swimming and sitting on player bodies; other body types stand. Armor stand size, arms, base plate, visibility and limb angles are shown. Marker and gravity are kept for review. Other named poses are kept and not applied |
 | Non-player NPCs (12) | Type converted | Every observed type has a packet body; names and hologram lines show in a text display; armor stand parts show; horse armor and saddle use the `body` and `saddle` slots |
-| Text (2) | Preserved for review | Talk lines, ranges and speech bubbles are not run. Write them as a behavior with [`animus:say`](behaviors.md#actions) |
+| Text (2) | Converter version 8 and later: the behavior `citizens:text-<id>` in `behaviors/citizens/`, with a proximity or right-click trigger and `animus:say`; random or turn-taking lines | Runs once the NPC is spawned and behaviors are loaded. One cooldown per NPC; speech bubbles and held-item requirements are reported |
+| Commands (`commandtrait`, none in the reference) | Converter version 8 and later: the behavior `citizens:commands-<id>` with right- and left-click triggers, permission checks, delays and cooldowns, using `animus:command` | Denied until the behavior is on the `commandBehaviors` allow-list. Sneak clicks, NPC-run commands, use limits and costs are reported and not converted |
 | Ownership (388) | A player UUID converts to `owner`; a server owner records none | Exposed through `NpcDefinition.owner()`, the definition snapshot and `/animus inspect` for plugins and modules to use. Animus management commands still require `animus.admin` |
 | dtlTraders `trader` (not in the reference) | Converter version 6 and later: `guiName` converts to `modules["animus:shop"]` naming `dtltraders:<shop>`; an old version 3 trader names `dtltraders:converted-<npc>`. Shop files, version 3 stock and `data.dat` convert with the separate [shop importer](shops.md#importing-from-dtltraders) | Converter version 7 and later write `reviewAccepted: false`, and an imported binding opens nothing until it is accepted (`/animus import citizens accept shops`). Then right click opens the shop once its shop file is installed; a missing shop says so to the player |
 | Sentinel (103) | Settings converted to `animus:combat`; unsupported settings and statistics kept separately; disabled pending review | [Combat module](combat.md) runs once the review is accepted; live gameplay checks pending |
@@ -42,7 +44,7 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 | horsemodifiers | 4 | Unsupported, preserved |
 | inventory | 121 | Converted to `inventory`; extra item data preserved |
 | location | 495 | Main world/coordinates converted; other fields preserved for review |
-| lookclose | 495 | Requires review |
+| lookclose | 495 | Converted to `animus:look-close` when enabled; unsupported options preserved |
 | mounttrait | 2 | Requires review |
 | owner | 388 | Player UUID converted to `owner` |
 | poses | 3 | Default pose converted to the facing; other poses preserved |
@@ -55,11 +57,11 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 | sneaking | 1 | Unsupported, preserved |
 | spawned | 11 | Requires review; candidate spawned=false |
 | targetable | 24 | Unsupported, preserved |
-| text | 2 | Requires review |
+| text | 2 | Converted to a generated `citizens:text-<id>` behavior |
 | trader | 0 | `guiName` and `converted-to-v5` converted to `animus:shop`; version 3 stock requires the shop importer |
 | triggers | 8 | Requires integration |
 | type | 495 | Converted identifier; opt-in packet proof for all observed types |
-| waypoints | 318 | Requires review |
+| waypoints | 318 | Converted to an `animus:navigation` route, disabled pending review; unsupported providers and triggers preserved |
 
 ## Sentinel settings
 

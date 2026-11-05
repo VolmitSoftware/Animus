@@ -5,6 +5,9 @@
     "/traits/hologramtrait: line margins, line height, view ranges and renderer settings are kept for review; lines use uniform spacing",
     "/traits/poses: default pose wave sets the facing; other named poses are kept for review"
   ],
+  "runtimeWarnings": [
+    "/traits/waypoints/linear: 2 points in another world or without usable coordinates were left out"
+  ],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",
@@ -34,13 +37,13 @@
     "/traits/poses/defaultPose": "CONVERTED",
     "/traits/poses/list/0": "REQUIRES_REVIEW",
     "/traits/poses/list/1": "REQUIRES_REVIEW",
-    "/traits/text/text/0": "REQUIRES_REVIEW",
-    "/traits/text/text/1": "REQUIRES_REVIEW",
-    "/traits/text/talk-close": "REQUIRES_REVIEW",
-    "/traits/text/random-talker": "REQUIRES_REVIEW",
-    "/traits/text/range": "REQUIRES_REVIEW",
-    "/traits/waypoints/provider": "REQUIRES_REVIEW",
-    "/traits/waypoints/linear/cycle": "REQUIRES_REVIEW",
+    "/traits/text/text/0": "CONVERTED",
+    "/traits/text/text/1": "CONVERTED",
+    "/traits/text/talk-close": "CONVERTED",
+    "/traits/text/random-talker": "CONVERTED",
+    "/traits/text/range": "CONVERTED",
+    "/traits/waypoints/provider": "CONVERTED",
+    "/traits/waypoints/linear/cycle": "CONVERTED",
     "/traits/waypoints/linear/points/0/location/world": "REQUIRES_REVIEW",
     "/traits/waypoints/linear/points/0/location/worldid": "REQUIRES_REVIEW",
     "/traits/waypoints/linear/points/0/location/x": "REQUIRES_REVIEW",
@@ -62,8 +65,8 @@
     "/traits/waypoints/guided/helperwaypoints/0/location/z": "REQUIRES_REVIEW",
     "/traits/scoreboardtrait/color": "UNSUPPORTED_PRESERVED",
     "/traits/scoreboardtrait/tags/0": "UNSUPPORTED_PRESERVED",
-    "/traits/lookclose/enabled": "REQUIRES_REVIEW",
-    "/traits/lookclose/range": "REQUIRES_REVIEW"
+    "/traits/lookclose/enabled": "CONVERTED",
+    "/traits/lookclose/range": "CONVERTED"
   },
   "worldRemaps": [
     {

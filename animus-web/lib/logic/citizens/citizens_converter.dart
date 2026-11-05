@@ -15,6 +15,7 @@ import 'definition_validation.dart';
 import 'java_json.dart';
 import 'java_lang.dart';
 import 'presentation.dart';
+import 'runtime_behaviors.dart';
 import 'sentinel.dart';
 import 'snake_yaml.dart';
 import 'trader_builder.dart';
@@ -22,7 +23,7 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 7;
+const int citizensConverterVersion = 8;
 
 const String _notice =
     'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.';
@@ -125,6 +126,12 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   summary.add('worldMap', options);
   summary.addString('notice', _notice);
   final JObject mapping = _identityMap(npcs);
+  final JObject defaults = citizensDefaults(npcs);
+  final JObject conversions = JObject();
+  for (final String counter in const <String>['routes', 'routePoints', 'routeGuides', 'lookClose', 'textBehaviors', 'commandBehaviors']) {
+    conversions.addInt(counter, 0);
+  }
+  int behaviorDocuments = 0;
   final Map<String, List<String>> reverseIds = <String, List<String>>{};
   for (final MapEntry<String, JElement> entry in mapping.entries) {
     reverseIds.putIfAbsent(entry.value.asPrimitive.asString, () => <String>[]).add(entry.key);
@@ -135,6 +142,13 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   final JObject sentinelMapping = JObject();
   final JArray issues = JArray();
   final JArray migrationWarnings = JArray();
+  for (final JElement inferred in (defaults.get('inferred')! as JArray).elements) {
+    final String field = inferred.asPrimitive.asString;
+    final bool value = (defaults.get('lookclose')! as JObject).get(field)!.asPrimitive.asBoolean;
+    if (value != lookDefaults[field]) {
+      migrationWarnings.addString('lookclose/$field: Citizens writes it only when it differs from the server default and this save writes only ${!value}, so an unset value means $value');
+    }
+  }
   int remappedLocations = 0;
   int resolvedReferences = 0;
   int unresolvedReferences = 0;
@@ -255,8 +269,30 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
         migrationWarnings.addString('citizens-$key: $warning');
       }
     }
+    final RuntimeResult runtime = mapRuntime(key, definition.get('name')!.asPrimitive.asString, world, reviewed, record, defaults);
+    if (runtime.navigation != null) {
+      modules.add('animus:navigation', runtime.navigation);
+      _increment(conversions, 'routes');
+    }
+    conversions.addInt('routePoints', (conversions.get('routePoints')! as JInt).value.toInt() + runtime.points);
+    conversions.addInt('routeGuides', (conversions.get('routeGuides')! as JInt).value.toInt() + runtime.guides);
+    if (runtime.lookClose != null) {
+      modules.add('animus:look-close', runtime.lookClose);
+      _increment(conversions, 'lookClose');
+    }
+    for (final String behavior in runtime.behaviors) {
+      _increment(conversions, behavior.startsWith('citizens:text-') ? 'textBehaviors' : 'commandBehaviors');
+    }
+    for (final BehaviorDocument document in runtime.documents) {
+      writeBundle(document.path, document.content);
+      behaviorDocuments++;
+    }
+    for (final String warning in runtime.warnings) {
+      migrationWarnings.addString('citizens-$key: $warning');
+    }
     reviewed.remove('skintrait');
     modules.add('citizens:review', reviewed);
+    if (runtime.behaviors.isNotEmpty) definition.add('behaviors', JArray(<JElement>[for (final String id in runtime.behaviors) JString(id)]));
     definition.add('modules', modules);
     if (traits.has('skintrait')) {
       final String serialized = writeJson(traits.get('skintrait')!);
@@ -268,8 +304,9 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final JObject report = JObject();
     report.addInt('citizensId', numeric);
     final JObject fields = JObject();
-    _classify(record, '', fields, presentation.converted);
+    _classify(record, '', fields, <String>{...presentation.converted, ...runtime.converted});
     report.add('presentationWarnings', JArray(<JElement>[for (final String warning in presentation.warnings) JString(warning)]));
+    report.add('runtimeWarnings', JArray(<JElement>[for (final String warning in runtime.warnings) JString(warning)]));
     report.addString('fieldPathFormat', 'json-pointer');
     report.add('fields', fields);
     report.add('worldRemaps', worldRemaps);
@@ -290,6 +327,9 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   summary.addInt('records', numericIds.length);
   summary.addInt('valid', valid);
   summary.addInt('skins', skins.length);
+  summary.addInt('behaviors', behaviorDocuments);
+  summary.add('conversions', conversions);
+  summary.add('citizensDefaults', defaults);
   summary.add('traits', counts);
   summary.add('types', types);
   summary.add('sentinelFields', sentinelFields);

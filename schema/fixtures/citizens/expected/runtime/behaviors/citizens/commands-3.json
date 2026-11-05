@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:commands-3",
+  "entry": "right",
+  "routines": {
+    "right": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "commands-3-right",
+            "scope": "npc",
+            "equals": 0
+          },
+          "then": {
+            "type": "condition",
+            "capability": "animus:has-permission",
+            "arguments": {
+              "permission": "town.scribe"
+            },
+            "then": {
+              "type": "action",
+              "capability": "animus:command",
+              "arguments": {
+                "command": "give {player_name} minecraft:paper 1",
+                "as": "console"
+              }
+            }
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "commands-3-right",
+            "scope": "npc",
+            "equals": 1
+          },
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "wait",
+                "ticks": 20
+              },
+              {
+                "type": "action",
+                "capability": "animus:command",
+                "arguments": {
+                  "command": "say Scribe stamps a letter",
+                  "as": "player"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:advance-quest-state",
+          "arguments": {
+            "name": "commands-3-right",
+            "scope": "npc",
+            "maximum": 2
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "commands-3-right",
+            "scope": "npc",
+            "atLeast": 2
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:set-quest-state",
+            "arguments": {
+              "name": "commands-3-right",
+              "scope": "npc",
+              "value": 0
+            }
+          }
+        }
+      ]
+    },
+    "left": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "commands-3-left",
+            "scope": "npc",
+            "equals": 0
+          },
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "wait",
+                "ticks": 20
+              },
+              {
+                "type": "action",
+                "capability": "animus:command",
+                "arguments": {
+                  "command": "say Scribe stamps a letter",
+                  "as": "player"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "commands-3-left",
+            "scope": "npc",
+            "equals": 1
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:command",
+            "arguments": {
+              "command": "heal {player_name}",
+              "as": "console"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:advance-quest-state",
+          "arguments": {
+            "name": "commands-3-left",
+            "scope": "npc",
+            "maximum": 2
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "commands-3-left",
+            "scope": "npc",
+            "atLeast": 2
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:set-quest-state",
+            "arguments": {
+              "name": "commands-3-left",
+              "scope": "npc",
+              "value": 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "right",
+      "event": "interaction",
+      "action": "interact",
+      "routine": "right",
+      "cooldownTicks": 200
+    },
+    {
+      "id": "left",
+      "event": "interaction",
+      "action": "attack",
+      "routine": "left"
+    }
+  ]
+}

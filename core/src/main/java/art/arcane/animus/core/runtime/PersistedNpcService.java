@@ -21,6 +21,7 @@ import art.arcane.animus.core.navigation.OwnerNavigation;
 import art.arcane.animus.core.navigation.PathExecution;
 import art.arcane.animus.core.navigation.PathPlanner;
 import art.arcane.animus.core.navigation.WaypointSettings;
+import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.presentation.BodyPose;
@@ -95,7 +96,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
     private static final int RECONCILE_WORK = 64, PACKET_WORK = 32, MAX_PENDING_PER_VIEWER = 8, MAX_ISSUED_IDS = 8192;
     private static final int MAX_ROUTES = 32, NAVIGATION_UPDATES = 16, NAVIGATION_CELLS = 2048, MOTION_CELLS = 256;
-    private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096;
+    private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096, LOOK_UPDATES = 32;
     private static final double HULL_WIDTH_LIMIT = 4, HULL_HEIGHT_LIMIT = 8;
     /** Fastest route leg in blocks per second; combat pursuit is limited further by {@code [combat] maximumSpeed}. */
     public static final double MAXIMUM_SPEED = 10;
@@ -118,6 +119,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private final Deque<Value> supportOrder = new ArrayDeque<>();
     /** Active NPCs whose definition names a rig; planning takes turns through it. */
     private final Deque<Value> rigOrder = new ArrayDeque<>();
+    private final Deque<Value> lookOrder = new ArrayDeque<>();
     private final RigSettings rigSettings;
     private final Deque<Value> routeReadQueue = new ArrayDeque<>();
     private final Set<RouteReadTask> routeReads = new HashSet<>();
@@ -272,7 +274,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         stopRoute(value, "cancelled: replaced by manual route");
         cancelRouteRead(value);
         value.waypoints = null;
-        Route route = new Route(value, destination, mode, blocksPerSecond, -1);
+        Route route = new Route(value, destination, mode, blocksPerSecond, null);
         value.route = route; routeOrder.addLast(route); value.navigationStatus = "queued; route=" + route.id;
         return route.id;
     }
@@ -296,11 +298,35 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         WorldPosition from = value.state.snapshot().position();
         if (!from.world().equals(target.world()) || from.point().distance(target.point()) > 64)
             throw new IllegalArgumentException("Look target must be within64 blocks in the same world");
-        Vec3 delta = target.point().subtract(from.point().add(new Vec3(0, bodyHeight(value) * .8, 0)));
-        if (delta.distance(Vec3.ZERO) < .000001) return;
-        float yaw = (float) Math.toDegrees(Math.atan2(-delta.x(), delta.z()));
-        float pitch = (float) -Math.toDegrees(Math.atan2(delta.y(), Math.hypot(delta.x(), delta.z())));
-        setPose(value, yaw, pitch, value.onGround);
+        LookClose.facing(LookClose.eye(from.point(), bodyHeight(value)), target.point())
+                .ifPresent((LookClose.Facing facing) -> setPose(value, facing.yaw(), facing.pitch(), value.onGround));
+    }
+    /** Turns NPCs with animus:look-close toward the nearest player in range: a bounded slice per tick, each NPC at most every few ticks. */
+    private void tickLooks() {
+        for (int i = 0, count = Math.min(LOOK_UPDATES, lookOrder.size()); i < count && available(); i++) {
+            Value value = lookOrder.removeFirst(); lookOrder.addLast(value);
+            if (tickNumber < value.nextLook) continue;
+            value.nextLook = tickNumber + LookClose.INTERVAL_TICKS;
+            if (!valueCurrent(value) || !value.state.snapshot().active()) continue;
+            LookClose look = value.lookClose;
+            if (mountRuntime.vehicleOf(value.spec.definition().id()) != null || riders.riderOf(value.spec.definition().uuid()) != null) continue;
+            if (!look.whileNavigating() && (value.routeTask != null || (value.route != null && (value.route.plan != null || value.route.execution != null)))) continue;
+            WorldPosition at = value.state.snapshot().position();
+            Vec3 eye = LookClose.eye(at.point(), bodyHeight(value));
+            List<LookClose.Candidate<P>> candidates = new ArrayList<>();
+            for (Viewer viewer : viewers.values()) {
+                if (viewer.failed || !viewer.world.equals(at.world()) || !host.online(viewer.player) || host.dead(viewer.player)) continue;
+                Presented body = viewer.visible.get(value.spec.definition().uuid());
+                candidates.add(new LookClose.Candidate<>(viewer.player, host.eye(viewer.player), body != null && body.value == value && body.bound && !body.retired));
+            }
+            for (LookClose.Candidate<P> candidate : look.ranked(eye, candidates)) {
+                double distance = candidate.eye().distance(eye);
+                if (look.lineOfSight() && distance > .000001
+                        && !host.clearSight(candidate.player(), candidate.eye(), eye.subtract(candidate.eye()).normalized(), Math.max(0, distance - .0001))) continue;
+                LookClose.facing(eye, candidate.eye()).ifPresent((LookClose.Facing facing) -> setPose(value, facing.yaw(), facing.pitch(), value.onGround));
+                break;
+            }
+        }
     }
 
     @Override public Optional<ActiveNpc> active(UUID npc) {
@@ -377,8 +403,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     public void resumePatrol(String id) {
         Value value = navigable(id);
         if (value.route != null || value.routeTask != null || value.routeReadQueued) return;
-        value.waypoints = WaypointSettings.parse(value.spec.definition()).map(WaypointProgress::new).orElse(null);
-        if (value.waypoints != null) beginWaypoint(value, 0);
+        value.waypoints = WaypointSettings.parse(value.spec.definition()).map((WaypointSettings declared) -> progress(value, declared)).orElse(null);
+        if (value.waypoints != null) beginLeg(value, value.waypoints.start(value.state.snapshot().position().point()));
         else requestRouteRead(value);
     }
     /** Replaces the current route with a reusable route; its read and any read failure are reported in navigation status. */
@@ -633,17 +659,40 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (route == null) value.navigationStatus = reason;
         else { routeStatus(route, reason, ""); failWatch(value, reason); }
     }
-    private void beginWaypoint(Value value, int waypoint) {
+    private WaypointProgress progress(Value value, WaypointSettings declared) {
+        return WaypointProgress.of(declared, value.spec.position().point(), value.spec.definition().uuid());
+    }
+    /** Queues the route's next leg. A pause leg holds the route's slot until its wait ends; a random or wander leg that cannot start pauses instead. */
+    private void beginLeg(Value value, Optional<WaypointProgress.Leg> next) {
         WaypointProgress progress = value.waypoints;
-        if (progress == null || progress.complete() || !value.state.snapshot().active()) return;
+        if (progress == null || next.isEmpty() || !value.state.snapshot().active()) return;
+        WaypointProgress.Leg leg = next.get();
         WaypointSettings waypointSettings = progress.settings();
         if (routeOrder.size() >= MAX_ROUTES) { value.navigationStatus = "unavailable: navigation capacity " + MAX_ROUTES; failWatch(value, value.navigationStatus); return; }
-        WorldPosition goal = new WorldPosition(value.state.snapshot().position().world(), waypointSettings.points().get(waypoint));
-        try { validateDestination(value, goal, waypointSettings.mode(), waypointSettings.speed()); }
-        catch (IllegalArgumentException invalid) { value.navigationStatus = "invalid waypoint " + waypoint + ": " + invalid.getMessage(); failWatch(value, value.navigationStatus); return; }
-        Route route = new Route(value, goal, waypointSettings.mode(), waypointSettings.speed(), waypoint);
-        route.nextAttempt = tickNumber + Math.max(1, waypointSettings.waitTicks());
-        value.route = route; routeOrder.addLast(route); routeStatus(route, "queued", "");
+        WorldPosition at = value.state.snapshot().position();
+        WorldPosition goal = leg.pause() ? at : new WorldPosition(at.world(), leg.goal());
+        if (!leg.pause()) {
+            try { validateDestination(value, goal, waypointSettings.mode(), waypointSettings.speed()); }
+            catch (IllegalArgumentException invalid) {
+                value.navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(value, value.navigationStatus);
+                Optional<WaypointProgress.Leg> retry = progress.failed(leg);
+                if (retry.isPresent()) beginLeg(value, retry);
+                return;
+            }
+        }
+        Route route = new Route(value, goal, waypointSettings.mode(), waypointSettings.speed(), leg);
+        route.nextAttempt = tickNumber + Math.max(1, leg.waitTicks());
+        value.route = route; routeOrder.addLast(route); routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
+    }
+    /** A leg that cannot finish: random and wander routes pause and choose again, every other route halts. */
+    private void failLeg(Route route, String reason) {
+        Value value = route.value;
+        WaypointProgress progress = value.waypoints;
+        stopRoute(value, reason);
+        if (progress == null || route.leg == null || !progress.retries() || value.route != null || !valueCurrent(value)) return;
+        String failure = value.navigationStatus;
+        beginLeg(value, progress.failed(route.leg));
+        if (value.route != null) routeStatus(value.route, "waiting to retry", "after " + failure);
     }
     private void routeStatus(Route route, String state, String detail) {
         route.value.navigationStatus = state + "; route=" + route.id + "; waypoint=" + route.waypoint + "; goal=" + route.goal.point()
@@ -664,6 +713,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             Route route = routeOrder.removeFirst(); Value value = route.value;
             if (!routeCurrent(route)) { stopRoute(value, "cancelled by definition/lifecycle change"); continue; }
             if (tickNumber < route.nextAttempt) { routeOrder.addLast(route); continue; }
+            if (route.leg != null && route.leg.pause()) {
+                value.route = null;
+                if (value.waypoints != null) beginLeg(value, value.waypoints.resume(route.leg, value.state.snapshot().position().point()));
+                continue;
+            }
             String world = route.goal.world();
             if (!host.worldLoaded(world)) { stopRoute(value, "cancelled: world unavailable"); continue; }
             try {
@@ -682,7 +736,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                     } else if (route.result.isDone()) {
                         PathPlanner.Result planned = route.result.join(); route.capture = route.plan.capture().orElse(null); route.plan = null; route.result = null;
                         if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspend(route, "unavailable captured terrain");
-                        else if (planned.status() != PathPlanner.Status.FOUND) stopRoute(value, "failed: " + planned.status());
+                        else if (planned.status() != PathPlanner.Status.FOUND) failLeg(route, "failed: " + planned.status());
                         else {
                             route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), route.goal.point(), profile(value, route.mode));
                             routeStatus(route, "moving", "kinematic; live collision revalidation");
@@ -706,7 +760,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                             cells -= validation.sampledCells();
                         }
                         if (validation.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) suspend(route, validation.detail());
-                        else if (!validation.clear()) stopRoute(value, "blocked: " + validation.status() + "; " + validation.detail());
+                        else if (!validation.clear()) failLeg(route, "blocked: " + validation.status() + "; " + validation.detail());
                         else {
                             route.execution.commit(step);
                             Vec3 delta = step.to().subtract(step.from());
@@ -719,7 +773,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                     }
                 }
             } catch (RejectedExecutionException full) { route.nextAttempt = tickNumber + 20; routeStatus(route, "queued", "path capacity"); }
-            catch (RuntimeException failure) { stopRoute(value, "failed: " + concise(failure)); }
+            catch (RuntimeException failure) { if (value.route == route) failLeg(route, "failed: " + concise(failure)); else stopRoute(value, "failed: " + concise(failure)); }
             if (routeCurrent(route)) routeOrder.addLast(route);
         }
     }
@@ -771,8 +825,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         Entry entry = byUuid.get(value.spec.definition().uuid());
         if (!available() || entry == null || entry.value != value || value.route != null || value.waypoints != progress || progress == null
                 || !value.state.snapshot().active() || !value.authority.accepts(runtime.npcs().snapshot().get(entry.id))) return;
-        OptionalInt next = progress.arrived(route.waypoint);
-        if (next.isPresent()) beginWaypoint(value, next.getAsInt());
+        Optional<WaypointProgress.Leg> next = route.leg == null ? Optional.empty() : progress.arrived(route.leg, value.state.snapshot().position().point());
+        if (next.isPresent()) beginLeg(value, next);
         else finishWatch(value);
     }
     static void setPose(PersistedNpcService<?, ?>.Value value, float yaw, float pitch, boolean onGround) {
@@ -808,11 +862,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 continue;
             }
             value.routeError = null;
-            if (value.routeWatch != null && completion.settings.loop()) { value.navigationStatus = "invalid: a looping route never finishes"; failWatch(value, value.navigationStatus); continue; }
+            if (value.routeWatch != null && completion.settings.endless()) { value.navigationStatus = "invalid: a looping route never finishes"; failWatch(value, value.navigationStatus); continue; }
             if (value.waypoints != null && !value.waypoints.reload(completion.settings)) continue;
             stopRoute(value, "replaced by reusable route reload");
-            if (value.waypoints == null) value.waypoints = new WaypointProgress(completion.settings);
-            beginWaypoint(value, 0);
+            if (value.waypoints == null) value.waypoints = progress(value, completion.settings);
+            beginLeg(value, value.waypoints.start(value.state.snapshot().position().point()));
         }
         for (int i = 0; i < MAX_ROUTE_READS && routeReads.size() < MAX_ROUTE_READS && !routeReadQueue.isEmpty(); i++) {
             Value value = routeReadQueue.removeFirst(); value.routeReadQueued = false;
@@ -889,6 +943,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             tickNavigation();
             tickSupport();
             tickRigs();
+            tickLooks();
             if (!available()) return; // Arrival listeners may disable the plugin or retire the entire runtime.
             mountRuntime.syncPassengers();
             mountRuntime.tickDragons();
@@ -962,9 +1017,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         byUuid.put(spec.definition().uuid(), entry); index.upsert(state.snapshot());
         mountRuntime.activated(entry.value);
         if (entry.value.rigId != null) { bindRig(entry.value); rigOrder.addLast(entry.value); }
+        if (entry.value.lookClose != null) lookOrder.addLast(entry.value);
         if (!sameNpc && triggers != null) triggers.activated(spec.definition().uuid());
-        entry.value.waypoints = WaypointSettings.parse(spec.definition()).map(WaypointProgress::new).orElse(null);
-        if (entry.value.waypoints != null) beginWaypoint(entry.value, 0);
+        Value created = entry.value;
+        created.waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(created, declared)).orElse(null);
+        if (created.waypoints != null) beginLeg(created, created.waypoints.start(created.state.snapshot().position().point()));
         else requestRouteRead(entry.value);
     }
     public static double maximumHealth(DefinitionSpec<?> spec) {
@@ -989,6 +1046,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         cancelRouteRead(old);
         cancelAppearanceRead(old);
         rigOrder.remove(old);
+        lookOrder.remove(old);
         UUID uuid = old.spec.definition().uuid(); byUuid.remove(uuid, entry); index.remove(uuid); old.state.despawn();
         for (Viewer viewer : viewers.values()) {
             Presented body = viewer.visible.get(uuid);
@@ -1270,7 +1328,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         previews.close();
         closeQuietly(ticker);
         for (Route route : List.copyOf(routeOrder)) stopRoute(route.value, "cancelled: runtime shutdown");
-        routeOrder.clear(); supportOrder.clear(); rigOrder.clear(); if (navigation != null) navigation.close();
+        routeOrder.clear(); supportOrder.clear(); rigOrder.clear(); lookOrder.clear(); if (navigation != null) navigation.close();
         for (RouteReadTask task : routeReads) task.cancelled = true;
         routeReads.clear(); routeReadQueue.clear(); routeReadCompletions.clear();
         for (SkinTask task : skinTasks) task.cancelled = true;
@@ -1297,6 +1355,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         RouteReadTask routeTask; boolean routeReadQueued;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
+        final LookClose lookClose; long nextLook;
         Vec3 restingPoint; long lastMotionTick; int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; AppearanceTask appearanceTask;
@@ -1309,6 +1368,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             equipment.putAll(NpcPresentation.equipment(spec, host::copy)); equipmentRevision = equipment.isEmpty() ? 0 : 1;
             mountReference = MountDeclaration.parse(spec.definition().json()).orElse(null);
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
+            lookClose = LookClose.parse(spec.definition().json()).orElse(null);
             routeSource = WaypointSettings.reference(spec.definition());
             authority = new DefinitionAuthority(spec.definition());
             rigId = RigReference.parse(spec.definition().json()).orElse(null);
@@ -1316,11 +1376,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     }
     private final class Route {
         final UUID id = UUID.randomUUID(); final Value value; final WorldPosition goal;
-        final MovementProfile.Mode mode; final double speed; final int waypoint;
+        final MovementProfile.Mode mode; final double speed; final int waypoint; final WaypointProgress.Leg leg;
         NavigationPlan plan; CompletableFuture<PathPlanner.Result> result; PathExecution execution; CaptureProvenance capture;
         long nextAttempt;
-        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, int waypoint) {
-            this.value = value; this.goal = goal; this.mode = mode; this.speed = speed; this.waypoint = waypoint;
+        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) {
+            this.value = value; this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
         }
     }
     final class Presented {

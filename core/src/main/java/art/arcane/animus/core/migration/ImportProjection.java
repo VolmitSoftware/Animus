@@ -99,6 +99,11 @@ final class ImportProjection {
             if(!new JsonPrimitive(false).equals(combat.get("enabled")) || !new JsonPrimitive(false).equals(combat.get("reviewAccepted")))
                 throw new IOException("Imported combat must remain disabled and unreviewed");
         }
+        if(modules.has("animus:navigation")) {
+            JsonObject navigation=object(modules,"animus:navigation");
+            if(!new JsonPrimitive(false).equals(navigation.get("enabled")) || !new JsonPrimitive(false).equals(navigation.get("reviewAccepted")))
+                throw new IOException("Imported patrols must remain disabled and unreviewed");
+        }
     }
     private static JsonObject object(JsonObject parent,String key) throws IOException {
         JsonElement value=parent.get(key);if(value==null || !value.isJsonObject())throw new IOException("Expected object: "+key);return value.getAsJsonObject();

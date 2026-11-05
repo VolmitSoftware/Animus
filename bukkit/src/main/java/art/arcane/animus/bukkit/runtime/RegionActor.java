@@ -18,6 +18,7 @@ import art.arcane.animus.core.navigation.NavigationPlan;
 import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.navigation.BlockPos;
@@ -43,12 +44,15 @@ import art.arcane.animus.core.rig.NpcRig;
 import art.arcane.animus.core.rig.RigCatalog;
 import art.arcane.animus.core.rig.RigPlayback;
 import art.arcane.animus.core.rig.RigReference;
-import java.util.OptionalInt;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.RejectedExecutionException;
+import org.bukkit.FluidCollisionMode;
+import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.Vector;
 
 /**
  * One persisted NPC on Folia. Every non-volatile field is confined to the region that currently owns the NPC through
@@ -92,6 +96,8 @@ final class RegionActor implements RegionOwner.Body {
     private String routeSource;
     private RideSettings ride;
     private boolean mount;
+    private LookClose lookClose;
+    private long nextLook;
     float yaw, pitch;
     private boolean onGround = true;
     private long pose, arrivals, turns, appearance, equipmentRevision, revision;
@@ -129,10 +135,11 @@ final class RegionActor implements RegionOwner.Body {
         routeSource = WaypointSettings.reference(spec.definition());
         ride = RideSettings.parse(spec.definition().json()).orElse(null);
         mount = MountDeclaration.parse(spec.definition().json()).isPresent();
+        lookClose = LookClose.parse(spec.definition().json()).orElse(null);
         yaw = spec.yaw(); pitch = spec.pitch(); onGround = true;
         displayName = spec.name(); displaySkin = skin;
         equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec, ItemStack::clone)); equipmentRevision++; appearance++; pose++;
-        waypoints = WaypointSettings.parse(spec.definition()).map(WaypointProgress::new).orElse(null);
+        waypoints = WaypointSettings.parse(spec.definition()).map(this::progress).orElse(null);
         routeReadWanted = waypoints == null && routeSource != null;
         rigId = RigReference.parse(spec.definition().json()).orElse(null);
         rig = null; rigProblem = null; rigGeneration = -1;
@@ -209,7 +216,7 @@ final class RegionActor implements RegionOwner.Body {
         host.anchor(this, anchored, anchor()); anchored = anchor();
         if (state.snapshot().active()) host.index.upsert(state.snapshot());
         if (woken && !announced) { announced = true; host.activated(uuid); }
-        if (woken && route == null && waypoints != null && !waypoints.complete()) beginWaypoint(0);
+        if (woken && route == null && waypoints != null && !waypoints.complete()) beginLeg(waypoints.start(state.snapshot().position().point()));
         publish(true);
     }
     @Override public void released() {
@@ -250,6 +257,7 @@ final class RegionActor implements RegionOwner.Body {
         if (route != null) { navigate(); supportWanted = false; fallSpeed = 0; }
         else if (supportWanted || fallSpeed > 0) support();
         tickRig();
+        look();
         ChunkPosition now = anchor();
         if (!now.equals(anchored)) { host.anchor(this, anchored, now); anchored = now; }
         publish(true);
@@ -267,7 +275,7 @@ final class RegionActor implements RegionOwner.Body {
         configure(next);
         error = null;
         if (state.snapshot().active()) host.index.upsert(state.snapshot());
-        if (waypoints != null) beginWaypoint(0);
+        if (waypoints != null) beginLeg(waypoints.start(state.snapshot().position().point()));
     }
 
     /** Owner only. The calling thread holds the NPC and its current definition is applied. */
@@ -284,7 +292,7 @@ final class RegionActor implements RegionOwner.Body {
         stopRoute("cancelled: replaced by manual route");
         cancelRouteRead();
         waypoints = null;
-        route = new Route(destination, mode, speed, -1);
+        route = new Route(destination, mode, speed, null);
         navigationStatus = "queued; route=" + route.id;
         publish(true);
         return route.id;
@@ -299,10 +307,48 @@ final class RegionActor implements RegionOwner.Body {
         WorldPosition from = state.snapshot().position();
         if (!from.world().equals(target.world()) || from.point().distance(target.point()) > 64)
             throw new IllegalArgumentException("Look target must be within64 blocks in the same world");
-        Vec3 delta = target.point().subtract(from.point().add(new Vec3(0, bodyHeight() * .8, 0)));
-        if (delta.distance(Vec3.ZERO) < .000001) return;
-        setPose((float) Math.toDegrees(Math.atan2(-delta.x(), delta.z())), (float) -Math.toDegrees(Math.atan2(delta.y(), Math.hypot(delta.x(), delta.z()))), onGround);
+        Optional<LookClose.Facing> facing = LookClose.facing(LookClose.eye(from.point(), bodyHeight()), target.point());
+        if (facing.isEmpty()) return;
+        setPose(facing.get().yaw(), facing.get().pitch(), onGround);
         publish(true);
+    }
+    /**
+     * animus:look-close on the owner: at most every few ticks, charged to the region's look budget. Only players this region
+     * owns are candidates; a player in view distance counts as viewing, since viewer state belongs to the player's region.
+     */
+    private void look() {
+        LookClose look = lookClose;
+        if (look == null || turns < nextLook || mount || !navigable()) return;
+        if (!look.whileNavigating() && (routeRead != null || (route != null && (route.plan != null || route.execution != null)))) return;
+        if (host.budget.take(RegionBudget.Kind.LOOKS, 1) == 0) return;
+        nextLook = turns + LookClose.INTERVAL_TICKS;
+        WorldPosition at = state.snapshot().position();
+        World world = host.world(at.world());
+        if (world == null) return;
+        Vec3 eye = LookClose.eye(at.point(), bodyHeight());
+        List<LookClose.Candidate<Player>> candidates = new ArrayList<>();
+        for (Player player : host.players().ownedNear(new WorldPosition(at.world(), eye), look.range() + 2, 32)) {
+            Location location = player.getEyeLocation();
+            Vec3 playerEye = new Vec3(location.getX(), location.getY(), location.getZ());
+            candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.distance(at.point()) <= host.settings.viewDistance()));
+        }
+        for (LookClose.Candidate<Player> candidate : look.ranked(eye, candidates)) {
+            if (look.lineOfSight() && !clearSight(world, candidate.eye(), eye)) continue;
+            LookClose.facing(eye, candidate.eye()).ifPresent((LookClose.Facing facing) -> setPose(facing.yaw(), facing.pitch(), onGround));
+            break;
+        }
+    }
+    /** Same rule as interaction checks: every chunk on the way is owned here and loaded, and no collidable block lies between. */
+    private boolean clearSight(World world, Vec3 from, Vec3 to) {
+        int minX = ((int) Math.floor(Math.min(from.x(), to.x()))) >> 4, maxX = ((int) Math.floor(Math.max(from.x(), to.x()))) >> 4;
+        int minZ = ((int) Math.floor(Math.min(from.z(), to.z()))) >> 4, maxZ = ((int) Math.floor(Math.max(from.z(), to.z()))) >> 4;
+        if (!host.regions.owns(world, minX, minZ, maxX, maxZ)) return false;
+        for (int x = minX; x <= maxX; x++) for (int z = minZ; z <= maxZ; z++) if (!world.isChunkLoaded(x, z)) return false;
+        double distance = from.distance(to);
+        if (distance <= .000001) return true;
+        Vec3 direction = to.subtract(from).normalized();
+        return world.rayTraceBlocks(new Location(world, from.x(), from.y(), from.z()), new Vector(direction.x(), direction.y(), direction.z()),
+                Math.max(0, distance - .0001), FluidCollisionMode.NEVER, true) == null;
     }
     void followRoute(String reference) {
         if (reference == null || !reference.matches("[a-z0-9][a-z0-9_-]{0,63}")) throw new IllegalArgumentException("Invalid reusable route identifier");
@@ -343,6 +389,11 @@ final class RegionActor implements RegionOwner.Body {
         Route current = route;
         if (turns < current.nextAttempt) return;
         if (!state.snapshot().active()) { stopRoute("cancelled by definition/lifecycle change"); return; }
+        if (current.leg != null && current.leg.pause()) {
+            route = null;
+            if (waypoints != null) beginLeg(waypoints.resume(current.leg, state.snapshot().position().point()));
+            return;
+        }
         World world = host.world(current.goal.world());
         if (world == null) { stopRoute("cancelled: world unavailable"); return; }
         if (host.budget.take(RegionBudget.Kind.ROUTES, 1) == 0) return;
@@ -373,7 +424,7 @@ final class RegionActor implements RegionOwner.Body {
                     current.capture = current.plan.capture().orElse(null); current.plan = null; current.result = null;
                     if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspendRoute("unavailable captured terrain");
                     else if (planned.status() == PathPlanner.Status.CANCELLED) { /* released for a handoff; the new owner plans again */ }
-                    else if (planned.status() != PathPlanner.Status.FOUND) stopRoute("failed: " + planned.status());
+                    else if (planned.status() != PathPlanner.Status.FOUND) failLeg(current, "failed: " + planned.status());
                     else {
                         current.execution = new PathExecution(state.snapshot().position().point(), planned.path(), current.goal.point(), profile(current.mode));
                         routeStatus(current, "moving", "kinematic; live collision revalidation; region owner");
@@ -382,7 +433,7 @@ final class RegionActor implements RegionOwner.Body {
             }
             if (route == current && current.execution != null) step(current, world, owned);
         } catch (RejectedExecutionException full) { current.nextAttempt = turns + 20; routeStatus(current, "queued", "path capacity"); }
-        catch (RuntimeException failure) { stopRoute("failed: " + PersistedNpcService.concise(failure)); }
+        catch (RuntimeException failure) { if (route == current) failLeg(current, "failed: " + PersistedNpcService.concise(failure)); else stopRoute("failed: " + PersistedNpcService.concise(failure)); }
     }
     private void step(Route current, World world, ChunkOwnership owned) {
         if (!current.execution.position().equals(state.snapshot().position().point())) { stopRoute("cancelled: authoritative position changed"); return; }
@@ -403,7 +454,7 @@ final class RegionActor implements RegionOwner.Body {
         }
         host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted - used);
         if (validation.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) suspendRoute(validation.detail());
-        else if (!validation.clear()) stopRoute("blocked: " + validation.status() + "; " + validation.detail());
+        else if (!validation.clear()) failLeg(current, "blocked: " + validation.status() + "; " + validation.detail());
         else {
             current.execution.commit(step);
             Vec3 delta = step.to().subtract(step.from());
@@ -443,20 +494,40 @@ final class RegionActor implements RegionOwner.Body {
         host.waypoint(uuid, current.waypoint);
         if (progress == null) { finishWatch(); return; }
         if (!navigable() || route != null || waypoints != progress) return;
-        OptionalInt next = progress.arrived(current.waypoint);
-        if (next.isPresent()) beginWaypoint(next.getAsInt());
+        Optional<WaypointProgress.Leg> next = current.leg == null ? Optional.empty() : progress.arrived(current.leg, state.snapshot().position().point());
+        if (next.isPresent()) beginLeg(next);
         else finishWatch();
     }
-    private void beginWaypoint(int waypoint) {
+    private WaypointProgress progress(WaypointSettings declared) { return WaypointProgress.of(declared, spec.position().point(), uuid); }
+    /** Same leg rules as {@link PersistedNpcService}: a pause leg holds the route until its wait ends. */
+    private void beginLeg(Optional<WaypointProgress.Leg> next) {
         WaypointProgress progress = waypoints;
-        if (progress == null || progress.complete() || !state.snapshot().active()) return;
+        if (progress == null || next.isEmpty() || !state.snapshot().active()) return;
+        WaypointProgress.Leg leg = next.get();
         WaypointSettings settings = progress.settings();
-        WorldPosition goal = new WorldPosition(state.snapshot().position().world(), settings.points().get(waypoint));
-        try { PersistedNpcService.validateLeg(state.snapshot().position(), goal, settings.mode(), settings.speed(), hullWidth(), hullHeight()); }
-        catch (IllegalArgumentException invalid) { navigationStatus = "invalid waypoint " + waypoint + ": " + invalid.getMessage(); failWatch(navigationStatus); return; }
-        route = new Route(goal, settings.mode(), settings.speed(), waypoint);
-        route.nextAttempt = turns + Math.max(1, settings.waitTicks());
-        routeStatus(route, "queued", "");
+        WorldPosition at = state.snapshot().position();
+        WorldPosition goal = leg.pause() ? at : new WorldPosition(at.world(), leg.goal());
+        if (!leg.pause()) {
+            try { PersistedNpcService.validateLeg(at, goal, settings.mode(), settings.speed(), hullWidth(), hullHeight()); }
+            catch (IllegalArgumentException invalid) {
+                navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(navigationStatus);
+                Optional<WaypointProgress.Leg> retry = progress.failed(leg);
+                if (retry.isPresent()) beginLeg(retry);
+                return;
+            }
+        }
+        route = new Route(goal, settings.mode(), settings.speed(), leg);
+        route.nextAttempt = turns + Math.max(1, leg.waitTicks());
+        routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
+    }
+    /** A leg that cannot finish: random and wander routes pause and choose again, every other route halts. */
+    private void failLeg(Route current, String reason) {
+        WaypointProgress progress = waypoints;
+        stopRoute(reason);
+        if (progress == null || current.leg == null || !progress.retries() || route != null || !navigable()) return;
+        String failure = navigationStatus;
+        beginLeg(progress.failed(current.leg));
+        if (route != null) routeStatus(route, "waiting to retry", "after " + failure);
     }
     private void suspendRoute(String reason) {
         if (routeWatch != null) { stopRoute("unavailable: " + reason); return; }
@@ -527,11 +598,11 @@ final class RegionActor implements RegionOwner.Body {
             return;
         }
         routeError = null;
-        if (routeWatch != null && settings.loop()) { navigationStatus = "invalid: a looping route never finishes"; failWatch(navigationStatus); return; }
+        if (routeWatch != null && settings.endless()) { navigationStatus = "invalid: a looping route never finishes"; failWatch(navigationStatus); return; }
         if (waypoints != null && !waypoints.reload(settings)) return;
         stopRoute("replaced by reusable route reload");
-        if (waypoints == null) waypoints = new WaypointProgress(settings);
-        beginWaypoint(0);
+        if (waypoints == null) waypoints = progress(settings);
+        beginLeg(waypoints.start(state.snapshot().position().point()));
     }
     private void readAppearance(String reference) {
         if (!host.admitRead()) throw new IllegalStateException("Skin reads are busy; retry shortly");
@@ -602,9 +673,11 @@ final class RegionActor implements RegionOwner.Body {
     }
 
     private static final class Route {
-        final UUID id = UUID.randomUUID(); final WorldPosition goal; final MovementProfile.Mode mode; final double speed; final int waypoint;
+        final UUID id = UUID.randomUUID(); final WorldPosition goal; final MovementProfile.Mode mode; final double speed; final int waypoint; final WaypointProgress.Leg leg;
         NavigationPlan plan; CompletableFuture<PathPlanner.Result> result; PathExecution execution; CaptureProvenance capture;
         long nextAttempt;
-        Route(WorldPosition goal, MovementProfile.Mode mode, double speed, int waypoint) { this.goal = goal; this.mode = mode; this.speed = speed; this.waypoint = waypoint; }
+        Route(WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) {
+            this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
+        }
     }
 }

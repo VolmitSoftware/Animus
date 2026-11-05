@@ -1,0 +1,25 @@
+{
+  "name": "Market Wanderer",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000301",
+  "traits": {
+    "type": "VILLAGER",
+    "location": {
+      "world": "old_town",
+      "x": 100.0,
+      "y": 70.0,
+      "z": 100.0
+    },
+    "lookclose": {
+      "enabled": false
+    },
+    "waypoints": {
+      "provider": "wander",
+      "wander": {
+        "delay": -1,
+        "pathfind": true,
+        "xrange": 12,
+        "yrange": 2
+      }
+    }
+  }
+}

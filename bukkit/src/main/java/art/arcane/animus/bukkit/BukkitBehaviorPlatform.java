@@ -107,6 +107,13 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         }) ? 1 : 0;
     }
 
+    /** Online players by their current name; others by the server's cached profile. */
+    @Override public Optional<String> playerName(UUID player) {
+        Player online = server.getPlayer(player);
+        if (online != null) return Optional.of(online.getName());
+        return Optional.ofNullable(server.getOfflinePlayer(player).getName());
+    }
+
     /** Folia: a command for a player another region owns, or for the console, is handed to that owner and not awaited. */
     @Override public void runCommand(CommandSource source, Optional<UUID> player, String command) {
         if (source == CommandSource.CONSOLE) {

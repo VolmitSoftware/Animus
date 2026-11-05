@@ -119,7 +119,40 @@ The reusable route lives at `routes/town-patrol.json` in the Animus data folder,
 }
 ```
 
-Routes allow1–64 points in the NPC's world and at most64 KiB per reusable file. Mode, speed, loop, waitTicks and points may instead appear directly in the module; a referenced route keeps those fields in the route document. Reload replaces a valid changed route and reports an invalid replacement while retaining the active route in memory. Restart begins declared routes from their first point; it does not resume an interrupted route stack. A manual navigation or stop command overrides the current waypoint workflow until it is explicitly reapplied. Preserved import traits never execute automatically; a native navigation module on an imported definition also requires literal `reviewAccepted: true`.
+Mode, speed, order, loop, waitTicks, points, guides, linkDistance and wander may instead appear directly in the module; a referenced route keeps those fields in the route document, which is at most 64 KiB.
+
+| Field | Values | Meaning |
+| --- | --- | --- |
+| `order` | `sequence` (default), `pingpong`, `random`, `wander` | How the next point is chosen. |
+| `loop` | boolean, `sequence` only | `false` walks the points once and stops; `true` returns to the first point after the last. |
+| `waitTicks` | 0–12000, default 20 | Wait before the first leg and after each arrival. |
+| `points` | 1–256 of `{x, y, z}`; 0–64 for `wander` | Points in the NPC's world. Each may carry its own `waitTicks` (0–12000), the wait after arriving there instead of the route's. |
+| `guides` | 0–1024 of `{x, y, z}`, `random` only | Helper points a path may pass through. They have no waits. |
+| `linkDistance` | 1–256, default 32, `random` only | The longest link between two points or guides. |
+| `wander` | `{"radius": 1–32, "height": 0–8}`, default 25 and 3, `wander` only | How far from a centre a wander target may be. |
+
+Points and guides together allow at most 1280 coordinates. Walking routes need whole-block heights for points and guides. A field used with the wrong order is reported against that field.
+
+- `sequence` walks 0, 1, …, n-1, then stops or, with `loop`, starts again at 0.
+- `pingpong` walks 0, 1, …, n-1, n-2, …, 1, 0, 1, … forever without repeating an end point. With one point it walks there once and stops.
+- `random` picks one of the points at random each time, never the point it just reached, and walks a shortest path to it over points and guides. Two of them are linked when they are at most `linkDistance` apart and the leg between them fits the leg bounds above. From a position that is not a point or guide, the first step goes to a guide when the route has guides. Points and guides passed on the way get no wait; the chosen point applies its own wait or the route's.
+- `wander` picks a centre at random each leg, a point or the NPC's definition position when there are no points, and walks to a random block within `radius` on x and z and within `height` blocks up or down of the centre. The target is moved inward when needed so the leg fits the leg bounds. A centre's own `waitTicks` applies after reaching a target around it.
+
+The `waypoint` trigger and `VirtualNpcWaypointEvent` report point `i` as `i` and guide `j` as the number of points plus `j`. A wander arrival reports the centre it used, or 0 without points.
+
+A `sequence` or `pingpong` leg that cannot be planned or is blocked stops the route. A `random` route instead waits the larger of its `waitTicks` and 100 ticks and picks a new destination, also when no path reaches the chosen point; a `wander` route waits the larger of its `waitTicks` and 20 ticks and picks a new target. Neither stops on its own. Missing terrain suspends any route as above. A behavior that waits for a reusable route refuses one that never finishes: a looping `sequence`, a `pingpong` over more than one point, and every `random` or `wander` route. Reload replaces a valid changed route and reports an invalid replacement while retaining the active route in memory. Restart begins declared routes from their first point; it does not resume an interrupted route stack. A manual navigation or stop command overrides the current waypoint workflow until it is explicitly reapplied. Preserved import traits never execute automatically; a native navigation module on an imported definition also requires literal `reviewAccepted: true`.
+
+### Looking at nearby players
+
+An NPC with this module turns toward the nearest player in range while it is spawned:
+
+```json
+"modules": {
+  "animus:look-close": {"range": 10, "lineOfSight": false, "whileNavigating": false}
+}
+```
+
+`enabled` is true when the object is present. `range` is 1–64 blocks, default 10. With `lineOfSight` the player must be visible from the NPC's eye through non-collidable blocks. With `whileNavigating` the NPC also looks while planning or moving along a route; it always looks while it waits at a point. It turns its yaw and pitch toward the player's eyes as `/animus look` does, prefers players who already see it, and keeps its facing when nobody is in range. An NPC that rides another NPC or carries a player does not look. Each NPC looks again at most every 5 ticks and a bounded number look per tick. The module never edits the definition, loads no chunks, and needs no `reviewAccepted` on imported definitions. `animus:look` still turns the NPC; look-close turns it back on its next look. On Folia only players held by the NPC's region count, a player within view distance counts as seeing it, and a sight line must stay within that region.
 
 ## Mounted NPCs
 
