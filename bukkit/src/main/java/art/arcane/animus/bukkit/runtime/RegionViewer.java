@@ -3,7 +3,6 @@ package art.arcane.animus.bukkit.runtime;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.NpcRuntime;
-import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.runtime.PreviewBodies;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodyTransport;
@@ -84,12 +83,13 @@ final class RegionViewer {
     /** Player owner only. A fault ends this viewer's lease; it never escapes into the region tick. */
     void tick() {
         try { turn(); }
-        catch (RuntimeException failure) { host.fail(this, PersistedNpcService.concise(failure)); }
+        catch (RuntimeException failure) { host.fail(this, "viewer tick", null, failure); }
     }
     private void turn() {
         if (!host.current(this)) return;
         if (!host.regions.owns(player)) return;
-        if (failed || !player.isOnline()) { host.fail(this, "Packet callback/connection unavailable"); return; }
+        if (failed) { host.fail(this, "packet callbacks", null, "Packet callback queue full"); return; }
+        if (!player.isOnline()) { host.disconnect(this); return; }
         if (player.isDead()) { host.disconnect(this); return; }
         if (!epoch.equals(host.epochs.capture(player)) || !world.equals(player.getWorld().getUID())
                 || guard.issuedCount() >= RegionNpcRuntime.MAX_ISSUED_IDS - host.settings.maximumVisible()) {
@@ -130,7 +130,7 @@ final class RegionViewer {
             host.packets.despawn(player, body.body).whenComplete((nothing, failure) -> enqueue(() -> {
                 if (!host.current(this)) return;
                 body.despawnFinished = true;
-                if (failure != null) host.fail(this, PersistedNpcService.concise(failure)); else release(body);
+                if (failure != null) host.fail(this, "despawn", body.actor, failure); else release(body);
             }));
         }
         int[] rigBudget = {host.rigs.updatesPerTick()};
@@ -184,12 +184,12 @@ final class RegionViewer {
                 if (!host.current(this)) return;
                 presented.spawnFinished = true; pendingSpawns--;
                 if (presented.retired) { release(presented); return; }
-                if (failure != null) { host.fail(this, PersistedNpcService.concise(failure)); return; }
+                if (failure != null) { host.fail(this, "spawn", actor, failure); return; }
                 if (!eligibleNow(actor)) { retire(presented); return; }
                 try { guard.bind(body.entityId(), actor.publication.snapshot()); presented.bound = true; }
-                catch (RuntimeException invalid) { host.fail(this, PersistedNpcService.concise(invalid)); }
+                catch (RuntimeException invalid) { host.fail(this, "spawn", actor, invalid); }
             }));
-        } catch (RuntimeException failure) { host.fail(this, PersistedNpcService.concise(failure)); }
+        } catch (RuntimeException failure) { host.fail(this, "spawn", actor, failure); }
     }
     private void move(Presented body, RegionActor.Publication now) {
         body.moving = true;
@@ -197,12 +197,12 @@ final class RegionViewer {
             host.packets.move(player, body.body, pose(now)).whenComplete((nothing, failure) -> enqueue(() -> {
                 if (!host.current(this) || body.retired || visible.get(body.actor.uuid) != body) return;
                 body.moving = false;
-                if (failure != null) { host.fail(this, PersistedNpcService.concise(failure)); return; }
+                if (failure != null) { host.fail(this, "move", body.actor, failure); return; }
                 if (!eligibleNow(body.actor)) { retire(body); return; }
                 body.pose = now.pose();
                 if (body.bound) guard.updateSnapshot(body.body.entityId(), body.actor.publication.snapshot());
             }));
-        } catch (RuntimeException failure) { host.fail(this, PersistedNpcService.concise(failure)); }
+        } catch (RuntimeException failure) { host.fail(this, "move", body.actor, failure); }
     }
     /** Cosmetic: a failed send is recorded and not retried, and never costs the viewer their session. */
     private void equip(Presented body, RegionActor.Publication now) {
@@ -210,9 +210,9 @@ final class RegionViewer {
         try {
             host.packets.equipment(player, body.body, now.equipment()).whenComplete((nothing, failure) -> enqueue(() -> {
                 body.equipping = false; body.equipment = now.equipmentRevision();
-                if (failure != null && host.current(this) && !body.retired) host.noteFailure(PersistedNpcService.concise(failure));
+                if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "equipment", body.actor, failure);
             }));
-        } catch (RuntimeException failure) { body.equipping = false; body.equipment = now.equipmentRevision(); host.noteFailure(PersistedNpcService.concise(failure)); }
+        } catch (RuntimeException failure) { body.equipping = false; body.equipment = now.equipmentRevision(); host.cosmeticFailed(this, "equipment", body.actor, failure); }
     }
     /** Shows the body's bones once it is spawned, then sends changed bone transforms within this viewer's rig budget. */
     private int presentRig(Presented body, RegionActor.Publication now, int packetBudget, int[] rigBudget) {
@@ -223,14 +223,14 @@ final class RegionViewer {
         if (body.bones == null) {
             if (packetBudget <= 0 || bones + shown.displays().size() > host.rigs.maximumBones()) return 0;
             try { body.bones = host.packets.createBones(body.body, shown.displays()); }
-            catch (RuntimeException invalid) { body.rigFailed = true; host.noteFailure(PersistedNpcService.concise(invalid)); return 0; }
+            catch (RuntimeException invalid) { body.rigFailed = true; host.cosmeticFailed(this, "rig bones", body.actor, invalid); return 0; }
             body.rigIdentity = shown.identity(); body.view = new RigView(body.bones.count()); bones += body.bones.count();
             try {
                 host.packets.showBones(player, body.body, body.bones, pose(now), List.of(frame.targets()), shown.hideBody()).whenComplete((nothing, failure) -> enqueue(() -> {
-                    if (failure != null) { if (host.current(this) && !body.retired) { body.rigFailed = true; host.noteFailure(PersistedNpcService.concise(failure)); } return; }
+                    if (failure != null) { if (host.current(this) && !body.retired && !host.cosmeticFailed(this, "show bones", body.actor, failure)) body.rigFailed = true; return; }
                     body.view.shown(frame); body.bonesShown = true;
                 }));
-            } catch (RuntimeException failure) { body.rigFailed = true; host.noteFailure(PersistedNpcService.concise(failure)); }
+            } catch (RuntimeException failure) { if (!host.cosmeticFailed(this, "show bones", body.actor, failure)) body.rigFailed = true; }
             return 1;
         }
         if (!body.bonesShown || rigBudget[0] <= 0) return 0;
@@ -244,9 +244,9 @@ final class RegionViewer {
         rigBudget[0] -= due.length;
         try {
             host.packets.moveBones(player, body.bones, due, targets, durations).whenComplete((nothing, failure) -> {
-                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) { body.view.unsent(due); host.noteFailure(PersistedNpcService.concise(failure)); } });
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) { body.view.unsent(due); host.cosmeticFailed(this, "move bones", body.actor, failure); } });
             });
-        } catch (RuntimeException failure) { body.view.unsent(due); host.noteFailure(PersistedNpcService.concise(failure)); }
+        } catch (RuntimeException failure) { body.view.unsent(due); host.cosmeticFailed(this, "move bones", body.actor, failure); }
         return 0;
     }
     private void retire(Presented body) {

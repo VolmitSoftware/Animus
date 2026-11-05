@@ -241,7 +241,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     @Override public CompletionStage<Void> watch(ServerPlayer viewer, Consumer<Interaction> interactions) {
         ensureOpen();
         Objects.requireNonNull(interactions);
-        if (!viewer.connection.isAcceptingMessages()) return failed("Viewer is not connected");
+        if (!viewer.connection.isAcceptingMessages()) return unwatched("Viewer is not connected");
         Session previous = sessions.put(viewer.getUUID(), new Session(viewer, interactions));
         if (previous != null) retire(previous);
         return CompletableFuture.completedFuture(null);
@@ -254,7 +254,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (visibleIds + body.reservedIds > BodyRules.MAX_BODIES_PER_VIEWER) return failed("Viewer presentation ID limit reached");
         if (session.visible.values().stream().anyMatch((Body other) -> other.uuid.equals(body.uuid))) return failed("A body with this UUID is already presented to the viewer");
         if (session.visible.containsKey(body.entityId)) return failed("Body is already visible");
-        if (!connected(session)) return failed(CONNECTION_CLOSED);
+        if (!connected(session)) return unwatched(CONNECTION_CLOSED);
         send(session, spawnPackets(body, pose));
         for (int id : body.entityIds()) session.visible.put(id, body);
         return CompletableFuture.completedFuture(null);
@@ -277,13 +277,13 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Body vehicle = checkBody(carrier);
         List<Body> requested = riders.stream().map(this::checkBody).toList();
         Session session = existing(viewer);
-        if (session == null) return failed("Viewer is not watched");
+        if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(vehicle.entityId) != vehicle) return failed("Vehicle is not visible to this viewer");
         for (Body passenger : requested) if (session.visible.get(passenger.entityId) != passenger) return failed("Passenger is not visible to this viewer");
         List<Integer> passengerIds = requested.stream().map((Body passenger) -> passenger.entityId).toList();
         int realRiderId = realRider == null ? BodyRules.NO_REAL_RIDER : realRider.getId();
         int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayId);
-        if (!connected(session)) return failed(CONNECTION_CLOSED);
+        if (!connected(session)) return unwatched(CONNECTION_CLOSED);
         try { session.passengers.replace(vehicle.entityId, passengerIds); }
         catch (IllegalArgumentException invalid) { return CompletableFuture.failedFuture(invalid); }
         session.rosters.put(vehicle.entityId, roster);
@@ -294,7 +294,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Body dragon = checkBody(presented);
         if (!dragon.typeKey.equals("minecraft:ender_dragon")) return failed("Phase applies only to dragon bodies");
         Session session = existing(viewer);
-        if (session == null) return failed("Viewer is not watched");
+        if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(dragon.entityId) != dragon) return failed("Dragon is not visible to this viewer");
         return send(session, List.of(new ClientboundSetEntityDataPacket(dragon.entityId, List.of(SynchedEntityData.DataValue.create(EnderDragon.DATA_PHASE, phase)))));
     }
@@ -303,7 +303,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     @Override public CompletionStage<Void> swing(ServerPlayer viewer, BodyTransport.Body presented) {
         Body body = checkBody(presented);
         Session session = existing(viewer);
-        if (session == null) return failed("Viewer is not watched");
+        if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
         FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(8));
         try {
@@ -316,7 +316,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     @Override public CompletionStage<Void> equipment(ServerPlayer viewer, BodyTransport.Body presented, Map<EquipmentSlot, ItemStack> items) {
         Body body = checkBody(presented);
         Session session = existing(viewer);
-        if (session == null) return failed("Viewer is not watched");
+        if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
         List<Pair<net.minecraft.world.entity.EquipmentSlot, ItemStack>> entries = new ArrayList<>(items.size());
         for (Map.Entry<EquipmentSlot, ItemStack> item : items.entrySet())
@@ -346,7 +346,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     @Override public ControlSubscription subscribeControl(ServerPlayer viewer) {
         ensureOpen();
         Session session = existing(viewer);
-        if (session == null) throw new IllegalStateException("Viewer is not watched");
+        if (session == null) throw new BodyTransport.ViewerUnwatched("Viewer is not watched");
         if (session.control != null) throw new IllegalStateException("Viewer already has a control subscription");
         ControlSubscription subscription = new ControlSubscription(session);
         session.control = subscription;
@@ -424,7 +424,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Bones bones = checkBones(moved, null);
         if (indices.length != transforms.length || indices.length != durations.length) return failed("Bone updates need a transform and duration each");
         Session session = existing(viewer);
-        if (session == null) return failed("Viewer is not watched");
+        if (session == null) return unwatched("Viewer is not watched");
         if (session.bones.get(bones.body.entityId) != bones) return failed("Bones are not shown to this viewer");
         List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(indices.length);
         for (int i = 0; i < indices.length; i++) {
@@ -609,7 +609,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
 
     /** A closed connection is an ordinary failed stage, as on Bukkit; a player leaving mid-update is not a fault. */
     private static CompletionStage<Void> send(Session session, List<Packet<ClientGamePacketListener>> packets) {
-        if (!connected(session)) return failed(CONNECTION_CLOSED);
+        if (!connected(session)) return unwatched(CONNECTION_CLOSED);
         for (Packet<ClientGamePacketListener> packet : packets) session.viewer.connection.send(packet);
         return CompletableFuture.completedFuture(null);
     }
@@ -631,7 +631,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         ensureOpen();
         if (!ModWorldKeys.key(viewer.level()).equals(pose.world())) throw new IllegalArgumentException("Viewer and body world differ");
         Session session = existing(viewer);
-        if (session == null) throw new IllegalStateException("Viewer must be watched before sending body packets");
+        if (session == null) throw new BodyTransport.ViewerUnwatched("Viewer must be watched before sending body packets");
         return session;
     }
     private Session existing(ServerPlayer viewer) {
@@ -647,4 +647,6 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     private void ensureOpen() { if (closed) throw new IllegalStateException("Packet transport is closed"); }
     private static final String CONNECTION_CLOSED = "Viewer connection is closed";
     private static CompletionStage<Void> failed(String reason) { return CompletableFuture.failedFuture(new IllegalStateException(reason)); }
+    /** The viewer's watch has ended or was never installed: the work is dropped, not sent. */
+    private static CompletionStage<Void> unwatched(String reason) { return CompletableFuture.failedFuture(new BodyTransport.ViewerUnwatched(reason)); }
 }
