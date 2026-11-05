@@ -158,6 +158,7 @@ public final class AnimusModRuntime {
                         if (current != null) current.modulesInitialized(initialized);
                     }, next.builtins);
             next.extensions.connectHooks(next.runtime.moduleHooks());
+            next.extensions.follow(next.runtime);
             ExtensionRuntime modules = next.extensions;
             next.living.observeInteractions(modules::interacted);
             next.behaviors = new BehaviorCommands(dataDirectory, next.runtime, next.extensions, LOGGER::info);

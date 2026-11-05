@@ -170,6 +170,7 @@ public final class AnimusPlugin extends JavaPlugin {
                         if (current != null) current.modulesInitialized(initialized);
                     }, builtins);
             extensions.connectHooks(runtime.moduleHooks());
+            extensions.follow(runtime);
             ExtensionRuntime modules = extensions;
             living.observeInteractions(modules::interacted);
             proof.observeInteractions(modules::interacted);
