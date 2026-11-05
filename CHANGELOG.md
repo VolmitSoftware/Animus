@@ -105,6 +105,7 @@
 - Route legs of any length: long legs are planned in bounded terrain segments that climb, swim, fly and detour along cliffs and shores; guided routes reach destinations no guide links to.
 - Walking routes open and close wooden doors, fence gates and trapdoors (`movement.openDoors`); `targetableByMobs` lets nearby melee hostile mobs attack an NPC on Paper and Spigot; definition `poses` and the `animus:pose` action; WorldGuard `use` checks for doors NPCs open.
 - `/animus status` shows the main budgets in effect.
+- Editor: offline workspaces (blank or with the example packs), a guided New page for every document kind with behavior templates, rename, duplicate and confirmed delete, one-click fixes, rig animation playback in the NPC preview, a behavior dry run with server-only steps listed as not run, and push or pull between a local workspace and a paired server.
 
 ### Changed
 
@@ -160,6 +161,7 @@
 - Removed the Citizens import warnings for long legs and unlinked guided destinations.
 - Mob control covers husks, drowned, zombie villagers and vindicators; Citizens converter v11 converts door opening, targetable, vanilla AI and named poses.
 - Every `config.toml` key applies live (only `npcs.enabled` on Folia still needs a restart): a lowered budget lets work in flight finish, editor listener and relay changes restart only that part with paired tokens kept, and `[modules] enabled` switches modules live (changing a module jar still needs a restart).
+- Editor undo steps are kept in IndexedDB and survive a reload.
 
 ### Fixed
 
