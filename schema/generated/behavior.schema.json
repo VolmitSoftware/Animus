@@ -122,6 +122,10 @@
           "description": "Opens a shop for the triggering player."
         },
         {
+          "const": "animus:play-animation",
+          "description": "Plays an animation of the NPC's rig on a layer (0-3). Higher layers blend over lower ones. Fires animation_finished when a once or hold clip reaches its end."
+        },
+        {
           "const": "animus:play-sound",
           "description": "Plays a sound at the NPC for the triggering player or nearby players."
         },
@@ -148,6 +152,10 @@
         {
           "const": "animus:spawn-particle",
           "description": "Shows a particle effect at the NPC to the triggering player or nearby players."
+        },
+        {
+          "const": "animus:stop-animation",
+          "description": "Stops one animation layer, or every played layer, and returns to the rig's idle animation."
         },
         {
           "const": "animus:stop-navigation",
@@ -1190,6 +1198,70 @@
           "if": {
             "properties": {
               "capability": {
+                "const": "animus:play-animation"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "animation": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "speed": {
+                      "type": "number",
+                      "minimum": 0.25,
+                      "maximum": 4.0
+                    },
+                    "loop": {
+                      "enum": [
+                        "once",
+                        "loop",
+                        "pingpong",
+                        "hold"
+                      ]
+                    },
+                    "layer": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3
+                    }
+                  },
+                  "required": [
+                    "animation"
+                  ],
+                  "description": "Plays an animation of the NPC's rig on a layer (0-3). Higher layers blend over lower ones. Fires animation_finished when a once or hold clip reaches its end."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
                 "const": "animus:play-sound"
               }
             },
@@ -1616,6 +1688,51 @@
               "required": [
                 "arguments"
               ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:stop-animation"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "layer": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3
+                    },
+                    "fadeTicks": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 40
+                    }
+                  },
+                  "description": "Stops one animation layer, or every played layer, and returns to the rig's idle animation."
+                }
+              }
             }
           }
         },
@@ -2160,7 +2277,8 @@
             "dialogue_choice",
             "module",
             "build_finished",
-            "build_paused"
+            "build_paused",
+            "animation_finished"
           ],
           "description": "What starts the run."
         },
@@ -2354,6 +2472,21 @@
           },
           "then": {
             "$ref": "#/$defs/trigger-build_paused"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "animation_finished"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-animation_finished"
           }
         }
       ]
@@ -2738,6 +2871,39 @@
           "minimum": 0,
           "maximum": 72000,
           "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-animation_finished": {
+      "type": "object",
+      "description": "An animation started by animus:play-animation reaches its end: a once clip stops, a hold clip starts holding.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "animation_finished"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "animation": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$",
+          "description": "An animation id under animations/. Omit for any played animation."
         }
       },
       "required": [

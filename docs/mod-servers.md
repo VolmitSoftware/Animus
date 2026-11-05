@@ -1,6 +1,6 @@
 # Mod servers
 
-Animus runs on Fabric, NeoForge and Forge servers for Minecraft **26.1.2, 26.2 and 26.3** with Java 25. It is a server-side mod: players join with an unmodified client. The NPC runtime, definitions, imports, commands, behaviors, triggers, modules, navigation, mounts, riding and combat are the same code that runs on Bukkit and Paper, so a definition behaves the same on every platform. An integrated singleplayer or LAN server runs it too.
+Animus runs on Fabric, NeoForge and Forge servers for Minecraft **26.1.2, 26.2 and 26.3** with Java 25. It is a server-side mod: players join with an unmodified client. The NPC runtime, definitions, imports, commands, behaviors, triggers, modules, navigation, mounts, riding and combat are the same code that runs on Bukkit and Paper, so a definition behaves the same on every platform. An integrated singleplayer or LAN server loads it too; that path has not been checked live (see [live checks](#live-checks)).
 
 ## Install
 
@@ -47,6 +47,20 @@ A permission mod can grant any node to anyone through the vanilla permission nam
 | Plugin events (`VirtualNpcInteractionEvent`, `VirtualNpcDamageEvent` and the others) | Not fired. Trusted Java modules and behavior triggers receive the same facts on every platform. |
 | Packet previews (`/animus proof`, `/animus foliaproof`) | Not available; they answer that they belong to Bukkit. |
 | `packetProofEnabled` in `config.toml` | Ignored. |
+
+## Live checks
+
+Each of the nine jars ran on a dedicated server with a headless protocol client joining as a player. On every server Animus started, its required mixin configuration applied (a failed injection stops the server), and a graceful stop exited cleanly with no Animus error or warning in the log.
+
+| Loader | 26.1.2 | 26.2 | 26.3 |
+|---|---|---|---|
+| Fabric 0.19.5 | Smoke set passes | Smoke set passes | Full set passes |
+| NeoForge 26.1.2.116 / 26.2.0.89 / 26.3.0.33-beta | Smoke set passes | Smoke set passes | Full set passes |
+| Forge 64.1.4 / 65.1.3 / 66.0.8 | Smoke set passes | Smoke set passes | Full set passes |
+
+The smoke set spawns and renders an NPC, fires an interaction trigger, navigates, rides with steering and a sneak dismount, and restarts the server with the NPC kept. The full set is the Paper live suite: rendering with skins, text lines and poses, triggers, behavior actions and choices, durable state across a graceful restart and a kill, NPC passengers, riding (mount, steer, walls, sneak dismount, logout, teleport, death, a second viewer), dragons, terrain and water walking, combat (melee, arrows, fireballs, guard, pursuit, leash, death and respawn), the example packs, a tiny `.nbt` build with undo, and an item-for-item shop trade. It also checks the mod-only results in [what differs](#what-differs-from-bukkit) (`protection=none`, pursuit regions and money unavailable) and that a far teleport, a short teleport, a trip to the nether and a reconnect each rebuild the NPC for that player, and that an NPC placed in `minecraft:the_nether` shows only there.
+
+These checks do not cover an integrated singleplayer or LAN server, or what a graphical client draws: skin layers, text display placement, animation smoothness, the dragon model and the shop window's look. They need a person with a real client. The Forge dedicated server also tries to announce itself on the LAN; on a host without a network route it logs a `LanServerPinger` warning, which comes from Forge and not from Animus.
 
 ## Building
 

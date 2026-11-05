@@ -99,7 +99,20 @@ The native client loads synchronized registry entries and tags before binding pl
 
 After runs finish, refresh the currently selected build with `python3 qa/multiplexor/report.py`. It reads that selection from the existing index, verifies the recorded runtime artifact hash, partitions results by artifact hash, and retains failed attempts and separate audit provenance. To select a new build, use `python3 qa/multiplexor/report.py --build-status .qa/multiplexor-workspace/build-status-NAME.json --source-snapshot .qa/multiplexor-workspace/source-snapshot-NAME.json`, replacing `NAME` with the matching capture; the status file must record one successful `projects status RUN_ID --json` result. A fresh workspace requires this explicit selection. The reporter writes `index.json` atomically and leaves immutable reports such as `runtime-3-final.json` untouched; it never defaults to an older baseline. Mineflayer protocol limitations remain distinct from runtime results.
 
-The [Folia runtime](folia-runtime.md) for persisted NPCs is newer than these results and has no Multiplexor evidence yet. The historical lifecycle checks here establish startup/file commands; the separate runtime8 stationary-preview suite below has its own gameplay evidence. Exact Spigot servers now have separate managed lifecycle and native proof evidence; see [Spigot provisioning](spigot-verification.md). Fabric, NeoForge and Forge builds have no Multiplexor evidence yet. Protocol assertions do not establish graphical fidelity, performance, controllable mounts or combat parity. The persisted-runtime suite below establishes its own narrower activation and lifecycle behavior.
+The [Folia runtime](folia-runtime.md) for persisted NPCs is newer than these results and has no Multiplexor evidence yet. The historical lifecycle checks here establish startup/file commands; the separate runtime8 stationary-preview suite below has its own gameplay evidence. Exact Spigot servers now have separate managed lifecycle and native proof evidence; see [Spigot provisioning](spigot-verification.md). Fabric, NeoForge and Forge servers have their own live run; see [mod servers](#mod-servers) below. Protocol assertions do not establish graphical fidelity, performance, controllable mounts or combat parity. The persisted-runtime suite below establishes its own narrower activation and lifecycle behavior.
+
+## Mod servers
+
+`qa/multiplexor/live-features.mjs --project fabric|neoforge|forge` runs the same native-client scenarios against a Fabric, NeoForge or Forge server. It creates `animus-mod-<loader>-<version>` in that loader's consumer profile with `server create --type <loader> --mc <version> --loader <version> --auto-build --isolated`, taking the loader versions from `gradle/targets.json`, and puts the given mod jar in `mods/`. Data lives in `config/animus/`. The native client borrows the vanilla libraries of the matching `animus-paper-<version>` instance, which must exist. There is no Bukkit QA fixture, so `--fixture` is refused and the `animusqa` cell probes and `qa/combat-client.mjs` are skipped.
+
+```sh
+node qa/multiplexor/live-features.mjs --project fabric --version 26.3 \
+  --workspace .qa/multiplexor-workspace --binary ../ServerMultiplexor/multiplexor \
+  --build-home .qa/multiplexor-build-cache --skin-file /private/qa/skins/HASH.json \
+  --plugin "build/distributions/Animus v0.1.0 [Fabric] 26.3+0.19.5.jar" --results /path/to/new/results
+```
+
+On 26.3 the default set is the full Paper set plus `worlds` (far teleport, short teleport, dimension change, an NPC in the nether, reconnect) and two mod-only checks: combat reports `protection=none` and unavailable pursuit regions, and shops report the economy unavailable. On 26.1.2 and 26.2 the default is `smoke`: spawn, interaction, navigation, a ride with steering and sneak dismount, and a restart that keeps the NPC. `gate.py --targets fabric-26.3,...` runs the same live set with the jar from `--mod-jars` (default `build/distributions`). The thread check after shutdown records `jvmExited` when a small mod server exits before `jcmd` attaches.
 
 ## Persisted runtime and real-combat scenarios
 

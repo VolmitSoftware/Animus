@@ -72,6 +72,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final int DEFAULT_WAIT_TICKS = 1200, MINIMUM_WAIT_TICKS = 20, MAXIMUM_WAIT_TICKS = 12_000;
     private static final long OWNER_TICK_MILLIS = 50, LAGGING_OWNER_ALLOWANCE = 2, WAIT_DEADLINE_SLACK_MILLIS = 5000;
     private static final String RESOURCE_KEY = "[a-z0-9_.-]+:[a-z0-9_./-]+";
+    private static final String ANIMATION_ID = "[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}";
     private static final String PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
 
     /** Decides what a capability may do when previewed and whether it needs the platform owner. */
@@ -373,6 +374,24 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     for (String name : List.of("rotation", "mirror", "anchor", "pattern", "materials", "excavate", "ignoreAir", "ignoreLiquids"))
                         if (call.arguments.has(name)) options.put(name.toLowerCase(Locale.ROOT), call.arguments.get(name).getAsString());
                     return onOwner(call, () -> platform.build(call.npc(), operation, schematic, origin, Map.copyOf(options)));
+                });
+        action("play-animation", Effect.WORLD, "Plays an animation of the NPC's rig on a layer (0-3). Higher layers blend over lower ones. Fires animation_finished when a once or hold clip reaches its end.",
+                schema(string("animation", 256) + "," + number("speed", 0.25, 4) + "," + choice("loop", "once", "loop", "pingpong", "hold") + "," + integer("layer", 0, 3), required("animation")),
+                (arguments, problems) -> matches(arguments, "animation", ANIMATION_ID, problems),
+                call -> {
+                    String animation = text(call.arguments, "animation").orElseThrow();
+                    double speed = decimal(call.arguments, "speed").orElse(1);
+                    Optional<String> loop = text(call.arguments, "loop");
+                    int layer = call.arguments.has("layer") ? call.arguments.get("layer").getAsInt() : 0;
+                    return onOwner(call, () -> { platform.playAnimation(call.npc(), animation, speed, loop, layer); return "{}"; });
+                });
+        action("stop-animation", Effect.WORLD, "Stops one animation layer, or every played layer, and returns to the rig's idle animation.",
+                schema(integer("layer", 0, 3) + "," + integer("fadeTicks", 0, 40)),
+                (arguments, problems) -> {},
+                call -> {
+                    java.util.OptionalInt layer = call.arguments.has("layer") ? java.util.OptionalInt.of(call.arguments.get("layer").getAsInt()) : java.util.OptionalInt.empty();
+                    int fade = call.arguments.has("fadeTicks") ? call.arguments.get("fadeTicks").getAsInt() : 0;
+                    return onOwner(call, () -> { platform.stopAnimation(call.npc(), layer, fade); return "{}"; });
                 });
         action("set-flag", Effect.STATE_WRITE, "Sets a flag, true unless value says otherwise.",
                 schema(STATE + "," + bool("value"), required("name")),

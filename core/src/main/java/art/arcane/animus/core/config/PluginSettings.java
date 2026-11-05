@@ -16,7 +16,7 @@ import java.util.List;
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
-                             ShopSettings shops, EditorRelaySettings relay, EditorSettings editor) {
+                             ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -41,6 +41,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("builds", new Gson().toJsonTree(BuildSettings.DEFAULT));
             document.add("shops", shopDefaults());
             document.add("editor", editorDefaults());
+            document.add("rigs", new Gson().toJsonTree(RigSettings.DEFAULT));
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -111,6 +112,9 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         ShopSettings shopSettings;
         try { shopSettings = shops(table(data.getAsJsonObject(), "shops")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": shops: " + e.getMessage(), e); }
+        RigSettings rigSettings;
+        try { rigSettings = rigs(table(data.getAsJsonObject(), "rigs")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": rigs: " + e.getMessage(), e); }
         EditorRelaySettings relaySettings;
         EditorSettings editorSettings;
         try {
@@ -118,7 +122,16 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             editorSettings = EditorSettings.parse(table(data.getAsJsonObject(), "editor"));
         } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": editor: " + e.getMessage(), e); }
         return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
-                relaySettings, editorSettings);
+                relaySettings, editorSettings, rigSettings);
+    }
+
+    private static RigSettings rigs(JsonObject document) {
+        RigSettings defaults = RigSettings.DEFAULT;
+        for (String key : document.keySet())
+            if (!java.util.Set.of("enabled", "maximumBones", "updatesPerTick", "sampleTicks", "plansPerTick").contains(key)) throw new IllegalArgumentException(key + " is not a rig setting");
+        return new RigSettings(bool(document, "enabled", defaults.enabled()), integer(document, "maximumBones", defaults.maximumBones()),
+                integer(document, "updatesPerTick", defaults.updatesPerTick()), integer(document, "sampleTicks", defaults.sampleTicks()),
+                integer(document, "plansPerTick", defaults.plansPerTick()));
     }
 
     private static BuildSettings builds(JsonObject document) {

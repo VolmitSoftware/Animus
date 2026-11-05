@@ -352,6 +352,7 @@ public final class BehaviorSchemaGenerator {
             case "dialogue" -> new Field(described(reference("identifier"), "The id of an animus:choices prompt."), "identifier", true);
             case "choice" -> new Field(described(reference("identifier"), "An option id of that prompt. Omit for any option."), "identifier", false);
             case "key" -> new Field(described(pattern(KEY), "A trigger a module registered, namespace:name."), "capability", true);
+            case "animation" -> new Field(described(pattern("^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$"), "An animation id under animations/. Omit for any played animation."), "string", false);
             default -> throw new IllegalStateException("No schema for trigger field " + name);
         };
     }
@@ -384,6 +385,11 @@ public final class BehaviorSchemaGenerator {
         JsonObject behaviors = described(type("array"), "Behaviors whose triggers this NPC runs.");
         behaviors.add("items", pattern("^[a-z0-9_-]+:[a-z0-9_/-]+$"));
         properties.add("behaviors", behaviors);
+        JsonObject rig = described(type("object"), "The rig under rigs/ this NPC's body shows.");
+        rig.addProperty("additionalProperties", false);
+        rig.add("required", strings("id"));
+        rig.add("properties", property("id", pattern("^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$")).getAsJsonObject("properties"));
+        properties.add("rig", rig);
         JsonObject modules = described(type("object"), "Per-NPC module settings, keyed by namespace:name. Unknown modules are kept.");
         JsonObject known = new JsonObject();
         known.add("animus:navigation", navigation());

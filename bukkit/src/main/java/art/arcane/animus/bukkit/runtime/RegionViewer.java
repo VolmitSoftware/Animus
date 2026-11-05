@@ -6,6 +6,12 @@ import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.runtime.PreviewBodies;
 import art.arcane.animus.core.presentation.BodyPose;
+import art.arcane.animus.core.presentation.BodyTransport;
+import art.arcane.animus.core.rig.DisplayTransform;
+import art.arcane.animus.core.rig.NpcRig;
+import art.arcane.animus.core.rig.RigFrame;
+import art.arcane.animus.core.rig.RigView;
+import org.bukkit.inventory.ItemStack;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.packet.NativeViewerEpoch;
@@ -56,7 +62,7 @@ final class RegionViewer {
     final AtomicInteger shown = new AtomicInteger();
     private SpatialNpcIndex.Cursor cursor;
     private ProximityTracker proximity;
-    private int nativeIds, pendingSpawns;
+    private int nativeIds, pendingSpawns, bones;
     private long ticks;
     private final long phase = java.util.concurrent.ThreadLocalRandom.current().nextLong(1 << 20);
     volatile boolean ready, failed;
@@ -127,6 +133,7 @@ final class RegionViewer {
                 if (failure != null) host.fail(this, PersistedNpcService.concise(failure)); else release(body);
             }));
         }
+        int[] rigBudget = {host.rigs.updatesPerTick()};
         if (ready && retirements.isEmpty()) {
             for (int i = 0, count = presentationOrder.size(); i < count && sent < packetBudget; i++) {
                 Presented body = presentationOrder.removeFirst();
@@ -136,6 +143,7 @@ final class RegionViewer {
                 if (now.appearance() != body.appearance) { retire(body); continue; }
                 if (body.spawnFinished && !body.moving && body.pose != now.pose()) { move(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && !body.equipping && sent < packetBudget && body.equipment != now.equipmentRevision()) { equip(body, now); sent++; if (!host.current(this)) return sent; }
+                if (now.rig() != null || body.rigIdentity != 0) { sent += presentRig(body, now, packetBudget - sent, rigBudget); if (!host.current(this)) return sent; }
             }
         }
         if (ready && sent < packetBudget)
@@ -206,8 +214,44 @@ final class RegionViewer {
             }));
         } catch (RuntimeException failure) { body.equipping = false; body.equipment = now.equipmentRevision(); host.noteFailure(PersistedNpcService.concise(failure)); }
     }
+    /** Shows the body's bones once it is spawned, then sends changed bone transforms within this viewer's rig budget. */
+    private int presentRig(Presented body, RegionActor.Publication now, int packetBudget, int[] rigBudget) {
+        NpcRig.Snapshot<ItemStack> shown = now.rig();
+        if (body.rigIdentity != 0 && (shown == null || shown.identity() != body.rigIdentity)) { retire(body); return 0; }
+        if (shown == null || shown.frame() == null || !body.spawnFinished || body.retired || body.rigFailed) return 0;
+        RigFrame frame = shown.frame();
+        if (body.bones == null) {
+            if (packetBudget <= 0 || bones + shown.displays().size() > host.rigs.maximumBones()) return 0;
+            try { body.bones = host.packets.createBones(body.body, shown.displays()); }
+            catch (RuntimeException invalid) { body.rigFailed = true; host.noteFailure(PersistedNpcService.concise(invalid)); return 0; }
+            body.rigIdentity = shown.identity(); body.view = new RigView(body.bones.count()); bones += body.bones.count();
+            try {
+                host.packets.showBones(player, body.body, body.bones, pose(now), List.of(frame.targets()), shown.hideBody()).whenComplete((nothing, failure) -> enqueue(() -> {
+                    if (failure != null) { if (host.current(this) && !body.retired) { body.rigFailed = true; host.noteFailure(PersistedNpcService.concise(failure)); } return; }
+                    body.view.shown(frame); body.bonesShown = true;
+                }));
+            } catch (RuntimeException failure) { body.rigFailed = true; host.noteFailure(PersistedNpcService.concise(failure)); }
+            return 1;
+        }
+        if (!body.bonesShown || rigBudget[0] <= 0) return 0;
+        int[] due = body.view.due(frame, rigBudget[0]);
+        if (due.length == 0) return 0;
+        long nanos = System.nanoTime();
+        DisplayTransform[] targets = new DisplayTransform[due.length];
+        int[] durations = new int[due.length];
+        for (int i = 0; i < due.length; i++) { targets[i] = frame.target(due[i]); durations[i] = frame.remaining(nanos, due[i]); }
+        body.view.sent(frame, due);
+        rigBudget[0] -= due.length;
+        try {
+            host.packets.moveBones(player, body.bones, due, targets, durations).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) { body.view.unsent(due); host.noteFailure(PersistedNpcService.concise(failure)); } });
+            });
+        } catch (RuntimeException failure) { body.view.unsent(due); host.noteFailure(PersistedNpcService.concise(failure)); }
+        return 0;
+    }
     private void retire(Presented body) {
         if (body.retired) return;
+        if (body.bones != null) { bones -= body.bones.count(); body.bones = null; }
         body.retired = true; visible.remove(body.actor.uuid, body); guard.unbind(body.body.entityId());
         presentationOrder.remove(body); shown.decrementAndGet();
         retiring.put(body.actor.uuid, body); retirements.addLast(body);
@@ -283,8 +327,9 @@ final class RegionViewer {
 
     private static final class Presented {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
-        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping;
-        long pose, equipment;
+        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, bonesShown, rigFailed;
+        long pose, equipment, rigIdentity;
+        BodyTransport.Bones bones; RigView view;
         Presented(RegionActor actor, NativePacketAdapter.Body body, RegionActor.Publication now) {
             this.actor = actor; this.body = body; appearance = now.appearance(); ids = body.entityIds().length; pose = now.pose();
             equipment = now.equipment().isEmpty() ? now.equipmentRevision() : -1;

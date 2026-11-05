@@ -271,8 +271,8 @@ Hit detection keeps using the body's hitbox, not the bones. Rig visuals are cosm
 
 Bones that use vanilla items and blocks need no resource pack. Custom shapes need item models. Animus generates a pack from rigs whose bones reference `animus:` item models:
 
-- The editor imports Blockbench `.bbmodel` files. It turns each top-level group into a bone, writes the group's cubes as a vanilla item model JSON, and writes a rig plus one animation document per Blockbench animation. Blockbench rotations limited to 22.5-degree steps on cubes are kept per cube; free rotations live on bones, where display transforms allow any angle.
-- `/animus pack build` writes a reproducible zip (sorted entries, stored, no timestamps, as Gloss's `PackBuilder`) and a mergeable folder under `plugins/Animus/pack/out/`. Pack format numbers for 26.1.2, 26.2 and 26.3 come from a bundled table.
+- The editor imports Blockbench `.bbmodel` files. Every group becomes a bone and its cubes one item model, and each Blockbench animation becomes an animation document. Cube rotations in 22.5-degree steps on one axis stay on the cube; other rotations become bones, where display transforms allow any angle. The files and ids are in [runtime.md](runtime.md#resource-pack-layout).
+- `/animus pack build` writes a reproducible zip (sorted entries, stored, one fixed date) of `pack/assets/` and the server's own conversions of `models/*.bbmodel`, and a mergeable folder under `plugins/Animus/pack/out/`. The zip format is documented so the editor can build the same zip in the browser.
 - Delivery is the operator's choice: an operator URL with `{sha1}`, or merging the folder into an existing server pack. Animus does not start a pack web server by default.
 
 Player-skinned limbs (a rig that moves a player's own arms and legs) need pack models that map the player head texture onto limb shapes. This is a research task in phase 4 with a fallback: the vanilla player body with rig props attached and the vanilla swing, crouch and pose animations.
