@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:golem/wave",
+  "rig": "town:golem",
+  "durationTicks": 8,
+  "loop": "pingpong",
+  "tracks": [
+    {
+      "bone": "head",
+      "target": "scale",
+      "blend": "multiply",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "tick": 8,
+          "value": [
+            1.5,
+            0.5,
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "bone": "head",
+      "target": "visible",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": true
+        },
+        {
+          "tick": 6,
+          "value": false
+        }
+      ]
+    },
+    {
+      "bone": "root",
+      "target": "translation",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            0,
+            0,
+            0
+          ],
+          "easing": "hold"
+        },
+        {
+          "tick": 4,
+          "value": [
+            1,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}
