@@ -179,13 +179,7 @@ final class CitizensBehaviors {
         if (order.equals("random")) {
             module.add("guides", helpers);
             module.addProperty("linkDistance", link);
-            int isolated = isolated(route, helpers, link);
-            if (isolated > 0) warnings.add(at + ": " + isolated + " of " + route.size() + " destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them");
         } else if (order.equals("wander")) module.add("wander", wander);
-        else {
-            int far = longLegs(route, order.equals("sequence") && route.size() > 1);
-            if (far > 0) warnings.add(at + ": " + far + " legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one until points are added between them");
-        }
         return module;
     }
 
@@ -234,39 +228,6 @@ final class CitizensBehaviors {
         if (positive(modifier)) { factor = modifier.getAsDouble(); converted.add("/navigator/speedmodifier"); }
         double speed = Math.round(CITIZENS_WALK_SPEED * factor * 100) / 100.0;
         return Math.min(5.0, Math.max(1.0, speed));
-    }
-
-    private static boolean fits(JsonObject from, JsonObject to) {
-        return Math.abs(from.get("x").getAsDouble() - to.get("x").getAsDouble()) <= LEG_HORIZONTAL
-                && Math.abs(from.get("z").getAsDouble() - to.get("z").getAsDouble()) <= LEG_HORIZONTAL
-                && Math.abs(from.get("y").getAsDouble() - to.get("y").getAsDouble()) <= LEG_VERTICAL;
-    }
-
-    private static int longLegs(JsonArray route, boolean loop) {
-        int count = 0;
-        for (int index = 1; index < route.size(); index++) if (!fits(route.get(index - 1).getAsJsonObject(), route.get(index).getAsJsonObject())) count++;
-        if (loop && !fits(route.get(route.size() - 1).getAsJsonObject(), route.get(0).getAsJsonObject())) count++;
-        return count;
-    }
-
-    private static int isolated(JsonArray destinations, JsonArray helpers, double link) {
-        List<JsonObject> nodes = new ArrayList<>();
-        destinations.forEach((JsonElement node) -> nodes.add(node.getAsJsonObject()));
-        helpers.forEach((JsonElement node) -> nodes.add(node.getAsJsonObject()));
-        int count = 0;
-        for (int index = 0; index < destinations.size(); index++) {
-            JsonObject from = nodes.get(index);
-            boolean linked = false;
-            for (int other = 0; other < nodes.size() && !linked; other++) {
-                if (other == index) continue;
-                JsonObject to = nodes.get(other);
-                double dx = from.get("x").getAsDouble() - to.get("x").getAsDouble(), dy = from.get("y").getAsDouble() - to.get("y").getAsDouble(),
-                        dz = from.get("z").getAsDouble() - to.get("z").getAsDouble();
-                linked = Math.sqrt(dx * dx + dy * dy + dz * dz) <= link && fits(from, to);
-            }
-            if (!linked) count++;
-        }
-        return count;
     }
 
     // ---- Look-close ----
