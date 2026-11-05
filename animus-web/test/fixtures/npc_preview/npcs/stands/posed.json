@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "576793b7-26c1-5daa-bbab-b446e6965929",
+  "id": "posed",
+  "group": "stands",
+  "name": "Posed stand",
+  "type": "minecraft:armor_stand",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 10.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "armorStand": {
+    "arms": true,
+    "basePlate": true,
+    "head": [
+      -15,
+      20,
+      0
+    ],
+    "rightArm": [
+      -90,
+      0,
+      10
+    ],
+    "leftLeg": [
+      20,
+      0,
+      -5
+    ]
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:bow"
+    },
+    "chest": {
+      "id": "minecraft:chainmail_chestplate"
+    },
+    "head": {
+      "id": "minecraft:netherite_helmet"
+    }
+  },
+  "nameplate": {
+    "visible": false
+  }
+}

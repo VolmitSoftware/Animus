@@ -33,7 +33,9 @@ async function run(browser, viewport) {
   assert.match(page.url(), /view=code$/);
   await page.locator('.animus-code textarea').waitFor();
   await page.getByRole('tab', {name: 'Split'}).click();
-  await page.locator('.animus-views.is-split .animus-fields').waitFor();
+  // An NPC's Split view puts the 3D preview beside the code.
+  await page.locator('.animus-views.is-split .animus-npc-preview').waitFor();
+  await page.locator('.animus-views.is-split .animus-code').waitFor();
   await sidebar.getByText('shop:counter', {exact: true}).click();
   await page.getByRole('tab', {name: 'Preview'}).click();
   await page.locator('.animus-chest-slot').first().waitFor();

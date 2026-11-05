@@ -7,6 +7,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../state/workspace_route.dart';
+import 'npc_preview.dart';
 
 /// One document with its Visual, Preview, Code and Split views.
 class DocumentPane extends StatefulWidget {
@@ -15,10 +16,14 @@ class DocumentPane extends StatefulWidget {
     required this.view,
     required this.onView,
     required this.onSource,
+    this.skinDocument,
     super.key,
   });
 
   final AnimusDocument document;
+
+  /// For an NPC: the skin document its `skin` names, when present.
+  final AnimusDocument? skinDocument;
   final ViewMode view;
   final void Function(ViewMode view) onView;
   final Future<void> Function(String source) onSource;
@@ -82,8 +87,8 @@ class _DocumentPaneState extends State<DocumentPane> {
       ]),
       _diagnostics(document),
       dom.div(classes: 'animus-views is-${view.name}', <Widget>[
-        if (view == ViewMode.visual || view == ViewMode.split) _visual(document),
-        if (view == ViewMode.preview) _preview(document),
+        if (view == ViewMode.visual || (view == ViewMode.split && !_staged(document))) _visual(document),
+        if (view == ViewMode.preview || (view == ViewMode.split && _staged(document))) _preview(document),
         if (view == ViewMode.code || view == ViewMode.split) _code(document),
       ]),
     ]);
@@ -120,7 +125,13 @@ class _DocumentPaneState extends State<DocumentPane> {
     ]);
   }
 
+  /// Kinds whose Preview is the 3D stage, which Split shows beside the code.
+  bool _staged(AnimusDocument document) => document.kind == DocumentKind.npc && document.json is Map<String, Object?>;
+
   Widget _preview(AnimusDocument document) {
+    if (_staged(document)) {
+      return NpcPreview(key: ValueKey<String>('npc-preview:${document.id}'), document: document, skinDocument: component.skinDocument);
+    }
     final Object? json = document.json;
     final Map<String, Object?> object = json is Map<String, Object?> ? json : const <String, Object?>{};
     final List<(String, String)> facts = previewFacts(document.kind, object);

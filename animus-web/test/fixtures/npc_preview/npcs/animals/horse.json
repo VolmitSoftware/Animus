@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "fb973784-b46b-5868-aca9-f622dc0e771b",
+  "id": "horse",
+  "group": "animals",
+  "name": "Steed",
+  "type": "minecraft:horse",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 14.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "saddle": {
+      "id": "minecraft:saddle"
+    },
+    "body": {
+      "id": "minecraft:diamond_horse_armor"
+    }
+  }
+}
