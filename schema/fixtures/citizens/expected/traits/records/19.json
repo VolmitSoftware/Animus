@@ -1,0 +1,8 @@
+{
+  "name": "Broken Trader",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000019",
+  "traits": {
+    "type": "PLAYER",
+    "trader": "just text"
+  }
+}

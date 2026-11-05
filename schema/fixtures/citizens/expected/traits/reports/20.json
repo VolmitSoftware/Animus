@@ -1,0 +1,49 @@
+{
+  "citizensId": 20,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/builder/Schematic": "REQUIRES_REVIEW",
+    "/traits/builder/PatternXY": "REQUIRES_REVIEW",
+    "/traits/builder/IgnoreAir": "REQUIRES_REVIEW",
+    "/traits/builder/IgnoreLiquid": "REQUIRES_REVIEW",
+    "/traits/builder/Excavate": "REQUIRES_REVIEW",
+    "/traits/builder/HoldItems": "REQUIRES_REVIEW",
+    "/traits/builder/Silent": "REQUIRES_REVIEW",
+    "/traits/builder/RequireMaterials": "REQUIRES_REVIEW",
+    "/traits/builder/NeededMaterials/1": "REQUIRES_REVIEW",
+    "/traits/builder/NeededMaterials/4": "REQUIRES_REVIEW",
+    "/traits/builder/MoveTimeoutSeconds": "REQUIRES_REVIEW",
+    "/traits/builder/YOffset": "REQUIRES_REVIEW",
+    "/traits/builder/YLayers": "REQUIRES_REVIEW",
+    "/traits/builder/Origin/world": "REQUIRES_REVIEW",
+    "/traits/builder/Origin/x": "REQUIRES_REVIEW",
+    "/traits/builder/Origin/y": "REQUIRES_REVIEW",
+    "/traits/builder/Origin/z": "REQUIRES_REVIEW",
+    "/traits/builder/State": "REQUIRES_REVIEW",
+    "/traits/builder/ContinueLoc/world": "REQUIRES_REVIEW",
+    "/traits/builder/ContinueLoc/x": "REQUIRES_REVIEW",
+    "/traits/builder/ContinueLoc/y": "REQUIRES_REVIEW",
+    "/traits/builder/ContinueLoc/z": "REQUIRES_REVIEW",
+    "/traits/builder/onstart": "REQUIRES_REVIEW",
+    "/traits/builder/oncomplete": "REQUIRES_REVIEW",
+    "/traits/builder/toggled": "REQUIRES_REVIEW",
+    "/traits/builder/Extra": "REQUIRES_REVIEW"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

@@ -1,0 +1,24 @@
+{
+  "name": "Lost Mount",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000007",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 0,
+      "y": 64,
+      "z": 0
+    },
+    "mounttrait": {
+      "mountedon": "00000000-dead-4bee-8000-000000000000"
+    },
+    "sittrait": {
+      "sittingAt": {
+        "world": "legacy",
+        "x": 0,
+        "y": 64,
+        "z": 0
+      }
+    }
+  }
+}

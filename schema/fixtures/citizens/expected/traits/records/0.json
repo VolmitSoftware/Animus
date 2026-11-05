@@ -1,0 +1,291 @@
+{
+  "name": "Guard Captain",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000001",
+  "traits": {
+    "type": "PLAYER",
+    "spawned": true,
+    "location": {
+      "world": "legacy",
+      "worldid": "11111111-2222-3333-4444-555555555555",
+      "x": 10.5,
+      "y": 64.0,
+      "z": -20.25,
+      "yaw": 90.0,
+      "pitch": 0.0,
+      "bodyYaw": 90.0
+    },
+    "lookclose": {
+      "enabled": true,
+      "range": 10.0,
+      "realisticlooking": false
+    },
+    "scoreboardtrait": {
+      "color": "WHITE",
+      "tags": []
+    },
+    "owner": {
+      "uuid": "9f8e7d6c-5b4a-4321-8765-0123456789ab"
+    },
+    "skintrait": {
+      "skinName": "captain",
+      "signature": "c2lnLWE=",
+      "textureRaw": "dGV4LWE=",
+      "updateSkins": false
+    },
+    "equipment": {
+      "hand": {
+        "type": "BOW",
+        "amount": 1
+      },
+      "helmet": {
+        "type": "IRON_HELMET",
+        "durability": 5
+      },
+      "cosmetic_helmet": {
+        "type": "CARVED_PUMPKIN"
+      },
+      "chestplate": {
+        "type": "DIAMOND_CHESTPLATE",
+        "meta": {
+          "display-name": "Shiny"
+        }
+      },
+      "boots": {
+        "type": "LEATHER_BOOTS",
+        "amount": 200
+      },
+      "off_hand": {
+        "type": "AIR"
+      },
+      "weird": {
+        "type": "STONE"
+      }
+    },
+    "inventory": {
+      "0": {
+        "type": "BREAD",
+        "amount": 16
+      },
+      "40": {
+        "type_key": "torch",
+        "type_namespace": "minecraft"
+      },
+      "99": {
+        "type": "STONE"
+      },
+      "abc": {
+        "type": "DIRT"
+      },
+      "3": "not an item"
+    },
+    "sentinel": {
+      "allTargets": {
+        "targets": [
+          "MONSTERS",
+          "zombies",
+          "OWNER",
+          "foxes",
+          "witches"
+        ],
+        "byPlayerName": [
+          "Bob",
+          "[bad"
+        ],
+        "byNpcName": [
+          "Villain"
+        ],
+        "byEntityName": [
+          "Grumpy.*"
+        ],
+        "byHeldItem": [
+          "diamond_sword",
+          "name:Excalibur"
+        ],
+        "byOffhandItem": [
+          "shield"
+        ],
+        "byEquippedItem": [
+          "golden_helmet"
+        ],
+        "byGroup": [
+          "raiders",
+          "bad group!"
+        ],
+        "byEvent": [
+          "pvp",
+          "eve",
+          "guarded_fight",
+          "message:surrender",
+          "pv:player:Bob",
+          "ev:zombie",
+          "bogus:event"
+        ],
+        "byOther": [
+          "squad:red",
+          "healthbelow:50",
+          "healthbelow:20",
+          "healthabove:90",
+          "potion:SLOW",
+          "permission:town.enemy",
+          "uuid:9f8e7d6c-5b4a-4321-8765-0123456789ab",
+          "mystery:1"
+        ],
+        "byAllInOne": [
+          {
+            "targets": [
+              "ZOMBIE"
+            ],
+            "byHeldItem": [
+              "iron_axe"
+            ]
+          },
+          {
+            "targets": [
+              "SKELETON"
+            ],
+            "byInventoryItem": [
+              "arrow"
+            ]
+          }
+        ],
+        "byMultiple": [
+          {
+            "targets": [
+              "ZOMBIE",
+              "SKELETON"
+            ]
+          },
+          {
+            "targets": [
+              "CREEPER"
+            ]
+          }
+        ],
+        "byInventoryItem": [
+          "tnt"
+        ],
+        "byStatus": [
+          "angry"
+        ]
+      },
+      "allIgnores": {
+        "targets": [
+          "OWNER",
+          "NPCS"
+        ],
+        "byEvent": [
+          "pvp"
+        ],
+        "byMultiple": [
+          {
+            "targets": [
+              "ZOMBIE",
+              "SKELETON"
+            ]
+          }
+        ]
+      },
+      "allAvoids": {
+        "targets": [
+          "CREEPERS"
+        ],
+        "byEvent": [
+          "guarded_fight",
+          "pv:healthbelow:30"
+        ]
+      },
+      "avoidRange": 12.5,
+      "enemyTargetTime": 200,
+      "fightback": true,
+      "realistic": true,
+      "ignore_los": false,
+      "retain_target": true,
+      "reaction_slowdown": 10,
+      "runaway": false,
+      "chaseRange": 300,
+      "speed": 1.5,
+      "close_chase": true,
+      "ranged_chase": false,
+      "squad": "red",
+      "guard_distance_minimum": 3,
+      "guard_selection_range": 2,
+      "guardedNPC": 1,
+      "guardingUpper": 0,
+      "guardingLower": 0,
+      "avoidReturnPoint": {
+        "world": "legacy",
+        "x": 1,
+        "y": 2,
+        "z": 3
+      },
+      "disable_teleporting": false,
+      "damage": -1,
+      "attackRate": 20,
+      "attackRateRanged": 40,
+      "range": 30,
+      "reach": 3,
+      "safeShot": true,
+      "accuracy": 0.5,
+      "projectileRange": 50,
+      "health": 40,
+      "armor": 0.25,
+      "invincible": false,
+      "protected": true,
+      "protectFromRange": 0,
+      "allow_knockback": false,
+      "healRate": 50,
+      "drops": [
+        {
+          "type": "DIAMOND",
+          "amount": 2
+        },
+        {
+          "type": "STICK",
+          "meta": {
+            "display-name": "Wand"
+          }
+        },
+        {
+          "id": "minecraft:emerald",
+          "count": 70
+        }
+      ],
+      "dropChances": [
+        0.5,
+        1,
+        2
+      ],
+      "enemyDrops": false,
+      "death_xp": 5,
+      "respawnTime": 0,
+      "spawnPoint": {
+        "world": "legacy",
+        "x": 10.5,
+        "y": 64,
+        "z": -20.25
+      },
+      "worldguard_region": "spawn",
+      "needsAmmo": false,
+      "weapon_damage_map": {
+        "DIAMOND_SWORD": 7,
+        "minecraft:iron_axe": 5.5
+      },
+      "warning_text": "Leave now!",
+      "greeting_text": "Hello traveller",
+      "greet_range": 5,
+      "greet_rate": 100,
+      "autoswitch": true,
+      "weapon_redirect_map": {
+        "BOW": "ARROW"
+      },
+      "stats_ticksSpawned": 1200,
+      "stats_timesSpawned": 3,
+      "stats_arrowsFired": 7,
+      "stats_potionsThrown": 0,
+      "stats_punches": 12,
+      "stats_attackedByEnemy": 4,
+      "stats_damageTaken": 18.5,
+      "mysteryField": "kept"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+npc:
+  '1':
+    name: A
+    traits: &t {type: PLAYER}
+  '2':
+    traits: *t

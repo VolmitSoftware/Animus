@@ -1,0 +1,36 @@
+{
+  "name": "Rider",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000004",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 0,
+      "y": 65,
+      "z": 0
+    },
+    "mounttrait": {
+      "mountedon": "0a1b2c3d-0000-4000-8000-000000000003"
+    },
+    "sittrait": {
+      "sittingAt": {
+        "world": "legacy",
+        "x": 0,
+        "y": 65,
+        "z": 0
+      }
+    },
+    "sneak": {
+      "sneaking": true
+    },
+    "sneaking": {
+      "sneaking": true
+    },
+    "skintrait": {
+      "skinName": "rider",
+      "signature": "c2lnLWI=",
+      "textureRaw": "dGV4LWI=",
+      "updateSkins": true
+    }
+  }
+}

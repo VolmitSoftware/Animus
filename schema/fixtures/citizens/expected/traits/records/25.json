@@ -1,0 +1,16 @@
+{
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000025",
+  "traits": {
+    "type": "minecraft:cow",
+    "location": {
+      "world": "legacy",
+      "x": 25,
+      "y": 64,
+      "z": 25
+    },
+    "age": {
+      "age": 0,
+      "locked": false
+    }
+  }
+}

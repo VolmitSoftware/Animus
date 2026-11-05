@@ -1,0 +1,36 @@
+{
+  "citizensId": 12,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/sentinel/guardedNPC": "CONVERTED",
+    "/traits/sentinel/damage": "CONVERTED",
+    "/traits/sentinel/guardingUpper": "CONVERTED",
+    "/traits/sentinel/guardingLower": "CONVERTED",
+    "/traits/sentinel/respawnTime": "CONVERTED",
+    "/traits/equipment/hand/type": "CONVERTED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [
+    {
+      "source": "/traits/sentinel/guardedNPC",
+      "kind": "guard",
+      "original": -1,
+      "status": "none"
+    }
+  ],
+  "validationErrors": []
+}

@@ -1,0 +1,19 @@
+{
+  "citizensId": 23,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/constructor": "REQUIRES_REVIEW"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": [
+    "$.position.world: expected nonblank string",
+    "$.position.x: expected finite coordinate within ±30000000",
+    "$.position.y: expected finite coordinate within ±30000000",
+    "$.position.z: expected finite coordinate within ±30000000"
+  ]
+}

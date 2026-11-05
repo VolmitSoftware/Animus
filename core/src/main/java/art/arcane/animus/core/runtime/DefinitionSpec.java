@@ -55,7 +55,8 @@ public record DefinitionSpec<I>(NpcDefinition definition, String type, String na
                 p.get("yaw").getAsFloat(), p.get("pitch").getAsFloat(), json.has("skin") ? json.get("skin").getAsString() : null, definition.serialize(),
                 appearance, equipment);
     }
-    public static boolean spawned(NpcDefinition definition) { return definition != null && definition.json().get("spawned").getAsBoolean(); }
+    /** An imported definition stays despawned while Citizens itself runs; see {@link art.arcane.animus.core.migration.CitizensGuard}. */
+    public static boolean spawned(NpcDefinition definition) { return definition != null && definition.spawned() && !art.arcane.animus.core.migration.CitizensGuard.holds(definition.imported()); }
 
     private static <I> Map<EquipmentSlot, I> equipment(NpcAppearance appearance, Items<I> items, List<String> errors) {
         Map<EquipmentSlot, I> stacks = new EnumMap<>(EquipmentSlot.class);

@@ -1,0 +1,47 @@
+{
+  "name": "Mason",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000020",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 20,
+      "y": 64,
+      "z": 20
+    },
+    "builder": {
+      "Schematic": "Town Hall.schematic",
+      "PatternXY": "reverse_spiral",
+      "IgnoreAir": true,
+      "IgnoreLiquid": "False",
+      "Excavate": false,
+      "HoldItems": true,
+      "Silent": false,
+      "RequireMaterials": true,
+      "NeededMaterials": {
+        "1": 5,
+        "4": 64
+      },
+      "MoveTimeoutSeconds": 1000,
+      "YOffset": -2.6,
+      "YLayers": 5,
+      "Origin": {
+        "world": "legacy",
+        "x": 1.5,
+        "y": 64,
+        "z": -3.2
+      },
+      "State": "BUILDING",
+      "ContinueLoc": {
+        "world": "legacy",
+        "x": 1,
+        "y": 64,
+        "z": 1
+      },
+      "onstart": "begin_task",
+      "oncomplete": "done_task",
+      "toggled": true,
+      "Extra": "something"
+    }
+  }
+}

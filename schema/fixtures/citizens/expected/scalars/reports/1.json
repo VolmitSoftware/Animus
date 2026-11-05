@@ -1,0 +1,23 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "world",
+      "to": "Survival World"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

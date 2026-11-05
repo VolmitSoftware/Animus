@@ -33,6 +33,8 @@ The build automatically uses a sibling/ancestor VolmLib checkout. Override with 
 
 ## Citizens import
 
+To move a server from Citizens, follow [migrating from Citizens](docs/migrating-from-citizens.md): put `saves.yml` in `plugins/Animus/imports/` (or leave `plugins/Citizens/saves.yml` after removing Citizens), then run `/animus import citizens`, `/animus import citizens apply` and `/animus import citizens accept all`. The rest of this section is the lower-level converter.
+
 Keep private saves and generated bundles outside the repository. The converter accepts at most 16 MiB of UTF-8 YAML, with a maximum nesting depth of 64. It rejects duplicate keys, aliases, unsafe construction, and non-finite values. It never changes the source file.
 
 ```sh
@@ -44,7 +46,7 @@ Preview writes `imports/<import-id>/` containing:
 - `source.yml`: original input, preserved exactly for valid UTF-8.
 - `records/<citizens-id>.json`: every original NPC record.
 - `reports/<citizens-id>.json`: per-field data classification and exact definition errors.
-- `npcs/citizens/citizens-<id>.json`: individually editable candidate definitions.
+- `npcs/<world>-r<x>_<z>/citizens-<id>.json`: individually editable candidate definitions, one folder per world (after world mapping) and region file, such as `npcs/world-r0_-1/` for `region/r.0.-1.mca`; see [where the files go](docs/migrating-from-citizens.md#where-the-files-go).
 - `skins/<sha256>.json`: deduplicated complete skin traits, including texture and signature.
 - `report.json`: counts, trait/Sentinel inventories, UUID mapping, world mapping, and a document hash manifest.
 
@@ -98,6 +100,8 @@ The local CLI cannot open a running server's data directory: both hold the same 
 /animus navigate <id> <x> <y> <z> [walk|swim|fly] [speed]
 /animus navigation <id> [status|stop]
 /animus look <id> <x> <y> <z>
+/animus import citizens [reject|replace|duplicate <label>] [oldWorld=newWorld ...]
+/animus import citizens apply | review | accept <spawn|combat|riding|shops|builder|all> | rollback
 /animus import preview <filename.yml> [oldWorld=newWorld ...]
 /animus import apply <import-id>
 /animus rollback <transaction-id>

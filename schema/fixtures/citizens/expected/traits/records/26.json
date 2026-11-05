@@ -1,0 +1,17 @@
+{
+  "name": "No UUID",
+  "traits": {
+    "type": "ZOMBIE",
+    "location": {
+      "world": "legacy",
+      "x": 26,
+      "y": 64,
+      "z": 26
+    },
+    "equipment": {
+      "hand": {
+        "type": "minecraft:Golden_Sword"
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000016",
+  "id": "citizens-16",
+  "group": "world-r0_0",
+  "name": "Baker",
+  "type": "minecraft:villager",
+  "spawned": false,
+  "migration": {
+    "importId": "d06300ea137a9fefa8891b02208deb1cdd180bf1a240b5bab7dafc24a77e7706",
+    "citizensId": 16,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 16,
+    "y": 64,
+    "z": 16,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:shop": {
+      "shop": "dtltraders:bakery-shop",
+      "openOn": "right",
+      "reviewAccepted": false,
+      "imported": {
+        "source": "dtlTraders",
+        "shopName": "&aBakery Shop"
+      }
+    },
+    "citizens:review": {
+      "type": "VILLAGER",
+      "location": {
+        "world": "world",
+        "x": 16,
+        "y": 64,
+        "z": 16
+      },
+      "trader": {
+        "guiName": "&aBakery Shop",
+        "converted-to-v5": true
+      },
+      "profession": {
+        "profession": "FARMER"
+      }
+    }
+  }
+}

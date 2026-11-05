@@ -1,0 +1,101 @@
+# Synthetic YAML 1.1 scalar edge cases, resolved the way SnakeYAML resolves them.
+format-version: 0x10
+npc:
+  0:
+    name: 1.0e7
+    traits:
+      type: player
+      location: {world: world, x: .5, y: 1_000.25, z: -0.0, yaw: 1:30, pitch: 0b11}
+      scalars:
+        bools: [yes, no, on, off, Yes, NO, True, FALSE, y, n, 'yes']
+        octal: 017
+        octalLeadingZeros: 0_000000000000000000000000017
+        notOctal: 0o17
+        eight: 08
+        hex: 0x_1F
+        hexBig: 0x7FFFFFFFFFFFFFFFF
+        binary: 0b1010_1010
+        underscores: 1_000_000
+        doubleUnderscore: 1__0
+        sexagesimal: 190:20:30
+        sexagesimalFloat: 1:30.5
+        negativeSexagesimal: -1:30
+        exponent: 1e3
+        exponentSigned: 12e-03
+        upperExponent: 1E+5
+        intMax: 2147483647
+        intOverflow: 2147483648
+        longMin: -9223372036854775808
+        longOverflow: 9223372036854775808
+        hugeNegative: -123456789012345678901234567890
+        tiny: 0.00001
+        small: 0.001
+        smaller: 0.0001
+        large: 10000000.0
+        belowLarge: 9999999.0
+        big: 123456789.123
+        maxDouble: 1.7976931348623157e308
+        minDouble: 4.9e-324
+        third: 0.3333333333333333
+        pointOne: 0.1
+        sum: 0.30000000000000004
+        leadingDot: .5
+        negativeLeadingDot: -.25e2
+        trailingDot: 1.
+        plusSign: +12
+        plusFloat: +1.5
+        negativeZero: -0.0
+        intNegativeZero: -0
+        doubleZero: 00
+        nulls: [~, null, Null, NULL, '', "null"]
+        empty:
+        emptyMap: {}
+        emptyList: []
+        numericKeys: {1: one, 2.5: two, 0x10: sixteen, -3: minus}
+        quoted: ['it''s', "say \"hi\"", 'back\slash', "tab\tand\nnewline", "bell\x07", "nul\0", "esc\e", "line\u2028sep", "para\u2029sep", "next\x85line", "nbsp\_here", "del\x7f"]
+        unicode: "café 日本 \U0001F642 é"
+        html: '<a href="x">&amp;</a> = '''
+        slashes: "a/b \\ c"
+        folded: >
+          first line
+          second line
+
+          after blank
+        literal: |
+          keep
+            indent
+        plainMultiline: one
+          two  three
+           four
+
+          five
+        colon: 'a: b'
+        hash: 'not # a comment'
+        version: 1.2.3
+        date-like: '2026-11-04'
+        ip: 127.0.0.1
+        time-like: 12:30
+        infinity-text: Infinity
+        dotInf: '.inf'
+        merged: {<<: {a: 1, b: 2}, b: 3, c: 4}
+        mergedList: {<<: [{x: 1}, {x: 2, y: 2}], z: 0}
+        tagged: !!str 017
+        anchored: &anchor plain
+        longNumber: 1234567890123456789012345678901234567890123456789012345678901234567890
+        upperBool: TRUE
+        tilde: '~'
+  01:
+    name: yes
+    uuid: 0a1b2c3d-0000-4000-8000-000000000201
+    traits:
+      type: villager
+      location: {world: world, x: 1, y: 2, z: 3}
+  '2':
+    name: "Quote \" Back \\ Tab \t Line \u2028 End"
+    uuid: 0a1b2c3d-0000-4000-8000-000000000202
+    traits:
+      location: {world: world, x: 1e3, y: 64, z: 2147483648}
+  3:
+    name: ~
+    uuid: ~
+    traits: ~

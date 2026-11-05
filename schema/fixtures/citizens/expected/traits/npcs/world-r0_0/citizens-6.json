@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000007",
+  "id": "citizens-6",
+  "group": "world-r0_0",
+  "name": "Lost Mount",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "d06300ea137a9fefa8891b02208deb1cdd180bf1a240b5bab7dafc24a77e7706",
+    "citizensId": 6,
+    "originalSpawned": null,
+    "references": [
+      {
+        "source": "/traits/mounttrait/mountedon",
+        "kind": "mount",
+        "original": "00000000-dead-4bee-8000-000000000000",
+        "status": "missing"
+      }
+    ]
+  },
+  "position": {
+    "world": "world",
+    "x": 0,
+    "y": 64,
+    "z": 0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 0,
+        "y": 64,
+        "z": 0
+      },
+      "mounttrait": {
+        "mountedon": "00000000-dead-4bee-8000-000000000000"
+      },
+      "sittrait": {
+        "sittingAt": {
+          "world": "world",
+          "x": 0,
+          "y": 64,
+          "z": 0
+        }
+      }
+    }
+  }
+}

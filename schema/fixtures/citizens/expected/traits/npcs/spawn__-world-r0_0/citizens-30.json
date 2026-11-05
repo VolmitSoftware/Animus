@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000030",
+  "id": "citizens-30",
+  "group": "spawn__-world-r0_0",
+  "name": "Long Liner",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "d06300ea137a9fefa8891b02208deb1cdd180bf1a240b5bab7dafc24a77e7706",
+    "citizensId": 30,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "__Spawn__ World",
+    "x": 0,
+    "y": 64,
+    "z": 0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:stick",
+      "count": 1,
+      "imported": {
+        "type": "STICK",
+        "lore": [
+          "a",
+          "b"
+        ]
+      }
+    }
+  },
+  "hologram": {
+    "lines": [
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "7"
+    ]
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "__Spawn__ World",
+        "x": 0,
+        "y": 64,
+        "z": 0
+      },
+      "hologramtrait": {
+        "lines": {
+          "0": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "1": {
+            "nottext": 5
+          },
+          "2": {
+            "text": 7
+          }
+        }
+      },
+      "equipment": {
+        "hand": {
+          "type": "STICK",
+          "lore": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    }
+  }
+}

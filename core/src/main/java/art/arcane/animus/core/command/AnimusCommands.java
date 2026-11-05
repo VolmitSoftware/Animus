@@ -172,7 +172,14 @@ public final class AnimusCommands {
             return activeRuntime.npcs().all().stream().map(NpcDefinition::id).filter((String id) -> id.startsWith(arguments[2])).limit(100).toList();
         if (arguments.length == 2 && List.of("inspect", "edit", "clone", "delete", "select", "spawn", "despawn", "attack", "target", "navigate", "navigation", "look").contains(operation))
             return activeRuntime.npcs().all().stream().map(NpcDefinition::id).filter((String id) -> id.startsWith(arguments[1])).limit(100).toList();
-        if (arguments.length == 2 && operation.equals("import")) return matching(List.of("preview", "stage", "apply", "apply-plan"), arguments[1]);
+        if (arguments.length == 2 && operation.equals("import")) return matching(List.of("citizens", "preview", "stage", "apply", "apply-plan"), arguments[1]);
+        if (arguments.length == 3 && operation.equals("import") && arguments[1].equalsIgnoreCase("citizens"))
+            return matching(List.of("apply", "review", "accept", "rollback", "reject", "replace", "duplicate"), arguments[2]);
+        if (arguments.length >= 4 && operation.equals("import") && arguments[1].equalsIgnoreCase("citizens") && arguments[2].equalsIgnoreCase("accept")) {
+            List<String> categories = new ArrayList<>(art.arcane.animus.core.migration.CitizensDropIn.CATEGORIES);
+            categories.add("all");
+            return matching(categories, arguments[arguments.length - 1]);
+        }
         if (arguments.length == 4 && operation.equals("import") && arguments[1].equals("stage")) return matching(List.of("reject", "replace", "duplicate"), arguments[3]);
         if (arguments.length >= 2 && operation.equals("behaviors")) {
             BehaviorCommands behaviors = services.behaviors().get();

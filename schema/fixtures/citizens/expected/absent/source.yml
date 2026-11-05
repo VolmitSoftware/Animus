@@ -1,0 +1,109 @@
+# Synthetic: every Citizens trait declaration absent from the audited fixture, as small preserved values.
+npc:
+  '0':
+    name: Absent 0
+    uuid: 0a1b2c3d-0000-4000-8000-000000000100
+    traits:
+      type: PLAYER
+      location: {world: world, x: 0, y: 64, z: 0}
+      anchors: {enabled: true}
+      battrait: [1, 2]
+      behavior: {value: 3.5, list: [a]}
+      boundingbox: 'text'
+      chunktickettrait: {nested: {flag: false, count: 2}}
+      clickredirecttrait: {enabled: true}
+      commandtrait: [1, 2]
+      disguise: {value: 3.5, list: [a]}
+      dropstrait: 'text'
+      endercrystaltrait: {nested: {flag: false, count: 2}}
+      endermantrait: {enabled: true}
+      entitypose: [1, 2]
+      followtrait: {value: 3.5, list: [a]}
+      forcefieldtrait: 'text'
+      gamemodetrait: {nested: {flag: false, count: 2}}
+      hometrait: {enabled: true}
+  '1':
+    name: Absent 1
+    uuid: 0a1b2c3d-0000-4000-8000-000000000101
+    traits:
+      type: FROG
+      location: {world: world, x: 1, y: 64, z: 1}
+      itemframe: [1, 2]
+      leashedtrait: {value: 3.5, list: [a]}
+      mirrortrait: 'text'
+      ocelotmodifiers: {nested: {flag: false, count: 2}}
+      packet: {enabled: true}
+      paintingtrait: [1, 2]
+      pausepathfinding: {value: 3.5, list: [a]}
+      playerfilter: 'text'
+      powered: {nested: {flag: false, count: 2}}
+      profession: {enabled: true}
+      rabbittype: [1, 2]
+      saddle: {value: 3.5, list: [a]}
+      scaledhealthtrait: 'text'
+      sheeptrait: {nested: {flag: false, count: 2}}
+      shop: {enabled: true}
+      skinlayers: [1, 2]
+  '2':
+    name: Absent 2
+    uuid: 0a1b2c3d-0000-4000-8000-000000000102
+    traits:
+      type: LLAMA
+      location: {world: world, x: 2, y: 64, z: 2}
+      sleeptrait: {value: 3.5, list: [a]}
+      slimesize: 'text'
+      withertrait: {nested: {flag: false, count: 2}}
+      wolfmodifiers: {enabled: true}
+      woolcolor: [1, 2]
+      allaytrait: {value: 3.5, list: [a]}
+      areaeffectcloudtrait: 'text'
+      armadillotrait: {nested: {flag: false, count: 2}}
+      axolotltrait: {enabled: true}
+      beetrait: [1, 2]
+      boattrait: {value: 3.5, list: [a]}
+      bossbar: 'text'
+      cameltrait: {nested: {flag: false, count: 2}}
+      cattrait: {enabled: true}
+      chickentrait: [1, 2]
+      coppergolemtrait: {value: 3.5, list: [a]}
+  '3':
+    name: Absent 3
+    uuid: 0a1b2c3d-0000-4000-8000-000000000103
+    traits:
+      type: ARMADILLO
+      location: {world: world, x: 3, y: 64, z: 3}
+      cowtrait: 'text'
+      displaytrait: {nested: {flag: false, count: 2}}
+      enderdragontrait: {enabled: true}
+      foxtrait: [1, 2]
+      frogtrait: {value: 3.5, list: [a]}
+      goattrait: 'text'
+      interactiontrait: {nested: {flag: false, count: 2}}
+      itemdisplaytrait: {enabled: true}
+      llamatrait: [1, 2]
+      mannequintrait: {value: 3.5, list: [a]}
+      mushroomcowtrait: 'text'
+      pandatrait: {nested: {flag: false, count: 2}}
+      parrottrait: {enabled: true}
+      phantomtrait: [1, 2]
+      piglintrait: {value: 3.5, list: [a]}
+      pigtrait: 'text'
+  '4':
+    name: Absent 4
+    uuid: 0a1b2c3d-0000-4000-8000-000000000104
+    traits:
+      type: ENDER_DRAGON
+      location: {world: world, x: 4, y: 64, z: 4}
+      polarbeartrait: {nested: {flag: false, count: 2}}
+      potioneffects: {enabled: true}
+      pufferfishtrait: [1, 2]
+      shulkertrait: {value: 3.5, list: [a]}
+      sniffertrait: 'text'
+      snowmantrait: {nested: {flag: false, count: 2}}
+      spellcastertrait: {enabled: true}
+      sulfurcubetrait: [1, 2]
+      textdisplaytrait: {value: 3.5, list: [a]}
+      tropicalfishtrait: 'text'
+      vextrait: {nested: {flag: false, count: 2}}
+      villagertrait: {enabled: true}
+      wardentrait: [1, 2]

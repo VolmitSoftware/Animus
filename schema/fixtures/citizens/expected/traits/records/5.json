@@ -1,0 +1,42 @@
+{
+  "name": "Display Stand",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000006",
+  "traits": {
+    "type": "ARMOR_STAND",
+    "location": {
+      "world": "legacy",
+      "x": 5,
+      "y": 64,
+      "z": 5
+    },
+    "armorstandtrait": {
+      "small": true,
+      "hasarms": "true",
+      "hasbaseplate": false,
+      "visible": true,
+      "marker": false,
+      "gravity": true,
+      "head": {
+        "x": 0.5,
+        "y": 0.0,
+        "z": -0.25
+      },
+      "leftArm": {
+        "x": 3.14159,
+        "y": 1.0,
+        "z": 7.0
+      },
+      "rightArm": {
+        "x": "oops",
+        "y": 0,
+        "z": 0
+      },
+      "body": null
+    },
+    "equipment": {
+      "helmet": {
+        "type": "GOLDEN_HELMET"
+      }
+    }
+  }
+}

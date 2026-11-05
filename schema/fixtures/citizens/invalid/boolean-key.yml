@@ -1,0 +1,4 @@
+npc:
+  '1':
+    name: A
+    flags: {on: 1}
