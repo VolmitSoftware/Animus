@@ -1,0 +1,26 @@
+{
+  "citizensId": 17,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/trader/type": "REQUIRES_INTEGRATION",
+    "/traits/trader/stock/sell/0/item": "REQUIRES_INTEGRATION",
+    "/traits/trader/stock/sell/0/price": "REQUIRES_INTEGRATION"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

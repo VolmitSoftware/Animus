@@ -1,0 +1,40 @@
+{
+  "citizensId": 24,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/commandtrait/commands/0/command": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/hand": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/player": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/op": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/cooldown": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/n": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/commands/0/delay": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/cost": "UNSUPPORTED_PRESERVED",
+    "/traits/commandtrait/executionMode": "UNSUPPORTED_PRESERVED",
+    "/traits/assignment/assignment": "REQUIRES_INTEGRATION",
+    "/traits/denizen_flags/flags/greeted": "REQUIRES_INTEGRATION",
+    "/traits/denizenflags": "REQUIRES_INTEGRATION",
+    "/traits/triggers/chat/enabled": "REQUIRES_INTEGRATION",
+    "/traits/triggers/chat/cooldown": "REQUIRES_INTEGRATION",
+    "/traits/constants/list/greeting": "REQUIRES_INTEGRATION",
+    "/traits/denizen": "REQUIRES_INTEGRATION",
+    "/traits/denizenscript/name": "REQUIRES_INTEGRATION"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

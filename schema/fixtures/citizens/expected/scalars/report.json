@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "converterVersion": 7,
+  "fieldPathFormat": "json-pointer",
+  "importId": "468850ca44c6947aa1d2d4d8d6d435fc50fda62df4e852e0e4b4466978ea50e5",
+  "sourceSha256": "f0fac577c8016c45c991e6531bfc050d7f7003eb243f0d204eb6eb5e47e86890",
+  "worldMap": {
+    "world": "Survival World"
+  },
+  "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
+  "records": 4,
+  "valid": 2,
+  "skins": 0,
+  "traits": {
+    "type": 2,
+    "location": 3,
+    "scalars": 1
+  },
+  "types": {
+    "player": 3,
+    "villager": 1
+  },
+  "sentinelFields": {},
+  "sentinelMapping": {},
+  "issues": [
+    "citizens-2: $.name: expected at most 256 characters without control characters; $.position.z: expected finite coordinate within ±30000000",
+    "citizens-3: $.position.world: expected nonblank string; $.position.x: expected finite coordinate within ±30000000; $.position.y: expected finite coordinate within ±30000000; $.position.z: expected finite coordinate within ±30000000"
+  ],
+  "migrationWarnings": [],
+  "remappedLocations": 3,
+  "resolvedReferences": 0,
+  "unresolvedReferences": 0,
+  "sourceFields": {
+    "/format-version": "UNSUPPORTED_PRESERVED"
+  },
+  "idMap": {
+    "0": "aa09bf98-d566-3729-9cca-045e444fd551",
+    "1": "0a1b2c3d-0000-4000-8000-000000000201",
+    "2": "0a1b2c3d-0000-4000-8000-000000000202",
+    "3": "31262f7f-a169-34d1-bedc-94ded02a16c3"
+  },
+  "documents": {
+    "npcs/survival-world-r0_0/citizens-0.json": "278bec9c203a4f5e26cdf699d0a06ca6b9b27a007229d81282dc7ccc5067b6a8",
+    "npcs/survival-world-r0_0/citizens-1.json": "787ccbcf3d32389673097f6c39f3b1c0f46ac508d1863d2b0e1e298a67aea980",
+    "npcs/survival-world/citizens-2.json": "47fe310d9908d7180b108d4959bb693439d806d02b0f8443c936814b81b8e090",
+    "npcs/citizens/citizens-3.json": "029dc56bff850dc28d8dd21cde28a9e9aaf411a55fdc52f37c0eca3c21fe15b2"
+  }
+}

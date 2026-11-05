@@ -1,0 +1,51 @@
+{
+  "citizensId": 3,
+  "presentationWarnings": [
+    "/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/mounttrait/mountedon": "REQUIRES_REVIEW",
+    "/traits/sittrait/sittingAt/world": "UNSUPPORTED_PRESERVED",
+    "/traits/sittrait/sittingAt/x": "UNSUPPORTED_PRESERVED",
+    "/traits/sittrait/sittingAt/y": "UNSUPPORTED_PRESERVED",
+    "/traits/sittrait/sittingAt/z": "UNSUPPORTED_PRESERVED",
+    "/traits/sneak/sneaking": "CONVERTED",
+    "/traits/sneaking/sneaking": "UNSUPPORTED_PRESERVED",
+    "/traits/skintrait/skinName": "CONVERTED",
+    "/traits/skintrait/signature": "CONVERTED",
+    "/traits/skintrait/textureRaw": "CONVERTED",
+    "/traits/skintrait/updateSkins": "CONVERTED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    },
+    {
+      "source": "/traits/sittrait/sittingAt",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [
+    {
+      "source": "/traits/mounttrait/mountedon",
+      "kind": "mount",
+      "original": "0a1b2c3d-0000-4000-8000-000000000003",
+      "npcUuid": "0a1b2c3d-0000-4000-8000-000000000003",
+      "npcId": "citizens-2",
+      "citizensId": 2,
+      "status": "resolved"
+    }
+  ],
+  "validationErrors": []
+}

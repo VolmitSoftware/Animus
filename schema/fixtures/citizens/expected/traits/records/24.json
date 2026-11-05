@@ -1,0 +1,52 @@
+{
+  "name": "Herald",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000024",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 24,
+      "y": 64,
+      "z": 24
+    },
+    "commandtrait": {
+      "commands": {
+        "0": {
+          "command": "say Hear ye",
+          "hand": "RIGHT",
+          "player": false,
+          "op": false,
+          "cooldown": 0,
+          "n": -1,
+          "delay": 0
+        }
+      },
+      "cost": -1.0,
+      "executionMode": "LINEAR"
+    },
+    "assignment": {
+      "assignment": "herald_script"
+    },
+    "denizen_flags": {
+      "flags": {
+        "greeted": true
+      }
+    },
+    "denizenflags": {},
+    "triggers": {
+      "chat": {
+        "enabled": true,
+        "cooldown": 2.0
+      }
+    },
+    "constants": {
+      "list": {
+        "greeting": "hi"
+      }
+    },
+    "denizen": {},
+    "denizenscript": {
+      "name": "x"
+    }
+  }
+}

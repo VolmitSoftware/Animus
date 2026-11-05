@@ -1,0 +1,43 @@
+{
+  "citizensId": 5,
+  "presentationWarnings": [
+    "/traits/armorstandtrait/rightArm: angle not readable; kept for review",
+    "/traits/armorstandtrait: marker and gravity are kept for review"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/armorstandtrait/small": "CONVERTED",
+    "/traits/armorstandtrait/hasarms": "CONVERTED",
+    "/traits/armorstandtrait/hasbaseplate": "CONVERTED",
+    "/traits/armorstandtrait/visible": "CONVERTED",
+    "/traits/armorstandtrait/marker": "UNSUPPORTED_PRESERVED",
+    "/traits/armorstandtrait/gravity": "UNSUPPORTED_PRESERVED",
+    "/traits/armorstandtrait/head/x": "CONVERTED",
+    "/traits/armorstandtrait/head/y": "CONVERTED",
+    "/traits/armorstandtrait/head/z": "CONVERTED",
+    "/traits/armorstandtrait/leftArm/x": "CONVERTED",
+    "/traits/armorstandtrait/leftArm/y": "CONVERTED",
+    "/traits/armorstandtrait/leftArm/z": "CONVERTED",
+    "/traits/armorstandtrait/rightArm/x": "UNSUPPORTED_PRESERVED",
+    "/traits/armorstandtrait/rightArm/y": "UNSUPPORTED_PRESERVED",
+    "/traits/armorstandtrait/rightArm/z": "UNSUPPORTED_PRESERVED",
+    "/traits/armorstandtrait/body": "UNSUPPORTED_PRESERVED",
+    "/traits/equipment/helmet/type": "CONVERTED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

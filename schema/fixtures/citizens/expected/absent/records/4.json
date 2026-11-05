@@ -1,0 +1,66 @@
+{
+  "name": "Absent 4",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000104",
+  "traits": {
+    "type": "ENDER_DRAGON",
+    "location": {
+      "world": "world",
+      "x": 4,
+      "y": 64,
+      "z": 4
+    },
+    "polarbeartrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "potioneffects": {
+      "enabled": true
+    },
+    "pufferfishtrait": [
+      1,
+      2
+    ],
+    "shulkertrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    },
+    "sniffertrait": "text",
+    "snowmantrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "spellcastertrait": {
+      "enabled": true
+    },
+    "sulfurcubetrait": [
+      1,
+      2
+    ],
+    "textdisplaytrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    },
+    "tropicalfishtrait": "text",
+    "vextrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "villagertrait": {
+      "enabled": true
+    },
+    "wardentrait": [
+      1,
+      2
+    ]
+  }
+}

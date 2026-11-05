@@ -1,0 +1,47 @@
+{
+  "name": "Lonely Sentry",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000011",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 11,
+      "y": 64,
+      "z": 11
+    },
+    "sentinel": {
+      "guardedNPC": 99,
+      "guardingUpper": 1234567890123,
+      "guardingLower": -987654321,
+      "health": "40",
+      "speed": 0.1,
+      "respawnTime": -1,
+      "greeting_text": "line\u0007bell",
+      "warning_text": "",
+      "squad": "",
+      "chaseRange": "oops",
+      "allTargets": [
+        "not",
+        "a",
+        "map"
+      ],
+      "drops": "notalist",
+      "dropChances": 0.5,
+      "weapon_damage_map": {
+        "bad item!": 4
+      },
+      "worldguard_region": "bad region!",
+      "spawnPoint": {
+        "world": "legacy",
+        "x": 1,
+        "y": 2
+      },
+      "avoidReturnPoint": "nowhere",
+      "fightback": "maybe",
+      "damage": 0,
+      "armor": -1,
+      "accuracy": 99,
+      "reach": 0.1
+    }
+  }
+}

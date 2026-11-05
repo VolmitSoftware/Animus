@@ -1,0 +1,61 @@
+{
+  "citizensId": 11,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/sentinel/guardedNPC": "CONVERTED",
+    "/traits/sentinel/guardingUpper": "CONVERTED",
+    "/traits/sentinel/guardingLower": "CONVERTED",
+    "/traits/sentinel/health": "CONVERTED",
+    "/traits/sentinel/speed": "CONVERTED",
+    "/traits/sentinel/respawnTime": "CONVERTED",
+    "/traits/sentinel/greeting_text": "CONVERTED",
+    "/traits/sentinel/warning_text": "CONVERTED",
+    "/traits/sentinel/squad": "CONVERTED",
+    "/traits/sentinel/chaseRange": "CONVERTED",
+    "/traits/sentinel/allTargets/0": "CONVERTED",
+    "/traits/sentinel/allTargets/1": "CONVERTED",
+    "/traits/sentinel/allTargets/2": "CONVERTED",
+    "/traits/sentinel/drops": "CONVERTED",
+    "/traits/sentinel/dropChances": "CONVERTED",
+    "/traits/sentinel/weapon_damage_map/bad item!": "CONVERTED",
+    "/traits/sentinel/worldguard_region": "CONVERTED",
+    "/traits/sentinel/spawnPoint/world": "CONVERTED",
+    "/traits/sentinel/spawnPoint/x": "CONVERTED",
+    "/traits/sentinel/spawnPoint/y": "CONVERTED",
+    "/traits/sentinel/avoidReturnPoint": "CONVERTED",
+    "/traits/sentinel/fightback": "CONVERTED",
+    "/traits/sentinel/damage": "CONVERTED",
+    "/traits/sentinel/armor": "CONVERTED",
+    "/traits/sentinel/accuracy": "CONVERTED",
+    "/traits/sentinel/reach": "CONVERTED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    },
+    {
+      "source": "/traits/sentinel/spawnPoint",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [
+    {
+      "source": "/traits/sentinel/guardedNPC",
+      "kind": "guard",
+      "original": 99,
+      "status": "missing"
+    }
+  ],
+  "validationErrors": []
+}

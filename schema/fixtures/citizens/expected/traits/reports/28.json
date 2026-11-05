@@ -1,0 +1,42 @@
+{
+  "citizensId": 28,
+  "presentationWarnings": [
+    "/traits/hologramtrait/lines: only the first 16 lines are shown",
+    "/traits/poses: default pose missing is not in the list; kept for review"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/metadata/nameplate-visible": "UNSUPPORTED_PRESERVED",
+    "/traits/hologramtrait/lines/0": "CONVERTED",
+    "/traits/hologramtrait/lines/1": "CONVERTED",
+    "/traits/hologramtrait/lines/2": "CONVERTED",
+    "/traits/hologramtrait/lines/3": "CONVERTED",
+    "/traits/hologramtrait/lines/4": "CONVERTED",
+    "/traits/hologramtrait/lines/5": "CONVERTED",
+    "/traits/hologramtrait/lines/6": "CONVERTED",
+    "/traits/hologramtrait/lines/7": "CONVERTED",
+    "/traits/hologramtrait/lines/8": "CONVERTED",
+    "/traits/hologramtrait/lines/9": "CONVERTED",
+    "/traits/hologramtrait/lines/10": "CONVERTED",
+    "/traits/hologramtrait/lines/11": "CONVERTED",
+    "/traits/hologramtrait/lines/12": "CONVERTED",
+    "/traits/hologramtrait/lines/13": "CONVERTED",
+    "/traits/hologramtrait/lines/14": "CONVERTED",
+    "/traits/hologramtrait/lines/15": "CONVERTED",
+    "/traits/hologramtrait/lines/16": "REQUIRES_REVIEW",
+    "/traits/poses/defaultPose": "REQUIRES_REVIEW",
+    "/traits/poses/list/0": "REQUIRES_REVIEW"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": [
+    "$.position.world: expected nonblank string"
+  ]
+}

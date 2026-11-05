@@ -1,0 +1,16 @@
+{
+  "name": "Broken Builder",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000022",
+  "traits": {
+    "type": "PLAYER",
+    "builder": "not a mapping",
+    "constructor": {
+      "schematic": "castle.schem",
+      "speed": 2,
+      "layers": [
+        1,
+        2
+      ]
+    }
+  }
+}

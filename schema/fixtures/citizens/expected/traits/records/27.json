@@ -1,0 +1,18 @@
+{
+  "name": "Bad\u0001Name",
+  "uuid": "NOT-A-UUID",
+  "traits": {
+    "type": "Weird Type!",
+    "location": {
+      "world": "legacy",
+      "x": 100000000,
+      "y": 64
+    },
+    "owner": {
+      "uuid": "not-a-uuid"
+    },
+    "metadata": {
+      "nameplate-visible": "hover"
+    }
+  }
+}

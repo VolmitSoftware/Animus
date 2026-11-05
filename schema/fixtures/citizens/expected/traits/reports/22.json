@@ -1,0 +1,23 @@
+{
+  "citizensId": 22,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/builder": "REQUIRES_REVIEW",
+    "/traits/constructor/schematic": "REQUIRES_REVIEW",
+    "/traits/constructor/speed": "REQUIRES_REVIEW",
+    "/traits/constructor/layers/0": "REQUIRES_REVIEW",
+    "/traits/constructor/layers/1": "REQUIRES_REVIEW"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": [
+    "$.position.world: expected nonblank string",
+    "$.position.x: expected finite coordinate within ±30000000",
+    "$.position.y: expected finite coordinate within ±30000000",
+    "$.position.z: expected finite coordinate within ±30000000"
+  ]
+}
