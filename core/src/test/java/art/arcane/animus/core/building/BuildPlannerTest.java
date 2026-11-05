@@ -73,10 +73,12 @@ class BuildPlannerTest {
         assertEquals(List.of("dig:stone", "stone"), targets(plan));
     }
 
-    @Test void doorHalvesGoBottomFirst() {
+    @Test void doorHalvesAreOneStepLedByTheLowerHalf() {
         Schematic box = schematic(LEGEND, new String[]{"d"}, new String[]{"u"});
-        assertEquals(List.of("oak_door", "oak_door"), targets(plan(box, CORNER, ORIGIN)));
-        assertEquals("lower", plan(box, CORNER, ORIGIN).target(0).property("half").orElseThrow());
+        assertEquals(List.of("oak_door"), targets(plan(box, CORNER, ORIGIN)));
+        BuildPlan plan = plan(box, CORNER, ORIGIN);
+        assertEquals("lower", plan.target(0).property("half").orElseThrow());
+        assertEquals("upper", plan.unit(0).orElseThrow().parts().get(1).state().property("half").orElseThrow());
     }
 
     @Test void columnPatterns() {

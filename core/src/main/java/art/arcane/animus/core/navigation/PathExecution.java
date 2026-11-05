@@ -31,7 +31,7 @@ public final class PathExecution {
         for (PathPlanner.Step step : path) {
             Vec3 target = step.point();
             double peak = step.motion() == PathPlanner.Motion.START ? Math.max(last.y(), target.y()) : step.peak();
-            built.addAll(Maneuver.legs(last, target, peak, swimming, step.swimming(), profile));
+            built.addAll(step.motion() == PathPlanner.Motion.CLIMB ? Maneuver.climb(last, target) : Maneuver.legs(last, target, peak, swimming, step.swimming(), profile));
             last = target; swimming = step.swimming();
         }
         boolean free = profile.supports(MovementProfile.Mode.FLY) || !profile.supports(MovementProfile.Mode.WALK);

@@ -42,6 +42,12 @@ public final class Maneuver {
         if (drops) add(legs, across, new Leg(to, loose, false, true, settle, !toSwimming));
         return legs;
     }
+    /** A straight climb up or down a ladder, vine or scaffolding: it needs no ground, only something to hold or stand on. */
+    public static List<Leg> climb(Vec3 from, Vec3 to) {
+        List<Leg> legs = new ArrayList<>(2);
+        add(legs, from, new Leg(to, MotionValidator.Medium.CLIMB, false, false, MotionValidator.Medium.CLIMB, false));
+        return legs;
+    }
     /** Long drops and climbs are split into pieces of at most one block, so every check stays small. */
     private static void add(List<Leg> legs, Vec3 from, Leg leg) {
         double distance = from.distance(leg.target());

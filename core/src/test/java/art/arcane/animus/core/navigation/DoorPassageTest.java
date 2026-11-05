@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test;
 class DoorPassageTest {
     private static final PathPlanner.Limits LIMITS = new PathPlanner.Limits(5000, 5000, 500);
     private static final MovementProfile WALKER = new MovementProfile(Set.of(WALK), 0.6, 1.8, 0.6, 0, 3, true);
-    private static final MovementProfile OPENER = new MovementProfile(Set.of(WALK), 0.6, 1.8, 0.6, 0, 3, true, true);
+    private static final MovementProfile OPENER = new MovementProfile(Set.of(WALK), 0.6, 1.8, 0.6, 0, 3, true, false, true);
     private static final UUID NPC = UUID.fromString("00000000-0000-0000-0000-0000000000d0");
     /** A closed door facing east: its panel spans the path along X. */
     private static final Cell DOOR = CollisionCells.classify("OAK_DOOR", List.of(new Cell.Box(0, 0, 0, 0.1875, 1, 1)), false,

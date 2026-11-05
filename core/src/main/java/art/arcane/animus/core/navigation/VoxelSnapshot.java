@@ -18,9 +18,11 @@ import java.util.Set;
  */
 public final class VoxelSnapshot {
     /**
-     * One block state as movement sees it: collision boxes in block-local coordinates, the fluid it holds and whether a
-     * body must keep out of it. Boxes may rise to 1.5 so fences and walls overhang the voxel above. A closed door, fence
-     * gate or trapdoor that a body may open by hand also carries the cell it becomes when open.
+     * One block state as movement sees it: collision boxes in block-local coordinates, the fluid it holds, whether a
+     * body must keep out of it and whether a body can climb it. Boxes may rise to 1.5 so fences and walls overhang the
+     * voxel above. The boxes of a climbable cell hold a body up but never stand in its way, as with ladders and
+     * scaffolding in the game. A closed door, fence gate or trapdoor that a body may open by hand also carries the cell
+     * it becomes when open.
      */
     public static final class Cell {
         public enum Fluid { NONE, WATER, LAVA }
@@ -37,26 +39,29 @@ public final class VoxelSnapshot {
         }
         public static final double MAX_HEIGHT = 1.5;
         public static final int MAX_BOXES = 16;
-        public static final Cell AIR = new Cell(List.of(), Fluid.NONE, false, false, null);
-        public static final Cell SOLID = new Cell(List.of(new Box(0, 0, 0, 1, 1, 1)), Fluid.NONE, false, false, null);
-        public static final Cell WATER = new Cell(List.of(), Fluid.WATER, false, false, null);
-        public static final Cell LAVA = new Cell(List.of(), Fluid.LAVA, true, false, null);
-        public static final Cell UNAVAILABLE = new Cell(List.of(), Fluid.NONE, false, true, null);
+        public static final Cell AIR = new Cell(List.of(), Fluid.NONE, false, false, false, null);
+        public static final Cell SOLID = new Cell(List.of(new Box(0, 0, 0, 1, 1, 1)), Fluid.NONE, false, false, false, null);
+        public static final Cell WATER = new Cell(List.of(), Fluid.WATER, false, false, false, null);
+        public static final Cell LAVA = new Cell(List.of(), Fluid.LAVA, true, false, false, null);
+        public static final Cell UNAVAILABLE = new Cell(List.of(), Fluid.NONE, false, true, false, null);
         private static final List<Cell> CANONICAL = List.of(AIR, SOLID, WATER, LAVA);
         private final List<Box> boxes;
         private final Fluid fluid;
-        private final boolean hazard, unavailable;
+        private final boolean hazard, unavailable, climbable;
         private final Cell opened;
         private final double top;
 
-        private Cell(List<Box> boxes, Fluid fluid, boolean hazard, boolean unavailable, Cell opened) {
-            this.boxes = boxes; this.fluid = fluid; this.hazard = hazard; this.unavailable = unavailable; this.opened = opened;
+        private Cell(List<Box> boxes, Fluid fluid, boolean hazard, boolean unavailable, boolean climbable, Cell opened) {
+            this.boxes = boxes; this.fluid = fluid; this.hazard = hazard; this.unavailable = unavailable; this.climbable = climbable;
+            this.opened = opened;
             double highest = 0;
             for (Box box : boxes) highest = Math.max(highest, box.maxY());
             top = highest;
         }
         /** Lava is always a hazard. More than {@link #MAX_BOXES} boxes collapse into their union, which only adds collision. */
-        public static Cell of(List<Box> boxes, Fluid fluid, boolean hazard) {
+        public static Cell of(List<Box> boxes, Fluid fluid, boolean hazard) { return of(boxes, fluid, hazard, false); }
+        /** A cell a body can climb, such as a ladder, vine or scaffolding, when {@code climbable} is true. */
+        public static Cell of(List<Box> boxes, Fluid fluid, boolean hazard, boolean climbable) {
             Objects.requireNonNull(boxes, "boxes"); Objects.requireNonNull(fluid, "fluid");
             List<Box> kept = List.copyOf(boxes);
             if (kept.size() > MAX_BOXES) {
@@ -64,7 +69,7 @@ public final class VoxelSnapshot {
                 for (Box box : kept) union = union.union(box);
                 kept = List.of(union);
             }
-            Cell cell = new Cell(kept, fluid, hazard || fluid == Fluid.LAVA, false, null);
+            Cell cell = new Cell(kept, fluid, hazard || fluid == Fluid.LAVA, false, climbable, null);
             for (Cell known : CANONICAL) if (known.equals(cell)) return known;
             return cell;
         }
@@ -73,7 +78,7 @@ public final class VoxelSnapshot {
             Objects.requireNonNull(closed, "closed"); Objects.requireNonNull(opened, "opened");
             if (closed.unavailable || opened.unavailable || closed.opened != null || opened.opened != null)
                 throw new IllegalArgumentException("Only an available, closed cell opens into an available, open one");
-            return new Cell(closed.boxes, closed.fluid, closed.hazard, false, opened);
+            return new Cell(closed.boxes, closed.fluid, closed.hazard, false, closed.climbable, opened);
         }
         /** A full-footprint surface of the given height, such as a slab, snow layer, soul sand or wall. */
         public static Cell layer(double height) { return of(List.of(new Box(0, 0, 0, 1, height, 1)), Fluid.NONE, false); }
@@ -81,6 +86,8 @@ public final class VoxelSnapshot {
         public Fluid fluid() { return fluid; }
         public boolean hazard() { return hazard; }
         public boolean unavailable() { return unavailable; }
+        /** A body can hold onto this cell and move up and down in it; its boxes never obstruct a body. */
+        public boolean climbable() { return climbable; }
         public boolean water() { return fluid == Fluid.WATER; }
         public boolean collides() { return !boxes.isEmpty(); }
         /** A closed door, fence gate or trapdoor a body may open by hand. */
@@ -90,13 +97,14 @@ public final class VoxelSnapshot {
         /** Highest collision surface relative to the voxel floor, or 0 without collision. */
         public double top() { return top; }
         @Override public boolean equals(Object other) {
-            return other instanceof Cell cell && cell.fluid == fluid && cell.hazard == hazard && cell.unavailable == unavailable && cell.boxes.equals(boxes)
-                    && Objects.equals(cell.opened, opened);
+            return other instanceof Cell cell && cell.fluid == fluid && cell.hazard == hazard && cell.unavailable == unavailable
+                    && cell.climbable == climbable && cell.boxes.equals(boxes) && Objects.equals(cell.opened, opened);
         }
-        @Override public int hashCode() { return Objects.hash(boxes, fluid, hazard, unavailable, opened); }
+        @Override public int hashCode() { return Objects.hash(boxes, fluid, hazard, unavailable, climbable, opened); }
         @Override public String toString() {
             if (unavailable) return "UNAVAILABLE";
-            return "Cell[boxes=" + boxes + ", fluid=" + fluid + (hazard ? ", hazard" : "") + (opened == null ? "" : ", opens to " + opened) + "]";
+            return "Cell[boxes=" + boxes + ", fluid=" + fluid + (hazard ? ", hazard" : "") + (climbable ? ", climbable" : "")
+                    + (opened == null ? "" : ", opens to " + opened) + "]";
         }
     }
 
