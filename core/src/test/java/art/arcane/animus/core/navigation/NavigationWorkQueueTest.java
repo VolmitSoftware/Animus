@@ -189,6 +189,19 @@ class NavigationWorkQueueTest {
         }
     }
 
+    @Test void aCompletedPlanNoLongerCountsAsOutstandingWhenItsResultArrives() throws Exception {
+        try (var queue = new NavigationWorkQueue(new NavigationLimits(256, 2, 8192))) {
+            NavigationPlan plan = submit(queue, UUID.randomUUID().toString());
+            AtomicInteger outstandingAtCompletion = new AtomicInteger(-1);
+            CompletableFuture<PathPlanner.Result> observed = plan.future().toCompletableFuture()
+                    .whenComplete((result, failure) -> outstandingAtCompletion.set(queue.outstandingJobs()));
+            var sampler = new Sampler();
+            for (int tick = 1; tick < 40 && !plan.done(); tick++) queue.pump(sampler, tick);
+            assertEquals(PathPlanner.Status.FOUND, observed.get(2, TimeUnit.SECONDS).status());
+            assertEquals(0, outstandingAtCompletion.get(), "the job slot is released before anyone observes the result");
+        }
+    }
+
     @Test void admissionChecksRejectOversizeCaptureBeforeAllocatingAJob() {
         try (var queue = new NavigationWorkQueue(new NavigationLimits(256, 8, 32))) {
             assertThrows(IllegalArgumentException.class, () -> submit(queue, UUID.randomUUID().toString()));

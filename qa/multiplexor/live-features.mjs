@@ -1581,6 +1581,57 @@ async function combat() {
     assert.equal(status, 'helpers=0');
     return `health ${samples.join(' -> ')}; arrows in flight before disengage=${inFlight}, after=${left}; ${disengaged}`;
   });
+  await check('fireballs hit once each with no explosion', async () => {
+    const target = await summon(15, 'minecraft:husk', -36, 61, -6, sturdy(100));
+    // A bystander inside any explosion radius; the NPC never targets cows.
+    const bystander = await summon(16, 'minecraft:cow', -34.5, 61, -6, sturdy(100));
+    await server.npc('cfire', 'minecraft:player', -36.5, 61, -22.5, 'Pyro', combatNpc({
+      targets: { entityTypes: ['minecraft:husk'] }, targeting: { scanRange: 24, scanIntervalTicks: 5, lineOfSight: 'ignored' },
+      melee: { enabled: false }, pursuit: { closeChase: false, rangedChase: false },
+      ranged: { enabled: true, weapon: 'fireball', damage: 3, range: 24, minimumRange: 2, cooldownTicks: 40, velocity: 1.6, inaccuracy: 0, safeShot: true },
+    }));
+    const samples = [100];
+    await until(async () => { const h = await entityNumber(target, 'Health'); if (h !== samples.at(-1)) samples.push(h); return { ok: samples.length >= 3, samples }; }, 30000, 'fewer than two fireball hits');
+    const disengaged = await combatCommand('cfire', 'disengage');
+    await delay(300);
+    const left = await entityCount('@e[type=fireball]');
+    const status = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/helpers=\d+/)?.[0];
+    const spared = await entityNumber(bystander, 'Health');
+    const crater = plain(await server.capture('fill -40 60 -10 -31 60 -2 stone replace air', /Successfully filled[^\n]*|No blocks were filled[^\n]*/));
+    const fire = plain(await server.capture('fill -40 61 -10 -31 63 -2 air replace minecraft:fire', /Successfully filled[^\n]*|No blocks were filled[^\n]*/));
+    await server.cmd('animus delete cfire', /Deleted/);
+    await server.cmd(`kill ${target}`, /Killed/);
+    await server.cmd(`kill ${bystander}`, /Killed/);
+    const hits = samples.slice(1).map((h, i) => +(samples[i] - h).toFixed(3));
+    assert(hits.every(d => Math.abs(d - hits[0]) < .01 && d > 0), `hits ${hits}`);
+    assert.equal(spared, 100, `bystander health ${spared}`);
+    assert(/No blocks were filled/.test(crater), `floor changed: ${crater}`);
+    assert(/No blocks were filled/.test(fire), `fire placed: ${fire}`);
+    assert.equal(left, 0, `${left} fireballs after disengage`);
+    assert.equal(status, 'helpers=0');
+    return `health ${samples.join(' -> ')}; bystander ${spared}; ${crater.slice(0, 40)}; ${disengaged}`;
+  });
+  await check('imported-style guard with ignores.owner never targets its owner', async () => {
+    await server.cmd(`effect give ${OWNER.name} minecraft:instant_health 1 5 true`, /Applied|effect/i);
+    await owner.tp(-20, 61, -12);
+    const peer = await join(PEER.name, 'survival');
+    await server.npc('cowned', 'minecraft:player', -20.5, 61, -14.5, 'Sentry', { owner: OWNER.uuid, ...combatNpc({
+      targets: { categories: ['players'] }, ignores: { owner: true }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' },
+      melee: { damage: 1, reach: 3, cooldownTicks: 20 }, pursuit: { speed: 3, giveUpRange: 24, leashRange: 24 },
+    }) });
+    const from = owner.events.length;
+    const quiet = [];
+    for (let i = 0; i < 8; i++) { quiet.push(await combatOf('cowned')); await delay(500); }
+    const ownerHit = owner.events.slice(from).some(e => e.event === 'health' && e.health < 20);
+    await peer.tp(-22, 61, -14);
+    const peerTarget = await until(async () => { const s = await combatOf('cowned'); return { ok: s.includes(PEER.uuid), s }; }, 15000, 'never targeted the other player');
+    await server.cmd('animus delete cowned', /Deleted/);
+    await peer.close();
+    assert(quiet.every(s => /target=none/.test(s) && !s.includes(OWNER.uuid)), quiet.find(s => !/target=none/.test(s)));
+    assert(!ownerHit, 'owner took damage');
+    assert(!peerTarget.s.includes(OWNER.uuid), peerTarget.s);
+    return `owner alone: ${quiet.at(-1).slice(0, 80)}; with peer: ${peerTarget.s.slice(0, 100)}`;
+  });
   await check('pursuit, leash and return to post', async () => {
     const post = { x: -10.5, z: -30.5 };
     const zombie = await summon(14, 'minecraft:zombie', -10, 61, -24, sturdy(200));
