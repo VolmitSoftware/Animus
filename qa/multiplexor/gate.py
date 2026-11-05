@@ -6,22 +6,25 @@ mod jar given by --mod-jars and no Bukkit fixture; their instances are named ani
 
 Uses one successful Multiplexor build run. Fixtures are rebuilt against that exact artifact.
 Each target runs its sets one after another, so at most --workers servers run at once.
-Instances are named animus-gate-[set-]<platform>-<version>.
+Instances are named animus-gate-[set-]<platform>-<version> in the shared Multiplexor workspace; fixtures borrow
+libraries from the animus-baseline-<platform>-<version> instances that managed-runtime.py provisions.
 """
 import argparse, concurrent.futures, hashlib, json, subprocess, threading, time
 from pathlib import Path
+
+import multiplexor_workspace as mw
 
 ROOT = Path(__file__).resolve().parents[2]
 PROJECTS = ['paper', 'spigot', 'folia']
 MOD_PROJECTS = ['fabric', 'neoforge', 'forge']
 VERSIONS = ['26.1.2', '26.2', '26.3']
 SETS = ['live', 'native', 'modules', 'imports', 'behaviors']
-SKIN = 'consumers/plugin-consumers/instances/animus-r10-paper-26-3/plugins/Animus/skins/d140b4361c456ad426b436dd35d097786be4fe57d7618a67a4d07d044add6696.json'
 
 p = argparse.ArgumentParser(description=__doc__)
-p.add_argument('--binary', type=Path, default=ROOT.parent / 'ServerMultiplexor/multiplexor')
-p.add_argument('--workspace', type=Path, required=True)
-p.add_argument('--build-home', type=Path, required=True)
+p.add_argument('--binary', type=Path, default=mw.default_binary())
+p.add_argument('--workspace', type=Path, default=mw.default_workspace())
+p.add_argument('--build-home', type=Path, help='Only when the build used a MULTIPLEXOR_BUILD_HOME override')
+p.add_argument('--skin-file', type=Path, required=True, help='Complete signed skin JSON used by the live and native sets')
 p.add_argument('--build-run', required=True)
 p.add_argument('--output', type=Path, required=True, help='New directory for logs and state')
 p.add_argument('--targets', help='Comma list like paper-26.3,folia-26.2,fabric-26.3; default the nine Bukkit targets')
@@ -30,8 +33,9 @@ p.add_argument('--sets', default=','.join(SETS))
 p.add_argument('--workers', type=int, default=3)
 a = p.parse_args()
 assert 1 <= a.workers <= 3, 'At most three servers at once'
-a.workspace, a.build_home, a.binary = a.workspace.resolve(), a.build_home.resolve(), a.binary.resolve()
-assert '.qa' in a.workspace.parts, 'Dedicated QA workspace required'
+a.workspace, a.binary, a.skin_file = a.workspace.resolve(), a.binary.resolve(), a.skin_file.resolve()
+a.build_home = a.build_home.resolve() if a.build_home else None
+assert a.skin_file.is_file(), a.skin_file
 sets = a.sets.split(',')
 assert set(sets) <= set(SETS), sets
 a.output.mkdir(parents=True)
@@ -43,7 +47,8 @@ def environment():
     import os
     env = dict(os.environ)
     env['JAVA_HOME'] = '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home'
-    env['MULTIPLEXOR_BUILD_HOME'] = str(a.build_home)
+    if a.build_home:
+        env['MULTIPLEXOR_BUILD_HOME'] = str(a.build_home)
     return env
 
 
@@ -58,15 +63,15 @@ assert plugin_sha == next(item['sha256'] for item in artifacts if item['role'] =
 
 
 def build_fixtures() -> dict[str, str]:
-    cache = a.workspace / f'gate-fixtures-{plugin_sha[:16]}.json'
+    cache = mw.evidence_root(a.workspace) / f'gate-fixtures-{plugin_sha[:16]}.json'
     if cache.exists():
         paths = json.loads(cache.read_text())
         if all(Path(path).exists() for path in paths.values()):
             return paths
     out = a.output / 'fixtures'
     out.mkdir()
-    spigot_api = instances / 'animus-spigot-26-1-2/bundler/libraries/spigot-api-26.1.2-R0.1-SNAPSHOT.jar'
-    folia_libraries = instances / 'animus-folia-26-3/libraries'
+    spigot_api = instances / mw.baseline_name('spigot', '26.1.2') / 'bundler/libraries/spigot-api-26.1.2-R0.1-SNAPSHOT.jar'
+    folia_libraries = instances / mw.baseline_name('folia', '26.3') / 'libraries'
     commands = {
         'modules': ['python3', 'qa/modules/build-fixtures.py', '--api-jar', str(api), '--output', str(out / 'modules')],
         'reference': ['python3', 'examples/modules/reference/build.py', '--api-jar', str(api), '--output', str(out / 'reference')],
@@ -91,16 +96,18 @@ def build_fixtures() -> dict[str, str]:
         'behaviorObserver': json.loads(outputs['behaviorObserver'])['fixture'],
         'native': str(native),
         'folia': json.loads(outputs['folia'])['fixture'],
-        'skin': str(a.workspace / SKIN),
+        'skin': str(a.skin_file),
     }
     for key, path in paths.items():
         assert Path(path).exists(), key
+    cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(paths, indent=2) + '\n')
     return paths
 
 
 fixtures = build_fixtures()
-base = ['--binary', str(a.binary), '--workspace', str(a.workspace), '--build-home', str(a.build_home), '--build-run', a.build_run]
+home = ['--build-home', str(a.build_home)] if a.build_home else []
+base = ['--binary', str(a.binary), '--workspace', str(a.workspace), *home, '--build-run', a.build_run]
 
 
 def commands(project: str, version: str) -> list[tuple[str, list[str]]]:
@@ -114,18 +121,18 @@ def commands(project: str, version: str) -> list[tuple[str, list[str]]]:
         assert len(jars) == 1, f'expected one {label} {version} jar in {a.mod_jars}: {jars}'
         jobs.append(('live', ['node', 'qa/multiplexor/live-features.mjs', '--project', project, '--version', version, '--instance-name', f'animus-mod-{project}-{dashed}',
                               '--results', str(a.output / f'live-{project}-{version}'), '--workspace', str(a.workspace), '--binary', str(a.binary),
-                              '--build-home', str(a.build_home), '--plugin', str(jars[0]), '--skin-file', fixtures['skin']]))
+                              *home, '--plugin', str(jars[0]), '--skin-file', fixtures['skin']]))
         return jobs
     if 'live' in sets:
         live = ['node', 'qa/multiplexor/live-features.mjs', '--project', project, '--version', version, '--instance-name', f'animus-gate-live-{project}-{dashed}',
                 '--results', str(a.output / f'live-{project}-{version}'), '--workspace', str(a.workspace), '--binary', str(a.binary),
-                '--build-home', str(a.build_home), '--plugin', str(plugin), '--skin-file', fixtures['skin']]
+                *home, '--plugin', str(plugin), '--skin-file', fixtures['skin']]
         if project != 'folia':
             live += ['--fixture', fixtures['native']]
         jobs.append(('live', live))
     if 'native' in sets:
         name = f'animus-gate-{project}-{dashed}'
-        prepare = [] if (instances / name).exists() else ['python3', 'qa/multiplexor/prepare-recheck.py', *base[:6], '--round', 'gate', '--project', project, '--version', version]
+        prepare = [] if (instances / name).exists() else ['python3', 'qa/multiplexor/prepare-recheck.py', *base[:len(base) - 2], '--round', 'gate', '--project', project, '--version', version]
         if project == 'folia':
             native = ['python3', 'qa/multiplexor/folia-proof.py', *base, '--version', version, '--instance-name', name, '--fixture', fixtures['folia'], '--skin-file', fixtures['skin'], '--phase', 'all']
         else:

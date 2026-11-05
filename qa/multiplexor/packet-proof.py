@@ -5,13 +5,14 @@ client is external to Mineflayer; its results are recorded as that distinct test
 """
 import argparse, hashlib, json, re, runpy, shutil, socket, subprocess, time
 from pathlib import Path
+import multiplexor_workspace as mw
 
 helpers=runpy.run_path(str(Path(__file__).with_name('managed-runtime.py')))
 run,wait_log,console=helpers['run'],helpers['wait_log'],helpers['console']
 parser=argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--binary',type=Path,required=True)
-parser.add_argument('--workspace',type=Path,required=True)
-parser.add_argument('--build-home',type=Path)
+parser.add_argument('--binary',type=Path,default=mw.default_binary())
+parser.add_argument('--workspace',type=Path,default=mw.default_workspace())
+parser.add_argument('--build-home',type=Path,help='Only when the build used a MULTIPLEXOR_BUILD_HOME override')
 parser.add_argument('--version',choices=['26.1.2','26.2','26.3'],required=True)
 parser.add_argument('--project',choices=['paper','spigot'],default='paper')
 parser.add_argument('--skin-file',type=Path)
@@ -20,9 +21,8 @@ parser.add_argument('--navigation',action='store_true',help='Requires the proof 
 parser.add_argument('--skin-race',action='store_true',help='Exercise pending signed-skin spawn cancellation')
 args=parser.parse_args()
 args.binary=args.binary.resolve();args.workspace=args.workspace.resolve();args.transcript=[]
-assert '.qa' in args.workspace.parts,'Dedicated QA workspace required'
 repo=Path(__file__).resolve().parents[2]
-name=f'animus-{args.project}-{args.version.replace(".","-")}'
+name=mw.baseline_name(args.project,args.version)
 instance=args.workspace/'consumers/plugin-consumers/instances'/name
 assert instance.is_dir(),'First create/deploy the exact instance with managed-runtime.py'
 assert run(args,'instance','isolated',name).strip()=='true','Refusing shared instance'
@@ -35,13 +35,13 @@ if args.skin_file:
     skins=instance/'plugins/Animus/skins';skins.mkdir(parents=True,exist_ok=True)
     shutil.copy2(args.skin_file,skins/args.skin_file.name)
 if args.fixture:shutil.copy2(args.fixture,instance/'plugins'/args.fixture.name)
-evidence=args.workspace/'animus-evidence'/name/f'native-{time.time_ns()}'
+evidence=mw.evidence_root(args.workspace)/name/f'native-{time.time_ns()}'
 evidence.mkdir(parents=True)
 log=instance/'logs/latest.log'
 if log.exists():shutil.copy2(log,evidence/'previous-server.log');log.unlink()
 report={'runner':'external Animus native-codec client on Multiplexor-managed runtime','project':args.project,'minecraftVersion':args.version,'status':'running','plugins':[{'file':p.name,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in (instance/'plugins').glob('*.jar')]}
 report['serverSha256']=hashlib.sha256((instance/'server.jar').read_bytes()).hexdigest()
-source=json.loads((args.workspace/'animus-evidence'/name/'runtime.json').read_text())
+source=json.loads((mw.evidence_root(args.workspace)/name/'runtime.json').read_text())
 assert report['serverSha256']==source['serverSha256'],'Managed server jar changed after exact-version lifecycle validation'
 report['serverBuild']=source['build'];report['serverChannel']=source['channel']
 session=None

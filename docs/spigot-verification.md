@@ -22,7 +22,7 @@ The official manifests resolve to Jenkins builds 4632, 4648, and 4664 respective
 
 These 2026-11-04 baseline runs used Animus artifact `ea0ef82d32cfa16594fad2fb96f615462fdab32be161cdcb415d636a19ae0a6f`. They cover signed skin payloads, eight entity types, interaction authority, static passengers, navigation planning, synchronized registry metadata, visibility isolation, cancellation, and cleanup. They do not establish production persisted-NPC or combat behavior. The first client attempt identified the QA runner's incorrect dependency path; Spigot uses `bundler/libraries`. Failed attempts remain in the evidence archive, followed by the passing reruns.
 
-Provenance is in `.qa/spigot-builds/source-evidence.json`; native results are under `.qa/multiplexor-workspace/animus-evidence/animus-spigot-*/native-*/result.json`. All three owned servers stopped and their ports closed after the suites.
+Provenance is in `.qa/spigot-builds/source-evidence.json`; native results were under `animus-evidence/animus-spigot-*/native-*/result.json` in the retired separate QA workspace. All three owned servers stopped and their ports closed after the suites.
 
 The runtime6 production runs use Multiplexor build `run-1793803535545514-80447`, Animus SHA-256 `c89adc35796afe5c33d85cf3e0f853ae2cd0f68123e3c1c16a4e77abd93f9576`, and the packaged description `A Manager for all things NPC.`. Each target passed 80 checks: 12 preparation, 6 intermediate recovery, 14 final lifecycle/recovery, 14 combat, 18 remote-control proof, and 16 navigation checks. The earlier runtime-3 results remain archived with their original artifact hashes.
 
@@ -58,12 +58,11 @@ From the Animus checkout:
 
 ```sh
 python3 qa/multiplexor/provision-spigot.py \
-  --binary ../ServerMultiplexor/multiplexor \
   --java-home /opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home \
-  --output .qa/spigot-builds --jobs 3
+  --output .qa/spigot-builds
 ```
 
-Each exact release gets a separate ignored Multiplexor workspace and Maven cache. Java subprocesses have a 4 GiB heap cap and four active processors. The provisioner invokes `build spigot --mc EXACT`; it does not substitute another release or start a server. Its live `evidence.json` and completed `latest.json` record failures as well as successful builds. BuildTools output, official metadata, binary hashes, and command logs remain under `.qa/spigot-builds/`.
+Builds run in the shared Multiplexor workspace and its default build cache (see [Multiplexor checks](multiplexor.md#workspace)); each exact release gets only its own ignored Maven cache under `.qa/spigot-builds/`, and builds run one at a time by default. The provisioner does not change workspace settings. Java subprocesses have a 4 GiB heap cap and four active processors. The provisioner invokes `build spigot --mc EXACT`; it does not substitute another release or start a server. Its live `evidence.json` and completed `latest.json` record failures as well as successful builds. BuildTools output, official metadata, binary hashes, and command logs remain under `.qa/spigot-builds/`.
 
 The generated `source-evidence.json` is suitable for `qa/multiplexor/managed-runtime.py --source-evidence ... --projects spigot`. Server runs must use isolated instances, an existing accepted QA EULA, Java 25, and a recorded successful Multiplexor Animus build. Production NPC, combat, graphical rendering, and performance claims require their own demonstrated scenarios.
 
@@ -71,9 +70,6 @@ The production scenario uses the same exact native protocol helper and a separat
 
 ```sh
 python3 qa/multiplexor/runtime-npcs.py \
-  --binary ../ServerMultiplexor/multiplexor \
-  --workspace .qa/multiplexor-workspace \
-  --build-home .qa/multiplexor-build-cache \
   --build-run RECORDED_BUILD_RUN --project spigot --version 26.3 \
   --fixture .qa/event-fixture/AnimusProofFixture.jar \
   --skin-file PATH_TO_PRIVATE_SKIN_JSON \
@@ -90,7 +86,7 @@ The later runtime9 import application suite uses build `run-1793809087767551-528
 | Spigot 26.2 | `animus-import-spigot-26-2/application-1793809212064204000-55743/result.json` |
 | Spigot 26.3 | `animus-import-spigot-26-3/application-1793809179781614000-54282/result.json` |
 
-The same import suite passed on all three Paper and Folia targets, for 126 checks across nine instances. `.qa/multiplexor-workspace/animus-evidence/runtime-9-import-cleanup-1793809290164652000.json` records all 18 earlier/new owned ports closed, all instances stopped, clean import logs, and no remaining NPC sources or recovery pointers. These newer tests cover persistence and commands only; they do not repeat the runtime6 gameplay suite or establish broader behavior parity. Public synthetic fixtures and reproduction instructions are in [the import QA notes](../qa/import-applications/README.md).
+The same import suite passed on all three Paper and Folia targets, for 126 checks across nine instances. The retired QA workspace's `animus-evidence/runtime-9-import-cleanup-1793809290164652000.json` records all 18 earlier/new owned ports closed, all instances stopped, clean import logs, and no remaining NPC sources or recovery pointers. These newer tests cover persistence and commands only; they do not repeat the runtime6 gameplay suite or establish broader behavior parity. Public synthetic fixtures and reproduction instructions are in [the import QA notes](../qa/import-applications/README.md).
 
 ## Runtime10 extension and regression verification
 

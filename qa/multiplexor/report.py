@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import socket
+import multiplexor_workspace as mw
 
 CATEGORIES = ['lifecycle','gameplay','native','production','importApplications','foliaStationaryPreview','modules']
 ATTEMPTS = [('native','native'),('production','production'),('application','importApplications'),('folia-proof','foliaStationaryPreview'),('modules','modules')]
@@ -29,6 +30,7 @@ def target_in_round(name,round_number,category):
     prefix='animus'+(f'-r{round_number}' if round_number is not None else '')
     if category=='modules':prefix='animus-modules'
     elif category=='importApplications':prefix+='-import'
+    elif round_number is None:prefix='animus-baseline'
     return re.fullmatch(re.escape(prefix)+r'-(paper|spigot|folia)-(26-1-2|26-2|26-3)',name) is not None
 
 
@@ -52,10 +54,10 @@ def descriptor(path):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--workspace',type=Path,default=Path('.qa/multiplexor-workspace'));p.add_argument('--binary',type=Path,default=Path('../ServerMultiplexor/multiplexor'))
+    p.add_argument('--workspace',type=Path,default=mw.default_workspace());p.add_argument('--binary',type=Path,default=mw.default_binary())
     p.add_argument('--build-status',type=Path);p.add_argument('--source-snapshot',type=Path);p.add_argument('--round',type=int)
     p.add_argument('--audit',type=Path,action='append',default=[],help='Repeat for independent passing scopes on the selected build')
-    a=p.parse_args(argv);root=a.workspace/'animus-evidence';index=root/'index.json';previous=json.loads(index.read_text()) if index.exists() else {};oldbuild=previous.get('build',{})
+    a=p.parse_args(argv);root=mw.evidence_root(a.workspace);index=root/'index.json';previous=json.loads(index.read_text()) if index.exists() else {};oldbuild=previous.get('build',{})
     if not a.build_status and not oldbuild.get('record'):p.error('Supply an explicit build status/source snapshot')
     status_path=a.build_status or Path(oldbuild['record']);value=json.loads(status_path.read_text());runs=value.get('runs',[value])
     if len(runs)!=1:p.error('Select exactly one successful build')
