@@ -31,6 +31,37 @@ class MutationLaneTest {
             assertEquals(List.of("validate","commit","publish","import-validation"),order);
         }
     }
+    @Test void raisingTheLimitLiveAdmitsMoreWork() throws Exception {
+        try(MutationLane lane=new MutationLane(1)){
+            CountDownLatch started=new CountDownLatch(1),hold=new CountDownLatch(1);
+            CompletionStage<Outcome<Integer>> first=lane.submit(()->{started.countDown();release(hold);return Outcome.ok(1);});release(started);
+            assertEquals(Outcome.Status.BUSY,await(lane.submit(()->Outcome.ok(2))).status());
+            lane.limits(3,Duration.ofMillis(250));
+            CompletionStage<Outcome<Integer>> second=lane.submit(()->Outcome.ok(2)),third=lane.submit(()->Outcome.ok(3));
+            hold.countDown();
+            assertEquals(1,await(first).value().orElseThrow());assertEquals(2,await(second).value().orElseThrow());assertEquals(3,await(third).value().orElseThrow());
+        }
+    }
+    @Test void loweringTheLimitUnderLoadFinishesAdmittedWorkAndHoldsNewWork() throws Exception {
+        try(MutationLane lane=new MutationLane(3)){
+            CountDownLatch started=new CountDownLatch(1),hold=new CountDownLatch(1);
+            CompletionStage<Outcome<Integer>> first=lane.submit(()->{started.countDown();release(hold);return Outcome.ok(1);});release(started);
+            CompletionStage<Outcome<Integer>> second=lane.submit(()->Outcome.ok(2)),third=lane.submit(()->Outcome.ok(3));
+            lane.limits(1,Duration.ofMillis(250));
+            assertEquals(Outcome.Status.BUSY,await(lane.submit(()->Outcome.ok(4))).status());
+            assertThrows(RejectedExecutionException.class,()->lane.executor((Runnable task,MutationLane.EngineTaskEvent event,Throwable failure)->{}).execute(()->{}));
+            hold.countDown();
+            assertEquals(1,await(first).value().orElseThrow());assertEquals(2,await(second).value().orElseThrow());assertEquals(3,await(third).value().orElseThrow());
+            eventually(()->lane.status().admitted()==0);
+            assertEquals(5,await(lane.submit(()->Outcome.ok(5))).value().orElseThrow());
+        }
+    }
+    @Test void limitsRejectOutOfRangeValues() {
+        try(MutationLane lane=new MutationLane(2)){
+            assertThrows(IllegalArgumentException.class,()->lane.limits(0,Duration.ofMillis(250)));
+            assertThrows(IllegalArgumentException.class,()->lane.limits(2,Duration.ZERO));
+        }
+    }
     @Test void shutdownCancelsQueuedWorkAndLetsRunningCommitFinishDurably()throws Exception{
         MutationLane lane=new MutationLane(3);CountDownLatch started=new CountDownLatch(1),continueCommit=new CountDownLatch(1);
         try{
