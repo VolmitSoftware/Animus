@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 
-/** One atomic registry snapshot. Invalid live reloads retain the previous published registry. */
+/** One atomic registry snapshot. A live reload publishes every valid file; an invalid file keeps only its own last valid version. */
 public final class NpcRepository {
     public record Draft(String path, String expectedHash, long expectedRevision, JsonObject document) {
         public Draft { document = document.deepCopy(); }
@@ -43,57 +43,90 @@ public final class NpcRepository {
         return new Validation(result.diagnostics(), result.definitions());
     }
 
+    /** One file of a scan: its parsed definition and source hash, or the error that refused it. */
+    private record Read(String path, NpcDefinition definition, String sourceHash, String error) {}
+
+    /**
+     * Reads every definition file. At startup any error refuses the whole set (after durable recovery). A live reload
+     * applies each file on its own: a file that cannot be read or would take another definition's identity keeps its own
+     * last valid version, a new file that fails is skipped, and only that file's error is reported.
+     */
     private ScanResult scan(boolean apply, boolean allowOlderRevision, boolean startup) throws IOException {
-        Map<String, NpcDefinition> candidates = new TreeMap<>();
-        Map<String, String> nextHashes = new HashMap<>(), errors = new TreeMap<>(), recovered = new TreeMap<>();
-        Set<UUID> uuids = new HashSet<>();
-        Set<String> presentPaths = new HashSet<>();
+        Map<String, Read> reads = new TreeMap<>();
+        Map<String, String> recovered = new TreeMap<>();
         Path directory = store.resolve("npcs");
         if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
-                for (Path file : JsonDocumentTree.files(directory)) {
-                    String path = "npcs/" + directory.relativize(file).toString().replace('\\', '/');
-                    if (presentPaths.size() >= 100_000) throw new IOException("NPC definition limit exceeded: 100000");
-                    presentPaths.add(path);
+            for (Path file : JsonDocumentTree.files(directory)) {
+                String path = "npcs/" + directory.relativize(file).toString().replace('\\', '/');
+                if (reads.size() >= 100_000) throw new IOException("NPC definition limit exceeded: 100000");
+                try {
+                    DefinitionCheckpoints.Saved saved = startup ? checkpoints.read(path).orElse(null) : null;
                     try {
-                        DefinitionCheckpoints.Saved saved = startup ? checkpoints.read(path).orElse(null) : null;
-                        NpcDefinition definition;
-                        String sourceHash;
-                        try {
-                            String json = JsonDocuments.read(file);
-                            definition = NpcDefinition.parse(json);
-                            if (!store.resolve(definition.path()).equals(file)) throw new IOException("$.id/group: must match file path");
-                            NpcDefinition previous = startup && saved != null ? saved.definition() : active.get(definition.id());
-                            if (!allowOlderRevision && previous != null && definition.revision() < previous.revision()) throw new IOException("$.revision: cannot decrease");
-                            sourceHash = JsonDocuments.hash(json);
-                        } catch (IOException | RuntimeException invalid) {
-                            if (saved == null) throw invalid;
-                            definition = saved.definition(); sourceHash = saved.sourceHash();
-                            recovered.put(path, invalid.getMessage() + "; retained last valid revision " + definition.revision()
-                                    + " from durable recovery; original file unchanged, repair it then reload");
-                        }
-                        if (candidates.containsKey(definition.id())) throw new IOException("$.id: duplicate " + definition.id());
-                        if (uuids.contains(definition.uuid())) throw new IOException("$.uuid: duplicate " + definition.uuid());
-                        candidates.put(definition.id(), definition); uuids.add(definition.uuid());
-                        nextHashes.put(definition.path(), sourceHash);
-                    } catch (IOException | RuntimeException e) { errors.put(path, e.getMessage()); }
-                }
+                        String json = JsonDocuments.read(file);
+                        NpcDefinition definition = NpcDefinition.parse(json);
+                        if (!store.resolve(definition.path()).equals(file)) throw new IOException("$.id/group: must match file path");
+                        NpcDefinition previous = startup && saved != null ? saved.definition() : active.get(definition.id());
+                        if (!allowOlderRevision && previous != null && definition.revision() < previous.revision()) throw new IOException("$.revision: cannot decrease");
+                        reads.put(path, new Read(path, definition, JsonDocuments.hash(json), null));
+                    } catch (IOException | RuntimeException invalid) {
+                        if (saved == null) throw invalid;
+                        reads.put(path, new Read(path, saved.definition(), saved.sourceHash(), null));
+                        recovered.put(path, invalid.getMessage() + "; retained last valid revision " + saved.definition().revision()
+                                + " from durable recovery; original file unchanged, repair it then reload");
+                    }
+                } catch (IOException | RuntimeException e) { reads.put(path, new Read(path, null, null, e.getMessage())); }
+            }
         }
         store.verifyReadable();
-        if (!errors.isEmpty()) {
-            problems = Collections.unmodifiableMap(new TreeMap<>(errors));
-            if (startup) throw new IOException(String.join("; ", diagnostics()));
-            return new ScanResult(diagnostics(), candidates.size());
+        Map<String, NpcDefinition> previousByPath = new HashMap<>();
+        for (NpcDefinition definition : active.values()) previousByPath.put(definition.path(), definition);
+        Map<String, NpcDefinition> candidates = new TreeMap<>();
+        Map<String, String> nextHashes = new HashMap<>(), errors = new TreeMap<>();
+        Set<UUID> uuids = new HashSet<>();
+        // Unchanged identities claim first, then edited files, then new ones: a newcomer never displaces a running definition.
+        List<Read> order = new ArrayList<>(reads.values());
+        order.sort(Comparator.comparingInt((Read read) -> claimOrder(read, previousByPath.get(read.path()))));
+        for (Read read : order) {
+            String problem = read.error();
+            if (problem == null) {
+                if (candidates.containsKey(read.definition().id())) problem = "$.id: duplicate " + read.definition().id();
+                else if (uuids.contains(read.definition().uuid())) problem = "$.uuid: duplicate " + read.definition().uuid();
+                else { claim(read.definition(), read.sourceHash(), candidates, nextHashes, uuids); continue; }
+            }
+            NpcDefinition kept = startup ? null : previousByPath.get(read.path());
+            if (kept != null && !candidates.containsKey(kept.id()) && !uuids.contains(kept.uuid())) {
+                claim(kept, hashes.get(kept.path()), candidates, nextHashes, uuids);
+                errors.put(read.path(), problem + "; kept the last valid revision " + kept.revision());
+            } else errors.put(read.path(), problem);
         }
+        if (startup && !errors.isEmpty()) {
+            problems = Collections.unmodifiableMap(new TreeMap<>(errors));
+            throw new IOException(String.join("; ", diagnostics()));
+        }
+        Map<String, String> reported = new TreeMap<>(recovered);
+        reported.putAll(errors);
         if (apply) {
             List<DocumentStore.Change> changes = new ArrayList<>();
             for (NpcDefinition definition : candidates.values()) checkpoints.capture(definition, nextHashes.get(definition.path())).ifPresent(changes::add);
             // Acknowledged deletions must not leave a pointer that could resurrect an old identity if this path is reused.
-            for (String path : checkpoints.paths()) if (!presentPaths.contains(path)) checkpoints.remove(path).ifPresent(changes::add);
+            for (String path : checkpoints.paths()) if (!reads.containsKey(path)) checkpoints.remove(path).ifPresent(changes::add);
             for (int from = 0; from < changes.size(); from += 200) store.commit(changes.subList(from, Math.min(changes.size(), from + 200)));
             active = Collections.unmodifiableMap(candidates); hashes = Map.copyOf(nextHashes); loaded = true;
-            problems = Collections.unmodifiableMap(new TreeMap<>(recovered));
+            problems = Collections.unmodifiableMap(reported);
         }
-        return new ScanResult(recovered.entrySet().stream().map(entry -> entry.getKey() + ": " + entry.getValue()).toList(), candidates.size());
+        return new ScanResult(reported.entrySet().stream().map(entry -> entry.getKey() + ": " + entry.getValue()).toList(), candidates.size());
+    }
+
+    private static int claimOrder(Read read, NpcDefinition previous) {
+        if (previous == null) return 2;
+        if (read.definition() == null) return 1;
+        return read.definition().id().equals(previous.id()) && read.definition().uuid().equals(previous.uuid()) ? 0 : 1;
+    }
+
+    private static void claim(NpcDefinition definition, String sourceHash, Map<String, NpcDefinition> candidates, Map<String, String> hashes, Set<UUID> uuids) {
+        candidates.put(definition.id(), definition);
+        uuids.add(definition.uuid());
+        hashes.put(definition.path(), sourceHash);
     }
 
     public synchronized Draft draft(String id) throws IOException {

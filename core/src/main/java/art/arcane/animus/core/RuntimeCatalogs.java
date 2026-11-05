@@ -43,7 +43,7 @@ public final class RuntimeCatalogs implements CatalogReloads {
         if (touches(change, NPCS)) {
             try {
                 List<String> problems = change.rollback() ? parts.runtime().npcs().reloadAfterRollback() : parts.runtime().npcs().reload();
-                problems.stream().limit(8).forEach((String problem) -> parts.log().accept("Catalog reload: NPC reload kept the last valid set: " + problem));
+                problems.stream().limit(8).forEach((String problem) -> parts.log().accept("Catalog reload: NPC file refused: " + problem));
                 problems.forEach(reported);
             } catch (IOException failure) {
                 parts.log().accept("Catalog reload: NPC reload failed: " + failure.getMessage());

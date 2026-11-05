@@ -136,7 +136,7 @@ public final class Administration {
                 else throw new IOException("Expected import preview, stage, apply or apply-plan");
                 List<String> errors = runtime.npcs().reload();
                 List<String> notes = catalogs(List.of(tx), false);
-                if (!errors.isEmpty()) throw new IOException("Import stored; registry kept last valid snapshot: " + String.join("; ", errors));
+                if (!errors.isEmpty()) throw new IOException("Import stored; these definition files were refused and keep their last valid version: " + String.join("; ", errors));
                 List<String> lines = new ArrayList<>(List.of("Installed dormant definitions; transaction " + tx));
                 lines.addAll(notes);
                 yield lines;
