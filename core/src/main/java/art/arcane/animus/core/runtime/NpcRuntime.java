@@ -89,6 +89,8 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond);
     boolean stopNavigation(String id);
     void lookAt(String id, WorldPosition target);
+    /** Turns the NPC to one of its definition's named poses. @throws IllegalArgumentException for a pose it does not declare */
+    void pose(String id, String pose);
     void followRoute(String id, String route);
     CompletableFuture<Void> awaitRoute(String id);
     void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset);

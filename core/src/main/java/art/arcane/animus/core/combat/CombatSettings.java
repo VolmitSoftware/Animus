@@ -19,10 +19,12 @@ import java.util.UUID;
 /**
  * Validated contents of {@code modules["animus:combat"]} in an NPC definition. Runtime state such as
  * current health is never stored here. Unknown keys are rejected so that a typo cannot silently weaken a rule.
+ * {@code targetableByMobs} lets nearby hostile mobs with nothing else to fight walk up to the NPC and attack it, where the
+ * platform can drive real mobs.
  */
 public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRules targets, TargetRules ignores, TargetRules avoids,
                              Targeting targeting, Avoidance avoidance, Squad squad, Guard guard, Pursuit pursuit, Melee melee,
-                             Ranged ranged, Defense defense, Death death, Respawn respawn, Greetings greetings) {
+                             Ranged ranged, Defense defense, Death death, Respawn respawn, Greetings greetings, boolean targetableByMobs) {
     public static final String MODULE = "animus:combat";
     private static final String ROOT = "$.modules." + MODULE;
     private static final int MAXIMUM_RULE_ENTRIES = 256;
@@ -109,12 +111,12 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
     public static CombatSettings parseModule(JsonObject module) {
         Reader root = new Reader(module, ROOT);
         root.known("enabled", "reviewAccepted", "targets", "ignores", "avoids", "targeting", "avoidance", "squad", "guard", "pursuit",
-                "melee", "ranged", "defense", "death", "respawn", "greetings", "preservedSettings", "historicalStatistics", "migrationReport");
+                "melee", "ranged", "defense", "death", "respawn", "greetings", "targetableByMobs", "preservedSettings", "historicalStatistics", "migrationReport");
         return new CombatSettings(literalTrue(module, "enabled"), literalTrue(module, "reviewAccepted"),
                 rules(root.child("targets"), Level.SEEKING), rules(root.child("ignores"), Level.IGNORING), rules(root.child("avoids"), Level.SEEKING),
                 targeting(root.child("targeting")), avoidance(root.child("avoidance")), squad(root.child("squad")), guard(root.child("guard")),
                 pursuit(root.child("pursuit")), melee(root.child("melee")), ranged(root.child("ranged")), defense(root.child("defense")),
-                death(root.child("death")), respawn(root.child("respawn")), greetings(root.child("greetings")));
+                death(root.child("death")), respawn(root.child("respawn")), greetings(root.child("greetings")), root.bool("targetableByMobs", false));
     }
 
     /** A wrong type is simply not an acceptance. Other fields reject; these two gate activation. */
