@@ -7,12 +7,16 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Movement cells from a block's real collision shape, fluid and hazard. Every platform reads the shape itself and
+ * Movement cells from a block's real collision shape, fluid, hazard and whether it can be climbed. Every platform reads the shape itself and
  * names the block by its uppercase vanilla path, such as {@code MAGMA_BLOCK}. A shape that cannot be read is a full block.
  */
 public final class CollisionCells {
     private static final Set<String> HAZARDS = Set.of("LAVA", "FIRE", "SOUL_FIRE", "MAGMA_BLOCK", "CAMPFIRE", "SOUL_CAMPFIRE", "CACTUS",
             "SWEET_BERRY_BUSH", "WITHER_ROSE", "POWDER_SNOW", "POINTED_DRIPSTONE");
+    private static final Set<String> CLIMBABLE = Set.of("LADDER", "VINE", "SCAFFOLDING", "TWISTING_VINES", "TWISTING_VINES_PLANT",
+            "WEEPING_VINES", "WEEPING_VINES_PLANT", "CAVE_VINES", "CAVE_VINES_PLANT");
+    /** The game gives scaffolding a top only to a body above it; movement always lets a body stand on that top. */
+    private static final List<Cell.Box> SCAFFOLD_TOP = List.of(new Cell.Box(0, .875, 0, 1, 1, 1));
     private CollisionCells() {}
 
     /** Collision boxes are block-local; fluid comes from the material or a waterlogged state. */
@@ -20,7 +24,8 @@ public final class CollisionCells {
         Objects.requireNonNull(material, "material"); Objects.requireNonNull(boxes, "boxes");
         Cell.Fluid fluid = material.equals("LAVA") ? Cell.Fluid.LAVA
                 : waterlogged || material.equals("WATER") || material.equals("BUBBLE_COLUMN") ? Cell.Fluid.WATER : Cell.Fluid.NONE;
-        return Cell.of(List.copyOf(boxes), fluid, HAZARDS.contains(material));
+        List<Cell.Box> shape = material.equals("SCAFFOLDING") ? SCAFFOLD_TOP : List.copyOf(boxes);
+        return Cell.of(shape, fluid, HAZARDS.contains(material), CLIMBABLE.contains(material));
     }
 
     /** Keeps a box inside the voxel and the 1.5 overhang a fence or wall needs; an empty remainder is dropped. */
