@@ -137,4 +137,22 @@ class NpcAppearanceTest {
         assertEquals(List.of("$.owner: expected canonical player UUID"), errors("minecraft:player", "\"owner\":\"SERVER\""));
         assertEquals(List.of(), errors("minecraft:player", "\"owner\":\"00000000-0000-0000-0000-00000000000a\""));
     }
+
+    @Test void tagsParseInOrderAndAreEmptyWhenAbsent() throws IOException {
+        assertEquals(List.of("guard", "north_gate", "quest-1"),
+                NpcDefinition.parse(JsonDocuments.write(definition("minecraft:player", "\"tags\":[\"guard\",\"north_gate\",\"quest-1\"]"))).tags());
+        assertEquals(List.of(), NpcDefinition.parse(JsonDocuments.write(definition("minecraft:player", ""))).tags());
+        assertEquals(List.of(), errors("minecraft:player", "\"tags\":[]"));
+    }
+
+    @Test void tagErrorsNameTheExactField() {
+        String pattern = ": expected 1–32 lowercase letters, digits, _ or -";
+        assertEquals(List.of("$.tags: expected array"), errors("minecraft:player", "\"tags\":\"guard\""));
+        String many = String.join(",", java.util.stream.IntStream.range(0, 33).mapToObj(n -> "\"t" + n + "\"").toList());
+        assertEquals(List.of("$.tags: expected at most 32 tags"), errors("minecraft:player", "\"tags\":[" + many + "]"));
+        assertEquals(List.of("$.tags[2]" + pattern, "$.tags[3]" + pattern, "$.tags[4]" + pattern),
+                errors("minecraft:player", "\"tags\":[\"a\",\"b\",\"Guard\",\"_x\",7]"));
+        assertEquals(List.of("$.tags[1]" + pattern), errors("minecraft:player", "\"tags\":[\"a\",\"" + "x".repeat(33) + "\"]"));
+        assertEquals(List.of("$.tags[3]: duplicate tag"), errors("minecraft:player", "\"tags\":[\"a\",\"b\",\"c\",\"a\"]"));
+    }
 }

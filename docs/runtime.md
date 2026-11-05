@@ -54,6 +54,7 @@ These definition fields are optional. Every viewer sees the same result, and it 
 | `armorStand` | Armor stand bodies only: `small`, `arms`, `basePlate` (default `true`), `invisible`, and `head`, `body`, `leftArm`, `rightArm`, `leftLeg`, `rightLeg` as `[x, y, z]` degrees within ±360. Parts without angles keep the client's default pose. |
 | `inventory` | `size` is a multiple of 9 from 9 to 72; `slots` maps slot numbers below `size` to items. |
 | `owner` | The owning player's UUID. |
+| `tags` | At most 32 distinct labels of 1–32 lowercase letters, digits, `_` or `-`, starting with a letter or digit. The web editor uses them to find and group NPCs. The server stores them and does not act on them. `NpcDefinition.tags()` returns them. |
 
 A wrong value names its exact field, for example `$.equipment.head.count: expected integer 1..99`. `/animus spawn` also checks every equipment item against the running server, so an unknown item or bad component text is refused as `$.equipment.<slot>.id` or `.components`.
 
