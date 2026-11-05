@@ -11,6 +11,7 @@ import 'package:archive/archive.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import 'gui/gui_validation.dart';
+import 'npc/combat_settings.dart';
 import 'rig_validation.dart';
 import 'shared_schemas.dart';
 
@@ -204,6 +205,7 @@ AnimusDocument validateSource(DocumentLocation location, String path, String sou
     ..._identity(location, json),
     if (location.kind == DocumentKind.rig) ...validateRigStructure(json),
   ];
+  if (location.kind == DocumentKind.npc) diagnostics.addAll(npcCombatDiagnostics(json, diagnostics));
   return AnimusDocument(kind: location.kind, id: location.id, path: path, source: source, json: json, diagnostics: diagnostics);
 }
 

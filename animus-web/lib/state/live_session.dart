@@ -539,6 +539,35 @@ class LiveSession {
         await _outcome(response, pending, null);
       });
 
+  /// Spawns or despawns NPCs (`group/id`) on the server, one request each
+  /// with the same checks as the commands; needs the `spawn` scope. Returns
+  /// how many the server accepted and says which it refused.
+  Future<int> spawnNpcs(List<String> ids, {required bool spawn}) async =>
+      await _run<int>(spawn ? 'Spawning' : 'Despawning', () async {
+        int accepted = 0;
+        final List<String> refused = <String>[];
+        for (final String id in ids) {
+          final ApiResponse? response = await _call(
+            ApiRequest('POST', '/v1/npcs/${Uri.encodeComponent(id)}/${spawn ? 'spawn' : 'despawn'}'),
+            spawn ? 'spawn $id' : 'despawn $id',
+          );
+          if (response == null) break;
+          if (response.ok) {
+            accepted++;
+          } else {
+            refused.add('$id: ${response.errorMessage}');
+          }
+        }
+        final String verb = spawn ? 'Spawned' : 'Despawned';
+        if (refused.isEmpty) {
+          _notice(NoticeLevel.success, '$verb $accepted NPC${accepted == 1 ? '' : 's'} on the server.');
+        } else {
+          _notice(NoticeLevel.warning, '$verb $accepted; refused ${refused.length}: ${refused.take(3).join('; ')}');
+        }
+        return accepted;
+      }) ??
+      0;
+
   /// Asks the server what became of every unanswered change set.
   Future<void> recoverPending() async {
     final ServerBinding? server = binding;

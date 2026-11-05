@@ -4,9 +4,11 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../logic/gui/gui_json.dart';
 import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
+import '../logic/npc/route_model.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../state/workspace_route.dart';
@@ -18,6 +20,7 @@ import 'gui/shop_editor.dart';
 import 'inspect/behavior_editor.dart';
 import 'inspect/json_code_editor.dart';
 import 'inspect/npc_inspector.dart';
+import 'npc/route_editor.dart';
 import 'npc_preview.dart';
 
 /// Kinds with a visual editor and a painted or 3D preview.
@@ -38,8 +41,13 @@ class DocumentPane extends StatefulWidget {
     this.serverDiagnostics = const <Diagnostic>[],
     this.liveSchemas,
     this.workspaceDocuments = const <AnimusDocument>[],
+    this.onOpen,
     super.key,
   });
+
+  /// Opens another document of the workspace (a behavior, route or shop an
+  /// NPC names).
+  final void Function(DocumentKind kind, String id)? onOpen;
 
   /// Every document of the workspace, for completing references (an NPC's
   /// behaviors and skin).
@@ -217,14 +225,26 @@ class _DocumentPaneState extends State<DocumentPane> {
       };
     }
     if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.npc) {
-      return NpcInspector(
+      final Widget inspector = NpcInspector(
         document: document,
         onJson: onJson,
         schemas: _schemas,
         diagnostics: _allDiagnostics(document),
-        behaviorIds: _ids(DocumentKind.behavior),
-        skinIds: _ids(DocumentKind.skin),
+        workspaceDocuments: component.workspaceDocuments,
+        onSkinLoaded: () => setState(() {}),
+        onOpen: component.onOpen,
       );
+      return dom.div(classes: 'animus-npc-visual', <Widget>[inspector, _preview(document)]);
+    }
+    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.route) {
+      return dom.section(classes: 'animus-panel animus-inspector', attributes: const <String, String>{'aria-label': 'Route'}, <Widget>[
+        RouteEditor(
+          value: json,
+          path: r'$',
+          diagnostics: _allDiagnostics(document),
+          onChanged: (JsonMap value) => onJson(value, coalesce: 'route'),
+        ),
+      ]);
     }
     if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.behavior) {
       return BehaviorEditor(document: document, onJson: onJson, schemas: _schemas, diagnostics: _allDiagnostics(document));
@@ -245,12 +265,30 @@ class _DocumentPaneState extends State<DocumentPane> {
     ]);
   }
 
+  /// The route an NPC follows: its inline navigation fields, or the route
+  /// document it names when the workspace has it.
+  JsonMap? _routeOf(AnimusDocument document) {
+    final JsonMap navigation = asMap(asMap(asMap(document.json)['modules'])[navigationModule]);
+    if (navigation.isEmpty) return null;
+    final String? reference = asString(navigation['route']);
+    if (reference == null) return navigation;
+    for (final AnimusDocument other in component.workspaceDocuments) {
+      if (other.kind == DocumentKind.route && other.id == reference) return asMap(other.json);
+    }
+    return null;
+  }
+
   /// Kinds whose Preview is the 3D stage, which Split shows beside the code.
   bool _staged(AnimusDocument document) => document.kind == DocumentKind.npc && document.json is Map<String, Object?>;
 
   Widget _preview(AnimusDocument document) {
     if (_staged(document)) {
-      return NpcPreview(key: ValueKey<String>('npc-preview:${document.id}'), document: document, skinDocument: component.skinDocument);
+      return NpcPreview(
+        key: ValueKey<String>('npc-preview:${document.id}'),
+        document: document,
+        skinDocument: component.skinDocument,
+        route: _routeOf(document),
+      );
     }
     final Object? json = document.json;
     if (json is Map<String, Object?> && guiEditorKinds.contains(document.kind)) {

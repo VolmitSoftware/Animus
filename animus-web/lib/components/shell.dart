@@ -21,6 +21,7 @@ import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
 import 'citizens_screen.dart';
 import 'document_view.dart';
+import 'npc/npc_browser.dart';
 import 'server/connection_pill.dart';
 import 'server/live_bar.dart';
 import 'server/pair_page.dart';
@@ -28,9 +29,9 @@ import 'server/server_overview.dart';
 import 'rig/rig_actions.dart';
 import 'rig/rig_editor.dart';
 
-/// Kinds whose Visual view edits the parsed JSON (GUI editors and the
-/// schema-driven NPC and behavior inspectors).
-const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.behavior};
+/// Kinds whose Visual view edits the parsed JSON (GUI editors, the
+/// schema-driven NPC and behavior inspectors and the route editor).
+const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.behavior, DocumentKind.route};
 
 /// Kinds listed in the sidebar, in this order.
 const List<DocumentKind> listedKinds = <DocumentKind>[
@@ -353,11 +354,14 @@ class _EditorShellState extends State<EditorShell> {
             serverDiagnostics: session?.serverDiagnostics[documentKey(document.kind, document.id)] ?? const <Diagnostic>[],
             liveSchemas: session?.schemas,
             workspaceDocuments: workspace.documents,
+            onOpen: (DocumentKind kind, String id) => component.onNavigate(DocumentRoute(workspace.id, kind, id)),
           )
         else if (selected != null)
           dom.section(classes: 'animus-panel', <Widget>[
             Component.text('${selected.kind.label}: ${selected.documentId} is not in this workspace.'),
           ])
+        else if (route is NpcListRoute)
+          NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
         else if (session != null)
           ServerOverview(
             key: ValueKey<String>('server-overview:${session.serverId}'),
@@ -398,6 +402,12 @@ class _EditorShellState extends State<EditorShell> {
               dom.span(classes: 'animus-count', <Widget>[
                 Component.text('${workspace.documents.where((AnimusDocument document) => document.kind == kind).length}'),
               ]),
+              if (kind == DocumentKind.npc)
+                dom.a(
+                  href: NpcListRoute(workspace.id).format(),
+                  classes: 'animus-tree-browse${component.route is NpcListRoute ? ' is-selected' : ''}',
+                  const <Widget>[Component.text('Browse')],
+                ),
             ]),
             dom.ul(attributes: const <String, String>{'role': 'list'}, <Widget>[
               for (final AnimusDocument document in workspace.documents)
