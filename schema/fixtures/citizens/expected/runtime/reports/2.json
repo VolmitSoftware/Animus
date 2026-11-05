@@ -2,9 +2,8 @@
   "citizensId": 2,
   "presentationWarnings": [],
   "runtimeWarnings": [
-    "/traits/lookclose/range: look ranges above 64 blocks became 64",
-    "/traits/lookclose/targetnpcs: not supported; the NPC looks at the nearest player",
-    "/traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them"
+    "/traits/lookclose/range: look ranges above 64 blocks became 64; lower it in animus:look-close if that is too far",
+    "/traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them; add guide points between them in the route editor"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {
@@ -19,7 +18,7 @@
     "/traits/lookclose/range": "CONVERTED",
     "/traits/lookclose/realisticlooking": "CONVERTED",
     "/traits/lookclose/disablewhilenavigating": "CONVERTED",
-    "/traits/lookclose/targetnpcs": "REQUIRES_REVIEW",
+    "/traits/lookclose/targetnpcs": "CONVERTED",
     "/traits/waypoints/provider": "CONVERTED",
     "/traits/waypoints/guided/distance": "CONVERTED",
     "/traits/waypoints/guided/destinations/0/location/world": "CONVERTED",
@@ -47,6 +46,7 @@
     "/traits/text/range": "CONVERTED",
     "/traits/text/delay": "CONVERTED"
   },
+  "reasons": {},
   "worldRemaps": [
     {
       "source": "/traits/location",
