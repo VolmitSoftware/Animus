@@ -9,7 +9,7 @@ This harness tests explicitly requested JSON programs against existing NPC defin
 Use Java 25 and the reviewed standalone public API JAR:
 
 ```sh
-python3 qa/behaviors/build-fixtures.py --api-jar animus-api/build/libs/animus-api-1.0.0-SNAPSHOT.jar
+python3 qa/behaviors/build-fixtures.py --api-jar animus-api/build/libs/animus-api-1.1.0-SNAPSHOT.jar
 python3 qa/behaviors/verify-fixtures.py --module-fixtures <generated-fixture-directory>
 python3 qa/behaviors/build-plugin-fixture.py --spigot-api <exact-api-jar> --plugin <reviewed-plugin-jar>
 python3 -m unittest discover -s qa/behaviors -p 'test_*.py' -v
