@@ -96,6 +96,7 @@
 - NPC definitions, behaviors and shops upgrade to the current `schemaVersion` at startup in one journaled transaction with a rollback receipt; documents from a newer Animus are logged and left unchanged.
 - Modules receive NPC interaction notices as bounded module work on every platform, register import converters (`/animus import preview <file> [converter=ns:name]`), and provide protection and economy hooks that fail closed.
 - `animus-api` maven-publish setup with sources and javadoc, and `jitpack.yml`.
+- Riding, NPC-on-NPC mounts, combat and dragon wing phases on Folia: a mounted group has one owner and hands off in one transfer, rides run on the NPC's region, and cross-region hits go to their owners with a validity check.
 
 ### Changed
 
@@ -142,6 +143,8 @@
 - Finding players near a point uses a chunk index instead of scanning every player.
 - Docs give the real editor, relay and `relayUrl` deployment steps.
 - Animus API version 1.1.0; compatibility rules in `docs/modules.md`.
+- Servers connect to the Volmit editor relay by default (`relayEnabled = true`, `relayUrl` set to the deployed relay).
+- `[combat]` limits apply per region tick on Folia.
 
 ### Fixed
 
