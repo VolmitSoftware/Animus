@@ -4,6 +4,7 @@ import art.arcane.animus.core.behavior.schema.BehaviorSchemaGenerator;
 import art.arcane.animus.core.behavior.schema.OfflineBehaviorValidation;
 import art.arcane.animus.core.behavior.schema.OfflineCapabilities;
 import art.arcane.animus.core.migration.CitizensImporter;
+import art.arcane.animus.core.migration.DenizenImporter;
 import art.arcane.animus.core.migration.ImportApplications;
 import art.arcane.animus.core.migration.ImportDigest;
 import art.arcane.animus.core.migration.ShopImporter;
@@ -20,9 +21,10 @@ public final class ConverterMain {
         catch (Exception e) { System.err.println("Animus: " + e.getMessage()); System.exit(1); }
     }
     static String run(String[] args) throws Exception {
-        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir> | shops-preview <dtlTraders-folder> <data-dir> [saves.yml] | shops-apply <data-dir> <import-id> | shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>] | shopkeepers-apply <data-dir> <import-id> | digest <staged-dir>");
+        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir> | shops-preview <dtlTraders-folder> <data-dir> [saves.yml] | shops-apply <data-dir> <import-id> | shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>] | shopkeepers-apply <data-dir> <import-id> | denizen-preview <Denizen-folder> <data-dir> [citizens=<saves.yml>] | digest <staged-dir>");
         // The canonical hash of a staged Citizens import, comparable with the browser converter's (ImportDigest).
         if (args[0].equals("digest")) { require(args, 2); return ImportDigest.outputHash(Path.of(args[1])); }
+        if (args[0].equals("denizen-preview")) return denizenPreview(args);
         if (args[0].equals("validate-behaviors")) { require(args, 2); return validateBehaviors(Path.of(args[1])); }
         if (args[0].equals("schema")) { require(args, 2); return schema(Path.of(args[1])); }
         if (args[0].equals("shops-preview")) {
@@ -87,6 +89,23 @@ public final class ConverterMain {
         }
     }
     /** {@code shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>]}: aggregate counts only. */
+    /** Counts and the output hash only, so a private folder can be checked without printing its contents. */
+    private static String denizenPreview(String[] args) throws Exception {
+        String usage = "denizen-preview <Denizen-folder> <data-dir> [citizens=<saves.yml>]";
+        if (args.length < 3 || args.length > 4) throw new IllegalArgumentException(usage);
+        Optional<Path> citizens = Optional.empty();
+        if (args.length == 4) {
+            if (!args[3].startsWith("citizens=")) throw new IllegalArgumentException(usage);
+            citizens = Optional.of(Path.of(args[3].substring(9)));
+        }
+        try (DocumentStore store = new DocumentStore(Path.of(args[2]))) {
+            DenizenImporter.Preview preview = new DenizenImporter().preview(Path.of(args[1]), citizens, store);
+            return "Denizen preview " + preview.id() + "\nBehaviors: " + preview.behaviors() + " for " + preview.bindings() + " NPCs; flag values imported: " + preview.flagsImported()
+                    + ", kept: " + preview.flagsPreserved() + "; items kept with reasons: " + preview.preserved()
+                    + "\nOutput hash: " + ImportDigest.outputHash(preview.directory()) + "\nReport: " + preview.directory().resolve("report.json");
+        }
+    }
+
     private static String shopkeepersPreview(String[] args) throws Exception {
         String usage = "shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>]";
         if (args.length < 3 || args.length > 5) throw new IllegalArgumentException(usage);
