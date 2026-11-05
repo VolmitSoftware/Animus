@@ -39,7 +39,7 @@ public final class EditorChanges {
     private final EditorDocuments documents;
     private final DocumentStore store;
     private final Clock clock;
-    private final Duration retention;
+    private volatile Duration retention;
     private final Set<String> pending = ConcurrentHashMap.newKeySet();
     private Map<String, String> changeIds;
 
@@ -49,6 +49,9 @@ public final class EditorChanges {
         this.clock = Objects.requireNonNull(clock);
         this.retention = Objects.requireNonNull(retention);
     }
+
+    /** A hotload of {@code idempotencyHours}: later lookups and cleanup use the new retention. */
+    public void retention(Duration next) { retention = Objects.requireNonNull(next); }
 
     /** Marks a key as queued so a status request during the apply answers {@code pending}. */
     public void queued(String key) { pending.add(key); }

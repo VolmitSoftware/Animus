@@ -54,9 +54,14 @@ public final class EditorApi implements EditorRequestHandler {
     /** What the API holds. {@code npcs} reaches the live NPC registry for spawn, despawn and imports; {@code importHost} says whether Citizens or Shopkeepers still run. */
     public record Parts(EditorSettings settings, boolean relayEnabled, EditorHost host, EditorIdentity identity, EditorTokens tokens, EditorAudit audit,
                         EditorDocuments documents, EditorChanges changes, EditorPreviews previews, EditorEvents events,
-                        Supplier<NpcRepository> npcs, Supplier<CitizensDropIn.Host> importHost, ScheduledExecutorService timers, Clock clock, String minecraftVersion) {}
+                        Supplier<NpcRepository> npcs, Supplier<CitizensDropIn.Host> importHost, ScheduledExecutorService timers, Clock clock, String minecraftVersion) {
+        /** The same parts under hotloaded {@code [editor]} settings. */
+        public Parts with(EditorSettings next, boolean relay) {
+            return new Parts(Objects.requireNonNull(next), relay, host, identity, tokens, audit, documents, changes, previews, events, npcs, importHost, timers, clock, minecraftVersion);
+        }
+    }
 
-    private final Parts parts;
+    private volatile Parts parts;
     private final EditorSchemas schemas = new EditorSchemas();
     private final Map<String, AtomicInteger> inFlight = new ConcurrentHashMap<>();
     private final Map<String, double[]> buckets = new ConcurrentHashMap<>();
@@ -65,6 +70,9 @@ public final class EditorApi implements EditorRequestHandler {
     public EditorApi(Parts parts) { this.parts = Objects.requireNonNull(parts); }
 
     public Parts parts() { return parts; }
+
+    /** A hotload of {@code [editor]}: origins, bounds and rates apply to the next request; tokens and pairings stay. */
+    public void settings(EditorSettings next, boolean relayEnabled) { parts = parts.with(next, relayEnabled); }
 
     @Override
     public CompletionStage<EditorResponse> handle(EditorRequest request) {

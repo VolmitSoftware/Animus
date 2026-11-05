@@ -3,6 +3,7 @@ package art.arcane.animus.core.editor;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.config.EditorRelaySettings;
 import art.arcane.animus.core.config.EditorSettings;
+import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.editor.relay.EditorRelayClient;
 import art.arcane.animus.core.editor.transport.EditorRequestHandler;
 import java.io.IOException;
@@ -12,16 +13,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
  * The editor API on one server: identity, tokens, audit, change records, previews, event pacing and the optional embedded
  * listener. Platforms create one after the runtime starts, register {@link #commands} as {@code /animus editor}, and close
- * it before the runtime. The relay client passes its frames to {@link #handler}.
+ * it before the runtime. The relay client passes its frames to {@link #handler}. A hotload of {@code [editor]} applies live:
+ * the editor switch opens or closes the whole editor, a relay key restarts only the relay client, a bind key restarts only the
+ * listener, and the rest swaps in place. Tokens and pairings survive every restart.
  */
 public final class EditorService implements AutoCloseable {
     private final AnimusRuntime runtime;
@@ -30,11 +36,16 @@ public final class EditorService implements AutoCloseable {
     private final Clock clock;
     private volatile EditorSettings settings;
     private volatile EditorRelaySettings relaySettings;
-    private EditorRelayClient relay;
-    private EditorApi api;
+    private volatile EditorRelayClient relay;
+    private volatile EditorApi api;
     private volatile EditorListener listener;
     private ScheduledExecutorService timers;
-    private String state = "not started";
+    private ScheduledFuture<?> frames;
+    private String state = "not started", listenerProblem = "";
+    private boolean running;
+    private final AtomicReference<PluginSettings> pending = new AtomicReference<>();
+    private final ExecutorService restarts = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("Animus-editor-settings").factory());
+    private final AutoCloseable settingsListener;
 
     public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log) { this(runtime, host, log, Clock.systemUTC()); }
 
@@ -43,13 +54,19 @@ public final class EditorService implements AutoCloseable {
         this.host = Objects.requireNonNull(host);
         this.log = Objects.requireNonNull(log);
         this.clock = Objects.requireNonNull(clock);
+        settingsListener = runtime.onSettings(this::hotloaded);
     }
 
     /** Opens the editor state under {@code state/editor/} and starts the listener when enabled. A listener failure leaves the API usable over the relay. */
     public synchronized void start() throws IOException {
         if (api != null) throw new IllegalStateException("The editor service is already running");
-        settings = runtime.editorSettings();
-        relaySettings = runtime.editorRelaySettings();
+        running = true;
+        open(runtime.editorSettings(), runtime.editorRelaySettings());
+    }
+
+    private void open(EditorSettings editor, EditorRelaySettings relayNow) throws IOException {
+        settings = editor;
+        relaySettings = relayNow;
         if (!settings.enabled()) { state = "disabled; set [editor] enabled = true in config.toml"; return; }
         EditorIdentity identity = EditorIdentity.loadOrCreate(runtime.documents());
         EditorTokens tokens = new EditorTokens(runtime.documents(), clock);
@@ -69,13 +86,13 @@ public final class EditorService implements AutoCloseable {
         timers = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("Animus-editor-timers").factory());
         api = new EditorApi(new EditorApi.Parts(settings, relaySettings.enabled(), host, identity, tokens, audit, documents, changes, previews, events, runtime::npcs, runtime::importHost, timers, clock,
                 runtime.environment().minecraftVersion()));
-        long frameMillis = Math.max(10, 1000 / settings.eventFramesPerSecond());
-        timers.scheduleAtFixedRate(guard(events::tick), frameMillis, frameMillis, TimeUnit.MILLISECONDS);
+        frames = scheduleFrames(events, settings.eventFramesPerSecond());
+        EditorApi opened = api;
         timers.scheduleAtFixedRate(guard(() -> {
-            try { api.housekeeping(); }
+            try { opened.housekeeping(); }
             catch (IOException failure) { log.accept("Editor token housekeeping failed: " + failure.getMessage()); }
         }), 1, 1, TimeUnit.SECONDS);
-        timers.scheduleAtFixedRate(guard(api::recheckAdmins), 60, 60, TimeUnit.SECONDS);
+        timers.scheduleAtFixedRate(guard(opened::recheckAdmins), 60, 60, TimeUnit.SECONDS);
         timers.scheduleAtFixedRate(guard(() -> {
             try {
                 host.files().execute(() -> {
@@ -86,22 +103,112 @@ public final class EditorService implements AutoCloseable {
         }), 1, 60, TimeUnit.MINUTES);
         if (pruned > 0) log.accept("Editor audit: removed " + pruned + " day files older than " + settings.auditDays() + " days");
         state = "ready";
-        if (relaySettings.enabled()) {
-            relay = new EditorRelayClient(relaySettings, identity, api);
-            relay.start();
-            log.accept("Editor relay connecting to " + relaySettings.url() + " as " + identity.fingerprint());
+        openRelay();
+        openListener();
+    }
+
+    private ScheduledFuture<?> scheduleFrames(EditorEvents events, int framesPerSecond) {
+        long frameMillis = Math.max(10, 1000 / framesPerSecond);
+        return timers.scheduleAtFixedRate(guard(events::tick), frameMillis, frameMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void openRelay() {
+        if (!relaySettings.enabled()) return;
+        relay = new EditorRelayClient(relaySettings, api.parts().identity(), api);
+        relay.start();
+        log.accept("Editor relay connecting to " + relaySettings.url() + " as " + api.parts().identity().fingerprint());
+    }
+
+    private void closeRelay() {
+        if (relay != null) relay.close();
+        relay = null;
+    }
+
+    private void openListener() {
+        listenerProblem = "";
+        if (!settings.listenerEnabled()) return;
+        EditorListener started = new EditorListener(settings, runtime.environment().dataDirectory(), api, log);
+        try {
+            started.start();
+            listener = started;
+            state = "ready";
+            log.accept(started.describe());
+        } catch (IOException | RuntimeException failure) {
+            started.close();
+            listenerProblem = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+            state = "ready; listener failed: " + listenerProblem;
+            log.accept("Editor listener could not start: " + listenerProblem);
         }
-        if (settings.listenerEnabled()) {
-            EditorListener started = new EditorListener(settings, runtime.environment().dataDirectory(), api, log);
-            try {
-                started.start();
-                listener = started;
-                log.accept(started.describe());
-            } catch (IOException | RuntimeException failure) {
-                state = "ready; listener failed: " + failure.getMessage();
-                log.accept("Editor listener could not start: " + failure.getMessage());
+    }
+
+    private void closeListener() {
+        if (listener != null) listener.close();
+        listener = null;
+    }
+
+    /** Hears a hotload on the file lane and hands it to the editor's settings thread, so a relay or listener restart never blocks the lane. */
+    private void hotloaded(PluginSettings next) {
+        pending.set(next);
+        try { restarts.execute(this::reconcile); }
+        catch (RejectedExecutionException closed) { /* The service is closing. */ }
+    }
+
+    /**
+     * Applies the newest hotloaded {@code [editor]} table. The editor switch opens or closes the whole editor; a changed
+     * relay key restarts only the relay client; a changed address, port, TLS file, connection bound or listener switch
+     * restarts only the listener. Everything else swaps in place. Tokens and pairings are kept across every restart.
+     */
+    private void reconcile() {
+        PluginSettings next = pending.getAndSet(null);
+        if (next == null) return;
+        EditorRelayClient retired = null;
+        synchronized (this) {
+            if (!running) return;
+            retired = relay;
+            try { apply(next.editor(), next.relay()); }
+            catch (IOException | RuntimeException failure) {
+                state = "failed: " + failure.getMessage();
+                log.accept("Editor settings could not be applied: " + failure.getMessage());
             }
+            if (retired == relay) retired = null;
         }
+        // A relay client waits up to two seconds for its socket; close it without holding the service lock.
+        if (retired != null) retired.close();
+    }
+
+    private void apply(EditorSettings editor, EditorRelaySettings relayNow) throws IOException {
+        EditorSettings current = settings;
+        EditorRelaySettings currentRelay = relaySettings;
+        if (current.enabled() != editor.enabled() || api == null) {
+            if (!current.enabled() && !editor.enabled()) { settings = editor; relaySettings = relayNow; return; }
+            relay = null;
+            shut();
+            log.accept(editor.enabled() ? "Editor enabled by config.toml" : "Editor disabled by config.toml");
+            open(editor, relayNow);
+            return;
+        }
+        api.settings(editor, relayNow.enabled());
+        settings = editor;
+        relaySettings = relayNow;
+        if (current.idempotencyHours() != editor.idempotencyHours()) api.parts().changes().retention(Duration.ofHours(editor.idempotencyHours()));
+        if (current.auditDays() != editor.auditDays()) {
+            int pruned = api.parts().audit().prune(editor.auditDays());
+            if (pruned > 0) log.accept("Editor audit: removed " + pruned + " day files older than " + editor.auditDays() + " days");
+        }
+        if (current.eventFramesPerSecond() != editor.eventFramesPerSecond()) {
+            if (frames != null) frames.cancel(false);
+            frames = scheduleFrames(api.parts().events(), editor.eventFramesPerSecond());
+        }
+        if (!currentRelay.equals(relayNow)) {
+            relay = null;
+            openRelay();
+            if (!relayNow.enabled()) log.accept("Editor relay stopped by config.toml");
+        }
+        if (EditorListener.rebind(current, editor) || listener == null && editor.listenerEnabled()) {
+            closeListener();
+            openListener();
+            if (!editor.listenerEnabled()) { state = "ready"; log.accept("Editor listener stopped by config.toml"); }
+        } else if (listener != null) listener.settings(editor);
     }
 
     private Runnable guard(Runnable task) {
@@ -172,22 +279,32 @@ public final class EditorService implements AutoCloseable {
         EditorApi.Parts parts = api.parts();
         lines.add("Editor fingerprint " + parts.identity().fingerprint() + " | tokens=" + parts.tokens().list().size()
                 + " | pairings waiting=" + parts.tokens().pendingPairings() + " | event streams=" + parts.events().open() + " | previews=" + parts.previews().count());
-        lines.add(listener == null ? "Editor listener off" + (settings.listenerEnabled() ? " (failed to start)" : "; set [editor] listenerEnabled = true") : listener.describe());
+        lines.add(listener == null ? "Editor listener off" + (settings.listenerEnabled() ? " (failed to start" + (listenerProblem.isEmpty() ? "" : ": " + listenerProblem) + ")" : "; set [editor] listenerEnabled = true") : listener.describe());
         lines.add(relay == null ? "Editor relay off; set [editor] relayEnabled = true" : "Editor relay " + relaySettings.url() + " | " + (relay.isRegistered() ? "registered" : "connecting"));
         lines.add("Editor previews " + (host.previews().isPresent() ? "available" : "unavailable: " + host.previewsUnavailable()));
         return lines;
     }
 
     @Override
-    public synchronized void close() {
-        if (relay != null) relay.close();
-        relay = null;
-        if (listener != null) listener.close();
-        listener = null;
+    public void close() {
+        try { settingsListener.close(); }
+        catch (Exception ignored) { /* Removing a listener from a list does not fail. */ }
+        restarts.shutdownNow();
+        synchronized (this) {
+            running = false;
+            shut();
+            state = "stopped";
+        }
+    }
+
+    private void shut() {
+        closeRelay();
+        closeListener();
         if (api != null) api.close();
         api = null;
         if (timers != null) timers.shutdownNow();
         timers = null;
-        state = "stopped";
+        frames = null;
+        listenerProblem = "";
     }
 }
