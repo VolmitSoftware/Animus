@@ -1,7 +1,11 @@
 package art.arcane.animus.core.config;
 
 /**
- * Plugin-wide combat work limits, read from TOML. Requires restart.
+ * Plugin-wide combat work limits, read from TOML. Every key applies live on a hotload of {@code config.toml}: engines swap
+ * the new values in at their next tick. A lowered cap drains instead of cutting work short: NPCs fighting keep their
+ * slot until they idle or release while newcomers wait, helpers in flight live out their lifetime while no new ones
+ * launch, and {@code maximumScanRange} and {@code maximumSpeed} clamp at their next use. Turning {@code enabled} off
+ * releases every target and lets helpers in flight land or expire before combat stops.
  *
  * @param maximumNpcs      combat NPCs that fight or scan at once; every combat NPC registers, idle ones with no player near
  *                         sleep without a slot and the rest wait their turn

@@ -8,19 +8,21 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 
 /**
  * Work allowances for one region tick. A region tick runs on a single thread, so a thread-local window keyed by the
  * region and its tick number bounds the total work every task of that region does in that tick. Route turns also
  * remember, per region, who waited longest, because Folia runs the NPC tasks of a region in the same order every tick.
+ * Limits change live through {@link #limit}; each region takes the new values at the start of its next region tick.
  */
 final class RegionBudget {
     enum Kind { OWNER_WORK, ROUTES, MOTION_CELLS, CAPTURE, VIEWERS, PACKETS, WAKES, RIG_PLANS, LOOKS, ROUTE_PLANS, COMBAT_BRAINS, COMBAT_SCANS, COMBAT_PATHS, COMBAT_ALERTS, COMBAT_HELPERS }
     private static final long IDLE_TURNS_NANOS = 60_000_000_000L;
-    private static final class Window { Object region; long tick = Long.MIN_VALUE; final int[] used = new int[Kind.values().length]; }
+    private static final class Window { Object region; long tick = Long.MIN_VALUE; final int[] used = new int[Kind.values().length], limits = new int[Kind.values().length]; }
     private static final class Turns { final WaitingTurns turns = new WaitingTurns(); final PresentationPressure pressure = new PresentationPressure(); volatile long seen; }
     private final RegionScheduler regions;
-    private final int[] limits = new int[Kind.values().length];
+    private final AtomicIntegerArray limits = new AtomicIntegerArray(Kind.values().length);
     private final ThreadLocal<Window> windows = ThreadLocal.withInitial(Window::new);
     private final Map<Object, Turns> turns = new ConcurrentHashMap<>(), combatTurns = new ConcurrentHashMap<>();
     private final AtomicInteger refusedRoutes = new AtomicInteger();
@@ -32,8 +34,14 @@ final class RegionBudget {
         for (Kind kind : Kind.values()) {
             Integer limit = copy.get(kind);
             if (limit == null || limit < 1) throw new IllegalArgumentException("Missing or invalid region budget: " + kind);
-            this.limits[kind.ordinal()] = limit;
+            this.limits.set(kind.ordinal(), limit);
         }
+    }
+
+    /** A new limit, from any thread; regions use it from their next region tick on. */
+    void limit(Kind kind, int limit) {
+        if (limit < 1) throw new IllegalArgumentException("Invalid region budget: " + kind);
+        limits.set(kind.ordinal(), limit);
     }
 
     /** Grants at most {@code wanted} units for this region tick; zero away from a region thread. */
@@ -41,7 +49,7 @@ final class RegionBudget {
         if (wanted <= 0) return 0;
         Window window = window();
         if (window == null) return 0;
-        int granted = Math.min(wanted, limits[kind.ordinal()] - window.used[kind.ordinal()]);
+        int granted = Math.min(wanted, window.limits[kind.ordinal()] - window.used[kind.ordinal()]);
         if (granted <= 0) return 0;
         window.used[kind.ordinal()] += granted;
         return granted;
@@ -112,6 +120,7 @@ final class RegionBudget {
         Window window = windows.get();
         if (window.region != tick.region() || window.tick != tick.number()) {
             window.region = tick.region(); window.tick = tick.number(); Arrays.fill(window.used, 0);
+            for (int kind = 0; kind < window.limits.length; kind++) window.limits[kind] = limits.get(kind);
         }
         return window;
     }
