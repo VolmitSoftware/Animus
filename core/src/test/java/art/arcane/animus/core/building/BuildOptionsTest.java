@@ -50,4 +50,16 @@ class BuildOptionsTest {
         BuildOptions container = BuildOptions.DEFAULT.with(Map.of("materials", "container", "container", "0,64,0"));
         assertEquals(Optional.empty(), container.with(Map.of("materials", "donate")).container());
     }
+
+    @Test void scaffoldingIsOnByDefaultAndCanBeTurnedOff() {
+        assertTrue(BuildOptions.DEFAULT.scaffolding());
+        BuildOptions off = BuildOptions.DEFAULT.with(Map.of("scaffolding", "false"));
+        assertEquals(false, off.scaffolding());
+        assertEquals(off, BuildOptions.fromJson(off.toJson(), "$"));
+        JsonObject json = new JsonObject();
+        json.addProperty("scaffolding", false);
+        assertEquals(false, BuildOptions.fromJson(json, "$").scaffolding());
+        assertTrue(BuildOptions.words().contains("scaffolding"));
+        assertThrows(IllegalArgumentException.class, () -> BuildOptions.DEFAULT.with(Map.of("scaffolding", "maybe")));
+    }
 }

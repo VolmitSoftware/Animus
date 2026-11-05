@@ -1,6 +1,7 @@
 package art.arcane.animus.core.building;
 
 import art.arcane.animus.core.navigation.BlockPos;
+import art.arcane.animus.core.navigation.CollisionCells;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.VoxelSnapshot;
 import art.arcane.animus.core.virtual.Vec3;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /** In-memory world, crew and listener for driving builds without a server. */
 final class BuildFixtures {
@@ -89,6 +91,7 @@ final class BuildFixtures {
                 if (!chunkLoaded(world, Math.floorDiv(x, 16), Math.floorDiv(z, 16))) return VoxelSnapshot.Cell.UNAVAILABLE;
                 if (y < 64) return VoxelSnapshot.Cell.SOLID;
                 String state = blocks.get(new BlockPos(x, y, z));
+                if (state != null && state.startsWith(ScaffoldPlanner.BLOCK)) return CollisionCells.classify("SCAFFOLDING", List.of(), false);
                 return state == null || BuildSession.air(state) ? VoxelSnapshot.Cell.AIR : VoxelSnapshot.Cell.SOLID;
             };
         }
@@ -103,8 +106,11 @@ final class BuildFixtures {
         final Map<String, Optional<String>> held = new HashMap<>();
         final List<WorldPosition> walks = new ArrayList<>();
         final List<BlockPos> terrain = new ArrayList<>();
+        final List<WorldPosition> path = new ArrayList<>();
         int relocations, stops;
         boolean walkInstantly = true;
+        /** Where a walk can take an NPC; anywhere unless a test says otherwise. */
+        Predicate<WorldPosition> walkable = (WorldPosition goal) -> true;
 
         Member add(String id, double x, double y, double z) {
             Member member = new Member(id, UUID.nameUUIDFromBytes(id.getBytes()), at(x, y, z), .6, 1.8);
@@ -115,7 +121,7 @@ final class BuildFixtures {
         @Override public boolean routing(String npc) { return false; }
         @Override public void walk(String npc, WorldPosition goal, double speed) {
             walks.add(goal);
-            if (walkInstantly) move(npc, goal);
+            if (walkInstantly && walkable.test(goal)) move(npc, goal);
         }
         @Override public void stop(String npc) { stops++; }
         @Override public boolean relocate(String npc, WorldPosition to) { relocations++; move(npc, to); return true; }
@@ -126,6 +132,7 @@ final class BuildFixtures {
         private void move(String npc, WorldPosition to) {
             Member old = members.get(npc);
             members.put(npc, new Member(old.id(), old.uuid(), to, old.width(), old.height()));
+            path.add(to);
         }
     }
 
