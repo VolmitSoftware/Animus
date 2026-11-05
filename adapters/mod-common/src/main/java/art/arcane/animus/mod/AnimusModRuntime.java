@@ -158,6 +158,9 @@ public final class AnimusModRuntime {
                         if (current != null) current.modulesInitialized(initialized);
                     }, next.builtins);
             next.behaviors = new BehaviorCommands(dataDirectory, next.runtime, next.extensions, LOGGER::info);
+            next.runtime.catalogs(new art.arcane.animus.core.RuntimeCatalogs(new art.arcane.animus.core.RuntimeCatalogs.Parts(next.runtime, next.living::refresh,
+                    () -> owner.behaviors, () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
+                    () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}), LOGGER::info)));
             TriggerDispatcher triggers = next.behaviors.triggers();
             if (triggers != null) {
                 if (next.living.available()) { triggers.connect(); next.living.bindTriggers(triggers); }
@@ -212,13 +215,12 @@ public final class AnimusModRuntime {
 
     /** The web editor API, the same as on Bukkit: the embedded listener and the relay client, both off until config.toml enables them. */
     private void startEditor(MinecraftServer server, Running next, Executor files) {
-        art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> guiService = next.shops;
         java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> Map.of(
                 "combat", EditorHost.Feature.yes(),
                 "gloss", EditorHost.Feature.no("Gloss is a Bukkit plugin"),
                 "placeholderapi", EditorHost.Feature.no("PlaceholderAPI is a Bukkit plugin"));
-        EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living, () -> next.behaviors,
-                next.extensions, () -> guiService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}), platform.name().toLowerCase(java.util.Locale.ROOT), "", features,
+        EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living,
+                next.extensions, platform.name().toLowerCase(java.util.Locale.ROOT), "", features,
                 (ServerPlayer player) -> VanillaRuntimeHost.permitted(player.permissions(), "animus.admin"), LOGGER::info)), LOGGER::info);
         try {
             service.start();

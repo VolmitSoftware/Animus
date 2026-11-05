@@ -542,7 +542,7 @@ public final class EditorApi implements EditorRequestHandler {
 
     private void published(EditorChanges.Outcome outcome) {
         if (!outcome.committed()) return;
-        parts.host().applied(outcome.kinds(), outcome.rollback());
+        parts.host().applied(outcome.kinds(), removedBehaviors(outcome.deleted()), outcome.rollback());
         JsonObject change = new JsonObject();
         change.addProperty("type", "change");
         change.add("result", outcome.body());
@@ -731,13 +731,23 @@ public final class EditorApi implements EditorRequestHandler {
             deleted.add(reference);
         }
         if (kinds.isEmpty()) return touched;
-        parts.host().applied(kinds, rollback);
+        parts.host().applied(kinds, removedBehaviors(deleted), rollback);
         JsonObject event = new JsonObject();
         event.addProperty("type", "catalog");
         event.add("documents", catalog);
         if (!deleted.isEmpty()) event.add("deleted", deleted);
         parts.events().publish(event);
         return touched;
+    }
+
+    /** Behavior ids among deleted {@code {kind, id}} references; their sources are gone on purpose. */
+    private static Set<String> removedBehaviors(JsonArray deleted) {
+        Set<String> removed = new java.util.TreeSet<>();
+        for (JsonElement value : deleted) {
+            JsonObject reference = value.getAsJsonObject();
+            if (reference.get("kind").getAsString().equals(DocumentKind.BEHAVIOR.wireName())) removed.add(reference.get("id").getAsString());
+        }
+        return removed;
     }
 
     private Map<String, String> hashes() throws IOException {
@@ -780,7 +790,7 @@ public final class EditorApi implements EditorRequestHandler {
                     files(() -> {
                         try { repository.apply(draft); }
                         catch (IOException conflict) { throw new EditorError(EditorError.Code.CONFLICT, conflict.getMessage()); }
-                        parts.host().applied(EnumSet.of(DocumentKind.NPC), false);
+                        parts.host().applied(EnumSet.of(DocumentKind.NPC), Set.of(), false);
                         audit(spawn ? "spawn" : "despawn", Optional.of(token.id()), token.admin(), request, List.of("npc:" + id), "applied");
                         JsonObject body = new JsonObject();
                         body.addProperty("id", id);

@@ -1,5 +1,10 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.CatalogChange;
+import art.arcane.animus.core.RuntimeEnvironment;
+import art.arcane.animus.core.admin.Administration;
+import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.runtime.DefinitionSpec;
@@ -9,7 +14,9 @@ import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.AfterEach;
@@ -75,6 +82,22 @@ class CitizensDropInTest {
             assertTrue(notice.contains("plugins/Citizens/saves.yml") && notice.contains("/animus import citizens"), notice);
             citizens.set(true);
             assertTrue(dropIn(store, npcs).startupNotice().orElseThrow().contains("Citizens is still enabled"));
+        }
+    }
+
+    @Test void startupNoticeListsEverySourceItFinds() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Citizens"));
+        Files.writeString(root.resolve("plugins/Citizens/saves.yml"), SAVES);
+        Files.createDirectories(root.resolve("plugins/Shopkeepers/data"));
+        Files.writeString(root.resolve("plugins/Shopkeepers/data/save.yml"), "data-version: 4\n");
+        Files.createDirectories(root.resolve("plugins/dtlTraders"));
+        Files.createDirectories(root.resolve("plugins/Builder/schematics"));
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            String notice = dropIn(store, npcs).startupNotice().orElseThrow();
+            for (String source : List.of("plugins/Citizens/saves.yml", "plugins/Shopkeepers/data/save.yml", "plugins/dtlTraders", "plugins/Builder/schematics"))
+                assertTrue(notice.contains(source), notice);
+            assertTrue(notice.contains("/animus import citizens"), notice);
         }
     }
 
@@ -206,7 +229,7 @@ class CitizensDropInTest {
             assertTrue(staged.contains("Commands: 1 behaviors stay denied until listed in config.toml [behaviors.actions] commandBehaviors (for example citizens:commands-5)"), staged);
 
             String applied = joined(flow.execute(new String[]{"apply"}));
-            assertTrue(applied.contains("/animus behaviors reload"), applied);
+            assertTrue(applied.contains("behaviors/citizens/ and load now"), applied);
             assertNotNull(store.read("behaviors/citizens/text-5.json"));
             assertNotNull(store.read("behaviors/citizens/commands-5.json"));
             NpcDefinition watchman = npcs.find("citizens-5").orElseThrow();
@@ -232,6 +255,33 @@ class CitizensDropInTest {
             assertTrue(npcs.all().isEmpty());
             assertNull(store.read("behaviors/citizens/text-5.json"));
             assertNull(store.read("behaviors/citizens/commands-5.json"));
+        }
+    }
+
+    @Test void importCommandsReloadTheCatalogsTheyWriteAndForgetDeletedBehaviors() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Animus/imports/dtltraders/shops/Bakery"));
+        Files.writeString(root.resolve("plugins/Animus/imports/dtltraders/shops/Bakery/Bakery.yml"), ShopImporterTest.BAKERY);
+        Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), PATROLS);
+        List<CatalogChange> reloads = new ArrayList<>();
+        try (AnimusRuntime runtime = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root.resolve("plugins/Animus")))) {
+            runtime.start();
+            runtime.importHost(new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), citizens::get, () -> false));
+            runtime.catalogs(reloads::add);
+            Administration admin = new Administration(runtime);
+            admin.execute(new String[]{"import", "citizens"});
+            assertTrue(reloads.isEmpty(), "staging installs nothing");
+            admin.execute(new String[]{"import", "citizens", "apply"});
+            CatalogChange applied = reloads.getLast();
+            assertTrue(applied.kinds().containsAll(Set.of(DocumentKind.SHOP, DocumentKind.BEHAVIOR)), applied.toString());
+            assertFalse(applied.kinds().contains(DocumentKind.NPC), "the import already reloaded NPCs");
+            assertFalse(applied.rollback());
+            admin.execute(new String[]{"import", "citizens", "accept", "all"});
+            reloads.clear();
+            admin.execute(new String[]{"import", "citizens", "rollback"});
+            CatalogChange rolledBack = reloads.getLast();
+            assertTrue(rolledBack.rollback());
+            assertTrue(rolledBack.kinds().containsAll(Set.of(DocumentKind.SHOP, DocumentKind.BEHAVIOR)), rolledBack.toString());
+            assertEquals(Set.of("citizens:text-5", "citizens:commands-5"), rolledBack.removedBehaviors());
         }
     }
 }

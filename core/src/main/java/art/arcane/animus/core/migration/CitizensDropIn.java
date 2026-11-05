@@ -48,6 +48,8 @@ public final class CitizensDropIn {
     private final DocumentStore store;
     private final NpcRepository npcs;
     private final Host host;
+    private final List<String> committed = new ArrayList<>();
+    private boolean rolledBack;
 
     public CitizensDropIn(DocumentStore store, NpcRepository npcs, Host host) { this.store = store; this.npcs = npcs; this.host = host; }
 
@@ -88,25 +90,61 @@ public final class CitizensDropIn {
             return pending == 0 ? Optional.empty() : Optional.of("Citizens migration: applied; " + pending + " reviewed settings are still off. Check them with /animus import citizens review");
         }
         if (sources.saves().isEmpty()) return Optional.empty();
+        List<String> found = new ArrayList<>();
+        found.add(sources.saves().get().label());
+        if (!ShopkeepersDropIn.applied(state)) shopkeepers.ifPresent((ShopkeepersDropIn.Found save) -> found.add(save.save().label()));
+        sources.traders().ifPresent((Found traders) -> found.add(traders.label()));
+        sources.schematics().forEach((Found folder) -> found.add(folder.label()));
         String source = JsonDocuments.hash(Files.readString(sources.saves().get().path()));
         if (state.has("sourceSha256") && state.get("sourceSha256").getAsString().equals(source) && state.has("applicationId"))
-            return Optional.of("Citizens migration: " + sources.saves().get().label() + " is staged and not applied. Review " + state.get("report").getAsString() + ", then run /animus import citizens apply");
-        return Optional.of("Citizens migration: found " + sources.saves().get().label() + (sources.traders().isPresent() ? " and " + sources.traders().get().label() : "")
-                + ". Run /animus import citizens to preview it. Nothing is installed until you apply it.");
+            return Optional.of("Citizens migration: " + listed(found) + (found.size() == 1 ? " is" : " are") + " staged and not applied. Review " + state.get("report").getAsString() + ", then run /animus import citizens apply");
+        return Optional.of("Citizens migration: found " + listed(found) + ". Run /animus import citizens to preview " + (found.size() == 1 ? "it" : "them") + ". Nothing is installed until you apply it.");
+    }
+
+    /** {@code a}, {@code a and b}, {@code a, b and c}. */
+    private static String listed(List<String> items) {
+        if (items.size() == 1) return items.getFirst();
+        return String.join(", ", items.subList(0, items.size() - 1)) + " and " + items.getLast();
     }
 
     public List<String> execute(String[] args) throws IOException {
         String operation = args.length == 0 ? "stage" : args[0].toLowerCase(Locale.ROOT);
         return switch (operation) {
-            case "apply" -> { count(args, 1, "import citizens apply"); yield apply(); }
+            case "apply" -> { count(args, 1, "import citizens apply"); yield recorded(this::apply); }
             case "rollback" -> { count(args, 1, "import citizens rollback"); yield rollback(); }
             case "review" -> { count(args, 1, "import citizens review"); yield review(); }
             case "accept" -> {
                 if (args.length < 2) throw new IOException("import citizens accept <" + String.join("|", CATEGORIES) + "|all> ...");
-                yield accept(List.of(args).subList(1, args.length));
+                yield recorded(() -> accept(List.of(args).subList(1, args.length)));
             }
             default -> stage(args);
         };
+    }
+
+    /**
+     * The transactions the last {@link #execute} committed, oldest first, even when it then failed. After a rollback these are
+     * the inverse transactions. The caller reloads the catalogs they touched.
+     */
+    public List<String> committed() { return List.copyOf(committed); }
+
+    /** Whether {@link #committed()} restored older revisions on purpose. */
+    public boolean rolledBack() { return rolledBack; }
+
+    @FunctionalInterface private interface Step { List<String> run() throws IOException; }
+
+    private List<String> recorded(Step step) throws IOException {
+        Set<String> before = transactionIds();
+        try { return step.run(); }
+        finally { for (String transaction : transactionIds()) if (!before.contains(transaction)) committed.add(transaction); }
+    }
+
+    private Set<String> transactionIds() {
+        Set<String> ids = new java.util.LinkedHashSet<>();
+        try {
+            JsonObject state = state();
+            if (state.has("transactions")) for (JsonElement value : state.getAsJsonArray("transactions")) ids.add(value.getAsString());
+        } catch (IOException | RuntimeException unreadable) { return ids; }
+        return ids;
     }
 
     /** Preview the save, the dtlTraders folder and the schematics, and stage one application plan. Nothing is installed. */
@@ -269,7 +307,7 @@ public final class CitizensDropIn {
         if (!errors.isEmpty()) lines.add("Definition problems after reload: " + String.join("; ", errors));
         lines.add("Every NPC is installed at its Citizens position and stays despawned; patrols, combat, riding, shops and builds stay off.");
         int behaviors = imported(state).stream().mapToInt((NpcDefinition definition) -> definition.json().has("behaviors") ? definition.json().getAsJsonArray("behaviors").size() : 0).sum();
-        if (behaviors > 0) lines.add("Generated text and command behaviors are in behaviors/citizens/; load them with /animus behaviors reload");
+        if (behaviors > 0) lines.add("Generated text and command behaviors are in behaviors/citizens/ and load now");
         lines.add("Next: /animus import citizens review, then /animus import citizens accept all (or one category at a time)");
         return lines;
     }
@@ -282,7 +320,10 @@ public final class CitizensDropIn {
         JsonArray transactions = state.getAsJsonArray("transactions");
         for (int index = transactions.size() - 1; index >= 0; index--) {
             String transaction = transactions.get(index).getAsString();
-            lines.add("Rolled back " + transaction + "; inverse " + store.rollback(transaction));
+            String inverse = store.rollback(transaction);
+            committed.add(inverse);
+            rolledBack = true;
+            lines.add("Rolled back " + transaction + "; inverse " + inverse);
         }
         ShopkeepersDropIn.rolledBack(state);
         int kept = 0;

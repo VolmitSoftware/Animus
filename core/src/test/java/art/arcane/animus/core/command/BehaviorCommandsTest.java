@@ -275,6 +275,21 @@ class BehaviorCommandsTest {
             assertEquals(List.of("confirm"),harness.service.complete(new String[]{"behaviors","state","purge","all",""}));
         }
     }
+    @Test void deliberatelyDeletedSourcesLeaveTheCatalogAndTheirCheckpoints()throws Exception{
+        Path file=source("example:wait",1,1);
+        try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
+            harness.start();CommandActor sender=sender(false,true);
+            assertNotNull(harness.runtime.documents().read("state/behavior-catalog/last-valid/behaviors/example/wait.json"));
+            Files.delete(file);
+            messages.clear();harness.service.reload(sender,java.util.Set.of("example:wait"));
+            until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));
+            assertTrue(messages.getFirst().contains("documents=0")&&messages.getFirst().contains("invalid=0"),messages.toString());
+            messages.clear();harness.service.execute(sender,new String[]{"behaviors","reload"});
+            until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));
+            assertTrue(messages.stream().noneMatch(line->line.contains("behavior-source-missing")),messages.toString());
+            assertNull(harness.runtime.documents().read("state/behavior-catalog/last-valid/behaviors/example/wait.json"));
+        }
+    }
     @Test void packsReloadWithoutRestartAndReportMissingModules()throws Exception{
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();CommandActor sender=sender(false,true);
