@@ -111,4 +111,15 @@ class MountRelationsTest {
         assertFalse(MountRelations.Code.UNRESOLVED_IMPORT.blocksActivation());
         assertFalse(MountRelations.Code.DORMANT_VEHICLE.blocksActivation());
     }
+
+    @Test void ridersLeavingInTheSameChangeAsTheirVehicleAreNotReported() {
+        MountRelations.Node rider = node("rider", "horse"), other = node("other", "horse");
+        Map<String, UUID> known = new HashMap<>();
+        known.put("other", other.uuid());
+        MountRelations.Resolution result = MountRelations.resolve(List.of(rider, other), known::get,
+                (MountRelations.Node node) -> !node.uuid().equals(known.get(node.id())));
+        assertFalse(result.vehicleOf().containsKey("rider"));
+        assertEquals(List.of("other"), result.diagnostics().stream().map(MountRelations.Diagnostic::id).toList());
+        assertEquals(MountRelations.Code.UNKNOWN_VEHICLE, only(result, "other").code());
+    }
 }

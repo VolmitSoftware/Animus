@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Turns persisted relations into an acyclic, bounded forest. Definitions are never changed: a relation
@@ -43,9 +44,16 @@ public final class MountRelations {
     private MountRelations() {}
 
     /** @param known every definition's UUID by id, including dormant ones; null when the id does not exist */
-    public static Resolution resolve(Collection<Node> active, Function<String, UUID> known) {
+    public static Resolution resolve(Collection<Node> active, Function<String, UUID> known) { return resolve(active, known, (Node node) -> false); }
+
+    /**
+     * Like {@link #resolve(Collection, Function)}, leaving out nodes that are {@code retiring}: still active, but already
+     * deleted, replaced or despawned in their definitions and about to be removed. A change that removes a vehicle and its
+     * passengers together then reports nothing while the runtime removes them one by one.
+     */
+    public static Resolution resolve(Collection<Node> active, Function<String, UUID> known, Predicate<Node> retiring) {
         Map<String, Node> nodes = new TreeMap<>();
-        for (Node node : active) nodes.put(node.id(), node);
+        for (Node node : active) if (!retiring.test(node)) nodes.put(node.id(), node);
         List<Diagnostic> diagnostics = new ArrayList<>();
         Map<String, String> edges = new TreeMap<>();
         for (Node node : nodes.values()) {
