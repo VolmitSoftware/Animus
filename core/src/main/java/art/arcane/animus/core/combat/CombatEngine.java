@@ -26,6 +26,8 @@ import java.util.random.RandomGenerator;
 /**
  * Autonomous combat for registered NPCs. Single owner thread; all work is capped per tick and idle NPCs
  * sleep. All damage in either direction goes through {@link #hit}, which asks protection first.
+ * Every combat NPC registers; at most {@code maximumNpcs} of them fight or scan at once. An NPC with no player near and
+ * nothing to fight sleeps and holds no slot, and NPCs waiting for a slot get one in the order they asked.
  */
 public final class CombatEngine implements CombatOperations, AutoCloseable {
     public record Status(UUID npc, CombatState state, Optional<TargetRef> target, boolean disengaged, int ammunition) {}
@@ -36,6 +38,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
 
     private static final int EVENT_QUEUE = 64;
     private static final int SIGHTS_PER_EVENT = 8;
+    /** Registered combat NPCs, sleeping ones included; the same bound as the NPC runtime's active NPCs. */
+    public static final int MAXIMUM_REGISTERED = 10_000;
     private final CombatBudgets budgets;
     private final CombatWorld world;
     private final ProtectionGate protection;
@@ -51,6 +55,10 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private final ArrayDeque<Fight> fights = new ArrayDeque<>();
     private final ArrayDeque<Chat> chats = new ArrayDeque<>();
     private final List<UUID> deletions = new ArrayList<>();
+    private final ArrayDeque<CombatBrain> waiting = new ArrayDeque<>();
+    private int active;
+    private int peakWaiting;
+    private boolean pressure;
     private long tick;
     private long order;
     private long droppedEvents;
@@ -71,6 +79,17 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     }
 
     public int size() { return brains.size(); }
+    /** NPCs holding one of the {@code maximumNpcs} slots: fighting, fleeing, returning or scanning near a player. */
+    public int activeCount() { return active; }
+    /** NPCs that want a slot and wait their turn. */
+    public int waitingCount() { return waiting.size(); }
+    /** The most NPCs that waited at once since the engine started. */
+    public int peakWaiting() { return peakWaiting; }
+    /** Slot use for status lines: active of the limit, waiting, sleeping without a slot, and the peak wait. */
+    public String capacity() {
+        return "fighting-or-scanning=" + active + "/" + budgets.maximumNpcs() + " | waiting=" + waiting.size()
+                + " | sleeping=" + (brains.size() - active - waiting.size()) + " | peak-waiting=" + peakWaiting;
+    }
     public int helperCount() { return helpers.size(); }
     public long protectionDenials() { return protection.denials(); }
     public long protectionFailures() { return protection.failures(); }
@@ -94,12 +113,12 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         return Optional.of(new Status(npc, brain.state(), Optional.ofNullable(brain.target()), brain.disengaged(), brain.ammunition()));
     }
 
-    /** Starts or replaces this NPC's combat. False when the NPC budget is full. */
+    /** Starts or replaces this NPC's combat. False when {@link #MAXIMUM_REGISTERED} NPCs are registered. */
     public boolean register(UUID npc, String handle, CombatSettings settings, CombatLoadout loadout) {
         if (closed) return false;
         CombatBrain previous = brains.get(npc);
         if (previous != null && previous.settings().equals(settings) && previous.loadout().equals(loadout)) return true;
-        if (previous == null && brains.size() >= budgets.maximumNpcs()) return false;
+        if (previous == null && brains.size() >= MAXIMUM_REGISTERED) return false;
         if (previous != null) unregister(npc);
         CombatBrain brain = new CombatBrain(this, world, npc, handle, settings, loadout);
         brains.put(npc, brain);
@@ -115,6 +134,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         CombatBrain brain = brains.remove(npc);
         if (brain == null) return;
         brain.retire();
+        vacate(brain);
         removeHelpers(npc);
         watchers.remove(brain);
         brain.settings().squad().name().ifPresent((String squad) -> {
@@ -165,6 +185,60 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         diagnostics.accept("Combat NPC " + brain.handle() + ": guard made no progress toward its charge for " + ticks + " ticks (distance "
                 + distance + "; movement: " + movement + "); " + remedy);
     }
+    /** Whether a player is near enough that this NPC should stay awake. */
+    boolean playersNear(WorldPosition center, double radius) { return world.playersNear(center, radius); }
+
+    /** True when the NPC holds a slot or takes a free one; otherwise it joins the end of the queue once. */
+    boolean claim(CombatBrain brain) {
+        if (brain.slot() == CombatBrain.Slot.ACTIVE) return true;
+        if (brain.slot() == CombatBrain.Slot.WAITING) return false;
+        if (active < budgets.maximumNpcs() && waiting.isEmpty()) {
+            brain.slot(CombatBrain.Slot.ACTIVE);
+            active++;
+            return true;
+        }
+        enqueue(brain);
+        return false;
+    }
+    /** Gives up the slot or the place in the queue; the slot goes to the NPC that has waited longest. */
+    void vacate(CombatBrain brain) {
+        if (brain.slot() == CombatBrain.Slot.WAITING) waiting.remove(brain);
+        if (brain.slot() == CombatBrain.Slot.ACTIVE) active--;
+        brain.slot(CombatBrain.Slot.NONE);
+        grant();
+    }
+    /** An NPC that only scans hands its slot to the longest waiting NPC and queues again behind the others. */
+    void yieldTurn(CombatBrain brain) {
+        if (brain.slot() != CombatBrain.Slot.ACTIVE || waiting.isEmpty()) return;
+        active--;
+        brain.slot(CombatBrain.Slot.NONE);
+        enqueue(brain);
+        grant();
+    }
+    private void enqueue(CombatBrain brain) {
+        brain.slot(CombatBrain.Slot.WAITING);
+        waiting.addLast(brain);
+        peakWaiting = Math.max(peakWaiting, waiting.size());
+        if (pressure) return;
+        pressure = true;
+        diagnostics.accept("Combat capacity reached: " + budgets.maximumNpcs() + " NPCs fight or scan at once ([combat] maximumNpcs); "
+                + waiting.size() + " more wait their turn. See /animus combat status");
+    }
+    private void grant() {
+        while (active < budgets.maximumNpcs() && !waiting.isEmpty()) {
+            CombatBrain next = waiting.pollFirst();
+            next.slot(CombatBrain.Slot.NONE);
+            if (next.retired()) continue;
+            next.slot(CombatBrain.Slot.ACTIVE);
+            active++;
+            wake(next);
+        }
+        if (pressure && waiting.isEmpty() && active < budgets.maximumNpcs()) {
+            pressure = false;
+            diagnostics.accept("Combat capacity free: no NPC waits for a combat slot (at most " + peakWaiting + " waited)");
+        }
+    }
+
     void requestDeletion(UUID npc) { if (!deletions.contains(npc)) deletions.add(npc); }
 
     /** NPCs that died with {@code deleteOnDeath} since the last call. Each death is returned once. */
@@ -583,6 +657,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         fights.clear();
         chats.clear();
         schedule.clear();
+        waiting.clear();
+        active = 0;
     }
 
     /** Whether the line from a shooter to a target crosses this body. */

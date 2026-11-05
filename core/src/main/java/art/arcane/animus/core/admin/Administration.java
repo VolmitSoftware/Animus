@@ -83,7 +83,7 @@ public final class Administration {
             }
             case "import" -> {
                 if (args.length >= 2 && args[1].equalsIgnoreCase("citizens"))
-                    yield new CitizensDropIn(runtime.documents(), runtime.npcs(), runtime.importHost()).execute(Arrays.copyOfRange(args, 2, args.length));
+                    yield new CitizensDropIn(runtime.documents(), runtime.npcs(), runtime.importHost()).combatLimit(runtime.combatBudgets().maximumNpcs()).execute(Arrays.copyOfRange(args, 2, args.length));
                 if (args.length < 3) throw new IOException("import citizens [apply|review|accept|rollback] | import preview <inbox-file.yml> [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");
                 CitizensImporter importer = new CitizensImporter();
                 if (args[1].equals("preview")) {

@@ -175,9 +175,9 @@ Plugin settings are TOML and need a restart:
 ```toml
 [combat]
 enabled = true
-maximumNpcs = 64
-brainsPerTick = 16
-targetScansPerTick = 4
+maximumNpcs = 256
+brainsPerTick = 48
+targetScansPerTick = 8
 scanCandidates = 32
 scanCells = 32
 squadAlertsPerTick = 8
@@ -191,6 +191,8 @@ eventsPerTick = 8
 maximumScanRange = 100
 maximumSpeed = 8
 ```
+
+Every NPC with accepted combat is a combatant, however many there are (up to 10,000). `maximumNpcs` (1–4096) is how many of them fight or scan at once. A guard with nothing to fight and no player within its scan range plus 16 blocks sleeps: it does not scan and holds no slot, and it checks again every `idleSleepTicks`. When every slot is taken, guards that want one wait in line and get the next free slot in the order they asked; a guard that only scans gives its slot to the next one in line after each scan, while a guard that fights keeps it until the fight ends. The console says once when guards start waiting and once when a slot is free again, and `/animus combat status` shows `fighting-or-scanning=<used>/<maximumNpcs>`, `waiting`, `sleeping` and `peak-waiting`. `/animus import citizens review` and `accept` say when more guards are accepted than may fight at once.
 
 Each tick wakes at most `brainsPerTick` NPCs and runs at most `targetScansPerTick` target scans, each looking at no more than `scanCandidates` entities and `scanCells` chunks of the NPC index. An NPC that finds nothing doubles its wait between scans up to `idleSleepTicks`; damage, an alert or an operation wakes it at once. Scans read loaded chunks only and never load terrain. Discovering newly enabled NPCs reads at most 64 definitions per tick after a definition change.
 

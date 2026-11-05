@@ -3,6 +3,8 @@ package art.arcane.animus.core.config;
 /**
  * Plugin-wide combat work limits, read from TOML. Requires restart.
  *
+ * @param maximumNpcs      combat NPCs that fight or scan at once; every combat NPC registers, idle ones with no player near
+ *                         sleep without a slot and the rest wait their turn
  * @param eventsPerTick    fights and chat messages examined per tick for fight and chat rules
  * @param maximumScanRange the most any NPC's {@code scanRange} is allowed to reach, in blocks
  * @param maximumSpeed     the fastest any NPC's {@code pursuit.speed} is allowed to move, in blocks per second
@@ -10,10 +12,10 @@ package art.arcane.animus.core.config;
 public record CombatBudgets(boolean enabled, int maximumNpcs, int brainsPerTick, int targetScansPerTick, int scanCandidates, int scanCells,
                             int squadAlertsPerTick, int pathRequestsPerTick, int maximumHelpers, int helpersPerNpc,
                             int helperUpdatesPerTick, int helperLifetimeTicks, int idleSleepTicks, int eventsPerTick, int maximumScanRange, int maximumSpeed) {
-    public static final CombatBudgets DEFAULT = new CombatBudgets(true, 64, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
+    public static final CombatBudgets DEFAULT = new CombatBudgets(true, 256, 48, 8, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
 
     public CombatBudgets {
-        require("maximumNpcs", maximumNpcs, 1, 128);
+        require("maximumNpcs", maximumNpcs, 1, 4096);
         require("brainsPerTick", brainsPerTick, 1, 128);
         require("targetScansPerTick", targetScansPerTick, 1, 64);
         require("scanCandidates", scanCandidates, 1, 256);

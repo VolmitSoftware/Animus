@@ -40,7 +40,7 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
    | --- | --- |
    | `spawn` | Spawns every NPC Citizens had spawned. NPCs that were despawned in Citizens stay despawned. Look-close and text start with the NPC. |
    | `patrols` | Turns on the routes made from Citizens waypoints. |
-   | `combat` | Turns on the Sentinel settings converted to `animus:combat`. See [combat](combat.md). |
+   | `combat` | Turns on the Sentinel settings converted to `animus:combat`. Every guard becomes a combatant; at most `[combat] maximumNpcs` fight or scan at once and guards with no player near sleep, and `review` and `accept` say when more guards are accepted than that. See [combat](combat.md#work-limits). |
    | `riding` | Turns on riding for NPCs that had the `controllable` trait. |
    | `shops` | Lets dtlTraders NPCs open their shop on right click. |
    | `builder` | Lets Builder sections run with `/animus build start <npc-id>`. Builds never start on their own. |

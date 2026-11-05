@@ -55,6 +55,8 @@ public final class CombatModule implements AutoCloseable {
     private Map<UUID, Candidate> nextCandidates = new HashMap<>();
     private Map<String, NpcDefinition> observed;
     private Iterator<NpcDefinition> pass;
+    /** Combat NPCs left out because {@link CombatEngine#MAXIMUM_REGISTERED} are registered; logged once per shortage. */
+    private int refused;
 
     /**
      * @param unavailable why the module cannot run here, or null to start the engine when config and runtime allow it; with a
@@ -81,7 +83,7 @@ public final class CombatModule implements AutoCloseable {
 
     public String status() {
         return engine == null ? " | module " + unavailable
-                : " | module npcs=" + engine.size() + " | helpers=" + engine.helperCount()
+                : " | module npcs=" + engine.size() + " | " + engine.capacity() + (refused > 0 ? " | not-registered=" + refused : "") + " | helpers=" + engine.helperCount()
                 + " | protection-denials=" + protection.denials() + " | protection-failures=" + protection.failures()
                 + " | dropped-events=" + engine.droppedEvents() + " | region-unavailable=" + engine.regionUnavailable() + " | deleted-on-death=" + deletedOnDeath.get();
     }
@@ -223,12 +225,20 @@ public final class CombatModule implements AutoCloseable {
             if (living.combatant(entry.getKey()).isEmpty()) retired.add(entry.getKey());
         }
         retired.forEach(engine::unregister);
-        int activations = 0;
+        int activations = 0, left = 0;
         for (Map.Entry<UUID, Candidate> entry : candidates.entrySet()) {
             if (activations >= ACTIVATIONS_PER_TICK) break;
             if (retired.contains(entry.getKey())) continue;
             if (engine.status(entry.getKey()).isEmpty()) activations++;
-            if (!engine.register(entry.getKey(), entry.getValue().id(), entry.getValue().settings(), entry.getValue().loadout())) break;
+            if (!engine.register(entry.getKey(), entry.getValue().id(), entry.getValue().settings(), entry.getValue().loadout())) {
+                left = candidates.size() - engine.size();
+                break;
+            }
+        }
+        if (activations == 0 || left > 0) {
+            if (left > 0 && refused == 0) warnings.accept("Combat registers at most " + CombatEngine.MAXIMUM_REGISTERED + " NPCs; " + left + " combat NPCs are not combatants");
+            if (left == 0 && refused > 0) warnings.accept("Combat registers every combat NPC again");
+            refused = left;
         }
     }
 

@@ -27,6 +27,8 @@ public interface CombatWorld {
     Optional<CombatTarget> real(TargetRef ref);
     /** At most limit attackable real entities within the radius, from loaded chunks only. */
     List<CombatTarget> nearbyReal(WorldPosition center, double radius, int limit);
+    /** Whether an online player stands within the radius. Guards with no player near sleep; the default keeps them awake. */
+    default boolean playersNear(WorldPosition center, double radius) { return true; }
     SpatialNpcIndex.Scan nearbyNpcs(WorldPosition center, double radius, SpatialNpcIndex.Cursor cursor, SpatialNpcIndex.Budget budget);
     Visibility lineOfSight(String world, Vec3 from, Vec3 to);
 
