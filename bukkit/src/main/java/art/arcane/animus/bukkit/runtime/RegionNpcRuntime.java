@@ -20,6 +20,7 @@ import art.arcane.animus.core.runtime.SkinDocuments;
 import art.arcane.animus.core.runtime.ViewerPreviews;
 
 import art.arcane.animus.bukkit.folia.FoliaRegions;
+import art.arcane.animus.bukkit.navigation.BukkitDoors;
 import art.arcane.animus.bukkit.navigation.BukkitNavigationBridge;
 import art.arcane.animus.bukkit.navigation.TerrainChanges;
 import art.arcane.animus.core.navigation.BlockPos;
@@ -100,6 +101,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     /** The tables of config.toml a hotload may replace here. */
     record Live(PersistedNpcService.Settings npcs, NavigationSettings navigation, RigSettings rigs) {}
     final FoliaRegions regions;
+    /** Doors change on the region that owns their chunk; a door left behind in another region is closed by its owner. */
+    final BukkitDoors doors;
     final RegionBudget budget;
     private final RegionPickup<Live> live;
     private final AutoCloseable settingsSubscription;
@@ -159,6 +162,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         this.plugin = Objects.requireNonNull(plugin); this.runtime = Objects.requireNonNull(runtime);
         failures = new RuntimeFailures(plugin.getLogger()::warning);
         this.io = Objects.requireNonNull(io); this.regions = Objects.requireNonNull(regions);
+        doors = BukkitDoors.bind(plugin, runtime, new BukkitDoors.Owners() {
+            @Override public boolean owns(World world, int chunkX, int chunkZ) { return regions.owns(world, chunkX, chunkZ, chunkX, chunkZ); }
+            @Override public void run(World world, int chunkX, int chunkZ, Runnable work) { regions.execute(new ChunkPosition(world.getUID().toString(), chunkX, chunkZ), work); }
+        });
         previews = new ViewerPreviews(io, runtime.documents());
         Live initial = new Live(Objects.requireNonNull(settings),
                 runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT,
@@ -454,6 +461,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         return actor != null && actor.stopNavigation();
     }
     @Override public void lookAt(String id, WorldPosition target) { navigable(id).lookAt(Objects.requireNonNull(target)); }
+    @Override public void pose(String id, String pose) { navigable(id).pose(Objects.requireNonNull(pose)); }
     @Override public void followRoute(String id, String route) { navigable(id).followRoute(route); }
     @Override public CompletableFuture<Void> awaitRoute(String id) { return navigable(id).awaitRoute(); }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) { navigable(id).setAppearance(name, skin, reset); }

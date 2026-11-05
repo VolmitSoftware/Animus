@@ -30,6 +30,11 @@ class CombatSettingsTest {
         assertFalse(settings.ranged().enabled());
         assertTrue(settings.melee().enabled());
         assertEquals(CombatSettings.LineOfSight.REQUIRED, settings.targeting().lineOfSight());
+        assertFalse(settings.targetableByMobs());
+    }
+    @Test void mobsTargetTheNpcOnlyWhenItOptsIn() {
+        assertTrue(CombatSettings.parseModule(module("{\"enabled\":true,\"targetableByMobs\":true}")).targetableByMobs());
+        assertField("{\"targetableByMobs\":\"yes\"}", "$.modules.animus:combat.targetableByMobs");
     }
     @Test void aFullDocumentParses() {
         CombatSettings settings = CombatSettings.parseModule(module("""

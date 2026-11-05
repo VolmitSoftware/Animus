@@ -26,10 +26,10 @@ class MovementSettingsTest {
 
     @Test void everyFieldParses() {
         MovementSettings movement = MovementSettings.parse(definition("""
-                {"speed":1.5,"avoidWater":false,"fly":true,"stepHeight":1,"maximumFall":1,"pathRange":60,"arrivalMargin":0.5,
+                {"speed":1.5,"avoidWater":false,"fly":true,"openDoors":true,"stepHeight":1,"maximumFall":1,"pathRange":60,"arrivalMargin":0.5,
                  "stuck":{"afterTicks":120,"teleport":true}}
                 """));
-        assertEquals(new MovementSettings(OptionalDouble.of(1.5), false, true, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.of(60), OptionalDouble.of(0.5),
+        assertEquals(new MovementSettings(OptionalDouble.of(1.5), false, true, true, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.of(60), OptionalDouble.of(0.5),
                 Optional.of(new MovementSettings.Stuck(120, true))), movement);
     }
 
@@ -40,15 +40,18 @@ class MovementSettingsTest {
     }
 
     @Test void theRouteProfileTakesStepFallAndWater() {
-        MovementSettings movement = new MovementSettings(OptionalDouble.empty(), false, false, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.empty(),
+        MovementSettings movement = new MovementSettings(OptionalDouble.empty(), false, false, false, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.empty(),
                 OptionalDouble.empty(), Optional.empty());
         MovementProfile profile = movement.apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
         assertEquals(Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM), profile.modes());
         assertEquals(1, profile.stepHeight());
         assertEquals(1, profile.maximumFall());
-        MovementProfile flying = new MovementSettings(OptionalDouble.empty(), true, true, OptionalDouble.empty(), OptionalInt.empty(), OptionalDouble.empty(),
+        MovementProfile flying = new MovementSettings(OptionalDouble.empty(), true, true, true, OptionalDouble.empty(), OptionalInt.empty(), OptionalDouble.empty(),
                 OptionalDouble.empty(), Optional.empty()).apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
         assertEquals(Set.of(MovementProfile.Mode.FLY), flying.modes());
+        assertFalse(flying.opensDoors(), "only walking bodies open doors");
+        assertFalse(profile.opensDoors());
+        assertTrue(MovementSettings.parse(definition("{\"openDoors\":true}")).apply(profile, "minecraft:player").opensDoors());
         assertEquals(profile, MovementSettings.DEFAULT.apply(profile, "minecraft:player"));
     }
 
@@ -70,5 +73,25 @@ class MovementSettingsTest {
         assertFalse(MovementSettings.falls("minecraft:player", floating));
         assertTrue(MovementSettings.falls("minecraft:player", definition(null)));
         assertFalse(MovementSettings.routeDeclaresSpeed(JsonParser.parseString("{\"modules\":{\"animus:navigation\":{\"points\":[]}}}").getAsJsonObject()));
+    }
+
+    @Test void aWalkingRouteThatMayEnterWaterSwimsAcrossAPondAndWalksOnLand() {
+        VoxelSnapshot.Builder builder = new VoxelSnapshot.Builder("world", 0, 0, 0, 10, 8, 7).fill(VoxelSnapshot.Cell.AIR).availableChunk(0, 0);
+        for (int x = 0; x < 10; x++) for (int y = 0; y < 8; y++) for (int z = 0; z < 7; z++)
+            if (x == 0 || x == 9 || z == 0 || z == 6 || y == 0 || y == 7) builder.set(x, y, z, VoxelSnapshot.Cell.SOLID);
+        for (int z = 1; z <= 5; z++) {
+            for (int y = 1; y <= 3; y++) { builder.set(1, y, z, VoxelSnapshot.Cell.SOLID); builder.set(7, y, z, VoxelSnapshot.Cell.SOLID); builder.set(8, y, z, VoxelSnapshot.Cell.SOLID); }
+            for (int x = 2; x <= 6; x++) { builder.set(x, 1, z, VoxelSnapshot.Cell.SOLID); builder.set(x, 2, z, VoxelSnapshot.Cell.WATER); builder.set(x, 3, z, VoxelSnapshot.Cell.WATER); }
+        }
+        VoxelSnapshot pond = builder.build();
+        MovementProfile walk = BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK);
+        PathPlanner.Limits limits = new PathPlanner.Limits(5000, 5000, 500);
+        BlockPos from = new BlockPos(1, 4, 3), to = new BlockPos(8, 4, 3);
+        assertEquals(PathPlanner.Status.UNREACHABLE, new PathPlanner().plan(pond, from, to, MovementSettings.DEFAULT.apply(walk, "minecraft:player"), limits, () -> false).status());
+        MovementProfile wading = MovementSettings.parse(definition("{\"avoidWater\":false}")).apply(walk, "minecraft:player");
+        PathPlanner.Result crossed = new PathPlanner().plan(pond, from, to, wading, limits, () -> false);
+        assertEquals(PathPlanner.Status.FOUND, crossed.status());
+        assertTrue(crossed.path().stream().anyMatch(PathPlanner.Step::swimming), "it swims the water");
+        assertFalse(crossed.path().getFirst().swimming() || crossed.path().getLast().swimming(), "and walks the banks");
     }
 }

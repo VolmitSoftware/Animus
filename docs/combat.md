@@ -110,7 +110,7 @@ With `useAmmo`, each shot uses one matching item counted from the definition's s
 | NPC | Player or mob | Bukkit damage with a damage location and no causing entity. `VirtualNpcDamageEvent` can cancel or change it first. |
 | NPC | NPC | Authoritative virtual damage. |
 | Player | NPC | A hit that passed the runtime's reach, line-of-sight and rate checks. The amount is the player's attack damage attribute scaled by attack charge, like vanilla. Enchantments and potions are not added. |
-| Controlled zombie | NPC | The existing `/animus target` adapter, now subject to the NPC's defense. |
+| Controlled mob | NPC | The `/animus target` adapter, or a mob drawn by `targetableByMobs`, subject to the NPC's defense. Zombies, husks, drowned, zombie villagers and vindicators. |
 | Projectile from an NPC | Player or mob | The projectile's own effect is cancelled and the hit is applied once through the combat module. |
 | Projectile from an NPC | NPC | Projectiles pass through virtual bodies, so each flight segment is tested against nearby NPC bounds. |
 
@@ -206,6 +206,6 @@ Fights and chat messages wait in a queue of 64 and at most `eventsPerTick` (1–
 - Lightning, ender pearls, shulker bullets, evoker fangs and gun plugins are not weapons. Item display names, lore and whole-inventory contents are not target rules.
 - Greetings and target rules see only what one scan saw: at most `scanCandidates` entities, and idle NPCs scan less often.
 - Player damage against NPCs ignores enchantments, potions and critical hits.
-- Real mobs do not fight NPCs on their own; only the ordinary-zombie adapter makes a mob attack one.
+- Real mobs fight an NPC only through mob control: the `/animus target` adapter, or `targetableByMobs`. With `"targetableByMobs": true` in the module, every second the NPC draws up to 3 zombies, husks, drowned, zombie villagers or vindicators within 16 blocks that have no target of their own and can see it. Each walks to the NPC and attacks with its own attack damage every second for up to 10 seconds, then gets its own goals, path and target back. Brain-driven and ranged mobs (piglins, skeletons) are not drawn. Paper and Spigot only: on Folia and mod servers real mobs cannot be driven, and the setting does nothing. Citizens' `targetable: true` converts to it.
 
 Settings imported from Sentinel are described in [compatibility.md](compatibility.md#sentinel-settings).

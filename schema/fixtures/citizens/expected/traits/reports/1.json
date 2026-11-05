@@ -1,8 +1,6 @@
 {
   "citizensId": 1,
-  "presentationWarnings": [
-    "/traits/poses: default pose wave sets the facing; other named poses are kept for review"
-  ],
+  "presentationWarnings": [],
   "runtimeWarnings": [
     "/traits/waypoints/linear: 2 points in another world or without usable coordinates were left out"
   ],
@@ -33,8 +31,8 @@
     "/traits/hologramtrait/viewRange": "CONVERTED",
     "/traits/metadata/nameplate-visible": "UNSUPPORTED_PRESERVED",
     "/traits/poses/defaultPose": "CONVERTED",
-    "/traits/poses/list/0": "UNSUPPORTED_PRESERVED",
-    "/traits/poses/list/1": "UNSUPPORTED_PRESERVED",
+    "/traits/poses/list/0": "CONVERTED",
+    "/traits/poses/list/1": "CONVERTED",
     "/traits/text/text/0": "CONVERTED",
     "/traits/text/text/1": "CONVERTED",
     "/traits/text/talk-close": "CONVERTED",
@@ -73,8 +71,6 @@
     "/traits/hologramtrait/lines/0/marginbottom": "line setting marginbottom has no hologram equivalent",
     "/traits/hologramtrait/lines/notaline": "not converted; check it in citizens:review",
     "/traits/metadata/nameplate-visible": "trait metadata has no Animus equivalent; kept in citizens:review",
-    "/traits/poses/list/0": "named poses are used by Citizens pose commands; Animus has no named poses, only the default facing",
-    "/traits/poses/list/1": "named poses are used by Citizens pose commands; Animus has no named poses, only the default facing",
     "/traits/waypoints/linear/points/0/location/world": "not converted; check it in citizens:review",
     "/traits/waypoints/linear/points/0/location/worldid": "not converted; check it in citizens:review",
     "/traits/waypoints/linear/points/0/location/x": "not converted; check it in citizens:review",
