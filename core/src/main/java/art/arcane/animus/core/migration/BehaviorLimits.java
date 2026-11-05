@@ -10,11 +10,14 @@ import java.util.Optional;
 
 /**
  * The size limits of {@link BehaviorCompiler} checked on a generated document, so a converter can keep a container
- * that would not compile instead of writing it. Counts nodes and depth the way the compiler does: an omitted
- * {@code else} counts as an empty sequence. The browser converter has a line-for-line copy.
+ * that would not compile instead of writing it. Counts nodes and depth the way the compiler does: every node counts,
+ * an omitted {@code else} counts as an empty sequence, and the bodies of {@code repeat}, {@code foreach} and
+ * {@code while} nest one level. The browser converter has a line-for-line copy.
  */
 final class BehaviorLimits {
     static final int ROUTINES = BehaviorCompiler.MAX_ROUTINES, TRIGGERS = TriggerCompiler.MAX_TRIGGERS;
+    /** The compiler's variable limit for the value-typed language. */
+    static final int VARIABLES = 128;
 
     private BehaviorLimits() {}
 
@@ -23,6 +26,7 @@ final class BehaviorLimits {
         JsonObject routines = document.getAsJsonObject("routines");
         if (routines.size() > ROUTINES) return Optional.of("has more than 32 routines");
         if (document.has("triggers") && document.getAsJsonArray("triggers").size() > TRIGGERS) return Optional.of("has more than 32 triggers");
+        if (document.has("variables") && document.getAsJsonObject("variables").size() > VARIABLES) return Optional.of("has more than " + VARIABLES + " variables");
         int[] nodes = {0};
         for (Map.Entry<String, JsonElement> routine : routines.entrySet()) {
             Optional<String> problem = node(routine.getValue().getAsJsonObject(), 0, nodes);
@@ -46,7 +50,7 @@ final class BehaviorLimits {
             if (then.isPresent()) return then;
             if (node.has("else")) return node(node.getAsJsonObject("else"), depth + 1, nodes);
             if (++nodes[0] > BehaviorCompiler.MAX_NODES) return Optional.of("has more than 2048 steps");
-        } else if (type.equals("repeat")) return node(node.getAsJsonObject("body"), depth + 1, nodes);
+        } else if (type.equals("repeat") || type.equals("foreach") || type.equals("while")) return node(node.getAsJsonObject("body"), depth + 1, nodes);
         return Optional.empty();
     }
 }
