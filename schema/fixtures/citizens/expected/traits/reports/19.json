@@ -9,6 +9,9 @@
     "/traits/type": "CONVERTED",
     "/traits/trader": "REQUIRES_INTEGRATION"
   },
+  "reasons": {
+    "/traits/trader": "dtlTraders data; convert it with the dtlTraders shop import"
+  },
   "worldRemaps": [],
   "references": [],
   "validationErrors": [

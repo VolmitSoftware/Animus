@@ -5,11 +5,11 @@ description: 'A Manager for all things NPC.'
 authors: [Volmit Software]
 api-version: '${apiVersion}'
 folia-supported: true
-softdepend: [WorldGuard, Vault, Gloss]
+softdepend: [WorldGuard, Vault, Gloss, React]
 commands:
   ${projectId}:
     description: Manages virtual NPCs, definitions and staged Citizens imports.
-    usage: '/<command> [status|list|create|select|inspect|edit|clone|delete|spawn|despawn|navigate|navigation|look|ride|attack|target|combat|build|proof|modules|behaviors|shop|gui|validate|reload|import|rollback]'
+    usage: '/<command> [status|list|create|select|inspect|edit|clone|delete|spawn|despawn|navigate|navigation|look|ride|attack|target|combat|build|proof|modules|behaviors|shop|gui|validate|reload|import|rollback|debug]'
 
 permissions:
   animus.status:
@@ -21,6 +21,12 @@ permissions:
   animus.build.donate:
     description: Donate held items to an NPC build that takes donations.
     default: true
+  animus.debug:
+    description: Read Animus network and performance diagnostics with /animus debug.
+    default: op
   animus.admin:
     description: Manage NPCs, movement, combat, builds, modules, behaviors, imports, and backups.
+    default: op
+  animus.hotload.notify:
+    description: Hear the ding and see each change when a data file is hotloaded or refused.
     default: op

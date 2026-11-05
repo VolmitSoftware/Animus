@@ -23,6 +23,24 @@ Names accept printable Unicode and spaces, up to 256 UTF-16 code units, without 
 
 Skin references identify content-hashed JSON documents in `skins/`. Reads use the bounded file worker and preserve texture/signature data. An invalid or missing live replacement retains the last valid active presentation and reports the field error. Accepted definitions also have durable recovery checkpoints: a known invalid source edit at restart retains its previous definition and reports the error without changing the edited file. Missing sources remain deleted. Referenced skin files are not included in that definition checkpoint. See [storage and recovery](storage.md).
 
+### Hand edits apply live
+
+Saving any data file applies it within about a second, without `/animus reload`: `config.toml`, NPCs (and the module settings inside them), behaviors, packs, routes, skins, shops, chest GUIs, menus, holograms, text animations, rigs, animations and schematics. Each change is checked with the same validators the editor uses. Online players with `animus.hotload.notify` (operators by default; permission level 2 on mod servers) hear a note block ding and see one line per changed key, at most 12 per file:
+
+```text
+[Animus]: Animus Hotloaded: [npcs/town/guard.json] [name] ["Guard" -> "Captain Guard"]
+```
+
+An invalid edit is refused with its field error and the server keeps the last valid version. Most `config.toml` budgets are read when a service starts; their lines end in `[restart required]`. These keys apply at once: `statusMessage`, `[hotload]`, `[shops]` `enabled`, `economy`, `priceFormat` and `messages`, and `[behaviors.actions]` `commandBehaviors`, `commandNamespaces` and `choiceLifetimeSeconds`. Animus's own writes (editor applies, imports, migrations, state) are never reported, and `state/`, `backups/`, `logs/` and `imports/` are not watched.
+
+| `[hotload]` key | Default | Meaning |
+|---|---|---|
+| `enabled` | true | Watch the data files; when false only `config.toml` is watched |
+| `sound` | true | Play the ding before each message |
+| `maximumFiles` | 20000 | Files watched at most |
+| `readsPerPoll` | 256 | Changed files read per 500 ms poll |
+| `maximumFileBytes` | 4194304 | Larger files are refused |
+
 ## Appearance, text and inventory
 
 These definition fields are optional. Every viewer sees the same result, and it comes back from the definition after a restart, a rejoin or a chunk reload. A change takes effect through `/animus edit` or a reload, which gives viewers a fresh body.
@@ -60,7 +78,11 @@ A wrong value names its exact field, for example `$.equipment.head.count: expect
 
 Equipment is sent as an equipment packet after the body appears. The [`animus:set-equipment`](behaviors.md#actions) action replaces a slot until restart or the next definition change.
 
-A player name that fits the profile (16 characters, no `&` codes) stays the normal player nameplate. Longer or coloured player names, every non-player name and all hologram lines appear in one text display that rides the body, with the hologram lines above the name. A player body whose name moved to the text display, or whose nameplate is hidden, gets a short placeholder profile name that a client-side team hides. The text display and the team exist only in packets. Text lines are evenly spaced; per-line spacing, view ranges and placeholders such as `%player%` are not interpreted.
+A player name that fits the profile (16 characters, no `&` codes) stays the normal player nameplate. Longer or coloured player names, every non-player name and all hologram lines appear in one text display that rides the body, with the hologram lines above the name. A player body whose name moved to the text display, or whose nameplate is hidden, gets a short placeholder profile name that a client-side team hides. The text display and the team exist only in packets. Text lines are evenly spaced; placeholders such as `%player%` are not interpreted.
+
+`hologram` may also set `billboard` (`center`, `fixed`, `vertical` or `horizontal`; `center` by default), `shadowed`, `seeThrough`, `viewRange` (1–512 blocks; the client hides the text farther away), `interpolationDelay` and `interpolationDuration` (0–1200 ticks), and `lineHeight` (0–4 blocks). A line may be an object `{"text": "...", "marginTop": 0.25, "marginBottom": 0}` with margins of up to 4 blocks. With a line height or any margin, each line and the name get their own display, stacked from the bottom: each line sits its bottom margin plus the line height above the one below and adds its top margin, as Citizens holograms do (0.25 blocks when only margins are set).
+
+A definition may also set `glowing` (an outline), `teamColor` (one of the sixteen chat colours; it colours the glow and the name), `baby` (the baby form of ageable, zombie, piglin and zoglin bodies), `usingItem` (the main-hand item is raised, as when blocking or drawing a bow), `listed` (a player body shows in the tab list) and `gravity: false` (the body hovers instead of falling). Each shows to every viewer from packets only.
 
 Sneaking, sleeping and swimming set the body's pose. A sitting player rides a hidden, packet-only armor stand at its position, so its body appears lower than it stands; hits are still measured against the standing body. A sitting NPC cannot also ride another NPC.
 
@@ -179,11 +201,12 @@ An NPC with this module turns toward the nearest player in range while it is spa
 
 ```json
 "modules": {
-  "animus:look-close": {"range": 10, "lineOfSight": false, "whileNavigating": false}
+  "animus:look-close": {"range": 10, "lineOfSight": false, "whileNavigating": false, "npcs": false,
+                        "randomLook": {"enabled": true, "delayTicks": 60, "yaw": [0, 360], "pitch": [-8, 8]}}
 }
 ```
 
-`enabled` is true when the object is present. `range` is 1–64 blocks, default 10. With `lineOfSight` the player must be visible from the NPC's eye through non-collidable blocks. With `whileNavigating` the NPC also looks while planning or moving along a route; it always looks while it waits at a point. It turns its yaw and pitch toward the player's eyes as `/animus look` does, prefers players who already see it, and keeps its facing when nobody is in range. An NPC that rides another NPC or carries a player does not look. Each NPC looks again at most every 5 ticks and a bounded number look per tick. The module never edits the definition, loads no chunks, and needs no `reviewAccepted` on imported definitions. `animus:look` still turns the NPC; look-close turns it back on its next look. On Folia only players held by the NPC's region count, a player within view distance counts as seeing it, and a sight line must stay within that region.
+`enabled` is true when the object is present. `range` is 1–64 blocks, default 10. With `lineOfSight` the player must be visible from the NPC's eye through non-collidable blocks. With `whileNavigating` the NPC also looks while planning or moving along a route; it always looks while it waits at a point. It turns its yaw and pitch toward the player's eyes as `/animus look` does, prefers players who already see it, and keeps its facing when nobody is in range. With `npcs` it then looks at the nearest other NPC in range. With `randomLook` enabled, an NPC that has nobody to look at turns to a random yaw and pitch from its ranges every `delayTicks` (1–12000). An NPC that rides another NPC or carries a player does not look. Each NPC looks again at most every 5 ticks and a bounded number look per tick. The module never edits the definition, loads no chunks, and needs no `reviewAccepted` on imported definitions. `animus:look` still turns the NPC; look-close turns it back on its next look. On Folia only players held by the NPC's region count, a player within view distance counts as seeing it, and a sight line must stay within that region.
 
 ## Mounted NPCs
 
@@ -323,3 +346,14 @@ The only controlled vanilla type is currently an ordinary zombie. Its temporary 
 Imported combat remains disabled. If `modules["animus:combat"]` is present, both `enabled` and `reviewAccepted` must be literal JSON `true`; strings are rejected by policy. Accepting these flags permits the manual bridge and also starts the combat module with the imported settings. Protection decisions, including WorldGuard, come from the combat module's protection adapter.
 
 This adapter is separate from the [combat module](combat.md), which handles target rules, squads, guarding, arrows, armor, drops, respawn, NPC-versus-NPC combat and WorldGuard protection. The manual hit asks the same protection adapter; the zombie adapter's hits also respect the NPC's combat defense. Real damage and mob pursuit still require graphical and wider gameplay validation.
+
+## NPC movement
+
+A definition's `movement` object applies wherever the NPC walks a route:
+
+```json
+"movement": {"speed": 1.29, "avoidWater": false, "fly": false, "stepHeight": 1, "maximumFall": 1, "pathRange": 60,
+             "arrivalMargin": 0.5, "stuck": {"afterTicks": 120, "teleport": true}}
+```
+
+`speed` (1–5 blocks per second) is used by a route that sets no speed of its own. `avoidWater: false` lets a walking route cross water at the surface; `fly` makes routes fly. `stepHeight` (0–1.5) and `maximumFall` (0–16) replace the body's own climb and drop. Each plan reaches at most `pathRange` (1–256 blocks); a longer leg is walked in segments of that reach. A point within `arrivalMargin` (0–4 blocks) counts as reached. With `stuck`, a waypoint leg that has not moved closer for `afterTicks` (1–12000), or cannot be planned, either teleports the NPC to its point and goes on (`teleport: true`, Citizens' default stuck action) or ends as before. Every field is optional; without `movement` routes behave as they always have.

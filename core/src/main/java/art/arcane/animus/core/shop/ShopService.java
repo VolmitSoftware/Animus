@@ -44,11 +44,12 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     private final Executor files;
     private final Function<String, Optional<UUID>> playerNamed;
     private final Consumer<String> log;
-    private final ShopSettings settings;
+    private volatile ShopSettings settings;
     private final Path data;
     private final ScreenManager<P, S> screens;
     private final ShopStateStore store;
-    private final ShopScreen.Context<S> context;
+    private volatile ShopScreen.Context<S> context;
+    private final AutoCloseable settingsListener;
     private volatile ShopCatalog catalog = ShopCatalog.EMPTY;
     private volatile Map<String, NpcDefinition> bindingsSource;
     private volatile Map<UUID, ShopBinding> bindings = Map.of();
@@ -69,9 +70,30 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         settings = runtime.shopSettings();
         data = runtime.documents().resolve(ShopCatalog.SHOP_FOLDER).getParent();
         store = new ShopStateStore(data.resolve("state/shops"), data.resolve("logs/shops"), settings.flushMillis(), log);
-        ShopTransactions<S> transactions = new ShopTransactions<>(host.items(), economy(settings, host.economy()), store.ledger(), Instant::now);
-        context = new ShopScreen.Context<>(settings, transactions, Optional.of(store), Instant::now);
+        context = context(settings);
         screens = new ScreenManager<>(host, (UUID npc) -> living.active(npc).isPresent(), log);
+        settingsListener = runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> applySettings(next.shops()));
+    }
+
+    /**
+     * A hotload of {@code [shops]}: messages, price format, economy and the on/off switch apply to the next window and
+     * trade. {@code flushMillis} is read once when the counters open.
+     */
+    private void applySettings(ShopSettings next) {
+        if (closed) return;
+        settings = next;
+        context = context(next);
+    }
+
+    private ShopScreen.Context<S> context(ShopSettings active) {
+        ShopTransactions<S> transactions = new ShopTransactions<>(host.items(), economy(active, host.economy()), store.ledger(), Instant::now);
+        return new ShopScreen.Context<>(active, transactions, Optional.of(store), Instant::now);
+    }
+
+    /** Re-renders every open shop and chest GUI window on its viewer's owner, after a hotload changed what they show. */
+    public void refreshOpen() {
+        for (UUID viewer : screens.viewing())
+            living.players().deliver(viewer, (P player) -> screens.viewer(viewer).ifPresent((ScreenManager<P, S>.Viewer open) -> open.refresh()));
     }
 
     /** The money provider shops and GUI economy actions use, after {@code [shops] economy}. */
@@ -104,6 +126,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
                     log.accept("Shop and GUI catalog could not be read: " + failure.getMessage());
                     next = new ShopCatalog(catalog.guis(), catalog.shops(), List.of("catalog: " + failure.getMessage()));
                 }
+                next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
                 catalog = next;
                 next.problems().stream().limit(40).forEach((String problem) -> log.accept("Shop or GUI refused: " + problem));
                 done.accept(next);
@@ -269,6 +292,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     @Override public void close() {
         if (closed) return;
         closed = true;
+        try { settingsListener.close(); } catch (Exception ignored) { /* Removing a listener cannot fail. */ }
         screens.clear();
         store.close();
     }

@@ -98,7 +98,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private final BehaviorPlatform platform;
     private final BehaviorState state;
     private final Object advances = new Object();
-    private final BuiltinActionSettings settings;
+    private volatile BuiltinActionSettings settings;
     private final Consumer<String> log;
     private final IntUnaryOperator randomBelow;
     private final OwnerActionQueue queue;
@@ -189,6 +189,12 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     public boolean commandAllowed(String behavior) { return settings.commandAllowed(behavior); }
+
+    /**
+     * A hotload of {@code [behaviors.actions]}: the command allow-lists and the default choice lifetime apply to the next
+     * action. The queue, wait and choice budgets were sized when the actions started and stay until a restart.
+     */
+    public void settings(BuiltinActionSettings next) { settings = Objects.requireNonNull(next); }
 
     /**
      * Owner only. Handles a click from the client. Forged, stale, foreign and out-of-range clicks are rejected,

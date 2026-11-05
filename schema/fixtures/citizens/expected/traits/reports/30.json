@@ -1,10 +1,8 @@
 {
   "citizensId": 30,
   "presentationWarnings": [
-    "/traits/equipment/hand: item data beyond id, count and damage kept in imported; it is not shown",
-    "/traits/hologramtrait/lines/0: shortened to 256 characters",
-    "/traits/hologramtrait/lines/1: line has no text; kept for review",
-    "/traits/hologramtrait: line margins, line height, view ranges and renderer settings are kept for review; lines use uniform spacing"
+    "/traits/hologramtrait/lines/0: shortened to 256 characters; shorten the line in the editor",
+    "/traits/hologramtrait/lines/1: the line has no text and was left out; add it in the editor if it is needed"
   ],
   "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
@@ -22,6 +20,11 @@
     "/traits/equipment/hand/type": "CONVERTED",
     "/traits/equipment/hand/lore/0": "REQUIRES_REVIEW",
     "/traits/equipment/hand/lore/1": "REQUIRES_REVIEW"
+  },
+  "reasons": {
+    "/traits/hologramtrait/lines/1/nottext": "line setting nottext has no hologram equivalent",
+    "/traits/equipment/hand/lore/0": "item field lore has no item component here; kept in the item's imported data",
+    "/traits/equipment/hand/lore/1": "item field lore has no item component here; kept in the item's imported data"
   },
   "worldRemaps": [],
   "references": [],

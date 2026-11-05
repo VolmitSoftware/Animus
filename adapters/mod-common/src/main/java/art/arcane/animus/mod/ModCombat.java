@@ -77,6 +77,8 @@ final class ModCombat implements AutoCloseable {
     CombatGuarding hireGuarding() { return new CombatGuarding(module); }
 
     void tick() { module.tick(); }
+    int waiting() { return module.waiting(); }
+    int load() { return module.load(); }
 
     /** One administrator-requested hit, revalidated like any NPC attack. */
     private String attack(String id, UUID targetId, double amount) {

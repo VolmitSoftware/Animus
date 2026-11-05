@@ -1,15 +1,13 @@
 {
   "citizensId": 32,
-  "presentationWarnings": [
-    "/traits/skintrait: skins show only on player bodies; kept for review"
-  ],
+  "presentationWarnings": [],
   "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",
     "/uuid": "CONVERTED",
     "/traits/type": "CONVERTED",
-    "/traits/spawned": "REQUIRES_REVIEW",
+    "/traits/spawned": "CONVERTED",
     "/traits/location/world": "CONVERTED",
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
@@ -18,6 +16,12 @@
     "/traits/skintrait/signature": "UNSUPPORTED_PRESERVED",
     "/traits/skintrait/textureRaw": "UNSUPPORTED_PRESERVED",
     "/traits/skintrait/updateSkins": "UNSUPPORTED_PRESERVED"
+  },
+  "reasons": {
+    "/traits/skintrait/skinName": "skins show only on player bodies; this one is kept for when the NPC becomes a player",
+    "/traits/skintrait/signature": "skins show only on player bodies; this one is kept for when the NPC becomes a player",
+    "/traits/skintrait/textureRaw": "skins show only on player bodies; this one is kept for when the NPC becomes a player",
+    "/traits/skintrait/updateSkins": "skins show only on player bodies; this one is kept for when the NPC becomes a player"
   },
   "worldRemaps": [
     {

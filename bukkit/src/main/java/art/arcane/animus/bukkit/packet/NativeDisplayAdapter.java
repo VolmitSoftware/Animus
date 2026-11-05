@@ -1,5 +1,8 @@
 package art.arcane.animus.bukkit.packet;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Load;
+import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.bukkit.gui.BukkitScreens;
 import art.arcane.animus.core.text.RichText;
@@ -44,6 +47,7 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
     private final ConcurrentMap<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final String handlerName = "animus_display_" + UUID.randomUUID().toString().replace("-", "");
     private final AtomicBoolean reportedFailure = new AtomicBoolean();
+    private final AnimusMetrics metrics = AnimusMetrics.current();
     private volatile boolean closed;
 
     private NativeDisplayAdapter(Plugin plugin, String version, BiPredicate<Player, Runnable> owner) throws ReflectiveOperationException {
@@ -75,7 +79,7 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         Channel channel;
         try { channel = api.channel(viewer); }
         catch (ReflectiveOperationException | RuntimeException failure) { report(failure); return; }
-        Session session = new Session(viewer, channel, clicks);
+        Session session = new Session(viewer, channel, clicks, metrics.viewer(viewer.getUniqueId(), viewer.getName()));
         Session previous = sessions.put(viewer.getUniqueId(), session);
         if (previous != null) retire(previous, true);
         try {
@@ -158,6 +162,7 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
             session.channel.eventLoop().execute(() -> {
                 session.pending.decrementAndGet();
                 if (!session.active.get() || !session.channel.isActive()) return;
+                metrics.sent(session.traffic, null, PacketKind.HOLOGRAM, packets.size());
                 for (Object packet : packets) session.channel.write(packet);
                 session.channel.flush();
             });
@@ -172,7 +177,7 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         try {
             session.channel.eventLoop().execute(() -> {
                 if (despawn && ids.length > 0 && session.channel.isActive()) {
-                    try { session.channel.writeAndFlush(api.removeEntities.newInstance((Object) ids)); }
+                    try { session.channel.writeAndFlush(api.removeEntities.newInstance((Object) ids)); metrics.sent(session.traffic, null, PacketKind.HOLOGRAM, 1); }
                     catch (ReflectiveOperationException | RuntimeException failure) { report(failure); }
                 }
                 ChannelHandler handler = session.channel.pipeline().get(handlerName);
@@ -194,9 +199,10 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
         private final Set<Integer> visible = ConcurrentHashMap.newKeySet();
         private final AtomicBoolean active = new AtomicBoolean(true), clickScheduled = new AtomicBoolean();
         private final AtomicInteger pending = new AtomicInteger();
+        private final Load traffic;
         private long lastClickNanos = Long.MIN_VALUE / 2; // Accessed only by the channel event loop.
-        private Session(Player viewer, Channel channel, Consumer<Click> clicks) {
-            this.viewerId = viewer.getUniqueId(); this.viewer = viewer; this.channel = channel; this.clicks = clicks;
+        private Session(Player viewer, Channel channel, Consumer<Click> clicks, Load traffic) {
+            this.viewerId = viewer.getUniqueId(); this.viewer = viewer; this.channel = channel; this.clicks = clicks; this.traffic = traffic;
         }
     }
 
@@ -212,8 +218,9 @@ public final class NativeDisplayAdapter implements DisplayTransport<Player> {
             try {
                 if (!attack && String.valueOf(api.interactHand.invoke(message)).equals("OFF_HAND")) return;
                 long now = System.nanoTime();
-                if (now - session.lastClickNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS || !session.clickScheduled.compareAndSet(false, true)) return;
+                if (now - session.lastClickNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS || !session.clickScheduled.compareAndSet(false, true)) { metrics.inbound(session.traffic, false); return; }
                 session.lastClickNanos = now;
+                metrics.inbound(session.traffic, true);
                 Click click = new Click(entityId, attack, !attack && (boolean) api.interactSecondary.invoke(message), now);
                 try {
                     boolean accepted = owner.test(session.viewer, () -> {
