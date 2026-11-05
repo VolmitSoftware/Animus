@@ -188,6 +188,16 @@ class BehaviorSchemaAgreementTest {
         JsonObject badBehavior = JsonDocuments.object(base);
         badBehavior.getAsJsonArray("behaviors").set(0, new com.google.gson.JsonPrimitive("Not A Reference"));
         invalid.put("behavior reference", badBehavior);
+        for (String tags : List.of("[\"Guard\"]", "[\"guard\",\"guard\"]", "\"guard\"")) {
+            JsonObject badTags = JsonDocuments.object(base);
+            badTags.add("tags", JsonDocuments.object("{\"t\":" + tags + "}").get("t"));
+            invalid.put("tags " + tags, badTags);
+        }
+        JsonObject manyTags = JsonDocuments.object(base);
+        com.google.gson.JsonArray many = new com.google.gson.JsonArray();
+        for (int n = 0; n < 33; n++) many.add("t" + n);
+        manyTags.add("tags", many);
+        invalid.put("too many tags", manyTags);
         JsonObject badSkin = JsonDocuments.object(base);
         badSkin.addProperty("skin", "short");
         invalid.put("skin", badSkin);
@@ -213,6 +223,7 @@ class BehaviorSchemaAgreementTest {
         JsonObject preserved = JsonDocuments.object(base);
         preserved.add("modules", JsonDocuments.object("{\"someone:else\":{\"anything\":true}}"));
         preserved.addProperty("futureField", 1);
+        preserved.add("tags", JsonDocuments.object("{\"t\":[\"guard\",\"north_gate\"]}").get("t"));
         assertEquals(List.of(), npcs.validate(preserved));
         assertEquals(List.of(), NpcDefinition.validate(preserved));
     }
