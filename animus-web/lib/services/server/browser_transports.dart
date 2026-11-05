@@ -22,6 +22,14 @@ Future<ServerTransport> openBrowserTransport(ConnectionPath path, String url, St
   }
 }
 
+/// Calls [wake] when the browser comes back online or the tab becomes visible.
+void onBrowserWake(void Function() wake) {
+  web.window.addEventListener('online', ((web.Event _) => wake()).toJS);
+  web.document.addEventListener('visibilitychange', ((web.Event _) {
+    if (web.document.visibilityState == 'visible') wake();
+  }).toJS);
+}
+
 String _trimSlash(String url) => url.endsWith('/') ? url.substring(0, url.length - 1) : url;
 
 Duration requestTimeout = const Duration(seconds: 15);

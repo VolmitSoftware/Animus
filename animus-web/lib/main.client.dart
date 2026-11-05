@@ -24,6 +24,7 @@ Future<void> main() async {
     open: openBrowserTransport,
     schemas: SharedSchemas.embedded,
   );
+  onBrowserWake(hub.probeDirect);
   runApp(AnimusApp(store: store, hub: hub));
   web.document.getElementById('loading')?.remove();
 }
