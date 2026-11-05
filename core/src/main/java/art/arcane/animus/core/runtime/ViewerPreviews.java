@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.behavior.trigger.HiddenNpcs;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.storage.DocumentStore;
@@ -28,10 +29,13 @@ import java.util.function.Consumer;
  * NPCs they stand in for (same id or UUID) are hidden from that viewer alone. The runtime's viewer loop presents the
  * staged set through {@link PreviewBodies} on the viewer's owner. Every method here may be called from any thread.
  * <p>
+ * The hidden live NPC also stops affecting that viewer: platforms leave the viewer out of its speech, sounds and
+ * particles through {@link #hides(UUID, NpcRuntime.ActiveNpc)}, and the trigger dispatcher drops the viewer's events for it.
+ * <p>
  * Preview bodies are inert: they run no behaviors or triggers, take and deal no damage, and an interaction with one
  * reaches no listener, selection, GUI, shop or ride.
  */
-public final class ViewerPreviews implements AutoCloseable {
+public final class ViewerPreviews implements HiddenNpcs, AutoCloseable {
     /** How long a preview may wait for the viewer's owner to pick it up before it is refused. */
     public static final Duration ACCEPT_TIMEOUT = Duration.ofSeconds(10);
 
@@ -149,11 +153,14 @@ public final class ViewerPreviews implements AutoCloseable {
     public Staged staged(UUID viewer) { return byViewer.get(viewer); }
 
     /** The live NPC is replaced by a preview candidate for this viewer. Cheap enough for every visibility check. */
-    public boolean hides(UUID viewer, String id, UUID uuid) {
+    @Override public boolean hides(UUID viewer, String id, UUID uuid) {
         if (byViewer.isEmpty()) return false;
         Staged staged = byViewer.get(viewer);
         return staged != null && staged.hides(id, uuid);
     }
+
+    /** The viewer is left out of this live NPC's speech, sounds and particles while a preview of theirs stands in for it. */
+    public boolean hides(UUID viewer, NpcRuntime.ActiveNpc npc) { return hides(viewer, npc.id(), npc.state().npcId()); }
 
     public int count() { return byViewer.size(); }
 

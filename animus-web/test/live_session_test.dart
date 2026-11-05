@@ -83,6 +83,10 @@ class MiniServer {
           for (final Object? raw in (request.body! as Map<String, Object?>)['documents']! as List<Object?>)
             if ((raw! as Map<String, Object?>)['kind'] == 'npc') (raw as Map<String, Object?>)['id'],
         ],
+        'hidden': <Object?>[
+          for (final Object? raw in (request.body! as Map<String, Object?>)['documents']! as List<Object?>)
+            if ((raw! as Map<String, Object?>)['kind'] == 'npc') (raw as Map<String, Object?>)['id'],
+        ],
       });
     }
     if (request.method == 'POST' && uri.path == '/v1/changes') return _apply(request.body! as Map<String, Object?>);
@@ -226,6 +230,16 @@ void main() {
     network.lastStream.emit(<String, Object?>{'type': 'preview', 'previewId': server.previewId, 'state': 'player-left'});
     await settle();
     expect(session.preview!.state, 'player-left');
+  });
+
+  test('should report the live NPCs a running preview hides and clear them when it ends', () async {
+    await session.openDocuments(session.catalog);
+    await session.startPreview(focus: <String>{'npc:town/baker'});
+    expect(session.preview!.hidden, <String>['town/baker']);
+    expect(session.preview!.hiddenLine, 'Live NPC hidden for you while previewing: town/baker');
+    await session.endPreview();
+    expect(session.preview!.running, isFalse);
+    expect(session.preview!.hiddenLine, isNull);
   });
 
   test('should stop on a conflict, merge non-overlapping fields and apply on the server revision', () async {

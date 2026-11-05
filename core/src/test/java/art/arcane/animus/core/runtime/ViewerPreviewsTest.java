@@ -130,6 +130,28 @@ class ViewerPreviewsTest {
         assertEquals(List.of("baker"), packets.spawnedNames("alex"));
     }
 
+    @Test void hiddenLiveNpc_isExcludedForThePreviewingViewerOnly_untilThePreviewEnds() throws Exception {
+        PreviewBodies<String, String> alex = new PreviewBodies<>(previews, ALEX);
+        UUID liveUuid = UUID.randomUUID();
+        NpcRuntime.ActiveNpc live = new NpcRuntime.ActiveNpc("guard", "Guard", new art.arcane.animus.core.virtual.VirtualNpcState(liveUuid, NEAR, 0.6, 1.8, 20).snapshot());
+        NpcRuntime.ActiveNpc baker = new NpcRuntime.ActiveNpc("baker", "Baker", new art.arcane.animus.core.virtual.VirtualNpcState(UUID.randomUUID(), NEAR, 0.6, 1.8, 20).snapshot());
+        assertFalse(previews.hides(ALEX, live), "nothing is hidden before a preview");
+        await(present(alex, "prev_a", "guard"));
+
+        assertTrue(previews.hides(ALEX, live), "the previewing viewer neither sees nor hears the live guard");
+        assertFalse(previews.hides(BLAKE, live), "other players are unaffected");
+        assertFalse(previews.hides(ALEX, baker), "NPCs outside the preview are unaffected");
+        assertTrue(previews.hides(ALEX, "guard", liveUuid));
+
+        previews.end("prev_a");
+        assertFalse(previews.hides(ALEX, live), "ending the preview restores the live guard for the viewer");
+
+        await(present(alex, "prev_b", "guard"));
+        assertTrue(previews.hides(ALEX, live));
+        previews.left(ALEX);
+        assertFalse(previews.hides(ALEX, live), "leaving the server ends the hiding too");
+    }
+
     @Test void endedBeforeStaging_neverShows() throws Exception {
         ViewerPreviews delayed = new ViewerPreviews((Runnable work) -> CompletableFuture.delayedExecutor(50, TimeUnit.MILLISECONDS).execute(work), store);
         CompletionStage<Void> presented = delayed.present("prev_a", ALEX, List.of(DefinitionQueueTest.definition("guard", "Guard", 1)), ending("prev_a"));

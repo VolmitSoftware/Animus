@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit;
 
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.runtime.NpcRuntime;
+import art.arcane.animus.core.runtime.ViewerPreviews;
 import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.BuildIdentity;
@@ -94,11 +95,12 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     @Override public int say(NpcHandle npc, Audience audience, String text) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         String line = DialogueFormat.speech(active.name(), text);
-        return deliver(audience, active.state().position(), false, viewer -> viewer.sendMessage(line));
+        return deliver(living.players(), living.previews(), active, audience, active.state().position(), false, (Player viewer) -> viewer.sendMessage(line));
     }
 
     @Override public int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options) {
         NpcRuntime.ActiveNpc active = require(npc);
+        if (living.previews().hides(player, active)) return 0;
         String line = DialogueFormat.speech(active.name(), prompt);
         net.md_5.bungee.api.chat.BaseComponent[] buttons = BukkitChoiceMessages.components(DialogueFormat.buttons(BuildIdentity.ID, token, List.copyOf(options)));
         return living.players().deliver(player, online -> {
@@ -200,14 +202,17 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     }
 
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) {
-        Location at = bodyCenter(requireVoice(npc));
-        return deliver(audience, position(at), true, viewer -> viewer.playSound(at, sound.sound(), sound.volume(), sound.pitch()));
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
+        Location at = bodyCenter(active);
+        return deliver(living.players(), living.previews(), active, audience, position(at), true, (Player viewer) -> viewer.playSound(at, sound.sound(), sound.volume(), sound.pitch()));
     }
 
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
-        Location at = bodyCenter(requireVoice(npc));
+        NpcRuntime.ActiveNpc active = requireVoice(npc);
+        Location at = bodyCenter(active);
         Particle particle = particle(effect.particle());
-        return deliver(audience, position(at), true, viewer -> viewer.spawnParticle(particle, at, effect.count(), effect.spread(), effect.spread(), effect.spread()));
+        return deliver(living.players(), living.previews(), active, audience, position(at), true,
+                (Player viewer) -> viewer.spawnParticle(particle, at, effect.count(), effect.spread(), effect.spread(), effect.spread()));
     }
 
     private static Particle particle(String key) {
@@ -257,20 +262,31 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         return new WorldPosition(at.getWorld().getUID().toString(), new Vec3(at.getX(), at.getY(), at.getZ()));
     }
 
-    /** The trigger player wherever its owner is, or nearby players this owner may read. Returns how many were reached. */
-    private int deliver(Audience audience, WorldPosition at, boolean sameWorldOnly, Consumer<Player> action) {
+    /**
+     * The trigger player wherever its owner is, or nearby players this owner may read, leaving out any viewer whose editor
+     * preview hides the speaking NPC. Returns how many were reached.
+     */
+    static int deliver(NpcRuntime.PlayerAccess<Player> players, ViewerPreviews previews, NpcRuntime.ActiveNpc speaker, Audience audience,
+                       WorldPosition at, boolean sameWorldOnly, Consumer<Player> action) {
         if (audience.player().isPresent()) {
+            UUID target = audience.player().get();
+            if (previews.hides(target, speaker)) return 0;
             // Known at once on the player's owner; a player another region owns counts once the work is handed over.
             AtomicBoolean skipped = new AtomicBoolean();
-            boolean handed = living.players().deliver(audience.player().get(), viewer -> {
+            boolean handed = players.deliver(target, (Player viewer) -> {
                 if (!sameWorldOnly || viewer.getWorld().getUID().toString().equals(at.world())) action.accept(viewer);
                 else skipped.set(true);
             });
             return handed && !skipped.get() ? 1 : 0;
         }
-        List<Player> nearby = living.players().ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
-        for (Player viewer : nearby) action.accept(viewer);
-        return nearby.size();
+        List<Player> nearby = players.ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
+        int reached = 0;
+        for (Player viewer : nearby) {
+            if (previews.hides(viewer.getUniqueId(), speaker)) continue;
+            action.accept(viewer);
+            reached++;
+        }
+        return reached;
     }
 
     /** Hands the window or menu to the player's owner, which on Folia may be another region. */

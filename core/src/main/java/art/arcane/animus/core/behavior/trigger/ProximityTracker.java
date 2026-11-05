@@ -15,13 +15,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
  * Viewer-driven enter/leave detection on the platform owner thread. Work follows viewers through the
  * spatial index, never the NPC population: an empty plan or no viewers does no scan at all, and an NPC
- * with no viewer in range is never visited. Not thread-safe.
+ * with no viewer in range is never visited. An NPC hidden from a viewer (an editor preview stands in for it) is absent for
+ * that viewer: it fires neither enter nor leave, and the viewer enters again once it is shown. Not thread-safe.
  */
 public final class ProximityTracker {
     /** Leaving needs this much extra distance so a viewer standing on the radius does not refire. */
@@ -44,12 +46,15 @@ public final class ProximityTracker {
 
     private final Limits limits;
     private final SpatialNpcIndex index;
+    private final BiPredicate<UUID, UUID> hidden;
     private final Map<UUID, ViewerState> states = new HashMap<>();
     private final ArrayDeque<UUID> pending = new ArrayDeque<>();
     private long tick, nextPass, scans, candidates, overflow;
 
-    public ProximityTracker(Limits limits, SpatialNpcIndex index) {
-        this.limits = Objects.requireNonNull(limits); this.index = Objects.requireNonNull(index);
+    public ProximityTracker(Limits limits, SpatialNpcIndex index) { this(limits, index, (UUID viewer, UUID npc) -> false); }
+    /** {@code hidden} tests (viewer, NPC); see {@link TriggerDispatcher#hides}. */
+    public ProximityTracker(Limits limits, SpatialNpcIndex index, BiPredicate<UUID, UUID> hidden) {
+        this.limits = Objects.requireNonNull(limits); this.index = Objects.requireNonNull(index); this.hidden = Objects.requireNonNull(hidden);
     }
 
     public void tick(Plan plan, Collection<UUID> viewers, Function<UUID, Optional<WorldPosition>> positions, Consumer<TriggerEvent> sink) {
@@ -77,7 +82,7 @@ public final class ProximityTracker {
             Inside entry = inside.next();
             Binding binding = binding(plan, entry);
             Optional<VirtualNpcState.Snapshot> npc = index.find(entry.npc());
-            if (binding == null || npc.isEmpty()) { inside.remove(); continue; }
+            if (binding == null || npc.isEmpty() || hidden.test(viewer, entry.npc())) { inside.remove(); continue; }
             WorldPosition at = npc.get().position();
             if (!at.world().equals(position.world()) || at.point().distance(position.point()) > binding.radius() + LEAVE_MARGIN) {
                 inside.remove();
@@ -90,7 +95,7 @@ public final class ProximityTracker {
         Vec3 point = position.point();
         for (VirtualNpcState.Snapshot candidate : scan.candidates()) {
             List<Binding> bindings = plan.npcs().get(candidate.npcId());
-            if (bindings == null) continue;
+            if (bindings == null || hidden.test(viewer, candidate.npcId())) continue;
             double distance = point.distance(candidate.position().point());
             for (Binding binding : bindings) {
                 Inside entry = new Inside(candidate.npcId(), binding.key());

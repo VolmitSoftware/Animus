@@ -376,6 +376,26 @@ class EditorApiTest {
     }
 
     @Test
+    void preview_listsTheLiveNpcsItHidesFromTheViewer() throws Exception {
+        // The export fixture's broken NPC keeps the registry from loading; without it the greeter is live.
+        Files.delete(harness.root.resolve("npcs/examples/broken.json"));
+        assertEquals(List.of(), harness.npcs.reload());
+        JsonObject current = greeter();
+        JsonObject created = renamed(current, "Newcomer");
+        created.addProperty("id", "newcomer");
+        created.addProperty("uuid", "11111111-2222-3333-4444-555555555556");
+        JsonObject request = new JsonObject();
+        JsonArray documents = new JsonArray();
+        documents.add(change("npc", "examples/greeter", current, renamed(current, "Preview")));
+        documents.add(change("npc", "examples/newcomer", null, created));
+        request.add("documents", documents);
+        JsonObject running = valid("preview-response", harness.send("POST", "/v1/previews", harness.token(), request));
+        List<String> hidden = new ArrayList<>();
+        running.getAsJsonArray("hidden").forEach((JsonElement id) -> hidden.add(id.getAsString()));
+        assertEquals(List.of("examples/greeter"), hidden, "only an existing live NPC is hidden; a new one has nothing to hide");
+    }
+
+    @Test
     void preview_expires() throws Exception {
         JsonObject current = greeter();
         JsonObject request = new JsonObject();

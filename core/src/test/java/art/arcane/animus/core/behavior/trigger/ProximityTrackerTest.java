@@ -95,4 +95,17 @@ class ProximityTrackerTest {
         tick(tracker,new ProximityTracker.Plan(both,8));
         assertEquals(1,tracker.tracked());assertEquals(1,tracker.overflow());assertEquals(1,events.size());
     }
+    @Test void aHiddenNpcFiresNothingForThatViewerAndEntersAgainOnceShown(){
+        place(npc,0);UUID other=UUID.randomUUID();Set<UUID> hidden=new HashSet<>();
+        ProximityTracker tracker=new ProximityTracker(LIMITS,index,(UUID player,UUID id)->hidden.contains(player)&&id.equals(npc));
+        ProximityTracker.Plan plan=plan(npc,ENTER,LEAVE);
+        positions.put(viewer,at(5));tick(tracker,plan);
+        assertEquals(List.of(new TriggerEvent.Proximity(npc,viewer,"b#enter")),events);events.clear();
+        hidden.add(viewer);positions.put(other,at(4));tick(tracker,plan);
+        assertEquals(List.of(new TriggerEvent.Proximity(npc,other,"b#enter")),events,"hiding drops the viewer silently; other players still enter");events.clear();
+        positions.put(viewer,at(20));tick(tracker,plan);positions.put(viewer,at(5));tick(tracker,plan);
+        assertEquals(List.of(),events,"no leave or enter while the live NPC is hidden from the viewer");
+        hidden.clear();tick(tracker,plan);
+        assertEquals(List.of(new TriggerEvent.Proximity(npc,viewer,"b#enter")),events,"the viewer enters again once the NPC is shown");
+    }
 }
