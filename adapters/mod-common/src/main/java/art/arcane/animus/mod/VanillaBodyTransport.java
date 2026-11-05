@@ -378,7 +378,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
                 }
                 case TEXT -> {
                     boneTypes[i] = textDisplayType;
-                    values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), Component.literal(bone.text())));
+                    values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), (Component) ModText.component(bone.text())));
                     values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$billboard(), bone.billboard()));
                     values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$lineWidth(), bone.lineWidth()));
                     values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$background(), bone.background()));
@@ -571,7 +571,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         return values;
     }
     private static List<SynchedEntityData.DataValue<?>> textValues(String content, double lift) {
-        return List.of(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), Component.literal(content)),
+        return List.of(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), (Component) ModText.component(content)),
                 SynchedEntityData.DataValue.create(DisplayDataAccess.animus$billboard(), BodyLook.BILLBOARD_CENTER),
                 SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$lineWidth(), BodyLook.LINE_WIDTH),
                 SynchedEntityData.DataValue.create(DisplayDataAccess.animus$translation(), new Vector3f(0f, (float) lift, 0f)));

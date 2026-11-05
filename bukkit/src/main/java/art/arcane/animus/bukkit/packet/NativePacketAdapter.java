@@ -812,7 +812,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             presentation = boundPresentation;
             textDisplayType = entityType("minecraft:text_display"); seatType = entityType("minecraft:armor_stand");
             NativeBones boundBones = null;
-            try { boundBones = new NativeBones(dataValueCreate, craftPackage, entityType("minecraft:item_display"), entityType("minecraft:block_display"), textDisplayType); }
+            try { boundBones = new NativeBones(dataValueCreate, craftPackage, entityType("minecraft:item_display"), entityType("minecraft:block_display"), textDisplayType, presentation); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC rig bones unavailable: " + missing.getClass().getSimpleName()); }
             bones = boundBones;
             playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");

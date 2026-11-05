@@ -389,6 +389,19 @@ class BuiltinCapabilitiesTest {
         assertTrue(platform.calls.isEmpty());
     }
 
+    @Test void choiceStylingIsValidatedAndReachesThePlatform() throws Exception {
+        start();
+        assertFalse(builtins.validate(key("choices"), "{\"id\":\"c\",\"prompt\":\"p\",\"options\":[{\"id\":\"a\",\"text\":\"A\",\"color\":\"chartreuse\"}]}").isEmpty());
+        assertFalse(builtins.validate(key("choices"), "{\"id\":\"c\",\"prompt\":\"p\",\"options\":[{\"id\":\"a\",\"text\":\"A\",\"style\":\"wavy\"}]}").isEmpty());
+        String styled = "{\"id\":\"c\",\"prompt\":\"&6Well?\",\"options\":[{\"id\":\"a\",\"text\":\"&lA\",\"color\":\"#55ff55\",\"hover\":\"Line one\\nline two\",\"style\":\"bold\"}]}";
+        assertTrue(builtins.validate(key("choices"), styled).isEmpty(), builtins.validate(key("choices"), styled).toString());
+        assertEquals(Outcome.Status.OK, action("choices", styled).status());
+        BehaviorPlatform.ChoiceOption option = platform.presentedOptions.getFirst();
+        assertEquals(Optional.of("#55ff55"), option.colour());
+        assertEquals(Optional.of("Line one\nline two"), option.hover());
+        assertEquals(Optional.of("bold"), option.style());
+    }
+
     @Test void choicesPublishASelectionThroughTheNarrowSinkAndRejectForgedClicks() throws Exception {
         start();
         Outcome<String> outcome = action("choices", "{\"id\":\"greeting\",\"prompt\":\"Well?\",\"options\":[{\"id\":\"yes\",\"text\":\"Yes\"},{\"id\":\"no\",\"text\":\"No\"}]}");

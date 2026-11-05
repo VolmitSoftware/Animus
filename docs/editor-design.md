@@ -320,12 +320,13 @@ This follows React rather than Gloss. Gloss's long-poll snapshot relay suits who
 
 ### Relay path
 
-- The plugin opens an outbound WSS connection to `relayUrl` (default the Volmit relay, `wss://relay.animus.volmitsoftware.com`), so it works behind NAT and on hosts that allow no inbound ports. This is the path most servers will use.
-- Identity: the plugin keeps an Ed25519 key in `state/editor/identity.json`. The relay sends a challenge, the plugin signs it, and the relay registers the server under the SHA-256 fingerprint of the public key, as React's relay does.
-- The browser subscribes by fingerprint and sends request frames `{id, method, path, headers, body}`. The relay rewrites request ids so each response reaches only the browser that asked, and passes event frames the same way.
+- The plugin opens an outbound WSS connection to `relayUrl` (off by default until the Volmit relay is deployed; the default URL is `wss://relay.animus.volmitsoftware.com`), so it works behind NAT and on hosts that allow no inbound ports. This is the path most servers will use.
+- Identity: the plugin keeps an Ed25519 key in `state/editor/identity.json` (`EditorIdentity`). The relay sends a challenge, the plugin signs `animus-relay/1 ` followed by the nonce, and the relay registers the server under `sha256:` and the hex SHA-256 of the raw public key, the same fingerprint as in pairing codes.
+- The browser subscribes by fingerprint and sends `relay-request` frames `{id, method, path, headers, body}`. The relay rewrites request ids so each response reaches only the browser that asked. `GET /v1/events` with the token in `Authorization` opens an event stream on the same connection; either side ends it with a `relay-close` frame. The relay writes `Origin` and `X-Forwarded-For` from the browser's connection, so the plugin's origin check and audit log work as on the direct path.
 - The relay keeps no documents and no state on disk. All state is in memory and lost on restart; both ends reconnect.
-- Limits from React's relay: 1 MiB frames, 120 messages per second per browser, 64 pending requests per browser, 10 s handshake and request timeouts, 30 s pings, an exact `ALLOWED_APP_ORIGINS` list on the browser handshake.
-- React's relay can read the bearer tokens it forwards. Animus's relay is the same at first, which is acceptable because tokens are scoped and expiring. Phase 5 adds payload encryption between browser and plugin, using an X25519 key agreed during pairing, so the relay forwards only ciphertext. Whether to require that before the first release is a decision (section 9).
+- Limits: 1 MiB frames, 120 messages per second per browser, 64 pending requests and 4 streams per browser, 64 browsers per server, 10 s handshake and request timeouts, 30 s pings, an exact `ALLOWED_APP_ORIGINS` list on the browser handshake. Imports over 1 MiB need the direct path.
+- The relay can read the bearer tokens and documents it forwards, as React's relay can. End-to-end encryption is deferred to a later release (Decisions); until then the relay operator can read the traffic it forwards. Tokens stay scoped, expiring and revocable.
+- The protocol, settings and Cloud Run steps are in `animus-web/relay/README.md`; the plugin side is `core/.../editor/relay/EditorRelayClient.java`, which replays frames into `EditorRequestHandler`, the same transport-neutral API the direct listener serves.
 
 ### Pairing and credentials
 
@@ -416,8 +417,12 @@ port = 9797
 advertisedUrl = ""
 tlsCertificate = ""
 tlsPrivateKey = ""
-relayEnabled = true
+relayEnabled = false
 relayUrl = "wss://relay.animus.volmitsoftware.com"
+relayReconnectMinSeconds = 1
+relayReconnectMaxSeconds = 60
+relayFrameBytes = 1048576
+relayConcurrentRequests = 64
 allowedOrigins = ["https://animus.volmitsoftware.com"]
 tokenDays = 7
 auditDays = 30

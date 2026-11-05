@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.GuiModel.Action;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.GuiModel.Component;
@@ -73,7 +74,7 @@ public final class GuiScreen<P, S> implements Screen {
             }
         });
         renderedAt = viewer.tick();
-        return new ScreenFrame(GuiText.colorize(title.render(scope)), document.resolution(), document.width(), document.rows(), items);
+        return new ScreenFrame(RichText.colorize(title.render(scope)), document.resolution(), document.width(), document.rows(), items);
     }
 
     @Override public boolean tick(long tick) {
@@ -110,9 +111,9 @@ public final class GuiScreen<P, S> implements Screen {
     }
 
     static ScreenFrame.Item item(GuiModel.Icon icon, GuiExpression.Scope scope) {
-        Optional<String> name = icon.name().map((GuiTemplate text) -> GuiText.colorize(text.render(scope)));
+        Optional<String> name = icon.name().map((GuiTemplate text) -> RichText.colorize(text.render(scope)));
         List<String> lore = new ArrayList<>();
-        for (GuiTemplate line : icon.lore()) lore.add(GuiText.colorize(line.render(scope)));
+        for (GuiTemplate line : icon.lore()) lore.add(RichText.colorize(line.render(scope)));
         if (icon.kind() == GuiModel.IconKind.PLAYER_HEAD)
             return new ScreenFrame.Item(new NpcItem("minecraft:player_head", 1, Optional.empty(), Optional.empty()), name, lore, Optional.of(icon.item().render(scope)));
         String id = icon.item().render(scope).trim().toLowerCase(java.util.Locale.ROOT);
@@ -162,10 +163,10 @@ public final class GuiScreen<P, S> implements Screen {
             case GuiModel.Command command -> host.command(command.source() == GuiModel.CommandSource.PLAYER ? Optional.of(player) : Optional.empty(),
                     command.command().render(scope));
             case GuiModel.Sound sound -> host.sound(player, sound.sound(), sound.source(), sound.volume(), sound.pitch());
-            case GuiModel.Message message -> host.message(player, GuiText.colorize(message.message().render(scope)));
-            case GuiModel.Title title -> host.title(player, GuiText.colorize(title.title().render(scope)),
-                    title.subtitle().map((GuiTemplate text) -> GuiText.colorize(text.render(scope))).orElse(""), title.fadeInTicks(), title.stayTicks(), title.fadeOutTicks());
-            case GuiModel.ActionBar bar -> host.actionBar(player, GuiText.colorize(bar.text().render(scope)));
+            case GuiModel.Message message -> host.message(player, RichText.colorize(message.message().render(scope)));
+            case GuiModel.Title title -> host.title(player, RichText.colorize(title.title().render(scope)),
+                    title.subtitle().map((GuiTemplate text) -> RichText.colorize(text.render(scope))).orElse(""), title.fadeInTicks(), title.stayTicks(), title.fadeOutTicks());
+            case GuiModel.ActionBar bar -> host.actionBar(player, RichText.colorize(bar.text().render(scope)));
             case GuiModel.Close ignored -> { viewer.close(); return false; }
             case GuiModel.Navigate navigate -> { return navigate(navigate, scope); }
             case GuiModel.Inventory inventory -> {
@@ -262,7 +263,7 @@ public final class GuiScreen<P, S> implements Screen {
         InventoryTransaction<S> transaction = InventoryTransaction.begin(viewer.host().inventory(viewer.player()), viewer.host().items());
         if (stack.isEmpty() || amount <= 0 || !transaction.remove(stack.get(), amount, rule)) {
             transaction.rollback();
-            take.denyMessage().ifPresent((GuiTemplate text) -> viewer.host().message(viewer.player(), GuiText.colorize(text.render(scope))));
+            take.denyMessage().ifPresent((GuiTemplate text) -> viewer.host().message(viewer.player(), RichText.colorize(text.render(scope))));
             return false;
         }
         transaction.commit();
@@ -282,7 +283,7 @@ public final class GuiScreen<P, S> implements Screen {
             case WITHDRAW -> economy.has(viewer.id(), amount) && economy.withdraw(viewer.id(), amount);
             case DEPOSIT -> economy.deposit(viewer.id(), amount);
         };
-        if (!ok) action.denyMessage().ifPresent((GuiTemplate text) -> viewer.host().message(viewer.player(), GuiText.colorize(text.render(scope))));
+        if (!ok) action.denyMessage().ifPresent((GuiTemplate text) -> viewer.host().message(viewer.player(), RichText.colorize(text.render(scope))));
         return ok;
     }
 

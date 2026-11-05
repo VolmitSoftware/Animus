@@ -3,6 +3,7 @@ include: package:lints/recommended.yaml
 analyzer:
   exclude:
     - lib/main.client.options.dart
+    - relay/**
   language:
     strict-casts: true
     strict-raw-types: true

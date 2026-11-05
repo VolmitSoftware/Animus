@@ -175,6 +175,26 @@ While riding, the player's server position is the NPC's feet, not its seat. Vani
 /animus ride stop <player>
 ```
 
+A saddled body is steered by the rider's own client while it rides, and that client ignores the server's positions for it. When the ride ends every viewer is sent the NPC's position again, so the rider sees it where the server holds it and can click it to ride again.
+
+## Hiring an NPC
+
+`modules["animus:hire"]` turns a combat NPC into a bodyguard players hire. A right-click opens a chest window that shows the NPC, its cost, how long a hire lasts and the time left, with Hire (or Renew), Dismiss and Cancel buttons. A sneaking administrator's click keeps its selection meaning.
+
+```json
+"animus:hire": {"items": [{"id": "minecraft:emerald", "count": 5}], "price": 0, "durationMinutes": 30, "permission": "animus.hire.guard"}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `items` | Up to 6 items taken from the hirer's inventory. They work on every platform. |
+| `price` | Money taken through the economy (Vault on Bukkit). With no economy a priced hire fails closed and takes nothing. Mod servers have no economy, so use `items` there. |
+| `durationMinutes` | How long one hire lasts, 1-10080, default 60. A renewal adds this much to the time left. |
+| `permission` | Needed to hire, when set. |
+| `enabled` | `false` turns the module off. |
+
+Payment is all or nothing: items and money are put back if any part fails or the NPC cannot guard now. A hire engages the NPC and makes it guard the hirer through its `animus:combat` module, so the NPC needs one. One player hires an NPC at a time; others see who it works for. Only the hirer can renew or dismiss. Contracts are kept in `state/hire/contracts.json` and survive restarts; when the hirer comes back online the NPC guards them again. When the time runs out the NPC stops guarding and the hirer is told.
+
 ## Rigs and animations
 
 A definition with `"rig": {"id": "town:golem"}` shows the rig at `rigs/town/golem.json` on its body. Animations live at `animations/<namespace>/<path>.json`. Both formats are in [editor-design.md](editor-design.md) and `schema/rig-v1.schema.json` and `schema/animation-v1.schema.json`; sampling follows [editor-contracts.md](editor-contracts.md#rig-sampling). Player bodies keep their vanilla body; a rig with `"body": "shown"` adds parts to it, and `"body": "hidden"` (the default) makes the body invisible while it keeps the hitbox.
