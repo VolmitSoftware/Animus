@@ -10,8 +10,6 @@ import java.util.random.RandomGenerator;
  * cannot restart a completed once route. Owner thread only.
  */
 public final class WaypointProgress {
-    /** Leg bounds every runtime enforces; random links and wander targets stay inside them. */
-    public static final double LEG_HORIZONTAL = 32, LEG_VERTICAL = 8;
     public static final int RANDOM_RETRY = 100, WANDER_RETRY = 20;
     /**
      * One leg: walk to goal after waitTicks, then report arrival. A pause leg has no goal; once its wait ends the runtime
@@ -57,7 +55,7 @@ public final class WaypointProgress {
         return issue(switch (settings.order()) {
             case SEQUENCE, PINGPONG -> point(0, settings.waitTicks());
             case RANDOM -> choose(position, settings.waitTicks());
-            case WANDER -> wander(position, settings.waitTicks());
+            case WANDER -> wander(settings.waitTicks());
         });
     }
     /** The leg after the current one arrived; empty when the route is complete. */
@@ -86,7 +84,7 @@ public final class WaypointProgress {
             return issue(choose(position, node < settings.points().size() ? settings.waitAfter(node) : settings.waitTicks()));
         }
         int wait = settings.points().isEmpty() ? settings.waitTicks() : settings.waitAfter(wanderCentre);
-        return issue(wander(position, wait));
+        return issue(wander(wait));
     }
     /** After a failed leg: a pause leg for retrying orders, otherwise empty and the route halts. */
     public Optional<Leg> failed(Leg leg) {
@@ -98,7 +96,7 @@ public final class WaypointProgress {
     /** A fresh leg once a pause leg's wait has passed. */
     public Optional<Leg> resume(Leg leg, Vec3 position) {
         if (complete || leg != current || !leg.pause()) return Optional.empty();
-        return issue(settings.order() == WaypointSettings.Order.WANDER ? wander(position, 1) : choose(position, 1));
+        return issue(settings.order() == WaypointSettings.Order.WANDER ? wander(1) : choose(position, 1));
     }
     public int retryDelay() {
         return Math.max(settings.waitTicks(), settings.order() == WaypointSettings.Order.WANDER ? WANDER_RETRY : RANDOM_RETRY);
@@ -127,11 +125,7 @@ public final class WaypointProgress {
         path.addAll(found);
         return hop(wait);
     }
-    private boolean linked(Vec3 from, Vec3 to) {
-        double dx = to.x() - from.x(), dy = to.y() - from.y(), dz = to.z() - from.z();
-        return Math.abs(dx) <= LEG_HORIZONTAL && Math.abs(dz) <= LEG_HORIZONTAL && Math.abs(dy) <= LEG_VERTICAL
-                && Math.sqrt(dx * dx + dy * dy + dz * dz) <= settings.linkDistance();
-    }
+    private boolean linked(Vec3 from, Vec3 to) { return from.distance(to) <= settings.linkDistance(); }
     private int[][] links() {
         if (links != null) return links;
         int count = settings.points().size() + settings.guides().size();
@@ -147,8 +141,11 @@ public final class WaypointProgress {
         return built;
     }
     /**
-     * A* over guides and points with euclidean costs; the hops after the start, ending at the destination. From a free
-     * position the first hop is a guide whenever the route has guides.
+     * The hops after the start, ending at the destination. A* over links between guides and points with euclidean costs;
+     * from a free position the first hop is a guide whenever the route has guides. When links do not reach the
+     * destination, the link distance is only a preference: the route follows links to the reached node closest to the
+     * destination and hops from there. Every runtime walks a long hop as a long leg, so a destination with no guide near
+     * it is still visited. The fallback reads each node once, so its cost stays linear in the route's size.
      */
     private List<Integer> route(Vec3 position, int destination) {
         int[][] graph = links();
@@ -173,25 +170,47 @@ public final class WaypointProgress {
             int at = (int) open.poll()[1];
             if (closed[at]) continue;
             closed[at] = true;
-            if (at == destination) {
-                ArrayDeque<Integer> hops = new ArrayDeque<>();
-                for (int cursor = at; cursor != -1 && cursor != node; cursor = previous[cursor]) hops.addFirst(cursor);
-                return List.copyOf(hops);
-            }
+            if (at == destination) return hops(at, previous);
             Vec3 from = nodePosition(at);
-            for (int neighbour : graph[at]) {
-                if (closed[neighbour]) continue;
-                Vec3 to = nodePosition(neighbour);
-                double through = cost[at] + from.distance(to);
-                if (through < cost[neighbour]) { cost[neighbour] = through; previous[neighbour] = at; open.add(new double[]{through + to.distance(goal), neighbour}); }
-            }
+            for (int neighbour : graph[at]) relax(at, neighbour, from.distance(nodePosition(neighbour)), cost, previous, closed, open, goal);
         }
-        return List.of();
+        // Links do not reach it: the search above closed every node they reach, so hop from the closest of those.
+        int closest = node, guidesFrom = settings.guides().isEmpty() ? 0 : points;
+        double nearest = node >= 0 ? nodePosition(node).distance(goal) : Double.POSITIVE_INFINITY;
+        for (int i = 0; i < count; i++) {
+            if (!closed[i]) continue;
+            double distance = nodePosition(i).distance(goal);
+            if (distance < nearest) { nearest = distance; closest = i; }
+        }
+        if (closest == node && node < 0) {
+            // A free position linked to nothing: first the guide (or point) nearest to it, then on to the destination.
+            for (int i = guidesFrom; i < count; i++) {
+                double distance = position.distance(nodePosition(i));
+                if (closest < 0 || distance < nearest) { nearest = distance; closest = i; }
+            }
+            return closest == destination ? List.of(destination) : List.of(closest, destination);
+        }
+        List<Integer> hops = new ArrayList<>(closest == node ? List.of() : hops(closest, previous));
+        hops.add(destination);
+        return List.copyOf(hops);
+    }
+    private List<Integer> hops(int end, int[] previous) {
+        ArrayDeque<Integer> hops = new ArrayDeque<>();
+        for (int cursor = end; cursor != -1 && cursor != node; cursor = previous[cursor]) hops.addFirst(cursor);
+        return List.copyOf(hops);
+    }
+    private void relax(int at, int neighbour, double length, double[] cost, int[] previous, boolean[] closed, PriorityQueue<double[]> open, Vec3 goal) {
+        if (closed[neighbour]) return;
+        double through = cost[at] + length;
+        if (through < cost[neighbour]) {
+            cost[neighbour] = through; previous[neighbour] = at;
+            open.add(new double[]{through + nodePosition(neighbour).distance(goal), neighbour});
+        }
     }
 
     // ---- Wander ----
 
-    private Leg wander(Vec3 position, int wait) {
+    private Leg wander(int wait) {
         List<WaypointSettings.Waypoint> centres = settings.points();
         wanderCentre = centres.isEmpty() ? 0 : random.nextInt(centres.size());
         Vec3 centre = centres.isEmpty() ? home : centres.get(wanderCentre).position();
@@ -199,10 +218,6 @@ public final class WaypointProgress {
         int x = (int) Math.floor(centre.x()) + random.nextInt(-area.radius(), area.radius() + 1);
         int z = (int) Math.floor(centre.z()) + random.nextInt(-area.radius(), area.radius() + 1);
         int y = (int) Math.floor(centre.y()) + random.nextInt(-area.height(), area.height() + 1);
-        x = clamp(x, (int) Math.ceil(position.x() - LEG_HORIZONTAL - .5), (int) Math.floor(position.x() + LEG_HORIZONTAL - .5));
-        z = clamp(z, (int) Math.ceil(position.z() - LEG_HORIZONTAL - .5), (int) Math.floor(position.z() + LEG_HORIZONTAL - .5));
-        y = clamp(y, (int) Math.ceil(position.y() - LEG_VERTICAL), (int) Math.floor(position.y() + LEG_VERTICAL));
         return new Leg(new Vec3(x + .5, y, z + .5), wanderCentre, wait);
     }
-    private static int clamp(int value, int minimum, int maximum) { return Math.max(minimum, Math.min(maximum, value)); }
 }
