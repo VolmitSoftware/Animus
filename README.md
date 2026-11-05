@@ -146,11 +146,11 @@ invocationTimeoutMillis = 1000
 deliveryBudgetMillis = 250
 ```
 
-Existing TOML files and comments are preserved. On first startup with only a legacy `config.json`, Animus validates it, archives it under `backups/config-<hash>.json`, and writes TOML only if a lossless conversion is possible. The original JSON remains unchanged; subsequent startup reads TOML. Invalid TOML prevents startup rather than falling back to legacy settings. Restart after changing plugin settings. Older TOML files without `[npcs]` use these defaults without rewriting comments. Limits and live behavior are described in the [runtime guide](docs/runtime.md).
+Existing TOML files and comments are preserved. On first startup with only a legacy `config.json`, Animus validates it, archives it under `backups/config-<hash>.json`, and writes TOML only if a lossless conversion is possible. The original JSON remains unchanged; subsequent startup reads TOML. Invalid TOML prevents startup rather than falling back to legacy settings. Saved changes to plugin settings apply live; see [hand edits apply live](docs/runtime.md#hand-edits-apply-live). Older TOML files without `[npcs]` use these defaults without rewriting comments. Limits and live behavior are described in the [runtime guide](docs/runtime.md).
 
 NPC definitions, behavior packs, skins, migration bundles/reports, state, and generated data use **JSON**. Original import sources are archived in their original format for recovery.
 
-Older files use defaults for missing `[files]` and `[modules]` tables. See [module and file-work budgets](docs/modules.md) for limits and shutdown semantics. Java modules load from `modules/` at startup; changing a binary requires a server restart.
+Older files use defaults for missing `[files]` and `[modules]` tables. See [module and file-work budgets](docs/modules.md) for limits and shutdown semantics. Java modules load from `modules/` at startup; changing a module jar requires a server restart, while `[modules]` settings apply live.
 
 ## Experimental packet proof
 
