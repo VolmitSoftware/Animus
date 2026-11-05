@@ -35,6 +35,7 @@ import art.arcane.animus.core.editor.EditorCommands;
 import art.arcane.animus.core.editor.EditorHost;
 import art.arcane.animus.core.editor.EditorService;
 import art.arcane.animus.core.editor.RuntimeEditorHost;
+import art.arcane.animus.core.RuntimeCatalogs;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
@@ -166,6 +167,9 @@ public final class AnimusPlugin extends JavaPlugin {
                         if (current != null) current.modulesInitialized(initialized);
                     }, builtins);
             behaviors = new BehaviorCommands(getDataFolder().toPath(), runtime, extensions, message -> getLogger().info(message));
+            runtime.catalogs(new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, owners::refresh, () -> behaviors,
+                    () -> screenService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}),
+                    () -> holoService.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {}), (String message) -> getLogger().info(message))));
             TriggerDispatcher triggers = behaviors.triggers();
             if (triggers != null) {
                 if (living.available()) { triggers.connect(); living.bindTriggers(triggers); }
@@ -256,7 +260,6 @@ public final class AnimusPlugin extends JavaPlugin {
     /** The web editor API: the embedded listener and the relay client, both off until config.toml enables them. */
     private void startEditor(Platform modulePlatform) {
         NpcRuntime<Player, ItemStack> owners = living;
-        ShopService<Player, ItemStack> guiService = shops;
         java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> {
             Map<String, EditorHost.Feature> available = new HashMap<>();
             available.put("combat", combat.status().toLowerCase(Locale.ROOT).contains("unavailable") ? EditorHost.Feature.no(combat.status()) : EditorHost.Feature.yes());
@@ -265,8 +268,8 @@ public final class AnimusPlugin extends JavaPlugin {
             available.put("placeholderapi", getServer().getPluginManager().isPluginEnabled("PlaceholderAPI") ? EditorHost.Feature.yes() : EditorHost.Feature.no("PlaceholderAPI is not installed"));
             return available;
         };
-        EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, () -> behaviors, extensions,
-                () -> guiService.reload(catalog -> {}), modulePlatform.name().toLowerCase(Locale.ROOT), "", features,
+        EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, extensions,
+                modulePlatform.name().toLowerCase(Locale.ROOT), "", features,
                 (Player player) -> player.hasPermission("animus.admin"), (String message) -> getLogger().info(message))), (String message) -> getLogger().info(message));
         try {
             service.start();

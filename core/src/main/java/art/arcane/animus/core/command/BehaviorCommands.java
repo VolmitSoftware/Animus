@@ -43,7 +43,9 @@ public final class BehaviorCommands implements AutoCloseable {
     private final Object lifecycle=new Object();
     private final AtomicBoolean closed=new AtomicBoolean(),initializationSeen=new AtomicBoolean();
     private final AtomicReference<CatalogTask> fileTask=new AtomicReference<>();
-    private final AtomicBoolean schemaPending=new AtomicBoolean();
+    private final AtomicBoolean schemaPending=new AtomicBoolean(),reloadAgain=new AtomicBoolean();
+    /** Behavior ids a committed change deleted on purpose; the next reload forgets their retained programs and checkpoints. */
+    private final Set<String> removedSources=ConcurrentHashMap.newKeySet();
     private final BehaviorRuntime coordinator;
     private final TriggerDispatcher triggers;
     private final AtomicLong unavailableReplies=new AtomicLong();
@@ -236,9 +238,22 @@ public final class BehaviorCommands implements AutoCloseable {
         if(closed.get()||state!=State.READY||runtime==null){reply(sender,List.of("Behavior "+operation+": UNAVAILABLE | state="+state));return null;}
         return runtime;
     }
-    private void submitCatalog(CommandActor sender,boolean validate,boolean initial,Optional<String> only){
+    /**
+     * The reload after a committed change. {@code removed} names behaviors whose sources the change deleted on purpose: their
+     * retained programs and last-valid checkpoints go too, so nothing reports them missing. Pending catalog work runs it again after.
+     */
+    public void reload(CommandActor sender,Set<String> removed){
+        removedSources.addAll(removed);
+        if(!catalogAdmission(sender,"reload"))return;
+        submitCatalog(sender,false,false,Optional.empty(),true);
+    }
+    private void submitCatalog(CommandActor sender,boolean validate,boolean initial,Optional<String> only){submitCatalog(sender,validate,initial,only,false);}
+    private void submitCatalog(CommandActor sender,boolean validate,boolean initial,Optional<String> only,boolean follow){
         BehaviorCatalog current=catalog;CatalogTask task=new CatalogTask(sender,validate,initial,current==null?0:current.snapshot().generation(),only);
-        if(!fileTask.compareAndSet(null,task)){if(sender!=null)reply(sender,List.of("Behaviors "+(validate?"validate":"reload")+": BUSY | catalog-work=pending"));return;}
+        if(!fileTask.compareAndSet(null,task)){
+            if(follow){reloadAgain.set(true);return;}
+            if(sender!=null)reply(sender,List.of("Behaviors "+(validate?"validate":"reload")+": BUSY | catalog-work=pending"));return;
+        }
         if(closed.get()){fileTask.compareAndSet(task,null);return;}
         try{files.execute(task);}
         catch(RejectedExecutionException rejected){fileTask.compareAndSet(task,null);task.failed("file-queue-unavailable");}
@@ -246,6 +261,16 @@ public final class BehaviorCommands implements AutoCloseable {
     private void fileEvent(Runnable task,MutationLane.EngineTaskEvent event,Throwable error){
         if(task instanceof CatalogTask owned&&fileTask.compareAndSet(owned,null))owned.failed(event==MutationLane.EngineTaskEvent.CANCELLED?"file-task-cancelled":"file-task-failed");
         if(task instanceof SchemaTask owned&&schemaPending.compareAndSet(true,false))owned.failed(event==MutationLane.EngineTaskEvent.CANCELLED?"file-task-cancelled":"file-task-failed");
+    }
+    /** Removal tokens for accepted programs of {@code ids} whose source file is gone. */
+    private Set<BehaviorCatalog.Removal> removals(BehaviorCatalog.Snapshot snapshot,Set<String> ids){
+        if(ids.isEmpty())return Set.of();
+        Set<BehaviorCatalog.Removal> removals=new HashSet<>();
+        for(BehaviorCatalog.Entry entry:snapshot.entries().values()){
+            if(entry.accepted().isEmpty()||!ids.contains(entry.accepted().orElseThrow().program().id()))continue;
+            if(!java.nio.file.Files.exists(dataDirectory.resolve(entry.path()),java.nio.file.LinkOption.NOFOLLOW_LINKS))removals.add(BehaviorCatalog.Removal.of(entry));
+        }
+        return removals;
     }
     private BehaviorCatalog.Snapshot catalogSnapshot(){BehaviorCatalog current=catalog;return current==null?EMPTY_CATALOG:current.snapshot();}
     private void failedState(){if(catalogSnapshot().generation()==0)publishState(State.FAILED);}
@@ -261,7 +286,9 @@ public final class BehaviorCommands implements AutoCloseable {
                 if(validate){
                     var checked=current.validate(generation);messages=validationLines(checked,only);
                 }else{
-                    var changed=current.reload(generation,Set.of());messages=reloadLines(changed);
+                    Set<String> forgotten=Set.copyOf(removedSources);removedSources.removeAll(forgotten);
+                    var changed=current.reload(generation,removals(current.snapshot(),forgotten));messages=reloadLines(changed);
+                    if(!changed.published())removedSources.addAll(forgotten);
                     if(changed.published()){
                         if(closed.get())return;
                         failure="none";publishState(State.READY);
@@ -274,7 +301,7 @@ public final class BehaviorCommands implements AutoCloseable {
                 // Startup reports every line: a malformed source kept on its last-valid program must name its exact errors.
                 if(initial)messages.forEach(report);else reply(sender,messages);
             }catch(IOException | RuntimeException | LinkageError | AssertionError error){failed("catalog-operation: "+error.getClass().getSimpleName());}
-            finally{fileTask.compareAndSet(this,null);}
+            finally{fileTask.compareAndSet(this,null);if(reloadAgain.compareAndSet(true,false)&&!closed.get())submitCatalog(null,false,false,Optional.empty(),true);}
         }
         void failed(String reason){
             if(closed.get())return;failure=reason;failedState();

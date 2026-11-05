@@ -217,6 +217,19 @@ public final class DocumentStore implements AutoCloseable {
         return List.copyOf(inverse);
     }
 
+    /** The document paths a committed transaction wrote, from its rollback receipt, without loading their contents. */
+    public synchronized List<String> paths(String transaction) throws IOException {
+        ensureOpen();
+        if (!transaction.matches("[a-f0-9-]{36}")) throw new IOException("Invalid transaction ID");
+        String archive = read("backups/" + transaction + ".json");
+        if (archive == null) throw new IOException("Unknown transaction: " + transaction);
+        JsonObject journal = JsonDocuments.object(archive);
+        validateJournal(journal);
+        List<String> paths = new ArrayList<>();
+        for (JsonElement element : journal.getAsJsonArray("entries")) paths.add(element.getAsJsonObject().get("path").getAsString());
+        return List.copyOf(paths);
+    }
+
     private void recover() throws IOException {
         String pending = read("state/pending.json");
         if (pending != null) finish(JsonDocuments.object(pending));

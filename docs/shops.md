@@ -134,7 +134,7 @@ All need `animus.admin`.
 | `/animus shop status` | Counts, open windows and whether money works. |
 | `/animus shop list` | Loaded shops. |
 | `/animus shop open <shop> [player]` | Opens a shop for yourself or a player. |
-| `/animus shop reload` | Reads shops and GUIs again. |
+| `/animus shop reload` | Reads shops and GUIs again. Editor applies, `/animus rollback` and import apply, accept and rollback reload shops and GUIs on their own; use this after editing files by hand. |
 | `/animus shop problems` | Why files were refused, with the field. |
 | `/animus shop reset <shop> [player]` | Clears limits and stock. |
 | `/animus shop import preview <folder> [saves.yml]` | Stages a dtlTraders import from `imports/inbox/`. |

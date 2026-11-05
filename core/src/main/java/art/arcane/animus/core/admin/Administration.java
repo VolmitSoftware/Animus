@@ -1,6 +1,8 @@
 package art.arcane.animus.core.admin;
 
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.CatalogChange;
+import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.migration.CitizensImporter;
 import art.arcane.animus.core.migration.ImportApplications;
@@ -82,8 +84,14 @@ public final class Administration {
                 yield errors.isEmpty() ? List.of(args[0] + " successful; " + runtime.npcs().all().size() + " active definitions") : errors;
             }
             case "import" -> {
-                if (args.length >= 2 && args[1].equalsIgnoreCase("citizens"))
-                    yield new CitizensDropIn(runtime.documents(), runtime.npcs(), runtime.importHost()).execute(Arrays.copyOfRange(args, 2, args.length));
+                if (args.length >= 2 && args[1].equalsIgnoreCase("citizens")) {
+                    CitizensDropIn dropIn = new CitizensDropIn(runtime.documents(), runtime.npcs(), runtime.importHost());
+                    List<String> lines;
+                    try { lines = new ArrayList<>(dropIn.execute(Arrays.copyOfRange(args, 2, args.length))); }
+                    catch (IOException | RuntimeException failure) { catalogs(dropIn.committed(), dropIn.rolledBack()); throw failure; }
+                    lines.addAll(catalogs(dropIn.committed(), dropIn.rolledBack()));
+                    yield lines;
+                }
                 if (args.length < 3) throw new IOException("import citizens [apply|review|accept|rollback] | import preview <inbox-file.yml> [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");
                 CitizensImporter importer = new CitizensImporter();
                 if (args[1].equals("preview")) {
@@ -109,19 +117,37 @@ public final class Administration {
                 else if (args[1].equals("apply-plan")) { count(args, 4); tx = ImportApplications.apply(runtime.documents(), args[2], args[3]); }
                 else throw new IOException("Expected import preview, stage, apply or apply-plan");
                 List<String> errors = runtime.npcs().reload();
+                List<String> notes = catalogs(List.of(tx), false);
                 if (!errors.isEmpty()) throw new IOException("Import stored; registry kept last valid snapshot: " + String.join("; ", errors));
-                yield List.of("Installed dormant definitions; transaction " + tx);
+                List<String> lines = new ArrayList<>(List.of("Installed dormant definitions; transaction " + tx));
+                lines.addAll(notes);
+                yield lines;
             }
             case "rollback" -> {
                 count(args, 2);
                 String tx = runtime.documents().rollback(args[1]);
                 // Rebuild after an explicit undo, which intentionally restores older revisions.
                 List<String> errors = runtime.npcs().reloadAfterRollback();
+                List<String> notes = catalogs(List.of(tx), true);
                 if (!errors.isEmpty()) throw new IOException("Rollback stored; reload failed: " + String.join("; ", errors));
-                yield List.of("Rolled back; inverse transaction " + tx);
+                List<String> lines = new ArrayList<>(List.of("Rolled back; inverse transaction " + tx));
+                lines.addAll(notes);
+                yield lines;
             }
             default -> throw new IOException("Commands: " + String.join(", ", COMMANDS));
         };
+    }
+    /**
+     * Reloads the shops, GUIs, holograms, rigs and behaviors these committed transactions touched. The caller has already
+     * reloaded NPC definitions. Returns a line only when the transactions could not be read.
+     */
+    private List<String> catalogs(List<String> transactions, boolean rollback) {
+        if (transactions.isEmpty()) return List.of();
+        CatalogChange change;
+        try { change = CatalogChange.of(runtime.documents(), transactions, rollback).without(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE); }
+        catch (IOException unreadable) { return List.of("Catalogs not reloaded (" + unreadable.getMessage() + "); run /animus shop reload, /animus gui reload and /animus behaviors reload"); }
+        if (!change.empty()) runtime.catalogs().reload(change);
+        return List.of();
     }
     private static void count(String[] args, int expected) throws IOException { if (args.length != expected) throw new IOException("Incorrect argument count for " + args[0]); }
 }
