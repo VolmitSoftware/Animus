@@ -9,6 +9,8 @@ import '../state/editor_store.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
 import 'document_view.dart';
+import 'rig/rig_actions.dart';
+import 'rig/rig_editor.dart';
 
 /// Kinds listed in the sidebar, in this order.
 const List<DocumentKind> listedKinds = <DocumentKind>[
@@ -111,6 +113,21 @@ class _EditorShellState extends State<EditorShell> {
           disabled: _busy,
           onPressed: () => _open(pickZip),
         ),
+        if (workspace != null) ...<Widget>[
+          Button.secondary(
+            label: 'Import .bbmodel',
+            icon: ArcaneIcon.upload(),
+            size: ButtonSize.small,
+            disabled: _busy,
+            onPressed: () => _importBbmodel(workspace),
+          ),
+          Button.secondary(
+            label: 'Export zip',
+            icon: ArcaneIcon.download(),
+            size: ButtonSize.small,
+            onPressed: () => exportWorkspace(workspace),
+          ),
+        ],
         if (workspace != null)
           Button.ghost(
             label: 'Undo',
@@ -174,6 +191,7 @@ class _EditorShellState extends State<EditorShell> {
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
             skinDocument: _skinOf(document),
+            editor: _rigEditor(workspace, document),
           )
         else if (selected != null)
           dom.section(classes: 'animus-panel', <Widget>[
@@ -264,6 +282,46 @@ class _EditorShellState extends State<EditorShell> {
           ]),
         ]),
     ]);
+  }
+
+  Future<void> _importBbmodel(WorkspaceSnapshot workspace) async {
+    setState(() => _busy = true);
+    try {
+      String namespace = 'animus';
+      for (final AnimusDocument document in workspace.documents) {
+        if (document.kind == DocumentKind.rig && document.id.contains(':')) {
+          namespace = document.id.substring(0, document.id.indexOf(':'));
+          break;
+        }
+      }
+      final String? id = await importBbmodelFile(component.store, namespace);
+      if (id != null) component.onNavigate(DocumentRoute(workspace.id, DocumentKind.rig, id));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The rig editor for a rig, or for an animation whose rig is here.
+  Widget? _rigEditor(WorkspaceSnapshot workspace, AnimusDocument document) {
+    final Object? json = document.json;
+    AnimusDocument? rig;
+    String? animation;
+    if (document.kind == DocumentKind.rig) {
+      rig = document;
+    } else if (document.kind == DocumentKind.animation && json is Map<String, Object?> && json['rig'] is String) {
+      rig = component.store.document(DocumentKind.rig, json['rig']! as String);
+      animation = document.id;
+    }
+    if (rig == null || rig.json is! Map<String, Object?>) return null;
+    final DocumentRoute? current = component.route is DocumentRoute ? component.route as DocumentRoute : null;
+    return RigEditor(
+      key: ValueKey<String>('rig-editor:${rig.id}'),
+      store: component.store,
+      rig: rig,
+      animationId: animation,
+      onOpen: (DocumentKind kind, String id) =>
+          component.onNavigate(DocumentRoute(workspace.id, kind, id, current?.view ?? ViewMode.visual)),
+    );
   }
 
   AnimusDocument? _skinOf(AnimusDocument document) {
