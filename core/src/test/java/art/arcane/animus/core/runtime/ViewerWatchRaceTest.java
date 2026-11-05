@@ -119,6 +119,7 @@ class ViewerWatchRaceTest {
         final FakeTransport transport = new FakeTransport();
         final FakeHost host = new FakeHost(this);
         final List<Runnable> ticks = new ArrayList<>();
+        MotionValidator.Sampler terrain;
         PersistedNpcService<Player, Object> service;
         Harness(AnimusRuntime runtime, Path npcs) { this.runtime = runtime; this.npcs = npcs; }
         void tick(int count) { for (int i = 0; i < count; i++) for (Runnable tick : List.copyOf(ticks)) tick.run(); }
@@ -191,7 +192,7 @@ class ViewerWatchRaceTest {
         FakeHost(Harness harness) { this.harness = harness; }
         @Override public boolean worldLoaded(String world) { return true; }
         @Override public boolean chunkLoaded(String world, int chunkX, int chunkZ) { return true; }
-        @Override public MotionValidator.Sampler collision(String world) { return null; }
+        @Override public MotionValidator.Sampler collision(String world) { return harness.terrain; }
         @Override public boolean ownerThread() { return true; }
         @Override public boolean execute(Runnable work) { work.run(); return true; }
         @Override public AutoCloseable everyTick(Runnable tick) { harness.ticks.add(tick); return () -> harness.ticks.remove(tick); }

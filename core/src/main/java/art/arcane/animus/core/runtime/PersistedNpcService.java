@@ -762,6 +762,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                     if (!host.chunkLoaded(world, Math.floorDiv(feet.x(), 16), Math.floorDiv(feet.z(), 16))
                             || !host.chunkLoaded(world, Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16))) {
                         suspend(route, "unavailable terrain; no chunk loading requested");
+                    } else if (fallBeforeLeg(route)) {
+                        return RouteScheduler.Result.KEEP;
                     } else if (planStarts <= 0) {
                         routeStatus(route, "queued", "waiting for a planning turn");
                         return RouteScheduler.Result.YIELD;
@@ -814,6 +816,29 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         } catch (RejectedExecutionException full) { route.nextAttempt = tickNumber + 20; routeStatus(route, "queued", "path capacity"); }
         catch (RuntimeException failure) { if (value.route == route) failLeg(route, "failed: " + concise(failure)); else stopRoute(value, "failed: " + concise(failure)); }
         return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
+    }
+    /**
+     * A walking body that stands in the air (its ground changed, or it was imported onto other terrain) falls one step per
+     * turn before it plans a leg, so the leg starts on the ground instead of failing from the air. True while it falls.
+     */
+    private boolean fallBeforeLeg(Route route) {
+        Value value = route.value;
+        if (route.mode != MovementProfile.Mode.WALK || !BodyMobility.falls(value.spec.type()) || mountRuntime.vehicleOf(value.spec.definition().id()) != null
+                || riders.riderOf(value.spec.definition().uuid()) != null) return false;
+        int wanted = IdleFall.cells(moveWidth(value), moveHeight(value));
+        if (motionCells < wanted && motionCells < navigationSettings.motionCellsPerTick()) return false;
+        WorldPosition at = value.state.snapshot().position();
+        boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
+        IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
+        motionCells -= step.sampled();
+        value.fallSpeed = step.speed();
+        boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
+        if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
+            value.state.move(new WorldPosition(at.world(), step.to())); index.upsert(value.state.snapshot());
+            value.poseRevision++; setPose(value, value.yaw, value.pitch, !falling);
+        }
+        if (falling) routeStatus(route, "falling", "to the ground before the leg starts");
+        return falling;
     }
     /**
      * A block changed in a loaded chunk of this world, or is about to change in this tick. Idle walking NPCs over it check
