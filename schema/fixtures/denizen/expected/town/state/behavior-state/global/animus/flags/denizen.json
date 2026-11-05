@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "behavior": "animus:flags/denizen",
+  "scope": "global",
+  "values": {
+    "event_open": {
+      "type": "boolean",
+      "value": true
+    }
+  }
+}
