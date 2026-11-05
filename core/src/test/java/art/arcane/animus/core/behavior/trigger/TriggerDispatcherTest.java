@@ -222,6 +222,20 @@ class TriggerDispatcherTest {
         TriggerDispatcher fresh=new TriggerDispatcher(TriggerSettings.DEFAULT,definitions::get,catalog::get);
         assertFalse(fresh.available());assertEquals(Outcome.Status.UNAVAILABLE,fresh.publish(click()).status());
     }
+    @Test void aLinkFollowsTheNpcRuntimeTurnedOnAndOffLive(){
+        TriggerDispatcher fresh=new TriggerDispatcher(TriggerSettings.DEFAULT,definitions::get,catalog::get);
+        java.util.concurrent.atomic.AtomicBoolean on=new java.util.concurrent.atomic.AtomicBoolean(false);
+        List<TriggerDispatcher> bound=new ArrayList<>();List<String> log=new ArrayList<>();
+        art.arcane.animus.core.gui.FakeNpcRuntime<Object> living=new art.arcane.animus.core.gui.FakeNpcRuntime<>((UUID id)->Optional.empty()){
+            @Override public boolean available(){return on.get();}
+            @Override public String status(){return on.get()?"ready":"NPC runtime disabled in config.toml";}
+            @Override public void bindTriggers(TriggerDispatcher dispatcher){bound.add(dispatcher);}
+        };
+        TriggerLink link=new TriggerLink(fresh,living,log::add);
+        assertEquals(List.of(fresh),bound);assertFalse(fresh.available());assertTrue(fresh.snapshot().reason().contains("disabled"));
+        on.set(true);link.run();assertTrue(fresh.available());
+        on.set(false);link.run();link.run();assertFalse(fresh.available());assertEquals(2,log.size());
+    }
     @Test void disabledSettingsCannotConnect(){
         TriggerSettings disabled=new TriggerSettings(false,16,32,8,64,4,2,100,32,2,1,0,0,4096,1024,1,32,5,16,32,64);
         TriggerDispatcher fresh=new TriggerDispatcher(disabled,definitions::get,catalog::get);fresh.connect();

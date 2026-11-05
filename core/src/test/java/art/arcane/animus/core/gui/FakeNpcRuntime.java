@@ -16,7 +16,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /** NPC runtime for screen tests: chosen NPCs are active, and player work runs at once. */
-public final class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
+public class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
     final Map<UUID, ActiveNpc> active = new HashMap<>();
     private final Function<UUID, Optional<P>> players;
 
