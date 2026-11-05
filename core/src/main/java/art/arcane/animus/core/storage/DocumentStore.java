@@ -15,7 +15,7 @@ public final class DocumentStore implements AutoCloseable {
     /** A whole replacement of generated data, where null deletes it. Generated data has no editor, so nothing can conflict. */
     public record Generated(String path, String content) {}
     private static final String GENERATED_PATH = "state/behavior-state/[a-z0-9_/-]+\\.json|state/behavior-catalog/last-valid/(?:packs/[a-z0-9_-]+/)?behaviors/[a-z0-9_/-]+\\.json"
-            + "|state/builds/[a-z0-9][a-z0-9_-]{0,63}(?:/undo-[0-9]{5})?\\.json";
+            + "|state/builds/[a-z0-9][a-z0-9_-]{0,63}(?:/undo-[0-9]{5})?\\.json|state/editor/changes/[A-Za-z0-9_-]{16,128}\\.json";
     private static final long MAX_TRANSACTION_BYTES = 256L * 1024 * 1024;
     private final Path root;
     private final FileChannel lockChannel;
@@ -92,10 +92,15 @@ public final class DocumentStore implements AutoCloseable {
         return content;
     }
 
-    public synchronized String commit(List<Change> changes) throws IOException {
+    public synchronized String commit(List<Change> changes) throws IOException { return commit(UUID.randomUUID().toString(), changes); }
+
+    /** A commit under a caller-chosen transaction ID, so a record written in the same journal can name its own rollback receipt. */
+    public synchronized String commit(String transaction, List<Change> changes) throws IOException {
         ensureWritable();
+        if (!transaction.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}")) throw new IOException("Invalid transaction ID");
+        if (Files.exists(resolve("backups/" + transaction + ".json"), LinkOption.NOFOLLOW_LINKS)) throw new IOException("Transaction ID already used: " + transaction);
         recover();
-        return publish(invalidateDefinitionCheckpoints(changes), true);
+        return publish(transaction, invalidateDefinitionCheckpoints(changes), true);
     }
 
     /**
@@ -110,19 +115,20 @@ public final class DocumentStore implements AutoCloseable {
             if (!change.path().matches(GENERATED_PATH)) throw new IOException("Not a generated document path: " + change.path());
             changes.add(new Change(change.path(), hash(change.path()), change.content()));
         }
-        return publish(changes, false);
+        return publish(UUID.randomUUID().toString(), changes, false);
     }
 
     /** Removes one invalid generated file whose bytes a journal cannot carry. A single unlink is already atomic. */
     public synchronized void deleteGenerated(String relative) throws IOException {
         ensureWritable();
-        if (!relative.startsWith("state/behavior-state/") && !relative.startsWith("state/behavior-catalog/last-valid/") && !relative.startsWith("state/builds/"))
+        if (!relative.startsWith("state/behavior-state/") && !relative.startsWith("state/behavior-catalog/last-valid/") && !relative.startsWith("state/builds/")
+                && !relative.matches("state/editor/changes/[A-Za-z0-9_-]{16,128}\\.json"))
             throw new IOException("Not a generated document path: " + relative);
         Path target = resolve(relative);
         if (Files.deleteIfExists(target)) syncDirectory(target.getParent());
     }
 
-    private String publish(List<Change> changes, boolean receipt) throws IOException {
+    private String publish(String id, List<Change> changes, boolean receipt) throws IOException {
         if (changes.isEmpty() || changes.size() > 10000) throw new IOException("Transaction requires 1..10000 documents");
         JsonArray entries = new JsonArray();
         Set<Path> paths = new HashSet<>();
@@ -142,7 +148,6 @@ public final class DocumentStore implements AutoCloseable {
             entry.addProperty("after", change.content());
             entries.add(entry);
         }
-        String id = UUID.randomUUID().toString();
         JsonObject journal = new JsonObject();
         journal.addProperty("id", id);
         if (!receipt) journal.addProperty("receipt", false);
@@ -188,8 +193,11 @@ public final class DocumentStore implements AutoCloseable {
         return result;
     }
 
-    public synchronized String rollback(String transaction) throws IOException {
-        ensureWritable();
+    public synchronized String rollback(String transaction) throws IOException { return commit(inverse(transaction)); }
+
+    /** The changes that undo a committed transaction, from its rollback receipt. Each expects the transaction's own result, so later edits conflict. */
+    public synchronized List<Change> inverse(String transaction) throws IOException {
+        ensureOpen();
         if (!transaction.matches("[a-f0-9-]{36}")) throw new IOException("Invalid transaction ID");
         String archive = read("backups/" + transaction + ".json");
         if (archive == null) throw new IOException("Unknown transaction: " + transaction);
@@ -204,7 +212,7 @@ public final class DocumentStore implements AutoCloseable {
             if (payloadBytes > MAX_TRANSACTION_BYTES) throw new IOException("Transaction payload exceeds 256 MiB");
             inverse.add(new Change(entry.get("path").getAsString(), JsonDocuments.hash(after), before));
         }
-        return commit(inverse);
+        return List.copyOf(inverse);
     }
 
     private void recover() throws IOException {
@@ -301,7 +309,7 @@ public final class DocumentStore implements AutoCloseable {
 
     private void writable(String path) throws IOException {
         resolve(path);
-        if (!path.matches("(?:npcs|skins|behaviors|packs|imports|shops|gui)/[a-zA-Z0-9_./-]+\\.json")
+        if (!path.matches("(?:npcs|skins|behaviors|packs|imports|shops|gui|routes|rigs|animations)/[a-zA-Z0-9_./-]+\\.json")
                 && !path.matches("state/shops/imports/[a-f0-9]{64}\\.json")
                 && !path.matches("state/npc-definitions/last-valid/npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json")
                 && !path.matches(GENERATED_PATH))
