@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.migration.CitizensDropIn;
+import art.arcane.animus.core.migration.CitizensGuard;
 import art.arcane.animus.core.hire.HireService;
 import art.arcane.animus.api.Platform;
 import art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent;
@@ -95,6 +97,12 @@ public final class AnimusPlugin extends JavaPlugin {
                     getServer().getBukkitVersion(), getDataFolder().toPath());
             runtime = new AnimusRuntime(environment, failure -> getLogger().log(Level.SEVERE, "Animus file cleanup failed", failure));
             runtime.start();
+            java.util.function.BooleanSupplier citizens = () -> {
+                org.bukkit.plugin.Plugin plugin = getServer().getPluginManager().getPlugin("Citizens");
+                return plugin != null && plugin.isEnabled();
+            };
+            runtime.importHost(new CitizensDropIn.Host(Optional.ofNullable(getDataFolder().getAbsoluteFile().getParentFile()).map(java.io.File::toPath), citizens));
+            CitizensGuard.install(citizens);
             runtime.npcs().diagnostics().stream().limit(20).forEach(problem -> getLogger().warning("NPC definition recovery: " + problem));
             replies = new ReplyScheduler(this);
             commands = runtime.fileExecutor((task, event, failure) -> {
@@ -174,15 +182,33 @@ public final class AnimusPlugin extends JavaPlugin {
             extensions.start();
             startEditor(modulePlatform);
             printSplash(AnimusSplash.render(environment, getServer().getVersion(), true));
+            announceCitizensMigration();
         } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {
             getLogger().log(Level.SEVERE, "Failed to start " + BuildIdentity.NAME, exception);
             getServer().getPluginManager().disablePlugin(this);
         }
     }
 
+    /** After every plugin has enabled, so a Citizens plugin that loads after Animus is seen. Runs the file check off the owner. */
+    private void announceCitizensMigration() {
+        AnimusRuntime active = runtime;
+        java.util.concurrent.Executor files = commands;
+        replies.reply(getServer().getConsoleSender(), () -> {
+            try {
+                files.execute(() -> {
+                    try {
+                        if (!stopping && active.isRunning())
+                            new CitizensDropIn(active.documents(), active.npcs(), active.importHost()).startupNotice().ifPresent(getLogger()::info);
+                    } catch (IOException | RuntimeException failure) { getLogger().warning("Citizens migration check failed: " + failure.getMessage()); }
+                });
+            } catch (java.util.concurrent.RejectedExecutionException busy) { getLogger().warning("Citizens migration check skipped: file queue full"); }
+        });
+    }
+
     @Override
     public void onDisable() {
         stopping = true;
+        CitizensGuard.clear();
         EditorService activeEditor = editor;
         editor = null;
         if (activeEditor != null) activeEditor.close();

@@ -87,7 +87,7 @@ def duplicate(data,import_id,application_id,label):
         copied_uuid=str(uuid.UUID(bytes=digest,version=3))
         assert plan['uuidMap'][source_uuid]==copied_uuid and copied_uuid!=source_uuid
         relative=f'npcs/copy-{label}/citizens-{legacy}-{label}.json'
-        target=json.loads(candidates[relative]);source=read(data/'imports'/import_id/f'npcs/citizens/citizens-{legacy}.json')
+        target=json.loads(candidates[relative]);source=read(data/'imports'/import_id/f'npcs/world/citizens-{legacy}.json')
         assert target['uuid']==copied_uuid and target['revision']==1
         assert target['migration']['copy']=={'label':label,'sourceUuid':source_uuid,'sourceId':source['id']}
         # A copy guards the copy of its guarded NPC; every other preserved module value stays byte-for-byte.

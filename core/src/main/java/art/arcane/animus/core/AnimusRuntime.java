@@ -31,6 +31,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private MutationLane fileWork;
     private RepositoryDefinitions definitions;
     private BehaviorStateStore behaviorState;
+    private volatile art.arcane.animus.core.migration.CitizensDropIn.Host importHost = art.arcane.animus.core.migration.CitizensDropIn.Host.NONE;
 
     public AnimusRuntime(RuntimeEnvironment environment) {
         this(environment, failure -> System.getLogger("Animus").log(System.Logger.Level.ERROR,
@@ -166,6 +167,9 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized art.arcane.animus.core.config.EditorSettings editorSettings() { return settings().editor(); }
     public synchronized art.arcane.animus.core.config.EditorRelaySettings editorRelaySettings() { return settings().relay(); }
     public RuntimeEnvironment environment() { return environment; }
+    /** The platform's plugins folder and Citizens check for the drop-in Citizens migration; mod servers keep the default. */
+    public art.arcane.animus.core.migration.CitizensDropIn.Host importHost() { return importHost; }
+    public void importHost(art.arcane.animus.core.migration.CitizensDropIn.Host host) { importHost = Objects.requireNonNull(host, "host"); }
     private PluginSettings settings() {
         if (!isRunning()) throw new IllegalStateException("Animus is not running");
         return settings;
