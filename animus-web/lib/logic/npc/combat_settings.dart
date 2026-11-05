@@ -36,6 +36,7 @@ const List<String> combatRootKeys = <String>[
   'death',
   'respawn',
   'greetings',
+  'targetableByMobs',
   'preservedSettings',
   'historicalStatistics',
   'migrationReport',
@@ -305,6 +306,7 @@ List<Diagnostic> validateCombat(Object? settings) {
   }
   final _Reader root = _Reader(check, settings, combatRoot);
   root.known(combatRootKeys);
+  root.boolean('targetableByMobs');
   for (final String section in combatRuleSections) {
     final _Reader? rules = root.child(section);
     if (rules != null) _rules(rules, section == 'ignores' ? _Level.ignoring : _Level.seeking);

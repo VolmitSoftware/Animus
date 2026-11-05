@@ -8,7 +8,7 @@
   "type": "minecraft:horse",
   "spawned": false,
   "migration": {
-    "importId": "033401d4e0b6d477db02237cb6d9ff2ad982bbcccb8697dff1551c2f8118c927",
+    "importId": "fe77ba8cdcd2c9e794aa84542f7850d459b5fc27ac314882f426512db0d84bd9",
     "citizensId": 1,
     "originalSpawned": false,
     "references": [
@@ -41,16 +41,47 @@
     "visible": false
   },
   "movement": {
+    "avoidWater": false,
     "fly": true
   },
   "baby": true,
   "gravity": false,
+  "poses": {
+    "rest": {
+      "yaw": 90.0,
+      "pitch": 0.0
+    }
+  },
   "modules": {
+    "animus:combat": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "targeting": {
+        "fightBack": false
+      },
+      "defense": {
+        "invincible": false
+      },
+      "targetableByMobs": true
+    },
     "animus:look-close": {
       "enabled": false,
       "range": 10.0,
       "lineOfSight": true,
       "whileNavigating": false
+    },
+    "animus:navigation": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "mode": "walk",
+      "speed": 4.3,
+      "order": "wander",
+      "waitTicks": 120,
+      "points": [],
+      "wander": {
+        "radius": 10,
+        "height": 7
+      }
     },
     "citizens:review": {
       "type": "HORSE",

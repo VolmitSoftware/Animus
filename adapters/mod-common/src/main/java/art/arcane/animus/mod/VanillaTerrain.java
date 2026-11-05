@@ -41,8 +41,18 @@ final class VanillaTerrain implements TerrainReader {
         };
     }
 
-    /** The block's collision boxes, its fluid and whether it hurts. A shape that cannot be read is a full block. */
+    /**
+     * The block's collision boxes, its fluid and whether it hurts. A shape that cannot be read is a full block. A closed
+     * door, fence gate or upper trapdoor also carries its real open shape.
+     */
     static VoxelSnapshot.Cell cell(ServerLevel level, BlockPos position, BlockState state) {
+        String material = BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().toUpperCase(Locale.ROOT);
+        boolean waterlogged = state.hasProperty(BlockStateProperties.WATERLOGGED) && state.getValue(BlockStateProperties.WATERLOGGED);
+        List<VoxelSnapshot.Cell.Box> open = VanillaDoors.opened(state).map((BlockState opened) -> boxes(level, position, opened)).orElse(null);
+        return CollisionCells.classify(material, boxes(level, position, state), waterlogged, open);
+    }
+
+    private static List<VoxelSnapshot.Cell.Box> boxes(ServerLevel level, BlockPos position, BlockState state) {
         List<VoxelSnapshot.Cell.Box> boxes = new ArrayList<>();
         try {
             for (AABB box : state.getCollisionShape(level, position).toAabbs()) {
@@ -52,8 +62,6 @@ final class VanillaTerrain implements TerrainReader {
         } catch (RuntimeException unreadable) {
             boxes = List.of(VoxelSnapshot.Cell.SOLID.boxes().getFirst());
         }
-        String material = BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath().toUpperCase(Locale.ROOT);
-        boolean waterlogged = state.hasProperty(BlockStateProperties.WATERLOGGED) && state.getValue(BlockStateProperties.WATERLOGGED);
-        return CollisionCells.classify(material, boxes, waterlogged);
+        return boxes;
     }
 }

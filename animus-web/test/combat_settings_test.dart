@@ -46,6 +46,11 @@ void main() {
     );
   });
 
+  test('should accept targetableByMobs only as a boolean', () {
+    expect(_errors(<String, Object?>{'targetableByMobs': true}), isEmpty);
+    expect(_errors(<String, Object?>{'targetableByMobs': 'yes'}), <String>[r'$.modules.animus:combat.targetableByMobs: expected boolean']);
+  });
+
   test('should refuse a module that is not an object', () {
     expect(_errors(<Object?>[]), <String>[r'$.modules.animus:combat: expected object']);
   });

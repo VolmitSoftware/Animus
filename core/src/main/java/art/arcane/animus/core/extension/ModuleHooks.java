@@ -94,8 +94,12 @@ public final class ModuleHooks {
         return (BuildProtection.Request request) -> {
             if (platform.decide(request) != BuildProtection.Decision.ALLOW) return BuildProtection.Decision.DENY;
             Integrations.Position at = new Integrations.Position(request.world(), request.at().x(), request.at().y(), request.at().z());
-            boolean allowed = module(new Integrations.ProtectionRequest(request.action() == BuildProtection.Action.PLACE ? Integrations.ProtectionAction.BLOCK_PLACE
-                    : Integrations.ProtectionAction.BLOCK_BREAK, new Integrations.Party(Integrations.PartyKind.NPC, request.npc()), at, Optional.empty(), at, Set.of(), request.startedBy()));
+            Integrations.ProtectionAction action = switch (request.action()) {
+                case PLACE -> Integrations.ProtectionAction.BLOCK_PLACE;
+                case BREAK -> Integrations.ProtectionAction.BLOCK_BREAK;
+                case USE -> Integrations.ProtectionAction.BLOCK_USE;
+            };
+            boolean allowed = module(new Integrations.ProtectionRequest(action, new Integrations.Party(Integrations.PartyKind.NPC, request.npc()), at, Optional.empty(), at, Set.of(), request.startedBy()));
             return allowed ? BuildProtection.Decision.ALLOW : BuildProtection.Decision.DENY;
         };
     }
