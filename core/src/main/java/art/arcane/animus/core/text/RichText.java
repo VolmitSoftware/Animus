@@ -12,7 +12,7 @@ import java.util.OptionalInt;
 
 /**
  * The one formatter for player-facing text on every platform. Source text may use {@code &} colour and style codes,
- * {@code &#RRGGBB}, {@code &x&R&R&G&G&B&B}, section codes, backslash-u escapes such as {@code \\u2764}, literal Unicode symbols and the
+ * {@code &#RRGGBB}, {@code &x&R&R&G&G&B&B}, Gloss's {@code [RRGGBB]}, section codes, backslash-u escapes such as {@code \\u2764}, literal Unicode symbols and the
  * common MiniMessage colour and decoration tags. {@link #colorize} turns it into section-coded text and
  * {@link #runs} splits that into styled runs a platform maps onto its native chat components.
  */
@@ -48,6 +48,11 @@ public final class RichText {
             char glyph = source.charAt(index);
             if (glyph == '&' && index + 1 < source.length() && source.charAt(index + 1) == '#' && hex(source, index + 2)) {
                 out.append(hexCode(source.substring(index + 2, index + 8)));
+                index += 8;
+                continue;
+            }
+            if (glyph == '[' && index + 7 < source.length() && source.charAt(index + 7) == ']' && hex(source, index + 1)) {
+                out.append(hexCode(source.substring(index + 1, index + 7)));
                 index += 8;
                 continue;
             }
