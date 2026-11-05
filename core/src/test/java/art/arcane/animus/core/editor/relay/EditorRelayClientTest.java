@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import art.arcane.animus.core.config.EditorRelaySettings;
+import art.arcane.animus.core.editor.EditorEvents;
 import art.arcane.animus.core.editor.EditorIdentity;
 import art.arcane.animus.core.editor.SharedFixtures;
 import art.arcane.animus.core.editor.transport.EditorEventSink;
@@ -152,6 +153,34 @@ class EditorRelayClientTest {
         JsonObject close = session.next(WAIT);
         assertEquals("close", close.get("type").getAsString());
         assertEquals(4, close.get("id").getAsLong());
+    }
+
+    @Test
+    void shouldForwardTheLimitReasonThenCloseWhenARelayedStreamFallsBehind() throws Exception {
+        FakeRelay.Session session = connect();
+        session.send(request(6, "GET", "/v1/events"));
+        FakeHandler.Stream stream = handler.streams.poll(5, TimeUnit.SECONDS);
+        EditorEvents events = new EditorEvents();
+        Runnable remove = events.add("tok", stream.sink(), (String id) -> true);
+        stream.opened().complete(new EditorEventStream(EditorResponse.json(200, new JsonObject()), remove));
+        assertEquals(200, session.next(WAIT).get("status").getAsInt());
+        for (int i = 0; i <= EditorEvents.QUEUE_LIMIT; i++) {
+            JsonObject event = new JsonObject();
+            event.addProperty("type", "preview");
+            event.addProperty("previewId", "prev_" + String.format("%08d", i));
+            event.addProperty("state", "expired");
+            events.publish(event);
+        }
+        JsonObject closing = session.next(WAIT);
+        assertEquals("event", closing.get("type").getAsString());
+        assertEquals(6, closing.get("id").getAsLong());
+        assertEquals("closing", closing.getAsJsonObject("event").get("type").getAsString());
+        assertEquals("limit", closing.getAsJsonObject("event").get("reason").getAsString());
+        JsonObject close = session.next(WAIT);
+        assertEquals("close", close.get("type").getAsString());
+        assertEquals(6, close.get("id").getAsLong());
+        assertEquals(0, events.open());
+        assertTrue(client.isRegistered(), "only the stream ends; the relay connection stays up");
     }
 
     @Test
