@@ -134,6 +134,8 @@ final class RegionActor implements RegionOwner.Body {
     private String rigId, rigProblem;
     private NpcRig<ItemStack> rig;
     private long rigGeneration = -1;
+    /** The {@code [rigs] enabled} the rig was last bound under; a hotload that changes it binds again. */
+    private boolean rigsEnabled;
     private final DragonMotion dragonMotion = new DragonMotion();
     /** This NPC sits on its vehicle's seat; read by its group's owner. */
     volatile boolean seated;
@@ -181,12 +183,13 @@ final class RegionActor implements RegionOwner.Body {
         if (rigId == null) return;
         RigCatalog catalog = host.runtime.isRunning() ? host.runtime.rigs().catalog() : null;
         if (catalog == null) return;
-        if (catalog.generation() != rigGeneration) {
-            rigGeneration = catalog.generation();
-            if (rig == null || !rig.refresh(catalog, turns)) {
+        boolean enabled = host.rigs().enabled(), toggled = enabled != rigsEnabled;
+        if (catalog.generation() != rigGeneration || toggled) {
+            rigGeneration = catalog.generation(); rigsEnabled = enabled;
+            if (toggled || rig == null || !rig.refresh(catalog, turns)) {
                 boolean had = rig != null;
                 rig = null; rigProblem = null;
-                if (!host.rigs.enabled()) rigProblem = "rigs are disabled in config.toml";
+                if (!enabled) rigProblem = "rigs are disabled in config.toml";
                 else if (!host.packets.bonesAvailable()) rigProblem = "display bones are unavailable on this server build";
                 else {
                     List<String> problems = new ArrayList<>();
@@ -199,7 +202,7 @@ final class RegionActor implements RegionOwner.Body {
         if (rig == null || !state.snapshot().active()) return;
         boolean walking = route != null && route.execution != null && !route.execution.finished();
         for (RigPlayback.Finished done : rig.tick(turns, walking)) host.animationFinished(uuid, done.animation(), done.layer());
-        if (rig.due(turns, yaw) && host.budget.cosmeticAllowed() && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs.sampleTicks(), System.nanoTime());
+        if (rig.due(turns, yaw) && host.budget.cosmeticAllowed() && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs().sampleTicks(), System.nanoTime());
     }
     void playAnimation(String animation, double speed, Optional<String> loop, int layer) {
         Optional<AnimationDocument.Loop> mode = loop.map((String text) -> AnimationDocument.Loop.parse(text)
@@ -578,7 +581,7 @@ final class RegionActor implements RegionOwner.Body {
         for (Player player : host.players().ownedNear(new WorldPosition(at.world(), eye), look.range() + 2, 32)) {
             Location location = player.getEyeLocation();
             Vec3 playerEye = new Vec3(location.getX(), location.getY(), location.getZ());
-            candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.distance(at.point()) <= host.settings.viewDistance()));
+            candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.distance(at.point()) <= host.settings().viewDistance()));
         }
         for (LookClose.Candidate<Player> candidate : look.ranked(eye, candidates)) {
             if (look.lineOfSight() && !clearSight(world, candidate.eye(), eye)) continue;
@@ -639,7 +642,7 @@ final class RegionActor implements RegionOwner.Body {
         if (!state.snapshot().active()) { stopRoute("cancelled by definition/lifecycle change"); return; }
         // A patrol with no player near sleeps: no turn, plan or budget until a viewer marks it again.
         if (current.leg != null && routeWatch == null && !watched()) {
-            if (!routeSleeping) { routeSleeping = true; cancelPlan(); routeStatus(current, "sleeping", "no player within " + (int) host.settings.viewDistance() + " blocks"); }
+            if (!routeSleeping) { routeSleeping = true; cancelPlan(); routeStatus(current, "sleeping", "no player within " + (int) host.settings().viewDistance() + " blocks"); }
             routeWaited = 0;
             return;
         }
@@ -704,7 +707,7 @@ final class RegionActor implements RegionOwner.Body {
         PathExecution.Proposal step = current.execution.next(current.speed / 20).orElseThrow();
         int sweep = PersistedNpcService.motionCells(hullWidth(), hullHeight(), step.from().distance(step.to()));
         int settle = PersistedNpcService.motionCells(hullWidth(), hullHeight(), 0);
-        int wanted = Math.min(host.navigationSettings.motionCellsPerTick(), sweep + (step.landing() ? settle : 0));
+        int wanted = Math.min(host.navigationSettings().motionCellsPerTick(), sweep + (step.landing() ? settle : 0));
         int granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
         if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return false; }
         MotionValidator.Result validation = LiveMovementProbe.check(world, owned, step.from(), step.to(), hullWidth(), hullHeight(), step.medium(), step.requireSupport(), sweep);

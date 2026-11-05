@@ -18,7 +18,10 @@ import org.bukkit.event.player.*;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 
-/** Experimental viewer-private stationary proof. Does not enable the general Folia runtime. */
+/**
+ * Experimental viewer-private stationary proof. Does not enable the general Folia runtime. {@code packetProofEnabled}
+ * is read live: while it is false new leases are refused and each lease retires on its owner's next poll.
+ */
 public final class FoliaStationaryProofService implements Listener, AutoCloseable {
     private volatile art.arcane.animus.core.runtime.NpcRuntime.InteractionObserver observer;
     /** Accepted proof clicks reach module subscribers as preview notices. */
@@ -39,22 +42,27 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
     private final AtomicBoolean closed=new AtomicBoolean();
     private final AtomicInteger admissions=new AtomicInteger();
     private final AtomicLong retirements=new AtomicLong();
+    private final AutoCloseable settingsSubscription;
+    /** Set on the file lane by a hotload; owners read it. */
+    private volatile boolean enabled;
 
-    public FoliaStationaryProofService(JavaPlugin plugin, String version, boolean enabled, DocumentStore documents, Executor io) {
+    public FoliaStationaryProofService(JavaPlugin plugin, String version, art.arcane.animus.core.AnimusRuntime runtime, DocumentStore documents, Executor io) {
         this.plugin=Objects.requireNonNull(plugin); this.version=version;
         this.documents=Objects.requireNonNull(documents); this.io=Objects.requireNonNull(io);
+        enabled=runtime.packetProofEnabled();
+        settingsSubscription=runtime.onSettings((art.arcane.animus.core.config.PluginSettings next)->enabled=next.packetProofEnabled());
+        // Bound whether or not proof is enabled, so a hotload can turn it on; binding reads no world state.
         FoliaRegions bound=null; NativeViewerEpoch epochBinding=null; String reason=null;
-        if (!enabled) reason="disabled; packetProofEnabled must be true in config.toml";
-        else if (!Set.of("26.1.2","26.2","26.3").contains(version)) reason="no exact adapter for "+version;
+        if (!Set.of("26.1.2","26.2","26.3").contains(version)) reason="no exact adapter for "+version;
         else try { bound=new FoliaRegions(plugin); epochBinding=NativeViewerEpoch.bind(plugin,version); }
         catch (ReflectiveOperationException | RuntimeException | LinkageError failure) { bound=null; reason="Folia ownership/epoch API unavailable: "+failure.getClass().getSimpleName(); }
         owner=bound; epochs=epochBinding; unavailable=reason; terrain=bound==null?null:new StationaryTerrain(bound);
         if (owner!=null) plugin.getServer().getPluginManager().registerEvents(this,plugin);
     }
-    public boolean available() { return owner!=null && !closed.get(); }
+    public boolean available() { return enabled && owner!=null && !closed.get(); }
     /** Safe from console/global owner: never reads an entity or world. */
     public String status() {
-        return "Folia stationary proof "+(available()?"ready; uncertified preview":"unavailable: "+(closed.get()?"closed":unavailable))
+        return "Folia stationary proof "+(available()?"ready; uncertified preview":"unavailable: "+(closed.get()?"closed":!enabled?"disabled; packetProofEnabled must be true in config.toml":unavailable))
                 +" | admitted="+sessions.size()+"/8 | lifetime admissions="+admissions.get()+"/64"
                 +" | pending-spawns="+pendingSpawns.size()+"/8 | command-work="+commandWork.size()+"/8"
                 +" | skin-reads="+(2-reads.availablePermits())+"/2 | retired="+retirements.get()
@@ -184,7 +192,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
         catch(RuntimeException failure){lease.resources.close();}
     }
     private boolean eligible(Lease lease) {
-        if(!current(lease)) return false;
+        if(!current(lease) || !enabled) return false;
         owner.require(lease.viewer);
         if(!lease.epoch.equals(epochs.capture(lease.viewer)))return false;
         Player viewer=lease.viewer;
@@ -232,6 +240,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
     @EventHandler public void respawn(PlayerRespawnEvent event){retire(event.getPlayer());}
     @Override public void close(){
         if(!closed.compareAndSet(false,true))return;
+        try{settingsSubscription.close();}catch(Exception ignored){/* Removing a listener cannot fail. */}
         pendingSpawns.close();commandWork.close();HandlerList.unregisterAll(this);sessions.values().forEach(lease->lease.resources.close());
     }
     private static Vec3 position(Location location){return new Vec3(location.getX(),location.getY(),location.getZ());}

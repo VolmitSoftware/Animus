@@ -31,6 +31,8 @@ public final class OwnerNavigation implements AutoCloseable {
         return work.plan(world, bounds, start, goal, profile, searchLimits);
     }
     public int outstandingJobs() { return work.outstandingJobs(); }
+    /** New limits for later plans and the next capture pump; plans in progress continue. Any thread. */
+    public void limits(NavigationLimits next) { work.limits(next); }
 
     private void captureTick() {
         if (closed) return;

@@ -13,7 +13,8 @@ import java.util.function.ToLongFunction;
  * Turns for every route on one owner. Ready routes take turns round robin and at most {@code routesPerTick} work in a
  * tick, so a route that missed its turn goes first next tick. A route that waits for a tick sits in a timed queue and
  * costs nothing until then. A route with no player near sleeps: it holds no turn, and a few sleeping routes per tick
- * look again. There is no limit on how many routes exist. Owner thread only.
+ * look again. There is no limit on how many routes exist. Owner thread only. {@link #budgets} changes both budgets
+ * from the next tick: a lowered budget leaves the routes it cannot serve ready, never dropped.
  *
  * @param <R> the route; identity is its equality
  */
@@ -41,7 +42,7 @@ public final class RouteScheduler<R> {
     private enum Place { READY, WAITING, SLEEPING, YIELDED }
     private record Timed<R>(R route, long due, long order) {}
 
-    private final int routesPerTick, wakeChecksPerTick;
+    private int routesPerTick, wakeChecksPerTick;
     private final ToLongFunction<R> due;
     private final Deque<R> ready = new ArrayDeque<>(), sleeping = new ArrayDeque<>(), yielded = new ArrayDeque<>();
     private final PriorityQueue<Timed<R>> waiting = new PriorityQueue<>(Comparator.comparingLong((Timed<R> timed) -> timed.due).thenComparingLong(Timed::order));
@@ -49,8 +50,14 @@ public final class RouteScheduler<R> {
     private long order;
 
     public RouteScheduler(int routesPerTick, int wakeChecksPerTick, ToLongFunction<R> due) {
+        budgets(routesPerTick, wakeChecksPerTick);
+        this.due = Objects.requireNonNull(due);
+    }
+
+    /** New per-tick budgets, used from the next tick. Routes beyond a lowered budget wait their turn as usual. */
+    public void budgets(int routesPerTick, int wakeChecksPerTick) {
         if (routesPerTick < 1 || wakeChecksPerTick < 1) throw new IllegalArgumentException("Route budgets must be positive");
-        this.routesPerTick = routesPerTick; this.wakeChecksPerTick = wakeChecksPerTick; this.due = Objects.requireNonNull(due);
+        this.routesPerTick = routesPerTick; this.wakeChecksPerTick = wakeChecksPerTick;
     }
 
     /** Schedules a new route, or moves a known one, by its due tick. */

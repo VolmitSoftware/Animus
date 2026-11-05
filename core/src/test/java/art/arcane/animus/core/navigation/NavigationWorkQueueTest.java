@@ -209,6 +209,52 @@ class NavigationWorkQueueTest {
         }
     }
 
+    @Test void loweringTheJobLimitFinishesJobsInFlightAndAdmitsNewOnesOnceUnderTheLimit() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        NavigationWorkQueue.Planner held = (VoxelSnapshot snapshot, BlockPos start, BlockPos goal, MovementProfile profile, PathPlanner.Limits limits, java.util.function.BooleanSupplier cancelled) -> {
+            try { release.await(2, TimeUnit.SECONDS); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            return new PathPlanner.Result(PathPlanner.Status.FOUND, List.of(), 0, 0, false);
+        };
+        try (NavigationWorkQueue queue = new NavigationWorkQueue(new NavigationLimits(4096, 4, 8192), System::nanoTime, held)) {
+            List<NavigationPlan> inFlight = new ArrayList<>();
+            for (int i = 0; i < 4; i++) inFlight.add(submit(queue, UUID.randomUUID().toString()));
+            Sampler sampler = new Sampler();
+            queue.pump(sampler, 1);
+            queue.limits(new NavigationLimits(4096, 1, 8192));
+            assertEquals(4, queue.outstandingJobs(), "no job in flight is cancelled");
+            assertThrows(RejectedExecutionException.class, () -> submit(queue, UUID.randomUUID().toString()));
+            release.countDown();
+            for (NavigationPlan plan : inFlight) assertEquals(PathPlanner.Status.FOUND, await(plan).status());
+            assertEquals(0, queue.outstandingJobs());
+            NavigationPlan next = submit(queue, UUID.randomUUID().toString());
+            assertThrows(RejectedExecutionException.class, () -> submit(queue, UUID.randomUUID().toString()));
+            for (int tick = 2; tick < 40 && !next.done(); tick++) queue.pump(sampler, tick);
+            assertEquals(PathPlanner.Status.FOUND, await(next).status());
+        }
+    }
+
+    @Test void raisingTheJobLimitAdmitsAndPlansMoreJobsThanTheFirstLimit() throws Exception {
+        try (NavigationWorkQueue queue = new NavigationWorkQueue(new NavigationLimits(4096, 1, 8192))) {
+            submit(queue, UUID.randomUUID().toString()).cancel();
+            queue.limits(new NavigationLimits(4096, 12, 8192));
+            List<NavigationPlan> plans = new ArrayList<>();
+            for (int i = 0; i < 12; i++) plans.add(submit(queue, UUID.randomUUID().toString()));
+            Sampler sampler = new Sampler();
+            for (int tick = 1; tick < 40; tick++) queue.pump(sampler, tick);
+            for (NavigationPlan plan : plans) assertEquals(PathPlanner.Status.FOUND, await(plan).status());
+        }
+    }
+
+    @Test void theCaptureBudgetOfTheNextPumpFollowsAHotload() {
+        try (NavigationWorkQueue queue = new NavigationWorkQueue(new NavigationLimits(8, 4, 8192))) {
+            submit(queue, UUID.randomUUID().toString());
+            Sampler sampler = new Sampler();
+            assertEquals(8, queue.pump(sampler, 1));
+            queue.limits(new NavigationLimits(3, 4, 8192));
+            assertEquals(3, queue.pump(sampler, 2));
+        }
+    }
+
     private static NavigationPlan submit(NavigationWorkQueue queue, String world) {
         return queue.plan(world, BOUNDS, START, GOAL, WALKER, SEARCH);
     }
