@@ -107,7 +107,11 @@ public final class AnimusPlugin extends JavaPlugin {
                 org.bukkit.plugin.Plugin plugin = getServer().getPluginManager().getPlugin("Shopkeepers");
                 return plugin != null && plugin.isEnabled();
             };
-            runtime.importHost(new CitizensDropIn.Host(Optional.ofNullable(getDataFolder().getAbsoluteFile().getParentFile()).map(java.io.File::toPath), citizens, shopkeepers));
+            java.util.function.BooleanSupplier denizen = () -> {
+                org.bukkit.plugin.Plugin plugin = getServer().getPluginManager().getPlugin("Denizen");
+                return plugin != null && plugin.isEnabled();
+            };
+            runtime.importHost(new CitizensDropIn.Host(Optional.ofNullable(getDataFolder().getAbsoluteFile().getParentFile()).map(java.io.File::toPath), citizens, shopkeepers, denizen));
             CitizensGuard.install(citizens);
             runtime.npcs().diagnostics().stream().limit(20).forEach(problem -> getLogger().warning("NPC definition recovery: " + problem));
             replies = new ReplyScheduler(this);
