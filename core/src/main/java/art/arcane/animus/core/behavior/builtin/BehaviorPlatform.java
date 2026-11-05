@@ -88,6 +88,15 @@ public interface BehaviorPlatform {
                 "Shops and chest GUIs are not available on this platform");
     }
 
+    /** Plays an animation of the NPC's rig. {@code loop} overrides the clip's loop mode. */
+    default void playAnimation(NpcHandle npc, String animation, double speed, Optional<String> loop, int layer) {
+        throw new CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "rigs-unavailable", "Rig animation is not available on this platform");
+    }
+    /** Stops one animation layer, or every played layer, fading over {@code fadeTicks}. */
+    default void stopAnimation(NpcHandle npc, java.util.OptionalInt layer, int fadeTicks) {
+        throw new CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "rigs-unavailable", "Rig animation is not available on this platform");
+    }
+
     /**
      * Starts or steers the NPC's build. {@code options} are build option words such as {@code rotation=90}. A start
      * without a schematic uses the NPC's saved builder section. Returns a short JSON result.

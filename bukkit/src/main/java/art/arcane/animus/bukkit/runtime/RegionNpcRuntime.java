@@ -75,7 +75,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     static final String MOUNTS_UNAVAILABLE = "mounted NPCs are unavailable on Folia: a vehicle and its passengers have separate owners and seat coupling has no region handoff yet";
     static final int MAX_ISSUED_IDS = 8192;
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, RECONCILE_WORK = 64, MAX_READS = 8, WAKES_PER_TICK = 64, ADMISSIONS_PER_PASS = 16;
-    record Geometry(double width, double height, int ids) {}
+    record Geometry(double width, double height, int ids, art.arcane.animus.core.mount.SeatGeometry seat) {}
     private static final RegionActor.Desired REMOVED = new RegionActor.Desired(null, null);
 
     final JavaPlugin plugin;
@@ -84,6 +84,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final PersistedNpcService.Settings settings;
     final FoliaRegions regions;
     final RegionBudget budget;
+    final art.arcane.animus.core.config.RigSettings rigs;
     final SpatialNpcIndex index = new SpatialNpcIndex(MAX_ACTIVE);
     final Map<String, RegionActor> actors = new ConcurrentHashMap<>();
     final Map<UUID, RegionActor> byUuid = new ConcurrentHashMap<>();
@@ -125,6 +126,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, 16); limits.put(RegionBudget.Kind.MOTION_CELLS, 2048);
         limits.put(RegionBudget.Kind.CAPTURE, 256); limits.put(RegionBudget.Kind.VIEWERS, settings.updatesPerTick());
         limits.put(RegionBudget.Kind.PACKETS, RegionViewer.PACKETS_PER_REGION); limits.put(RegionBudget.Kind.WAKES, 16);
+        rigs = runtime.isRunning() ? runtime.rigSettings() : art.arcane.animus.core.config.RigSettings.DEFAULT;
+        limits.put(RegionBudget.Kind.RIG_PLANS, rigs.plansPerTick());
         budget = new RegionBudget(regions, limits);
         if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
         try {
@@ -133,7 +136,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             navigation = BukkitNavigationBridge.regionOwned(NavigationLimits.DEFAULT);
             for (String type : packets.capabilities().entityTypes()) {
                 NativePacketAdapter.Body body = packets.createBody(UUID.randomUUID(), type, "Animus", null);
-                geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length));
+                geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length, body.seat()));
             }
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(this::terrainChanged), plugin);
@@ -183,6 +186,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 + "; health=" + view.snapshot().health() + "; position=" + view.snapshot().position().point() + "; navigation=" + view.navigation()
                 + NpcPresentation.describe(view.spec(), view.equipment().size(), packets.presentationAvailable())
                 + (view.mount() ? "; mount=" + MOUNTS_UNAVAILABLE : "") + (view.ride() ? "; ride=" + RIDING_UNAVAILABLE : "")
+                + actor.rigStatus()
                 + (actor.error == null ? "" : "; last-valid-retained=true; " + actor.error);
     }
     @Override public List<String> validateActivation(NpcDefinition definition) {
@@ -236,6 +240,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public CompletableFuture<Void> awaitRoute(String id) { return navigable(id).awaitRoute(); }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) { navigable(id).setAppearance(name, skin, reset); }
     @Override public void setEquipment(String id, EquipmentSlot slot, ItemStack item) { navigable(id).setEquipment(slot, item); }
+    @Override public void playAnimation(String id, String animation, double speed, Optional<String> loop, int layer) { navigable(id).playAnimation(animation, speed, loop, layer); }
+    @Override public void stopAnimation(String id, java.util.OptionalInt layer, int fadeTicks) { navigable(id).stopAnimation(layer, fadeTicks); }
 
     private RegionActor navigable(String id) {
         RegionActor actor = owned(id);
@@ -288,6 +294,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     void releaseRead() { reads.decrementAndGet(); }
     void activated(UUID npc) { TriggerDispatcher dispatcher = triggers; if (dispatcher != null) dispatcher.activated(npc); }
     void waypoint(UUID npc, int waypoint) { TriggerDispatcher dispatcher = triggers; if (dispatcher != null) dispatcher.publish(new TriggerEvent.Waypoint(npc, waypoint)); }
+    void animationFinished(UUID npc, String animation, int layer) {
+        TriggerDispatcher dispatcher = triggers;
+        if (dispatcher != null) dispatcher.publish(new TriggerEvent.AnimationFinished(npc, animation, layer));
+    }
     /** Registers where a dormant NPC waits, or clears it. Removed NPCs that went dormant retire here. */
     void rest(RegionActor actor, ChunkPosition chunk) {
         ChunkPosition previous = actor.resting;

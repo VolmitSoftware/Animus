@@ -167,6 +167,16 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         PlatformRefusals.mapped(() -> { living.setAppearance(active.id(), change.name(), change.skin(), change.reset()); return true; });
     }
 
+    @Override public void playAnimation(NpcHandle npc, String animation, double speed, Optional<String> loop, int layer) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.playAnimation(active.id(), animation, speed, loop, layer); return true; });
+    }
+
+    @Override public void stopAnimation(NpcHandle npc, java.util.OptionalInt layer, int fadeTicks) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.stopAnimation(active.id(), layer, fadeTicks); return true; });
+    }
+
     @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) {
         NpcRuntime.ActiveNpc active = require(npc);
         ItemStack stack = new ItemStack(item.map(BukkitBehaviorPlatform::material).orElse(Material.AIR));

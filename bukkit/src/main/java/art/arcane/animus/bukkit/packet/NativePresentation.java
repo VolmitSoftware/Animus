@@ -88,6 +88,12 @@ final class NativePresentation {
                 dataValue.invoke(null, translation, vector.newInstance(0f, (float) lift, 0f)));
     }
 
+    /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
+    Object visibility(BodyLook look, boolean hidden) throws ReflectiveOperationException {
+        boolean invisible = hidden || look.armorStand().map(ArmorStandLook::invisible).orElse(false);
+        return dataValue.invoke(null, sharedFlags, BodyLook.sharedFlags(look.pose(), invisible));
+    }
+
     List<Object> seatValues() throws ReflectiveOperationException {
         return List.of(dataValue.invoke(null, sharedFlags, (byte) 0x20), dataValue.invoke(null, standFlags, (byte) BodyLook.SEAT_FLAGS));
     }

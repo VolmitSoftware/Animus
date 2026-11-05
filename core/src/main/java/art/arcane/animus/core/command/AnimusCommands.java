@@ -80,6 +80,8 @@ public final class AnimusCommands {
         if (!sender.permitted(status ? "animus.status" : "animus.admin")) { sender.tell("You do not have permission to use this command."); return; }
         String operation = arguments.length == 0 ? "status" : arguments[0].toLowerCase(Locale.ROOT);
         if (operation.equals("modules")) { modules(sender, activeRuntime, arguments); return; }
+        if (operation.equals("rigs")) { rigs(sender, activeRuntime, arguments); return; }
+        if (operation.equals("pack")) { pack(sender, activeRuntime, arguments); return; }
         if (operation.equals("behaviors")) {
             BehaviorCommands behaviors = services.behaviors().get();
             if (behaviors != null) behaviors.execute(sender, arguments);
@@ -135,6 +137,11 @@ public final class AnimusCommands {
                 List<String> result;
                 try {
                     result = new Administration(activeRuntime).execute(commandArgs);
+                    if (commandArgs.length > 0 && commandArgs[0].equals("reload")) {
+                        List<String> reloaded = new ArrayList<>(result);
+                        reloaded.add(rigSummary(activeRuntime.rigs().reload()));
+                        result = reloaded;
+                    }
                     if (commandArgs.length > 0 && REFRESHING.contains(commandArgs[0])) living.refresh();
                 }
                 catch (IOException | RuntimeException e) { result = List.of("Animus: " + e.getMessage()); }
@@ -154,7 +161,7 @@ public final class AnimusCommands {
         boolean admin = sender.permitted("animus.admin");
         if (arguments.length == 1) {
             List<String> available = admin ? new ArrayList<>(Administration.COMMANDS) : new ArrayList<>(List.of("status"));
-            if (admin) available.addAll(List.of("select", "attack", "target", "combat", "navigate", "navigation", "look", "ride", "modules", "behaviors"));
+            if (admin) available.addAll(List.of("select", "attack", "target", "combat", "navigate", "navigation", "look", "ride", "modules", "behaviors", "rigs", "pack"));
             if (admin) available.addAll(services.extras().keySet().stream().sorted().toList());
             return matching(available, arguments[0]);
         }
@@ -177,6 +184,12 @@ public final class AnimusCommands {
                     .map((Capabilities.Availability capability) -> capability.descriptor().key().toString()).filter((String key) -> key.startsWith(arguments[2])).limit(100).toList();
         if (arguments.length == 6 && operation.equals("navigate")) return matching(List.of("walk", "swim", "fly"), arguments[5]);
         if (arguments.length == 2 && operation.equals("ride")) return matching(List.of("status", "stop"), arguments[1]);
+        if (arguments.length == 2 && operation.equals("rigs")) return matching(List.of("status", "reload", "problems", "play", "stop"), arguments[1]);
+        if (arguments.length == 3 && operation.equals("rigs") && List.of("play", "stop").contains(arguments[1].toLowerCase(Locale.ROOT)))
+            return activeRuntime.npcs().all().stream().map(NpcDefinition::id).filter((String id) -> id.startsWith(arguments[2])).limit(100).toList();
+        if (arguments.length == 4 && operation.equals("rigs") && arguments[1].equalsIgnoreCase("play"))
+            return activeRuntime.rigs().catalog().animations().keySet().stream().filter((String id) -> id.startsWith(arguments[3])).limit(100).toList();
+        if (arguments.length == 2 && operation.equals("pack")) return matching(List.of("build"), arguments[1]);
         if (arguments.length == 3 && operation.equals("navigation")) return matching(List.of("status", "stop"), arguments[2]);
         Extra extra = services.extras().get(operation);
         return extra == null ? List.of() : extra.complete(sender, arguments);
@@ -249,6 +262,66 @@ public final class AnimusCommands {
         } catch (RuntimeException failure) { sender.tell("Animus modules: " + failure.getMessage()); }
     }
 
+    private static String rigSummary(art.arcane.animus.core.rig.RigCatalog catalog) {
+        return "Rigs reloaded: rigs=" + catalog.rigs().size() + " animations=" + catalog.animations().size() + " problems=" + catalog.problems().size()
+                + (catalog.problems().isEmpty() ? "" : " (see /animus rigs problems)");
+    }
+
+    /** {@code rigs status|reload|problems [page]|play <npc> <animation> [layer] [speed] [loop]|stop <npc> [layer] [fadeTicks]}. */
+    private void rigs(CommandActor sender, AnimusRuntime active, String[] args) {
+        String operation = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "status";
+        try {
+            switch (operation) {
+                case "status" -> sender.tell(active.rigs().status());
+                case "reload" -> services.files().execute(() -> {
+                    art.arcane.animus.core.rig.RigCatalog catalog = active.rigs().reload();
+                    reply(sender, rigSummary(catalog));
+                    services.living().refresh();
+                });
+                case "problems" -> {
+                    int page = args.length > 2 ? Integer.parseInt(args[2]) : 1;
+                    if (page < 1 || page > 1000) throw new IllegalArgumentException("Page must be 1..1000");
+                    List<String> problems = active.rigs().catalog().problems();
+                    sender.tell("Rig problems: " + problems.size() + "; page " + page);
+                    problems.stream().skip((page - 1L) * 20).limit(20).forEach(sender::tell);
+                }
+                case "play" -> {
+                    if (args.length < 4 || args.length > 7) throw new IllegalArgumentException("rigs play <npc> <animation> [layer] [speed] [once|loop|pingpong|hold]");
+                    int layer = args.length > 4 ? Integer.parseInt(args[4]) : 0;
+                    double speed = args.length > 5 ? Double.parseDouble(args[5]) : 1;
+                    Optional<String> loop = args.length > 6 ? Optional.of(args[6].toLowerCase(Locale.ROOT)) : Optional.empty();
+                    onNpcOwner(sender, args[2], "Animus rigs", () -> { services.living().playAnimation(args[2], args[3], speed, loop, layer); return "Playing " + args[3] + " on " + args[2] + " layer " + layer; });
+                }
+                case "stop" -> {
+                    if (args.length < 3 || args.length > 5) throw new IllegalArgumentException("rigs stop <npc> [layer] [fadeTicks]");
+                    java.util.OptionalInt layer = args.length > 3 ? java.util.OptionalInt.of(Integer.parseInt(args[3])) : java.util.OptionalInt.empty();
+                    int fade = args.length > 4 ? Integer.parseInt(args[4]) : 0;
+                    onNpcOwner(sender, args[2], "Animus rigs", () -> { services.living().stopAnimation(args[2], layer, fade); return "Stopped animation on " + args[2]; });
+                }
+                default -> throw new IllegalArgumentException("rigs status|reload|problems [page]|play <npc> <animation> [layer] [speed] [loop]|stop <npc> [layer] [fadeTicks]");
+            }
+        } catch (RejectedExecutionException full) { sender.tell("Animus file queue is full; retry shortly."); }
+        catch (RuntimeException failure) { sender.tell("Animus rigs: " + failure.getMessage()); }
+    }
+
+    /** {@code pack build}: models/ Blockbench files into pack/out/. */
+    private void pack(CommandActor sender, AnimusRuntime active, String[] args) {
+        if (args.length != 2 || !args[1].equalsIgnoreCase("build")) { sender.tell("pack build"); return; }
+        try {
+            services.files().execute(() -> {
+                java.nio.file.Path data = active.rigs().data();
+                try {
+                    art.arcane.animus.core.rig.pack.RigPackBuilder.Result result = art.arcane.animus.core.rig.pack.RigPackBuilder.build(
+                            data.resolve("models"), data.resolve("pack/out"), art.arcane.animus.core.rig.pack.RigPackBuilder.Limits.DEFAULT);
+                    reply(sender, "Pack built: models=" + result.models() + " bones=" + result.bones() + " sha1=" + result.sha1() + " -> pack/out/" + result.zip().getFileName());
+                    reply(sender, "Rig and animation documents for the models are in pack/out/documents; copy them into rigs/ and animations/ to use them.");
+                    result.problems().stream().limit(20).forEach((String problem) -> reply(sender, "Pack: " + problem));
+                    if (result.problems().size() > 20) reply(sender, "Pack: " + (result.problems().size() - 20) + " more problems not shown");
+                } catch (IOException | RuntimeException failure) { reply(sender, "Animus pack: " + failure.getMessage()); }
+            });
+        } catch (RejectedExecutionException full) { sender.tell("Animus file queue is full; retry shortly."); }
+    }
+
     /** Prepare immutable drafts off-thread, validate platform capabilities on the owner, then commit with the original revision/hash. */
     private void submitDefinitionChange(CommandActor sender, AnimusRuntime active, String[] args) {
         Executor files = services.files();
@@ -313,14 +386,15 @@ public final class AnimusCommands {
     }
 
     /** Runs NPC work on the NPC's owner, which on a regionized server is its region, and replies on the sender's own owner. */
-    private void onNpcOwner(CommandActor sender, String id, Supplier<String> work) {
+    private void onNpcOwner(CommandActor sender, String id, Supplier<String> work) { onNpcOwner(sender, id, "Animus navigation", work); }
+    private void onNpcOwner(CommandActor sender, String id, String label, Supplier<String> work) {
         NpcRuntime<?, ?> living = services.living();
         boolean accepted = living.onOwner(id, () -> {
             String message;
             try { message = work.get(); }
-            catch (RuntimeException e) { message = "Animus navigation: " + e.getMessage(); }
+            catch (RuntimeException e) { message = label + ": " + e.getMessage(); }
             for (String line : message.split("\n")) reply(sender, line);
-        }, (String reason) -> reply(sender, "Animus navigation: " + reason));
-        if (!accepted) sender.tell("Animus navigation: " + (living.available() ? "NPC " + id + " is not active; it starts when its chunk loads or a player is near" : living.status()));
+        }, (String reason) -> reply(sender, label + ": " + reason));
+        if (!accepted) sender.tell(label + ": " + (living.available() ? "NPC " + id + " is not active; it starts when its chunk loads or a player is near" : living.status()));
     }
 }
