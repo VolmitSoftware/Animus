@@ -14,6 +14,10 @@ import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.editor.EditorCommands;
+import art.arcane.animus.core.editor.EditorHost;
+import art.arcane.animus.core.editor.EditorService;
+import art.arcane.animus.core.editor.RuntimeEditorHost;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
@@ -76,11 +80,14 @@ public final class AnimusModRuntime {
         ModCombat combat;
         ModScreens screens;
         volatile art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> shops;
+        VanillaDisplayTransport displays;
+        volatile art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> guis;
         BuildService<ServerPlayer, ItemStack> builds;
         BuiltinCapabilities builtins;
         ExtensionRuntime extensions;
         volatile BehaviorCommands behaviors;
         AnimusCommands commands;
+        volatile EditorService editor;
         volatile boolean stopping;
     }
 
@@ -116,27 +123,34 @@ public final class AnimusModRuntime {
             next.shops = new art.arcane.animus.core.shop.ShopService<>(next.runtime, next.screens, next.living, files,
                     (String name) -> Optional.ofNullable(server.getPlayerList().getPlayerByName(name)).map(ServerPlayer::getUUID), LOGGER::info);
             next.screens.bind(next.shops.screens());
+            next.displays = new VanillaDisplayTransport(next.screens::display, LOGGER::warn);
+            next.guis = new art.arcane.animus.core.gui.HoloService<>(next.runtime, next.shops, next.displays, next.living, files,
+                    art.arcane.animus.core.gui.GlossBridge.absent("Gloss is a Bukkit plugin and cannot run on mod servers"), LOGGER::info);
             art.arcane.animus.core.hire.HireService<ServerPlayer, ItemStack> hires = new art.arcane.animus.core.hire.HireService<>(next.runtime, next.shops.screens(), next.living, files,
                     next.combat.hireGuarding(), LOGGER::info);
-            art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> clickShops = next.shops;
-            next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) -> hires.interacted(player, npc, attack, sneaking) || clickShops.interacted(player, npc, attack, sneaking));
             next.ticks.every(hires::tick);
             LOGGER.info(hires.status());
             art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
+            art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> holoService = next.guis;
+            next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) ->
+                    hires.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             next.ticks.every(() -> {
                 for (UUID viewer : screenService.screens().viewing()) {
                     ServerPlayer online = server.getPlayerList().getPlayer(viewer);
                     if (online != null) screenService.screens().tick(online);
                 }
+                for (ServerPlayer online : List.copyOf(server.getPlayerList().getPlayers())) holoService.tick(online);
             });
             next.shops.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {});
+            next.guis.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {});
             LOGGER.info(next.shops.status());
+            LOGGER.info(next.guis.status());
             next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), BuildProtection.NONE,
                     "none (mod servers have no standard protection API; every block change is allowed)", next.ticks::every,
                     () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null);
             LOGGER.info(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
-            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.shops),
+            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis),
                     next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
             next.extensions = new ExtensionRuntime(next.runtime.documents().resolve("modules"), modulePlatform(), next.runtime.definitionGateway(),
                     next.runtime.moduleSettings(), LOGGER::info, (ExtensionRuntime.State initialized) -> {
@@ -154,8 +168,9 @@ public final class AnimusModRuntime {
             }
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
                     next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
-                            "shop", next.shops.shopCommand(), "gui", next.shops.guiCommand()), () -> owner.stopping));
+                            "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files)), () -> owner.stopping));
             next.extensions.start();
+            startEditor(server, next, files);
             running = next;
             ModHooks.attach(this);
             LOGGER.info(AnimusSplash.render(environment, platform + " / Minecraft " + environment.minecraftVersion(), true));
@@ -174,9 +189,13 @@ public final class AnimusModRuntime {
 
     private static void close(Running active) {
         active.stopping = true;
+        EditorService editor = active.editor;
+        active.editor = null;
+        if (editor != null) editor.close();
         if (active.behaviors != null) active.behaviors.close();
         if (active.builtins != null) active.builtins.close();
         if (active.screens != null) active.screens.closeAll();
+        if (active.guis != null) active.guis.close();
         if (active.shops != null) active.shops.close();
         if (active.extensions != null) active.extensions.close();
         if (active.builds != null) active.builds.close();
@@ -184,6 +203,27 @@ public final class AnimusModRuntime {
         if (active.living != null) active.living.close();
         if (active.ticks != null) active.ticks.close();
         if (active.runtime != null) active.runtime.closeAsync();
+    }
+
+    /** The web editor API, the same as on Bukkit: the embedded listener and the relay client, both off until config.toml enables them. */
+    private void startEditor(MinecraftServer server, Running next, Executor files) {
+        art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> guiService = next.shops;
+        java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> Map.of(
+                "combat", EditorHost.Feature.yes(),
+                "gloss", EditorHost.Feature.no("Gloss is a Bukkit plugin"),
+                "placeholderapi", EditorHost.Feature.no("PlaceholderAPI is a Bukkit plugin"));
+        EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living, () -> next.behaviors,
+                next.extensions, () -> guiService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}), platform.name().toLowerCase(java.util.Locale.ROOT), "", features,
+                (ServerPlayer player) -> VanillaRuntimeHost.permitted(player.permissions(), "animus.admin"), Optional.empty(),
+                "viewer-private NPC presentation is not built for mod loaders yet", LOGGER::info)), LOGGER::info);
+        try {
+            service.start();
+            next.editor = service;
+            service.status().forEach(LOGGER::info);
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.warn("The web editor API could not start", failure);
+            service.close();
+        }
     }
 
     /** Call once after every server tick, on the server thread. */
@@ -232,7 +272,8 @@ public final class AnimusModRuntime {
     boolean interact(ServerPlayer player, int entityId, boolean attack, String hand, boolean secondary) {
         Running active = running;
         VanillaBodyTransport transport = active == null ? null : active.host.transport();
-        return transport != null && transport.interact(player, entityId, attack, hand, secondary);
+        if (transport != null && transport.interact(player, entityId, attack, hand, secondary)) return true;
+        return active != null && active.displays != null && active.displays.interact(player, entityId, attack, hand, secondary);
     }
     void input(ServerPlayer player, Input input) {
         Running active = running;
@@ -249,6 +290,7 @@ public final class AnimusModRuntime {
         Running active = running;
         if (active == null || player.position().distanceToSqr(x, y, z) < CORRECTION_SQUARED) return;
         if (active.shops != null) active.shops.screens().teleported(player);
+        if (active.guis != null) active.guis.teleported(player);
         active.living.teleported(player);
     }
     void joined(ServerPlayer player) { Running active = running; if (active != null) active.living.joined(player); }
@@ -256,18 +298,21 @@ public final class AnimusModRuntime {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().quit(player);
+        if (active.guis != null) active.guis.quit(player);
         active.living.quit(player);
     }
     void respawned(ServerPlayer player) {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().worldChanged(player);
+        if (active.guis != null) active.guis.worldChanged(player);
         active.living.respawned(player);
     }
     void died(ServerPlayer player) {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().died(player);
+        if (active.guis != null) active.guis.died(player);
         active.living.died(player);
     }
     void realDamaged(LivingEntity victim, DamageSource source) { Running active = running; if (active != null) active.combat.realDamaged(victim, source); }

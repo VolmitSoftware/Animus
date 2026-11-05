@@ -51,18 +51,18 @@ class IconEditor extends StatelessWidget {
     final List<String> types = chest ? chestIconTypes : menuIconTypes;
     final bool refused = !types.contains(type);
     Widget text(String key, String label, {GuiTextMode mode = GuiTextMode.template, bool multiline = false, String? help}) => GuiRow(
-          label: label,
-          help: help,
-          problems: diagnosticsAt(diagnostics, childPath(path, key)),
-          child: GuiTextInput(
-            value: asString(icon[key]) ?? '',
-            mode: mode,
-            names: names,
-            multiline: multiline,
-            label: label,
-            onChanged: (String value) => onChanged(withField(icon, key, value)),
-          ),
-        );
+      label: label,
+      help: help,
+      problems: diagnosticsAt(diagnostics, childPath(path, key)),
+      child: GuiTextInput(
+        value: asString(icon[key]) ?? '',
+        mode: mode,
+        names: names,
+        multiline: multiline,
+        label: label,
+        onChanged: (String value) => onChanged(withField(icon, key, value)),
+      ),
+    );
     return dom.div(classes: 'animus-gui-icon', <Widget>[
       GuiRow(
         label: 'Icon',
@@ -87,12 +87,16 @@ class IconEditor extends StatelessWidget {
         ),
       ),
       if (refused)
-        dom.p(classes: 'animus-gui-refused', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          dom.code(<Widget>[Component.text(childPath(path, 'type'))]),
-          Component.text(chest
-              ? " icon '$type' has no meaning in a chest window and is not available in Animus."
-              : " icon '$type' is not available in Animus."),
-        ])
+        dom.p(
+          classes: 'animus-gui-refused',
+          attributes: const <String, String>{'role': 'alert'},
+          <Widget>[
+            dom.code(<Widget>[Component.text(childPath(path, 'type'))]),
+            Component.text(
+              chest ? " icon '$type' has no meaning in a chest window and is not available in Animus." : " icon '$type' is not available in Animus.",
+            ),
+          ],
+        )
       else ...<Widget>[
         if (type == 'item') ...<Widget>[
           text('item', 'Item', help: 'An item id such as minecraft:bread; expressions work.'),
@@ -119,11 +123,7 @@ class IconEditor extends StatelessWidget {
           GuiRow(
             label: 'Lore',
             problems: diagnosticsAt(diagnostics, childPath(path, 'lore'), nested: true),
-            child: GuiLinesEditor(
-              lines: stringList(icon['lore']),
-              names: names,
-              onChanged: (List<String> lines) => onChanged(withField(icon, 'lore', lines)),
-            ),
+            child: GuiLinesEditor(lines: stringList(icon['lore']), names: names, onChanged: (List<String> lines) => onChanged(withField(icon, 'lore', lines))),
           ),
         ],
       ],
@@ -159,29 +159,32 @@ class ComponentEditor extends StatelessWidget {
     final List<String> types = chest ? chestComponentTypes : menuComponentTypes;
     final bool refused = !types.contains(type);
     Widget actions(String key, String title) => GuiSection(
-          title: title,
-          count: asList(data[key]).length,
-          children: <Widget>[
-            ActionsEditor(
-              actions: asList(data[key]),
-              path: childPath(path, key),
-              diagnostics: diagnostics,
-              names: names,
-              namedLists: namedLists,
-              onChanged: (JsonList next) => onChanged(<String, Object?>{...data, key: next}),
-            ),
-          ],
-        );
-    Widget icon(String key, String title) => GuiSection(title: title, children: <Widget>[
-          IconEditor(
-            icon: asMap(data[key]),
-            path: childPath(path, key),
-            diagnostics: diagnostics,
-            chest: chest,
-            names: names,
-            onChanged: (JsonMap next) => onChanged(<String, Object?>{...data, key: next}),
-          ),
-        ]);
+      title: title,
+      count: asList(data[key]).length,
+      children: <Widget>[
+        ActionsEditor(
+          actions: asList(data[key]),
+          path: childPath(path, key),
+          diagnostics: diagnostics,
+          names: names,
+          namedLists: namedLists,
+          onChanged: (JsonList next) => onChanged(<String, Object?>{...data, key: next}),
+        ),
+      ],
+    );
+    Widget icon(String key, String title) => GuiSection(
+      title: title,
+      children: <Widget>[
+        IconEditor(
+          icon: asMap(data[key]),
+          path: childPath(path, key),
+          diagnostics: diagnostics,
+          chest: chest,
+          names: names,
+          onChanged: (JsonMap next) => onChanged(<String, Object?>{...data, key: next}),
+        ),
+      ],
+    );
     return dom.div(classes: 'animus-gui-component', <Widget>[
       GuiRow(
         label: 'Type',
@@ -197,25 +200,33 @@ class ComponentEditor extends StatelessWidget {
         ),
       ),
       if (refused)
-        dom.p(classes: 'animus-gui-refused', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          dom.code(<Widget>[Component.text(childPath(path, 'type'))]),
-          Component.text(chest
-              ? " component '$type' is a holographic menu component and is not available in a chest window."
-              : " component '$type' is not available in Animus."),
-        ])
+        dom.p(
+          classes: 'animus-gui-refused',
+          attributes: const <String, String>{'role': 'alert'},
+          <Widget>[
+            dom.code(<Widget>[Component.text(childPath(path, 'type'))]),
+            Component.text(
+              chest
+                  ? " component '$type' is a holographic menu component and is not available in a chest window."
+                  : " component '$type' is not available in Animus.",
+            ),
+          ],
+        )
       else ...<Widget>[
-        GuiRow(
-          label: 'Show when',
-          help: 'Blank always shows. An expression such as viewer.level > 5.',
-          problems: diagnosticsAt(diagnostics, childPath(path, 'show')),
-          child: GuiTextInput(
-            value: data['show'] is String ? data['show']! as String : (data['show'] == false ? 'false' : ''),
-            mode: GuiTextMode.expression,
-            names: names,
+        // A menu component carries show beside its data, edited by the menu editor.
+        if (chest)
+          GuiRow(
             label: 'Show when',
-            onChanged: (String value) => onChanged(withField(data, 'show', value == 'false' ? false : value)),
+            help: 'Blank always shows. An expression such as viewer.level > 5.',
+            problems: diagnosticsAt(diagnostics, childPath(path, 'show')),
+            child: GuiTextInput(
+              value: data['show'] is String ? data['show']! as String : (data['show'] == false ? 'false' : ''),
+              mode: GuiTextMode.expression,
+              names: names,
+              label: 'Show when',
+              onChanged: (String value) => onChanged(withField(data, 'show', value == 'false' ? false : value)),
+            ),
           ),
-        ),
         if (type == 'button' || type == 'decoration') icon('icon', 'Icon'),
         if (type == 'button') actions('actions', 'Actions'),
         if (type == 'toggle') ...<Widget>[
@@ -272,17 +283,48 @@ class ComponentEditor extends StatelessWidget {
               onChanged: (num? value) => onChanged(<String, Object?>{...data, 'flow': withField(asMap(data['flow']), 'columns', value)}),
             ),
           ),
-          GuiSection(title: 'Template', children: <Widget>[
-            ComponentEditor(
-              component: asMap(data['template']),
-              path: childPath(path, 'template'),
-              diagnostics: diagnostics,
-              chest: chest,
-              names: names.withLocal(asString(data['var']) ?? 'entry'),
-              namedLists: namedLists,
-              onChanged: (JsonMap next) => onChanged(<String, Object?>{...data, 'template': next}),
+          GuiSection(
+            title: 'Template',
+            children: <Widget>[
+              ComponentEditor(
+                component: asMap(data['template']),
+                path: childPath(path, 'template'),
+                diagnostics: diagnostics,
+                chest: chest,
+                names: names.withLocal(asString(data['var']) ?? 'entry'),
+                namedLists: namedLists,
+                onChanged: (JsonMap next) => onChanged(<String, Object?>{...data, 'template': next}),
+              ),
+            ],
+          ),
+        ],
+        if (type == 'slider') ...<Widget>[
+          GuiRow(
+            label: 'Variable *',
+            help: 'The value lives in session.<variable>.',
+            child: GuiTextInput(value: asString(data['var']) ?? '', label: 'Variable', onChanged: (String value) => onChanged(withField(data, 'var', value))),
+          ),
+          for (final String key in const <String>['min', 'max', 'step', 'width'])
+            GuiRow(
+              label: key,
+              problems: diagnosticsAt(diagnostics, childPath(path, key)),
+              child: GuiNumberInput(
+                value: asDouble(data[key]),
+                integer: false,
+                label: 'Slider $key',
+                onChanged: (num? value) => onChanged(withField(data, key, value)),
+              ),
             ),
-          ]),
+          GuiRow(
+            label: 'Label',
+            child: GuiTextInput(
+              value: asString(data['label']) ?? '',
+              mode: GuiTextMode.template,
+              names: names,
+              label: 'Slider label',
+              onChanged: (String value) => onChanged(withField(data, 'label', value)),
+            ),
+          ),
         ],
         if (type == 'tabs') ...<Widget>[
           GuiRow(
@@ -298,8 +340,7 @@ class ComponentEditor extends StatelessWidget {
               onChanged: (List<String> lines) => onChanged(<String, Object?>{
                 ...data,
                 'tabs': <Object?>[
-                  for (int i = 0; i < lines.length; i++)
-                    <String, Object?>{'id': _tabId(lines[i], i), 'label': lines[i]},
+                  for (int i = 0; i < lines.length; i++) <String, Object?>{'id': _tabId(lines[i], i), 'label': lines[i]},
                 ],
               }),
             ),
@@ -317,36 +358,42 @@ class ComponentEditor extends StatelessWidget {
   /// A component of type [type] keeping what still applies.
   JsonMap _convert(JsonMap data, String type) {
     final JsonMap icon = asMap(data['icon']).isNotEmpty ? asMap(data['icon']) : asMap(data['trueIcon']);
-    final JsonMap fallback = icon.isNotEmpty ? icon : <String, Object?>{'type': chest ? 'item' : 'text', if (chest) 'item': 'minecraft:stone' else 'text': 'Text'};
+    final JsonMap fallback = icon.isNotEmpty
+        ? icon
+        : <String, Object?>{'type': chest ? 'item' : 'text', if (chest) 'item': 'minecraft:stone' else 'text': 'Text'};
     return switch (type) {
       'button' => <String, Object?>{
-          'type': type,
-          if (data['show'] != null) 'show': data['show'],
-          'icon': fallback,
-          'actions': asList(data['actions']).isNotEmpty ? data['actions'] : asList(data['trueActions']),
-        },
+        'type': type,
+        if (data['show'] != null) 'show': data['show'],
+        'icon': fallback,
+        'actions': asList(data['actions']).isNotEmpty ? data['actions'] : asList(data['trueActions']),
+      },
       'decoration' => <String, Object?>{'type': type, if (data['show'] != null) 'show': data['show'], 'icon': fallback},
       'toggle' => <String, Object?>{
-          'type': type,
-          if (data['show'] != null) 'show': data['show'],
-          'condition': 'session.on == true',
-          'expectedValue': chest ? true : 'true',
-          'trueIcon': fallback,
-          'falseIcon': fallback,
-          'trueActions': asList(data['actions']),
-          'falseActions': const <Object?>[],
-        },
+        'type': type,
+        if (data['show'] != null) 'show': data['show'],
+        'condition': 'session.on == true',
+        'expectedValue': chest ? true : 'true',
+        'trueIcon': fallback,
+        'falseIcon': fallback,
+        'trueActions': asList(data['actions']),
+        'falseActions': const <Object?>[],
+      },
       'list' => <String, Object?>{
-          'type': type,
-          'var': 'entry',
-          'source': "['a', 'b', 'c']",
-          'template': <String, Object?>{'type': 'decoration', 'icon': fallback},
-        },
+        'type': type,
+        'var': 'entry',
+        'source': "['a', 'b', 'c']",
+        'template': <String, Object?>{'type': 'decoration', 'icon': fallback},
+      },
+      'slider' => <String, Object?>{'type': type, 'var': 'volume', 'min': 0, 'max': 10, 'step': 1, 'label': '&fVolume {{ session.volume }}'},
       'tabs' => <String, Object?>{
-          'type': type,
-          'var': 'tab',
-          'tabs': <Object?>[<String, Object?>{'id': 'one', 'label': 'One'}, <String, Object?>{'id': 'two', 'label': 'Two'}],
-        },
+        'type': type,
+        'var': 'tab',
+        'tabs': <Object?>[
+          <String, Object?>{'id': 'one', 'label': 'One'},
+          <String, Object?>{'id': 'two', 'label': 'Two'},
+        ],
+      },
       _ => <String, Object?>{'type': type},
     };
   }

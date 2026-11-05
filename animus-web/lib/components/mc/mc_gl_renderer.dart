@@ -15,6 +15,7 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
 import '../../mc/assets/mc_display_pose.dart';
+import '../../mc/assets/mc_model_json.dart';
 import '../../mc/assets/mc_model_resolver.dart';
 import '../../mc/assets/mc_tint.dart';
 import '../../mc/mesh/mc_element_mesher.dart';
@@ -188,8 +189,13 @@ final class McGlRenderer {
     int waiting = 0;
     for (final McSceneNode node in scene.nodes) {
       _Drawable? d = _nodes[node.key];
-      final web.HTMLImageElement? image = node is McRigNode && _pack.hasImage(node.textureId) ? _pack.image(node.textureId) : null;
-      if (d == null || d.signature != node.signature || (node is McRigNode && !identical(d.image, image))) {
+      final String? runtime = switch (node) {
+        McRigNode(:final String textureId) => textureId,
+        McModelNode(:final String textureId) => textureId,
+        _ => null,
+      };
+      final web.HTMLImageElement? image = runtime != null && _pack.hasImage(runtime) ? _pack.image(runtime) : null;
+      if (d == null || d.signature != node.signature || (runtime != null && !identical(d.image, image))) {
         if (d != null) _gl.free(_nodes.remove(node.key)!.buffer);
         d = _build(node);
         if (d == null) {
@@ -237,6 +243,32 @@ final class McGlRenderer {
         });
         if (mesh.isEmpty) return null;
         return _Drawable(_gl.upload(mesh), itemAtlas ? _items : _blocks, node.signature, null);
+      case McBlockNode(:final String blockKey):
+        final McResolvedModel? model = _pack.resolver.resolveBlock(blockKey);
+        if (model == null || model.elements.isEmpty) return null;
+        final McBlockstateVariantJson? variant = _pack.resolver.blockVariant(blockKey);
+        final McMesh mesh = _meshCache.putIfAbsent(node.signature, () {
+          final McMesh raw = mcMeshElements(
+            model,
+            uv: _pack.manifest.blocks.uv,
+            tint: (int? index) => mcTintForBlock(blockKey, index),
+          );
+          if (variant == null || (variant.x == 0 && variant.y == 0)) return raw;
+          // Blockstate turns are clockwise seen from +X and from above.
+          return raw.transformed(McMat4.translation(0.5, 0.5, 0.5)
+              .multiply(McMat4.rotationY(-variant.y.toDouble()))
+              .multiply(McMat4.rotationX(-variant.x.toDouble()))
+              .multiply(McMat4.translation(-0.5, -0.5, -0.5)));
+        });
+        return _Drawable(_gl.upload(mesh), _blocks, node.signature, null);
+      case McModelNode(:final String textureId, :final McResolvedModel model):
+        final McGlTexture? texture = _texture(textureId);
+        if (texture == null) return null;
+        final McMesh mesh = _meshCache.putIfAbsent(
+          node.signature,
+          () => mcMeshElements(model, uv: (String _) => const McUvRect(0, 0, 1, 1), tint: (int? _) => mcTintNone),
+        );
+        return _Drawable(_gl.upload(mesh), texture, node.signature, _pack.image(textureId));
     }
   }
 

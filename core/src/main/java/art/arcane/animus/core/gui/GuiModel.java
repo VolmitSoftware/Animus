@@ -58,7 +58,8 @@ public final class GuiModel {
     }
 
     public sealed interface Action permits Command, Sound, Message, Title, ActionBar, Close, Navigate, Inventory, SetSession, Give, Take,
-            Economy, Delay, Sequence, If, Switch, Chance, Cooldown, Stop, Call, OpenShop {
+            Economy, Delay, Sequence, If, Switch, Chance, Cooldown, Stop, Call, OpenShop, Teleport, BossBar, Broadcast, Effect, Particle,
+            Parallel, Repeat {
         Common common();
     }
     public enum CommandSource { SERVER, PLAYER }
@@ -99,6 +100,19 @@ public final class GuiModel {
     public record Call(Common common, String action) implements Action {}
     /** {@code animus:open-shop}: replaces the window with a shop. */
     public record OpenShop(Common common, String shop) implements Action {}
+    public record Teleport(Common common, String world, double x, double y, double z, float yaw, float pitch) implements Action {}
+    /** {@code progress} renders to a number from 0 to 1; empty is 1. */
+    public record BossBar(Common common, String lane, GuiTemplate title, Optional<GuiTemplate> progress, String color, String style, int ticks) implements Action {}
+    public record Broadcast(Common common, GuiTemplate message, String scope, double radius, Optional<String> permission) implements Action {}
+    public record Effect(Common common, String effect, int ticks, int amplifier) implements Action {}
+    /** {@code atLocation} spawns at the hologram or menu instead of the viewer. */
+    public record Particle(Common common, String particle, int count, double offset, boolean atLocation) implements Action {}
+    public record Parallel(Common common, List<List<Action>> branches) implements Action {
+        public Parallel { branches = branches.stream().map(List::copyOf).toList(); }
+    }
+    public record Repeat(Common common, int times, int everyTicks, List<Action> steps, Optional<GuiExpression> whileCondition) implements Action {
+        public Repeat { steps = List.copyOf(steps); }
+    }
 
     /** {@code list}: fills one mask character with pages of a template. */
     public record ListSection(char area, String variable, GuiExpression source, Optional<Integer> pageSize, Component template, int refreshTicks) {}

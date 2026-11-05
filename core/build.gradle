@@ -60,4 +60,13 @@ public final class BuildIdentity {
     }
 }
 sourceSets.main.java.srcDir(identityDirectory)
+
+// The hand-written shared schemas ship inside the jar for GET /v1/schemas.
+tasks.named('processResources', ProcessResources).configure {
+    from(new File(animusRoot, 'schema')) {
+        include '*.schema.json', 'gloss/*.schema.json'
+        exclude 'editor-v1.schema.json'
+        into 'animus/schema'
+    }
+}
 tasks.named('compileJava').configure { dependsOn('generateBuildIdentity') }

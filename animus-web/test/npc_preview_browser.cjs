@@ -28,6 +28,13 @@ const samples = [
   ['Spitter', 'animals/llama'],
   ['Roller', 'animals/armadillo'],
   ['Ender', 'animals/dragon'],
+  ['Leather', 'armour/leather'],
+  ['Chainmail', 'armour/chainmail'],
+  ['Netherite', 'armour/netherite'],
+  ['Copper', 'armour/copper'],
+  ['Leather stand', 'armour/leather-stand'],
+  ['Iron stand', 'armour/iron-stand'],
+  ['Diamond stand', 'armour/diamond-stand'],
 ];
 
 // Distinct colours in a PNG, counted in the page (no Node image library).
@@ -77,6 +84,17 @@ async function run(browser, viewport, label) {
     if (shots) {
       fs.mkdirSync(shots, {recursive: true});
       fs.writeFileSync(path.join(shots, `${label}-${id.replace('/', '-')}.png`), png);
+      if (id.startsWith('armour/') || id === 'players/hero') {
+        // A quarter turn round, to see the layers from the side.
+        const box = await stage.boundingBox();
+        const frames = Number(await host.getAttribute('data-frames'));
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 2 + 280, box.y + box.height / 2, {steps: 4});
+        await page.mouse.up();
+        await page.waitForFunction(n => Number(document.querySelector('.animus-mc-gl-host').getAttribute('data-frames')) > n, frames);
+        fs.writeFileSync(path.join(shots, `${label}-${id.replace('/', '-')}-side.png`), await stage.screenshot());
+      }
     }
     assert.ok(await host.count() === 1);
   }

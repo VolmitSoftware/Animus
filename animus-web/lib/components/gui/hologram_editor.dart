@@ -7,6 +7,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../logic/gui/gui_catalog.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../mc/gui/gui_scene.dart';
 import '../../model/animus_document.dart';
@@ -107,6 +108,7 @@ class _HologramEditorState extends State<HologramEditor> {
             actions: asList(doc['actions']),
             path: r'$.actions',
             diagnostics: _diagnostics,
+            unavailable: hologramRefusedActions,
             onChanged: (JsonList next) => _write(<JsonStep>['actions'], next.isEmpty ? null : next),
           ),
           GuiRow(

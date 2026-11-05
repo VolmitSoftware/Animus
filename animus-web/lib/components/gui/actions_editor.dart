@@ -37,6 +37,13 @@ const Map<String, String> actionLabels = <String, String>{
   'cooldown': 'Cooldown',
   'stop': 'Stop',
   'call': 'Call a named list',
+  'teleport': 'Teleport',
+  'bossbar': 'Show a boss bar',
+  'broadcast': 'Broadcast',
+  'effect': 'Potion effect',
+  'particle': 'Particles',
+  'parallel': 'Run side by side',
+  'repeat': 'Repeat',
   'animus:open-shop': 'Open a shop (Animus)',
 };
 
@@ -49,8 +56,13 @@ class ActionsEditor extends StatelessWidget {
     this.names = ExpressionNames.standard,
     this.namedLists = const <String>[],
     this.steps = false,
+    this.unavailable = const <String>[],
     super.key,
   });
+
+  /// Actions this surface refuses on top of the shared refused list
+  /// (holograms have no window or named lists).
+  final List<String> unavailable;
 
   final JsonList actions;
   final void Function(JsonList actions) onChanged;
@@ -76,7 +88,7 @@ class ActionsEditor extends StatelessWidget {
         GuiSelect(
           value: null,
           noneLabel: steps ? 'Add a step...' : 'Add an action...',
-          options: lists.offered,
+          options: <String>[for (final String type in lists.offered) if (!unavailable.contains(type)) type],
           labels: actionLabels,
           onChanged: (String? type) {
             if (type == null) return;
@@ -102,7 +114,7 @@ class ActionsEditor extends StatelessWidget {
   Widget _action(int index, JsonMap action, GuiActionLists lists) {
     final String actionPath = indexPath(path, index);
     final String type = asString(action['type']) ?? '';
-    final bool offered = lists.isOffered(type);
+    final bool offered = lists.isOffered(type) && !unavailable.contains(type);
     final List<Diagnostic> typeProblems = diagnosticsAt(diagnostics, childPath(actionPath, 'type'));
     return dom.div(
       classes: 'animus-gui-action${offered ? '' : ' is-refused'}',
@@ -112,10 +124,10 @@ class ActionsEditor extends StatelessWidget {
           dom.span(classes: 'animus-gui-action-index', <Widget>[Component.text('${index + 1}')]),
           GuiSelect(
             value: type,
-            options: lists.offered,
+            options: <String>[for (final String one in lists.offered) if (!unavailable.contains(one)) one],
             labels: <String, String>{
               ...actionLabels,
-              if (!offered) type: lists.refused.contains(type) ? '$type (not available in Animus)' : '$type (unknown)',
+              if (!offered) type: lists.refused.contains(type) || unavailable.contains(type) ? '$type (not available here)' : '$type (unknown)',
             },
             onChanged: (String? next) {
               if (next == null || next == type) return;
@@ -235,11 +247,35 @@ class ActionsEditor extends StatelessWidget {
               diagnostics: diagnostics,
               names: names,
               namedLists: namedLists,
-              steps: field.name == 'steps',
+              steps: field.name == 'steps' && asString(action['type']) == 'sequence',
+              unavailable: unavailable,
               onChanged: (JsonList next) => _set(index, <String, Object?>{...action, field.name: next}),
             ),
           ],
         );
+      case GuiFieldKind.branches:
+        final JsonList branches = asList(value);
+        return GuiSection(title: 'branches', count: branches.length, children: <Widget>[
+          for (int branch = 0; branch < branches.length; branch++)
+            GuiSection(title: 'Branch ${branch + 1}', children: <Widget>[
+              ActionsEditor(
+                actions: asList(branches[branch]),
+                path: indexPath(fieldPath, branch),
+                diagnostics: diagnostics,
+                unavailable: unavailable,
+                names: names,
+                namedLists: namedLists,
+                onChanged: (JsonList next) => set(<Object?>[...branches]..[branch] = next),
+              ),
+              Button.ghost(
+                label: 'Remove branch ${branch + 1}',
+                size: ButtonSize.small,
+                disabled: branches.length <= 1,
+                onPressed: () => set(<Object?>[...branches]..removeAt(branch)),
+              ),
+            ]),
+          Button.ghost(label: 'Add branch', size: ButtonSize.small, onPressed: () => set(<Object?>[...branches, <Object?>[]])),
+        ]);
       case GuiFieldKind.cases:
         final JsonMap cases = asMap(value);
         return GuiSection(title: 'cases', count: cases.length, children: <Widget>[
@@ -267,6 +303,7 @@ class ActionsEditor extends StatelessWidget {
                 actions: asList(entry.value),
                 path: childPath(fieldPath, entry.key),
                 diagnostics: diagnostics,
+                unavailable: unavailable,
                 names: names,
                 namedLists: namedLists,
                 onChanged: (JsonList next) => set(<String, Object?>{...cases, entry.key: next}),

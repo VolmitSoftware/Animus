@@ -77,6 +77,9 @@ final class _Checker {
 
   void template(Object? value, String path, ExpressionNames names) {
     if (value is! String) return;
+    if (kind == DocumentKind.inventory && value.contains('|animation.')) {
+      error(path, 'chest GUIs cannot show text animations (|animation.| tokens)');
+    }
     for (final String problem in checkTemplate(value, names: names)) {
       error(path, problem, code: expressionCode);
     }
@@ -119,6 +122,21 @@ final class _Checker {
       error(typePath, "unknown action '$type'");
       return;
     }
+    if (kind == DocumentKind.hologram && hologramRefusedActions.contains(type)) {
+      error(typePath, "action '$type' needs a window or named lists, which a hologram does not have");
+      return;
+    }
+    if (kind == DocumentKind.hologram && type == 'navigate' && value['mode'] != null && value['mode'] != 'page') {
+      error(childPath(path, 'mode'), "a hologram navigates only with mode page");
+    }
+    if (type == 'effect' && value['target'] != null && value['target'] != 'viewer') {
+      error(childPath(path, 'target'), "target '${value['target']}' belongs to Gloss behaviors; Animus applies effects to the viewer");
+    }
+    if (type == 'particle') {
+      final Object? at = value['at'];
+      if (at == 'subject' || at == 'source') error(childPath(path, 'at'), "at '$at' belongs to Gloss behaviors; use viewer or location");
+      if (at == 'location' && kind == DocumentKind.inventory) error(childPath(path, 'at'), 'a chest window has no location; use viewer');
+    }
     expression(value['when'], childPath(path, 'when'), names);
     for (final GuiField field in actionFields[type] ?? const <GuiField>[]) {
       final String fieldPath = childPath(path, field.name);
@@ -133,6 +151,11 @@ final class _Checker {
         case GuiFieldKind.cases:
           for (final MapEntry<String, Object?> entry in asMap(fieldValue).entries) {
             actions(entry.value, childPath(fieldPath, entry.key), names, owner: owner);
+          }
+        case GuiFieldKind.branches:
+          final JsonList branches = asList(fieldValue);
+          for (int index = 0; index < branches.length; index++) {
+            actions(branches[index], indexPath(fieldPath, index), names, owner: owner);
           }
         case GuiFieldKind.icon:
           icon(fieldValue, fieldPath, names, chest: true);
@@ -302,8 +325,15 @@ final class _Checker {
 
   // ---- holographic menus ----
 
+  /// An enabled `box` and non-empty `particleLayers` (holograms and menus).
+  void presentationExtras(JsonMap json, String path) {
+    if (asMap(json['box'])['enabled'] == true) error(childPath(childPath(path, 'box'), 'enabled'), 'text boxes are not available in Animus');
+    if (asList(json['particleLayers']).isNotEmpty) error(childPath(path, 'particleLayers'), 'particle layers are not available in Animus');
+  }
+
   void menu(JsonMap json) {
     const ExpressionNames names = ExpressionNames.standard;
+    presentationExtras(json, r'$');
     namedActions(json, names);
     condition(json['show'], r'$.show', names);
     final JsonList components = asList(json['components']);
@@ -315,6 +345,8 @@ final class _Checker {
       if (componentId != null && !ids.add(componentId)) error(childPath(path, 'id'), "component id '$componentId' is used twice", code: layoutCode);
       condition(entry['show'], childPath(path, 'show'), names);
       component(entry['data'], childPath(path, 'data'), names, chest: false);
+      final JsonMap icon = asMap(asMap(entry['data'])['icon']);
+      presentationExtras(icon, childPath(childPath(path, 'data'), 'icon'));
     }
     callLoops();
   }
@@ -331,6 +363,7 @@ final class _Checker {
       error(r'$.preset', 'Gloss presets are not available in Animus; copy the preset\'s fields in');
     }
     condition(json['show'], r'$.show', names);
+    presentationExtras(json, r'$');
     _lines(json['lines'], r'$.lines', names);
     final JsonList pages = asList(json['pages']);
     for (int index = 0; index < pages.length; index++) {
@@ -342,6 +375,7 @@ final class _Checker {
     for (int index = 0; index < variants.length; index++) {
       final String path = indexPath(r'$.variants', index);
       expression(asMap(variants[index])['when'], childPath(path, 'when'), names);
+      presentationExtras(asMap(asMap(variants[index])['presentation']), childPath(path, 'presentation'));
       _lines(asMap(asMap(variants[index])['presentation'])['lines'], childPath(childPath(path, 'presentation'), 'lines'), names);
     }
     actions(json['actions'], r'$.actions', names);

@@ -1,0 +1,549 @@
+{
+ "meta": {
+  "format_version": "4.10",
+  "model_format": "free",
+  "box_uv": false
+ },
+ "name": "robot",
+ "resolution": {
+  "width": 32,
+  "height": 32
+ },
+ "elements": [
+  {
+   "type": "cube",
+   "uuid": "c-body",
+   "name": "chest",
+   "from": [
+    -4,
+    8,
+    -2
+   ],
+   "to": [
+    4,
+    20,
+    2
+   ],
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "east": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "south": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "west": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "up": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "down": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    }
+   }
+  },
+  {
+   "type": "cube",
+   "uuid": "c-head",
+   "name": "skull",
+   "from": [
+    -4,
+    20,
+    -4
+   ],
+   "to": [
+    4,
+    28,
+    4
+   ],
+   "origin": [
+    0,
+    20,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "east": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "south": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "west": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "up": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "down": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    }
+   }
+  },
+  {
+   "type": "cube",
+   "uuid": "c-visor",
+   "name": "visor",
+   "from": [
+    -3,
+    22,
+    -5
+   ],
+   "to": [
+    3,
+    25,
+    -4
+   ],
+   "origin": [
+    0,
+    23,
+    -4
+   ],
+   "rotation": [
+    0,
+    22.5,
+    0
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "east": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "south": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "west": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "up": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "down": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    }
+   }
+  },
+  {
+   "type": "cube",
+   "uuid": "c-arm",
+   "name": "blade",
+   "from": [
+    4,
+    10,
+    -1
+   ],
+   "to": [
+    6,
+    20,
+    1
+   ],
+   "origin": [
+    5,
+    20,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    30
+   ],
+   "faces": {
+    "north": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "east": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "south": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "west": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "up": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    },
+    "down": {
+     "uv": [
+      0,
+      0,
+      8,
+      8
+     ],
+     "texture": 0
+    }
+   }
+  },
+  {
+   "type": "cube",
+   "uuid": "c-loose",
+   "name": "base",
+   "from": [
+    -6,
+    0,
+    -6
+   ],
+   "to": [
+    6,
+    1,
+    6
+   ],
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "faces": {
+    "up": {
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "texture": 0
+    },
+    "north": {
+     "uv": [
+      0,
+      0,
+      16,
+      1
+     ],
+     "texture": null
+    }
+   }
+  },
+  {
+   "type": "locator",
+   "uuid": "l-1",
+   "name": "hand"
+  }
+ ],
+ "outliner": [
+  {
+   "name": "Body",
+   "origin": [
+    0,
+    8,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0
+   ],
+   "uuid": "g-body",
+   "children": [
+    "c-body",
+    {
+     "name": "Head",
+     "origin": [
+      0,
+      20,
+      0
+     ],
+     "rotation": [
+      0,
+      0,
+      0
+     ],
+     "uuid": "g-head",
+     "children": [
+      "c-head",
+      "c-visor"
+     ]
+    },
+    {
+     "name": "Arm",
+     "origin": [
+      5,
+      20,
+      0
+     ],
+     "rotation": [
+      0,
+      0,
+      -10
+     ],
+     "uuid": "g-arm",
+     "children": [
+      "c-arm"
+     ]
+    }
+   ]
+  },
+  "c-loose"
+ ],
+ "textures": [
+  {
+   "name": "robot.png",
+   "width": 32,
+   "height": 32,
+   "uv_width": 32,
+   "uv_height": 32,
+   "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAXElEQVR4nO3SoQEAIAwDwQ7WIToEQzBiNZOwQbGAhzcRURE5EUv32jMzjrzuTQAc8Hvw7gXgAfgJBcAB+AkFwAHeRu2J7Ede9wLwgN+Ddy8AD8BPKAAOwE8oAA1YJD9GlzE+g9UAAAAASUVORK5CYII="
+  }
+ ],
+ "animations": [
+  {
+   "uuid": "a1",
+   "name": "animation.robot.walk",
+   "loop": "loop",
+   "length": 1,
+   "animators": {
+    "g-head": {
+     "name": "Head",
+     "type": "bone",
+     "keyframes": [
+      {
+       "channel": "rotation",
+       "time": 0,
+       "interpolation": "linear",
+       "data_points": [
+        {
+         "x": 0,
+         "y": "0",
+         "z": 0
+        }
+       ]
+      },
+      {
+       "channel": "rotation",
+       "time": 0.5,
+       "interpolation": "catmullrom",
+       "data_points": [
+        {
+         "x": 10,
+         "y": 20,
+         "z": 5
+        }
+       ]
+      },
+      {
+       "channel": "rotation",
+       "time": 1,
+       "interpolation": "linear",
+       "data_points": [
+        {
+         "x": 0,
+         "y": 0,
+         "z": 0
+        }
+       ]
+      }
+     ]
+    },
+    "g-body": {
+     "name": "Body",
+     "type": "bone",
+     "keyframes": [
+      {
+       "channel": "position",
+       "time": 0,
+       "interpolation": "step",
+       "data_points": [
+        {
+         "x": 0,
+         "y": 0,
+         "z": 0
+        }
+       ]
+      },
+      {
+       "channel": "position",
+       "time": 0.5,
+       "interpolation": "linear",
+       "data_points": [
+        {
+         "x": 1,
+         "y": 2,
+         "z": 3
+        }
+       ]
+      },
+      {
+       "channel": "scale",
+       "time": 0.25,
+       "interpolation": "linear",
+       "data_points": [
+        {
+         "x": 1,
+         "y": "math.sin(query.anim_time)",
+         "z": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "uuid": "a2",
+   "name": "idle",
+   "loop": "once",
+   "length": 0.5,
+   "animators": {}
+  }
+ ]
+}

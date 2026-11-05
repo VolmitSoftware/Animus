@@ -14,7 +14,7 @@ const Map<String, int> _namedColors = <String, int>{
   'red': 0xFF5555, 'light_purple': 0xFF55FF, 'yellow': 0xFFFF55, 'white': 0xFFFFFF,
 };
 
-final RegExp _token = RegExp(r'[&§]#([0-9A-Fa-f]{6})|[&§]([0-9A-Fa-fK-Ok-oRr])|<(/?)([#A-Za-z_][A-Za-z0-9_#]*)>');
+final RegExp _token = RegExp(r'(?:[&§]#|\[)([0-9A-Fa-f]{6})\]?|[&§]([0-9A-Fa-fK-Ok-oRr])|<(/?)([#A-Za-z_][A-Za-z0-9_#]*)>');
 
 /// Runs for one line of GUI text, holes rendered with sample values.
 List<McTextRun> guiTextRuns(String text, {int defaultColor = mcDefaultTextColor, bool sample = true}) {

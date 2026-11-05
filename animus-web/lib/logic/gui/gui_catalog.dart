@@ -58,6 +58,9 @@ enum GuiFieldKind {
   /// `switch` cases: a map of value to action list.
   cases,
 
+  /// `parallel` branches: a list of action lists.
+  branches,
+
   /// An icon object (`give`, `take`).
   icon,
 
@@ -166,6 +169,47 @@ const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
   ],
   'stop': <GuiField>[],
   'call': <GuiField>[GuiField('action', GuiFieldKind.text, required: true, help: 'A named list under actions.')],
+  'teleport': <GuiField>[
+    GuiField('world', GuiFieldKind.text, required: true, help: 'A world key, such as minecraft:the_nether. A world that is not loaded stops the list.'),
+    GuiField('x', GuiFieldKind.number, required: true),
+    GuiField('y', GuiFieldKind.number, required: true),
+    GuiField('z', GuiFieldKind.number, required: true),
+    GuiField('yaw', GuiFieldKind.number, required: true),
+    GuiField('pitch', GuiFieldKind.number, required: true),
+  ],
+  'bossbar': <GuiField>[
+    GuiField('id', GuiFieldKind.text, required: true, help: 'The lane; a new bar on the same lane replaces the old one.'),
+    GuiField('title', GuiFieldKind.template, required: true),
+    GuiField('progress', GuiFieldKind.expression, help: '0 to 1.'),
+    GuiField('color', GuiFieldKind.choice, choices: <String>['pink', 'blue', 'red', 'green', 'yellow', 'purple', 'white']),
+    GuiField('style', GuiFieldKind.choice, choices: <String>['solid', 'segmented_6', 'segmented_10', 'segmented_12', 'segmented_20']),
+    GuiField('ticks', GuiFieldKind.integer, help: 'Default 100; 0 hides the lane.'),
+    GuiField('priority', GuiFieldKind.choice, choices: _hudPriorities, help: 'Read and checked; Animus shows every lane.'),
+  ],
+  'broadcast': <GuiField>[
+    GuiField('message', GuiFieldKind.template, required: true),
+    GuiField('scope', GuiFieldKind.choice, choices: <String>['server', 'world', 'radius']),
+    GuiField('radius', GuiFieldKind.number, help: 'Blocks, with scope radius.'),
+    GuiField('permission', GuiFieldKind.text, help: 'Only players with it see the message.'),
+  ],
+  'effect': <GuiField>[
+    GuiField('effect', GuiFieldKind.text, required: true, help: 'A potion effect key, such as minecraft:speed.'),
+    GuiField('ticks', GuiFieldKind.integer, required: true),
+    GuiField('amplifier', GuiFieldKind.integer, help: '0 to 255.'),
+  ],
+  'particle': <GuiField>[
+    GuiField('particle', GuiFieldKind.text, required: true, help: 'A particle key, such as minecraft:flame. Only the viewer sees them.'),
+    GuiField('count', GuiFieldKind.integer),
+    GuiField('offset', GuiFieldKind.number, help: 'Spread in blocks.'),
+    GuiField('at', GuiFieldKind.choice, choices: <String>['viewer', 'location'], help: 'location is the hologram or menu; a chest window has none.'),
+  ],
+  'parallel': <GuiField>[GuiField('branches', GuiFieldKind.branches, required: true, help: 'Each list runs side by side.')],
+  'repeat': <GuiField>[
+    GuiField('times', GuiFieldKind.integer, required: true),
+    GuiField('everyTicks', GuiFieldKind.integer, help: '0 runs every pass at once.'),
+    GuiField('while', GuiFieldKind.expression, help: 'Checked before each pass; false ends the loop.'),
+    GuiField('steps', GuiFieldKind.actions, required: true),
+  ],
   'animus:open-shop': <GuiField>[GuiField('shop', GuiFieldKind.text, required: true, help: 'A shop id, such as town:baker.')],
 };
 
@@ -188,6 +232,13 @@ Map<String, Object?> newAction(String type) => switch (type) {
       'chance' => <String, Object?>{'type': type, 'percent': 50, 'then': <Object?>[]},
       'cooldown' => <String, Object?>{'type': type, 'key': 'click', 'ticks': 20},
       'call' => <String, Object?>{'type': type, 'action': 'main'},
+      'teleport' => <String, Object?>{'type': type, 'world': 'minecraft:overworld', 'x': 0, 'y': 64, 'z': 0, 'yaw': 0, 'pitch': 0},
+      'bossbar' => <String, Object?>{'type': type, 'id': 'main', 'title': '&eHello'},
+      'broadcast' => <String, Object?>{'type': type, 'message': '&e{{ viewer.name }} said hello'},
+      'effect' => <String, Object?>{'type': type, 'effect': 'minecraft:speed', 'ticks': 200},
+      'particle' => <String, Object?>{'type': type, 'particle': 'minecraft:happy_villager', 'count': 8},
+      'parallel' => <String, Object?>{'type': type, 'branches': <Object?>[<Object?>[], <Object?>[]]},
+      'repeat' => <String, Object?>{'type': type, 'times': 3, 'everyTicks': 20, 'steps': <Object?>[]},
       'animus:open-shop' => <String, Object?>{'type': type, 'shop': 'example:shop'},
       _ => <String, Object?>{'type': type},
     };
@@ -195,8 +246,11 @@ Map<String, Object?> newAction(String type) => switch (type) {
 /// Component types each surface accepts, and those it refuses.
 const List<String> chestComponentTypes = <String>['button', 'decoration', 'toggle'];
 const List<String> chestRefusedComponentTypes = <String>['list', 'slider', 'field', 'tabs'];
-const List<String> menuComponentTypes = <String>['button', 'decoration', 'toggle', 'list', 'tabs'];
-const List<String> menuRefusedComponentTypes = <String>['slider', 'field'];
+const List<String> menuComponentTypes = <String>['button', 'decoration', 'toggle', 'list', 'tabs', 'slider'];
+const List<String> menuRefusedComponentTypes = <String>['field'];
+
+/// Actions a hologram refuses: it has no window to close and no named lists.
+const List<String> hologramRefusedActions = <String>['close', 'call'];
 
 /// Icon types each surface accepts, and those it refuses.
 const List<String> chestIconTypes = <String>['item', 'playerHead'];

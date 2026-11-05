@@ -3,8 +3,6 @@
 /// The body stands at the origin turned to its definition yaw.
 library;
 
-import 'dart:math' as math;
-
 import '../assets/mc_display_pose.dart';
 import '../mesh/mc_mesh.dart';
 import '../rigs/mc_entity_rigs.dart';
@@ -21,6 +19,10 @@ import 'npc_pose.dart';
 
 /// Leather's undyed colour (`DyedItemColor.LEATHER_COLOR`).
 const int mcLeatherColor = 0xA06540;
+
+/// Text more than this far above the body's mesh is left out of the home
+/// framing, blocks.
+const double mcFramedTextGap = 1.0;
 
 /// Text the client draws in world space, as the server lays it out.
 final class NpcText {
@@ -240,13 +242,18 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
       NpcText(anchor: McVec3(0, top + (look.nativeName ? 0.55 : 0.3), 0), lines: look.textLines, nameplate: false),
   ];
 
-  McBounds bounds = _meshBounds(mcMeshRig(rig, pose: body.rig), root) ??
-      McBounds(McVec3(-0.5, feet, -0.5), McVec3(0.5, top, 0.5));
-  if (texts.isNotEmpty) {
-    final double lines = texts.fold(0, (double sum, NpcText text) => sum + text.lines.length);
-    bounds = bounds.union(McBounds(McVec3(-0.3, top, -0.3), McVec3(0.3, top + 0.3 + lines * 0.25, 0.3)));
+  final List<McVec3> frame = _framePoints(mcMeshRig(rig, pose: body.rig), root);
+  if (frame.isEmpty) frame.addAll(McBounds(McVec3(-0.5, feet, -0.5), McVec3(0.5, top, 0.5)).corners);
+  // Text that sits on the body is framed with it. Text the client floats
+  // well clear of the body (a dragon's sits at its 8-block hitbox, 4 blocks
+  // over the model) is not, so the body still fills the view; orbit or zoom
+  // out to see it.
+  final double bodyTop = McBounds.of(frame).max.y;
+  for (final NpcText text in texts) {
+    if (text.anchor.y > bodyTop + mcFramedTextGap) continue;
+    frame.add(text.anchor + McVec3(0, text.lines.length * 0.25, 0));
   }
-  return NpcScene(scene: McScene(nodes, bounds: bounds), texts: texts, notes: notes, presentable: true);
+  return NpcScene(scene: McScene(nodes, frame: frame), texts: texts, notes: notes, presentable: true);
 }
 
 List<McSceneNode> _armorLayers(NpcLook look, McArmorPiece armor, NpcItem item, McRigPose pose, McMat4 root, {required bool small}) {
@@ -313,18 +320,11 @@ McItemNode _headItem(Map<String, McMat4> parts, McMat4 model, NpcItem item) {
   return McItemNode(key: 'equipment:head', itemId: item.modelKey, pose: McDisplayPose.head, transform: model.multiply(head), glint: item.glint);
 }
 
-McBounds? _meshBounds(McMesh mesh, McMat4 transform) {
-  if (mesh.vertexCount == 0) return null;
-  double minX = double.infinity, minY = double.infinity, minZ = double.infinity;
-  double maxX = -double.infinity, maxY = -double.infinity, maxZ = -double.infinity;
+/// The mesh's distinct corners in world space, the points the camera frames.
+List<McVec3> _framePoints(McMesh mesh, McMat4 transform) {
+  final Set<McVec3> points = <McVec3>{};
   for (int v = 0; v < mesh.vertexCount; v++) {
-    final McVec3 p = transform.transformPoint(McVec3(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2]));
-    minX = math.min(minX, p.x);
-    minY = math.min(minY, p.y);
-    minZ = math.min(minZ, p.z);
-    maxX = math.max(maxX, p.x);
-    maxY = math.max(maxY, p.y);
-    maxZ = math.max(maxZ, p.z);
+    points.add(transform.transformPoint(McVec3(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2])));
   }
-  return McBounds(McVec3(minX, minY, minZ), McVec3(maxX, maxY, maxZ));
+  return points.toList();
 }

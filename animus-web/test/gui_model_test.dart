@@ -48,7 +48,8 @@ void main() {
 
     test('should refuse unknown names, unknown functions and syntax errors', () {
       expect(checkExpression('viewer.nope'), "unknown name 'viewer.nope'");
-      expect(checkExpression('marquee(1)'), "unknown function 'marquee'");
+      expect(checkExpression('nope(1)'), "unknown function 'nope'");
+      expect(checkExpression("marquee('hello', 4, time.second)"), isNull);
       expect(checkExpression('papi("%x%")'), 'papi(...) is not available yet');
       expect(checkExpression('1 +'), contains('column'));
       expect(checkExpression('1+' * 300), contains('longer than 512'));
@@ -203,18 +204,56 @@ void main() {
       expect(found, contains('error \$.pages[0].buy["30"].discount.end: the discount ends before it starts'));
     });
 
+    test('should refuse window actions in holograms, Gloss targets, and animations in chest GUIs', () {
+      final JsonMap hologram = <String, Object?>{
+        'schemaVersion': 3,
+        'revision': 1,
+        'anchor': <String, Object?>{'world': 'w', 'position': <int>[0, 0, 0]},
+        'box': <String, Object?>{'enabled': true},
+        'actions': <Object?>[
+          <String, Object?>{'type': 'close'},
+          <String, Object?>{'type': 'navigate', 'mode': 'push', 'target': 'x'},
+          <String, Object?>{'type': 'effect', 'effect': 'minecraft:speed', 'ticks': 20, 'target': 'subject'},
+          <String, Object?>{'type': 'parallel', 'branches': <Object?>[<Object?>[<String, Object?>{'type': 'camera'}]]},
+        ],
+      };
+      expect(<String>[for (final Diagnostic d in validateGui(DocumentKind.hologram, hologram)) '${d.path}: ${d.message}'], <String>[
+        r'$.box.enabled: text boxes are not available in Animus',
+        r"$.actions[0].type: action 'close' needs a window or named lists, which a hologram does not have",
+        r'$.actions[1].mode: a hologram navigates only with mode page',
+        r"$.actions[2].target: target 'subject' belongs to Gloss behaviors; Animus applies effects to the viewer",
+        r"$.actions[3].branches[0][0].type: action 'camera' is not available in Animus",
+      ]);
+      final JsonMap chest = <String, Object?>{
+        'schemaVersion': 1,
+        'title': '|animation.blink|',
+        'resolution': '9x1',
+        'keys': <String, Object?>{
+          'a': <String, Object?>{
+            'type': 'button',
+            'icon': <String, Object?>{'type': 'item', 'item': 'minecraft:stone'},
+            'actions': <Object?>[<String, Object?>{'type': 'particle', 'particle': 'minecraft:flame', 'at': 'location'}],
+          },
+        },
+      };
+      expect(<String>[for (final Diagnostic d in validateGui(DocumentKind.inventory, chest)) '${d.path}: ${d.message}'], <String>[
+        r'$.title: chest GUIs cannot show text animations (|animation.| tokens)',
+        r'$.keys.a.actions[0].at: a chest window has no location; use viewer',
+      ]);
+    });
+
     test('should refuse a newer hologram version and Gloss-only hologram actions', () {
       final JsonMap doc = <String, Object?>{
         'schemaVersion': 4,
         'revision': 1,
         'anchor': <String, Object?>{'world': 'w', 'position': <int>[0, 0, 0]},
         'lines': <Object?>['{{ nope }}'],
-        'actions': <Object?>[<String, Object?>{'type': 'bossbar'}],
+        'actions': <Object?>[<String, Object?>{'type': 'sky'}],
       };
       expect(<String>[for (final Diagnostic d in validateGui(DocumentKind.hologram, doc)) '${d.path}: ${d.message}'], <String>[
         r'$.schemaVersion: schemaVersion 4 is not supported; Animus reads holograms of version 3',
         r"$.lines[0]: {{ nope }}: unknown name 'nope'",
-        r"$.actions[0].type: action 'bossbar' is not available in Animus",
+        r"$.actions[0].type: action 'sky' is not available in Animus",
       ]);
     });
 
@@ -341,33 +380,31 @@ void main() {
     test('should give every new document a path that locates back to it and passes validation', () {
       for (final DocumentKind kind in guiKinds) {
         final String id = newDocumentId(kind, const <String>{});
-        final String path = documentPath(kind, id)!;
+        final String path = documentPath(kind, id);
         expect(locateDocument(path), DocumentLocation(kind, id), reason: path);
         final AnimusDocument document = validateSource(DocumentLocation(kind, id), path, prettyJson(newDocument(kind, id)), schemas);
         expect(errors(document), isEmpty, reason: '$kind ${document.diagnostics}');
       }
       expect(newDocumentId(DocumentKind.shop, <String>{'example:shop'}), 'example:shop-2');
-      expect(documentPath(DocumentKind.inventory, 'no-namespace'), isNull);
+      expect(locateDocument(documentPath(DocumentKind.inventory, 'no-namespace')), isNull);
     });
 
     test('should export a zip that opens back to the same documents', () {
       final DataFolderResult folder = openDataFolder(guiFixture(), schemas);
-      final Uint8List zip = exportDataFolderZip(folder.documents);
-      expect(exportDataFolderZip(folder.documents.reversed), zip, reason: 'the same workspace gives the same bytes');
+      final WorkspaceSnapshot snapshot = WorkspaceSnapshot(id: 'ws', name: 'gui', generation: 1, documents: folder.documents);
+      final Uint8List zip = zipFiles(workspaceFiles(snapshot));
       final DataFolderResult reopened = openDataFolder(filesFromZip(zip), schemas);
       expect(reopened.documents.map((AnimusDocument d) => '${d.path}|${d.source}'), folder.documents.map((AnimusDocument d) => '${d.path}|${d.source}'));
     });
 
     test('should round-trip a JSON edit with one undo step per coalesced burst', () async {
-      DateTime now = DateTime.utc(2026, 11, 4);
-      final EditorStore store = EditorStore(repository: MemoryWorkspaceRepository(), schemas: schemas, newId: () => 'ws', clock: () => now);
+      final EditorStore store = EditorStore(repository: MemoryWorkspaceRepository(), schemas: schemas, newId: () => 'ws');
       await store.openFiles('gui', guiFixture());
       final AnimusDocument board = store.document(DocumentKind.inventory, 'town:board')!;
       Object? json = board.json;
       for (final String title in <String>['&8A', '&8Ab', '&8Abc']) {
         json = writeIn(json, <JsonStep>['title'], title);
-        await store.editJson(DocumentKind.inventory, 'town:board', json, coalesce: 'title');
-        now = now.add(const Duration(milliseconds: 300));
+        await store.commit(documents: <DocumentChange>[DocumentChange(DocumentKind.inventory, 'town:board', prettyJson(json))], coalesce: 'board:title');
       }
       final AnimusDocument edited = store.document(DocumentKind.inventory, 'town:board')!;
       expect(asMap(jsonDecode(edited.source))['title'], '&8Abc');
@@ -383,14 +420,14 @@ void main() {
       await store.openFiles('gui', guiFixture());
       final int before = store.workspace!.documents.length;
       final GlossImport imported = readGlossBundle(File('test/fixtures/gloss_bundle/gloss-workspace.json').readAsStringSync());
-      await store.putDocuments(<(DocumentLocation, String, String)>[
-        for (final GlossImportedDocument d in imported.documents) (d.location, d.path, d.source),
+      await store.commit(documents: <DocumentChange>[
+        for (final GlossImportedDocument d in imported.documents) DocumentChange(d.location.kind, d.location.id, d.source),
       ]);
       expect(store.workspace!.documents.length, before + 3);
       expect(store.document(DocumentKind.menu, 'lobby/main')!.valid, isTrue);
       await store.undo();
       expect(store.workspace!.documents.length, before);
-      await store.removeDocument(DocumentKind.shop, 'town:market');
+      await store.commit(documents: const <DocumentChange>[DocumentChange(DocumentKind.shop, 'town:market', null)]);
       expect(store.document(DocumentKind.shop, 'town:market'), isNull);
     });
   });

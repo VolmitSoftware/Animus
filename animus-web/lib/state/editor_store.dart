@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import '../logic/data_folder.dart';
-import '../logic/gui/gui_json.dart';
+import '../logic/rig_validation.dart';
 import '../logic/shared_schemas.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
@@ -9,29 +9,39 @@ import 'workspace_repository.dart';
 
 typedef StoreListener = void Function();
 
+/// One document written by [EditorStore.commit]: new text, or removal when
+/// [source] is null.
+class DocumentChange {
+  const DocumentChange(this.kind, this.id, this.source);
+
+  final DocumentKind kind;
+  final String id;
+  final String? source;
+}
+
+/// Where a new document of [kind] with [id] lives in the data folder.
+String documentPath(DocumentKind kind, String id) {
+  final int colon = id.indexOf(':');
+  final String relative = colon < 0 ? id : '${id.substring(0, colon)}/${id.substring(colon + 1)}';
+  return '${kind.folder}/$relative.json';
+}
+
 /// Document state for the open workspace. Connection state lives elsewhere.
 class EditorStore {
-  EditorStore({required this.repository, required this.schemas, String Function()? newId, DateTime Function()? clock})
-      : _newId = newId ?? _timeId,
-        _clock = clock ?? DateTime.now;
+  EditorStore({required this.repository, required this.schemas, String Function()? newId})
+      : _newId = newId ?? _timeId;
 
   final WorkspaceRepository repository;
   final SharedSchemas schemas;
   final String Function() _newId;
-  final DateTime Function() _clock;
   final List<StoreListener> _listeners = <StoreListener>[];
   final List<WorkspaceSnapshot> _undo = <WorkspaceSnapshot>[];
 
   static const int undoLimit = 100;
 
-  /// Edits with the same coalescing key this close together share one undo
-  /// step, so typing a word in a field undoes as one change.
-  static const Duration coalesceWindow = Duration(milliseconds: 1200);
-
-  String? _lastCoalesce;
-  DateTime _lastEditAt = DateTime.fromMillisecondsSinceEpoch(0);
-
   WorkspaceSnapshot? _workspace;
+  Future<void> _queue = Future<void>.value();
+  String? _coalesce;
   List<WorkspaceSummary> _workspaces = const <WorkspaceSummary>[];
   List<String> _ignored = const <String>[];
   String? _problem;
@@ -64,11 +74,18 @@ class EditorStore {
   /// Imports a picked folder or zip as a new workspace and opens it.
   Future<WorkspaceSnapshot> openFiles(String name, Map<String, Uint8List> files) async {
     final DataFolderResult result = openDataFolder(files, schemas);
-    final WorkspaceSnapshot snapshot = WorkspaceSnapshot(id: _newId(), name: name, generation: 1, documents: result.documents);
+    final WorkspaceSnapshot snapshot = WorkspaceSnapshot(
+      id: _newId(),
+      name: name,
+      generation: 1,
+      documents: result.documents,
+      resources: result.resources,
+    );
     await repository.save(snapshot);
     _workspace = snapshot;
     _ignored = result.ignored;
     _undo.clear();
+    _coalesce = null;
     _problem = null;
     _workspaces = await repository.list();
     _changed();
@@ -107,114 +124,88 @@ class EditorStore {
   }
 
   /// Replaces a document's text, revalidates it and saves the workspace.
-  Future<void> editSource(DocumentKind kind, String id, String source) => _serial(() => _editSource(kind, id, source));
-
-  Future<void> _editSource(DocumentKind kind, String id, String source) async {
-    final WorkspaceSnapshot? current = _workspace;
-    final AnimusDocument? existing = document(kind, id);
-    if (current == null || existing == null || existing.source == source) return;
-    final AnimusDocument edited = validateSource(DocumentLocation(kind, id), existing.path, source, schemas);
-    await _save(current, current.next(documents: <AnimusDocument>[
-      for (final AnimusDocument document in current.documents) identical(document, existing) ? edited : document,
-    ]));
+  Future<void> editSource(DocumentKind kind, String id, String source) {
+    if (document(kind, id) == null) return Future<void>.value();
+    return commit(documents: <DocumentChange>[DocumentChange(kind, id, source)]);
   }
 
-  /// Replaces a document's value from a visual editor: written in the
-  /// editor's JSON format, revalidated and saved. Edits sharing [coalesce]
-  /// within [coalesceWindow] are one undo step.
-  Future<void> editJson(DocumentKind kind, String id, Object? json, {String? coalesce}) =>
-      _serial(() => _editJson(kind, id, json, coalesce: coalesce));
-
-  Future<void> _editJson(DocumentKind kind, String id, Object? json, {String? coalesce}) async {
+  /// Writes, adds or removes documents and resources as one undo step, and
+  /// revalidates them with the animations that depend on changed rigs.
+  /// Commits run one at a time in call order. Successive commits with the
+  /// same [coalesce] key (typing into one field) share one undo step.
+  Future<void> commit({
+    List<DocumentChange> documents = const <DocumentChange>[],
+    Map<String, Uint8List?> resources = const <String, Uint8List?>{},
+    String? coalesce,
+  }) => _enqueue(() async {
     final WorkspaceSnapshot? current = _workspace;
-    final AnimusDocument? existing = document(kind, id);
-    if (current == null || existing == null) return;
-    final String source = prettyJson(json);
-    if (existing.source == source) return;
-    final DateTime now = _clock();
-    final bool merge = coalesce != null && coalesce == _lastCoalesce && now.difference(_lastEditAt) < coalesceWindow && _undo.isNotEmpty;
-    _lastCoalesce = coalesce;
-    _lastEditAt = now;
-    final AnimusDocument edited = validateSource(DocumentLocation(kind, id), existing.path, source, schemas);
-    await _save(
-      current,
-      current.next(documents: <AnimusDocument>[
-        for (final AnimusDocument document in current.documents) identical(document, existing) ? edited : document,
-      ]),
-      recordUndo: !merge,
-    );
-  }
-
-  /// Adds documents (new ones, or a bundle import), replacing any with the
-  /// same kind and id, as one undo step. Each is validated.
-  Future<void> putDocuments(List<(DocumentLocation, String, String)> incoming) => _serial(() => _putDocuments(incoming));
-
-  Future<void> _putDocuments(List<(DocumentLocation, String, String)> incoming) async {
-    final WorkspaceSnapshot? current = _workspace;
-    if (current == null || incoming.isEmpty) return;
-    final Map<DocumentLocation, AnimusDocument> added = <DocumentLocation, AnimusDocument>{
-      for (final (DocumentLocation location, String path, String source) in incoming)
-        location: validateSource(location, path, source, schemas),
+    if (current == null) return;
+    final List<AnimusDocument> next = List<AnimusDocument>.of(current.documents);
+    final Set<String> touched = <String>{};
+    bool changed = false;
+    for (final DocumentChange change in documents) {
+      final int index = next.indexWhere((AnimusDocument document) => document.kind == change.kind && document.id == change.id);
+      final String? source = change.source;
+      if (source == null) {
+        if (index >= 0) {
+          next.removeAt(index);
+          changed = true;
+        }
+        continue;
+      }
+      if (index >= 0 && next[index].source == source) continue;
+      final String path = index >= 0 ? next[index].path : documentPath(change.kind, change.id);
+      final AnimusDocument edited = validateSource(DocumentLocation(change.kind, change.id), path, source, schemas);
+      if (index >= 0) {
+        next[index] = edited;
+      } else {
+        next.add(edited);
+        next.sort((AnimusDocument a, AnimusDocument b) => a.path.compareTo(b.path));
+      }
+      touched.add('${change.kind.wireName}:${change.id}');
+      changed = true;
+    }
+    final Map<String, Uint8List> nextResources = Map<String, Uint8List>.of(current.resources);
+    for (final MapEntry<String, Uint8List?> resource in resources.entries) {
+      changed = true;
+      if (resource.value == null) {
+        nextResources.remove(resource.key);
+      } else {
+        nextResources[resource.key] = resource.value!;
+      }
+    }
+    if (!changed) return;
+    final Map<String, Object?> rigs = <String, Object?>{
+      for (final AnimusDocument document in next)
+        if (document.kind == DocumentKind.rig) document.id: document.json,
     };
-    final List<AnimusDocument> documents = <AnimusDocument>[
-      for (final AnimusDocument document in current.documents)
-        if (!added.containsKey(DocumentLocation(document.kind, document.id))) document,
-      ...added.values,
-    ]..sort((AnimusDocument a, AnimusDocument b) => a.path.compareTo(b.path));
-    _lastCoalesce = null;
-    await _save(current, current.next(documents: documents));
-  }
+    for (int index = 0; index < next.length; index++) {
+      final AnimusDocument document = next[index];
+      if (document.kind != DocumentKind.animation) continue;
+      final Object? json = document.json;
+      final String? rig = json is Map<String, Object?> && json['rig'] is String ? json['rig']! as String : null;
+      if (!touched.contains('animation:${document.id}') && !touched.contains('rig:$rig')) continue;
+      final AnimusDocument fresh = validateSource(DocumentLocation(document.kind, document.id), document.path, document.source, schemas);
+      next[index] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateAnimationStructure(fresh.json, rigs[rig])]);
+    }
+    final bool merge = coalesce != null && coalesce == _coalesce && _undo.isNotEmpty;
+    await _save(current, current.next(documents: next, resources: nextResources), recordUndo: !merge);
+    _coalesce = coalesce;
+  });
 
-  /// Moves a document to [newId] at [newPath] with [source] (for kinds whose
-  /// JSON repeats the id), as one undo step. False when the id is taken.
-  Future<bool> renameDocument(DocumentKind kind, String id, String newId, String newPath, String source) =>
-      _serial(() => _renameDocument(kind, id, newId, newPath, source));
-
-  Future<bool> _renameDocument(DocumentKind kind, String id, String newId, String newPath, String source) async {
-    final WorkspaceSnapshot? current = _workspace;
-    final AnimusDocument? existing = document(kind, id);
-    if (current == null || existing == null || document(kind, newId) != null) return false;
-    final AnimusDocument moved = validateSource(DocumentLocation(kind, newId), newPath, source, schemas);
-    _lastCoalesce = null;
-    await _save(current, current.next(documents: <AnimusDocument>[
-      for (final AnimusDocument document in current.documents) identical(document, existing) ? moved : document,
-    ]..sort((AnimusDocument a, AnimusDocument b) => a.path.compareTo(b.path))));
-    return true;
-  }
-
-  /// Removes a document as one undo step.
-  Future<void> removeDocument(DocumentKind kind, String id) => _serial(() => _removeDocument(kind, id));
-
-  Future<void> _removeDocument(DocumentKind kind, String id) async {
-    final WorkspaceSnapshot? current = _workspace;
-    final AnimusDocument? existing = document(kind, id);
-    if (current == null || existing == null) return;
-    _lastCoalesce = null;
-    await _save(current, current.next(documents: <AnimusDocument>[
-      for (final AnimusDocument document in current.documents)
-        if (!identical(document, existing)) document,
-    ]));
-  }
-
-  Future<void> undo() => _serial(_undoNow);
-
-  Future<void> _undoNow() async {
+  Future<void> undo() => _enqueue(() async {
     final WorkspaceSnapshot? current = _workspace;
     if (current == null || _undo.isEmpty) return;
     final WorkspaceSnapshot previous = _undo.removeLast();
-    _lastCoalesce = null;
-    await _save(current, current.next(documents: previous.documents), recordUndo: false);
-  }
+    _coalesce = null;
+    await _save(current, current.next(documents: previous.documents, resources: previous.resources), recordUndo: false);
+  });
 
-  /// Runs edits one after another, so each saves on top of the last and two
-  /// quick keystrokes never race each other into a generation conflict.
-  Future<T> _serial<T>(Future<T> Function() edit) {
-    final Future<T> result = _tail.then((_) => edit());
-    _tail = result.then((T _) {}, onError: (Object _) {});
-    return result;
+  Future<void> _enqueue(Future<void> Function() task) {
+    final Future<void> run = _queue.then((void _) => task());
+    _queue = run.then<void>((void _) {}, onError: (Object _) {});
+    return run;
   }
-
-  Future<void> _tail = Future<void>.value();
 
   Future<void> _save(WorkspaceSnapshot current, WorkspaceSnapshot next, {bool recordUndo = true}) async {
     try {
