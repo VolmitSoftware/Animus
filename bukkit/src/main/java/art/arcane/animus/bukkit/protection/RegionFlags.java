@@ -13,7 +13,7 @@ import org.bukkit.plugin.Plugin;
  * A world is a UUID string or a world name.
  */
 public interface RegionFlags {
-    enum Flag { PVP, INVINCIBLE, DAMAGE_ANIMALS, MOB_DAMAGE, BUILD, BLOCK_PLACE, BLOCK_BREAK, CHEST_ACCESS }
+    enum Flag { PVP, INVINCIBLE, DAMAGE_ANIMALS, MOB_DAMAGE, BUILD, BLOCK_PLACE, BLOCK_BREAK, CHEST_ACCESS, USE }
     enum State { ALLOW, DENY, UNSET }
 
     /** Combined state of the flags at the point, for the player with that id while online, otherwise for a non-member. */

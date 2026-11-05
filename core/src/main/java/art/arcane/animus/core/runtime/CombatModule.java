@@ -153,6 +153,11 @@ public final class CombatModule implements AutoCloseable {
      * Whether the manual administrator adapter may act for this NPC. A definition without the combat module may; one
      * with it needs literal {@code "enabled": true} and {@code "reviewAccepted": true}.
      */
+    /** Whether the NPC's running combat lets hostile mobs target it. */
+    public static boolean targetableByMobs(NpcDefinition definition) {
+        try { return definition != null && CombatSettings.active(definition).map(CombatSettings::targetableByMobs).orElse(false); }
+        catch (IllegalArgumentException invalid) { return false; }
+    }
     public static boolean manualAllowed(NpcDefinition definition) {
         if (definition == null) return false;
         JsonObject document = definition.json();

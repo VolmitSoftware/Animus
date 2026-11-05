@@ -97,6 +97,7 @@ public final class NpcDefinition {
         errors.addAll(NpcAppearance.validate(object));
         errors.addAll(NpcInventory.validate(object));
         art.arcane.animus.core.navigation.MovementSettings.read(object, errors);
+        NamedPoses.read(object, errors);
         if (object.has("modules") && !object.get("modules").isJsonObject()) errors.add("$.modules: expected object");
         else {
             try { WaypointSettings.parse(object); }

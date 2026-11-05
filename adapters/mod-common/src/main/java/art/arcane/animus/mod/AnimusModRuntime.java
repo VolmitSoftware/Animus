@@ -120,7 +120,7 @@ public final class AnimusModRuntime {
             });
             NpcRuntimeSettings npcSettings = next.runtime.npcSettings();
             PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
-            next.host = new VanillaRuntimeHost(server, next.ticks, LOGGER::warn, this::interactionAllowed);
+            next.host = new VanillaRuntimeHost(server, next.ticks, LOGGER::warn, this::interactionAllowed, next.runtime.moduleHooks().buildProtection(BuildProtection.NONE));
             next.living = new PersistedNpcService<>(next.host, next.runtime, files, settings);
             LOGGER.info(next.living.status());
             next.combat = new ModCombat(server, next.runtime, next.living, next.host.terrain(), LOGGER::warn);

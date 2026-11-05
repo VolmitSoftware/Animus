@@ -134,20 +134,22 @@ public final class PathPlanner {
     private static int floor(double value) { return (int) Math.floor(value + EPSILON); }
 
     private static final class Search {
-        private final VoxelSnapshot snapshot;
         private final MovementProfile profile;
         private final BooleanSupplier cancelled;
         private final BodyTerrain terrain;
+        /** The captured cells, with every door this body may open read as open. */
+        private final MotionValidator.Sampler cells;
         private final boolean flies, walks;
         private boolean unavailable;
         private Search(VoxelSnapshot snapshot, MovementProfile profile, BooleanSupplier cancelled) {
-            this.snapshot = snapshot; this.profile = profile; this.cancelled = cancelled;
+            this.profile = profile; this.cancelled = cancelled;
             flies = profile.supports(MovementProfile.Mode.FLY); walks = profile.supports(MovementProfile.Mode.WALK);
-            terrain = new BodyTerrain(profile.width(), profile.height(), profile.supports(MovementProfile.Mode.SWIM), CELLS, snapshot::cell);
+            cells = profile.opensDoors() ? DoorPassage.opened(snapshot::cell) : snapshot::cell;
+            terrain = new BodyTerrain(profile.width(), profile.height(), profile.supports(MovementProfile.Mode.SWIM), CELLS, cells);
         }
         /** Unavailable terrain is noted only when it decided an answer, so a search that never needed it can be unreachable. */
         private MotionValidator.Result check(Vec3 from, Vec3 to, MotionValidator.Medium medium, boolean support) {
-            MotionValidator.Result result = MotionValidator.check(from, to, profile.width(), profile.height(), medium, support, CELLS, snapshot::cell);
+            MotionValidator.Result result = MotionValidator.check(from, to, profile.width(), profile.height(), medium, support, CELLS, cells);
             if (result.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) unavailable = true;
             return result;
         }
