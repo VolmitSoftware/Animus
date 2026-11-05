@@ -10,6 +10,10 @@
     "/traits/builder/PatternXY": "REQUIRES_REVIEW",
     "/traits/builder/Origin/x": "REQUIRES_REVIEW"
   },
+  "reasons": {
+    "/traits/builder/PatternXY": "not converted; check it in citizens:review",
+    "/traits/builder/Origin/x": "not converted; check it in citizens:review"
+  },
   "worldRemaps": [],
   "references": [],
   "validationErrors": [
