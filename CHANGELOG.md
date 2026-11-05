@@ -97,6 +97,7 @@
 - Modules receive NPC interaction notices as bounded module work on every platform, register import converters (`/animus import preview <file> [converter=ns:name]`), and provide protection and economy hooks that fail closed.
 - `animus-api` maven-publish setup with sources and javadoc, and `jitpack.yml`.
 - Riding, NPC-on-NPC mounts, combat and dragon wing phases on Folia: a mounted group has one owner and hands off in one transfer, rides run on the NPC's region, and cross-region hits go to their owners with a validity check.
+- Editing any data file applies it live, with a note block ding and per-key messages for holders of `animus.hotload.notify` (operators by default); invalid hand edits are refused with the exact field error and the last valid version stays live; `[hotload]` settings.
 
 ### Changed
 
@@ -145,6 +146,7 @@
 - Animus API version 1.1.0; compatibility rules in `docs/modules.md`.
 - Servers connect to the Volmit editor relay by default (`relayEnabled = true`, `relayUrl` set to the deployed relay).
 - `[combat]` limits apply per region tick on Folia.
+- Shop messages, price format, economy and the command allow-lists apply without a restart; shops, chest GUIs, menus, holograms and text animations that fail to reload keep their last valid version.
 
 ### Fixed
 
