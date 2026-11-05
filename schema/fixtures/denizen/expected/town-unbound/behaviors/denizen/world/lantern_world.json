@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:world/lantern_world",
+  "server": true,
+  "entry": "on-player-joins",
+  "routines": {
+    "on-player-joins": {
+      "type": "action",
+      "capability": "animus:message",
+      "arguments": {
+        "text": "Welcome to the server."
+      }
+    },
+    "on-delta-time-secondly": {
+      "type": "action",
+      "capability": "animus:set-flag",
+      "arguments": {
+        "name": "ticks",
+        "scope": "global",
+        "value": null
+      },
+      "expressions": {
+        "/value": "(num(flag('global', 'ticks', 0)) + 1)"
+      }
+    },
+    "on-player-chats": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "The gate opens at dawn."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:title",
+          "arguments": {
+            "title": "&eGatehouse",
+            "subtitle": null,
+            "stay": 60
+          },
+          "templates": {
+            "/subtitle": "{{ context.message }}"
+          }
+        }
+      ]
+    },
+    "on-player-joins-2": {
+      "type": "condition",
+      "expression": "same(player.world, 'world_nether')",
+      "then": {
+        "type": "sequence",
+        "steps": [
+          {
+            "type": "action",
+            "capability": "animus:actionbar",
+            "arguments": {
+              "text": "Mind the heat"
+            }
+          },
+          {
+            "type": "action",
+            "capability": "animus:play-sound",
+            "arguments": {
+              "sound": "minecraft:block.fire.ambient",
+              "at": "player"
+            }
+          }
+        ]
+      }
+    },
+    "on-server-start": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "open",
+            "scope": "global",
+            "value": true
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "Town scripts loaded",
+            "to": "console"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-player-joins",
+      "event": "player_join",
+      "routine": "on-player-joins"
+    },
+    {
+      "id": "on-delta-time-secondly",
+      "event": "timer",
+      "intervalTicks": 100,
+      "routine": "on-delta-time-secondly"
+    },
+    {
+      "id": "on-player-chats",
+      "event": "player_chat",
+      "pattern": "*gate*",
+      "routine": "on-player-chats"
+    },
+    {
+      "id": "on-player-joins-2",
+      "event": "player_join",
+      "routine": "on-player-joins-2"
+    },
+    {
+      "id": "on-server-start",
+      "event": "server_start",
+      "routine": "on-server-start"
+    }
+  ]
+}

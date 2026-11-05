@@ -1,6 +1,10 @@
 guard_data:
     type: data
     wanted: something else
+    gear:
+    - sword
+    - shield
+    - helmet
 
 gate_task:
     type: task

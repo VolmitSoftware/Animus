@@ -9,14 +9,10 @@
       "steps": [
         {
           "type": "condition",
-          "capability": "animus:flag-state",
-          "arguments": {
-            "name": "event_open",
-            "scope": "global"
-          },
+          "expression": "has_flag('global', 'event_open')",
           "then": {
             "type": "action",
-            "capability": "animus:say",
+            "capability": "animus:message",
             "arguments": {
               "text": "The gate is open."
             }

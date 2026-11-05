@@ -6,6 +6,8 @@ guard_assignment:
         on assignment:
         - trigger name:click state:true
         - trigger name:proximity state:true radius:6
+        - equip <npc> chest:iron_chestplate
+        - flag npc guard_post:true
         on click:
         - narrate "<&a>Hello <player.name>, I am <npc.name>."
         - if <player.has_flag[met_guard]>:
@@ -14,6 +16,8 @@ guard_assignment:
         - flag player met_guard
         - flag player visits:++
         - run greet_task
+        - run tally_task def:<player.name>|2 save:tally
+        - narrate "You have <entry[tally].created_queue.determination> marks."
         on enter proximity:
         - look <npc> <player>
         - playsound <player> sound:entity_villager_yes volume:1 pitch:1.5
@@ -90,9 +94,33 @@ greet_task:
     - run greet_task path:extra
     - foreach <server.online_players> as:target:
         - narrate "<[target].name>"
+    - foreach <script[guard_data].data_key[gear]> as:piece:
+        - if <[piece]> == shield:
+            - foreach next
+        - narrate "<[loop_index]>. <[piece].to_uppercase>"
+    - choose <util.random.int[1].to[3]>:
+        - case 1:
+            - chat "A fine day."
+        - case 2 3:
+            - chat "Stay alert."
+    - while <[count]> > 0:
+        - define count:--
+    - give lantern_token quantity:<[count].add[1]>
+    - adjust <npc> name:Gate<&sp>Guard
     extra:
     - narrate "Extra path."
     - teleport <player> <npc.location>
+    - adjust <npc> skin_blob:abc
+
+tally_task:
+    type: task
+    definitions: who|amount
+    script:
+    - flag player marks:+:<[amount]> expire:1d
+    - flag player names:->:<[who]>
+    - if <player.flag[marks]||0> > 10 || ( <player.has_flag[names]> && !<player.has_flag[banned]> ):
+        - determine <proc[double_proc].context[<player.flag[marks]>]>
+    - determine <player.flag[marks]>
 
 guard_data:
     type: data
@@ -105,6 +133,19 @@ lantern_world:
         - narrate "Welcome to the server."
         on delta time secondly every:5:
         - flag server ticks:++
+        on player chats message:*gate*:
+        - narrate "The gate opens at dawn." targets:<player>
+        - title title:<&e>Gatehouse subtitle:<context.message> stay:3s
+        on player joins in:world_nether:
+        - actionbar "Mind the heat"
+        - playsound <player> sound:block_fire_ambient
+        on player clicks in town_shop:
+        - determine cancelled
+        on npc spawns:
+        - announce "An NPC woke up."
+        on server start:
+        - flag server open:true
+        - announce to_console "Town scripts loaded"
 
 double_proc:
     type: procedure
@@ -115,5 +156,49 @@ double_proc:
 reset_command:
     type: command
     name: guardreset
+    description: Resets the guard greeting
+    usage: /guardreset (player)
+    aliases:
+    - gr
+    permission: town.reset
     script:
     - flag player met_guard:!
+    - if <context.args.size> > 0:
+        - narrate "Reset for <context.args.first>."
+    - else:
+        - narrate "Reset."
+    - inventory open d:gate_menu
+
+town_guide:
+    type: book
+    title: Town guide
+    author: The Mayor
+    signed: true
+    text:
+    - Welcome to town, <player.name>.
+    - The gate closes at dusk.
+
+lantern_token:
+    type: item
+    material: torch
+    display name: <&6>Lantern token
+    lore:
+    - Shown at the gate
+
+gate_menu:
+    type: inventory
+    inventory: chest
+    title: <&8>Gatehouse
+    size: 27
+    gui: true
+    definitions:
+        pane: gray_stained_glass_pane
+    slots:
+    - [pane] [pane] [pane] [pane] [pane] [pane] [pane] [pane] [pane]
+    - [pane] [] [lantern_token] [] [shield] [] [iron_sword[quantity=2]] [] [pane]
+    procedural items:
+    - determine <list[stone]>
+
+lantern_format:
+    type: format
+    format: <&7>[Lantern] <[text]>

@@ -6,6 +6,22 @@
     "event_open": {
       "type": "boolean",
       "value": true
+    },
+    "festival": {
+      "type": "boolean",
+      "value": true,
+      "expires": 1939809600000
+    },
+    "notice_board": {
+      "type": "list",
+      "value": [
+        "Market on Friday",
+        "Gate closes at dusk"
+      ]
+    },
+    "ticks": {
+      "type": "integer",
+      "value": 15
     }
   }
 }
