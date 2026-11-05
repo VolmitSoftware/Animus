@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 10,
+  "converterVersion": 11,
   "fieldPathFormat": "json-pointer",
-  "importId": "341365171f8da66c915609b5a88db6254f7bd0e9de802fbfeddd544e05640e71",
+  "importId": "6b9570ed271ebffe044d792b6ff76cce9d1dcf691ebfb30074b1c5cf6048b6cd",
   "sourceSha256": "f0fac577c8016c45c991e6531bfc050d7f7003eb243f0d204eb6eb5e47e86890",
   "worldMap": {
     "world": "Survival World"
@@ -58,9 +58,9 @@
     "3": "31262f7f-a169-34d1-bedc-94ded02a16c3"
   },
   "documents": {
-    "npcs/survival-world-r0_0/citizens-0.json": "7faa5b99b3b17d7e244507402d2bc66dc2f0e12772d8528e01098dddab4f6f25",
-    "npcs/survival-world-r0_0/citizens-1.json": "ce0c67845e28a656182951fdc3cdda8a3e2a29007b576fce8cef3f65d45ae8d8",
-    "npcs/survival-world/citizens-2.json": "5d4138762aab4cd2a32771dd86cd90bee3628772cb1f00be7687fd1e1c211019",
-    "npcs/citizens/citizens-3.json": "a107f149f36d73fd818094d353e4b00aa84851b548fdadce26f8eda9c0ca67ea"
+    "npcs/survival-world-r0_0/citizens-0.json": "7117f54f29698603bc973383ca2feb06796adf217efc7ce35f9eb288d7951847",
+    "npcs/survival-world-r0_0/citizens-1.json": "7a2386dc196469702a00278bac84266cc72d922478466cc2058f7ca6842b9acb",
+    "npcs/survival-world/citizens-2.json": "78f5ae1b4115df82ee3822dd67cb4cfa8849f427f68e2fb2ae2ee992e6f51a9c",
+    "npcs/citizens/citizens-3.json": "3ee5130d64252b3c0c24bb595f6e8ba9624b9633f8348e63a62c2072acc9a521"
   }
 }

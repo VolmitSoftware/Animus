@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 class ClimbingTest {
     private static final PathPlanner.Limits NORMAL = new PathPlanner.Limits(5000, 5000, 500);
-    private static final MovementProfile CLIMBER = new MovementProfile(Set.of(MovementProfile.Mode.WALK), 0.6, 1.8, 0.6, 1.25, 3, true, true);
+    private static final MovementProfile CLIMBER = new MovementProfile(Set.of(MovementProfile.Mode.WALK), 0.6, 1.8, 0.6, 1.25, 3, true, true, false);
     private static final MovementProfile WALKER = new MovementProfile(Set.of(MovementProfile.Mode.WALK), 0.6, 1.8, 0.6, 1.25, 3, true);
     private static final Cell SCAFFOLD = CollisionCells.classify("SCAFFOLDING", List.of(), false);
     private static final Cell LADDER = CollisionCells.classify("LADDER", List.of(new Cell.Box(0, 0, .8125, 1, 1, 1)), false);
@@ -102,5 +102,27 @@ class ClimbingTest {
         assertFalse(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.FLY).climbs());
         MovementProfile applied = MovementSettings.DEFAULT.apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
         assertTrue(applied.climbs());
+    }
+
+    @Test void aRouteClimbsALadderOntoAFloorAndWalksThroughADoor() {
+        MovementProfile both = new MovementProfile(Set.of(MovementProfile.Mode.WALK), 0.6, 1.8, 0.6, 1.25, 3, true, true, true);
+        MovementProfile opener = new MovementProfile(Set.of(MovementProfile.Mode.WALK), 0.6, 1.8, 0.6, 1.25, 3, true, false, true);
+        Cell door = CollisionCells.classify("OAK_DOOR", List.of(new Cell.Box(0, 0, 0, 0.1875, 1, 1)), false,
+                CollisionCells.openShape(CollisionCells.Opening.DOOR, "EAST", false));
+        VoxelSnapshot.Builder builder = new VoxelSnapshot.Builder("world", 0, 0, 0, 10, 10, 6).fill(Cell.AIR).availableChunk(0, 0);
+        for (int x = 0; x < 10; x++) for (int z = 0; z < 6; z++) {
+            builder.set(x, 0, z, Cell.SOLID);
+            if (x >= 3) builder.set(x, 4, z, Cell.SOLID);
+            if (x == 6) for (int y = 5; y <= 6; y++) builder.set(x, y, z, z == 2 ? door : Cell.SOLID);
+        }
+        for (int y = 1; y <= 5; y++) builder.set(2, y, 2, LADDER);
+        VoxelSnapshot snapshot = builder.build();
+        PathPlanner.Result result = plan(snapshot, new BlockPos(1, 1, 2), new BlockPos(8, 5, 2), both);
+        assertEquals(PathPlanner.Status.FOUND, result.status());
+        assertTrue(result.path().stream().anyMatch((PathPlanner.Step step) -> step.motion() == PathPlanner.Motion.CLIMB));
+        assertTrue(result.path().stream().anyMatch((PathPlanner.Step step) -> step.feet().x() == 6), "the route passes the doorway");
+        assertTrue(plan(snapshot, new BlockPos(1, 1, 2), new BlockPos(8, 5, 2), CLIMBER).status() != PathPlanner.Status.FOUND, "a closed door stops a body that does not open it");
+        assertTrue(plan(snapshot, new BlockPos(1, 1, 2), new BlockPos(8, 5, 2), opener).status() != PathPlanner.Status.FOUND, "the ladder stops a body that does not climb");
+        assertTrue(door.openable() && !door.climbable() && LADDER.climbable() && !LADDER.openable());
     }
 }

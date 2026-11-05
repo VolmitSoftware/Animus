@@ -3,7 +3,7 @@ package art.arcane.animus.bukkit.combat;
 import art.arcane.animus.core.combat.AttackProfile;
 import java.util.Objects;
 
-/** Explicit control of one existing hostile mob; initially only ordinary zombies are supported. */
+/** Explicit control of one existing melee hostile mob: zombies, husks, drowned, zombie villagers and vindicators. */
 public record MobProfile(AttackProfile attack, double speed, double pursuitRange, int replanTicks, int lifetimeTicks) {
     public static final MobProfile DEFAULT = new MobProfile(AttackProfile.DEFAULT, 1.0, 12, 20, 600);
     public MobProfile {

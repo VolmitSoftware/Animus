@@ -223,6 +223,7 @@ class ViewerWatchRaceTest {
         @Override public Optional<String> resolveWorld(String reference) { return Optional.of(reference); }
         @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return true; }
         @Override public boolean clearSight(Player player, Vec3 eye, Vec3 direction, double distance) { return true; }
+        @Override public art.arcane.animus.core.navigation.DoorPassage.Doors doors() { return art.arcane.animus.core.navigation.DoorPassage.NONE; }
         @Override public boolean solid(String world, int x, int y, int z) { return y < 64; }
         @Override public boolean registeredEntity(UUID uuid) { return false; }
         @Override public Object item(NpcItem item, String path, List<String> errors) { return new Object(); }

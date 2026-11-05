@@ -43,7 +43,7 @@ class BuiltinCapabilitiesTest {
         @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
         @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
     };
-    private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "look", "set-appearance",
+    private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "look", "pose", "set-appearance",
             "set-equipment", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
             "play-animation", "stop-animation");
     private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state");
@@ -165,6 +165,7 @@ class BuiltinCapabilitiesTest {
         Map<String, String> invalid = Map.ofEntries(
                 Map.entry("say", "{\"text\":\"" + "x".repeat(1025) + "\"}"),
                 Map.entry("look", "{\"x\":1,\"y\":2}"),
+                Map.entry("pose", "{\"pose\":\"Sit Down\"}"),
                 Map.entry("navigate", "{\"x\":1,\"y\":2,\"z\":3,\"speed\":99}"),
                 Map.entry("set-equipment", "{\"slot\":\"tail\"}"),
                 Map.entry("play-sound", "{\"sound\":\"minecraft:a\",\"volume\":99}"),
@@ -207,6 +208,7 @@ class BuiltinCapabilitiesTest {
         valid.put("navigate", "{\"x\":1,\"y\":64,\"z\":3,\"mode\":\"fly\",\"speed\":3}");
         valid.put("stop-navigation", "{}");
         valid.put("look", "{\"x\":1,\"y\":64,\"z\":3}");
+        valid.put("pose", "{\"pose\":\"rest\"}");
         valid.put("set-appearance", "{\"name\":\"Guard\"}");
         valid.put("set-equipment", "{\"slot\":\"main_hand\",\"item\":\"minecraft:iron_sword\"}");
         valid.put("play-sound", "{\"sound\":\"minecraft:entity.villager.yes\",\"volume\":1,\"pitch\":1}");
@@ -218,7 +220,7 @@ class BuiltinCapabilitiesTest {
             Outcome<String> outcome = action(entry.getKey(), entry.getValue());
             assertEquals(Outcome.Status.OK, outcome.status(), entry.getKey() + outcome.diagnostics());
         }
-        assertEquals(List.of("navigate:FLY:3.0", "stop", "look-point", "appearance:Guard:false", "equipment:MAIN_HAND:minecraft:iron_sword",
+        assertEquals(List.of("navigate:FLY:3.0", "stop", "look-point", "pose:rest", "appearance:Guard:false", "equipment:MAIN_HAND:minecraft:iron_sword",
                 "sound:minecraft:entity.villager.yes", "particle:minecraft:flame:8", "combat:TARGET:true",
                 "animation:town:golem/wave:2.0:pingpong:2", "stop-animation:2:10"), platform.calls);
     }

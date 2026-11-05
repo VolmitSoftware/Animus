@@ -15,7 +15,7 @@
     "/metadata/removefromplayerlist": "CONVERTED",
     "/metadata/cached-skin-uuid": "CONVERTED",
     "/metadata/cached-skin-uuid-name": "CONVERTED",
-    "/metadata/pathfinder-open-doors": "REQUIRES_REVIEW",
+    "/metadata/pathfinder-open-doors": "CONVERTED",
     "/metadata/disable-default-stuck-action": "CONVERTED",
     "/metadata/minecraft-ai": "CONVERTED",
     "/navigator/speedmodifier": "CONVERTED",
@@ -114,7 +114,6 @@
   },
   "reasons": {
     "/traitnames": "Citizens bookkeeping of the traits the NPC had; nothing to convert",
-    "/metadata/pathfinder-open-doors": "Animus routes do not open doors; leave the doors on this NPC's route open or add points around them",
     "/traits/equipment/off_hand/editable_components/display_name": "Citizens' copy of the item name and lore, read with the meta",
     "/traits/equipment/off_hand/editable_components/edited": "Citizens' copy of the item name and lore, read with the meta",
     "/traits/inventory/2/meta": "item meta ItemFlags, internal has no item component here; kept in the item's imported data",

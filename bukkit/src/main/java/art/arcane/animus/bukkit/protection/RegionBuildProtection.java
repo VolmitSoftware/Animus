@@ -9,8 +9,8 @@ import java.util.Objects;
 /**
  * Region flags decide each block a build changes. An NPC has no WorldGuard identity, so it may change a block only
  * where WorldGuard would let a non-member: outside every region, or where {@code build} and {@code block-place} (or
- * {@code block-break} for a block turned to air) resolve to allow. A failed query throws, and the build gate refuses
- * the change.
+ * {@code block-break} for a block turned to air, {@code use} for a door it opens) resolve to allow. A failed query
+ * throws, and the build gate refuses the change.
  */
 public final class RegionBuildProtection implements BuildProtection {
     private final RegionFlags flags;
@@ -19,7 +19,11 @@ public final class RegionBuildProtection implements BuildProtection {
 
     @Override public Decision decide(Request request) {
         WorldPosition at = new WorldPosition(request.world(), new Vec3(request.at().x() + .5, request.at().y() + .5, request.at().z() + .5));
-        Flag specific = request.action() == Action.PLACE ? Flag.BLOCK_PLACE : Flag.BLOCK_BREAK;
+        Flag specific = switch (request.action()) {
+            case PLACE -> Flag.BLOCK_PLACE;
+            case BREAK -> Flag.BLOCK_BREAK;
+            case USE -> Flag.USE;
+        };
         return flags.canBuild(at, null, specific) ? Decision.ALLOW : Decision.DENY;
     }
 }

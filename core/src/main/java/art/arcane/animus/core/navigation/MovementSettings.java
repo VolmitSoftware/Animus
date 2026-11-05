@@ -13,17 +13,18 @@ import java.util.Set;
 /**
  * How one NPC walks wherever it walks: the definition's {@code movement} object. A route's own speed wins over
  * {@code speed}. {@code avoidWater} false lets a walking route cross water at the surface; {@code fly} makes routes fly.
- * {@code stepHeight} and {@code maximumFall} replace the body's own climb and drop. Each plan reaches at most {@code pathRange};
+ * {@code openDoors} lets walking routes pass closed wooden doors, fence gates and trapdoors, which the NPC opens and
+ * closes behind it. {@code stepHeight} and {@code maximumFall} replace the body's own climb and drop. Each plan reaches at most {@code pathRange};
  * a longer leg is walked in {@link LongLeg} segments of that reach. A point within {@code arrivalMargin} counts as reached, and {@code stuck} decides what an NPC
  * that has not moved closer for {@code afterTicks} does: teleport to the point it walks to, or stop.
  */
-public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean fly, OptionalDouble stepHeight, OptionalInt maximumFall,
+public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean fly, boolean openDoors, OptionalDouble stepHeight, OptionalInt maximumFall,
                                OptionalDouble pathRange, OptionalDouble arrivalMargin, Optional<Stuck> stuck) {
-    public static final MovementSettings DEFAULT = new MovementSettings(OptionalDouble.empty(), true, false, OptionalDouble.empty(), OptionalInt.empty(),
+    public static final MovementSettings DEFAULT = new MovementSettings(OptionalDouble.empty(), true, false, false, OptionalDouble.empty(), OptionalInt.empty(),
             OptionalDouble.empty(), OptionalDouble.empty(), Optional.empty());
     public static final double MAX_ARRIVAL_MARGIN = 4;
     public static final int MAX_STUCK_TICKS = 12_000;
-    private static final Set<String> FIELDS = Set.of("speed", "avoidWater", "fly", "stepHeight", "maximumFall", "pathRange", "arrivalMargin", "stuck");
+    private static final Set<String> FIELDS = Set.of("speed", "avoidWater", "fly", "openDoors", "stepHeight", "maximumFall", "pathRange", "arrivalMargin", "stuck");
 
     /** What an NPC does after {@code afterTicks} without getting closer to the point it walks to. */
     public record Stuck(int afterTicks, boolean teleport) {
@@ -53,6 +54,7 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
         JsonObject movement = value.getAsJsonObject();
         OptionalDouble speed = decimal(movement, "speed", 1, 5, "blocks/second", errors);
         boolean avoidWater = flag(movement, "avoidWater", true, errors), fly = flag(movement, "fly", false, errors);
+        boolean openDoors = flag(movement, "openDoors", false, errors);
         OptionalDouble step = decimal(movement, "stepHeight", 0, MovementProfile.MAX_STEP, "blocks", errors);
         OptionalInt fall = OptionalInt.empty();
         if (movement.has("maximumFall")) {
@@ -84,10 +86,10 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
             }
         }
         for (String key : movement.keySet()) if (!FIELDS.contains(key)) errors.add("$.movement." + key + ": unknown field");
-        return new MovementSettings(speed, avoidWater, fly, step, fall, range, margin, stuck);
+        return new MovementSettings(speed, avoidWater, fly, openDoors, step, fall, range, margin, stuck);
     }
 
-    /** The route profile with this NPC's climb, drop, water and flying applied. */
+    /** The route profile with this NPC's climb, drop, water, flying and door opening applied. Only walking bodies open doors. */
     public MovementProfile apply(MovementProfile profile, String type) {
         Set<MovementProfile.Mode> modes = profile.modes();
         if (fly) modes = Set.of(MovementProfile.Mode.FLY);
@@ -95,9 +97,11 @@ public record MovementSettings(OptionalDouble speed, boolean avoidWater, boolean
             modes = Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM);
         double step = stepHeight.orElse(profile.stepHeight());
         int fall = maximumFall.orElse(profile.maximumFall());
-        if (modes.equals(profile.modes()) && step == profile.stepHeight() && fall == profile.maximumFall()) return profile;
+        boolean doors = openDoors && modes.contains(MovementProfile.Mode.WALK) || profile.opensDoors();
         boolean climbs = profile.climbs() && modes.contains(MovementProfile.Mode.WALK);
-        return new MovementProfile(modes, profile.width(), profile.height(), step, profile.jumpHeight(), fall, profile.diagonals(), climbs);
+        if (modes.equals(profile.modes()) && step == profile.stepHeight() && fall == profile.maximumFall() && doors == profile.opensDoors()
+                && climbs == profile.climbs()) return profile;
+        return new MovementProfile(modes, profile.width(), profile.height(), step, profile.jumpHeight(), fall, profile.diagonals(), climbs, doors);
     }
 
     /** Whether the NPC at {@code at} counts as having reached {@code goal}: within the arrival margin, when one is set. */

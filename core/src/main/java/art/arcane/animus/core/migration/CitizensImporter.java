@@ -18,7 +18,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 10;
+    public static final int CONVERTER_VERSION = 11;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. Groups other than {@code citizens} come from converter version 7.
@@ -194,6 +194,10 @@ public final class CitizensImporter {
                         trader.module().ifPresent((JsonObject shop) -> modules.add("animus:shop", shop));
                         trader.warning().ifPresent((String warning) -> migrationWarnings.add("citizens-" + key + ": " + warning));
                     }
+                    if (CitizensTraits.targetable(reviewed)) {
+                        if (!modules.has("animus:combat")) modules.add("animus:combat", CitizensTraits.targetableCombat(record));
+                        modules.getAsJsonObject("animus:combat").addProperty("targetableByMobs", true);
+                    }
                     riding(traits.get("controllable")).ifPresent((JsonObject riding) -> modules.add("animus:riding", riding));
                     if (traits.has(BuilderMapping.BUILDER_TRAIT)) {
                         BuilderMapping.Result build = BuilderMapping.convert(reviewed.get(BuilderMapping.BUILDER_TRAIT));
@@ -216,7 +220,12 @@ public final class CitizensImporter {
                     for (String behavior : runtime.behaviors()) increment(conversions, behavior.startsWith("citizens:text-") ? "textBehaviors" : "commandBehaviors");
                     for (CitizensBehaviors.Document document : runtime.documents()) { writeBundle(temporary, document.path(), document.content(), manifest); behaviorDocuments++; }
                     for (String warning : runtime.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
-                    CitizensTraits.Result state = CitizensTraits.map(definition.get("type").getAsString(), record, reviewed, modules.has("animus:combat"), references);
+                    if (!modules.has("animus:navigation") && !world.isEmpty() && CitizensTraits.wanders(definition.get("type").getAsString(), record)) {
+                        modules.add("animus:navigation", CitizensTraits.vanillaWander(record));
+                        increment(conversions, "routes");
+                    }
+                    CitizensTraits.Result state = CitizensTraits.map(definition.get("type").getAsString(), record, reviewed, modules.has("animus:combat"),
+                            modules.has("animus:navigation"), references);
                     for (Map.Entry<String, JsonElement> field : state.fields().entrySet()) definition.add(field.getKey(), field.getValue());
                     if (!state.migration().isEmpty()) migration.add("skin", state.migration());
                     for (String warning : state.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
