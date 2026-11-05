@@ -211,6 +211,26 @@ class CitizensDropInTest {
         }
     }
 
+    @Test void previewSaysHowManyMobSkinsAreKeptForReview() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Animus/imports"));
+        Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), """
+                npc:
+                  '1':
+                    uuid: 00000000-0000-0000-0000-000000000021
+                    name: Hopper
+                    traits:
+                      type: FROG
+                      spawned: true
+                      location: {world: world, x: 1, y: 64, z: 1}
+                      skintrait: {textureRaw: frog, signature: signed}
+                """);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            String preview = joined(dropIn(store, npcs).execute(new String[0]));
+            assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 mob skins kept for review"), preview);
+        }
+    }
+
     @Test void worldMappingsAndModesPassThroughToTheReviewedPlan() throws Exception {
         Files.createDirectories(root.resolve("plugins/Animus/imports"));
         Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), SAVES);

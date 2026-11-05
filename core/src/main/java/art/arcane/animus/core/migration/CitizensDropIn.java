@@ -204,7 +204,10 @@ public final class CitizensDropIn {
         state.add("worldMap", preview.summary().get("worldMap"));
         state.addProperty("report", "imports/" + preview.id() + "/report.json");
         List<String> lines = new ArrayList<>();
-        lines.add("Citizens save " + save.label() + ": " + preview.records() + " NPCs, " + preview.valid() + " valid, " + preview.skins() + " unique skins; converter v" + preview.converterVersion());
+        JsonObject conversions = preview.summary().has("conversions") ? preview.summary().getAsJsonObject("conversions") : new JsonObject();
+        int skinsKept = conversions.has("skinsKept") ? conversions.get("skinsKept").getAsInt() : 0;
+        lines.add("Citizens save " + save.label() + ": " + preview.records() + " NPCs, " + preview.valid() + " valid, " + preview.skins() + " unique skins"
+                + (skinsKept > 0 ? ", " + skinsKept + " mob skins kept for review (skins show only on player bodies)" : "") + "; converter v" + preview.converterVersion());
         lines.add("Folders: " + groups(preview.summary()));
         lines.addAll(summaryLines(preview));
         lines.add("Application " + application.mode() + ": " + application.records() + " definitions, " + application.replacements() + " replacements");
