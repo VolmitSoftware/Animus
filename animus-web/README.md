@@ -64,6 +64,12 @@ A paired server opens as a server workspace (`#/server/<id>`), next to the local
 
 Unanswered change sets are kept with the workspace. After a reconnect (or a reload) the editor asks the server what became of each by its idempotency key, and reports one that never arrived. Catalog events refresh documents that were not edited here; edited ones are marked changed on server, with a Merge button. The server's own schemas (with its modules) drive the inspectors while connected.
 
+## Importing on a server
+
+The Convert Citizens save screen can also import on a paired server: choose the Citizens `saves.yml`, any dtlTraders files and a Shopkeepers `save.yml` and `config.yml`, pick the server under Import on a server and press Upload and stage. The server converts and stages them and shows its review; Apply installs the import dormant, the review categories (spawn, patrols, combat, riding, shops, builder) are accepted one at a time or all at once, and Roll back undoes the import and every acceptance. The token needs the `import` scope, so pair with `/animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui`. Over the relay, files larger than one relay frame (about 756 KiB) are refused before they are sent; connect over the direct path for those.
+
+`import_browser.cjs` runs this against the fake server (`POST /__fake/pair?scopes=import` mints a code with the import scope) at both widths, and checks the relay limit.
+
 ## Fake server
 
 `dart run tool/fake_server.dart` starts an in-memory editor-v1 server for local development and tests. It loads `../schema/fixtures/export` (`--data=`) once and never writes to disk. One loopback port (`--port=`, default 9797) serves the direct API at `http://127.0.0.1:9797/animus/v1/`, the browser side of the relay at `ws://127.0.0.1:9797/app`, and test controls at `http://127.0.0.1:9797/__fake/`. Allowed origins come from `--origin=` (repeatable, default `http://127.0.0.1:8098`), and previews show to the `--viewer=` UUID. At start it prints a `Pair:` link with both paths in it. The controls have no auth and answer only loopback callers: `POST /__fake/pair?paths=both|direct|relay` mints a fresh code, `POST /__fake/edit` changes a document on the server side, `POST /__fake/drop {"path":"direct|relay|all","seconds":N}` and `POST /__fake/offline {"seconds":N}` cut a connection or take the server off the relay, `POST /__fake/revoke`, `/restore` and `/reset` do what their names say, and `GET /__fake/state` and `GET /__fake/document?kind=&id=` show tokens, previews, changes and documents.

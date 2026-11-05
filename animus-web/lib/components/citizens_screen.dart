@@ -1,5 +1,6 @@
 /// Convert Citizens save: a saves.yml read from disk is converted in this browser to the same staged import the
-/// server's converter writes, reviewed here, and downloaded as a zip that unzips into the data folder. Nothing is uploaded.
+/// server's converter writes, reviewed here, and downloaded as a zip that unzips into the data folder. Nothing is uploaded
+/// unless the user imports the same files on a paired server through its review panel.
 library;
 
 import 'dart:convert';
@@ -14,6 +15,9 @@ import '../logic/citizens/citizens_converter.dart';
 import '../logic/citizens/citizens_review.dart';
 import '../logic/shopkeepers/shopkeepers_converter.dart';
 import '../services/browser.dart';
+import '../services/server/server_imports.dart';
+import '../state/server_hub.dart';
+import 'server/server_import_panel.dart';
 
 @JS('animusCitizensResult')
 external set _citizensResult(JSString? value);
@@ -22,7 +26,9 @@ external set _citizensResult(JSString? value);
 external set _shopkeepersResult(JSString? value);
 
 class CitizensScreen extends StatefulWidget {
-  const CitizensScreen({super.key});
+  const CitizensScreen({required this.hub, super.key});
+
+  final ServerHub hub;
 
   @override
   State<CitizensScreen> createState() => _CitizensScreenState();
@@ -39,6 +45,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
   (String, Uint8List)? _shopConfig;
   ShopkeepersPreview? _shops;
   String? _shopError;
+  List<(String, Uint8List)> _traders = const <(String, Uint8List)>[];
 
   static const String _yaml = '.yml,.yaml,application/x-yaml,text/yaml';
 
@@ -109,6 +116,23 @@ class _CitizensScreenState extends State<CitizensScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  Future<void> _chooseTraders() async {
+    final List<(String, Uint8List)>? picked = await pickFiles('.yml,.yaml,.dat');
+    if (picked == null) return;
+    setState(() => _traders = <(String, Uint8List)>[
+          for (final (String name, Uint8List bytes) in picked)
+            if (dtlTradersName(name) != null) (dtlTradersName(name)!, bytes),
+        ]);
+  }
+
+  /// The chosen files as server uploads: the Citizens save, the dtlTraders files, then the Shopkeepers save and config.
+  List<ImportUpload> get _uploads => <ImportUpload>[
+        if (_bytes != null) ImportUpload(ImportFile.citizens, _bytes!),
+        for (final (String name, Uint8List bytes) in _traders) ImportUpload(ImportFile.dtltraders, bytes, name: name),
+        if (_shopSave != null) ImportUpload(ImportFile.shopkeepers, _shopSave!.$2),
+        if (_shopConfig != null) ImportUpload(ImportFile.shopkeepersConfig, _shopConfig!.$2),
+      ];
 
   void _downloadShops(ShopkeepersPreview preview) {
     downloadBytes('animus-shopkeepers-import-${preview.id.substring(0, 12)}.zip', shopkeepersBundleZip(preview));
@@ -183,6 +207,32 @@ class _CitizensScreenState extends State<CitizensScreen> {
         ]),
       if (review != null) ..._report(review),
       _shopkeepersPanel(),
+      _tradersPanel(),
+      ServerImportPanel(hub: component.hub, uploads: _uploads, worlds: _worldMap),
+    ]);
+  }
+
+  Map<String, String> get _worldMap {
+    try {
+      return parseWorldMappings(_worlds);
+    } on CitizensImportException {
+      return const <String, String>{};
+    }
+  }
+
+  Widget _tradersPanel() {
+    return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'dtlTraders files'}, <Widget>[
+      const dom.h2(<Widget>[Component.text('dtlTraders files (optional, server import)')]),
+      const dom.p(classes: 'animus-muted', <Widget>[
+        Component.text('Pick guis.yml, config.yml, messages.yml, data.dat and the shop files from the dtlTraders data folder. '
+            'A file named <shop>.yml is the shop file shops/<shop>/<shop>.yml. The server converts them with the Citizens save.'),
+      ]),
+      dom.div(classes: 'animus-row', <Widget>[
+        Button.secondary(label: 'Choose dtlTraders files', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: _chooseTraders),
+        dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[
+          Component.text(_traders.isEmpty ? 'No files chosen' : _traders.map(((String, Uint8List) file) => file.$1).join(', ')),
+        ]),
+      ]),
     ]);
   }
 

@@ -267,8 +267,15 @@
 
 .animus-citizens-file,
 .animus-citizens-id code,
-.animus-citizens-lines {
+.animus-citizens-lines,
+.animus-server-import p {
   overflow-wrap: anywhere;
+}
+
+.animus-import-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .animus-citizens-error {

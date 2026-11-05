@@ -544,4 +544,77 @@ void main() {
     expect(after['appliedChanges'], isEmpty);
     expect((await call('GET', '/animus/v1/catalog', token: token)).status, 401);
   });
+
+  group('imports', () {
+    Future<String> importToken() async {
+      final Map<String, Object?> minted = await control('POST', '/pair?scopes=import');
+      final Map<String, Object?> payload = payloadOf(minted['code']! as String);
+      final Reply reply = await call('POST', '/animus/v1/pair', body: <String, Object?>{'tokenId': payload['tokenId'], 'secret': payload['secret']});
+      expect(reply.json['scopes'], contains('import'));
+      return reply.json['token']! as String;
+    }
+
+    Future<Reply> uploadRaw(String token, String query, List<int> bytes) async {
+      final HttpClientRequest request = await client.openUrl('POST', Uri.parse('$base/animus/v1/imports$query'));
+      request.headers
+        ..set('Origin', origin)
+        ..set('Authorization', 'Bearer $token')
+        ..set('X-Animus-Counter', '${++counter}')
+        ..contentType = ContentType.binary;
+      request.add(bytes);
+      final HttpClientResponse response = await request.close();
+      final String text = await utf8.decoder.bind(response).join();
+      return Reply(response.statusCode, response.headers, text.isEmpty ? null : jsonDecode(text));
+    }
+
+    Map<String, Object?> review(Reply reply) {
+      expect(reply.status, 200, reason: jsonEncode(reply.body));
+      expectMessage('import-review', reply.body);
+      return reply.json;
+    }
+
+    test('upload, stage, apply, accept and roll back a Citizens save with catalog events', () async {
+      final String token = await importToken();
+      final Frames events = await directEvents(token);
+      expect(review(await call('GET', '/animus/v1/imports', token: token))['state'], 'none');
+      final List<int> save = File('../schema/fixtures/citizens/runtime.yml').readAsBytesSync();
+      expect((review(await uploadRaw(token, '?file=citizens', save))['uploads']! as Map<String, Object?>)['citizens'], 'imports/saves.yml');
+      final Map<String, Object?> staged = review(await call('POST', '/animus/v1/imports/stage', token: token, body: <String, Object?>{}));
+      expect(staged['state'], 'staged');
+      final String importId = (staged['citizens']! as Map<String, Object?>)['importId']! as String;
+      expect(((staged['reports']! as Map<String, Object?>)['citizens']! as Map<String, Object?>)['records'], 5);
+      expect((await call('POST', '/animus/v1/imports/${'0' * 64}/apply', token: token)).errorCode, 'conflict');
+      final Map<String, Object?> applied = review(await call('POST', '/animus/v1/imports/$importId/apply', token: token));
+      expect(applied['state'], 'applied');
+      expect(applied['npcs'], 5);
+      final Map<String, Object?> catalog = await events.nextOf('catalog');
+      expect(catalog['documents'], isNotEmpty);
+      final int waiting = (applied['pending']! as Map<String, Object?>).values.fold(0, (int sum, Object? n) => sum + (n! as int));
+      expect(waiting, greaterThan(0));
+      final Map<String, Object?> accepted = review(await call('POST', '/animus/v1/imports/$importId/accept', token: token, body: <String, Object?>{'categories': <String>['all']}));
+      expect((accepted['pending']! as Map<String, Object?>).values.every((Object? n) => n == 0), isTrue);
+      final Map<String, Object?> rolled = review(await call('POST', '/animus/v1/imports/$importId/rollback', token: token));
+      expect(rolled['state'], 'rolled-back');
+      await events.nextOf('catalog');
+      final Map<String, Object?> deleted = await events.nextOf('catalog');
+      expect(deleted['deleted'], isNotEmpty);
+      await events.socket.close();
+    });
+
+    test('uploads over the relay as base64 and refuses bad input and missing scope', () async {
+      final String token = await importToken();
+      final Frames frames = await relay();
+      final Map<String, Object?> response = await relayCall(frames, 1, 'POST', '/v1/imports?file=dtltraders&name=guis.yml', token: token, count: ++counter,
+          body: base64Encode(utf8.encode('guis: {}\n')));
+      expect(response['status'], 200);
+      expectMessage('import-review', response['body']);
+      expect(((response['body']! as Map<String, Object?>)['uploads']! as Map<String, Object?>)['dtltraders'], 'imports/dtltraders');
+      await frames.socket.close();
+      expect((await uploadRaw(token, '?file=nope', <int>[1])).errorCode, 'invalid-request');
+      expect((await uploadRaw(token, '?file=dtltraders&name=../x.yml', <int>[1])).errorCode, 'invalid-request');
+      expect((await call('POST', '/animus/v1/imports/stage', token: token, body: <String, Object?>{'mode': 'duplicate'})).errorCode, 'invalid-request');
+      final String plain = await pairToken();
+      expect((await call('GET', '/animus/v1/imports', token: plain)).errorCode, 'scope-missing');
+    });
+  });
 }

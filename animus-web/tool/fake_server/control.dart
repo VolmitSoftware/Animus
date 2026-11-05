@@ -80,7 +80,14 @@ class ControlPath {
           'relay' => PairPaths.relay,
           _ => throw invalid('paths: both, direct or relay'),
         };
-        return FakeResponse(200, body: server.pair(chosen));
+        final List<String> extra = <String>[
+          for (final String scope in (uri.queryParameters['scopes'] ?? '').split(','))
+            if (scope.isNotEmpty) scope,
+        ];
+        for (final String scope in extra) {
+          if (!const <String>{'import', 'spawn', 'admin'}.contains(scope)) throw invalid('scopes: import, spawn or admin, comma separated');
+        }
+        return FakeResponse(200, body: server.pair(chosen, extra));
       case 'POST /edit':
         final Map<String, Object?> edit = _object(body);
         fields(edit, r'$', <String>{'kind', 'id', 'source'});

@@ -88,11 +88,12 @@ Future<PickedFiles?> pickDirectory() async {
   return PickedFiles(name, contents);
 }
 
-Future<List<web.File>?> _pick({required String? accept, required bool directory}) {
+Future<List<web.File>?> _pick({required String? accept, required bool directory, bool multiple = false}) {
   final Completer<List<web.File>?> completer = Completer<List<web.File>?>();
   final web.HTMLInputElement input = web.document.createElement('input') as web.HTMLInputElement;
   input.type = 'file';
   if (accept != null) input.accept = accept;
+  if (multiple) input.multiple = true;
   if (directory) {
     input.setAttribute('webkitdirectory', '');
     input.multiple = true;
@@ -117,6 +118,15 @@ Future<List<web.File>?> _pick({required String? accept, required bool directory}
   web.document.body?.append(input);
   input.click();
   return completer.future;
+}
+
+/// Lets the user pick any number of files. Null when the dialog is cancelled.
+Future<List<(String, Uint8List)>?> pickFiles(String accept) async {
+  final List<web.File>? files = await _pick(accept: accept, directory: false, multiple: true);
+  if (files == null || files.isEmpty) return null;
+  return <(String, Uint8List)>[
+    for (final web.File file in files) (file.name, (await file.arrayBuffer().toDart).toDart.asUint8List()),
+  ];
 }
 
 /// Lets the user pick one file. Null when the dialog is cancelled.

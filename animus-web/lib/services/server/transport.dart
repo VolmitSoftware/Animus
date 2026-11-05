@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 /// How the browser reaches a server: the plugin's own listener, or the relay
 /// the plugin connects out to.
@@ -12,7 +14,7 @@ enum ConnectionPath {
 }
 
 class ApiRequest {
-  const ApiRequest(this.method, this.path, {this.headers = const <String, String>{}, this.body});
+  const ApiRequest(this.method, this.path, {this.headers = const <String, String>{}, this.body, this.bytes});
 
   /// GET, POST or DELETE.
   final String method;
@@ -24,8 +26,15 @@ class ApiRequest {
   /// A JSON value, or null for no body.
   final Object? body;
 
+  /// A file upload instead of [body]: the raw bytes on the direct path, a
+  /// base64 JSON string over the relay (whose frames carry JSON).
+  final Uint8List? bytes;
+
   ApiRequest withHeaders(Map<String, String> extra) =>
-      ApiRequest(method, path, headers: <String, String>{...headers, ...extra}, body: body);
+      ApiRequest(method, path, headers: <String, String>{...headers, ...extra}, body: body, bytes: bytes);
+
+  /// The JSON a relay frame carries for this request's body.
+  Object? get relayBody => bytes == null ? body : base64Encode(bytes!);
 }
 
 class ApiResponse {
