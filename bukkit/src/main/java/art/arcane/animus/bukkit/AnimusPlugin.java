@@ -1,5 +1,21 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.bukkit.metrics.ReactBridge;
+import art.arcane.animus.core.command.DebugCommands;
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.DebugWatch;
+import art.arcane.animus.core.metrics.MetricsSnapshot;
+import art.arcane.animus.core.metrics.ReactMetricCatalog;
+import art.arcane.animus.core.metrics.Subsystem;
+import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.text.RichText;
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.event.server.PluginEnableEvent;
+import org.bukkit.plugin.ServicePriority;
 import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.migration.CitizensGuard;
 import art.arcane.animus.core.hire.HireService;
@@ -90,11 +106,17 @@ public final class AnimusPlugin extends JavaPlugin {
     });
     private volatile boolean stopping;
     private volatile EditorService editor;
+    private volatile AnimusMetrics metrics;
+    private final DebugWatch debugWatch = new DebugWatch();
+    private AutoCloseable metricsTicks;
+    private volatile ReactBridge react;
 
 
     @Override
     public void onEnable() {
         try {
+            AnimusMetrics measured = AnimusMetrics.restart();
+            metrics = measured;
             RuntimeEnvironment environment = RuntimeEnvironment.bukkit(
                     getServer().getBukkitVersion(), getDataFolder().toPath());
             runtime = new AnimusRuntime(environment, failure -> getLogger().log(Level.SEVERE, "Animus file cleanup failed", failure));
@@ -142,23 +164,24 @@ public final class AnimusPlugin extends JavaPlugin {
             guis = new HoloService<>(runtime, shops, displays, living, commands, BukkitGlossBridge.load(this), message -> getLogger().info(message));
             getServer().getPluginManager().registerEvents(new BukkitHoloEvents(guis), this);
             HireService<Player, ItemStack> hireDesk = new HireService<>(runtime, shops.screens(), living, commands, combat.hireGuarding(), message -> getLogger().info(message));
-            hireTicks = ownerTicks.apply(hireDesk::tick);
+            hireTicks = ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, hireDesk::tick));
             getLogger().info(hireDesk.status());
             ShopService<Player, ItemStack> screenService = shops;
             HoloService<Player, ItemStack> holoService = guis;
             living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) ->
                     hireDesk.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             NpcRuntime<Player, ItemStack> owners = living;
-            screenTicks = ownerTicks.apply(() -> {
+            screenTicks = ownerTicks.apply(measured.timed(Subsystem.GUI, () -> {
                 for (UUID viewer : screenService.screens().viewing()) owners.players().deliver(viewer, screenService.screens()::tick);
                 for (Player online : getServer().getOnlinePlayers()) owners.players().deliver(online.getUniqueId(), holoService::tick);
-            });
+            }));
             shops.reload(catalog -> {});
             guis.reload(catalog -> {});
             getLogger().info(shops.status());
             getLogger().info(guis.status());
             startBuilds(mainThread);
-            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, () -> buildsUnavailable, ownerTicks, () -> guis),
+            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, () -> buildsUnavailable,
+                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new ExtensionRuntime(runtime.documents().resolve("modules"),
@@ -190,6 +213,18 @@ public final class AnimusPlugin extends JavaPlugin {
             if (foliaProof != null) extras.put("foliaproof", new FoliaProofCommand());
             extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsUnavailable)));
             extras.put("editor", new EditorCommands(() -> editor, commands));
+            AnimusRuntime measuredRuntime = runtime;
+            extras.put("debug", new DebugCommands(() -> metrics, debugWatch,
+                    (String id) -> measuredRuntime.isRunning() ? measuredRuntime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
+                    () -> { EditorService active = editor; return active == null ? List.of("Editor: off") : active.status(); }));
+            measured.extra("combat.waiting", combat::waiting);
+            measured.extra("combat.load", combat::load);
+            measured.extra("editor.streams", () -> { EditorService active = editor; return active == null ? 0 : active.eventStreams(); });
+            measured.listen((MetricsSnapshot snapshot) -> debugWatch.publish(snapshot, this::actionBar));
+            measured.listen((MetricsSnapshot snapshot) -> { ReactBridge bridge = react; if (bridge != null) bridge.publish(snapshot); });
+            metricsTicks = ownerTicks.apply(measured::serverTick);
+            getServer().getPluginManager().registerEvents(new ReactWatcher(), this);
+            bindReact();
             animusCommands = new AnimusCommands(new AnimusCommands.Services(runtime, commands, living, () -> behaviors, extensions, builtins,
                     combat::execute, extras, () -> stopping));
             extensions.start();
@@ -226,9 +261,13 @@ public final class AnimusPlugin extends JavaPlugin {
         editor = null;
         if (activeEditor != null) activeEditor.close();
         animusCommands = null;
+        ReactBridge bridge = react;
+        react = null;
+        if (bridge != null) bridge.close();
+        debugWatch.clear();
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
-        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks)) {
+        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks, metricsTicks)) {
             if (ticks == null) continue;
             try { ticks.close(); }
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }
@@ -260,6 +299,44 @@ public final class AnimusPlugin extends JavaPlugin {
         AnimusCommands active = animusCommands;
         if (active == null) return List.of();
         return active.complete(new BukkitActor(sender, replies), arguments);
+    }
+
+    /** One action-bar line for a debug watcher, on the player's owner; false once the player is gone. */
+    private boolean actionBar(UUID id, String line) {
+        Player player = getServer().getPlayer(id);
+        if (player == null || stopping) return false;
+        String coloured = RichText.colorize(line);
+        return replies.reply(player, () -> player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(coloured)));
+    }
+
+    /** Registers Animus as a React metric source when React is enabled; React's API is reached only by reflection. */
+    private synchronized void bindReact() {
+        if (react != null || stopping) return;
+        org.bukkit.plugin.Plugin plugin = getServer().getPluginManager().getPlugin("React");
+        if (plugin == null || !plugin.isEnabled()) return;
+        try {
+            react = ReactBridge.bind(plugin.getClass().getClassLoader(), new ReactBridge.Registrar() {
+                @SuppressWarnings({"unchecked", "rawtypes"})
+                @Override public void register(Class<?> service, Object provider) {
+                    getServer().getServicesManager().register((Class) service, provider, AnimusPlugin.this, ServicePriority.Normal);
+                }
+                @Override public void unregister(Object provider) { getServer().getServicesManager().unregister(provider); }
+            });
+            getLogger().info("React metrics: published as source " + ReactMetricCatalog.SOURCE_ID + " (" + ReactMetricCatalog.SPECS.size() + " metrics; see docs/react.md)");
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
+            getLogger().warning("React is installed but its metric API is unavailable: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
+        }
+    }
+
+    /** React may enable after Animus or be reloaded; bind when it enables and drop the source when it disables. */
+    private final class ReactWatcher implements Listener {
+        @EventHandler public void enabled(PluginEnableEvent event) { if (event.getPlugin().getName().equals("React")) bindReact(); }
+        @EventHandler public void disabled(PluginDisableEvent event) {
+            if (!event.getPlugin().getName().equals("React")) return;
+            ReactBridge bridge = react;
+            react = null;
+            if (bridge != null) bridge.close();
+        }
     }
 
     /** The web editor API: the embedded listener and the relay client, both off until config.toml enables them. */

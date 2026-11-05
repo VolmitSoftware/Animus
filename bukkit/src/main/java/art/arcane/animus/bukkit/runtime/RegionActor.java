@@ -34,6 +34,8 @@ import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatWorld;
 import art.arcane.animus.core.navigation.BodyTerrain;
 import art.arcane.animus.core.virtual.DragonBody;
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.virtual.DragonMotion;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.Vec3;
@@ -289,19 +291,33 @@ final class RegionActor implements RegionOwner.Body {
             if (wanted.spec() == null) { owner.retire(); return anchor(); }
             reconfigure(wanted);
         }
+        // Sections are timed only on sampled ticks, so an idle region pays for a counter check per NPC.
+        AnimusMetrics metrics = host.metrics;
+        boolean sampled = metrics.sampling();
+        long began = sampled ? metrics.start() : 0, mark = began;
         mounts();
         riding.tick();
+        if (sampled) mark = metrics.sampledLap(Subsystem.NAVIGATION, mark);
         tickCombat();
+        if (sampled) mark = metrics.sampledLap(Subsystem.COMBAT, mark);
         if (reread) { reread = false; routeReadWanted |= routeSource != null; }
         if (routeReadWanted) requestRouteRead();
         if (route != null && !seated) { navigate(); supportWanted = false; fallSpeed = 0; }
         else if (!seated && (supportWanted || fallSpeed > 0)) support();
+        if (sampled) mark = metrics.sampledLap(Subsystem.NAVIGATION, mark);
         tickRig();
+        if (sampled) mark = metrics.sampledLap(Subsystem.RIGS, mark);
         look();
         if (spec.type().equals(DragonBody.TYPE)) dragonPhase = dragonMotion.observe(turns, state.snapshot().position().point(), grounded());
         ChunkPosition now = anchor();
         if (!now.equals(anchored)) { host.anchor(this, anchored, now); anchored = now; }
         publish(true);
+        if (sampled) {
+            long end = metrics.sampledLap(Subsystem.PRESENTATION, mark);
+            metrics.npcCost(metrics.npc(uuid), end - began);
+            RegionScheduler.Tick tick = host.regions.tick();
+            if (tick != null) metrics.regionCost(tick.region(), end - began);
+        }
         return now;
     }
 
