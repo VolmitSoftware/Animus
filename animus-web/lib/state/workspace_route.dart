@@ -1,0 +1,149 @@
+/// Hash routes. Hashes keep pairing secrets out of server logs and work with
+/// the single /index.html rewrite.
+///
+/// ```text
+/// #/                                         home
+/// #/workspace/<id>                           a workspace
+/// #/workspace/<id>/<kind>/<docId>?view=code  one document (docId URI-encoded)
+/// #/pair/<code>                              a pairing link
+/// #/server/<serverId>/<rest>                 a connected server
+/// ```
+library;
+
+import '../model/document_kind.dart';
+
+enum ViewMode { visual, preview, code, split }
+
+sealed class EditorRoute {
+  const EditorRoute();
+
+  static EditorRoute parse(String hash) {
+    String text = hash.startsWith('#') ? hash.substring(1) : hash;
+    if (text.isEmpty || text == '/') return const HomeRoute();
+    if (!text.startsWith('/')) return const HomeRoute();
+    String query = '';
+    final int question = text.indexOf('?');
+    if (question >= 0) {
+      query = text.substring(question + 1);
+      text = text.substring(0, question);
+    }
+    final List<String> parts = text.substring(1).split('/').where((String part) => part.isNotEmpty).toList();
+    if (parts.isEmpty) return const HomeRoute();
+    String decode(String part) {
+      try {
+        return Uri.decodeComponent(part);
+      } on ArgumentError {
+        return part;
+      }
+    }
+
+    switch (parts.first) {
+      case 'workspace':
+        if (parts.length == 2) return WorkspaceRoute(decode(parts[1]));
+        if (parts.length == 4) {
+          final DocumentKind? kind = DocumentKind.parse(parts[2]);
+          if (kind == null) return WorkspaceRoute(decode(parts[1]));
+          ViewMode view = ViewMode.visual;
+          for (final String pair in query.split('&')) {
+            if (pair.startsWith('view=')) {
+              view = ViewMode.values.asNameMap()[pair.substring(5)] ?? ViewMode.visual;
+            }
+          }
+          return DocumentRoute(decode(parts[1]), kind, decode(parts[3]), view);
+        }
+        return const HomeRoute();
+      case 'pair':
+        return parts.length == 2 ? PairRoute(parts[1]) : const HomeRoute();
+      case 'server':
+        return parts.length >= 2 ? ServerRoute(decode(parts[1]), parts.skip(2).map(decode).toList()) : const HomeRoute();
+      default:
+        return const HomeRoute();
+    }
+  }
+
+  String format();
+}
+
+class HomeRoute extends EditorRoute {
+  const HomeRoute();
+
+  @override
+  String format() => '#/';
+
+  @override
+  bool operator ==(Object other) => other is HomeRoute;
+
+  @override
+  int get hashCode => 0;
+}
+
+class WorkspaceRoute extends EditorRoute {
+  const WorkspaceRoute(this.workspaceId);
+
+  final String workspaceId;
+
+  @override
+  String format() => '#/workspace/${Uri.encodeComponent(workspaceId)}';
+
+  @override
+  bool operator ==(Object other) => other is WorkspaceRoute && other.workspaceId == workspaceId;
+
+  @override
+  int get hashCode => workspaceId.hashCode;
+}
+
+class DocumentRoute extends EditorRoute {
+  const DocumentRoute(this.workspaceId, this.kind, this.documentId, [this.view = ViewMode.visual]);
+
+  final String workspaceId;
+  final DocumentKind kind;
+  final String documentId;
+  final ViewMode view;
+
+  DocumentRoute withView(ViewMode next) => DocumentRoute(workspaceId, kind, documentId, next);
+
+  @override
+  String format() {
+    final String base = '#/workspace/${Uri.encodeComponent(workspaceId)}/${kind.wireName}/${Uri.encodeComponent(documentId)}';
+    return view == ViewMode.visual ? base : '$base?view=${view.name}';
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is DocumentRoute && other.workspaceId == workspaceId && other.kind == kind && other.documentId == documentId && other.view == view;
+
+  @override
+  int get hashCode => Object.hash(workspaceId, kind, documentId, view);
+}
+
+class PairRoute extends EditorRoute {
+  const PairRoute(this.code);
+
+  /// The ANM1. pairing code, kept only in the fragment.
+  final String code;
+
+  @override
+  String format() => '#/pair/$code';
+
+  @override
+  bool operator ==(Object other) => other is PairRoute && other.code == code;
+
+  @override
+  int get hashCode => code.hashCode;
+}
+
+class ServerRoute extends EditorRoute {
+  const ServerRoute(this.serverId, this.rest);
+
+  final String serverId;
+  final List<String> rest;
+
+  @override
+  String format() => <String>['#/server', Uri.encodeComponent(serverId), ...rest.map(Uri.encodeComponent)].join('/');
+
+  @override
+  bool operator ==(Object other) => other is ServerRoute && other.serverId == serverId && other.rest.join('/') == rest.join('/');
+
+  @override
+  int get hashCode => Object.hash(serverId, rest.join('/'));
+}

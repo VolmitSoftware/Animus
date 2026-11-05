@@ -1,0 +1,58 @@
+{
+  "description": "What the editor lists after opening schema/fixtures/export as a data folder. Paths not listed are ignored.",
+  "documents": [
+    {
+      "kind": "behavior",
+      "id": "greeter:greeter",
+      "path": "behaviors/greeter/greeter.json",
+      "valid": true
+    },
+    {
+      "kind": "inventory",
+      "id": "shop:counter",
+      "path": "gui/inventories/shop/counter.json",
+      "valid": true
+    },
+    {
+      "kind": "npc",
+      "id": "examples/broken",
+      "path": "npcs/examples/broken.json",
+      "valid": false
+    },
+    {
+      "kind": "npc",
+      "id": "examples/greeter",
+      "path": "npcs/examples/greeter.json",
+      "valid": true
+    },
+    {
+      "kind": "npc",
+      "id": "examples/shopkeeper",
+      "path": "npcs/examples/shopkeeper.json",
+      "valid": true
+    },
+    {
+      "kind": "behavior",
+      "id": "shop:keeper",
+      "path": "packs/shop/behaviors/shop/keeper.json",
+      "valid": true
+    },
+    {
+      "kind": "pack",
+      "id": "shop",
+      "path": "packs/shop/pack.json",
+      "valid": true
+    },
+    {
+      "kind": "shop",
+      "id": "shop:bakery",
+      "path": "shops/shop/bakery.json",
+      "valid": true
+    }
+  ],
+  "ignored": [
+    "config.toml",
+    "npcs/examples/notes.txt",
+    "state/behavior-state/global/greeter/greeter.json"
+  ]
+}

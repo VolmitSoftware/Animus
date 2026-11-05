@@ -1,0 +1,32 @@
+{
+  "idempotencyKey": "6f1c2d3e4f5a6b7c",
+  "message": "Rename the greeter",
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "examples/greeter",
+      "baseRevision": 1,
+      "baseHash": "sha256:f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d",
+      "source": {
+        "schemaVersion": 1,
+        "revision": 2
+      }
+    },
+    {
+      "kind": "behavior",
+      "id": "town:new",
+      "baseRevision": null,
+      "baseHash": null,
+      "source": {
+        "schemaVersion": 1
+      }
+    },
+    {
+      "kind": "shop",
+      "id": "shop:old",
+      "baseRevision": 3,
+      "baseHash": "sha256:dba0082ec68e72d47fa926dcc91fb9b00961ceb4342554a0c2aa567144a5a6d3",
+      "delete": true
+    }
+  ]
+}

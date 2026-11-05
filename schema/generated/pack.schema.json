@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Animus behavior pack manifest",
+  "description": "packs/<pack>/pack.json. The id matches the directory name.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,64}$",
+      "description": "The pack directory's name."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "A display name.",
+      "maxLength": 128
+    },
+    "version": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "The pack's own version, for people.",
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "What the pack does.",
+      "maxLength": 1024
+    },
+    "modules": {
+      "type": "object",
+      "description": "Java modules this pack uses. A missing required module makes the pack's behaviors unavailable; this configuration is kept.",
+      "maxProperties": 64,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+        "not": {
+          "const": "animus"
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "required": {
+            "type": "boolean",
+            "description": "True by default."
+          },
+          "configuration": {
+            "type": "object",
+            "description": "The module's own settings, kept as written."
+          }
+        }
+      }
+    }
+  }
+}

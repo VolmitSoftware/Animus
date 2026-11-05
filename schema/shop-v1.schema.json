@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/shop-v1.schema.json",
+  "title": "Animus shop",
+  "description": "shops/<namespace>/<path>.json. The id must equal the file location. The Java ShopDocument parser is authoritative; this schema checks structure for the editor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "pages"],
+  "properties": {
+    "schemaVersion": {"const": 1, "description": "Always 1."},
+    "revision": {"type": "integer", "minimum": 1, "description": "Raise this with every edit."},
+    "id": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$", "description": "namespace:path, matching this file's location."},
+    "title": {"type": "string", "description": "Window title; & codes and MiniMessage. Defaults to the id."},
+    "permission": {"$ref": "#/$defs/permission"},
+    "modes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {"$ref": "#/$defs/mode"},
+      "description": "Enabled tabs, each at most once. Defaults to buy, sell and trade."
+    },
+    "defaultMode": {"$ref": "#/$defs/mode"},
+    "match": {"$ref": "#/$defs/match"},
+    "closeAfterPurchase": {"type": "boolean"},
+    "confirm": {"type": "boolean"},
+    "log": {"type": "boolean"},
+    "pages": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/page"}},
+    "imported": {"type": "object", "description": "Preserved source data from an importer."}
+  },
+  "$defs": {
+    "mode": {"enum": ["buy", "sell", "trade"]},
+    "match": {"enum": ["strict", "legacy"], "description": "How offered items are compared. strict compares all item data."},
+    "permission": {"type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$"},
+    "price": {"type": "number", "minimum": 0, "maximum": 1000000000000, "description": "At most 4 decimal places."},
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+        "count": {"type": "integer", "minimum": 1, "maximum": 99},
+        "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$"},
+        "imported": {"type": "object"}
+      }
+    },
+    "grid": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[0-9]{1,2}$"},
+      "additionalProperties": {"$ref": "#/$defs/entry"},
+      "description": "Slot number to entry."
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "rows": {"type": "integer", "minimum": 1, "maximum": 6},
+        "permission": {"$ref": "#/$defs/permission"},
+        "buy": {"$ref": "#/$defs/grid"},
+        "sell": {"$ref": "#/$defs/grid"},
+        "trade": {"$ref": "#/$defs/grid"}
+      }
+    },
+    "goods": {
+      "type": "array",
+      "maxItems": 27,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["item"],
+        "properties": {
+          "item": {"$ref": "#/$defs/item"},
+          "amount": {"type": "integer", "minimum": 1, "maximum": 2304}
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "item"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}$", "description": "Unique within the shop."},
+        "type": {"enum": ["static", "buy", "sell", "trade", "command"]},
+        "item": {"$ref": "#/$defs/item"},
+        "display": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {"type": "string"},
+            "lore": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 256}},
+            "showPrice": {"type": "boolean"},
+            "showLimit": {"type": "boolean"}
+          }
+        },
+        "price": {"$ref": "#/$defs/price"},
+        "allowStack": {"type": "boolean"},
+        "sellPartial": {"type": "boolean"},
+        "needs": {"$ref": "#/$defs/goods"},
+        "gives": {"$ref": "#/$defs/goods"},
+        "commands": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["command"],
+            "properties": {
+              "command": {"type": "string", "maxLength": 1024, "pattern": "^[^/]"},
+              "as": {"enum": ["console", "player"]}
+            }
+          }
+        },
+        "limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "perPlayer": {"type": "integer", "minimum": 1, "maximum": 1000000000},
+            "global": {"type": "integer", "minimum": 1, "maximum": 1000000000},
+            "resetSeconds": {"type": "integer", "minimum": 1, "maximum": 315360000}
+          }
+        },
+        "stock": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maximum"],
+          "properties": {
+            "maximum": {"type": "integer", "minimum": 1, "maximum": 1000000000},
+            "restockSeconds": {"type": "integer", "minimum": 1, "maximum": 315360000}
+          }
+        },
+        "permission": {"$ref": "#/$defs/permission"},
+        "broadcast": {"type": "string", "maxLength": 512},
+        "closeAfterPurchase": {"type": "boolean"},
+        "dropWhenFull": {"type": "boolean"},
+        "discount": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["price"],
+          "properties": {
+            "price": {"$ref": "#/$defs/price"},
+            "start": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T"},
+            "end": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T"}
+          }
+        },
+        "match": {"$ref": "#/$defs/match"},
+        "imported": {"type": "object"}
+      },
+      "allOf": [
+        {
+          "if": {"required": ["type"], "properties": {"type": {"enum": ["buy", "sell", "command"]}}},
+          "then": {"required": ["price"]}
+        },
+        {
+          "if": {"required": ["type"], "properties": {"type": {"const": "trade"}}},
+          "then": {"required": ["needs", "gives"], "properties": {"needs": {"minItems": 1}, "gives": {"minItems": 1}}},
+          "else": {"not": {"anyOf": [{"required": ["needs"]}, {"required": ["gives"]}]}}
+        },
+        {
+          "if": {"required": ["type"], "properties": {"type": {"const": "command"}}},
+          "then": {"required": ["commands"], "properties": {"commands": {"minItems": 1}}}
+        }
+      ]
+    }
+  }
+}

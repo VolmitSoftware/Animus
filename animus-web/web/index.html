@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en-US" dir="ltr" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <title>Animus Editor</title>
+  <meta name="description" content="Browser editor for Animus NPCs, behaviors, shops, GUIs, rigs and animations.">
+  <meta id="animus-theme-color" name="theme-color" content="#111310">
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <script src="/bootstrap.js"></script>
+  <link rel="preload" href="/assets/fonts/geist/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/geist/Geist-SemiBold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles/01-foundations.css">
+  <link rel="stylesheet" href="/styles/02-shell.css">
+  <link rel="stylesheet" href="/styles/03-documents.css">
+</head>
+<body>
+  <div class="animus-boot" id="loading"><div class="animus-boot-spinner"></div></div>
+  <div id="app"></div>
+  <noscript>Animus Editor requires JavaScript.</noscript>
+  <script defer src="/main.client.dart.js"></script>
+</body>
+</html>

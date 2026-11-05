@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "id": "Shop!",
+  "name": "Bakery shop",
+  "version": "2.0.0",
+  "description": "A bakery NPC: right click opens a shop of trades, purchases and sales; left click opens a counter menu. No commands."
+}

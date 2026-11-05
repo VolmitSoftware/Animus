@@ -1,0 +1,11 @@
+{
+  "protocol": 1,
+  "protocols": [
+    1
+  ],
+  "fingerprint": "sha256:630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd",
+  "animus": "1.0.0",
+  "platform": "paper",
+  "minecraft": "26.1.2",
+  "serverName": "Town"
+}

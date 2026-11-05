@@ -1,0 +1,41 @@
+package art.arcane.animus.core.editor;
+
+import java.util.Optional;
+
+/** Document kinds the editor API names, with their folder under the data folder and the scope that applies them. */
+public enum DocumentKind {
+    NPC("npc", "npcs", EditorScope.APPLY_NPCS),
+    ROUTE("route", "routes", EditorScope.APPLY_NPCS),
+    SKIN("skin", "skins", EditorScope.APPLY_NPCS),
+    BEHAVIOR("behavior", "behaviors", EditorScope.APPLY_BEHAVIORS),
+    PACK("pack", "packs", EditorScope.APPLY_BEHAVIORS),
+    SHOP("shop", "shops", EditorScope.APPLY_GUI),
+    INVENTORY("inventory", "gui/inventories", EditorScope.APPLY_GUI),
+    MENU("menu", "gui/menus", EditorScope.APPLY_GUI),
+    HOLOGRAM("hologram", "gui/holograms", EditorScope.APPLY_GUI),
+    TEXT_ANIMATION("text-animation", "gui/text-animations", EditorScope.APPLY_GUI),
+    PRESETS("presets", "gui", EditorScope.APPLY_GUI),
+    RIG("rig", "rigs", EditorScope.APPLY_RIGS),
+    ANIMATION("animation", "animations", EditorScope.APPLY_RIGS);
+
+    private final String wireName;
+    private final String folder;
+    private final EditorScope applyScope;
+
+    DocumentKind(String wireName, String folder, EditorScope applyScope) {
+        this.wireName = wireName;
+        this.folder = folder;
+        this.applyScope = applyScope;
+    }
+
+    public String wireName() { return wireName; }
+
+    public String folder() { return folder; }
+
+    public EditorScope applyScope() { return applyScope; }
+
+    public static Optional<DocumentKind> parse(String wireName) {
+        for (DocumentKind kind : values()) if (kind.wireName.equals(wireName)) return Optional.of(kind);
+        return Optional.empty();
+    }
+}

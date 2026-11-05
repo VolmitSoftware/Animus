@@ -1,0 +1,16 @@
+{
+  "token": "anm_tok_0001AbCd.ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+  "tokenId": "tok_0001AbCd",
+  "scopes": [
+    "read",
+    "validate",
+    "preview",
+    "apply:npcs",
+    "apply:behaviors",
+    "apply:gui",
+    "apply:rigs"
+  ],
+  "expiresAt": "2026-11-11T12:00:00Z",
+  "fingerprint": "sha256:630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd",
+  "counter": 0
+}

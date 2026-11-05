@@ -1,0 +1,112 @@
+{
+  "description": "Pairing codes: ANM1. followed by the payload JSON in base64url without padding. Decoders refuse every invalid entry.",
+  "serverKeyBytes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "valid": [
+    {
+      "code": "ANM1.eyJ2IjoxLCJyZWxheVVybCI6IndzczovL3JlbGF5LmFuaW11cy52b2xtaXRzb2Z0d2FyZS5jb20iLCJmaW5nZXJwcmludCI6InNoYTI1Njo2MzBkY2QyOTY2YzQzMzY2OTExMjU0NDhiYmIyNWI0ZmY0MTJhNDljNzMyZGIyYzhhYmMxYjg1ODFiZDcxMGRkIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwMUFiQ2QiLCJzZWNyZXQiOiJaR1ZtWjJocGFtdHNiVzV2Y0hGeWMzUjFkbmQ0ZVhwN2ZIMS1mNENCZ29NIiwiZXhwaXJlc0F0IjoiMjAyNi0xMS0wNFQxMjoxMDowMFoiLCJsYWJlbCI6ImxhcHRvcCJ9",
+      "payload": {
+        "v": 1,
+        "relayUrl": "wss://relay.animus.volmitsoftware.com",
+        "fingerprint": "sha256:630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd",
+        "serverKey": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "tokenId": "tok_0001AbCd",
+        "secret": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+        "expiresAt": "2026-11-04T12:10:00Z",
+        "label": "laptop"
+      }
+    },
+    {
+      "code": "ANM1.eyJ2IjoxLCJkaXJlY3RVcmwiOiJodHRwczovL21jLmV4YW1wbGUubmV0Ojk3OTciLCJyZWxheVVybCI6IndzczovL3JlbGF5LmFuaW11cy52b2xtaXRzb2Z0d2FyZS5jb20iLCJmaW5nZXJwcmludCI6InNoYTI1Njo2MzBkY2QyOTY2YzQzMzY2OTExMjU0NDhiYmIyNWI0ZmY0MTJhNDljNzMyZGIyYzhhYmMxYjg1ODFiZDcxMGRkIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwMkVmR2giLCJzZWNyZXQiOiJaR1ZtWjJocGFtdHNiVzV2Y0hGeWMzUjFkbmQ0ZVhwN2ZIMS1mNENCZ29NIiwiZXhwaXJlc0F0IjoiMjAyNi0xMS0wNFQxMjoxMDowMFoiLCJzZXJ2ZXJOYW1lIjoiVG93biJ9",
+      "payload": {
+        "v": 1,
+        "directUrl": "https://mc.example.net:9797",
+        "relayUrl": "wss://relay.animus.volmitsoftware.com",
+        "fingerprint": "sha256:630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd",
+        "serverKey": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "tokenId": "tok_0002EfGh",
+        "secret": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+        "expiresAt": "2026-11-04T12:10:00Z",
+        "serverName": "Town"
+      }
+    },
+    {
+      "code": "ANM1.eyJ2IjoxLCJkaXJlY3RVcmwiOiJodHRwOi8vMTI3LjAuMC4xOjk3OTciLCJmaW5nZXJwcmludCI6InNoYTI1Njo2MzBkY2QyOTY2YzQzMzY2OTExMjU0NDhiYmIyNWI0ZmY0MTJhNDljNzMyZGIyYzhhYmMxYjg1ODFiZDcxMGRkIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwM0lqS2wiLCJzZWNyZXQiOiJaR1ZtWjJocGFtdHNiVzV2Y0hGeWMzUjFkbmQ0ZVhwN2ZIMS1mNENCZ29NIiwiZXhwaXJlc0F0IjoiMjAyNi0xMS0wNFQxMjoxMDowMFoifQ",
+      "payload": {
+        "v": 1,
+        "directUrl": "http://127.0.0.1:9797",
+        "fingerprint": "sha256:630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd",
+        "serverKey": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "tokenId": "tok_0003IjKl",
+        "secret": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+        "expiresAt": "2026-11-04T12:10:00Z"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "code": "ANM1.eyJ2IjoxLCJkaXJlY3RVcmwiOiJodHRwOi8vbWMuZXhhbXBsZS5uZXQ6OTc5NyIsImZpbmdlcnByaW50Ijoic2hhMjU2OjYzMGRjZDI5NjZjNDMzNjY5MTEyNTQ0OGJiYjI1YjRmZjQxMmE0OWM3MzJkYjJjOGFiYzFiODU4MWJkNzEwZGQiLCJzZXJ2ZXJLZXkiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R4QVJFaE1VRlJZWEdCa2FHeHdkSGg4IiwidG9rZW5JZCI6InRva18wMDAzSWpLbCIsInNlY3JldCI6IlpHVm1aMmhwYW10c2JXNXZjSEZ5YzNSMWRuZDRlWHA3ZkgxLWY0Q0Jnb00iLCJleHBpcmVzQXQiOiIyMDI2LTExLTA0VDEyOjEwOjAwWiJ9",
+      "reason": "plain http directUrl that is not loopback"
+    },
+    {
+      "code": "ANM1.eyJ2IjoxLCJmaW5nZXJwcmludCI6InNoYTI1Njo2MzBkY2QyOTY2YzQzMzY2OTExMjU0NDhiYmIyNWI0ZmY0MTJhNDljNzMyZGIyYzhhYmMxYjg1ODFiZDcxMGRkIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwM0lqS2wiLCJzZWNyZXQiOiJaR1ZtWjJocGFtdHNiVzV2Y0hGeWMzUjFkbmQ0ZVhwN2ZIMS1mNENCZ29NIiwiZXhwaXJlc0F0IjoiMjAyNi0xMS0wNFQxMjoxMDowMFoifQ",
+      "reason": "neither directUrl nor relayUrl"
+    },
+    {
+      "code": "ANM1.eyJ2IjoxLCJyZWxheVVybCI6IndzczovL3JlbGF5LmFuaW11cy52b2xtaXRzb2Z0d2FyZS5jb20iLCJmaW5nZXJwcmludCI6InNoYTI1Njo2MzBkY2QyOTY2YzQzMzY2OTExMjU0NDhiYmIyNWI0ZmY0MTJhNDljNzMyZGIyYzhhYmMxYjg1ODFiZDcxMGRkIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwMUFiQ2QiLCJleHBpcmVzQXQiOiIyMDI2LTExLTA0VDEyOjEwOjAwWiIsImxhYmVsIjoibGFwdG9wIn0",
+      "reason": "missing secret"
+    },
+    {
+      "code": "ANM1.eyJ2IjoyLCJyZWxheVVybCI6IndzczovL3JlbGF5LmFuaW11cy52b2xtaXRzb2Z0d2FyZS5jb20iLCJmaW5nZXJwcmludCI6InNoYTI1Njo2MzBkY2QyOTY2YzQzMzY2OTExMjU0NDhiYmIyNWI0ZmY0MTJhNDljNzMyZGIyYzhhYmMxYjg1ODFiZDcxMGRkIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwMUFiQ2QiLCJzZWNyZXQiOiJaR1ZtWjJocGFtdHNiVzV2Y0hGeWMzUjFkbmQ0ZVhwN2ZIMS1mNENCZ29NIiwiZXhwaXJlc0F0IjoiMjAyNi0xMS0wNFQxMjoxMDowMFoiLCJsYWJlbCI6ImxhcHRvcCJ9",
+      "reason": "unknown version"
+    },
+    {
+      "code": "ANM1.eyJ2IjoxLCJyZWxheVVybCI6IndzczovL3JlbGF5LmFuaW11cy52b2xtaXRzb2Z0d2FyZS5jb20iLCJmaW5nZXJwcmludCI6InNoYTI1NjowMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwMUFiQ2QiLCJzZWNyZXQiOiJaR1ZtWjJocGFtdHNiVzV2Y0hGeWMzUjFkbmQ0ZVhwN2ZIMS1mNENCZ29NIiwiZXhwaXJlc0F0IjoiMjAyNi0xMS0wNFQxMjoxMDowMFoiLCJsYWJlbCI6ImxhcHRvcCJ9",
+      "reason": "fingerprint does not match serverKey"
+    },
+    {
+      "code": "ANM2.eyJ2IjoxLCJyZWxheVVybCI6IndzczovL3JlbGF5LmFuaW11cy52b2xtaXRzb2Z0d2FyZS5jb20iLCJmaW5nZXJwcmludCI6InNoYTI1Njo2MzBkY2QyOTY2YzQzMzY2OTExMjU0NDhiYmIyNWI0ZmY0MTJhNDljNzMyZGIyYzhhYmMxYjg1ODFiZDcxMGRkIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwMUFiQ2QiLCJzZWNyZXQiOiJaR1ZtWjJocGFtdHNiVzV2Y0hGeWMzUjFkbmQ0ZVhwN2ZIMS1mNENCZ29NIiwiZXhwaXJlc0F0IjoiMjAyNi0xMS0wNFQxMjoxMDowMFoiLCJsYWJlbCI6ImxhcHRvcCJ9",
+      "reason": "wrong prefix"
+    },
+    {
+      "code": "ANM1.eyJ2IjoxLCJyZWxheVVybCI6IndzczovL3JlbGF5LmFuaW11cy52b2xtaXRzb2Z0d2FyZS5jb20iLCJmaW5nZXJwcmludCI6InNoYTI1Njo2MzBkY2QyOTY2YzQzMzY2OTExMjU0NDhiYmIyNWI0ZmY0MTJhNDljNzMyZGIyYzhhYmMxYjg1ODFiZDcxMGRkIiwic2VydmVyS2V5IjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCIsInRva2VuSWQiOiJ0b2tfMDAwMUFiQ2QiLCJzZWNyZXQiOiJaR1ZtWjJocGFtdHNiVzV2Y0hGeWMzUjFkbmQ0ZVhwN2ZIMS1mNENCZ29NIiwiZXhwaXJlc0F0IjoiMjAyNi0xMS0wNFQxMjoxMDowMFoiLCJsYWJlbCI6ImxhcHRvcCJ9=",
+      "reason": "padding"
+    },
+    {
+      "code": "ANM1.bm90IGpzb24",
+      "reason": "not JSON"
+    }
+  ]
+}

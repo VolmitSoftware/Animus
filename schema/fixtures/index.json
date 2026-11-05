@@ -1,0 +1,400 @@
+{
+  "description": "Every shared fixture, read by core's Java contract tests and animus-web's Dart tests. expect.schema: the document validates against the kind's schema (editor-v1.endpoints.json kinds). expect.java: the Java parser accepts it; null where the Java side does not exist yet.",
+  "schemaVersion": 1,
+  "documents": [
+    {
+      "path": "export/npcs/examples/greeter.json",
+      "kind": "npc",
+      "id": "examples/greeter",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "export/npcs/examples/shopkeeper.json",
+      "kind": "npc",
+      "id": "examples/shopkeeper",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "export/npcs/examples/broken.json",
+      "kind": "npc",
+      "id": "examples/broken",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/npc/invalid-type.json",
+      "kind": "npc",
+      "id": "examples/greeter",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "export/behaviors/greeter/greeter.json",
+      "kind": "behavior",
+      "id": "greeter:greeter",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "export/packs/shop/behaviors/shop/keeper.json",
+      "kind": "behavior",
+      "id": "shop:keeper",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/behavior/invalid-node.json",
+      "kind": "behavior",
+      "id": "greeter:greeter",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "export/packs/shop/pack.json",
+      "kind": "pack",
+      "id": "shop",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/pack/invalid-id.json",
+      "kind": "pack",
+      "id": "shop",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "export/shops/shop/bakery.json",
+      "kind": "shop",
+      "id": "shop:bakery",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/shop/invalid-trade-without-needs.json",
+      "kind": "shop",
+      "id": "shop:bakery",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/shop/id-mismatch.json",
+      "kind": "shop",
+      "id": "shop:bakery",
+      "expect": {
+        "schema": true,
+        "java": false
+      }
+    },
+    {
+      "path": "export/gui/inventories/shop/counter.json",
+      "kind": "inventory",
+      "id": "shop:counter",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/inventory/every-action.json",
+      "kind": "inventory",
+      "id": "shop:every",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/inventory/invalid-gloss-only-action.json",
+      "kind": "inventory",
+      "id": "shop:counter",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/inventory/invalid-menu-component.json",
+      "kind": "inventory",
+      "id": "shop:counter",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "animation/rigs/golem.json",
+      "kind": "rig",
+      "id": "town:golem",
+      "expect": {
+        "schema": true,
+        "java": null
+      }
+    },
+    {
+      "path": "animation/clips/golem-walk.json",
+      "kind": "animation",
+      "id": "town:golem/walk",
+      "expect": {
+        "schema": true,
+        "java": null
+      }
+    },
+    {
+      "path": "animation/clips/golem-wave.json",
+      "kind": "animation",
+      "id": "town:golem/wave",
+      "expect": {
+        "schema": true,
+        "java": null
+      }
+    },
+    {
+      "path": "animation/clips/golem-bow.json",
+      "kind": "animation",
+      "id": "town:golem/bow",
+      "expect": {
+        "schema": true,
+        "java": null
+      }
+    }
+  ],
+  "messages": [
+    {
+      "path": "editor/messages/hello-response.0.json",
+      "definition": "hello-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/pair-request.0.json",
+      "definition": "pair-request",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/pair-response.0.json",
+      "definition": "pair-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/capabilities-response.0.json",
+      "definition": "capabilities-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/catalog-response.0.json",
+      "definition": "catalog-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/document-response.0.json",
+      "definition": "document-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/change-set.0.json",
+      "definition": "change-set",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/validate-response.0.json",
+      "definition": "validate-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/preview-response.0.json",
+      "definition": "preview-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/change-applied.0.json",
+      "definition": "change-applied",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/change-conflict.0.json",
+      "definition": "change-conflict",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/change-status-response.0.json",
+      "definition": "change-status-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/change-status-response.1.json",
+      "definition": "change-status-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/error-response.0.json",
+      "definition": "error-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/error-response.1.json",
+      "definition": "error-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/event-auth.0.json",
+      "definition": "event-auth",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/event.0.json",
+      "definition": "event",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/event.1.json",
+      "definition": "event",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/event.2.json",
+      "definition": "event",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-request.0.json",
+      "definition": "relay-request",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/relay-response.0.json",
+      "definition": "relay-response",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/change-set.0.json",
+      "definition": "change-set",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/change-set.1.json",
+      "definition": "change-set",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/change-set.2.json",
+      "definition": "change-set",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/capabilities-response.0.json",
+      "definition": "capabilities-response",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/error-response.0.json",
+      "definition": "error-response",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/pairing-payload.0.json",
+      "definition": "pairing-payload",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/pairing-payload.1.json",
+      "definition": "pairing-payload",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/change-status-response.0.json",
+      "definition": "change-status-response",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/event.0.json",
+      "definition": "event",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/pairing-payload.0.json",
+      "definition": "pairing-payload",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/pairing-payload.1.json",
+      "definition": "pairing-payload",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/pairing-payload.2.json",
+      "definition": "pairing-payload",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    }
+  ],
+  "pairing": "editor/pairing.json",
+  "samples": [
+    "animation/samples/walk.json",
+    "animation/samples/walk-yaw-speed.json",
+    "animation/samples/wave-pingpong.json",
+    "animation/samples/bow-hold.json",
+    "animation/samples/layers.json"
+  ],
+  "exports": [
+    {
+      "root": "export",
+      "expected": "export.expected.json"
+    }
+  ]
+}

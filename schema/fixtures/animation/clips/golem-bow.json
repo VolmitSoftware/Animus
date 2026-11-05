@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:golem/bow",
+  "rig": "town:golem",
+  "durationTicks": 12,
+  "loop": "hold",
+  "tracks": [
+    {
+      "bone": "torso",
+      "target": "rotation",
+      "keyframes": [
+        {
+          "tick": 2,
+          "value": [
+            0,
+            0,
+            0
+          ],
+          "easing": "ease_out"
+        },
+        {
+          "tick": 12,
+          "value": [
+            40,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "bone": "torso",
+      "target": "translation",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tick": 12,
+          "value": [
+            0,
+            -0.2,
+            0.1
+          ]
+        }
+      ]
+    }
+  ]
+}

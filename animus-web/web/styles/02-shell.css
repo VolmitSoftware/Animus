@@ -1,0 +1,251 @@
+.animus-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.animus-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--animus-gap);
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--animus-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--background, inherit);
+}
+
+.animus-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: none;
+}
+
+.animus-brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--animus-radius);
+  border: 1px solid var(--animus-border);
+  font-family: var(--font-mono);
+}
+
+.animus-topbar-workspace {
+  color: var(--animus-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animus-topbar-actions {
+  margin-inline-start: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.animus-banner {
+  margin: var(--animus-gap) 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--animus-error);
+  border-radius: var(--animus-radius);
+}
+
+.animus-panel {
+  background: var(--animus-panel);
+  border: 1px solid var(--animus-border);
+  border-radius: var(--animus-radius);
+  padding: 1rem;
+}
+
+.animus-panel h1,
+.animus-panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.animus-home {
+  display: grid;
+  gap: 1rem;
+  width: min(48rem, calc(100% - 2rem));
+  margin: 2rem auto;
+}
+
+.animus-home-intro h1 {
+  font-size: 1.5rem;
+}
+
+.animus-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.animus-muted {
+  color: var(--animus-muted);
+}
+
+.animus-error {
+  color: var(--animus-error);
+}
+
+.animus-workspace-list,
+.animus-problem-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.animus-workspace-list li,
+.animus-problem-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.animus-workspace-list a,
+.animus-problem-list a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.animus-workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(14rem, 20rem) 1fr;
+  min-height: 0;
+}
+
+.animus-sidebar {
+  border-inline-end: 1px solid var(--animus-border);
+  padding: 0.75rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 3.25rem);
+  position: sticky;
+  top: 3.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.animus-tree-group h3 {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--animus-muted);
+}
+
+.animus-tree-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.animus-tree-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--animus-radius);
+  color: inherit;
+  text-decoration: none;
+}
+
+.animus-tree-item:hover,
+.animus-tree-item:focus-visible {
+  border-color: var(--animus-border);
+}
+
+.animus-tree-item.is-selected {
+  border-color: currentColor;
+}
+
+.animus-tree-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animus-tree-id {
+  grid-column: 1;
+  font-size: 0.75rem;
+  color: var(--animus-muted);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animus-badge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  min-width: 1.25rem;
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.animus-badge.is-error {
+  background: var(--animus-error);
+  color: #fff;
+}
+
+.animus-count {
+  font-weight: 400;
+}
+
+.animus-main {
+  padding: 1rem;
+  min-width: 0;
+}
+
+.animus-overview {
+  display: grid;
+  gap: 1rem;
+}
+
+.animus-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.animus-stat {
+  display: grid;
+  min-width: 6rem;
+}
+
+.animus-stat strong {
+  font-size: 1.5rem;
+}
+
+@media (max-width: 760px) {
+  .animus-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .animus-sidebar {
+    position: static;
+    max-height: none;
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--animus-border);
+  }
+}
