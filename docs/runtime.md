@@ -154,8 +154,10 @@ There is no limit on how many NPCs follow a route. A patrol whose NPC has no pla
 | `motionCellsPerTick` |16384|512–1048576 collision cells their steps check per tick|
 | `planningStartsPerTick` |16|1–1024 new path plans per tick|
 | `wakeChecksPerTick` |64|1–4096 sleeping routes that look for a nearby player per tick (not used on Folia, where players mark nearby NPCs)|
+| `planningJobs` |32|1–256 path plans in progress at once|
+| `captureReadsPerTick` |2048|256–65536 terrain reads those plans make per tick (on Folia, per region)|
 
-`/animus status` shows `routes` (all routes), `routes-sleeping`, `routes-waiting` (waiting out a `waitTicks` pause or a retry) and `navigation-pressure`: `none`, or how many awake routes were left without a turn in the last tick. When routes are left without a turn for a second, the console logs one warning with the budgets to raise, and one line when the shortage has been gone for 5 seconds.
+`/animus status` shows `routes` (all routes), `routes-sleeping`, `routes-waiting` (waiting out a `waitTicks` pause or a retry) and `navigation-pressure`: `none`, or how many awake routes were left without a turn, or without a free planning job, in the last tick. When routes are left without a turn for a second, the console logs one warning with the budgets to raise, and one line when the shortage has been gone for 5 seconds.
 
 ### Looking at nearby players
 

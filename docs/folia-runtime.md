@@ -56,7 +56,7 @@ The per-tick limits of the persisted runtime apply to each region tick rather th
 | Route turns | `[navigation] routesPerTick` (128) |
 | Live collision cells | `[navigation] motionCellsPerTick` (16384) |
 | New path plans | `[navigation] planningStartsPerTick` (16) |
-| Terrain capture units | 256 |
+| Terrain capture units | `[navigation] captureReadsPerTick` (2048) |
 | Viewer updates | `updatesPerTick`; with more viewers, they take turns |
 | Packet operations | 32, shared equally by the viewers updating |
 | NPC starts | 16 |

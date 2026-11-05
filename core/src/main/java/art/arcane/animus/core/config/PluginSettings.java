@@ -133,12 +133,14 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
     private static NavigationSettings navigation(JsonObject document) {
         NavigationSettings defaults = NavigationSettings.DEFAULT;
         for (String key : document.keySet())
-            if (!java.util.Set.of("routesPerTick", "motionCellsPerTick", "planningStartsPerTick", "wakeChecksPerTick").contains(key))
+            if (!java.util.Set.of("routesPerTick", "motionCellsPerTick", "planningStartsPerTick", "wakeChecksPerTick", "planningJobs", "captureReadsPerTick").contains(key))
                 throw new IllegalArgumentException(key + " is not a navigation setting");
         return new NavigationSettings(integer(document, "routesPerTick", defaults.routesPerTick()),
                 integer(document, "motionCellsPerTick", defaults.motionCellsPerTick()),
                 integer(document, "planningStartsPerTick", defaults.planningStartsPerTick()),
-                integer(document, "wakeChecksPerTick", defaults.wakeChecksPerTick()));
+                integer(document, "wakeChecksPerTick", defaults.wakeChecksPerTick()),
+                integer(document, "planningJobs", defaults.planningJobs()),
+                integer(document, "captureReadsPerTick", defaults.captureReadsPerTick()));
     }
 
     private static RigSettings rigs(JsonObject document) {

@@ -15,7 +15,6 @@ import art.arcane.animus.core.navigation.CaptureProvenance;
 import art.arcane.animus.core.navigation.IdleFall;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.MovementProfile;
-import art.arcane.animus.core.navigation.NavigationLimits;
 import art.arcane.animus.core.navigation.NavigationPlan;
 import art.arcane.animus.core.navigation.OwnerNavigation;
 import art.arcane.animus.core.navigation.PathExecution;
@@ -123,7 +122,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private final RouteScheduler<Route> routeOrder;
     private final NavigationSettings navigationSettings;
     private final NavigationPressure navigationPressure = new NavigationPressure();
-    private int planStarts, motionCells;
+    private int planStarts, motionCells, pathRefusals;
     /** Idle NPCs whose footing changed, and NPCs still falling; each is queued at most once. */
     private final Deque<Value> supportOrder = new ArrayDeque<>();
     /** Active NPCs whose definition names a rig; planning takes turns through it. */
@@ -178,7 +177,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         owner();
         try {
             packets = host.openTransport();
-            navigation = new OwnerNavigation(host, host::everyTick, NavigationLimits.DEFAULT);
+            navigation = new OwnerNavigation(host, host::everyTick, navigationSettings.limits());
             for (String type : packets.entityTypes()) {
                 BodyTransport.Body body = packets.createBody(UUID.randomUUID(), type, "Animus", null);
                 geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length, body.seat()));
@@ -719,7 +718,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         route.nextAttempt = tickNumber + 40; routeStatus(route, "suspended", reason);
     }
     private void tickNavigation() {
-        planStarts = navigationSettings.planningStartsPerTick(); motionCells = navigationSettings.motionCellsPerTick();
+        planStarts = navigationSettings.planningStartsPerTick(); motionCells = navigationSettings.motionCellsPerTick(); pathRefusals = 0;
         RouteScheduler.Tick turn = routeOrder.tick(tickNumber, new RouteScheduler.Listener<>() {
             @Override public boolean awake(Route route) { return routeAwake(route); }
             @Override public RouteScheduler.Result work(Route route) { return available() ? workRoute(route) : RouteScheduler.Result.DEFER; }
@@ -729,8 +728,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             }
             @Override public void woke(Route route) { routeStatus(route, "queued", "a player is near"); }
         });
-        navigationPressure.observe(tickNumber, turn.deferred(), "routesPerTick=" + navigationSettings.routesPerTick()
+        navigationPressure.observe(tickNumber, turn.deferred() + pathRefusals, "routesPerTick=" + navigationSettings.routesPerTick()
                 + ", motionCellsPerTick=" + navigationSettings.motionCellsPerTick() + ", planningStartsPerTick=" + navigationSettings.planningStartsPerTick()
+                + ", planningJobs=" + navigationSettings.planningJobs() + ", captureReadsPerTick=" + navigationSettings.captureReadsPerTick()
                 + " in [navigation] of config.toml").ifPresent(host::warn);
     }
     /**
@@ -813,7 +813,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                     }
                 }
             }
-        } catch (RejectedExecutionException full) { route.nextAttempt = tickNumber + 20; routeStatus(route, "queued", "path capacity"); }
+        } catch (RejectedExecutionException full) { pathRefusals++; route.nextAttempt = tickNumber + 20; routeStatus(route, "queued", "path capacity"); }
         catch (RuntimeException failure) { if (value.route == route) failLeg(route, "failed: " + concise(failure)); else stopRoute(value, "failed: " + concise(failure)); }
         return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
     }

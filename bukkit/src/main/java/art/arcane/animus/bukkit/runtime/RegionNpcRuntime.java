@@ -18,7 +18,6 @@ import art.arcane.animus.bukkit.navigation.BukkitNavigationBridge;
 import art.arcane.animus.bukkit.navigation.TerrainChanges;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.IdleFall;
-import art.arcane.animus.core.navigation.NavigationLimits;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.packet.NativeViewerEpoch;
 import art.arcane.animus.core.AnimusRuntime;
@@ -140,7 +139,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         navigationSettings = runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT;
         limits.put(RegionBudget.Kind.OWNER_WORK, 64); limits.put(RegionBudget.Kind.ROUTES, navigationSettings.routesPerTick());
         limits.put(RegionBudget.Kind.MOTION_CELLS, navigationSettings.motionCellsPerTick()); limits.put(RegionBudget.Kind.ROUTE_PLANS, navigationSettings.planningStartsPerTick());
-        limits.put(RegionBudget.Kind.CAPTURE, 256); limits.put(RegionBudget.Kind.VIEWERS, settings.updatesPerTick());
+        limits.put(RegionBudget.Kind.CAPTURE, navigationSettings.captureReadsPerTick()); limits.put(RegionBudget.Kind.VIEWERS, settings.updatesPerTick());
         limits.put(RegionBudget.Kind.PACKETS, RegionViewer.PACKETS_PER_REGION); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, 32);
         rigs = runtime.isRunning() ? runtime.rigSettings() : art.arcane.animus.core.config.RigSettings.DEFAULT;
         limits.put(RegionBudget.Kind.RIG_PLANS, rigs.plansPerTick());
@@ -149,7 +148,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         try {
             epochs = NativeViewerEpoch.bind(plugin, minecraftVersion);
             packets = NativePacketAdapter.bind(plugin, minecraftVersion);
-            navigation = BukkitNavigationBridge.regionOwned(NavigationLimits.DEFAULT);
+            navigation = BukkitNavigationBridge.regionOwned(navigationSettings.limits());
             for (String type : packets.capabilities().entityTypes()) {
                 NativePacketAdapter.Body body = packets.createBody(UUID.randomUUID(), type, "Animus", null);
                 geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length, body.seat()));
