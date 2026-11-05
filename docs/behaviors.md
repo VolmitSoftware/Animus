@@ -41,15 +41,34 @@ The implemented language is:
 | Node | Fields and behavior |
 | --- | --- |
 | `sequence` | `steps`: ordered child nodes. |
-| `action` | `capability`, optional object `arguments`, optional `bindings`; await the module result. |
-| `condition` | Capability/arguments/bindings plus `then` and optional `else`. |
+| `action` | `capability`, optional object `arguments`, optional `bindings`, `expressions` and `templates`; await the module result. |
+| `condition` | Either `capability` with optional `arguments`, `bindings`, `expressions` and `templates`, or an `expression`; plus `then` and optional `else`. |
 | `wait` | Integer `ticks` from 1 to 72,000. |
-| `repeat` | Literal `count` from 0 to 128 and a `body`. |
+| `repeat` | `count`: a literal from 0 to 128 or an operand. Optional `maximum` (1 to 1,024, default 128) and `index`. A `body`. |
+| `foreach` | `list`: an operand giving a list or map. `as`, optional `index`, `key` and `maximum` (1 to 1,024, default 128). A `body`. |
+| `while` | `expression`, optional `maximum` passes (1 to 1,024, default 128) and a `body`. |
+| `break` | No fields. Leaves the innermost loop. |
+| `continue` | No fields. Starts the innermost loop's next pass. |
 | `parallel` | One to eight independent `branches`, then join. |
-| `call` | `routine`: a reusable routine in this document. |
-| `set` | `variable` and either a typed literal `value` or `{"variable":"source"}`. |
+| `call` | `routine`: a reusable routine in this document. Optional `arguments` and `result`. |
+| `return` | Optional `value`. Ends the current routine. |
+| `set` | `variable` and a `value`: a literal of the variable's type or an operand. |
 
-Variables declare `type`, `initial` and optional `scope`. Supported types are boolean, signed 64-bit integer, finite decimal and valid UTF-8 string up to 4 KiB. There is no coercion, arbitrary Java expression, string interpolation or implicit access to other players' variables.
+Variables declare `type`, `initial` and optional `scope`. The types are:
+
+| `type` | Values | `initial` |
+| --- | --- | --- |
+| `boolean` | `true` or `false` | A JSON boolean. |
+| `integer` | Signed 64-bit whole numbers | A JSON number with no fraction. |
+| `decimal` | Finite numbers | A JSON number. |
+| `string` | Valid UTF-8 text up to 4,096 bytes | A JSON string. |
+| `list` | Up to 256 values of any type, in order | A JSON array. |
+| `map` | Up to 256 entries keyed by text of 1 to 256 characters, kept in insertion order | A JSON object. |
+| `any` | A value of any of the types above | Any JSON value except `null`. |
+
+Lists and maps nest at most eight levels deep, and the JSON text of a list or map is at most 4,096 UTF-8 bytes. Inside a list or map, and wherever JSON is read as a value of type `any`, a number without a fraction or exponent is an integer and every other number is a decimal. `null` is never a value. When a value is written as JSON, a decimal always keeps its point or exponent (`2.0`, never `2`). A variable declared `any` holds whatever was last written to it, with that value's own type.
+
+At most 128 variables can be declared. `player`, `npc`, `server`, `context`, `true` and `false` are reserved and cannot be variable names. Expressions can read variables whose names start with a letter and use only lowercase letters, digits and `_`; a name with `-` is still a valid variable, but only `{"variable": ...}` can read it. No behavior can read another player's variables.
 
 ```json
 "variables": {
@@ -73,7 +92,7 @@ Every scope other than `execution` requires a `lifetime`: `transient` values las
 
 A run with no player cannot start a behavior declaring a `player` or `relationship` variable; it is refused with `behavior-state-player-required` and the variable's field. Reads see the most recent write from any run. There is no compare-and-set, so the last write wins when runs of the same behavior write the same key. A preview run reads stored values and never writes them.
 
-If a new revision changes a stored variable's type, the stored value is neither converted nor discarded. Runs for that subject are refused with `behavior-state-type-mismatch` until the declaration is restored or the state is purged. Removing a declaration leaves its stored value in place, still counting against the budgets below. Changing only the `lifetime` selects a different key.
+If a new revision changes a stored variable's type, the stored value is neither converted nor discarded. Runs for that subject are refused with `behavior-state-type-mismatch` until the declaration is restored or the state is purged. A variable declared `any` accepts a stored value of every type. Removing a declaration leaves its stored value in place, still counting against the budgets below. Changing only the `lifetime` selects a different key.
 
 Parallel branches start with independent copies of the current variables, including scoped ones, and they keep those copies: a branch sees its own writes and no one else's until the join. Nonoverlapping writes merge on join. Two branches writing the same variable fail with a conflict, including identical writes. Completed external side effects cannot be rolled back by that conflict.
 
@@ -90,11 +109,111 @@ Action and condition arguments can bind declared values into existing null place
 }
 ```
 
-This shape requires a module providing `example:record` and a declared `amount` variable. Binding keys are JSON Pointers resolved during compilation. They cannot create keys, extend arrays, overlap, or replace a non-null literal. At execution, the current branch value becomes a JSON scalar of the same type. Unrelated variables are not injected. The final argument object must fit within 64 KiB of UTF-8 and pass the capability's compiled schema before its handler is entered.
+This shape requires a module providing `example:record` and a declared `amount` variable. Binding keys are JSON Pointers resolved during compilation. They cannot create keys, extend arrays, overlap, or replace a non-null literal. At execution, the current branch value becomes JSON of the same type: a list becomes an array and a map an object. Unrelated variables are not injected. The final argument object must fit within 64 KiB of UTF-8 and pass the capability's compiled schema before its handler is entered.
+
+`expressions` and `templates` fill placeholders the same way, keyed by JSON Pointer, with an [expression](#expressions) or a [template](#templates) instead of a variable:
+
+```json
+{
+  "type": "action",
+  "capability": "animus:say",
+  "arguments": {"text": null},
+  "templates": {"/text": "{{ player.name }}, you have visited {{ visits }} times."}
+}
+```
+
+A pointer may appear in only one of `bindings`, `expressions` and `templates`, and the three together hold at most 32 entries. They are evaluated when the action runs. An expression result is written as JSON: a whole number becomes an integer, other numbers decimals, lists arrays and maps objects. A template result is a string.
+
+### Operands
+
+Wherever the language takes a value (`set`'s `value`, a computed `repeat` `count`, `foreach`'s `list`, `call` `arguments` and `return`'s `value`), it accepts a literal or an operand object:
+
+| Operand | Value |
+| --- | --- |
+| A JSON literal | That value, of the target's type. |
+| `{"variable": "name"}` | A declared variable. Its declared type must match the target unless one of them is `any`. |
+| `{"expression": "..."}` | An [expression](#expressions). |
+| `{"template": "..."}` | A [template](#templates); the target must be `string` or `any`. |
+
+An object whose only key is `variable`, `expression` or `template` is an operand. For a `map` or `any` target, an object with more keys is a map literal; a map whose only key is one of those words is written as an expression instead.
+
+The result is converted to the target's declared type: a `string` takes any value as text, an `integer` takes a whole number within ±2^53, a `decimal` takes a number, a `boolean` takes only `true` or `false`, a `list` takes a list, a `map` takes a map and `any` takes anything. A result that cannot be converted, or that exceeds the value bounds, ends the run as FAILED with `behavior-expression-type` and the operand's field.
+
+### Expressions
+
+Expressions use the same grammar as [GUI expressions](gui.md): numbers, quoted strings, `true` and `false`, list literals such as `[1, 2]`, function calls, `!`, `-`, `+ - * / %`, comparisons, `==`, `!=`, `&&`, `||` and `a ? b : c`. Numbers are decimals while an expression runs; an integer variable enters as a number. `+` joins text when either side is text. `==` compares two numbers, two strings or two booleans; use `same` for loose comparison. An expression is at most 4,096 characters. A `condition` or `while` expression must give `true` or `false`; text such as `'true'` is not accepted, so wrap it in `truthy` when that is meant.
+
+```json
+{"type": "condition", "expression": "visits >= 3 && !has_flag('player', 'thanked')",
+ "then": {"type": "action", "capability": "animus:say", "arguments": {"text": "Thank you for coming back."}}}
+```
+
+An expression reads:
+
+| Name | Value |
+| --- | --- |
+| A declared variable, such as `visits` | Its current value. A dotted name reads map keys: `item.name` is key `name` of the map `item`. |
+| `player.<fact>` | `name`, `uuid`, `online`, `health`, `max_health`, `food`, `level`, `world`, `x`, `y`, `z`, `location`, `gamemode`, `op`, `sneaking`, `flying`, `item_in_hand`, `item_in_hand_amount` of the run's player. |
+| `npc.<fact>` | `name`, `id`, `uuid`, `spawned`, `health`, `world`, `x`, `y`, `z`, `location` of the run's NPC. |
+| `server.<fact>` | `online_players`, `max_players`, `tick`, `time_millis`. |
+| `context.<key>` | A value of the event that started the run, such as `context.message`. |
+
+`location` is the text `x,y,z,world` with coordinates rounded to two decimals. Facts come from snapshots the platform refreshes on its own threads, so reading one never touches the world and may trail it by a few ticks. An unknown variable, an unknown fact name or a bare `player`, `npc`, `server` or `context` fails compilation with the field. A fact or context key the run does not have fails the run with a message starting `fact-unavailable`, for example `player.name` in a run with no player.
+
+Functions, in addition to the GUI ones such as `min`, `max`, `round`, `len`, `contains`, `lower` and `upper`:
+
+| Function | Result |
+| --- | --- |
+| `get(listOrMap, indexOrKey[, default])` | The item at a 0-based index or key. Without a default, a missing item fails. |
+| `has(map, key)`, `keys(map)`, `values(map)` | Whether the key exists; the keys; the values. |
+| `put(map, key, value)`, `remove(listOrMap, indexOrKey)` | A new map with the entry set; a new list or map without the item. |
+| `append(list, value)`, `insert(list, index, value)` | A new list with the value added at the end or at the index. |
+| `index_of(list, value)`, `first(list)`, `last(list)` | The 0-based index, or -1 when absent; the first or last item. |
+| `slice(listOrText, from, to)`, `reverse(listOrText)` | Items or characters from `from` up to but not including `to`; reversed. |
+| `sort(list)`, `sum(list)`, `join(list, separator)` | Numbers or text in order; the total of numbers; items joined as text. |
+| `split(text, separator)`, `range(from, to)` | Text cut at each separator; whole numbers from `from` to `to` inclusive, at most 256. |
+| `trim(text)`, `replace(text, find, with)`, `starts_with(text, prefix)`, `ends_with(text, suffix)` | Text without surrounding spaces; every `find` replaced; prefix and suffix tests. |
+| `num(x)`, `int(x)`, `text(x)` | A number from a number or numeric text, otherwise a failure; that number rounded toward zero; any value as text. |
+| `truthy(x)` | True for `true`, the text `true` in any case, and numbers other than zero. |
+| `same(a, b)` | Equal as numbers when both are numbers or numeric text, otherwise equal as text ignoring case. |
+| `random(min, max)`, `random_decimal()`, `chance(percent)`, `pick(list)` | A whole number from `min` to `max` inclusive; a number from 0 up to 1; true with that percent chance; a random item. |
+| `flag(scope, name[, default])`, `has_flag(scope, name)`, `quest(scope, name)` | A [flag](#flags-and-quests) of this behavior's namespace, which without a default must be set; whether it is set; a quest stage, 0 when unset. `scope` is `'player'`, `'npc'`, `'relationship'` or `'global'`. |
+
+Collection functions return new values and never change a variable; write the result with `set`. Lists and maps hold at most 256 items. One evaluation takes at most 4,096 steps, counting each part of the expression and each item a function walks, and builds text of at most 65,536 characters. Strings, lists and maps it produces must still fit the value bounds before they are stored or sent. A failure ends the run as FAILED with the reason `expression-failed:<field>:<message>` and a `behavior-expression-failed` diagnostic.
+
+### Templates
+
+A template is text with `{{ expression }}` holes. Each hole's value becomes text, the way GUI text shows it: whole numbers without a point, lists as `[a, b]`. A literal `{{` is written `{{ '{{' }}`. A hole ends at the first `}}` outside a quoted string, and a template is at most 4,096 characters.
+
+### Loops
+
+A `repeat` with a literal `count` runs that many times. An operand `count` is computed once when the loop starts; below 0 it runs no passes, and above `maximum` the run fails with `behavior-loop-bound`. `index` names a declared execution variable of type `integer`, `decimal` or `any` that receives the 0-based pass number.
+
+```json
+{"type": "foreach", "list": {"variable": "rewards"}, "as": "reward", "index": "i",
+ "body": {"type": "action", "capability": "animus:say", "arguments": {"text": null},
+          "templates": {"/text": "Reward {{ i + 1 }}: {{ reward }}"}}}
+```
+
+`foreach` evaluates `list` once when it starts. For a list, `as` receives each item and `index` its position. For a map, `as` receives each value, `key` each key and `index` the position, in insertion order; `key` is unchanged for a list. `as`, `index` and `key` must be declared execution variables; `key` is `string` or `any`, and each item is converted to the type of `as`. A list or map with more items than `maximum` fails the run with `behavior-loop-bound`.
+
+`while` checks its `expression` before every pass and stops when it is false. The expression must give `true` or `false`. When it is still true after `maximum` passes, the run fails with `behavior-loop-bound`.
+
+`break` leaves the innermost loop and `continue` starts its next pass. Both must sit inside a `repeat`, `foreach` or `while` body of the same routine, and not inside a `parallel` branch within that loop; otherwise compilation fails. Every pass of a loop counts one step against the run's step budget, plus the steps of its body.
+
+### Calls and return
+
+```json
+{"type": "call", "routine": "price", "arguments": {"item": {"variable": "chosen"}}, "result": "cost"}
+```
+
+`arguments` assigns declared variables, each from a literal or an operand, before the routine starts. `result` names a declared variable that receives the value of the routine's `return`. Execution variables are shared by every routine of a run, so the routine reads `item` directly and can change any variable its caller sees.
+
+`return` ends the routine that the innermost `call` started. With `value`, the value is converted to the type of the call's `result`; without `value`, or without a `result`, the result variable keeps its value. A `return` in the routine a run started with completes the run. `return` cannot sit inside a `parallel` branch.
 
 Module schemas use an explicitly bounded subset of JSON Schema 2020-12. Types, enum/const, numeric and size constraints, object properties/required/additionalProperties, array items/prefixItems, and basic combinators/conditionals are supported. References, regex, format and other unsupported keywords fail registration with a field diagnostic. This is not full JSON Schema conformance. The same descriptor supplies registry metadata and runtime validation. See [module contracts](modules.md) for invocation and privilege boundaries.
 
-Compiler bounds include 256 KiB of source, 2,048 syntax nodes, depth 32, 32 routines and 32 variables. Argument binding adds at most 32 slots and 16 pointer segments. The catalog defaults to 1,024 retained/observed documents, 4,096 tree entries, depth eight and a 16 MiB aggregate source budget. Two bounded filesystem observations detect changes during reload; external edits after the final observation remain possible. This is not an atomic filesystem snapshot.
+Compiler bounds include 256 KiB of source, 2,048 syntax nodes, depth 32, 32 routines and 128 variables. Argument binding adds at most 32 slots and 16 pointer segments. The catalog defaults to 1,024 retained/observed documents, 4,096 tree entries, depth eight and a 16 MiB aggregate source budget. Two bounded filesystem observations detect changes during reload; external edits after the final observation remain possible. This is not an atomic filesystem snapshot.
 
 Execution budgets independently bound active runs, branches, calls, instructions, lifetime, routine depth, history and trace retention. Reports preserve waits, the failed node's trace and up to 16 field diagnostics. A delivered timeout/cancellation result does not prove a Java handler stopped: its call remains counted until actual handler and result-delivery quiescence. Engine shutdown must keep bounded drain maintenance running for those retired calls. Noncooperative trusted Java work can remain unavailable until restart.
 
@@ -265,6 +384,8 @@ Flags and quest stages are durable behavior state. `scope` defaults to `player`,
 
 They belong to the behavior's namespace rather than to one behavior: `town:greeter` and `town:quest/gatekeeper` see the same `main` quest, and `harbor:greeter` sees its own. A `name` uses lowercase letters, digits, `_` or `-`, up to 64 characters. Flags and quests have separate names, and calling one directly with `/animus modules action` is refused with `no-behavior-namespace`.
 
+A flag holds a value of any type, like a variable declared `any`; a quest stage is an integer. Expressions read both with `flag`, `has_flag` and `quest`. A flag can expire: from its expiry time it reads as unset, and the owner removes expired flags in the background, at most 256 per behavior tick, after which they no longer count against the budgets. Writing a flag again without an expiry clears the old one, and writing it with an expiry that has already passed unsets it at once. Expiry is stored as epoch milliseconds beside the value, so it continues across restarts.
+
 `[behaviors.state]` budgets apply, and a write over a budget fails its run with the same diagnostics as a variable. One namespace holds at most 128 flags and 128 quests per subject. Values are stored as `animus:flags/<namespace>` and `animus:quests/<namespace>`, which behaviors cannot use as their own IDs. To remove them, use `/animus behaviors state purge`, for example `state purge behavior animus:quests/town`; the `npc`, `player`, `relationship` and `all` forms reach them too.
 
 ### Walking a patrol
@@ -406,7 +527,7 @@ Point an editor at them by path. In Visual Studio Code, for example:
 ]
 ```
 
-The schema catches most mistakes as you type, and the compiler still decides. Some rules need the whole document or a capability's own checks and are left to `/animus behaviors validate`: that `entry`, `call` and trigger routines exist, that `set` names a declared variable of the same type, that trigger IDs are unique, a flag or quest `name`'s characters, a command's leading slash and repeated choice option IDs. Arguments filled by `bindings` are checked when the action runs.
+The schema catches most mistakes as you type, and the compiler still decides. Some rules need the whole document or a capability's own checks and are left to `/animus behaviors validate`: that `entry`, `call` and trigger routines exist, that `set` names a declared variable of a matching type, that expressions name declared variables and known facts, that `break`, `continue` and `return` sit where they may, that trigger IDs are unique, a flag or quest `name`'s characters, a command's leading slash and repeated choice option IDs. Arguments filled by `bindings`, `expressions` or `templates` are checked when the action runs.
 
 Diagnostics say what a position accepts. A misspelled field lists the allowed fields and suggests the nearest one, such as `unsupported field for action; allowed: type, capability, arguments, bindings; did you mean capability?`, and the same holds for node types, trigger events, routines, variables, argument names and capability IDs. Value problems name the expected type, range, choices or alternatives.
 
@@ -426,7 +547,7 @@ The directory may be a data folder, with `behaviors/`, `packs/` and `npcs/`, or 
 - Whether a pack's required modules are installed.
 - The command allow-list, and the platform: on Folia some player actions depend on which region owns the player.
 - Revisions against programs a server already accepted. A changed file there still needs a higher revision.
-- Arguments filled from variables.
+- Arguments filled from variables, expressions or templates.
 - Worlds, coordinates, reusable routes, skins, permissions, sounds, particles, items and whether a player is present.
 
 ## Moving imported flags and assignments

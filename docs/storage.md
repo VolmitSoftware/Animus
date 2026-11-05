@@ -31,10 +31,13 @@ state/behavior-state/global/<namespace>/<path>.json
   "npc": "00000000-0000-0000-0000-00000000000a",
   "player": "00000000-0000-0000-0000-0000000000a1",
   "values": {
-    "trust": {"type": "decimal", "value": 0.75}
+    "trust": {"type": "decimal", "value": 0.75},
+    "visited": {"type": "list", "value": ["harbor", "mill"], "expires": 1730000000000}
   }
 }
 ```
+
+Each entry names the value's own type (`boolean`, `integer`, `decimal`, `string`, `list` or `map`) and holds its JSON; a decimal always keeps its point. `expires`, when present, is the epoch millisecond from which the entry reads as unset. Expired entries are removed from memory a bounded number at a time and leave the file at the next commit.
 
 These files are generated. Do not edit them; use `/animus behaviors state purge` to remove state. Definitions and behavior sources never hold this data.
 
