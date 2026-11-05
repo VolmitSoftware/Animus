@@ -1433,6 +1433,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                             "type": "string",
                             "minLength": 1,
                             "maxLength": 128
+                          },
+                          "color": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 16
+                          },
+                          "hover": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          "style": {
+                            "enum": [
+                              "bold",
+                              "italic",
+                              "underlined",
+                              "plain"
+                            ]
                           }
                         },
                         "required": [
