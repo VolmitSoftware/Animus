@@ -419,7 +419,7 @@
     {
       "id": "animus:open-gui",
       "kind": "action",
-      "description": "Opens a chest GUI for the triggering player.",
+      "description": "Opens a chest GUI (kind inventory, the default), holographic menu, shop or, with Gloss installed, a Gloss menu for the triggering player.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -429,6 +429,16 @@
           "required": true,
           "minLength": 1,
           "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "inventory",
+            "menu",
+            "shop",
+            "gloss"
+          ]
         }
       }
     },

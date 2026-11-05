@@ -10,7 +10,8 @@ import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
-import art.arcane.animus.core.shop.ShopService;
+import art.arcane.animus.core.gui.GuiBinding;
+import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.List;
@@ -46,11 +47,11 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     private final BuildService<Player, ItemStack> builds;
     private final Supplier<String> buildsUnavailable;
     private final Function<Runnable, AutoCloseable> ticks;
-    private final Supplier<ShopService<Player, ItemStack>> shops;
+    private final Supplier<HoloService<Player, ItemStack>> guis;
 
     BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, BuildService<Player, ItemStack> builds,
-                           Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<ShopService<Player, ItemStack>> shops) {
-        this.shops = shops;
+                           Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<HoloService<Player, ItemStack>> guis) {
+        this.guis = guis;
         server = plugin.getServer();
         this.living = living;
         this.combat = combat;
@@ -253,14 +254,13 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         return nearby.size();
     }
 
-    /** Hands the window to the player's owner, which on Folia may be another region. */
+    /** Hands the window or menu to the player's owner, which on Folia may be another region. */
     @Override public boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) {
-        ShopService<Player, ItemStack> service = shops.get();
-        if (service == null || !service.enabled())
-            throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "screens-unavailable", "Shops and chest GUIs are disabled in config.toml");
-        return living.players().deliver(player, (Player target) -> {
-            if (kind == ScreenKind.SHOP) service.openShop(target, id, Optional.of(npc.uuid()));
-            else service.openGui(target, id, java.util.Map.of(), Optional.of(npc.uuid()));
-        });
+        HoloService<Player, ItemStack> service = guis.get();
+        if (service == null) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "screens-unavailable", "GUIs are not running");
+        GuiBinding.Kind target = HoloService.kind(kind);
+        java.util.Optional<CapabilityRefusal> refused = service.refusal(target);
+        if (refused.isPresent()) throw refused.get();
+        return living.players().deliver(player, (Player viewer) -> service.open(viewer, target, id, java.util.Map.of(), Optional.of(npc.uuid())));
     }
 }

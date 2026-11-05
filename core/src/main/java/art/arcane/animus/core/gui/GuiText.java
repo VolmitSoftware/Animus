@@ -70,6 +70,64 @@ public final class GuiText {
         return out.toString();
     }
 
+    /** A run of text with one style. {@code rgb} is -1 for the default colour. */
+    public record Span(String text, int rgb, boolean bold, boolean italic, boolean underlined, boolean strikethrough, boolean obfuscated) {}
+
+    private static final int[] LEGACY_RGB = {0x000000, 0x0000AA, 0x00AA00, 0x00AAAA, 0xAA0000, 0xAA00AA, 0xFFAA00, 0xAAAAAA,
+            0x555555, 0x5555FF, 0x55FF55, 0x55FFFF, 0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF};
+
+    /**
+     * Splits section-coded text, as {@link #colorize} makes it, into styled runs for platforms that build chat
+     * components: {@code §x§R§R§G§G§B§B} hex colours, the sixteen colours, formats and reset. A colour resets the
+     * formats, as in vanilla. Empty runs are left out.
+     */
+    public static java.util.List<Span> spans(String coloured) {
+        java.util.List<Span> spans = new java.util.ArrayList<>();
+        if (coloured == null || coloured.isEmpty()) return spans;
+        StringBuilder run = new StringBuilder();
+        int rgb = -1;
+        boolean bold = false, italic = false, underlined = false, strikethrough = false, obfuscated = false;
+        int index = 0;
+        while (index < coloured.length()) {
+            char glyph = coloured.charAt(index);
+            if (glyph != SECTION || index + 1 >= coloured.length()) { run.append(glyph); index++; continue; }
+            char code = Character.toLowerCase(coloured.charAt(index + 1));
+            int nextRgb = rgb;
+            boolean reset = false;
+            int length = 2;
+            if (code == 'x' && index + 14 <= coloured.length() && sectionHex(coloured, index + 2)) {
+                StringBuilder digits = new StringBuilder();
+                for (int digit = 0; digit < 6; digit++) digits.append(coloured.charAt(index + 3 + digit * 2));
+                nextRgb = Integer.parseInt(digits.toString(), 16);
+                reset = true;
+                length = 14;
+            } else if (Character.digit(code, 16) >= 0) { nextRgb = LEGACY_RGB[Character.digit(code, 16)]; reset = true; }
+            else if (code == 'r') { nextRgb = -1; reset = true; }
+            else if ("klmno".indexOf(code) < 0) { run.append(glyph); index++; continue; }
+            if (!run.isEmpty()) { spans.add(new Span(run.toString(), rgb, bold, italic, underlined, strikethrough, obfuscated)); run.setLength(0); }
+            if (reset) { rgb = nextRgb; bold = italic = underlined = strikethrough = obfuscated = false; }
+            switch (code) {
+                case 'l' -> bold = true;
+                case 'o' -> italic = true;
+                case 'n' -> underlined = true;
+                case 'm' -> strikethrough = true;
+                case 'k' -> obfuscated = true;
+                default -> {}
+            }
+            index += length;
+        }
+        if (!run.isEmpty()) spans.add(new Span(run.toString(), rgb, bold, italic, underlined, strikethrough, obfuscated));
+        return spans;
+    }
+
+    private static boolean sectionHex(String text, int from) {
+        for (int digit = 0; digit < 6; digit++) {
+            int at = from + digit * 2;
+            if (text.charAt(at) != SECTION || Character.digit(text.charAt(at + 1), 16) < 0) return false;
+        }
+        return true;
+    }
+
     private static String tag(String tag, Deque<String> open) {
         if (tag.startsWith("/")) {
             String name = tag.substring(1);
