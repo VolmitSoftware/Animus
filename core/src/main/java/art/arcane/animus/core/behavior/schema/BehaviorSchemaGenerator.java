@@ -9,6 +9,8 @@ import art.arcane.animus.core.behavior.trigger.TriggerBinding;
 import art.arcane.animus.core.behavior.trigger.TriggerCompiler;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
 import art.arcane.animus.core.control.RideSettings;
+import art.arcane.animus.core.control.LookClose;
+import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.schema.CapabilitySchema;
 import art.arcane.animus.core.storage.JsonDocuments;
@@ -395,6 +397,7 @@ public final class BehaviorSchemaGenerator {
         known.add("animus:navigation", navigation());
         known.add(MountDeclaration.MODULE, mount());
         known.add(RideSettings.MODULE, riding());
+        known.add(LookClose.MODULE, lookClose());
         modules.add("properties", known);
         properties.add("modules", modules);
         root.add("properties", properties);
@@ -436,33 +439,99 @@ public final class BehaviorSchemaGenerator {
         properties.add("route", pattern(IDENTIFIER));
         properties.add("mode", choices(List.of("walk", "swim", "fly")));
         properties.add("speed", range("number", 1, 5));
-        properties.add("loop", type("boolean"));
-        properties.add("waitTicks", range("integer", 0, 12_000));
-        JsonObject point = type("object");
-        point.add("required", strings("x", "y", "z"));
-        JsonObject axes = new JsonObject();
-        for (String axis : List.of("x", "y", "z")) axes.add(axis, range("number", -29_999_984, 29_999_984));
-        point.add("properties", axes);
-        properties.add("points", list(point, 1, 64, "Route points in the NPC's world."));
+        properties.add("order", described(choices(List.of("sequence", "pingpong", "random", "wander")), "How the next point is chosen. sequence by default."));
+        properties.add("loop", described(type("boolean"), "Order sequence only: start again from the first point."));
+        properties.add("waitTicks", described(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), "Wait before the first leg and after each arrival."));
+        JsonObject point = coordinate();
+        point.getAsJsonObject("properties").add("waitTicks", described(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), "Wait after arriving here, instead of the route's."));
+        properties.add("points", list(point, 0, WaypointSettings.MAXIMUM_POINTS, "Route points in the NPC's world; wander centres for order wander."));
+        properties.add("guides", list(coordinate(), 0, WaypointSettings.MAXIMUM_GUIDES, "Order random only: helper nodes a path may pass through."));
+        properties.add("linkDistance", described(range("number", WaypointSettings.MINIMUM_LINK_DISTANCE, WaypointSettings.MAXIMUM_LINK_DISTANCE), "Order random only: the longest link between two nodes."));
+        JsonObject wander = described(type("object"), "Order wander only.");
+        wander.addProperty("additionalProperties", false);
+        JsonObject area = new JsonObject();
+        area.add("radius", range("integer", 1, WaypointSettings.Wander.MAXIMUM_RADIUS));
+        area.add("height", range("integer", 0, WaypointSettings.Wander.MAXIMUM_HEIGHT));
+        wander.add("properties", area);
+        properties.add("wander", wander);
         navigation.add("properties", properties);
         JsonObject routed = new JsonObject();
         JsonObject hasRoute = new JsonObject();
         hasRoute.add("required", strings("route"));
         routed.add("if", hasRoute);
         JsonObject exclusive = new JsonObject();
-        JsonObject conflicting = new JsonObject();
-        JsonArray any = new JsonArray();
-        for (String key : List.of("points", "mode", "speed", "loop", "waitTicks")) { JsonObject present = new JsonObject(); present.add("required", strings(key)); any.add(present); }
-        conflicting.add("anyOf", any);
-        exclusive.add("not", conflicting);
+        exclusive.add("not", anyRequired(List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander")));
         routed.add("then", exclusive);
         JsonObject inline = new JsonObject();
-        inline.add("required", strings("points"));
+        JsonObject wandering = new JsonObject();
+        wandering.add("if", orderIs("wander"));
+        JsonObject centres = new JsonObject();
+        JsonObject fewer = new JsonObject();
+        fewer.addProperty("maxItems", WaypointSettings.MAXIMUM_WANDER_CENTRES);
+        centres.add("properties", property("points", fewer).getAsJsonObject("properties"));
+        wandering.add("then", centres);
+        JsonObject listed = new JsonObject();
+        listed.add("required", strings("points"));
+        JsonObject some = new JsonObject();
+        some.addProperty("minItems", 1);
+        listed.add("properties", property("points", some).getAsJsonObject("properties"));
+        wandering.add("else", listed);
+        JsonArray inlineRules = new JsonArray();
+        inlineRules.add(wandering);
+        inline.add("allOf", inlineRules);
         routed.add("else", inline);
         JsonArray rules = new JsonArray();
         rules.add(whenEnabled(routed));
+        rules.add(onlyWithOrder("loop", "sequence", true));
+        rules.add(onlyWithOrder("guides", "random", false));
+        rules.add(onlyWithOrder("linkDistance", "random", false));
+        rules.add(onlyWithOrder("wander", "wander", false));
         navigation.add("allOf", rules);
         return navigation;
+    }
+    private static JsonObject coordinate() {
+        JsonObject point = type("object");
+        point.add("required", strings("x", "y", "z"));
+        JsonObject axes = new JsonObject();
+        for (String axis : List.of("x", "y", "z")) axes.add(axis, range("number", -29_999_984, 29_999_984));
+        point.add("properties", axes);
+        return point;
+    }
+    private static JsonObject anyRequired(List<String> keys) {
+        JsonObject conflicting = new JsonObject();
+        JsonArray any = new JsonArray();
+        for (String key : keys) { JsonObject present = new JsonObject(); present.add("required", strings(key)); any.add(present); }
+        conflicting.add("anyOf", any);
+        return conflicting;
+    }
+    private static JsonObject orderIs(String order) {
+        JsonObject condition = new JsonObject();
+        condition.add("properties", property("order", constant(order)).getAsJsonObject("properties"));
+        condition.add("required", strings("order"));
+        return condition;
+    }
+    /** The field may appear only with the given order; the default order counts when it is the default. */
+    private static JsonObject onlyWithOrder(String field, String order, boolean isDefault) {
+        JsonObject rule = new JsonObject();
+        JsonObject present = new JsonObject();
+        present.add("required", strings(field));
+        rule.add("if", present);
+        JsonObject then = new JsonObject();
+        then.add("properties", property("order", constant(order)).getAsJsonObject("properties"));
+        if (!isDefault) then.add("required", strings("order"));
+        rule.add("then", then);
+        return rule;
+    }
+    private static JsonObject lookClose() {
+        JsonObject look = described(type("object"), "Turns the NPC toward the nearest player in range while it is spawned.");
+        look.addProperty("additionalProperties", false);
+        JsonObject properties = new JsonObject();
+        properties.add("enabled", described(type("boolean"), "True when the object is present."));
+        properties.add("range", described(range("number", LookClose.MINIMUM_RANGE, LookClose.MAXIMUM_RANGE), "Blocks. 10 by default."));
+        properties.add("lineOfSight", described(type("boolean"), "Only look at players it can see."));
+        properties.add("whileNavigating", described(type("boolean"), "Also look while following a route."));
+        look.add("properties", properties);
+        return look;
     }
     private static JsonObject mount() {
         JsonObject mount = described(type("object"), "Rides another NPC.");

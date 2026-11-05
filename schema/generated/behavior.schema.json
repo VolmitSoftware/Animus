@@ -103,7 +103,7 @@
         },
         {
           "const": "animus:command",
-          "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+          "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
         },
         {
           "const": "animus:look",
@@ -131,7 +131,7 @@
         },
         {
           "const": "animus:say",
-          "description": "Sends dialogue text to the triggering player or to nearby players."
+          "description": "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name."
         },
         {
           "const": "animus:set-appearance",
@@ -147,7 +147,7 @@
         },
         {
           "const": "animus:set-quest-state",
-          "description": "Sets a quest stage."
+          "description": "Sets a quest stage to value, or to a random stage from zero to below random."
         },
         {
           "const": "animus:spawn-particle",
@@ -923,7 +923,7 @@
                   "required": [
                     "command"
                   ],
-                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
                 }
               },
               "required": [
@@ -1373,7 +1373,7 @@
                   "required": [
                     "text"
                   ],
-                  "description": "Sends dialogue text to the triggering player or to nearby players."
+                  "description": "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name."
                 }
               },
               "required": [
@@ -1609,13 +1609,29 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 1000000000000
+                    },
+                    "random": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
                     }
                   },
                   "required": [
-                    "name",
-                    "value"
+                    "name"
                   ],
-                  "description": "Sets a quest stage."
+                  "oneOf": [
+                    {
+                      "required": [
+                        "value"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "random"
+                      ]
+                    }
+                  ],
+                  "description": "Sets a quest stage to value, or to a random stage from zero to below random."
                 }
               },
               "required": [

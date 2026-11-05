@@ -10,7 +10,7 @@ import java.util.Objects;
  * region and its tick number bounds the total work every task of that region does in that tick.
  */
 final class RegionBudget {
-    enum Kind { OWNER_WORK, ROUTES, MOTION_CELLS, CAPTURE, VIEWERS, PACKETS, WAKES, RIG_PLANS }
+    enum Kind { OWNER_WORK, ROUTES, MOTION_CELLS, CAPTURE, VIEWERS, PACKETS, WAKES, RIG_PLANS, LOOKS }
     private static final class Window { Object region; long tick = Long.MIN_VALUE; final int[] used = new int[Kind.values().length]; }
     private final RegionScheduler regions;
     private final int[] limits = new int[Kind.values().length];

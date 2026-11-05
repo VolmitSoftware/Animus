@@ -65,6 +65,8 @@ public interface BehaviorPlatform {
     int say(NpcHandle npc, Audience audience, String text);
     /** Returns the number of viewers reached. The token identifies the pending prompt in its clickable responses. */
     int presentChoices(NpcHandle npc, UUID player, String prompt, String token, List<ChoiceOption> options);
+    /** The player's current name, or empty when the player is unknown here. */
+    Optional<String> playerName(UUID player);
     void runCommand(CommandSource source, Optional<UUID> player, String command);
     /** Returns the identity of the requested route. Completion does not wait for arrival; see {@link #routeFinished}. */
     String navigate(NpcHandle npc, Vec3 destination, MovementProfile.Mode mode, double speed);
