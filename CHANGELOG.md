@@ -135,6 +135,13 @@
 
 ### Fixed
 
+- Citizens NPCs with a non-player body and a skin import without the skin and spawn; the skin is kept for review, preview counts only definitions the server can spawn as valid, and a definition that cannot activate is logged once at WARN with its field (converter version 9).
+- Patrols are no longer capped at 32: routes take turns under `[navigation]` per-tick budgets, patrols with no player near sleep, a walking patrol standing in the air falls before its first leg, and navigation pressure is reported in `/animus status` and the console.
+- Every accepted combat guard fights: `[combat] maximumNpcs` (default 256) limits only guards fighting or scanning, idle guards sleep, and waiting guards are reported.
+- Import apply, accept and rollback, `/animus rollback` and editor applies reload the shops, GUIs, holograms, rigs and behaviors they change.
+- Rolling back an import no longer warns about removed vehicles; removed generated behaviors leave the catalog with their checkpoints.
+- A body packet for a player whose connection just closed no longer becomes a runtime error; runtime errors are logged once at WARN with context.
+- The startup migration notice lists every detected source.
 - A live NPC replaced by a preview no longer fires triggers for the previewing player or sends them its speech, sounds or particles.
 - After a relay failover the editor switches back to the direct path when it recovers.
 - Guards no longer freeze after stepping onto a partial block such as a dirt path, farmland or slab; catch-up teleports land on partial blocks, and a stalled guard catches up and logs why once.
