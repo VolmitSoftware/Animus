@@ -153,7 +153,7 @@ Proximity follows viewers through the spatial NPC index. A pass does no scanning
 
 Triggers need the general NPC runtime. On Folia they run on each NPC's region, damage and death triggers included. Where the runtime is unavailable, or when `behaviors.triggers.enabled` is false, `/animus behaviors triggers` shows `UNAVAILABLE` with the reason, nothing runs and module publishes return `UNAVAILABLE` with the same reason. Manual runs still work there.
 
-These defaults live under `[behaviors.triggers]` in `config.toml` and require restart:
+These defaults live under `[behaviors.triggers]` in `config.toml` and apply live when the file is saved. Turning triggers off drops queued triggers that have not started; running ones finish:
 
 ```toml
 [behaviors.triggers]
@@ -342,7 +342,7 @@ commandNamespaces = []
 navigationWaits = 8
 ```
 
-Accepted ranges are 1-256 actions per tick, 1-64 per NPC per tick and no more than the tick budget, 1-1,024 queued actions, 1-4,096 pending choices and a lifetime of 1-600 seconds. Each list holds at most 256 entries, and `navigationWaits` accepts 1-64. The listed values other than the example allow-list are the defaults. Restart after changing them.
+Accepted ranges are 1-256 actions per tick, 1-64 per NPC per tick and no more than the tick budget, 1-1,024 queued actions, 1-4,096 pending choices and a lifetime of 1-600 seconds. Each list holds at most 256 entries, and `navigationWaits` accepts 1-64. The listed values other than the example allow-list are the defaults. Changes apply live when `config.toml` is saved.
 
 ### Limits and previews
 
@@ -569,7 +569,7 @@ Each execution keeps a fixed ring of recent steps sized by `traceEntries`, and i
 
 Source authority is checked at admission, on owner ticks and immediately before a queued module handler starts. A held handler receives a cancellation token that also observes revocation. Cancellation cannot undo an action already performed or forcibly stop trusted Java code. Retired calls remain counted until their actual handler and delivery work finishes. Execution stacks and bounded terminal history are not resumed after restart.
 
-The following defaults live in `config.toml` and require restart to change. Existing configuration files retain their comments and unknown settings; omitted values use defaults.
+The following defaults live in `config.toml` and apply live when the file is saved. A lowered cap never stops running work or drops queued work: new work waits, or is refused as busy as at a full cap, until usage falls below the new cap. A running execution keeps the step, lifetime, call-depth and trace budgets it started with. Stored state over a lowered state cap is kept, and only new keys or bytes are refused. With `enabled = false` new runs and trigger events are refused while running executions finish; catalog limits trigger a catalog reload. Existing configuration files retain their comments and unknown settings; omitted values use defaults.
 
 ```toml
 [behaviors]

@@ -166,7 +166,7 @@ After a restart the server reads the schematic again and continues from the save
 
 ## Settings
 
-Plugin-wide limits live in `config.toml` and need a restart:
+Plugin-wide limits live in `config.toml` and apply live when the file is saved. Turning builds off stops every crew where it stands and saves progress; open builds continue once builds are on again. A lower `maximumBuilds` or `maximumTeam` lets running builds finish and only refuses new ones; file and schematic limits apply to the next read:
 
 ```toml
 [builds]

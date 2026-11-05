@@ -31,7 +31,13 @@ Saving any data file applies it within about a second, without `/animus reload`:
 [Animus]: Animus Hotloaded: [npcs/town/guard.json] [name] ["Guard" -> "Captain Guard"]
 ```
 
-An invalid edit is refused with its field error and the server keeps the last valid version. Most `config.toml` budgets are read when a service starts; their lines end in `[restart required]`. These keys apply at once: `statusMessage`, `[hotload]`, `[shops]` `enabled`, `economy`, `priceFormat` and `messages`, and `[behaviors.actions]` `commandBehaviors`, `commandNamespaces` and `choiceLifetimeSeconds`. Animus's own writes (editor applies, imports, migrations, state) are never reported, and `state/`, `backups/`, `logs/` and `imports/` are not watched.
+An invalid edit is refused with its field error and the server keeps the last valid version. Each NPC file applies on its own: a broken file keeps only its own last valid version and reports only its own error, and valid edits to other NPC files still apply, in the same save or later. `/animus reload` works the same way. Every `config.toml` key applies live. Each service takes the new value on its own thread by its next tick (on Folia, each region on its next region tick), and `/animus status` shows the main budgets in effect. A lowered cap never stops work in flight: visible NPCs, viewers, routes, fights, helpers, builds, behavior runs, queued actions and file operations above the new cap finish or retire normally, and new work waits until usage is under it. `viewDistance` is checked again on the next tick and NPCs now out of range despawn the normal way. Turning `[npcs]`, `[combat]`, `[builds]`, `[behaviors]`, triggers, `[rigs]`, modules, the editor listener or the relay off and on restarts only that part.
+
+What still needs a restart, and the line ends in `[restart required]`:
+
+- `npcs.enabled` on Folia: NPCs and viewers retire on their own regions in no fixed order, so the runtime cannot stop and start again safely in place.
+- Adding, removing or replacing a Java module jar: module archives are read once per server start.
+- Replacing TLS certificate files at the same paths: the settings do not change, so nothing notices; change a path instead. Animus's own writes (editor applies, imports, migrations, state) are never reported, and `state/`, `backups/`, `logs/` and `imports/` are not watched.
 
 | `[hotload]` key | Default | Meaning |
 |---|---|---|

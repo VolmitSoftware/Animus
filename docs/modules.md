@@ -20,7 +20,7 @@ invocationTimeoutMillis = 1000
 deliveryBudgetMillis = 250
 ```
 
-`files.maximumOperations` accepts 1–128 and counts admitted commands, imports, reads and API operations, including API results whose synchronous listeners are still running. `modules.maximumInvocations` accepts 1–256. Millisecond settings accept 1–60000. Delivery budgets report slow callbacks; they do not interrupt Java code. An invocation deadline requests cancellation, reports a timeout and suspends its module. Dependent capabilities then become unavailable. Restart after changing these settings.
+`files.maximumOperations` accepts 1–128 and counts admitted commands, imports, reads and API operations, including API results whose synchronous listeners are still running. `modules.maximumInvocations` accepts 1–256. Millisecond settings accept 1–60000. Delivery budgets report slow callbacks; they do not interrupt Java code. An invocation deadline requests cancellation, reports a timeout and suspends its module. Dependent capabilities then become unavailable. These settings apply live: a lower limit lets running work finish and answers new calls with BUSY until usage drops. `modules.enabled = false` stops new work going to Java modules (built-in actions keep working) and `true` resumes them, loading them first if the server started with modules off. Adding, removing or replacing a module jar still needs a restart, because module archives are read once per server start.
 
 Administrators can inspect and explicitly invoke registered capabilities:
 

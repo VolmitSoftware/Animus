@@ -110,7 +110,7 @@ Citizens text becomes the behavior `citizens:text-<id>` in `behaviors/citizens/`
 
 Citizens commands become the behavior `citizens:commands-<id>`. Right-click and left-click commands get their own interaction triggers, permissions become permission checks, delays become waits, and the longest cooldown becomes the trigger cooldown, one per NPC. Player commands run as the player and others from the console; an operator command runs from the console. `random`, `cycle` and `sequential` execution modes take turns per NPC, or per player for `sequential`. Sneak clicks, commands run as the NPC, use limits and commands that cost money, experience or items are not converted and are reported.
 
-Commands stay denied until you list the behavior in `config.toml`, for example `commandBehaviors = ["citizens:commands-12"]` under `[behaviors.actions]`, or `commandNamespaces = ["citizens"]` for all of them, and restart. `review` lists how many wait. Read each command in `behaviors/citizens/` first: anyone who can edit an allowed behavior can run console commands.
+Commands stay denied until you list the behavior in `config.toml`, for example `commandBehaviors = ["citizens:commands-12"]` under `[behaviors.actions]`, or `commandNamespaces = ["citizens"]` for all of them, and save the file; it applies at once. `review` lists how many wait. Read each command in `behaviors/citizens/` first: anyone who can edit an allowed behavior can run console commands.
 
 ## Kept but not run
 

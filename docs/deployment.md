@@ -41,7 +41,7 @@ The relay lets the editor reach servers that accept no inbound connections. The 
 
 ## Server settings
 
-The editor keys live in `[editor]` of `config.toml` (`plugins/Animus/config.toml`, or `config/animus/config.toml` on mod servers). Every change needs a restart.
+The editor keys live in `[editor]` of `config.toml` (`plugins/Animus/config.toml`, or `config/animus/config.toml` on mod servers). Changes apply live when the file is saved. A change to `listenerEnabled`, `listenAddress`, `port`, `tlsCertificate`, `tlsPrivateKey` or `openConnections` restarts only the listener, and a change to a relay key restarts only the relay client; paired editors and their tokens stay valid through both. If the new port cannot bind, the listener stays down, `/animus editor status` says why, and the next change retries. Other keys apply in place. Replacing the TLS certificate files at the same paths is not noticed; change a path or restart.
 
 To use the relay, set its `wss://` URL (the Cloud Run `run.app` URL or your domain mapping) and turn it on:
 

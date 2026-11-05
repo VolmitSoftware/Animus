@@ -170,7 +170,7 @@ Administrators have the same operations:
 
 ## Work limits
 
-Plugin settings are TOML and need a restart:
+Plugin settings are TOML and apply live when the file is saved:
 
 ```toml
 [combat]

@@ -121,7 +121,7 @@ flushMillis = 2000
 bought = "&aBought {item} for {price}."
 ```
 
-`economy` is `auto` or `none`. `priceFormat` is a Java decimal pattern. `flushMillis` (100 to 60,000) is how long counter changes wait before they are written. Any message can be replaced under `[shops.messages]`; an unknown key stops `config.toml` from loading and the error names it. Restart after changing these settings.
+`economy` is `auto` or `none`. `priceFormat` is a Java decimal pattern. `flushMillis` (100 to 60,000) is how long counter changes wait before they are written. Any message can be replaced under `[shops.messages]`; an unknown key stops `config.toml` from loading and the error names it. Changes apply when `config.toml` is saved; `flushMillis` applies to the next counter write.
 
 A shop or GUI that runs commands needs its id or namespace on the command allow-list (`commandBehaviors` or `commandNamespaces` under `[behaviors.actions]`), the same list behaviors use. Without it the file is refused.
 
