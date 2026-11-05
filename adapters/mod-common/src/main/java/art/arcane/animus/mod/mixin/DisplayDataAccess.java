@@ -19,8 +19,20 @@ public interface DisplayDataAccess {
     static EntityDataAccessor<Quaternionfc> animus$rightRotation() { throw new AssertionError("Mixin accessor was not applied"); }
     @Accessor("DATA_TRANSFORMATION_INTERPOLATION_START_DELTA_TICKS_ID")
     static EntityDataAccessor<Integer> animus$interpolationStart() { throw new AssertionError("Mixin accessor was not applied"); }
-    @Accessor("DATA_TRANSFORMATION_INTERPOLATION_DURATION_ID")
-    static EntityDataAccessor<Integer> animus$interpolationDuration() { throw new AssertionError("Mixin accessor was not applied"); }
     @Accessor("DATA_BILLBOARD_RENDER_CONSTRAINTS_ID")
     static EntityDataAccessor<Byte> animus$billboard() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_POS_ROT_INTERPOLATION_DURATION_ID")
+    static EntityDataAccessor<Integer> animus$moveInterpolation() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_TRANSFORMATION_INTERPOLATION_DURATION_ID")
+    static EntityDataAccessor<Integer> animus$transformInterpolation() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_BRIGHTNESS_OVERRIDE_ID")
+    static EntityDataAccessor<Integer> animus$brightness() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_VIEW_RANGE_ID")
+    static EntityDataAccessor<Float> animus$viewRange() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_SHADOW_RADIUS_ID")
+    static EntityDataAccessor<Float> animus$shadowRadius() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_SHADOW_STRENGTH_ID")
+    static EntityDataAccessor<Float> animus$shadowStrength() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_GLOW_COLOR_OVERRIDE_ID")
+    static EntityDataAccessor<Integer> animus$glowColor() { throw new AssertionError("Mixin accessor was not applied"); }
 }

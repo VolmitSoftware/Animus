@@ -44,11 +44,11 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     private final ModCombat combat;
     private final ModTicks ticks;
     private final BuildService<ServerPlayer, ItemStack> builds;
-    private final java.util.function.Supplier<art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack>> shops;
+    private final java.util.function.Supplier<art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack>> guis;
 
     VanillaBehaviorPlatform(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, ModCombat combat, BuildService<ServerPlayer, ItemStack> builds, ModTicks ticks,
-                            java.util.function.Supplier<art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack>> shops) {
-        this.shops = shops;
+                            java.util.function.Supplier<art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack>> guis) {
+        this.guis = guis;
         this.server = Objects.requireNonNull(server); this.living = Objects.requireNonNull(living);
         this.combat = Objects.requireNonNull(combat); this.ticks = Objects.requireNonNull(ticks);
         this.builds = Objects.requireNonNull(builds);
@@ -215,12 +215,12 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     }
 
     @Override public boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) {
-        art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> service = shops.get();
-        if (service == null || !service.enabled())
-            throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "screens-unavailable", "Shops and chest GUIs are disabled in config.toml");
-        return living.players().deliver(player, (ServerPlayer target) -> {
-            if (kind == ScreenKind.SHOP) service.openShop(target, id, Optional.of(npc.uuid()));
-            else service.openGui(target, id, java.util.Map.of(), Optional.of(npc.uuid()));
-        });
+        art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> service = guis.get();
+        if (service == null)
+            throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "screens-unavailable", "GUIs are not running");
+        art.arcane.animus.core.gui.GuiBinding.Kind target = art.arcane.animus.core.gui.HoloService.kind(kind);
+        Optional<art.arcane.animus.core.extension.CapabilityRefusal> refused = service.refusal(target);
+        if (refused.isPresent()) throw refused.get();
+        return living.players().deliver(player, (ServerPlayer viewer) -> service.open(viewer, target, id, java.util.Map.of(), Optional.of(npc.uuid())));
     }
 }

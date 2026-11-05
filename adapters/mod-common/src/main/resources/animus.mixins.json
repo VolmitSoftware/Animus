@@ -10,6 +10,7 @@
     "EntityCounterAccessor",
     "EntityDataAccess",
     "GamePacketHooks",
+    "InteractionDataAccess",
     "ItemDisplayDataAccess",
     "LivingEntityHooks",
     "PlayerInfoUpdateAccess",

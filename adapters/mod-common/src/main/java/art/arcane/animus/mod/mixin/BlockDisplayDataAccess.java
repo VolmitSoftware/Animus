@@ -9,5 +9,5 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 @Mixin(Display.BlockDisplay.class)
 public interface BlockDisplayDataAccess {
     @Accessor("DATA_BLOCK_STATE_ID")
-    static EntityDataAccessor<BlockState> animus$blockState() { throw new AssertionError("Mixin accessor was not applied"); }
+    static EntityDataAccessor<BlockState> animus$state() { throw new AssertionError("Mixin accessor was not applied"); }
 }

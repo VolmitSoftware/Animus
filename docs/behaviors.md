@@ -249,7 +249,7 @@ This greeter faces the player who started it, asks a question, and records that 
 | `animus:stop-animation` | Optional `layer` (0-3; without it every played layer stops), `fadeTicks` (0-40) | Stops played clips. Layer 0 returns to the rig's `idle` clip, or `walk` while the NPC walks. |
 | `animus:combat-control` | `operation` (`enable`, `disable`, `target`, `release`, `guard`), `target` (an entity or NPC UUID, or `player` for the triggering player): required for `target`, optional for `guard`, refused otherwise | Drives the [combat module](combat.md#behaviors-and-commands). Needs enabled combat settings; protection still applies. |
 | `animus:open-shop` | `shop` (a shop id such as `town:baker`) | Opens the [shop](shops.md) for the triggering player. Reports `delivered` 0 when they are offline. |
-| `animus:open-gui` | `gui` (a chest GUI id such as `town:menu`) | Opens the [chest GUI](gui.md) for the triggering player. |
+| `animus:open-gui` | `gui`, optional `kind`: `inventory` (default), `menu`, `shop` or `gloss` | Opens the [chest GUI](gui.md), [holographic menu](gui.md#holographic-menus) or shop with that id for the triggering player. `gloss` opens a Gloss menu by its Gloss id, such as `lobby/main`, and refuses as `gloss-unavailable` when Gloss is not installed. |
 | `animus:set-flag` | `name`, optional `scope`, optional `value` (default true) | Sets the flag. |
 | `animus:set-quest-state` | `name`, `value`, optional `scope` | Sets the stage. |
 | `animus:advance-quest-state` | `name`, optional `scope`, `by` (default 1), `maximum` | Adds to the stage without passing `maximum`. Reports `value`. |
@@ -304,7 +304,7 @@ On Folia, actions run on the region that owns the NPC; an NPC waiting for its ch
 
 ### Text formatting
 
-Everything an NPC says, every prompt and answer, combat greetings and warnings, build and shop messages, hologram lines and names use one formatter on every platform. It reads `&` colour and style codes (`&a`, `&l`), `&#RRGGBB` and `&x&R&R&G&G&B&B` hex colours, section codes (`§a`), backslash-u escapes such as `\u2764`, and the MiniMessage tags the [chest GUI](gui.md) reads: colour names (`<green>`), `<#RRGGBB>`, `<color:...>`, `<bold>`, `<italic>`, `<underlined>`, `<strikethrough>`, `<obfuscated>`, `<reset>` and their closing tags. Unicode symbols such as `❤`, `⚔` and `✔` show as written. A speaker without its own colour is shown in gold and spoken text in white.
+Everything an NPC says, every prompt and answer, combat greetings and warnings, build and shop messages, hologram lines and names use one formatter on every platform. It reads `&` colour and style codes (`&a`, `&l`), `&#RRGGBB`, `&x&R&R&G&G&B&B` and Gloss's `[RRGGBB]` hex colours, section codes (`§a`), backslash-u escapes such as `\u2764`, and the MiniMessage tags the [chest GUI](gui.md) reads: colour names (`<green>`), `<#RRGGBB>`, `<color:...>`, `<bold>`, `<italic>`, `<underlined>`, `<strikethrough>`, `<obfuscated>`, `<reset>` and their closing tags. Unicode symbols such as `❤`, `⚔` and `✔` show as written. A speaker without its own colour is shown in gold and spoken text in white.
 
 ### Dialogue choices
 

@@ -11,6 +11,9 @@ import art.arcane.animus.core.inventory.TradeInventory;
 import art.arcane.animus.core.npc.NpcItem;
 import com.mojang.brigadier.ParseResults;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -31,7 +34,14 @@ import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.particles.SimpleParticleType;
+import net.minecraft.world.BossEvent;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.level.Level;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.SimpleMenuProvider;
@@ -51,11 +61,15 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     private final ModTicks ticks;
     private final Economy economy;
     private volatile ScreenManager<ServerPlayer, ItemStack> manager;
+    /** Boss bar lanes by player; only the server thread touches them. */
+    private final Map<UUID, Map<String, Lane>> bars = new HashMap<>();
+    private long tick;
 
     ModScreens(MinecraftServer server, ModTicks ticks, Economy economy) {
         this.server = Objects.requireNonNull(server);
         this.ticks = Objects.requireNonNull(ticks);
         this.economy = Objects.requireNonNull(economy);
+        ticks.every(this::expireBars);
     }
 
     void bind(ScreenManager<ServerPlayer, ItemStack> manager) { this.manager = manager; }
@@ -122,7 +136,8 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         }
     }
 
-    private ItemStack display(ScreenFrame.Item item) {
+    /** The stack a display item shows; an invalid item shows a barrier. */
+    ItemStack display(ScreenFrame.Item item) {
         return stack(item.item(), item.name(), item.lore(), new ArrayList<>())
                 .orElseGet(() -> stack(new NpcItem("minecraft:barrier", 1, Optional.empty(), Optional.empty()), item.name(), item.lore(), new ArrayList<>()).orElse(ItemStack.EMPTY));
     }
@@ -157,6 +172,78 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         commands.performCommand(parsed, command);
     }
     @Override public void broadcast(String text) { server.getPlayerList().broadcastSystemMessage(ModText.component(text), false); }
+
+    @Override public Optional<Pose> pose(ServerPlayer player) {
+        Set<String> worlds = new HashSet<>();
+        worlds.add(ModWorldKeys.key(player.level()));
+        if (player.level().dimension() == Level.OVERWORLD) worlds.add(server.getWorldData().getLevelName());
+        return Optional.of(new Pose(worlds, player.getX(), player.getY(), player.getZ(), player.getEyeY(), player.getYRot(), player.getXRot(), player.isShiftKeyDown()));
+    }
+
+    @Override public boolean teleport(ServerPlayer player, String world, double x, double y, double z, float yaw, float pitch) {
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) return false;
+        Optional<String> key = ModWorldKeys.resolve(server, world);
+        ServerLevel level = key.map((String resolved) -> ModWorldKeys.level(server, resolved)).orElse(null);
+        return level != null && player.teleportTo(level, x, y, z, Set.of(), yaw, pitch, true);
+    }
+
+    @Override public void bossBar(ServerPlayer player, String lane, String title, float progress, String color, String style, int ticks) {
+        Map<String, Lane> lanes = bars.computeIfAbsent(player.getUUID(), (UUID ignored) -> new HashMap<>());
+        Lane previous = lanes.remove(lane);
+        if (previous != null) previous.bar().removePlayer(player);
+        if (ticks <= 0) return;
+        BossEvent.BossBarColor barColor = BossEvent.BossBarColor.WHITE;
+        for (BossEvent.BossBarColor candidate : BossEvent.BossBarColor.values()) if (candidate.name().equalsIgnoreCase(color)) barColor = candidate;
+        BossEvent.BossBarOverlay overlay = switch (style.toLowerCase(Locale.ROOT)) {
+            case "segmented_6" -> BossEvent.BossBarOverlay.NOTCHED_6;
+            case "segmented_10" -> BossEvent.BossBarOverlay.NOTCHED_10;
+            case "segmented_12" -> BossEvent.BossBarOverlay.NOTCHED_12;
+            case "segmented_20" -> BossEvent.BossBarOverlay.NOTCHED_20;
+            default -> BossEvent.BossBarOverlay.PROGRESS;
+        };
+        ServerBossEvent bar = new ServerBossEvent(UUID.randomUUID(), VanillaDisplayTransport.component(title), barColor, overlay);
+        bar.setProgress(Math.clamp(progress, 0f, 1f));
+        bar.addPlayer(player);
+        lanes.put(lane, new Lane(bar, player, tick + ticks));
+    }
+    private record Lane(ServerBossEvent bar, ServerPlayer player, long until) {}
+
+    private void expireBars() {
+        tick++;
+        if (bars.isEmpty()) return;
+        for (java.util.Iterator<Map.Entry<UUID, Map<String, Lane>>> players = bars.entrySet().iterator(); players.hasNext(); ) {
+            Map<String, Lane> lanes = players.next().getValue();
+            lanes.values().removeIf((Lane lane) -> {
+                boolean gone = lane.player().hasDisconnected();
+                if (gone || lane.until() <= tick) { lane.bar().removeAllPlayers(); return true; }
+                return false;
+            });
+            if (lanes.isEmpty()) players.remove();
+        }
+    }
+
+    @Override public boolean effect(ServerPlayer player, String effect, int ticks, int amplifier) {
+        Identifier id = Identifier.tryParse(effect.contains(":") ? effect : "minecraft:" + effect);
+        Optional<Holder.Reference<MobEffect>> type = id == null ? Optional.empty() : BuiltInRegistries.MOB_EFFECT.get(id);
+        return type.isPresent() && player.addEffect(new MobEffectInstance(type.get(), ticks, amplifier), null);
+    }
+
+    @Override public boolean particle(ServerPlayer player, String particle, int count, double spread, double x, double y, double z) {
+        Identifier id = Identifier.tryParse(particle.contains(":") ? particle : "minecraft:" + particle);
+        if (id == null || !BuiltInRegistries.PARTICLE_TYPE.containsKey(id)) return false;
+        if (!(BuiltInRegistries.PARTICLE_TYPE.getValue(id) instanceof SimpleParticleType simple)) return false;
+        return player.level().sendParticles(player, simple, false, false, x, y, z, count, spread, spread, spread, 0);
+    }
+
+    @Override public void broadcast(ServerPlayer source, String text, String scope, double radius, Optional<String> permission) {
+        Component message = Component.literal(text);
+        for (ServerPlayer online : server.getPlayerList().getPlayers()) {
+            if (!scope.equals("server") && online.level() != source.level()) continue;
+            if (scope.equals("radius") && online.distanceToSqr(source) > radius * radius) continue;
+            if (permission.isPresent() && !permitted(online, permission.get())) continue;
+            online.sendSystemMessage(message);
+        }
+    }
 
     @Override public TradeInventory<ItemStack> inventory(ServerPlayer player) {
         Inventory inventory = player.getInventory();

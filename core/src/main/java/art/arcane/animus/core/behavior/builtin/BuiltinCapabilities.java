@@ -355,10 +355,11 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 schema(string("shop", 256), required("shop")),
                 (arguments, problems) -> matches(arguments, "shop", art.arcane.animus.core.shop.ShopDocument.ID, problems),
                 call -> openScreen(call, BehaviorPlatform.ScreenKind.SHOP, "shop"));
-        action("open-gui", Effect.WORLD, "Opens a chest GUI for the triggering player.",
-                schema(string("gui", 256), required("gui")),
-                (arguments, problems) -> matches(arguments, "gui", art.arcane.animus.core.shop.ShopDocument.ID, problems),
-                call -> openScreen(call, BehaviorPlatform.ScreenKind.GUI, "gui"));
+        action("open-gui", Effect.WORLD, "Opens a chest GUI (kind inventory, the default), holographic menu, shop or, with Gloss installed, a Gloss menu for the triggering player.",
+                schema(string("gui", 256) + "," + choice("kind", "inventory", "menu", "shop", "gloss"), required("gui")),
+                (arguments, problems) -> matches(arguments, "gui", screenKind(arguments) == BehaviorPlatform.ScreenKind.GLOSS
+                        ? art.arcane.animus.core.gui.GuiBinding.GLOSS_ID : art.arcane.animus.core.shop.ShopDocument.ID, problems),
+                call -> openScreen(call, screenKind(call.arguments), "gui"));
         action("build", Effect.WORLD, "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies.",
                 schema(choice("operation", "start", "pause", "resume", "cancel", "undo") + "," + string("schematic", 132) + "," + COORDINATES + ","
                         + integer("rotation", 0, 270) + "," + choice("mirror", "none", "x", "z") + "," + choice("anchor", "center", "corner", "schematic") + ","
@@ -444,6 +445,15 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             platform.runCommand(source, player, command);
             return "{}";
         });
+    }
+
+    private static BehaviorPlatform.ScreenKind screenKind(JsonObject arguments) {
+        return switch (text(arguments, "kind").orElse("inventory")) {
+            case "menu" -> BehaviorPlatform.ScreenKind.MENU;
+            case "shop" -> BehaviorPlatform.ScreenKind.SHOP;
+            case "gloss" -> BehaviorPlatform.ScreenKind.GLOSS;
+            default -> BehaviorPlatform.ScreenKind.GUI;
+        };
     }
 
     private CompletionStage<String> openScreen(Call call, BehaviorPlatform.ScreenKind kind, String field) {

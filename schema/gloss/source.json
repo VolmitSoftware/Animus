@@ -10,11 +10,11 @@
     "gloss-presets.schema.json": {"kind": "presets", "schemaVersion": 1, "animusFolder": "gui"}
   },
   "notCopied": {
-    "text-animation": "Gloss text animations have no schema file; Animus validates them in its parser (lane E)."
+    "text-animation": "Gloss text animations have no schema file; Animus validates them in TextAnimation (schemaVersion 1, folder gui/text-animations)."
   },
   "actions": {
-    "supported": ["command", "sound", "message", "title", "actionbar", "close", "navigate", "inventory", "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call"],
+    "supported": ["command", "sound", "message", "title", "actionbar", "close", "navigate", "inventory", "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call", "teleport", "bossbar", "broadcast", "effect", "particle", "parallel", "repeat"],
     "animus": ["animus:open-shop"],
-    "refused": ["teleport", "connect", "bossbar", "surface", "prompt", "dialog", "book", "parallel", "repeat", "emit", "broadcast", "effect", "particle", "setState", "addState", "clearState", "sky", "camera", "glow"]
+    "refused": ["connect", "surface", "prompt", "dialog", "book", "emit", "setState", "addState", "clearState", "sky", "camera", "glow"]
   }
 }
