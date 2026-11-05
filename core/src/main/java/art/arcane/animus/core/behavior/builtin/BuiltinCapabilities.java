@@ -52,7 +52,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
+import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
 
 /**
@@ -65,7 +67,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             new ApiRange(AnimusApi.API_VERSION.major(), AnimusApi.API_VERSION.major()), Set.of(Platform.values()), List.of());
     private static final double CHOICE_RANGE = 64;
     private static final int MAXIMUM_LOGGED_COMMAND = 1024;
-    private static final String PLAYER_TOKEN = "{player}";
+    private static final String PLAYER_TOKEN = "{player}", PLAYER_NAME_TOKEN = "{player_name}";
+    private static final int MAXIMUM_RANDOM_STAGE_BOUND = 1_000_000;
     private static final String IDENTIFIER = "[a-z0-9][a-z0-9_-]*";
     private static final String FLAG_STATE = NAMESPACE + ":flags/", QUEST_STATE = NAMESPACE + ":quests/";
     private static final Key NAVIGATE = new Key(NAMESPACE, "navigate");
@@ -97,6 +100,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private final Object advances = new Object();
     private final BuiltinActionSettings settings;
     private final Consumer<String> log;
+    private final IntUnaryOperator randomBelow;
     private final OwnerActionQueue queue;
     private final NavigationWaits waits;
     private final PendingChoices choices;
@@ -106,6 +110,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
 
     public BuiltinCapabilities(BehaviorPlatform platform, BehaviorState state, DialogueChoiceSink choiceSink,
                                BuiltinActionSettings settings, Consumer<String> log) {
+        this(platform, state, choiceSink, settings, log, (int bound) -> ThreadLocalRandom.current().nextInt(bound));
+    }
+
+    /** {@code randomBelow} returns a uniform integer in [0, bound) and may be called from any module worker. */
+    BuiltinCapabilities(BehaviorPlatform platform, BehaviorState state, DialogueChoiceSink choiceSink,
+                        BuiltinActionSettings settings, Consumer<String> log, IntUnaryOperator randomBelow) {
+        this.randomBelow = Objects.requireNonNull(randomBelow);
         this.platform = Objects.requireNonNull(platform);
         this.state = Objects.requireNonNull(state);
         this.settings = Objects.requireNonNull(settings);
@@ -278,13 +289,14 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     private void registerActions() {
-        action("say", Effect.PRESENTATION, "Sends dialogue text to the triggering player or to nearby players.",
+        action("say", Effect.PRESENTATION, "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name.",
                 schema(string("text", 1024) + "," + AUDIENCE, required("text")),
                 (arguments, problems) -> plainText(arguments, "text", problems),
                 call -> {
                     Audience audience = audience(call);
-                    String line = text(call.arguments, "text").orElseThrow();
-                    return onOwner(call, () -> delivered(platform.say(call.npc(), audience, line)));
+                    String written = text(call.arguments, "text").orElseThrow();
+                    Optional<UUID> named = written.contains(PLAYER_NAME_TOKEN) ? Optional.of(requirePlayer(call)) : Optional.empty();
+                    return onOwner(call, () -> delivered(platform.say(call.npc(), audience, withPlayerName(written, named))));
                 });
         action("choices", Effect.WORLD, "Presents clickable options to the triggering player and publishes the validated click.",
                 schema(string("id", 64) + "," + string("prompt", 512) + "," + integer("lifetimeSeconds", 1, 600)
@@ -292,7 +304,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                                 + "," + choice("style", "bold", "italic", "underlined", "plain"), required("id", "text")) + "}",
                         required("id", "prompt", "options")),
                 BuiltinCapabilities::checkChoices, this::presentChoices);
-        action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+        action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
                 schema(string("command", 1024) + "," + choice("as", "console", "player"), required("command")),
                 BuiltinCapabilities::checkCommand, this::runCommand);
         action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
@@ -397,10 +409,15 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 schema(STATE + "," + bool("value"), required("name")),
                 (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
                 call -> { write(slot(call, FLAG_STATE), new BehaviorProgram.Value(BehaviorProgram.Type.BOOLEAN, flag(call.arguments, "value", true))); return CompletableFuture.completedFuture("{}"); });
-        action("set-quest-state", Effect.STATE_WRITE, "Sets a quest stage.",
-                schema(STATE + "," + integer("value", 0, 1_000_000_000_000L), required("name", "value")),
+        action("set-quest-state", Effect.STATE_WRITE, "Sets a quest stage to value, or to a random stage from zero to below random.",
+                schema(STATE + "," + integer("value", 0, 1_000_000_000_000L) + "," + integer("random", 1, MAXIMUM_RANDOM_STAGE_BOUND),
+                        required("name"), "\"oneOf\":[{" + required("value") + "},{" + required("random") + "}]"),
                 (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
-                call -> { write(slot(call, QUEST_STATE), stage(call.arguments.get("value").getAsLong())); return CompletableFuture.completedFuture("{}"); });
+                call -> {
+                    long value = call.arguments.has("random") ? randomBelow.applyAsInt(call.arguments.get("random").getAsInt()) : call.arguments.get("value").getAsLong();
+                    write(slot(call, QUEST_STATE), stage(value));
+                    return CompletableFuture.completedFuture("{}");
+                });
         action("advance-quest-state", Effect.STATE_WRITE, "Advances a quest stage, by one unless by says otherwise, without passing maximum.",
                 schema(STATE + "," + integer("by", 1, 1_000_000) + "," + integer("maximum", 0, 1_000_000_000_000L), required("name")),
                 (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
@@ -438,8 +455,10 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         CommandSource source = text(call.arguments, "as").orElse("console").equals("player") ? CommandSource.PLAYER : CommandSource.CONSOLE;
         Optional<UUID> player = source == CommandSource.PLAYER ? Optional.of(requirePlayer(call)) : Optional.empty();
         String written = text(call.arguments, "command").orElseThrow();
-        String command = written.contains(PLAYER_TOKEN) ? written.replace(PLAYER_TOKEN, requirePlayer(call).toString()) : written;
+        String identified = written.contains(PLAYER_TOKEN) ? written.replace(PLAYER_TOKEN, requirePlayer(call).toString()) : written;
+        Optional<UUID> named = identified.contains(PLAYER_NAME_TOKEN) ? Optional.of(requirePlayer(call)) : Optional.empty();
         return onOwner(call, () -> {
+            String command = withPlayerName(identified, named);
             log.accept("Behavior command: behavior=" + behavior.get() + " npc=" + call.npc().uuid() + " as=" + source.name().toLowerCase(Locale.ROOT)
                     + player.map(id -> " player=" + id).orElse("") + " command=" + command.substring(0, Math.min(command.length(), MAXIMUM_LOGGED_COMMAND)));
             platform.runCommand(source, player, command);
@@ -620,6 +639,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         if (text(call.arguments, "audience").orElse("trigger").equals("nearby"))
             return new Audience(Optional.empty(), decimal(call.arguments, "radius").orElse(16));
         return new Audience(Optional.of(requirePlayer(call)), 0);
+    }
+
+    /** Owner only. Replaces {player_name} with the player's current name. */
+    private String withPlayerName(String text, Optional<UUID> player) {
+        if (player.isEmpty()) return text;
+        String name = platform.playerName(player.get()).orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "player-name-unknown", "The triggering player's name is not known"));
+        return text.replace(PLAYER_NAME_TOKEN, name);
     }
 
     private static UUID requirePlayer(Call call) {

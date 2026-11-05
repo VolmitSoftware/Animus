@@ -760,7 +760,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:command",
-          "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+          "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
         },
         {
           "const": "animus:look",
@@ -788,7 +788,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:say",
-          "description": "Sends dialogue text to the triggering player or to nearby players."
+          "description": "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name."
         },
         {
           "const": "animus:set-appearance",
@@ -804,7 +804,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:set-quest-state",
-          "description": "Sets a quest stage."
+          "description": "Sets a quest stage to value, or to a random stage from zero to below random."
         },
         {
           "const": "animus:spawn-particle",
@@ -1580,7 +1580,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "command"
                   ],
-                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview."
                 }
               },
               "required": [
@@ -2030,7 +2030,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                   "required": [
                     "text"
                   ],
-                  "description": "Sends dialogue text to the triggering player or to nearby players."
+                  "description": "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name."
                 }
               },
               "required": [
@@ -2266,13 +2266,29 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 1000000000000
+                    },
+                    "random": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
                     }
                   },
                   "required": [
-                    "name",
-                    "value"
+                    "name"
                   ],
-                  "description": "Sets a quest stage."
+                  "oneOf": [
+                    {
+                      "required": [
+                        "value"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "random"
+                      ]
+                    }
+                  ],
+                  "description": "Sets a quest stage to value, or to a random stage from zero to below random."
                 }
               },
               "required": [
@@ -3797,7 +3813,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:command",
       "kind": "action",
-      "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+      "description": "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -4213,7 +4229,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:say",
       "kind": "action",
-      "description": "Sends dialogue text to the triggering player or to nearby players.",
+      "description": "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -4339,7 +4355,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:set-quest-state",
       "kind": "action",
-      "description": "Sets a quest stage.",
+      "description": "Sets a quest stage to value, or to a random stage from zero to below random.",
       "privileged": false,
       "available": true,
       "reason": "available",
@@ -4362,11 +4378,25 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         "value": {
           "type": "integer",
-          "required": true,
+          "required": false,
           "minimum": 0,
           "maximum": 1000000000000
+        },
+        "random": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 1000000
         }
-      }
+      },
+      "oneOfRequired": [
+        [
+          "value"
+        ],
+        [
+          "random"
+        ]
+      ]
     },
     {
       "id": "animus:spawn-particle",
@@ -5180,19 +5210,67 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "minimum": 1,
               "maximum": 5
             },
+            "order": {
+              "enum": [
+                "sequence",
+                "pingpong",
+                "random",
+                "wander"
+              ],
+              "description": "How the next point is chosen. sequence by default."
+            },
             "loop": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "Order sequence only: start again from the first point."
             },
             "waitTicks": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 12000
+              "maximum": 12000,
+              "description": "Wait before the first leg and after each arrival."
             },
             "points": {
               "type": "array",
-              "description": "Route points in the NPC's world.",
-              "minItems": 1,
-              "maxItems": 64,
+              "description": "Route points in the NPC's world; wander centres for order wander.",
+              "minItems": 0,
+              "maxItems": 256,
+              "items": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "z": {
+                    "type": "number",
+                    "minimum": -29999984,
+                    "maximum": 29999984
+                  },
+                  "waitTicks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12000,
+                    "description": "Wait after arriving here, instead of the route's."
+                  }
+                }
+              }
+            },
+            "guides": {
+              "type": "array",
+              "description": "Order random only: helper nodes a path may pass through.",
+              "minItems": 0,
+              "maxItems": 1024,
               "items": {
                 "type": "object",
                 "required": [
@@ -5216,6 +5294,29 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "minimum": -29999984,
                     "maximum": 29999984
                   }
+                }
+              }
+            },
+            "linkDistance": {
+              "type": "number",
+              "minimum": 1.0,
+              "maximum": 256.0,
+              "description": "Order random only: the longest link between two nodes."
+            },
+            "wander": {
+              "type": "object",
+              "description": "Order wander only.",
+              "additionalProperties": false,
+              "properties": {
+                "radius": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8
                 }
               }
             }
@@ -5258,6 +5359,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       },
                       {
                         "required": [
+                          "order"
+                        ]
+                      },
+                      {
+                        "required": [
                           "loop"
                         ]
                       },
@@ -5265,15 +5371,123 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "required": [
                           "waitTicks"
                         ]
+                      },
+                      {
+                        "required": [
+                          "guides"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "linkDistance"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "wander"
+                        ]
                       }
                     ]
                   }
                 },
                 "else": {
-                  "required": [
-                    "points"
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "order": {
+                            "const": "wander"
+                          }
+                        },
+                        "required": [
+                          "order"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "points": {
+                            "maxItems": 64
+                          }
+                        }
+                      },
+                      "else": {
+                        "required": [
+                          "points"
+                        ],
+                        "properties": {
+                          "points": {
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    }
                   ]
                 }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "loop"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "order": {
+                    "const": "sequence"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "guides"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "order": {
+                    "const": "random"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "linkDistance"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "order": {
+                    "const": "random"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "wander"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "order": {
+                    "const": "wander"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
               }
             }
           ]
@@ -5374,6 +5588,31 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               }
             }
           ]
+        },
+        "animus:look-close": {
+          "type": "object",
+          "description": "Turns the NPC toward the nearest player in range while it is spawned.",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "True when the object is present."
+            },
+            "range": {
+              "type": "number",
+              "minimum": 1.0,
+              "maximum": 64.0,
+              "description": "Blocks. 10 by default."
+            },
+            "lineOfSight": {
+              "type": "boolean",
+              "description": "Only look at players it can see."
+            },
+            "whileNavigating": {
+              "type": "boolean",
+              "description": "Also look while following a route."
+            }
+          }
         }
       }
     }

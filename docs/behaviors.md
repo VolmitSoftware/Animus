@@ -234,9 +234,9 @@ This greeter faces the player who started it, asks a question, and records that 
 
 | Capability | Arguments | Result |
 | --- | --- | --- |
-| `animus:say` | `text` (up to 1,024 characters), optional `audience`, `radius` | Sends `Name » text`. Text is [formatted](#text-formatting). |
+| `animus:say` | `text` (up to 1,024 characters), optional `audience`, `radius` | Sends `Name » text`. Text is [formatted](#text-formatting). Each `{player_name}` becomes the triggering player's name. |
 | `animus:choices` | `id`, `prompt`, `options` (1-8 of `id` and `text`, each with optional `color`, `hover`, `style`), optional `lifetimeSeconds` (1-600) | Shows the prompt and a row of coloured answer buttons to the triggering player. Completes when shown and does not wait for the answer. |
-| `animus:command` | `command` (no leading slash), optional `as`: `console` (default) or `player` | Runs the command. Each `{player}` becomes the triggering player's UUID, which vanilla selectors accept, such as `clear {player} minecraft:emerald 1`. Requires the allow-list below. |
+| `animus:command` | `command` (no leading slash), optional `as`: `console` (default) or `player` | Runs the command. Each `{player}` becomes the triggering player's UUID, which vanilla selectors accept, such as `clear {player} minecraft:emerald 1`. Each `{player_name}` becomes their current name. Requires the allow-list below. |
 | `animus:navigate` | Either `x`, `y`, `z` with optional `mode` (`walk`, `swim`, `fly`) and `speed` (1-5), or `route`. Optional `wait`, and with it `timeoutTicks` (20-12,000, default 1,200). | Starts a route or follows `routes/<route>.json`. Completes when requested unless `wait` is true; see [walking a patrol](#walking-a-patrol). The limits in [the runtime guide](runtime.md) apply. |
 | `animus:stop-navigation` | None | Stops any route. Reports `stopped`. |
 | `animus:look` | Either `x`, `y`, `z`, or `"target": "player"` | Turns the NPC. The target must be within 64 blocks in the same world. |
@@ -251,10 +251,10 @@ This greeter faces the player who started it, asks a question, and records that 
 | `animus:open-shop` | `shop` (a shop id such as `town:baker`) | Opens the [shop](shops.md) for the triggering player. Reports `delivered` 0 when they are offline. |
 | `animus:open-gui` | `gui`, optional `kind`: `inventory` (default), `menu`, `shop` or `gloss` | Opens the [chest GUI](gui.md), [holographic menu](gui.md#holographic-menus) or shop with that id for the triggering player. `gloss` opens a Gloss menu by its Gloss id, such as `lobby/main`, and refuses as `gloss-unavailable` when Gloss is not installed. |
 | `animus:set-flag` | `name`, optional `scope`, optional `value` (default true) | Sets the flag. |
-| `animus:set-quest-state` | `name`, `value`, optional `scope` | Sets the stage. |
+| `animus:set-quest-state` | `name`, optional `scope`, and either `value` or `random` (1-1,000,000) | Sets the stage to `value`, or to a random stage from 0 up to but not including `random`. `"random": 3` picks 0, 1 or 2. |
 | `animus:advance-quest-state` | `name`, optional `scope`, `by` (default 1), `maximum` | Adds to the stage without passing `maximum`. Reports `value`. |
 
-`audience` is `trigger` (default) or `nearby`; `radius` applies to `nearby`, from 1 to 64 with a default of 16. `scope` is `player` (default), `npc`, `relationship` or `global`. A capability that addresses the triggering player fails with `no-triggering-player` when a behavior has none, as with a console `/animus behaviors run`.
+`audience` is `trigger` (default) or `nearby`; `radius` applies to `nearby`, from 1 to 64 with a default of 16. `scope` is `player` (default), `npc`, `relationship` or `global`. A capability that addresses the triggering player fails with `no-triggering-player` when a behavior has none, as with a console `/animus behaviors run`. Text that uses `{player_name}` needs a triggering player too, even with the `nearby` audience; it fails with `player-name-unknown` when the server does not know the player's name.
 
 Appearance and equipment changes last until restart or until the NPC's definition changes, and they do not edit the definition. Changing the definition during a run cancels that run, which is why these actions stay out of the file.
 
