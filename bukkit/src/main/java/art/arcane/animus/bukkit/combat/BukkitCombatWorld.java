@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.combat;
 
+import art.arcane.animus.core.behavior.builtin.DialogueFormat;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.bukkit.event.VirtualNpcDamageEvent;
@@ -202,7 +203,7 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
     }
     @Override public void tell(UUID player, String speaker, String message) {
         Player online = plugin.getServer().getPlayer(player);
-        if (online != null) online.sendMessage("[" + speaker + "]: " + message);
+        if (online != null) online.sendMessage(DialogueFormat.speech(speaker, message));
     }
     /** Every helper is a shooterless projectile tagged as a helper; it never saves with its chunk and never breaks blocks. */
     @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon) {

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "id": "greeter:greeter",
   "entry": "main",
   "routines": {
@@ -25,7 +25,7 @@
             "type": "action",
             "capability": "animus:say",
             "arguments": {
-              "text": "Good to see you again."
+              "text": "Good to see you again, &etraveller&f!"
             }
           },
           "else": {
@@ -35,7 +35,7 @@
                 "type": "action",
                 "capability": "animus:say",
                 "arguments": {
-                  "text": "Welcome, traveller. The market is to the north."
+                  "text": "Welcome, &etraveller&f! The &6market&f is to the &bnorth&f. &7➜"
                 }
               },
               {
