@@ -58,6 +58,7 @@
 - Names up to 256 characters. Long or coloured player names, non-player names and hologram lines render in a packet-only text display.
 - Citizens equipment, inventory, hologram, sneak, sit, default pose, armor stand, owner and nameplate visibility data convert to definition fields (converter version 4).
 - Persisted NPCs run on Folia, each owned by the region that owns its chunk, with explicit handoff between chunks. Triggers, behavior actions, navigation and interactions work there.
+- Fabric, NeoForge and Forge servers for 26.1.2, 26.2 and 26.3 run the persisted NPC runtime, commands, behaviors, modules, navigation, mounts, riding and combat as a server-side mod. Worlds are named by dimension; Bukkit world names still resolve.
 
 ### Changed
 
@@ -79,6 +80,8 @@
 - Per-tick runtime limits apply per Folia region tick.
 - Riding, mounts and combat on Folia report precise reasons for staying unavailable.
 
+- The single-owner NPC runtime, command set, behavior commands and combat module are shared by every platform.
+
 ### Fixed
 
 - A player who logs out while riding is saved at the NPC's feet instead of beside it.
@@ -86,4 +89,4 @@
 
 ### Notes
 
-Riding, mounts and combat on Folia, additional-platform NPC implementations, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
+Riding, mounts and combat on Folia, protection integrations on mod servers, and the browser editor remain unfinished. Packet proofs do not establish feature parity or performance improvements.
