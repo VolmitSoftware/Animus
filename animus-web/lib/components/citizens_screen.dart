@@ -298,6 +298,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
             _stat('${review.conversions['lookClose']}', 'look-close'),
             _stat('${review.conversions['textBehaviors']}', 'text behaviors'),
             _stat('${review.conversions['commandBehaviors']}', 'command behaviors'),
+            _stat('${review.conversions['skinsKept'] ?? 0}', 'skins kept for review'),
           ]),
           dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
             const Component.text('Import '),

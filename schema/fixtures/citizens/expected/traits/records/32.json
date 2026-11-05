@@ -1,0 +1,20 @@
+{
+  "name": "Skinned Frog",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000032",
+  "traits": {
+    "type": "FROG",
+    "spawned": true,
+    "location": {
+      "world": "legacy",
+      "x": 32,
+      "y": 64,
+      "z": 32
+    },
+    "skintrait": {
+      "skinName": "frog",
+      "signature": "c2lnLWY=",
+      "textureRaw": "dGV4LWY=",
+      "updateSkins": false
+    }
+  }
+}

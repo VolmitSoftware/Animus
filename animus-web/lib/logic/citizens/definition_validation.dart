@@ -73,6 +73,40 @@ List<String> validateDefinition(JObject object) {
   return errors;
 }
 
+/// `DefinitionSpec.activation`: the rules every server applies when it spawns a definition, so the preview's valid count
+/// matches what can spawn. A malformed native `animus:mount` module is not diagnosed here (the converter never writes one).
+List<String> activationErrors(JObject definition) {
+  final List<String> errors = <String>[];
+  final JElement? type = definition.get('type');
+  if (definition.has('skin') && !(type is JString && type.value == 'minecraft:player')) errors.add(r'$.skin: textures require a player body');
+  final JElement? pose = definition.get('pose');
+  if (pose is JString && pose.value == 'sitting' && _declaresMount(definition)) {
+    errors.add(r'$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount');
+  }
+  return errors;
+}
+
+/// `MountDeclaration.parse(...).isPresent()` for well-formed documents.
+bool _declaresMount(JObject definition) {
+  final JElement? modules = definition.get('modules');
+  if (modules is JObject && modules.has('animus:mount')) {
+    final JElement? module = modules.get('animus:mount');
+    final JElement? enabled = module is JObject ? module.get('enabled') : null;
+    return !(enabled is JBool && !enabled.value);
+  }
+  final JElement? migration = definition.get('migration');
+  final JElement? references = migration is JObject ? migration.get('references') : null;
+  if (references is! JArray) return false;
+  for (final JElement reference in references.elements) {
+    if (reference is! JObject) continue;
+    final JElement? kind = reference.get('kind');
+    if (!(kind is JString && kind.value == 'mount')) continue;
+    final JElement? status = reference.get('status');
+    return !(status is JString && status.value == 'none');
+  }
+  return false;
+}
+
 String _string(JObject data, String key, List<String> errors) {
   final JElement? value = data.get(key);
   if (value is! JString || javaIsBlank(value.value)) {

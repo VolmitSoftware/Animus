@@ -23,7 +23,7 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 8;
+const int citizensConverterVersion = 9;
 
 const String _notice =
     'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.';
@@ -128,7 +128,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
   final JObject mapping = _identityMap(npcs);
   final JObject defaults = citizensDefaults(npcs);
   final JObject conversions = JObject();
-  for (final String counter in const <String>['routes', 'routePoints', 'routeGuides', 'lookClose', 'textBehaviors', 'commandBehaviors']) {
+  for (final String counter in const <String>['routes', 'routePoints', 'routeGuides', 'lookClose', 'textBehaviors', 'commandBehaviors', 'skinsKept']) {
     conversions.addInt(counter, 0);
   }
   int behaviorDocuments = 0;
@@ -231,7 +231,14 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     for (final MapEntry<String, JElement> field in presentation.fields.entries) {
       definition.add(field.key, field.value);
     }
-    for (final String warning in presentation.warnings) {
+    // A skin is only drawn on a player body; any other body keeps it under citizens:review.
+    final bool skinApplied = traits.has('skintrait') && definition.get('type')!.asPrimitive.asString == 'minecraft:player';
+    final List<String> presentationWarnings = List<String>.of(presentation.warnings);
+    if (traits.has('skintrait') && !skinApplied) {
+      presentationWarnings.add('/traits/skintrait: skins show only on player bodies; kept for review');
+      _increment(conversions, 'skinsKept');
+    }
+    for (final String warning in presentationWarnings) {
       migrationWarnings.addString('citizens-$key: $warning');
     }
     final JObject modules = JObject();
@@ -290,11 +297,11 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     for (final String warning in runtime.warnings) {
       migrationWarnings.addString('citizens-$key: $warning');
     }
-    reviewed.remove('skintrait');
+    if (skinApplied) reviewed.remove('skintrait');
     modules.add('citizens:review', reviewed);
     if (runtime.behaviors.isNotEmpty) definition.add('behaviors', JArray(<JElement>[for (final String id in runtime.behaviors) JString(id)]));
     definition.add('modules', modules);
-    if (traits.has('skintrait')) {
+    if (skinApplied) {
       final String serialized = writeJson(traits.get('skintrait')!);
       final String hash = sha256Hex(serialized);
       definition.addString('skin', hash);
@@ -305,13 +312,19 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     report.addInt('citizensId', numeric);
     final JObject fields = JObject();
     _classify(record, '', fields, <String>{...presentation.converted, ...runtime.converted});
-    report.add('presentationWarnings', JArray(<JElement>[for (final String warning in presentation.warnings) JString(warning)]));
+    if (!skinApplied) {
+      for (final String path in fields.keys.toList()) {
+        if (path.startsWith('/traits/skintrait/')) fields.addString(path, 'UNSUPPORTED_PRESERVED');
+      }
+    }
+    report.add('presentationWarnings', JArray(<JElement>[for (final String warning in presentationWarnings) JString(warning)]));
     report.add('runtimeWarnings', JArray(<JElement>[for (final String warning in runtime.warnings) JString(warning)]));
     report.addString('fieldPathFormat', 'json-pointer');
     report.add('fields', fields);
     report.add('worldRemaps', worldRemaps);
     report.add('references', references);
     final List<String> errors = List<String>.of(validateDefinition(definition));
+    if (errors.isEmpty) errors.addAll(activationErrors(definition));
     final BigInt? parsed = javaUuidValue(uuid);
     if (parsed != null && !uuids.add(parsed)) errors.add(r'$.uuid: duplicate NPC UUID');
     report.add('validationErrors', JArray(<JElement>[for (final String error in errors) JString(error)]));
