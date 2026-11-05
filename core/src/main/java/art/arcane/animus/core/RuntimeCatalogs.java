@@ -39,12 +39,16 @@ public final class RuntimeCatalogs implements CatalogReloads {
 
     public RuntimeCatalogs(Parts parts) { this.parts = Objects.requireNonNull(parts); }
 
-    @Override public void reload(CatalogChange change) {
+    @Override public void reload(CatalogChange change, Consumer<String> reported) {
         if (touches(change, NPCS)) {
             try {
                 List<String> problems = change.rollback() ? parts.runtime().npcs().reloadAfterRollback() : parts.runtime().npcs().reload();
                 problems.stream().limit(8).forEach((String problem) -> parts.log().accept("Catalog reload: NPC reload kept the last valid set: " + problem));
-            } catch (IOException failure) { parts.log().accept("Catalog reload: NPC reload failed: " + failure.getMessage()); }
+                problems.forEach(reported);
+            } catch (IOException failure) {
+                parts.log().accept("Catalog reload: NPC reload failed: " + failure.getMessage());
+                reported.accept(String.valueOf(failure.getMessage()));
+            }
             parts.refresh().run();
         }
         if (touches(change, BEHAVIORS) || !change.removedBehaviors().isEmpty()) {
@@ -56,6 +60,7 @@ public final class RuntimeCatalogs implements CatalogReloads {
         if (touches(change, RIGS)) {
             RigCatalog rigs = parts.runtime().rigs().reload();
             if (!rigs.problems().isEmpty()) parts.log().accept("Catalog reload: " + rigs.problems().size() + " rig problems; see /animus rigs problems");
+            rigs.problems().forEach(reported);
             parts.refresh().run();
         }
     }

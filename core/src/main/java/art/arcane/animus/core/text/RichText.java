@@ -101,9 +101,31 @@ public final class RichText {
         return false;
     }
 
+    /**
+     * Colorizes {@code template}, then fills each {@code {name}} with its value as plain text: a value's own colour codes,
+     * tags and section signs are shown, never applied. Send the result through {@link #sectionRuns}, not {@link #runs}.
+     */
+    public static String format(String template, Map<String, String> values) {
+        String coloured = colorize(template);
+        StringBuilder out = new StringBuilder(coloured.length() + 64);
+        int index = 0;
+        while (index < coloured.length()) {
+            char glyph = coloured.charAt(index);
+            int end = glyph == '{' ? coloured.indexOf('}', index) : -1;
+            String value = end > index ? values.get(coloured.substring(index + 1, end)) : null;
+            if (value == null) { out.append(glyph); index++; continue; }
+            out.append(value.replace(SECTION, '?'));
+            index = end + 1;
+        }
+        return out.toString();
+    }
+
     /** Splits colorized source text into styled runs. A colour code clears the styles before it, as in vanilla. */
-    public static List<Run> runs(String text) {
-        String coloured = colorize(text);
+    public static List<Run> runs(String text) { return sectionRuns(colorize(text)); }
+
+    /** Splits text that is already section-coded, such as {@link #format} output, without reading {@code &} codes again. */
+    public static List<Run> sectionRuns(String coloured) {
+        if (coloured == null) return List.of();
         List<Run> runs = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         OptionalInt rgb = OptionalInt.empty();

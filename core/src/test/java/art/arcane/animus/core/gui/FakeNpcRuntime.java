@@ -16,11 +16,11 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /** NPC runtime for screen tests: chosen NPCs are active, and player work runs at once. */
-final class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
+public final class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
     final Map<UUID, ActiveNpc> active = new HashMap<>();
     private final Function<UUID, Optional<P>> players;
 
-    FakeNpcRuntime(Function<UUID, Optional<P>> players) { this.players = players; }
+    public FakeNpcRuntime(Function<UUID, Optional<P>> players) { this.players = players; }
 
     @Override public boolean available() { return true; }
     @Override public void interactions(InteractionListener<P> listener) {}

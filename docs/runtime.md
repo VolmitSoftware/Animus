@@ -23,6 +23,24 @@ Names accept printable Unicode and spaces, up to 256 UTF-16 code units, without 
 
 Skin references identify content-hashed JSON documents in `skins/`. Reads use the bounded file worker and preserve texture/signature data. An invalid or missing live replacement retains the last valid active presentation and reports the field error. Accepted definitions also have durable recovery checkpoints: a known invalid source edit at restart retains its previous definition and reports the error without changing the edited file. Missing sources remain deleted. Referenced skin files are not included in that definition checkpoint. See [storage and recovery](storage.md).
 
+### Hand edits apply live
+
+Saving any data file applies it within about a second, without `/animus reload`: `config.toml`, NPCs (and the module settings inside them), behaviors, packs, routes, skins, shops, chest GUIs, menus, holograms, text animations, rigs, animations and schematics. Each change is checked with the same validators the editor uses. Online players with `animus.hotload.notify` (operators by default; permission level 2 on mod servers) hear a note block ding and see one line per changed key, at most 12 per file:
+
+```text
+[Animus]: Animus Hotloaded: [npcs/town/guard.json] [name] ["Guard" -> "Captain Guard"]
+```
+
+An invalid edit is refused with its field error and the server keeps the last valid version. Most `config.toml` budgets are read when a service starts; their lines end in `[restart required]`. These keys apply at once: `statusMessage`, `[hotload]`, `[shops]` `enabled`, `economy`, `priceFormat` and `messages`, and `[behaviors.actions]` `commandBehaviors`, `commandNamespaces` and `choiceLifetimeSeconds`. Animus's own writes (editor applies, imports, migrations, state) are never reported, and `state/`, `backups/`, `logs/` and `imports/` are not watched.
+
+| `[hotload]` key | Default | Meaning |
+|---|---|---|
+| `enabled` | true | Watch the data files; when false only `config.toml` is watched |
+| `sound` | true | Play the ding before each message |
+| `maximumFiles` | 20000 | Files watched at most |
+| `readsPerPoll` | 256 | Changed files read per 500 ms poll |
+| `maximumFileBytes` | 4194304 | Larger files are refused |
+
 ## Appearance, text and inventory
 
 These definition fields are optional. Every viewer sees the same result, and it comes back from the definition after a restart, a rejoin or a chunk reload. A change takes effect through `/animus edit` or a reload, which gives viewers a fresh body.
