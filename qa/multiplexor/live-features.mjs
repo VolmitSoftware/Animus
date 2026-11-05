@@ -19,7 +19,7 @@ const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) 
 const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
-const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs,appearance')).split(',');
+const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs,appearance,building,shops')).split(',');
 const name = args.get('instance-name') ?? `animus-live-${project}-${version.replaceAll('.', '-')}`;
 assert(new RegExp(`^animus-(?:live|gate-live)-${project}-${version.replaceAll('.', '-')}$`).test(name), 'Instance name must bind the requested platform/version');
 const instances = path.join(workspace, 'consumers/plugin-consumers/instances');
@@ -1302,6 +1302,7 @@ async function folia() {
   });
   await owner.close();
   await server.cmd('animus delete fnpc', /Deleted/);
+  await foliaBuildsRefused();
 }
 
 async function appearance() {
@@ -1896,7 +1897,196 @@ function copyTree(from, to, keep = () => true) {
   }
 }
 
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, folia };
+// ---- shared helpers -------------------------------------------------------------------------
+
+async function blockIs(x, y, z, id) {
+  const found = await server.cmd(`execute if block ${x} ${y} ${z} ${id}`, /Test (passed|failed)/);
+  return found[1] === 'passed';
+}
+async function buildStatus(id) {
+  const pattern = new RegExp(`Build ${id}: [^\\n]*|No build for ${id}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
+  return plain(await server.capture(`animus build ${id} status`, pattern, 150)).match(pattern)[0];
+}
+// The next chest window after `from`, with the contents the server sent for it.
+async function windowOpened(client, from, timeout = 10_000) {
+  const opened = await client.wait(e => e.event === 'open_screen', from, timeout);
+  const content = await client.wait(e => e.event === 'container_content' && e.container === opened.container && e.sequence > opened.sequence, from, timeout);
+  return { container: opened.container, menu: opened.menu, title: opened.title, size: content.size, items: content.items };
+}
+// One left click (vanilla PICKUP, button 0; Bukkit ClickType.LEFT) on a slot of an open window.
+async function clickSlot(client, container, slot) {
+  const from = client.events.length;
+  client.send('click_container', { container, slot, button: 0, mode: 'pickup' });
+  await client.wait(e => e.event === 'container_click_sent' && e.container === container && e.slot === slot, from, 5000);
+  return from;
+}
+async function closeWindow(client, container) {
+  const from = client.events.length;
+  client.send('close_container', { container });
+  await client.wait(e => e.event === 'container_close_sent' && e.container === container, from, 5000);
+}
+
+// ---- scenario: building ---------------------------------------------------------------------
+
+// x 24..26, y 61..62, z 24..26: clear of every fill, setblock, tp and NPC position the other scenarios use.
+const BUILD = { npc: 'mason', file: 'live-tiny.nbt', origin: [24, 61, 24] };
+async function building() {
+  const owner = await join(OWNER.name, 'survival');
+  await check('npc builds a tiny .nbt with creative materials', async () => {
+    const [ox, oy, oz] = BUILD.origin;
+    const box = `${ox} ${oy} ${oz} ${ox + 2} ${oy + 1} ${oz + 2}`;
+    const file = path.join(data, 'schematics', BUILD.file);
+    let created = false;
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      const made = spawnSync('python3', ['-I', path.join(root, 'qa/multiplexor/make-nbt.py'), file], { encoding: 'utf8' });
+      assert.equal(made.status, 0, made.stderr);
+      const blocks = JSON.parse(made.stdout).blocks.map(b => ({ x: ox + b.pos[0], y: oy + b.pos[1], z: oz + b.pos[2], id: b.name }));
+      assert.equal(blocks.length, 18);
+      await server.cmd(`fill ${box} air`, /Successfully filled|No blocks were filled/);
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+      const kinds = ['minecraft:stone', 'minecraft:oak_planks', 'minecraft:glass'];
+      for (const id of kinds) await server.cmd(`give ${OWNER.name} ${id} 5`, /Gave/);
+      await owner.tp(20.5, 61, 20.5);
+      await server.npc(BUILD.npc, 'minecraft:player', 22.5, 61, 25.5, 'Mason');
+      created = true;
+      await until(async () => { const n = await inspect(BUILD.npc); return { ok: /: active/.test(n.line), line: n.line.slice(0, 160) }; }, 15_000, 'mason never became active');
+      const listed = plain(await server.capture('animus build schematics', /Schematics \(\d+\):[^\n]*|No schematics[^\n]*/));
+      assert(listed.includes(BUILD.file), listed);
+      const from = logText().length;
+      const startPattern = new RegExp(`Started build ${BUILD.npc}[^\\n]*|Cannot start build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
+      const started = plain((await server.cmd(`animus build start ${BUILD.npc} ${BUILD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=1 timeout=5`, startPattern))[0]);
+      assert.match(started, new RegExp(`^Started build ${BUILD.npc}: ${BUILD.file.replace('.', '\\.')} 18 steps from ${ox} ${oy} ${oz} to ${ox + 2} ${oy + 1} ${oz + 2}$`));
+      // BuildService logs "Build <id> finished" when the last block is placed (the console starter gets no chat line).
+      await server.waitLog(new RegExp(`Build ${BUILD.npc} finished`), from, 90_000);
+      const status = await buildStatus(BUILD.npc);
+      assert.match(status, /: finished 18\/18 \(100%\)/);
+      assert.match(status, /placed=18 skipped=0 denied=0 no-item=0 refused=0/);
+      assert.match(status, /materials=creative \| undo=18\b/);
+      const survey = plain(await server.capture(`animus build ${BUILD.npc} survey`, new RegExp(`Build ${BUILD.npc} [^\\n]*`)));
+      assert(survey.includes(`Build ${BUILD.npc} uses creative materials; nothing is needed`), survey);
+      const wrong = [];
+      for (const b of blocks) if (!await blockIs(b.x, b.y, b.z, b.id)) wrong.push(`${b.x},${b.y},${b.z}!=${b.id}`);
+      assert.deepEqual(wrong, []);
+      // Nothing outside the box changed: one cell on each open side.
+      for (const [x, y, z] of [[ox - 1, oy, oz], [ox + 3, oy, oz + 2], [ox + 1, oy + 2, oz + 1], [ox + 1, oy, oz - 1], [ox + 1, oy, oz + 3]])
+        assert(await blockIs(x, y, z, 'minecraft:air'), `cell ${x},${y},${z} changed`);
+      // Creative materials take nothing from anyone: the owner still holds exactly what was given.
+      const held = [];
+      for (const id of kinds) held.push(await itemCount(OWNER.name, id));
+      assert.deepEqual(held, [5, 5, 5]);
+      // Undo puts the air back; it does not walk and is limited by undoPerTick (32), so 18 cells take one tick.
+      const undo = plain((await server.cmd(`animus build ${BUILD.npc} undo`, new RegExp(`Undoing \\d+ changes of build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      assert.equal(undo, `Undoing 18 changes of build ${BUILD.npc}`);
+      const undone = await until(async () => { const s = await buildStatus(BUILD.npc); return { ok: /: undone /.test(s), s }; }, 20_000, 'undo did not finish');
+      assert.match(undone.s, /restored=18 kept=0/);
+      const left = [];
+      for (const b of blocks) if (!await blockIs(b.x, b.y, b.z, 'minecraft:air')) left.push(`${b.x},${b.y},${b.z}`);
+      assert.deepEqual(left, []);
+      return `${started.slice(0, 90)}; ${status.match(/placed=[^|]*/)[0].trim()}; undo ${undone.s.match(/restored=\d+ kept=\d+/)[0]}`;
+    } finally {
+      await server.cmd(`fill ${box} air`, /Successfully filled|No blocks were filled/);
+      if (created) await server.cmd(`animus delete ${BUILD.npc}`, /Deleted|Unknown/);
+      if (existsSync(file)) unlinkSync(file);
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+    }
+  });
+  await gamemode('creative');
+  await owner.close();
+}
+
+// ---- scenario: shops ------------------------------------------------------------------------
+
+// Slot 11 of a 3-row page; the bottom row (18..26) holds the controls, and only close (slot 22) shows
+// because the shop has one page and one mode.
+const SHOP = { id: 'live:swap', npc: 'swapper', slot: 11, at: [-26.5, 61, 26.5] };
+const swapShop = () => ({
+  schemaVersion: 1, revision: 1, id: SHOP.id, title: '&bSwap', modes: ['trade'],
+  pages: [{ name: 'Swap', rows: 3, trade: { [String(SHOP.slot)]: {
+    id: 'diamond-for-emeralds', type: 'trade', item: { id: 'minecraft:diamond' },
+    needs: [{ item: { id: 'minecraft:emerald' }, amount: 2 }],
+    gives: [{ item: { id: 'minecraft:diamond' }, amount: 1 }],
+  } } }],
+});
+async function shops() {
+  const owner = await join(OWNER.name, 'survival');
+  await check('shop item-for-item trade', async () => {
+    const file = path.join(data, 'shops', 'live', 'swap.json');
+    let created = false, open = null;
+    const counts = async () => ({ emerald: await itemCount(OWNER.name, 'minecraft:emerald'), diamond: await itemCount(OWNER.name, 'minecraft:diamond') });
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, JSON.stringify(swapShop(), null, 1) + '\n');
+      const reloaded = plain((await server.cmd('animus shop reload', /Reloaded \d+ shops and \d+ GUIs; \d+ problems/))[0]);
+      const listed = plain(await server.capture('animus shop list', /Shops: \d+/, 400));
+      assert(new RegExp(`${SHOP.id} \\| [^|]*Swap \\| pages=1`).test(listed), listed);
+      const problems = plain(await server.capture('animus shop problems', /Shop and GUI problems: \d+/, 400));
+      assert(!/live[:/]swap/.test(problems), problems);
+      const uuid = await server.npc(SHOP.npc, 'minecraft:player', ...SHOP.at, 'Swapper', { modules: { 'animus:shop': { shop: SHOP.id, openOn: 'right' } } });
+      created = true;
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+      await server.cmd(`give ${OWNER.name} minecraft:emerald 2`, /Gave/);
+      await owner.tp(SHOP.at[0], 61, SHOP.at[2] - 3);
+      assert.deepEqual(await counts(), { emerald: 2, diamond: 0 });
+
+      // 1. Open by right-clicking the NPC (animus:shop, openOn right) and trade with one left click.
+      let from = await click(owner, uuid);
+      open = await windowOpened(owner, from);
+      assert.equal(open.menu, 'minecraft:generic_9x3', JSON.stringify(open));
+      assert.equal(open.size, 27 + 36);
+      assert.equal(open.items.find(i => i.slot === SHOP.slot)?.item, 'minecraft:diamond', JSON.stringify(open.items));
+      assert.equal(open.items.find(i => i.slot === 22)?.item, 'minecraft:barrier', JSON.stringify(open.items));
+      from = await clickSlot(owner, open.container, SHOP.slot);
+      const traded = await owner.chat('Traded for', from, 8000);
+      const paid = await until(async () => { const c = await counts(); return { ok: c.emerald === 0 && c.diamond === 1, ...c }; }, 5000, 'trade did not change the inventory');
+      // Every click is cancelled: nothing was left on the cursor, and the window stays open (no closeAfterPurchase).
+      assert(!owner.has(e => e.event === 'container_slot' && e.container === -1 && e.item !== 'empty', from), 'an item reached the cursor');
+      assert(!owner.has(e => e.event === 'container_closed' && e.container === open.container, from), 'window closed after the trade');
+      await closeWindow(owner, open.container);
+      open = null;
+
+      // 2. Open again with the command and try once more without the price: nothing changes.
+      from = owner.events.length;
+      await server.cmd(`animus shop open ${SHOP.id} ${OWNER.name}`);
+      open = await windowOpened(owner, from);
+      from = await clickSlot(owner, open.container, SHOP.slot);
+      const refused = await owner.chat('You do not have the items for that.', from, 8000);
+      await delay(500);
+      assert.deepEqual(await counts(), { emerald: 0, diamond: 1 });
+      await closeWindow(owner, open.container);
+      open = null;
+      const status = plain(await server.capture('animus shop status', /Shops [^\n]*/, 400)).match(/Shops [^\n]*/)[0];
+      assert(/\| open=0 \|/.test(status), status);
+      return `${reloaded}; "${traded.text}" -> emerald=${paid.emerald} diamond=${paid.diamond}; again: "${refused.text}"`;
+    } finally {
+      if (open) await closeWindow(owner, open.container).catch(() => {});
+      if (created) await server.cmd(`animus delete ${SHOP.npc}`, /Deleted|Unknown/);
+      if (existsSync(file)) unlinkSync(file);
+      await server.cmd('animus shop reload', /Reloaded \d+ shops/);
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+    }
+  });
+  await gamemode('creative');
+  await owner.close();
+}
+
+// ---- folia(): add inside the existing folia scenario ----------------------------------------
+
+// AnimusPlugin.startBuilds sets this reason when there is no main-thread runtime; BuildCommands answers
+// every /animus build form with "Builds unavailable: " + reason before reading any argument.
+const FOLIA_BUILDS = 'Builds unavailable: unavailable on Folia: a build site, its NPC team and its material container have no shared region owner, and no handoff for a build exists yet';
+async function foliaBuildsRefused() {
+  await check('builds refuse on Folia with the reason', async () => {
+    const pattern = /Builds unavailable: [^\n]*/;
+    const status = plain((await server.cmd('animus build', pattern))[0]);
+    const start = plain((await server.cmd(`animus build start nobody ${BUILD.file} at=0,61,0`, pattern))[0]);
+    assert.equal(status, FOLIA_BUILDS);
+    assert.equal(start, FOLIA_BUILDS);
+    return status;
+  });
+}
+
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, building, shops, folia };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line));
