@@ -50,6 +50,7 @@ import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket;
 import net.minecraft.network.protocol.game.ClientboundRemoveEntitiesPacket;
+import net.minecraft.network.protocol.game.ClientboundAnimatePacket;
 import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEquipmentPacket;
@@ -266,6 +267,21 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session == null) return failed("Viewer is not watched");
         if (session.visible.get(dragon.entityId) != dragon) return failed("Dragon is not visible to this viewer");
         send(session, List.of(new ClientboundSetEntityDataPacket(dragon.entityId, List.of(SynchedEntityData.DataValue.create(EnderDragon.DATA_PHASE, phase)))));
+        return CompletableFuture.completedFuture(null);
+    }
+
+    /** The main-arm swing a player shows when placing a block. */
+    @Override public CompletionStage<Void> swing(ServerPlayer viewer, BodyTransport.Body presented) {
+        Body body = checkBody(presented);
+        Session session = existing(viewer);
+        if (session == null) return failed("Viewer is not watched");
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer(8));
+        try {
+            buffer.writeVarInt(body.entityId);
+            buffer.writeByte(0);
+            send(session, List.of(ClientboundAnimatePacket.STREAM_CODEC.decode(buffer)));
+        } finally { buffer.release(); }
         return CompletableFuture.completedFuture(null);
     }
 

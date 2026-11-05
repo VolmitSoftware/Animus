@@ -16,8 +16,8 @@ repositories {
         content { includeGroup('com.sk89q.worldguard'); includeGroup('com.sk89q.worldedit') }
     }
 }
-configurations { packetApi; protectionApi }
-configurations.compileOnly.extendsFrom(configurations.packetApi, configurations.protectionApi)
+configurations { packetApi; protectionApi; economyApi }
+configurations.compileOnly.extendsFrom(configurations.packetApi, configurations.protectionApi, configurations.economyApi)
 dependencies {
     compileOnly('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
     packetApi('io.netty:netty-transport:4.2.16.Final')
@@ -25,6 +25,7 @@ dependencies {
     protectionApi('com.sk89q.worldguard:worldguard-bukkit:7.0.14') { transitive = false }
     protectionApi('com.sk89q.worldedit:worldedit-core:7.3.15') { transitive = false }
     protectionApi('com.sk89q.worldedit:worldedit-bukkit:7.3.15') { transitive = false }
+    economyApi('com.github.MilkBowl:VaultAPI:1.7.1') { transitive = false }
     testImplementation('org.junit.jupiter:junit-jupiter:5.10.2')
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
     testImplementation('org.spigotmc:spigot-api:26.1.2-R0.1-SNAPSHOT')
@@ -44,7 +45,7 @@ minecraftTargets.keySet().each { String target ->
     dependencies.add(targetApi.name, "org.spigotmc:spigot-api:${target}-R0.1-SNAPSHOT")
     TaskProvider<JavaCompile> compatibility = tasks.register("compileSpigot${suffix}", JavaCompile) {
         source = sourceSets.main.java
-        classpath = targetApi + configurations.bundle + configurations.packetApi + configurations.protectionApi
+        classpath = targetApi + configurations.bundle + configurations.packetApi + configurations.protectionApi + configurations.economyApi
         destinationDirectory.set(layout.buildDirectory.dir("compatibility/${target}"))
         dependsOn(':core:jar')
     }

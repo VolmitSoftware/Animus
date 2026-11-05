@@ -10,6 +10,9 @@ import art.arcane.animus.core.runtime.SkinDocuments;
 
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.navigation.BukkitNavigationBridge;
+import art.arcane.animus.bukkit.navigation.TerrainChanges;
+import art.arcane.animus.core.navigation.BlockPos;
+import art.arcane.animus.core.navigation.IdleFall;
 import art.arcane.animus.core.navigation.NavigationLimits;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.bukkit.packet.NativeViewerEpoch;
@@ -91,6 +94,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     volatile NativeViewerEpoch epochs;
     volatile BukkitNavigationBridge navigation;
     volatile TriggerDispatcher triggers;
+    volatile InteractionListener<Player> interactions;
     private final Map<String, Geometry> geometries = new HashMap<>();
     private final Map<ChunkPosition, Set<RegionActor>> resting = new ConcurrentHashMap<>(), anchored = new ConcurrentHashMap<>();
     private final Set<ChunkPosition> loaded = ConcurrentHashMap.newKeySet();
@@ -132,6 +136,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length));
             }
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
+            plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(this::terrainChanged), plugin);
             control = regions.globalTicks(this::controlTick);
             for (Player player : plugin.getServer().getOnlinePlayers()) {
                 online.put(player.getUniqueId(), player);
@@ -148,6 +153,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
 
     @Override public boolean available() { return !closed && packets != null; }
+    @Override public void interactions(InteractionListener<Player> listener) { interactions = listener; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { triggers = Objects.requireNonNull(dispatcher); }
     @Override public void refresh() { refresh.set(true); }
     @Override public PlayerAccess<Player> players() { return players; }
@@ -249,6 +255,14 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
 
     Geometry geometry(String type) { return geometries.get(type); }
     World world(String id) { return regions.world(id); }
+    /** On the changed block's region thread: marks the NPCs standing on it, each checks its footing on its own owner tick. */
+    private void terrainChanged(String world, BlockPos at) {
+        if (!available()) return;
+        for (UUID npc : IdleFall.standingOn(index, world, at)) {
+            RegionActor actor = byUuid.get(npc);
+            if (actor != null) actor.supportWanted = true;
+        }
+    }
     private String worldKey(String name) {
         UUID id = worldId(name);
         return id == null ? null : id.toString();

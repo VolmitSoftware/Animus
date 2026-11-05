@@ -16,14 +16,14 @@ class RouteDocumentsTest {
             """;
     @Test void sharedRouteIsLoadedAsBoundedImmutableTypedData() throws Exception {
         try(var store=new DocumentStore(directory)) {
-            Path routes=store.resolve("behaviors/routes");Files.createDirectories(routes);Files.writeString(routes.resolve("patrol.json"),ROUTE);
+            Path routes=store.resolve("routes");Files.createDirectories(routes);Files.writeString(routes.resolve("patrol.json"),ROUTE);
             var data=RouteDocuments.read(store,"patrol");assertTrue(data.loop());assertEquals(2,data.points().size());assertEquals(10,data.waitTicks());
             assertThrows(UnsupportedOperationException.class,()->data.points().clear());
         }
     }
     @Test void missingOversizedAndMalformedUtf8ReferencesFailWithoutUncheckedReads() throws Exception {
         try(var store=new DocumentStore(directory)) {
-            Path routes=store.resolve("behaviors/routes");Files.createDirectories(routes);
+            Path routes=store.resolve("routes");Files.createDirectories(routes);
             assertThrows(IOException.class,()->RouteDocuments.read(store,"missing"));
             Files.writeString(routes.resolve("large.json")," ".repeat(64*1024+1));
             assertTrue(assertThrows(IOException.class,()->RouteDocuments.read(store,"large")).getMessage().contains("64 KiB"));

@@ -12,6 +12,7 @@ import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyMobility;
 import art.arcane.animus.core.navigation.CaptureBounds;
 import art.arcane.animus.core.navigation.CaptureProvenance;
+import art.arcane.animus.core.navigation.IdleFall;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.NavigationLimits;
@@ -84,6 +85,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
     private static final int RECONCILE_WORK = 64, PACKET_WORK = 32, MAX_PENDING_PER_VIEWER = 8, MAX_ISSUED_IDS = 8192;
     private static final int MAX_ROUTES = 32, NAVIGATION_UPDATES = 16, NAVIGATION_CELLS = 2048, MOTION_CELLS = 256;
+    private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096;
     private static final double HULL_WIDTH_LIMIT = 4, HULL_HEIGHT_LIMIT = 8;
     /** Fastest route leg in blocks per second; combat pursuit is limited further by {@code [combat] maximumSpeed}. */
     public static final double MAXIMUM_SPEED = 10;
@@ -101,6 +103,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     final Map<UUID, Viewer> viewers = new HashMap<>();
     private final Deque<Viewer> viewerOrder = new ArrayDeque<>();
     private final Deque<Route> routeOrder = new ArrayDeque<>();
+    /** Idle NPCs whose footing changed, and NPCs still falling; each is queued at most once. */
+    private final Deque<Value> supportOrder = new ArrayDeque<>();
     private final Deque<Value> routeReadQueue = new ArrayDeque<>();
     private final Set<RouteReadTask> routeReads = new HashSet<>();
     private final ConcurrentLinkedQueue<RouteReadCompletion> routeReadCompletions = new ConcurrentLinkedQueue<>();
@@ -117,6 +121,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private OwnerNavigation navigation;
     private AutoCloseable ticker;
     private TriggerBridge triggers;
+    private volatile InteractionListener<P> interactions;
     private volatile String unavailable;
     private String lastFailure;
     private volatile boolean closed;
@@ -162,6 +167,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
 
     @Override public boolean available() { return !closed && packets != null; }
     /** Connect during startup, before the first runtime tick can activate an NPC. */
+    @Override public void interactions(InteractionListener<P> listener) { interactions = listener; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); triggers = new TriggerBridge(dispatcher, index); }
     @Override public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
@@ -289,6 +295,37 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
         if (value == null || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(entry.id))) return Optional.empty();
         return Optional.of(new ActiveNpc(entry.id, value.displayName, value.state.snapshot()));
+    }
+    /** The NPC is following a route now. */
+    public boolean routing(String id) {
+        if (!available()) return false;
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        return value != null && (value.route != null || value.routeTask != null);
+    }
+    /** Swings the NPC's arm for everyone who sees it. */
+    public void swing(String id) {
+        if (!available()) return;
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        if (value == null) return;
+        for (Viewer viewer : viewers.values()) {
+            Presented body = viewer.visible.get(value.spec.definition().uuid());
+            if (body != null && body.value == value && body.bound && !body.retired) packets.swing(viewer.player, body.body);
+        }
+    }
+    /** Moves an active NPC at once onto clear, supported, loaded ground in its own world; false leaves it in place. */
+    public boolean relocate(String id, WorldPosition destination) {
+        Optional<CombatBinding> binding = combat(id);
+        if (binding.isEmpty() || !binding.get().state().snapshot().active()) return false;
+        WorldPosition from = binding.get().state().snapshot().position();
+        if (!from.world().equals(destination.world()) || !host.worldLoaded(destination.world())) return false;
+        int chunkX = Math.floorDiv((int) Math.floor(destination.point().x()), 16), chunkZ = Math.floorDiv((int) Math.floor(destination.point().z()), 16);
+        if (!host.chunkLoaded(destination.world(), chunkX, chunkZ)) return false;
+        Hitbox box = binding.get().state().snapshot().bounds();
+        MotionValidator.Result clear = MotionValidator.check(destination.point(), destination.point(), hullWidth(box.max().x() - box.min().x()),
+                hullHeight(box.max().y() - box.min().y()), MotionValidator.Medium.GROUND, true, MOTION_CELLS, host.collision(destination.world()));
+        if (!clear.clear()) return false;
+        binding.get().changed().accept(binding.get().state().move(destination));
+        return true;
     }
     public float yaw(UUID npc) {
         owner(); Entry entry = byUuid.get(npc);
@@ -565,6 +602,43 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             if (routeCurrent(route)) routeOrder.addLast(route);
         }
     }
+    /**
+     * A block changed in a loaded chunk of this world, or is about to change in this tick. Idle walking NPCs over it check
+     * their footing on a later tick and fall when nothing holds them up. Owner thread; reads at most four index buckets.
+     */
+    public void terrainChanged(String world, BlockPos at) {
+        if (!available()) return;
+        owner();
+        for (UUID npc : IdleFall.standingOn(index, world, at)) {
+            Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
+            if (value == null || value.supportQueued) continue;
+            value.supportQueued = true; supportOrder.addLast(value);
+        }
+    }
+    private boolean falls(Value value) {
+        return valueCurrent(value) && value.state.snapshot().active() && value.route == null && value.routeTask == null
+                && BodyMobility.falls(value.spec.type()) && mountRuntime.vehicleOf(value.spec.definition().id()) == null
+                && riders.riderOf(value.spec.definition().uuid()) == null;
+    }
+    private void tickSupport() {
+        int cells = SUPPORT_CELLS;
+        for (int i = 0, count = Math.min(SUPPORT_UPDATES, supportOrder.size()); i < count && cells > 0 && available(); i++) {
+            Value value = supportOrder.removeFirst();
+            WorldPosition at = value.state.snapshot().position();
+            if (!falls(value) || !host.worldLoaded(at.world())) { value.supportQueued = false; value.fallSpeed = 0; continue; }
+            boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
+            IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
+            cells -= step.sampled();
+            value.fallSpeed = step.speed();
+            boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
+            if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
+                value.state.move(new WorldPosition(at.world(), step.to())); index.upsert(value.state.snapshot());
+                value.poseRevision++; setPose(value, value.yaw, value.pitch, !falling);
+            }
+            if (falling) supportOrder.addLast(value);
+            else value.supportQueued = false;
+        }
+    }
     private void arrive(Route route) {
         Value value = route.value; if (!routeCurrent(route)) return;
         WaypointProgress progress = value.waypoints;
@@ -692,6 +766,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             mountRuntime.resolve();
             riders.tick();
             tickNavigation();
+            tickSupport();
             if (!available()) return; // Arrival listeners may disable the plugin or retire the entire runtime.
             mountRuntime.syncPassengers();
             mountRuntime.tickDragons();
@@ -968,6 +1043,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         accepted++;
         if (triggers != null) triggers.interaction(body.body.uuid(), host.id(viewer.player),
                 action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, false);
+        InteractionListener<P> listener = interactions;
+        if (listener != null && listener.interacted(viewer.player, body.body.uuid(), action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
         if (body.value.ride != null && action == RuntimeHost.Interaction.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
             String refusal = riders.request(viewer.player, mountRuntime.vehicle(body.value));
@@ -1053,7 +1130,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         closed = true;
         closeQuietly(ticker);
         for (Route route : List.copyOf(routeOrder)) stopRoute(route.value, "cancelled: runtime shutdown");
-        routeOrder.clear(); if (navigation != null) navigation.close();
+        routeOrder.clear(); supportOrder.clear(); if (navigation != null) navigation.close();
         for (RouteReadTask task : routeReads) task.cancelled = true;
         routeReads.clear(); routeReadQueue.clear(); routeReadCompletions.clear();
         for (SkinTask task : skinTasks) task.cancelled = true;
@@ -1079,6 +1156,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         final String routeSource;
         RouteReadTask routeTask; boolean routeReadQueued;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
+        boolean supportQueued; double fallSpeed;
         Vec3 restingPoint; long lastMotionTick; int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; AppearanceTask appearanceTask;

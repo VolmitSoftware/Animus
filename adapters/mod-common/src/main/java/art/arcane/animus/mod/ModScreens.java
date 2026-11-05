@@ -1,0 +1,226 @@
+package art.arcane.animus.mod;
+
+import art.arcane.animus.core.gui.GuiModel;
+import art.arcane.animus.core.gui.ScreenFrame;
+import art.arcane.animus.core.gui.ScreenHost;
+import art.arcane.animus.core.gui.ScreenManager;
+import art.arcane.animus.core.inventory.Economy;
+import art.arcane.animus.core.inventory.ItemOps;
+import art.arcane.animus.core.inventory.MatchRule;
+import art.arcane.animus.core.inventory.TradeInventory;
+import art.arcane.animus.core.npc.NpcItem;
+import com.mojang.brigadier.ParseResults;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.UUID;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvent;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
+
+/**
+ * Animus windows on mod servers, as vanilla chest menus that refuse every click (see {@link AnimusMenu}). Bound
+ * clicks run on the next server tick, outside the click packet. Mod servers have no standard economy API, so money
+ * is unavailable and money prices fail closed; item trades work.
+ */
+final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
+    static final String NO_ECONOMY = "mod servers have no standard economy API";
+    private final MinecraftServer server;
+    private final ModTicks ticks;
+    private final Economy economy;
+    private volatile ScreenManager<ServerPlayer, ItemStack> manager;
+
+    ModScreens(MinecraftServer server, ModTicks ticks, Economy economy) {
+        this.server = Objects.requireNonNull(server);
+        this.ticks = Objects.requireNonNull(ticks);
+        this.economy = Objects.requireNonNull(economy);
+    }
+
+    void bind(ScreenManager<ServerPlayer, ItemStack> manager) { this.manager = manager; }
+
+    @Override public UUID id(ServerPlayer player) { return player.getUUID(); }
+    @Override public String name(ServerPlayer player) { return player.getGameProfile().name(); }
+    @Override public Object viewer(ServerPlayer player, String property) {
+        return switch (property) {
+            case "world" -> ModWorldKeys.key(player.level());
+            case "health" -> (double) player.getHealth();
+            case "level" -> player.experienceLevel;
+            case "food" -> player.getFoodData().getFoodLevel();
+            case "sneaking" -> player.isShiftKeyDown();
+            case "x" -> player.getX();
+            case "y" -> player.getY();
+            case "z" -> player.getZ();
+            case "server.online" -> server.getPlayerCount();
+            case "server.max" -> server.getMaxPlayers();
+            default -> null;
+        };
+    }
+    @Override public boolean permitted(ServerPlayer player, String node) { return VanillaRuntimeHost.permitted(player.permissions(), node); }
+
+    @Override public Optional<Object> show(ServerPlayer player, ScreenFrame frame, Object window) {
+        if (frame.width() != 9) return Optional.empty();
+        if (window instanceof Window open && player.containerMenu == open.menu && open.title.equals(frame.title()) && open.menu.resolution().equals(frame.resolution())) {
+            fill(open.menu, frame);
+            open.menu.broadcastChanges();
+            return Optional.of(open);
+        }
+        if (window instanceof Window open && player.containerMenu == open.menu) open.menu.replaced = true;
+        Window next = new Window(frame.title());
+        OptionalInt id = player.openMenu(new SimpleMenuProvider((int container, Inventory inventory, net.minecraft.world.entity.player.Player owner) -> {
+            AnimusMenu menu = AnimusMenu.create(container, inventory, frame.rows(), frame.resolution(), (AnimusMenu clicked, int slot, GuiModel.Click click) -> clicked(player, next, slot, click),
+                    (AnimusMenu closed, net.minecraft.world.entity.player.Player who) -> closed(player, next));
+            next.menu = menu;
+            fill(menu, frame);
+            return menu;
+        }, Component.literal(frame.title())));
+        if (id.isEmpty() || next.menu == null) return Optional.empty();
+        return Optional.of(next);
+    }
+
+    private static final class Window {
+        final String title;
+        AnimusMenu menu;
+        Window(String title) { this.title = title; }
+    }
+
+    private void clicked(ServerPlayer player, Window window, int slot, GuiModel.Click click) {
+        ScreenManager<ServerPlayer, ItemStack> current = manager;
+        if (current != null) ticks.later(() -> { if (!player.hasDisconnected()) current.click(player, window, slot, click); });
+    }
+
+    private void closed(ServerPlayer player, Window window) {
+        ScreenManager<ServerPlayer, ItemStack> current = manager;
+        if (current != null) current.closed(player, window);
+    }
+
+    private void fill(AnimusMenu menu, ScreenFrame frame) {
+        for (int slot = 0; slot < menu.windowSize(); slot++) {
+            ScreenFrame.Item item = frame.items().get(slot);
+            menu.show(slot, item == null ? ItemStack.EMPTY : display(item));
+        }
+    }
+
+    private ItemStack display(ScreenFrame.Item item) {
+        return stack(item.item(), item.name(), item.lore(), new ArrayList<>())
+                .orElseGet(() -> stack(new NpcItem("minecraft:barrier", 1, Optional.empty(), Optional.empty()), item.name(), item.lore(), new ArrayList<>()).orElse(ItemStack.EMPTY));
+    }
+
+    @Override public void close(ServerPlayer player, Object window) {
+        if (window instanceof Window open && player.containerMenu == open.menu) {
+            open.menu.replaced = true;
+            player.closeContainer();
+        }
+    }
+
+    @Override public void message(ServerPlayer player, String text) { player.sendSystemMessage(Component.literal(text)); }
+    @Override public void actionBar(ServerPlayer player, String text) { player.sendSystemMessage(Component.literal(text), true); }
+    @Override public void title(ServerPlayer player, String title, String subtitle, int fadeIn, int stay, int fadeOut) {
+        player.connection.send(new ClientboundSetTitlesAnimationPacket(fadeIn, stay, fadeOut));
+        if (!subtitle.isEmpty()) player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(subtitle)));
+        player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(title)));
+    }
+    @Override public void sound(ServerPlayer player, String sound, String source, float volume, float pitch) {
+        Identifier id = Identifier.tryParse(sound.contains(":") ? sound : "minecraft:" + sound);
+        if (id == null) return;
+        Holder<SoundEvent> event = BuiltInRegistries.SOUND_EVENT.get(id).<Holder<SoundEvent>>map((Holder.Reference<SoundEvent> reference) -> reference)
+                .orElseGet(() -> Holder.direct(SoundEvent.createVariableRangeEvent(id)));
+        SoundSource category = SoundSource.MASTER;
+        for (SoundSource candidate : SoundSource.values()) if (candidate.getName().equals(source.toLowerCase(Locale.ROOT))) category = candidate;
+        player.connection.send(new ClientboundSoundPacket(event, category, player.getX(), player.getY(), player.getZ(), volume, pitch, player.getRandom().nextLong()));
+    }
+    @Override public void command(Optional<ServerPlayer> player, String command) {
+        CommandSourceStack source = player.map(ServerPlayer::createCommandSourceStack).orElseGet(server::createCommandSourceStack);
+        Commands commands = server.getCommands();
+        ParseResults<CommandSourceStack> parsed = commands.getDispatcher().parse(command, source);
+        commands.performCommand(parsed, command);
+    }
+    @Override public void broadcast(String text) { server.getPlayerList().broadcastSystemMessage(Component.literal(text), false); }
+
+    @Override public TradeInventory<ItemStack> inventory(ServerPlayer player) {
+        Inventory inventory = player.getInventory();
+        return new TradeInventory<>() {
+            @Override public int size() { return 36; }
+            @Override public ItemStack get(int slot) { ItemStack stack = inventory.getItem(slot); return stack.isEmpty() ? null : stack.copy(); }
+            @Override public void set(int slot, ItemStack stack) { inventory.setItem(slot, stack == null ? ItemStack.EMPTY : stack); }
+        };
+    }
+    @Override public ItemOps<ItemStack> items() { return VanillaItems.INSTANCE; }
+
+    @Override public Optional<ItemStack> stack(NpcItem item, Optional<String> name, List<String> lore, List<String> errors) {
+        ItemStack stack = VanillaRuntimeHost.stack(server, item, "$.item", errors);
+        if (stack == null) return Optional.empty();
+        name.ifPresent((String text) -> stack.set(DataComponents.CUSTOM_NAME, plain(text)));
+        if (!lore.isEmpty()) {
+            List<Component> lines = new ArrayList<>();
+            for (String line : lore) lines.add(plain(line));
+            stack.set(DataComponents.LORE, new ItemLore(lines));
+        }
+        return Optional.of(stack);
+    }
+
+    private static Component plain(String text) { return Component.literal(text).setStyle(Style.EMPTY.withItalic(false)); }
+
+    @Override public void drop(ServerPlayer player, ItemStack stack) {
+        ItemEntity entity = new ItemEntity(player.level(), player.getX(), player.getEyeY() - 0.3, player.getZ(), stack);
+        player.level().addFreshEntity(entity);
+    }
+
+    @Override public Economy economy() { return economy; }
+
+    /** Server shutdown: closes every Animus window on the server thread. */
+    void closeAll() {
+        ScreenManager<ServerPlayer, ItemStack> current = manager;
+        if (current == null) return;
+        for (UUID id : current.clear()) {
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
+            if (player != null && player.containerMenu instanceof AnimusMenu menu) { menu.replaced = true; player.closeContainer(); }
+        }
+    }
+
+    /** Vanilla stacks. */
+    static final class VanillaItems implements ItemOps<ItemStack> {
+        static final VanillaItems INSTANCE = new VanillaItems();
+        @Override public boolean empty(ItemStack stack) { return stack == null || stack.isEmpty(); }
+        @Override public int count(ItemStack stack) { return empty(stack) ? 0 : stack.getCount(); }
+        @Override public ItemStack withCount(ItemStack stack, int count) { return stack.copyWithCount(count); }
+        @Override public int maxStackSize(ItemStack stack) { return Math.max(1, stack.getMaxStackSize()); }
+        @Override public boolean matches(ItemStack held, ItemStack wanted, MatchRule rule) {
+            if (empty(held) || wanted == null || !ItemStack.isSameItem(held, wanted)) return false;
+            return switch (rule) {
+                case MATERIAL -> true;
+                case STRICT -> ItemStack.isSameItemSameComponents(held, wanted);
+                case LEGACY -> Objects.equals(held.get(DataComponents.DAMAGE), wanted.get(DataComponents.DAMAGE))
+                        && Objects.equals(held.get(DataComponents.CUSTOM_NAME), wanted.get(DataComponents.CUSTOM_NAME))
+                        && Objects.equals(held.get(DataComponents.LORE), wanted.get(DataComponents.LORE))
+                        && Objects.equals(held.get(DataComponents.ENCHANTMENTS), wanted.get(DataComponents.ENCHANTMENTS))
+                        && Objects.equals(held.get(DataComponents.POTION_CONTENTS), wanted.get(DataComponents.POTION_CONTENTS))
+                        && Objects.equals(held.get(DataComponents.WRITABLE_BOOK_CONTENT), wanted.get(DataComponents.WRITABLE_BOOK_CONTENT))
+                        && Objects.equals(held.get(DataComponents.WRITTEN_BOOK_CONTENT), wanted.get(DataComponents.WRITTEN_BOOK_CONTENT));
+            };
+        }
+        @Override public String describe(ItemStack stack, int count) { return count + "x " + stack.getHoverName().getString(); }
+    }
+
+}

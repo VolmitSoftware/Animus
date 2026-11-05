@@ -33,6 +33,11 @@ class BehaviorCatalogTest {
         for(String id:List.of("pack:/name","pack:name/","pack:one//two","pack:../name","pack:a.b","Pack:name","pack:con","aux:name","pack:lpt9/a","pack:a\\b","pack:"+"a".repeat(65),"a:"+"b".repeat(255)))assertThrows(IllegalArgumentException.class,()->BehaviorPath.forId(id),id);
         for(String path:List.of("behaviors/a.json","behaviors/a/name.JSON","behaviors/a/name.json.json","behaviors/a//name.json","../behaviors/a/name.json"))assertThrows(IllegalArgumentException.class,()->BehaviorPath.idFor(path));
     }
+    @Test void reusableRoutesLiveOutsideTheBehaviorTreeAndNeverValidateAsBehaviors()throws Exception{
+        put("sample:test",1,EMPTY);write("routes/demo-terrain.json","{\"schemaVersion\":1,\"mode\":\"walk\",\"points\":[{\"x\":1,\"y\":64,\"z\":1}]}");
+        var catalog=catalog();assertTrue(reload(catalog).published());var validation=catalog.validate(catalog.snapshot().generation());
+        assertTrue(validation.valid());assertEquals(Set.of(BehaviorPath.forId("sample:test")),catalog.snapshot().entries().keySet());
+    }
     @Test void initialLoadIsReadOnlyAndRevisionEnvelopeIsDistinctFromStandaloneCompiler()throws Exception{
         Map<String,String> empty=tree(root);var catalog=catalog();assertTrue(reload(catalog).published());assertEquals(empty,tree(root));assertTrue(catalog.snapshot().entries().isEmpty());
         Path file=put("example:quests/greet",1,EMPTY);Map<String,String> before=tree(root);var loaded=reload(catalog);assertTrue(loaded.published());assertEquals(before,tree(root));

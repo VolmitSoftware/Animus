@@ -302,6 +302,21 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         return result;
     }
 
+    /** The main-arm swing a player shows when placing a block. */
+    @Override public CompletionStage<Void> swing(Player viewer, BodyTransport.Body presented) {
+        Body body = checkBody(presented);
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        Presentation presentation = session.visible.get(body.entityId);
+        if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, false, () -> {
+            if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned");
+            write(session, List.of(nativeApi.swing(body.entityId))).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
     @Override public boolean equipmentAvailable() { return nativeApi.equipment != null; }
 
     /** Viewer-local items on a visible body. An empty stack clears its slot. Call on the viewer's owner: stacks convert here. */
@@ -555,7 +570,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final Method identifierParse, registryContains, registryValue, typeWidth, typeHeight;
         private final Constructor<?> addEntity, removeEntities, removePlayerInfo, vector, movement, positionValues;
         private final Method positionPath;
-        private final Constructor<?> friendlyBuffer, rotateHead, setPassengers;
+        private final Constructor<?> friendlyBuffer, rotateHead, setPassengers, animate;
         private final Method writeVarInt, writeVarIntArray;
         private final Constructor<?> profile, property, propertyMap, playerInfoEntry, playerInfoPacket, metadataPacket;
         private final Method multimapCreate, multimapPut, dataValueCreate;
@@ -597,6 +612,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             writeVarIntArray = friendly.getMethod("writeVarIntArray", int[].class);
             rotateHead = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundRotateHeadPacket", friendly);
             setPassengers = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundSetPassengersPacket", friendly);
+            animate = decodedPacketConstructor("net.minecraft.network.protocol.game.ClientboundAnimatePacket", friendly);
             Class<?> positionSync = type("net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket");
             steppedMovement = version.equals("26.3");
             if (steppedMovement) {
@@ -780,6 +796,16 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 writeVarInt.invoke(buffer, id);
                 bytes.writeByte((byte) (int) Math.floor((yaw % 360.0) * 256.0 / 360.0));
                 return rotateHead.newInstance(buffer);
+            } finally { bytes.release(); }
+        }
+        /** Animation 0 swings the main arm. */
+        private Object swing(int id) throws ReflectiveOperationException {
+            ByteBuf bytes = Unpooled.buffer(8);
+            try {
+                Object buffer = friendlyBuffer.newInstance(bytes);
+                writeVarInt.invoke(buffer, id);
+                bytes.writeByte(0);
+                return animate.newInstance(buffer);
             } finally { bytes.release(); }
         }
         private Object passengers(int vehicle, int[] passengers) throws ReflectiveOperationException {

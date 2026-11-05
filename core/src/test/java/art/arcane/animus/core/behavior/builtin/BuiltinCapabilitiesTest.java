@@ -44,7 +44,7 @@ class BuiltinCapabilitiesTest {
         @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
     };
     private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "look", "set-appearance",
-            "set-equipment", "play-sound", "spawn-particle", "combat-control", "set-flag", "set-quest-state", "advance-quest-state");
+            "set-equipment", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui");
     private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state");
 
     private final RecordingPlatform platform = new RecordingPlatform();
@@ -115,6 +115,22 @@ class BuiltinCapabilitiesTest {
         Outcome<String> outcome = settle(handle.result());
         assertEquals(Outcome.Status.OK, outcome.status(), outcome.diagnostics().toString());
         assertEquals(List.of("say:true:0.0:Hello"), platform.calls);
+    }
+
+    @Test void openShopOpensForTheTriggeringPlayerOnTheOwner() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("open-shop", "{\"shop\":\"town:baker\"}").status());
+        assertEquals(List.of("screen:SHOP:town:baker"), platform.calls);
+        assertEquals(Outcome.Status.OK, action("open-gui", "{\"gui\":\"town:menu\"}").status());
+        assertEquals("screen:GUI:town:menu", platform.calls.get(1));
+        assertEquals("no-triggering-player", code(action("open-shop", "{\"shop\":\"town:baker\"}", Optional.empty(), false, false, Optional.empty())));
+        assertEquals("preview-refused", code(action("open-shop", "{\"shop\":\"town:baker\"}", Optional.of(PLAYER), true, false, Optional.empty())));
+    }
+
+    @Test void openShopNamesAShopId() throws Exception {
+        start();
+        assertEquals(Outcome.Status.INVALID, action("open-shop", "{\"shop\":\"Baker Shop\"}").status());
+        assertTrue(platform.calls.isEmpty());
     }
 
     @Test void sayCanReachNearbyViewers() throws Exception {
