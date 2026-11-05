@@ -27,7 +27,8 @@ import java.util.UUID;
  */
 public final class BuildSession {
     public static final int SCHEMA_VERSION = 1;
-    private static final int TICKS_PER_SECOND = 20, WAIT_RETRY_TICKS = 40, WALK_RETRY_TICKS = 20, MOVE_LEG = 30, MOVE_RISE = 7;
+    private static final int TICKS_PER_SECOND = 20, WAIT_RETRY_TICKS = 40, WALK_RETRY_TICKS = 20, MOVE_LEG = 30, MOVE_RISE = 7, REACH_SCAN = 64;
+    private static final double STALL = .5;
     private static final String EXCAVATION_TOOL = "minecraft:iron_pickaxe";
 
     public enum State {
@@ -59,9 +60,13 @@ public final class BuildSession {
 
     private static final class Claim {
         final int step;
-        final long since;
+        long since;
         Optional<BlockPos> stand = Optional.empty();
         long nextWalk;
+        int walks;
+        double lastDistance;
+        /** Walking got no closer; grounded: no scaffold fits, so the move timeout decides. */
+        boolean stalled, grounded;
         Claim(int step, long since) { this.step = step; this.since = since; }
     }
     private enum Check { WORK, DONE, WAIT }
@@ -81,6 +86,7 @@ public final class BuildSession {
     private final Map<String, Claim> claims = new LinkedHashMap<>();
     private final Map<String, Long> nextPlace = new HashMap<>();
     private final Map<String, Optional<String>> held = new HashMap<>();
+    private final ScaffoldCrew scaffolds;
     private BuildPlan plan;
     private MaterialRules.Need[] needs;
     private final Map<String, MaterialRules.Need> partNeeds = new HashMap<>();
@@ -108,6 +114,7 @@ public final class BuildSession {
         this.state = Objects.requireNonNull(state); this.listener = Objects.requireNonNull(listener);
         if (team.isEmpty()) throw new IllegalArgumentException("A build needs a leader NPC");
         this.team.addAll(team);
+        scaffolds = new ScaffoldCrew(world, options, ledger, journal, startedBy, nextPlace, held, () -> listener.changed(this));
     }
 
     public String id() { return id; }
@@ -154,7 +161,15 @@ public final class BuildSession {
         state = State.FAILED;
         reason = why;
         releaseClaims(null);
+        scaffolds.abandonAll();
         listener.changed(this);
+    }
+    /** Scaffolding blocks the build has standing now. */
+    public int scaffolding() { return scaffolds.standing(); }
+    /** Takes every scaffolding block down at once, without the NPCs, as at shutdown. Owner thread. */
+    public void dismantle(Context context) {
+        scaffolds.abandonAll();
+        scaffolds.dismantle(context, npc(context.crew()), true);
     }
 
     // Commands
@@ -191,6 +206,8 @@ public final class BuildSession {
         state = State.UNDOING;
         reason = "";
         undoRemaining = journal.size();
+        // Scaffolding still standing comes down with the rest of the journal.
+        scaffolds.forget();
         listener.changed(this);
         return "Undoing " + journal.size() + " changes of build " + id + (journal.truncated() ? "; the journal was full, so later changes stay" : "");
     }
@@ -204,6 +221,7 @@ public final class BuildSession {
         if (npc.equals(leader())) throw new IllegalArgumentException("The leader cannot leave; cancel the build instead");
         if (!team.remove(npc)) throw new IllegalArgumentException(npc + " is not on build " + id);
         if (claims.remove(npc) != null) crew.stop(npc);
+        scaffolds.abandon(npc);
         listener.changed(this);
     }
 
@@ -224,7 +242,8 @@ public final class BuildSession {
         switch (state) {
             case RUNNING, WAITING -> build(context);
             case UNDOING -> revert(context);
-            default -> { }
+            case PAUSED, CANCELLED -> lower(context);
+            case FINISHED, FAILED, UNDONE -> { if (!scaffolds.empty()) { scaffolds.abandonAll(); scaffolds.dismantle(context, npc(context.crew()), false); } }
         }
     }
 
@@ -236,10 +255,10 @@ public final class BuildSession {
         state = State.RUNNING;
         reason = "";
         advance();
-        if (cursor >= plan.size()) { finish(context.crew()); return; }
+        if (cursor >= plan.size()) { if (lower(context)) finish(context.crew()); return; }
         if (!context.world().worldLoaded(world)) { waitFor("the build's world is not loaded", before, waitingFor); return; }
-        List<BuildCrew.Member> active = new ArrayList<>();
-        for (String npc : team) context.crew().member(npc).filter((BuildCrew.Member member) -> member.position().world().equals(world)).ifPresent(active::add);
+        List<BuildCrew.Member> active = active(context.crew());
+        scaffolds.dismantle(context, npc(context.crew()), false);
         if (active.isEmpty()) { waitFor("no builder NPC is active in the build's world", before, waitingFor); return; }
         runTicks++;
         String wait = null;
@@ -249,49 +268,131 @@ public final class BuildSession {
         }
         advance();
         if (wait != null) { waitFor(wait, before, waitingFor); return; }
-        if (cursor >= plan.size()) { finish(context.crew()); return; }
+        if (cursor >= plan.size()) { if (lower(context)) finish(context.crew()); return; }
         if (before == State.WAITING) listener.changed(this);
+    }
+
+    /** Team members active in the build's world; the scaffolding of any other member is taken down without it. */
+    private List<BuildCrew.Member> active(BuildCrew crew) {
+        List<BuildCrew.Member> active = new ArrayList<>();
+        for (String npc : team) {
+            Optional<BuildCrew.Member> member = crew.member(npc).filter((BuildCrew.Member found) -> found.position().world().equals(world));
+            if (member.isPresent()) active.add(member.get()); else scaffolds.abandon(npc);
+        }
+        return active;
+    }
+
+    /** The NPCs climb down and take their scaffolding with them. True once none is left. */
+    private boolean lower(Context context) {
+        if (scaffolds.empty()) return true;
+        scaffolds.lowerAll();
+        if (context.world().worldLoaded(world)) for (BuildCrew.Member member : active(context.crew())) scaffolds.turn(member, context, tick);
+        scaffolds.dismantle(context, npc(context.crew()), false);
+        return scaffolds.empty();
     }
 
     /** One NPC's turn. Returns why the build must wait, or null. */
     private String work(BuildCrew.Member member, Context context) {
         Claim claim = claims.get(member.id());
+        if (scaffolds.busy(member.id())) {
+            if (claim != null) claim.since = tick;
+            return scaffolds.turn(member, context, tick);
+        }
         if (claim == null) {
             int end = plan.segmentEnd(cursor);
+            Optional<Scaffold> scaffold = scaffolds.of(member.id());
+            if (scaffold.isPresent()) {
+                // Work from the scaffold while it reaches anything left in this part of the build.
+                int looked = 0;
+                for (int step = done.nextClearBit(cursor); step < end && claim == null && looked++ < REACH_SCAN; step = done.nextClearBit(step + 1)) {
+                    if (claimed(step) || !ScaffoldPlanner.reaches(scaffold.get().stand(), plan.stepPosition(step), options.reach())) continue;
+                    if (!context.budget().check()) return null;
+                    Check checked = check(step, member.uuid(), context);
+                    if (checked == Check.WAIT) return reason;
+                    if (checked == Check.WORK) claim = claim(member, step, context);
+                }
+            }
             for (int step = done.nextClearBit(cursor); step < end && claim == null; step = done.nextClearBit(step + 1)) {
                 if (claimed(step)) continue;
                 if (!context.budget().check()) return null;
                 Check checked = check(step, member.uuid(), context);
                 if (checked == Check.WAIT) return reason;
                 if (checked == Check.DONE) continue;
-                claim = new Claim(step, tick);
-                claims.put(member.id(), claim);
-                claim.stand = StandPoints.near(context.world().collision(world), plan.stepPosition(step), member.position().point(), options.reach(), member.height());
-                hold(member.id(), context);
+                claim = claim(member, step, context);
             }
             advance();
             if (claim == null) return null;
         }
         BlockPos at = plan.stepPosition(claim.step);
+        if (scaffolds.aborted(member.id())) claim.grounded = true;
+        Optional<Scaffold> scaffold = scaffolds.of(member.id());
+        if (scaffold.isPresent()) {
+            if (!ScaffoldPlanner.reaches(scaffold.get().stand(), at, options.reach())) {
+                scaffolds.follow(member, at, plan, context);
+                claim.since = tick;
+                return scaffolds.turn(member, context, tick);
+            }
+            claim.stand = Optional.of(scaffold.get().stand());
+        } else if (climb(member, claim, at) && context.budget().check()) {
+            if (scaffolds.start(member, at, upcoming(), plan, context)) {
+                claim.since = tick;
+                return scaffolds.turn(member, context, tick);
+            }
+            claim.grounded = true;
+        }
         Vec3 centre = StandPoints.centre(at);
         double distance = member.position().point().distance(centre);
         boolean timedOut = tick - claim.since > (long) options.moveTimeoutSeconds() * TICKS_PER_SECOND;
         boolean inside = !plan.target(claim.step).air() && occupies(member, claim.step);
-        if (distance > options.reach() && !timedOut) {
+        if ((distance > options.reach() || inside && claim.stand.isPresent()) && !timedOut) {
             if (!context.crew().routing(member.id()) && tick >= claim.nextWalk) {
+                if (claim.walks > 0 && distance > claim.lastDistance - STALL) claim.stalled = true;
+                claim.walks++;
+                claim.lastDistance = distance;
                 claim.nextWalk = tick + WALK_RETRY_TICKS;
                 walk(member, claim, centre, context.crew());
             }
             return null;
         }
         if (tick < nextPlace.getOrDefault(member.id(), 0L)) return null;
-        if ((inside || timedOut && distance > options.reach()) && claim.stand.isPresent()) {
+        if (timedOut && (inside || distance > options.reach()) && claim.stand.isPresent()) {
+            // Last resort after the move timeout: move the NPC next to the block.
             BlockPos stand = claim.stand.get();
             context.crew().relocate(member.id(), new WorldPosition(world, new Vec3(stand.x() + .5, stand.y(), stand.z() + .5)));
         }
         if (!context.budget().place()) return null;
+        hold(member.id(), context);
         return place(member, claim, context);
     }
+
+    private Claim claim(BuildCrew.Member member, int step, Context context) {
+        Claim claim = new Claim(step, tick);
+        claims.put(member.id(), claim);
+        claim.stand = StandPoints.near(context.world().collision(world), plan.stepPosition(step), member.position().point(), options.reach(), member.height());
+        hold(member.id(), context);
+        return claim;
+    }
+
+    /**
+     * Whether to put up scaffolding for the claimed block: it is too high to reach from where the NPC stands and no place
+     * near it holds the NPC, or the NPC cannot walk to the raised place that does.
+     */
+    private boolean climb(BuildCrew.Member member, Claim claim, BlockPos at) {
+        if (!options.scaffolding() || claim.grounded) return false;
+        double rise = at.y() + .5 - member.position().point().y();
+        return rise > options.reach() - .5 && claim.stand.isEmpty() || claim.stalled && rise > 1.5;
+    }
+
+    /** Where the next blocks of the build go, so a scaffold can be placed to reach many of them. */
+    private List<BlockPos> upcoming() {
+        List<BlockPos> next = new ArrayList<>(REACH_SCAN);
+        for (int step = done.nextClearBit(cursor); step < plan.size() && next.size() < REACH_SCAN; step = done.nextClearBit(step + 1))
+            if (!plan.excavation(step) && !claimed(step)) next.add(plan.stepPosition(step));
+        return next;
+    }
+
+    /** The NPC protection is asked about for work no NPC does in person. */
+    private UUID npc(BuildCrew crew) { return crew.member(leader()).map(BuildCrew.Member::uuid).orElse(new UUID(0, 0)); }
 
     private void walk(BuildCrew.Member member, Claim claim, Vec3 centre, BuildCrew crew) {
         Vec3 goal = claim.stand.map((BlockPos stand) -> new Vec3(stand.x() + .5, stand.y(), stand.z() + .5)).orElse(centre);
@@ -398,6 +499,8 @@ public final class BuildSession {
             }
         Optional<String> current = context.world().block(world, at);
         if (current.isEmpty()) { refused++; complete(step); return Check.DONE; }
+        // Air the build wants where its own scaffolding stands comes when the scaffolding does.
+        if (plan.target(step).air() && scaffolds.holds(at)) { skipped++; complete(step); return Check.DONE; }
         if (plan.excavation(step)) {
             if (air(current.get()) || current.get().equals(plan.design(step).toString())) { skipped++; complete(step); return Check.DONE; }
         } else if (unit.isEmpty() && current.get().equals(plan.target(step).toString())) { skipped++; complete(step); return Check.DONE; }
@@ -538,14 +641,17 @@ public final class BuildSession {
 
     /**
      * Items still needed by the steps not yet done, by item: an upper bound, since blocks already in place are only
-     * found when the NPC reaches them. Creative builds need nothing.
+     * found when the NPC reaches them. Creative builds need nothing. A build that may use scaffolding also counts enough
+     * scaffolding for one column to its top; scaffolding comes back to the build when it is taken down.
      */
     public Map<String, Long> remaining() {
         Map<String, Long> totals = new TreeMap<>();
         if (plan == null || options.materials() == BuildOptions.Materials.CREATIVE || worldAccess == null) return totals;
         int[] perPalette = new int[needs.length];
+        int highest = Integer.MIN_VALUE;
         for (int step = Math.max(cursor, plan.excavations()); step < plan.size(); step++) {
             if (done.get(step)) continue;
+            highest = Math.max(highest, plan.stepPosition(step).y());
             if (!unitSteps.get(step)) { perPalette[plan.paletteIndex(step)]++; continue; }
             for (BuildPlan.Part part : plan.unit(step).orElseThrow().parts()) {
                 MaterialRules.Need need = partNeed(part.state().toString(), worldAccess);
@@ -557,6 +663,10 @@ public final class BuildSession {
             MaterialRules.Need need = need(index, worldAccess);
             if (need.kind() == MaterialRules.Kind.ITEM) totals.merge(need.item(), (long) need.count() * perPalette[index], Long::sum);
         }
+        // A stand one block under the highest block, on a column from the ground at the origin, less what already stands.
+        int column = highest - origin.y() - 1;
+        if (options.scaffolding() && highest + .5 - origin.y() > options.reach() - .5 && column > scaffolds.standing())
+            totals.merge(ScaffoldPlanner.BLOCK, (long) column - scaffolds.standing(), Long::sum);
         return totals;
     }
     /** Lets survey and donations price items before the first tick. */
@@ -590,6 +700,7 @@ public final class BuildSession {
                 .append(" no-item=").append(unobtainable).append(" refused=").append(refused)
                 .append(" | materials=").append(options.materials().name().toLowerCase(Locale.ROOT))
                 .append(" | undo=").append(journal.size()).append(journal.truncated() ? " (full)" : "");
+        if (scaffolds.standing() > 0) text.append(" | scaffolding=").append(scaffolds.standing());
         if (state == State.RUNNING) eta().ifPresent((String eta) -> text.append(" | eta=").append(eta));
         if (state == State.UNDONE || state == State.UNDOING) text.append(" | restored=").append(reverted).append(" kept=").append(undoSkipped);
         if (!reason.isEmpty()) text.append(" | ").append(reason);
@@ -675,6 +786,7 @@ public final class BuildSession {
         undo.addProperty("full", journal.truncated());
         undo.addProperty("remaining", undoRemaining);
         json.add("undo", undo);
+        if (!scaffolds.empty()) json.add("scaffolding", scaffolds.toJson());
         return json;
     }
 
@@ -702,6 +814,7 @@ public final class BuildSession {
             session.undoRemaining = json.getAsJsonObject("undo").get("remaining").getAsInt();
             if (session.undoRemaining > journal.size()) throw new IllegalArgumentException("undo position past the journal");
             if (state == State.WAITING) session.retryAt = 0;
+            if (json.has("scaffolding")) session.scaffolds.restore(json.getAsJsonArray("scaffolding"));
             return session;
         } catch (RuntimeException invalid) {
             throw new IllegalArgumentException("Invalid saved build: " + invalid.getMessage(), invalid);
