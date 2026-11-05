@@ -5,6 +5,7 @@ import art.arcane.animus.core.npc.ArmorStandLook;
 import art.arcane.animus.core.npc.NpcAppearance;
 import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.presentation.BodyLook;
+import art.arcane.animus.core.presentation.BodyRules;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -17,14 +18,20 @@ import java.util.*;
  */
 final class NativePresentation {
     private final Method dataValue;
-    private final Object sharedFlags, pose, standFlags, translation, billboard, text, lineWidth;
+    private final Object sharedFlags, pose, standFlags, translation, billboard, text, lineWidth, styleFlags, viewRange, interpolationStart,
+            interpolationDuration, livingFlags;
+    private final Map<BodyRules.BabyFlag, Object> babies = new EnumMap<>(BodyRules.BabyFlag.class);
+    /** The team colour setter, and the enum its argument names: ChatFormatting on 26.1, TeamColor inside an Optional later. */
+    private final Method setColor;
+    private final Class<? extends Enum> colors;
+    private final boolean optionalColor;
     private final Map<ArmorStandLook.Part, Object> standPoses = new EnumMap<>(ArmorStandLook.Part.class);
     private final Class<? extends Enum> poses;
     private final Constructor<?> rotations, vector, scoreboard, team;
     private final Method literal, empty, append, setStyle, withColor, fromRgb, withBold, withItalic, withUnderlined, withStrikethrough, withObfuscated;
     private final Object plainStyle;
     private final Method teamVisibility, teamCollision, addMember, addTeam, removeTeam;
-    private final Object never, noCollision;
+    private final Object never, always, noCollision;
 
     @SuppressWarnings("unchecked")
     NativePresentation(Method dataValue) throws ReflectiveOperationException {
@@ -41,6 +48,18 @@ final class NativePresentation {
         for (Map.Entry<ArmorStandLook.Part, String> part : names.entrySet()) standPoses.put(part.getKey(), accessor(stand, part.getValue()));
         translation = accessor(display, "DATA_TRANSLATION_ID"); billboard = accessor(display, "DATA_BILLBOARD_RENDER_CONSTRAINTS_ID");
         text = accessor(textDisplay, "DATA_TEXT_ID"); lineWidth = accessor(textDisplay, "DATA_LINE_WIDTH_ID");
+        styleFlags = accessor(textDisplay, "DATA_STYLE_FLAGS_ID"); viewRange = accessor(display, "DATA_VIEW_RANGE_ID");
+        interpolationStart = accessor(display, "DATA_TRANSFORMATION_INTERPOLATION_START_DELTA_TICKS_ID");
+        interpolationDuration = accessor(display, "DATA_TRANSFORMATION_INTERPOLATION_DURATION_ID");
+        livingFlags = accessor(Class.forName("net.minecraft.world.entity.LivingEntity"), "DATA_LIVING_ENTITY_FLAGS");
+        // A baby flag this server keeps elsewhere only leaves those bodies grown; the rest of the presentation still works.
+        Map<BodyRules.BabyFlag, String> owners = Map.of(BodyRules.BabyFlag.AGEABLE, "net.minecraft.world.entity.AgeableMob",
+                BodyRules.BabyFlag.ZOMBIE, "net.minecraft.world.entity.monster.zombie.Zombie", BodyRules.BabyFlag.PIGLIN, "net.minecraft.world.entity.monster.piglin.Piglin",
+                BodyRules.BabyFlag.ZOGLIN, "net.minecraft.world.entity.monster.Zoglin");
+        for (Map.Entry<BodyRules.BabyFlag, String> owner : owners.entrySet()) {
+            try { babies.put(owner.getKey(), accessor(Class.forName(owner.getValue()), "DATA_BABY_ID")); }
+            catch (ReflectiveOperationException missing) { /* stays grown */ }
+        }
         poses = (Class<? extends Enum>) Class.forName("net.minecraft.world.entity.Pose");
         for (NpcPose candidate : NpcPose.values()) Enum.valueOf((Class) poses, BodyLook.nativePose(candidate));
         rotations = Class.forName("net.minecraft.core.Rotations").getConstructor(float.class, float.class, float.class);
@@ -63,7 +82,15 @@ final class NativePresentation {
         scoreboard = board.getConstructor(); team = playerTeam.getConstructor(board, String.class);
         teamVisibility = playerTeam.getMethod("setNameTagVisibility", visibility);
         teamCollision = playerTeam.getMethod("setCollisionRule", collision);
-        never = Enum.valueOf((Class) visibility, "NEVER"); noCollision = Enum.valueOf((Class) collision, "NEVER");
+        never = Enum.valueOf((Class) visibility, "NEVER"); always = Enum.valueOf((Class) visibility, "ALWAYS"); noCollision = Enum.valueOf((Class) collision, "NEVER");
+        Method colorSetter = null;
+        for (Method method : playerTeam.getMethods())
+            if (method.getName().equals("setColor") && method.getParameterCount() == 1
+                    && (method.getParameterTypes()[0].isEnum() || method.getParameterTypes()[0] == Optional.class)) colorSetter = method;
+        if (colorSetter == null) throw new NoSuchMethodException("PlayerTeam.setColor");
+        setColor = colorSetter;
+        optionalColor = colorSetter.getParameterTypes()[0] == Optional.class;
+        colors = optionalColor ? (Class<? extends Enum>) Class.forName("net.minecraft.world.scores.TeamColor") : (Class<? extends Enum>) colorSetter.getParameterTypes()[0];
         addMember = board.getMethod("addPlayerToTeam", String.class, playerTeam);
         Class<?> packet = Class.forName("net.minecraft.network.protocol.game.ClientboundSetPlayerTeamPacket");
         addTeam = packet.getMethod("createAddOrModifyPacket", playerTeam, boolean.class);
@@ -78,11 +105,14 @@ final class NativePresentation {
 
     /** Metadata the body itself needs beyond the defaults; empty when it shows its plain standing look. */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    List<Object> bodyValues(BodyLook look) throws ReflectiveOperationException {
+    List<Object> bodyValues(BodyLook look, String typeKey) throws ReflectiveOperationException {
         List<Object> values = new ArrayList<>();
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        byte flags = BodyLook.sharedFlags(look.pose(), invisible);
+        byte flags = BodyLook.sharedFlags(look.pose(), invisible, look.traits().glowing());
         if (flags != 0) values.add(dataValue.invoke(null, sharedFlags, flags));
+        if (look.traits().usingItem()) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(true)));
+        Optional<BodyRules.BabyFlag> baby = look.traits().baby() ? BodyRules.babyFlag(typeKey) : Optional.empty();
+        if (baby.isPresent() && babies.containsKey(baby.get())) values.add(dataValue.invoke(null, babies.get(baby.get()), Boolean.TRUE));
         if (look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING)
             values.add(dataValue.invoke(null, pose, Enum.valueOf((Class) poses, BodyLook.nativePose(look.pose()))));
         if (look.armorStand().isPresent()) {
@@ -94,17 +124,22 @@ final class NativePresentation {
         return values;
     }
 
-    List<Object> textValues(String content, double lift) throws ReflectiveOperationException {
-        return List.of(dataValue.invoke(null, text, component(content)),
-                dataValue.invoke(null, billboard, BodyLook.BILLBOARD_CENTER),
+    List<Object> textValues(String content, double lift, BodyLook.TextStyle style) throws ReflectiveOperationException {
+        List<Object> values = new ArrayList<>(List.of(dataValue.invoke(null, text, component(content)),
+                dataValue.invoke(null, billboard, style.billboard()),
                 dataValue.invoke(null, lineWidth, BodyLook.LINE_WIDTH),
-                dataValue.invoke(null, translation, vector.newInstance(0f, (float) lift, 0f)));
+                dataValue.invoke(null, translation, vector.newInstance(0f, (float) lift, 0f))));
+        if (style.flags() != 0) values.add(dataValue.invoke(null, styleFlags, style.flags()));
+        if (style.viewRange() != 1f) values.add(dataValue.invoke(null, viewRange, style.viewRange()));
+        if (style.interpolationDelay() != 0) values.add(dataValue.invoke(null, interpolationStart, style.interpolationDelay()));
+        if (style.interpolationDuration() != 0) values.add(dataValue.invoke(null, interpolationDuration, style.interpolationDuration()));
+        return values;
     }
 
     /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
     Object visibility(BodyLook look, boolean hidden) throws ReflectiveOperationException {
         boolean invisible = hidden || look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        return dataValue.invoke(null, sharedFlags, BodyLook.sharedFlags(look.pose(), invisible));
+        return dataValue.invoke(null, sharedFlags, BodyLook.sharedFlags(look.pose(), invisible, look.traits().glowing()));
     }
 
     /** Formatted text as a styled vanilla component, so hex colours render; a plain literal would show them as codes. */
@@ -127,13 +162,21 @@ final class NativePresentation {
         return List.of(dataValue.invoke(null, sharedFlags, (byte) 0x20), dataValue.invoke(null, standFlags, (byte) BodyLook.SEAT_FLAGS));
     }
 
-    /** A team that hides one profile name tag; its own name never collides with a real team. */
-    Object[] hiddenNameTeam(int entityId, String profileName) throws ReflectiveOperationException {
+    /**
+     * A team of one body that hides its profile name tag when the look asks, and colours its name and glow with the
+     * team colour. Its own name never collides with a real team.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    Object[] bodyTeam(int entityId, String member, BodyLook look) throws ReflectiveOperationException {
         Object board = scoreboard.newInstance();
-        Object hidden = team.newInstance(board, "animus-" + Integer.toHexString(entityId));
-        teamVisibility.invoke(hidden, never);
-        teamCollision.invoke(hidden, noCollision);
-        addMember.invoke(board, profileName, hidden);
-        return new Object[]{addTeam.invoke(null, hidden, true), removeTeam.invoke(null, hidden)};
+        Object own = team.newInstance(board, "animus-" + Integer.toHexString(entityId));
+        teamVisibility.invoke(own, look.hideProfileName() ? never : always);
+        teamCollision.invoke(own, noCollision);
+        if (look.traits().teamColor().isPresent()) {
+            Object color = Enum.valueOf((Class) colors, look.traits().teamColor().get().toUpperCase(Locale.ROOT));
+            setColor.invoke(own, optionalColor ? Optional.of(color) : color);
+        }
+        addMember.invoke(board, member, own);
+        return new Object[]{addTeam.invoke(null, own, true), removeTeam.invoke(null, own)};
     }
 }

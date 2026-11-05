@@ -5669,6 +5669,49 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "whileNavigating": {
               "type": "boolean",
               "description": "Also look while following a route."
+            },
+            "npcs": {
+              "type": "boolean",
+              "description": "Also look at the nearest other NPC when no player is in range."
+            },
+            "randomLook": {
+              "type": "object",
+              "description": "With nobody to look at, turn to a random facing every delayTicks.",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "True by default."
+                },
+                "delayTicks": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 12000,
+                  "description": "Ticks between random turns. 60 by default."
+                },
+                "yaw": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": -360,
+                    "maximum": 360
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "[minimum, maximum] yaw in degrees. [0, 360] by default."
+                },
+                "pitch": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "[minimum, maximum] pitch in degrees. [0, 0] by default."
+                }
+              }
             }
           }
         }
