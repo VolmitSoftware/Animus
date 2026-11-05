@@ -99,8 +99,11 @@
 - The example `shop` pack uses a shop and a chest GUI instead of commands.
 - Citizens converter version 6 maps the `trader` trait.
 
+- Reusable routes live in `routes/<id>.json` instead of `behaviors/routes/`, so route files are no longer reported as invalid behaviors.
+
 ### Fixed
 
+- Idle NPCs fall when the blocks under them are removed by players, explosions, pistons, builds or build undo, instead of floating.
 - Imported Sentinel NPCs with `respawnTime` 0 stay dead; a negative value deletes the NPC on death, undoable with `/animus rollback`; imported guards never target their owner.
 - A player who logs out while riding is saved at the NPC's feet instead of beside it.
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
