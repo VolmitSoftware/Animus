@@ -4,6 +4,7 @@ import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.behavior.builtin.PlatformRefusals;
+import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.runtime.NpcRuntime;
@@ -44,10 +45,12 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     private final PersistedNpcService<ServerPlayer, ItemStack> living;
     private final ModCombat combat;
     private final ModTicks ticks;
+    private final BuildService<ServerPlayer, ItemStack> builds;
 
-    VanillaBehaviorPlatform(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, ModCombat combat, ModTicks ticks) {
+    VanillaBehaviorPlatform(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, ModCombat combat, BuildService<ServerPlayer, ItemStack> builds, ModTicks ticks) {
         this.server = Objects.requireNonNull(server); this.living = Objects.requireNonNull(living);
         this.combat = Objects.requireNonNull(combat); this.ticks = Objects.requireNonNull(ticks);
+        this.builds = Objects.requireNonNull(builds);
     }
 
     @Override public Optional<String> unavailable() { return PlatformRefusals.unavailability(living::available, living::status); }
@@ -181,6 +184,13 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     @Override public void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target) {
         NpcRuntime.ActiveNpc active = require(npc);
         PlatformRefusals.mapped(() -> combat.operate(active.state().npcId(), operation, target));
+    }
+
+    @Override public String build(NpcHandle npc, BuildOperation operation, Optional<String> schematic, Optional<Vec3> origin, java.util.Map<String, String> options) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        if (builds.unavailable().isPresent())
+            throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "build-unavailable", "Builds " + builds.unavailable().get());
+        return builds.behavior(active.id(), operation, schematic, origin, options);
     }
 
     private NpcRuntime.ActiveNpc require(NpcHandle npc) { return living.active(npc.uuid()).orElseThrow(PlatformRefusals::inactive); }

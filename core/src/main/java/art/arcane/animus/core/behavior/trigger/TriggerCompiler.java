@@ -68,7 +68,7 @@ public final class TriggerCompiler {
                 TriggerBinding.Phase phase = named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave");
                 yield new TriggerBinding.Proximity(phase, radius(object, path));
             }
-            case SPAWN, DESPAWN, DAMAGE, DEATH -> new TriggerBinding.Lifecycle(kind);
+            case SPAWN, DESPAWN, DAMAGE, DEATH, BUILD_FINISHED, BUILD_PAUSED -> new TriggerBinding.Lifecycle(kind);
             case WAYPOINT -> new TriggerBinding.Waypoint(object.has("waypoint") ? OptionalInt.of(integer(object, "waypoint", path, -1, MAX_WAYPOINT)) : OptionalInt.empty());
             case TIMER -> new TriggerBinding.Timer(integer(object, "intervalTicks", path, 1, MAX_INTERVAL_TICKS));
             case DIALOGUE_CHOICE -> new TriggerBinding.DialogueChoice(identifier(object, "dialogue", path),

@@ -18,6 +18,7 @@ import art.arcane.animus.api.Version;
 import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.BehaviorState;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.AppearanceChange;
+import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.BuildOperation;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.Audience;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.ChoiceOption;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.CombatOperation;
@@ -347,6 +348,21 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                             : Optional.of(named.get().equals("player") ? requirePlayer(call) : UUID.fromString(named.get()));
                     return onOwner(call, () -> { platform.combat(call.npc(), operation, target); return "{}"; });
                 });
+        action("build", Effect.WORLD, "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies.",
+                schema(choice("operation", "start", "pause", "resume", "cancel", "undo") + "," + string("schematic", 132) + "," + COORDINATES + ","
+                        + integer("rotation", 0, 270) + "," + choice("mirror", "none", "x", "z") + "," + choice("anchor", "center", "corner", "schematic") + ","
+                        + choice("pattern", "spiral", "reversespiral", "linear", "reverselinear") + "," + choice("materials", "creative", "donate") + ","
+                        + bool("excavate") + "," + bool("ignoreAir") + "," + bool("ignoreLiquids"), required("operation")),
+                BuiltinCapabilities::checkBuild,
+                call -> {
+                    BuildOperation operation = BuildOperation.valueOf(text(call.arguments, "operation").orElseThrow().toUpperCase(Locale.ROOT));
+                    Optional<String> schematic = text(call.arguments, "schematic");
+                    Optional<Vec3> origin = call.arguments.has("x") ? Optional.of(point(call.arguments)) : Optional.empty();
+                    Map<String, String> options = new LinkedHashMap<>();
+                    for (String name : List.of("rotation", "mirror", "anchor", "pattern", "materials", "excavate", "ignoreAir", "ignoreLiquids"))
+                        if (call.arguments.has(name)) options.put(name.toLowerCase(Locale.ROOT), call.arguments.get(name).getAsString());
+                    return onOwner(call, () -> platform.build(call.npc(), operation, schematic, origin, Map.copyOf(options)));
+                });
         action("set-flag", Effect.STATE_WRITE, "Sets a flag, true unless value says otherwise.",
                 schema(STATE + "," + bool("value"), required("name")),
                 (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
@@ -473,6 +489,17 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         if (arguments.has("skin")) matches(arguments, "skin", "[a-f0-9]{64}", problems);
         if (arguments.has("reset") && (!arguments.get("reset").getAsBoolean() || arguments.has("name") || arguments.has("skin")))
             problems.add(problem("$.reset", "appearance-reset", "reset must be true and cannot be combined with name or skin"));
+    }
+
+    private static void checkBuild(JsonObject arguments, List<Diagnostic> problems) {
+        boolean start = arguments.get("operation").getAsString().equals("start");
+        for (String name : List.of("schematic", "x", "y", "z", "rotation", "mirror", "anchor", "pattern", "materials", "excavate", "ignoreAir", "ignoreLiquids"))
+            if (!start && arguments.has(name)) problems.add(problem("$." + name, "build-option", name + " is used only by the start operation"));
+        if (arguments.has("x") != arguments.has("y") || arguments.has("y") != arguments.has("z"))
+            problems.add(problem("$.x", "build-origin", "give all of x, y and z, or none to build where the NPC stands"));
+        if (arguments.has("rotation") && arguments.get("rotation").getAsInt() % 90 != 0)
+            problems.add(problem("$.rotation", "build-rotation", "rotation must be 0, 90, 180 or 270"));
+        if (arguments.has("schematic")) matches(arguments, "schematic", "[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\\.(schem|nbt|schematic)", problems);
     }
 
     private static void checkCombat(JsonObject arguments, List<Diagnostic> problems) {
