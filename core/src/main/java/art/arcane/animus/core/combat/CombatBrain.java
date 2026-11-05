@@ -21,7 +21,8 @@ final class CombatBrain {
     private static final int STUCK_LIMIT = 3;
     private static final int VISIBILITY_CANDIDATES = 8;
     private static final double FIELD_OF_VIEW_COSINE = Math.cos(Math.toRadians(70));
-    private static final long GUARD_INTERVAL = 10;
+    private static final long GUARD_INTERVAL = GuardFollow.MINIMUM_REPLAN_TICKS;
+    private static final double HURRY_SPEED = 1.4;
     private static final long REGION_INTERVAL = 10;
     private static final int GREETING_MEMORY = 256;
 
@@ -39,6 +40,7 @@ final class CombatBrain {
     private final StrikeWindow rangedWindow = new StrikeWindow();
     private final Set<UUID> greeted = new HashSet<>();
     private final Map<UUID, Long> lastGreeting = new HashMap<>();
+    private final GuardFollow follow = new GuardFollow();
     private CombatState state = CombatState.IDLE;
     private TargetRef target;
     private TargetRef threat;
@@ -133,6 +135,7 @@ final class CombatBrain {
             engine.alertSquad(this, self, target);
         }
         if (threat != null) return flee(now, self);
+        if (target != null && chargeLeft(self)) lose(self);
         if (target != null) {
             long delay = fight(now, self);
             if (target != null) return delay;
@@ -394,7 +397,7 @@ final class CombatBrain {
         return new WorldPosition(self.position().world(), new Vec3(goal.x(), Math.floor(goal.y()), goal.z()));
     }
 
-    private enum Goal { PURSUE, RETURN, GUARD, FLEE }
+    private enum Goal { PURSUE, RETURN, FLEE }
 
     private void plan(long now, VirtualNpcState.Snapshot self, WorldPosition goal, Goal purpose) {
         if (now < nextPlan || !engine.takePath()) return;
@@ -483,20 +486,46 @@ final class CombatBrain {
 
     private long guarding(long now, VirtualNpcState.Snapshot self) {
         Optional<CombatTarget> charge = engine.resolve(guarded);
-        if (charge.isEmpty() || !charge.get().position().world().equals(self.position().world())) {
+        if (charge.isEmpty()) {
             if (state == CombatState.GUARDING) finish();
+            follow.reset();
             return GUARD_INTERVAL;
         }
         state = CombatState.GUARDING;
-        CombatSettings.Guard guard = settings.guard();
-        if (charge.get().position().point().distance(self.position().point()) > guard.followDistance() && now >= nextPlan) {
-            Vec3 center = charge.get().position().point();
-            double angle = engine.random().nextDouble() * Math.PI * 2;
-            double radius = engine.random().nextDouble() * guard.pointRange();
-            Vec3 point = new Vec3(center.x() + Math.cos(angle) * radius, Math.floor(center.y()), center.z() + Math.sin(angle) * radius);
-            plan(now, self, new WorldPosition(self.position().world(), point), Goal.GUARD);
+        WorldPosition at = charge.get().position();
+        GuardFollow.Step step = follow.next(now, self.position(), at, settings.guard(), settings.pursuit().replanTicks());
+        switch (step.action()) {
+            case CATCH_UP -> {
+                world.stop(npc);
+                moving = false;
+                for (Vec3 spot : GuardFollow.catchUpSpots(step.goal(), at)) {
+                    if (world.teleport(npc, new WorldPosition(at.world(), spot))) { follow.planned(now, at); return GUARD_INTERVAL; }
+                }
+                if (self.position().world().equals(at.world())) walk(now, step, at);
+            }
+            case WALK -> walk(now, step, at);
+            case HOLD -> {}
         }
         return GUARD_INTERVAL;
+    }
+
+    private void walk(long now, GuardFollow.Step step, WorldPosition charge) {
+        if (!engine.takePath()) return;
+        double speed = step.hurry() ? Math.min(engine.budgets().maximumSpeed(), speed() * HURRY_SPEED) : speed();
+        CombatWorld.MoveStatus status = world.move(npc, step.goal(), speed);
+        if (status == CombatWorld.MoveStatus.ACCEPTED) {
+            moving = true;
+            stuck = 0;
+            follow.planned(now, charge);
+        }
+    }
+
+    /** A guard stops fighting when its charge left it behind, so it can catch up. */
+    private boolean chargeLeft(VirtualNpcState.Snapshot self) {
+        if (guarded == null || settings.guard().catchUpDistance() <= 0) return false;
+        Optional<CombatTarget> charge = engine.resolve(guarded);
+        return charge.isPresent() && (!charge.get().position().world().equals(self.position().world())
+                || charge.get().position().point().distance(self.position().point()) > settings.guard().catchUpDistance());
     }
 
     private void setTarget(TargetRef ref, long now, VirtualNpcState.Snapshot self) {
@@ -697,6 +726,7 @@ final class CombatBrain {
 
     void guard(TargetRef charge) {
         guarded = charge;
+        follow.reset();
         if (charge == null && state == CombatState.GUARDING) finish();
         nextPlan = 0;
     }

@@ -116,7 +116,12 @@ public final class AnimusModRuntime {
             next.shops = new art.arcane.animus.core.shop.ShopService<>(next.runtime, next.screens, next.living, files,
                     (String name) -> Optional.ofNullable(server.getPlayerList().getPlayerByName(name)).map(ServerPlayer::getUUID), LOGGER::info);
             next.screens.bind(next.shops.screens());
-            next.living.interactions(next.shops::interacted);
+            art.arcane.animus.core.hire.HireService<ServerPlayer, ItemStack> hires = new art.arcane.animus.core.hire.HireService<>(next.runtime, next.shops.screens(), next.living, files,
+                    next.combat.hireGuarding(), LOGGER::info);
+            art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> clickShops = next.shops;
+            next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) -> hires.interacted(player, npc, attack, sneaking) || clickShops.interacted(player, npc, attack, sneaking));
+            next.ticks.every(hires::tick);
+            LOGGER.info(hires.status());
             art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
             next.ticks.every(() -> {
                 for (UUID viewer : screenService.screens().viewing()) {

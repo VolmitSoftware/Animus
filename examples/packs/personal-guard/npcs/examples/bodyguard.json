@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "uuid": "3fae0bdf-8635-501b-bff2-ea2001d65a89",
   "id": "bodyguard",
   "group": "examples",
-  "name": "Bodyguard",
+  "name": "&6Bodyguard",
   "type": "minecraft:player",
   "spawned": true,
   "position": {
@@ -32,10 +32,12 @@
       },
       "guard": {
         "followDistance": 4,
-        "pointRange": 2
+        "pointRange": 2,
+        "catchUpDistance": 24,
+        "replanDistance": 1.5
       },
       "pursuit": {
-        "speed": 5,
+        "speed": 6,
         "giveUpRange": 24,
         "leashRange": 32,
         "returnToPost": true
@@ -53,6 +55,26 @@
       "respawn": {
         "delayTicks": 200
       }
+    },
+    "animus:hire": {
+      "items": [
+        {
+          "id": "minecraft:emerald",
+          "count": 5
+        }
+      ],
+      "durationMinutes": 30
+    }
+  },
+  "hologram": {
+    "lines": [
+      "&eBodyguard for hire",
+      "&7Right-click to see the terms"
+    ]
+  },
+  "equipment": {
+    "main_hand": {
+      "id": "minecraft:iron_sword"
     }
   }
 }

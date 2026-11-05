@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.hire.CombatGuarding;
 import org.bukkit.inventory.ItemStack;
 import art.arcane.animus.core.runtime.CombatModule;
 import art.arcane.animus.core.runtime.PersistedNpcService;
@@ -141,6 +142,8 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
 
     /** Behavior operations. A refusal carries the reason back to the behavior. Owner thread only. */
     String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) { return module.operate(npc, operation, target); }
+    /** Hiring a bodyguard through this module. Owner thread only. */
+    CombatGuarding hireGuarding() { return new CombatGuarding(module); }
 
     private TargetRef reference(Entity entity) {
         if (entity instanceof Player) return new TargetRef(TargetKind.PLAYER, entity.getUniqueId());

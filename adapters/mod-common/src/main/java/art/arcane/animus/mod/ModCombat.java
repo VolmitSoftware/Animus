@@ -1,5 +1,6 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.hire.CombatGuarding;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.combat.AttackProfile;
@@ -73,6 +74,7 @@ final class ModCombat implements AutoCloseable {
     }
 
     String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) { return module.operate(npc, operation, target); }
+    CombatGuarding hireGuarding() { return new CombatGuarding(module); }
 
     void tick() { module.tick(); }
 

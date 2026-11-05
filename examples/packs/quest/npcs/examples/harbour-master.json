@@ -4,7 +4,7 @@
   "uuid": "e50bd9c8-a450-5d3e-b905-671f48cfee3b",
   "id": "harbour-master",
   "group": "examples",
-  "name": "Harbour Master",
+  "name": "&bHarbour Master",
   "type": "minecraft:player",
   "spawned": true,
   "position": {

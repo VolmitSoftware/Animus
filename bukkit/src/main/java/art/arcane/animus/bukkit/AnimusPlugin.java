@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.hire.HireService;
 import art.arcane.animus.api.Platform;
 import art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
@@ -68,7 +69,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private volatile AnimusCommands animusCommands;
     private BukkitScreens screens;
     private volatile ShopService<Player, ItemStack> shops;
-    private AutoCloseable screenTicks;
+    private AutoCloseable screenTicks, hireTicks;
     private final DialogueTriggers dialogueTriggers = new DialogueTriggers(() -> {
         BehaviorCommands current = behaviors;
         return current == null ? null : current.triggers();
@@ -113,7 +114,11 @@ public final class AnimusPlugin extends JavaPlugin {
             shops = new ShopService<>(runtime, screens, living, commands,
                     (String name) -> Optional.ofNullable(getServer().getPlayerExact(name)).map(Player::getUniqueId), message -> getLogger().info(message));
             screens.bind(shops.screens());
-            living.interactions(shops::interacted);
+            HireService<Player, ItemStack> hireDesk = new HireService<>(runtime, shops.screens(), living, commands, combat.hireGuarding(), message -> getLogger().info(message));
+            ShopService<Player, ItemStack> clickShops = shops;
+            living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) -> hireDesk.interacted(player, npc, attack, sneaking) || clickShops.interacted(player, npc, attack, sneaking));
+            hireTicks = ownerTicks.apply(hireDesk::tick);
+            getLogger().info(hireDesk.status());
             NpcRuntime<Player, ItemStack> owners = living;
             ShopService<Player, ItemStack> screenService = shops;
             screenTicks = ownerTicks.apply(() -> {
@@ -161,8 +166,9 @@ public final class AnimusPlugin extends JavaPlugin {
         animusCommands = null;
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
-        if (screenTicks != null) {
-            try { screenTicks.close(); }
+        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks)) {
+            if (ticks == null) continue;
+            try { ticks.close(); }
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }
         }
         if (screens != null) screens.closeAll();

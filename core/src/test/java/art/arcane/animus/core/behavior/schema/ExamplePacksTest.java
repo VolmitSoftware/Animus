@@ -1,5 +1,6 @@
 package art.arcane.animus.core.behavior.schema;
 
+import art.arcane.animus.core.hire.HireTerms;
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.behavior.BehaviorCompiler;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
@@ -83,7 +84,7 @@ class ExamplePacksTest {
                 assertFalse(Files.readString(file).contains("\"animus:command\""), file.toString());
         }
         String readme = Files.readString(RepositoryFiles.packs().resolve("README.md"));
-        assertTrue(readme.contains("animus:combat-control"));
+        assertTrue(readme.contains("modules[\"animus:hire\"]"));
         assertTrue(readme.contains("modules[\"animus:combat\"]"));
     }
 
@@ -102,16 +103,16 @@ class ExamplePacksTest {
         assertEquals(Optional.of("town-guard"), settings.squad().name());
     }
 
-    @Test void theBodyguardGuardsWhoeverHiresItAndStopsOnDismissal() throws Exception {
+    @Test void theBodyguardIsHiredForEmeraldsAndFollowsClosely() throws Exception {
         CombatSettings settings = combat("personal-guard", "bodyguard");
         assertEquals(TargetRules.NONE, settings.targets());
         assertTrue(settings.targeting().fightBack());
         assertTrue(settings.guard().player().isEmpty());
-        JsonObject behavior = JsonDocuments.object(Files.readString(RepositoryFiles.packs().resolve("personal-guard/behaviors/personal-guard/bodyguard.json")));
-        String hire = behavior.getAsJsonObject("routines").get("hire").toString();
-        assertTrue(hire.contains("{\"operation\":\"guard\",\"target\":\"player\"}"), hire);
-        String dismiss = behavior.getAsJsonObject("routines").get("dismiss").toString();
-        assertTrue(dismiss.contains("{\"operation\":\"guard\"}"), dismiss);
+        assertTrue(settings.guard().catchUpDistance() > settings.guard().followDistance());
+        JsonObject npc = JsonDocuments.object(Files.readString(RepositoryFiles.packs().resolve("personal-guard/npcs/examples/bodyguard.json")));
+        HireTerms terms = HireTerms.parse(npc).orElseThrow();
+        assertEquals("minecraft:emerald", terms.items().getFirst().id());
+        assertEquals(java.math.BigDecimal.ZERO, terms.price(), "items pay on every platform; money needs an economy plugin");
     }
 
     @Test void everyExampleNpcReferencesABehaviorOfItsOwnPack() throws Exception {
