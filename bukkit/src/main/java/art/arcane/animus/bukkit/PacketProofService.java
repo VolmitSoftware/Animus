@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.presentation.BodyPose;
+import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
 import art.arcane.animus.bukkit.navigation.*;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
@@ -29,7 +31,7 @@ final class PacketProofService implements Listener, AutoCloseable {
     private final Map<UUID, SkinRequest> skinRequests = new HashMap<>();
     private BukkitTask cleanup;
     private BukkitTask controlTicker;
-    private BukkitNavigationBridge navigation;
+    private OwnerNavigation navigation;
     private boolean closed;
 
     PacketProofService(JavaPlugin plugin, ReplyScheduler scheduler, String version, boolean enabled) {
@@ -47,7 +49,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         packets = bound;
         unavailable = reason;
         if (packets != null) {
-            navigation = new BukkitNavigationBridge(plugin, NavigationLimits.DEFAULT);
+            navigation = new OwnerNavigation(new BukkitTerrain(plugin.getServer()), (Runnable tick) -> plugin.getServer().getScheduler().runTaskTimer(plugin, tick, 1, 1)::cancel, NavigationLimits.DEFAULT);
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             cleanup = plugin.getServer().getScheduler().runTaskTimer(plugin, this::expire, 20, 20);
         }
@@ -102,7 +104,7 @@ final class PacketProofService implements Listener, AutoCloseable {
             }
             if (session.bodies.size() >= MAX_BODIES || session.admittedBodies >= 64)
                 throw new IllegalStateException("Proof limit reached; clear before creating more bodies");
-            var skin = texture == null ? null : new NativePacketAdapter.Skin(texture, signature);
+            var skin = texture == null ? null : new BodySkin(texture, signature);
             var body = packets.createBody(UUID.randomUUID(), type, "AnimusProof", skin);
             Location origin = viewer.getLocation();
             Vector facing = origin.getDirection().setY(0);
@@ -112,7 +114,7 @@ final class PacketProofService implements Listener, AutoCloseable {
             if (!location.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4))
                 throw new IllegalStateException("Target chunk is unavailable; proof does not load terrain");
             VirtualNpcState state = new VirtualNpcState(body.uuid(), position(location), body.width(), body.height(), 20);
-            ProofBody presented = new ProofBody(body, state, NativePacketAdapter.Pose.at(location, true));
+            ProofBody presented = new ProofBody(body, state, new BodyPose(location.getWorld().getUID().toString(), location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch(), true));
             session.admittedBodies++;
             session.bodies.put(body.entityId(), presented);
             ProofSession owner = session;
@@ -139,7 +141,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         if (mounted(session, id) || session.mountPending.contains(id)) throw new IllegalStateException("Detach proof mounts before moving them");
         if (body.moving) throw new IllegalStateException("Movement update already pending");
         var old = body.pose;
-        var next = new NativePacketAdapter.Pose(old.world(), old.x() + dx, old.y() + dy, old.z() + dz, old.yaw(), old.pitch(), old.onGround());
+        var next = new BodyPose(old.world(), old.x() + dx, old.y() + dy, old.z() + dz, old.yaw(), old.pitch(), old.onGround());
         if (!viewer.getWorld().getUID().equals(next.world()) || !viewer.getWorld().isChunkLoaded(((int) Math.floor(next.x())) >> 4, ((int) Math.floor(next.z())) >> 4)
                 || viewer.getLocation().toVector().distanceSquared(new Vector(next.x(), next.y(), next.z())) > 64 * 64)
             throw new IllegalArgumentException("Target is outside visible loaded terrain");
@@ -227,7 +229,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 if (!terrain.clear()) { control.state = "BLOCKED"; control.reason = terrain.status().name(); continue; }
                 if (proposed.state() != ControlLoop.State.PROPOSED) continue;
                 Vec3 next = proposed.position();
-                var pose = new NativePacketAdapter.Pose(body.pose.world(), next.x(), next.y(), next.z(), viewer.getLocation().getYaw(), 0, true);
+                var pose = new BodyPose(body.pose.world(), next.x(), next.y(), next.z(), viewer.getLocation().getYaw(), 0, true);
                 // Publish the accepted step before egress. A completion never advances coordinates after a lease ends.
                 body.moving = true; body.controlMove = true; long movement = ++body.movementGeneration;
                 body.pose = pose;
@@ -471,12 +473,12 @@ final class PacketProofService implements Listener, AutoCloseable {
     private static final class ProofBody {
         final NativePacketAdapter.Body body;
         final VirtualNpcState state;
-        NativePacketAdapter.Pose pose;
+        BodyPose pose;
         boolean moving;
         boolean controlMove;
         volatile boolean controlDeliveryFailed;
         long movementGeneration;
-        ProofBody(NativePacketAdapter.Body body, VirtualNpcState state, NativePacketAdapter.Pose pose) { this.body = body; this.state = state; this.pose = pose; }
+        ProofBody(NativePacketAdapter.Body body, VirtualNpcState state, BodyPose pose) { this.body = body; this.state = state; this.pose = pose; }
     }
     private static final class ControlSession {
         final ProofBody body;

@@ -45,7 +45,7 @@ public final class BehaviorFixture extends JavaPlugin implements CommandExecutor
         String base=target.getClass().getName().substring(0,target.getClass().getName().lastIndexOf(".bukkit."));
         // These instance fields already exist. No method scan, status invocation,
         // interpreter construction, execution, cancellation, or engine-node preload.
-        service=field(target,"behaviors",type(base+".bukkit.BukkitBehaviorCommands"));
+        service=field(target,"behaviors",type(base+".core.command.BehaviorCommands"));
         core=field(target,"runtime",type(base+".core.AnimusRuntime"));
         extensions=field(target,"extensions",type(base+".core.extension.ExtensionRuntime"));
         serviceClosed=(AtomicBoolean)field(service,"closed",AtomicBoolean.class);

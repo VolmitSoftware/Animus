@@ -1,10 +1,16 @@
 package art.arcane.animus.core.config;
 
-/** Plugin-wide combat work limits, read from TOML. Requires restart. */
+/**
+ * Plugin-wide combat work limits, read from TOML. Requires restart.
+ *
+ * @param eventsPerTick    fights and chat messages examined per tick for fight and chat rules
+ * @param maximumScanRange the most any NPC's {@code scanRange} is allowed to reach, in blocks
+ * @param maximumSpeed     the fastest any NPC's {@code pursuit.speed} is allowed to move, in blocks per second
+ */
 public record CombatBudgets(boolean enabled, int maximumNpcs, int brainsPerTick, int targetScansPerTick, int scanCandidates, int scanCells,
                             int squadAlertsPerTick, int pathRequestsPerTick, int maximumHelpers, int helpersPerNpc,
-                            int helperUpdatesPerTick, int helperLifetimeTicks, int idleSleepTicks) {
-    public static final CombatBudgets DEFAULT = new CombatBudgets(true, 64, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40);
+                            int helperUpdatesPerTick, int helperLifetimeTicks, int idleSleepTicks, int eventsPerTick, int maximumScanRange, int maximumSpeed) {
+    public static final CombatBudgets DEFAULT = new CombatBudgets(true, 64, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
 
     public CombatBudgets {
         require("maximumNpcs", maximumNpcs, 1, 128);
@@ -19,6 +25,9 @@ public record CombatBudgets(boolean enabled, int maximumNpcs, int brainsPerTick,
         require("helperUpdatesPerTick", helperUpdatesPerTick, 1, 256);
         require("helperLifetimeTicks", helperLifetimeTicks, 1, 1200);
         require("idleSleepTicks", idleSleepTicks, 1, 1200);
+        require("eventsPerTick", eventsPerTick, 1, 64);
+        require("maximumScanRange", maximumScanRange, 16, 256);
+        require("maximumSpeed", maximumSpeed, 1, 10);
     }
 
     private static void require(String field, int value, int minimum, int maximum) {

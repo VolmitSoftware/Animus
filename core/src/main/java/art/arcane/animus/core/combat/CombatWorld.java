@@ -49,8 +49,21 @@ public interface CombatWorld {
     /** Applies authoritative virtual damage and publishes it to viewers and behavior triggers. */
     DamageOutcome damageVirtual(UUID npc, TargetRef attacker, double amount);
 
-    /** Launches a real helper entity without a real attacker; empty when the platform refused it. */
-    Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity);
+    /**
+     * Applies a potion's status effect to a real entity on behalf of an NPC. The platform's own potion damage and
+     * splash spread never apply; this is the only effect the potion has.
+     */
+    boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect);
+    /** Whether an online player has this permission node. False for anything else. */
+    boolean permitted(TargetRef player, String node);
+    /** Sends a line of NPC speech to one online player. */
+    void tell(UUID player, String speaker, String message);
+
+    /**
+     * Launches a real helper projectile without a real attacker; empty when the platform refused it. Its vanilla
+     * damage, effects and explosion must never apply.
+     */
+    Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon);
     /** The helper's position, or empty when the real entity no longer exists. */
     Optional<Vec3> helperPosition(UUID helper);
     void removeHelper(UUID helper);

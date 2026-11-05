@@ -1,9 +1,19 @@
 package art.arcane.animus.bukkit.runtime;
 
-import art.arcane.animus.bukkit.navigation.CaptureProvenance;
-import art.arcane.animus.bukkit.navigation.ChunkOwnership;
+import art.arcane.animus.core.runtime.NpcPresentation;
+import art.arcane.animus.core.runtime.DefinitionSpec;
+import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.presentation.BodySkin;
+import art.arcane.animus.core.runtime.DefinitionAuthority;
+import art.arcane.animus.core.runtime.NavigationRefusals;
+import art.arcane.animus.core.runtime.RouteDocuments;
+import art.arcane.animus.core.runtime.SkinDocuments;
+import art.arcane.animus.core.runtime.WaypointProgress;
+
+import art.arcane.animus.core.navigation.CaptureProvenance;
+import art.arcane.animus.core.navigation.ChunkOwnership;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
-import art.arcane.animus.bukkit.navigation.NavigationPlan;
+import art.arcane.animus.core.navigation.NavigationPlan;
 import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.npc.EquipmentSlot;
@@ -41,9 +51,9 @@ import org.bukkit.inventory.ItemStack;
  */
 final class RegionActor implements RegionOwner.Body {
     /** What the definition asks for. A null spec means the definition was removed or despawned. */
-    record Desired(DefinitionSpec spec, NativePacketAdapter.Skin skin) {}
+    record Desired(DefinitionSpec<ItemStack> spec, BodySkin skin) {}
     /** Immutable state for viewers, commands and behaviors on other threads. */
-    record Publication(boolean live, VirtualNpcState.Snapshot snapshot, DefinitionSpec spec, String type, String name, NativePacketAdapter.Skin skin,
+    record Publication(boolean live, VirtualNpcState.Snapshot snapshot, DefinitionSpec<ItemStack> spec, String type, String name, BodySkin skin,
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision) {}
@@ -64,8 +74,8 @@ final class RegionActor implements RegionOwner.Body {
     volatile boolean reread;
 
     private Desired applied;
-    DefinitionSpec spec;
-    private NativePacketAdapter.Skin skin;
+    DefinitionSpec<ItemStack> spec;
+    private BodySkin skin;
     VirtualNpcState state;
     private DefinitionAuthority authority;
     private int ids;
@@ -82,7 +92,7 @@ final class RegionActor implements RegionOwner.Body {
     private RouteRead routeRead;
     private boolean routeReadWanted;
     private String displayName;
-    private NativePacketAdapter.Skin displaySkin;
+    private BodySkin displaySkin;
     private AppearanceRead appearanceRead;
     private final EnumMap<EquipmentSlot, ItemStack> equipment = new EnumMap<>(EquipmentSlot.class);
     private ChunkPosition anchored;
@@ -107,7 +117,7 @@ final class RegionActor implements RegionOwner.Body {
         mount = MountDeclaration.parse(spec.definition().json()).isPresent();
         yaw = spec.yaw(); pitch = spec.pitch(); onGround = true;
         displayName = spec.name(); displaySkin = skin;
-        equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec)); equipmentRevision++; appearance++; pose++;
+        equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec, ItemStack::clone)); equipmentRevision++; appearance++; pose++;
         waypoints = WaypointSettings.parse(spec.definition()).map(WaypointProgress::new).orElse(null);
         routeReadWanted = waypoints == null && routeSource != null;
     }
@@ -290,7 +300,7 @@ final class RegionActor implements RegionOwner.Body {
                             Math.floorDiv(bounds.minX() + bounds.sizeX() - 1, 16), Math.floorDiv(bounds.minZ() + bounds.sizeZ() - 1, 16))) {
                         suspendRoute("route terrain belongs to another region; retrying"); return;
                     }
-                    current.plan = host.navigation.plan(world.getUID(), bounds, feet, goal, profile(current.mode), new PathPlanner.Limits(4096, 4096, 256));
+                    current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, goal, profile(current.mode), new PathPlanner.Limits(4096, 4096, 256));
                     current.result = current.plan.future().toCompletableFuture();
                     routeStatus(current, "planning", "");
                 }
@@ -452,7 +462,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     private void cancelAppearanceRead() { if (appearanceRead != null) { appearanceRead.cancelled = true; appearanceRead = null; } }
     private void cancelReads() { cancelRouteRead(); cancelAppearanceRead(); }
-    private void finishAppearance(AppearanceRead read, NativePacketAdapter.Skin loaded, String failure) {
+    private void finishAppearance(AppearanceRead read, BodySkin loaded, String failure) {
         if (appearanceRead != read || read.cancelled) return;
         appearanceRead = null;
         if (failure != null) { host.noteFailure("$.skin: " + failure); return; }
@@ -481,11 +491,11 @@ final class RegionActor implements RegionOwner.Body {
         final String reference; volatile boolean cancelled;
         AppearanceRead(String reference) { this.reference = reference; }
         @Override public void run() {
-            NativePacketAdapter.Skin loaded = null; String failure = null;
+            BodySkin loaded = null; String failure = null;
             try { if (!cancelled) loaded = SkinDocuments.read(host.runtime.documents(), reference); }
             catch (Exception problem) { failure = PersistedNpcService.concise(problem); }
             finally { host.releaseRead(); }
-            NativePacketAdapter.Skin result = loaded; String reason = failure;
+            BodySkin result = loaded; String reason = failure;
             if (!cancelled) complete(() -> finishAppearance(this, result, reason));
         }
     }

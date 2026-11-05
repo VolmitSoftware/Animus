@@ -41,7 +41,7 @@ final class MotionFixture implements Listener, AutoCloseable {
             int x = Integer.parseInt(args[2]), y = Integer.parseInt(args[3]), z = Integer.parseInt(args[4]);
             org.bukkit.block.Block block = player.getWorld().getBlockAt(x, y, z);
             player.sendMessage("QA cell " + x + " " + y + " " + z + " " + block.getType() + " shape=" + block.getCollisionShape().getBoundingBoxes()
-                    + " cell=" + art.arcane.animus.bukkit.navigation.CollisionCells.of(block));
+                    + " cell=" + art.arcane.animus.bukkit.navigation.BlockCells.of(block));
             return true;
         }
         if (args.length == 2 && args[1].equals("cleanup")) {

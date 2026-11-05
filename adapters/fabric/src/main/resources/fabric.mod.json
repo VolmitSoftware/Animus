@@ -10,6 +10,7 @@
   "entrypoints": {
     "main": ["${projectGroup}.fabric.AnimusFabric"]
   },
+  "mixins": ["animus.mixins.json"],
   "jars": [
     {"file": "META-INF/jars/fabric-api-base.jar"},
     {"file": "META-INF/jars/fabric-lifecycle-events-v1.jar"},

@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.runtime.PersistedNpcService;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;

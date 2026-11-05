@@ -9,26 +9,16 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 @Mod(BuildIdentity.ID)
 public final class AnimusNeoForge {
     private final AnimusModRuntime runtime = new AnimusModRuntime(Platform.NEOFORGE, FMLPaths.CONFIGDIR.get());
 
     public AnimusNeoForge() {
-        NeoForge.EVENT_BUS.addListener(this::registerCommands);
-        NeoForge.EVENT_BUS.addListener(this::start);
-        NeoForge.EVENT_BUS.addListener(this::stop);
-    }
-
-    private void registerCommands(RegisterCommandsEvent event) {
-        runtime.registerCommands(event.getDispatcher());
-    }
-
-    private void start(ServerStartedEvent event) {
-        runtime.start();
-    }
-
-    private void stop(ServerStoppingEvent event) {
-        runtime.stop();
+        NeoForge.EVENT_BUS.addListener((RegisterCommandsEvent event) -> runtime.registerCommands(event.getDispatcher()));
+        NeoForge.EVENT_BUS.addListener((ServerStartedEvent event) -> runtime.start(event.getServer()));
+        NeoForge.EVENT_BUS.addListener((ServerTickEvent.Post event) -> runtime.tick());
+        NeoForge.EVENT_BUS.addListener((ServerStoppingEvent event) -> runtime.stop());
     }
 }

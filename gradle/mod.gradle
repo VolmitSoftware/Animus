@@ -12,6 +12,11 @@ layout.buildDirectory.set(layout.projectDirectory.dir("build/${target}"))
 tasks.withType(JavaCompile).configureEach { options.release.set((int) targetProperties.javaVersion) }
 
 sourceSets.main.java.srcDir('../mod-common/src/main/java')
+sourceSets.test.java.srcDir('../mod-common/src/test/java')
+dependencies {
+    testImplementation('org.junit.jupiter:junit-jupiter:5.10.2')
+    testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
+}
 sourceSets.main.resources.srcDir('../mod-common/src/main/resources')
 for (String kind : ['java', 'resources']) {
     org.gradle.api.file.SourceDirectorySet directories = kind == 'java' ? sourceSets.main.java : sourceSets.main.resources

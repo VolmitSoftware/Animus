@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 4;
+    public static final int CONVERTER_VERSION = 5;
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     public record Preview(String id, Path directory, int records, int valid, int skins, JsonObject summary) {
         public Preview { summary = summary.deepCopy(); }
