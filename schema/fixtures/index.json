@@ -120,6 +120,24 @@
       }
     },
     {
+      "path": "export/gui/holograms/shop/sign.json",
+      "kind": "hologram",
+      "id": "shop:sign",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "export/gui/text-animations/shop/sparkle.json",
+      "kind": "text-animation",
+      "id": "shop:sparkle",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
       "path": "documents/inventory/every-action.json",
       "kind": "inventory",
       "id": "shop:every",

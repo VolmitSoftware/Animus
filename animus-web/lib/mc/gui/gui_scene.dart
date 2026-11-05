@@ -7,6 +7,7 @@ import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_text.dart';
+import '../../logic/gui/text_animation.dart';
 import '../assets/mc_display_pose.dart';
 import '../npc/mc_text.dart';
 import '../npc/npc_scene.dart';
@@ -32,6 +33,38 @@ final class GuiScene {
 
 List<List<McTextRun>> _styled(String text) => <List<McTextRun>>[for (final String line in text.split('\n')) guiTextRuns(line)];
 
+/// The text animations a preview plays: `|animation.<id>|` tokens in text
+/// show the frame each animation shows at [nowMs], ids resolved from the
+/// document [from] (`namespace:path`).
+final class GuiAnimationClock {
+  const GuiAnimationClock({required this.from, this.animations = const <String, JsonMap>{}, this.nowMs = 0});
+
+  /// No animations: tokens stay as written.
+  static const GuiAnimationClock none = GuiAnimationClock(from: '');
+
+  final String from;
+  final Map<String, JsonMap> animations;
+  final int nowMs;
+
+  String apply(String text) => renderAnimationTokens(text, from, animations, nowMs);
+
+  /// Animations [text] shows that the workspace does not have.
+  Iterable<String> missing(String text) => animationReferences(text, from).where((String id) => !animations.containsKey(id));
+}
+
+/// A text display for [raw] at [at], its animations at the clock's time.
+NpcText _shownText(McVec3 at, String raw, GuiAnimationClock clock, Set<String> missing) {
+  missing.addAll(clock.missing(raw));
+  final String text = clock.apply(raw);
+  return NpcText(anchor: at, lines: text.split('\n'), nameplate: false, styled: _styled(text));
+}
+
+void _missingNotes(Set<String> missing, List<String> notes) {
+  for (final String id in missing) {
+    notes.add('Text animation $id is not in this workspace, so its token shows as written.');
+  }
+}
+
 String? _bareItem(String? item) {
   if (item == null || item.contains('{{')) return null;
   final String trimmed = item.trim();
@@ -50,7 +83,8 @@ JsonList hologramLines(JsonMap doc, {int? page, int? variant}) {
   return asList(doc['lines']);
 }
 
-GuiScene hologramScene(JsonMap doc, {int? page, int? variant}) {
+GuiScene hologramScene(JsonMap doc, {int? page, int? variant, GuiAnimationClock clock = GuiAnimationClock.none}) {
+  final Set<String> missing = <String>{};
   final JsonList lines = hologramLines(doc, page: page, variant: variant);
   final List<McSceneNode> nodes = <McSceneNode>[];
   final List<NpcText> texts = <NpcText>[];
@@ -68,7 +102,7 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant}) {
     final double bottom = top - row;
     if (line == null || line is String) {
       final String text = line is String ? line : '';
-      texts.add(NpcText(anchor: McVec3(0, bottom, 0), lines: <String>[text], nameplate: false, styled: _styled(text)));
+      texts.add(_shownText(McVec3(0, bottom, 0), text, clock, missing));
     } else if (line is Map<String, Object?>) {
       final McVec3 centre = McVec3(0, bottom + row / 2, 0);
       if (!sampleCondition(line['show'])) {
@@ -77,7 +111,7 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant}) {
       }
       if (line['text'] is String) {
         final String text = line['text']! as String;
-        texts.add(NpcText(anchor: McVec3(0, bottom, 0), lines: <String>[text], nameplate: false, styled: _styled(text)));
+        texts.add(_shownText(McVec3(0, bottom, 0), text, clock, missing));
       } else if (line['item'] is Map<String, Object?>) {
         final String? item = _bareItem(asString(asMap(line['item'])['item']));
         if (item != null) {
@@ -104,6 +138,7 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant}) {
     }
     top = bottom;
   }
+  _missingNotes(missing, notes);
   return GuiScene(
     scene: McScene(nodes, frame: _corners(McBounds(const McVec3(-1, 0.8, -0.5), McVec3(1, 1.4 + height, 0.5)))),
     texts: texts,
@@ -120,7 +155,8 @@ double _rowHeight(Object? line) {
 
 /// A holographic menu in front of a viewer: the menu centre is [offset] from
 /// the viewer's feet, and each component sits at its own offset from there.
-GuiScene menuScene(JsonMap doc, {String? selected}) {
+GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = GuiAnimationClock.none}) {
+  final Set<String> missing = <String>{};
   final List<McSceneNode> nodes = <McSceneNode>[];
   final List<NpcText> texts = <NpcText>[];
   final List<String> notes = <String>[];
@@ -151,7 +187,7 @@ GuiScene menuScene(JsonMap doc, {String? selected}) {
     }
     if (type == 'slider') {
       final String text = renderTemplate(asString(data['label']) ?? '${asString(data['var']) ?? 'value'}: ?', scope: scope);
-      texts.add(NpcText(anchor: at, lines: text.split('\n'), nameplate: false, styled: _styled(text)));
+      texts.add(_shownText(at, text, clock, missing));
       return;
     }
     if (type == 'tabs') {
@@ -160,7 +196,7 @@ GuiScene menuScene(JsonMap doc, {String? selected}) {
       for (int index = 0; index < tabs.length; index++) {
         final JsonMap tab = asMap(tabs[index]);
         final String text = asString(tab['label']) ?? asString(tab['id']) ?? '';
-        texts.add(NpcText(anchor: at + McVec3((index - (tabs.length - 1) / 2) * spacing, 0, 0), lines: <String>[text], nameplate: false, styled: _styled(text)));
+        texts.add(_shownText(at + McVec3((index - (tabs.length - 1) / 2) * spacing, 0, 0), text, clock, missing));
       }
       return;
     }
@@ -168,7 +204,7 @@ GuiScene menuScene(JsonMap doc, {String? selected}) {
     switch (asString(icon['type'])) {
       case 'text':
         final String text = renderTemplate(asString(icon['text']) ?? '', scope: scope);
-        texts.add(NpcText(anchor: at, lines: text.split('\n'), nameplate: false, styled: _styled(text)));
+        texts.add(_shownText(at, text, clock, missing));
       case 'item':
         final String? item = _bareItem(asString(icon['item']));
         if (item == null) {
@@ -178,7 +214,7 @@ GuiScene menuScene(JsonMap doc, {String? selected}) {
         }
         final String? name = asString(icon['name']);
         if (name != null && name.trim().isNotEmpty && key == selected) {
-          texts.add(NpcText(anchor: at + const McVec3(0, 0.3, 0), lines: <String>[name], nameplate: false, styled: _styled(name)));
+          texts.add(_shownText(at + const McVec3(0, 0.3, 0), name, clock, missing));
         }
       case 'block':
         final String? block = _bareItem(asString(icon['block']));
@@ -212,6 +248,7 @@ GuiScene menuScene(JsonMap doc, {String? selected}) {
     final McVec3 position = McVec3(asDouble(at.elementAtOrNull(0)) ?? 0, centreY + (asDouble(at.elementAtOrNull(1)) ?? 0), asDouble(at.elementAtOrNull(2)) ?? 0);
     place(id, asMap(component['data']), position, id);
   }
+  _missingNotes(missing, notes);
   return GuiScene(
     scene: McScene(nodes, frame: _corners(bounds ?? const McBounds(McVec3(-1, 0.5, -0.5), McVec3(1, 2.5, 0.5)))),
     texts: texts,

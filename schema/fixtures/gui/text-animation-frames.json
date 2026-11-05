@@ -1,0 +1,30 @@
+{
+  "description": "Which frame a text animation shows at a wall-clock millisecond, as TextAnimation.frame chooses it (tick = floorDiv(nowMs, frameIntervalMs); random mixes tick XOR (id.hashCode() << 32) through the fmix64 steps). core's TextAnimationContractTest and animus-web's text_animation_test.dart both check every sample.",
+  "animations": [
+    {
+      "id": "shop:sparkle",
+      "document": {"schemaVersion": 1, "revision": 1, "mode": "ascend", "frameIntervalMs": 500, "frames": ["a", "b", "c"]},
+      "samples": [[0, 0], [499, 0], [500, 1], [1250, 2], [2999, 2], [1730000000123, 1], [1730000000623, 2]]
+    },
+    {
+      "id": "fx:wave",
+      "document": {"schemaVersion": 1, "mode": "descend", "frameIntervalMs": 250, "frames": ["a", "b", "c", "d"]},
+      "samples": [[0, 3], [499, 2], [500, 1], [1250, 2], [2999, 0], [1730000000123, 3], [1730000000623, 1]]
+    },
+    {
+      "id": "fx:pulse",
+      "document": {"schemaVersion": 1, "mode": "ascend_descend", "frameIntervalMs": 100, "frames": ["a", "b", "c"]},
+      "samples": [[0, 0], [499, 1], [500, 0], [1250, 0], [2999, 0], [1730000000123, 2], [1730000000623, 2]]
+    },
+    {
+      "id": "fx:random",
+      "document": {"schemaVersion": 1, "mode": "random", "frameIntervalMs": 1, "frames": ["a", "b", "c", "d", "e", "f", "g"]},
+      "samples": [[0, 2], [499, 5], [500, 4], [1250, 0], [2999, 2], [1730000000123, 2], [1730000000623, 6]]
+    },
+    {
+      "id": "town:sign-glow",
+      "document": {"schemaVersion": 1, "mode": "random", "frameIntervalMs": 50, "frames": ["a", "b", "c", "d", "e"]},
+      "samples": [[0, 3], [499, 2], [500, 0], [1250, 4], [2999, 1], [1730000000123, 1], [1730000000623, 3]]
+    }
+  ]
+}

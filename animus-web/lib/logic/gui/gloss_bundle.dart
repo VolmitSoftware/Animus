@@ -1,6 +1,7 @@
 /// Gloss Web workspace bundles (`gloss-editor-workspace` version 1, Gloss
 /// workspace schema 2) to and from Animus documents, for the kinds Animus
-/// adopts: chest GUIs, holographic menus, holograms and presets. A GUI made
+/// adopts: chest GUIs, holographic menus, holograms, text animations and
+/// presets. A GUI made
 /// in Gloss Web opens here, and the reverse (docs/editor-design.md, section 3).
 library;
 
@@ -22,6 +23,7 @@ const Map<String, DocumentKind> glossKinds = <String, DocumentKind>{
   'inventory': DocumentKind.inventory,
   'menu': DocumentKind.menu,
   'hologram': DocumentKind.hologram,
+  'animation': DocumentKind.textAnimation,
   'presets': DocumentKind.presets,
 };
 
@@ -108,8 +110,14 @@ String _segment(String raw) {
 
 /// Gloss runtime ids are `/` paths (`town/menu`); Animus chest GUIs sit in a
 /// namespace folder (`town:menu`), and a one-segment Gloss id goes under
-/// `gloss`. Menus and holograms keep the path.
+/// `gloss`. Menus keep the path. Holograms and text animations follow the
+/// server's GlossIds: the lowercased Gloss id, with every character outside
+/// `a-z0-9_/-` as `-`, in the `gloss` namespace.
 String? animusIdForGloss(DocumentKind kind, String glossId) {
+  if (kind == DocumentKind.hologram || kind == DocumentKind.textAnimation) {
+    final String path = glossId.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_/-]'), '-');
+    return path.isEmpty ? null : '$glossDefaultNamespace:$path';
+  }
   final List<String> segments = <String>[
     for (final String part in glossId.split('/'))
       if (part.isNotEmpty && part != '.' && part != '..') _segment(part),
@@ -126,11 +134,31 @@ String? animusIdForGloss(DocumentKind kind, String glossId) {
   }
 }
 
-/// The Gloss runtime id for an Animus document id.
-String glossIdForAnimus(DocumentKind kind, String id) => switch (kind) {
-      DocumentKind.inventory => id.replaceFirst(':', '/'),
-      _ => id,
-    };
+/// The namespace Gloss documents are imported into, as on the server.
+const String glossDefaultNamespace = 'gloss';
+
+final RegExp _glossFlatId = RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$');
+
+/// The Gloss runtime id for an Animus document id, or null when Gloss has
+/// none. Holograms and text animations follow the server's GlossIds: the
+/// path in the `gloss` namespace, otherwise `namespace.path`, with `/` as `.`
+/// because Gloss keeps those kinds flat.
+String? glossIdForAnimus(DocumentKind kind, String id) {
+  switch (kind) {
+    case DocumentKind.inventory:
+      return id.replaceFirst(':', '/');
+    case DocumentKind.hologram:
+    case DocumentKind.textAnimation:
+      final int colon = id.indexOf(':');
+      if (colon < 1) return null;
+      final String namespace = id.substring(0, colon);
+      final String path = id.substring(colon + 1);
+      final String gloss = (namespace == glossDefaultNamespace ? path : '$namespace.$path').replaceAll('/', '.');
+      return _glossFlatId.hasMatch(gloss) ? gloss : null;
+    default:
+      return id;
+  }
+}
 
 /// Whether any action in [json] is Animus-only (`animus:` type), which Gloss
 /// cannot run.
@@ -173,7 +201,11 @@ GlossExport writeGlossBundle(Iterable<AnimusDocument> documents, {String Functio
       skipped.add('${document.kind.label}: ${document.id} uses animus: actions, which Gloss cannot run');
       continue;
     }
-    final String runtimeId = glossIdForAnimus(document.kind, document.id);
+    final String? runtimeId = glossIdForAnimus(document.kind, document.id);
+    if (runtimeId == null) {
+      skipped.add('${document.kind.label}: ${document.id} has no valid Gloss id');
+      continue;
+    }
     out.add(<String, Object?>{
       'id': id(),
       'title': runtimeId,

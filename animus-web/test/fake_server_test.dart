@@ -247,9 +247,9 @@ void main() {
       after = reply.json['next'] as String?;
       pages++;
     } while (after != null);
-    expect(pages, 3);
-    expect(seen.length, 8);
-    expect(seen.toSet().length, 8);
+    expect(pages, 4);
+    expect(seen.length, 10);
+    expect(seen.toSet().length, 10);
     final Reply npcs = await call('GET', '/animus/v1/catalog?kind=npc', token: token);
     expect((npcs.json['documents']! as List<Object?>).length, 3);
     expect(npcs.json['next'], isNull);

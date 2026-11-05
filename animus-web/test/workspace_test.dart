@@ -51,7 +51,7 @@ void main() {
       final WorkspaceSnapshot snapshot = await openExport();
       expect(snapshot.generation, 1);
       expect(await repository.load(snapshot.id), isNotNull);
-      expect(store.workspaces.single.documentCount, 8);
+      expect(store.workspaces.single.documentCount, 10);
       expect(store.ignored, contains('config.toml'));
     });
 

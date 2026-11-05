@@ -4,6 +4,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
 import '../model/animus_document.dart';
@@ -211,8 +212,8 @@ class _DocumentPaneState extends State<DocumentPane> {
       return switch (document.kind) {
         DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson),
         DocumentKind.shop => ShopEditor(document: document, onJson: onJson),
-        DocumentKind.menu => MenuEditor(document: document, onJson: onJson),
-        _ => HologramEditor(document: document, onJson: onJson),
+        DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(component.workspaceDocuments)),
+        _ => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(component.workspaceDocuments)),
       };
     }
     if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.npc) {
@@ -256,8 +257,8 @@ class _DocumentPaneState extends State<DocumentPane> {
       return switch (document.kind) {
         DocumentKind.inventory => InventoryPreview(document: document),
         DocumentKind.shop => ShopPreview(document: document),
-        DocumentKind.menu => MenuPreview(document: document),
-        _ => HologramPreview(document: document),
+        DocumentKind.menu => MenuPreview(document: document, animations: workspaceAnimations(component.workspaceDocuments)),
+        _ => HologramPreview(document: document, animations: workspaceAnimations(component.workspaceDocuments)),
       };
     }
     final Map<String, Object?> object = json is Map<String, Object?> ? json : const <String, Object?>{};

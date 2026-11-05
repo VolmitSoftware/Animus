@@ -51,7 +51,7 @@ void main() {
     expect(result.prefix, 'server/plugins/Animus/');
     expect(result.documents.map((AnimusDocument document) => document.id),
         containsAll(<String>['examples/greeter', 'shop:bakery', 'shop:counter', 'greeter:greeter', 'shop:keeper', 'shop']));
-    expect(result.documents, hasLength(8));
+    expect(result.documents, hasLength(10));
   });
 
   test('should report invalid JSON and id mismatches as errors', () {

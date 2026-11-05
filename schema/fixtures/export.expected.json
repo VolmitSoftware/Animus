@@ -8,9 +8,21 @@
       "valid": true
     },
     {
+      "kind": "hologram",
+      "id": "shop:sign",
+      "path": "gui/holograms/shop/sign.json",
+      "valid": true
+    },
+    {
       "kind": "inventory",
       "id": "shop:counter",
       "path": "gui/inventories/shop/counter.json",
+      "valid": true
+    },
+    {
+      "kind": "text-animation",
+      "id": "shop:sparkle",
+      "path": "gui/text-animations/shop/sparkle.json",
       "valid": true
     },
     {

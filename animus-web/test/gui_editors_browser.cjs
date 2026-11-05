@@ -122,7 +122,7 @@ async function run(browser, viewport, tag) {
   assert.equal(json.pages[0].buy['10'].limit.resetSeconds, 86400);
 
   // Hologram: 3D stage, add a line.
-  await open(page, 'town/welcome');
+  await open(page, 'town:welcome');
   const hologramCanvas = page.locator('.animus-mc-gl-host');
   await page.waitForFunction(() => Number(document.querySelector('.animus-mc-gl-host')?.getAttribute('data-frames') || 0) > 0);
   assert.ok(await hologramCanvas.count() === 1);
@@ -181,7 +181,7 @@ async function run(browser, viewport, tag) {
   assert.equal(exported.format, 'gloss-editor-workspace');
   assert.equal(exported.version, 1);
   assert.equal(exported.workspace.schemaVersion, 2);
-  assert.deepEqual(exported.workspace.documents.map(d => d.runtimeId).sort(), ['town/gloss-only', 'town/hub', 'town/welcome']);
+  assert.deepEqual(exported.workspace.documents.map(d => d.runtimeId).sort(), ['town.welcome', 'town/gloss-only', 'town/hub']);
   for (const document of exported.workspace.documents) JSON.parse(document.json);
   const bundleChooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Import Gloss bundle'}).click();

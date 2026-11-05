@@ -11,7 +11,7 @@ String newDocumentId(DocumentKind kind, Set<String> taken) {
     DocumentKind.inventory => 'example:menu',
     DocumentKind.shop => 'example:shop',
     DocumentKind.menu => 'example/menu',
-    DocumentKind.hologram => 'example/hologram',
+    DocumentKind.hologram => 'example:hologram',
     _ => 'example',
   };
   if (!taken.contains(base)) return base;

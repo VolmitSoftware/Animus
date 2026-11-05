@@ -6,7 +6,9 @@ library;
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 
+import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/gui/text_animation.dart';
 import '../../mc/gui/gui_scene.dart';
 import '../../model/animus_document.dart';
 import 'actions_editor.dart';
@@ -14,22 +16,44 @@ import 'component_editor.dart';
 import 'gui_fields.dart';
 import 'gui_stage_preview.dart';
 
+/// The runtime id of a menu at [id] (`lobby/main` is `lobby:main` on the
+/// server), which relative `|animation.<id>|` tokens resolve from.
+String menuRuntimeId(String id) => id.contains('/') ? id.replaceFirst('/', ':') : id;
+
+GuiAnimationClock _clock(AnimusDocument document, Map<String, JsonMap> animations, int nowMs) =>
+    GuiAnimationClock(from: menuRuntimeId(document.id), animations: animations, nowMs: nowMs);
+
 class MenuPreview extends StatelessWidget {
-  const MenuPreview({required this.document, super.key});
+  const MenuPreview({required this.document, this.animations = const <String, JsonMap>{}, super.key});
 
   final AnimusDocument document;
 
+  /// The workspace's text animations by id.
+  final Map<String, JsonMap> animations;
+
   @override
-  Widget build(BuildContext context) => dom.section(classes: 'animus-panel animus-gui-preview', <Widget>[
-        GuiStagePreview(scene: menuScene(asMap(document.json)), signature: document.source, label: 'Menu ${document.id}'),
-      ]);
+  Widget build(BuildContext context) {
+    final JsonMap doc = asMap(document.json);
+    return dom.section(classes: 'animus-panel animus-gui-preview', <Widget>[
+      GuiStagePreview(
+        scene: menuScene(doc, clock: _clock(document, animations, DateTime.now().millisecondsSinceEpoch)),
+        sceneAt: (int nowMs) => menuScene(doc, clock: _clock(document, animations, nowMs)),
+        tickMs: animationTickMs(document.source, menuRuntimeId(document.id), animations),
+        signature: document.source,
+        label: 'Menu ${document.id}',
+      ),
+    ]);
+  }
 }
 
 class MenuEditor extends StatefulWidget {
-  const MenuEditor({required this.document, required this.onJson, super.key});
+  const MenuEditor({required this.document, required this.onJson, this.animations = const <String, JsonMap>{}, super.key});
 
   final AnimusDocument document;
   final JsonEdit onJson;
+
+  /// The workspace's text animations by id.
+  final Map<String, JsonMap> animations;
 
   @override
   State<MenuEditor> createState() => _MenuEditorState();
@@ -74,7 +98,9 @@ class _MenuEditorState extends State<MenuEditor> {
     return dom.div(classes: 'animus-gui-editor', <Widget>[
       dom.section(classes: 'animus-panel animus-gui-stage', <Widget>[
         GuiStagePreview(
-          scene: menuScene(doc, selected: selectedId),
+          scene: menuScene(doc, selected: selectedId, clock: _clock(component.document, component.animations, DateTime.now().millisecondsSinceEpoch)),
+          sceneAt: (int nowMs) => menuScene(doc, selected: selectedId, clock: _clock(component.document, component.animations, nowMs)),
+          tickMs: animationTickMs(component.document.source, menuRuntimeId(component.document.id), component.animations),
           signature: '${component.document.source}|$selectedId',
           label: 'Menu ${component.document.id}',
         ),
@@ -180,6 +206,7 @@ class _MenuEditorState extends State<MenuEditor> {
         diagnostics: _diagnostics,
         chest: false,
         namedLists: _namedLists,
+        names: ExpressionNames(animations: animationCompletionIds(menuRuntimeId(component.document.id), component.animations.keys)),
         onChanged: (JsonMap next) => _write(<JsonStep>['components', index, 'data'], next),
       ),
       dom.div(classes: 'animus-row', <Widget>[

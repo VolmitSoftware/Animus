@@ -149,8 +149,8 @@ class _EditorShellState extends State<EditorShell> {
   Future<String?> _rename(WorkspaceSnapshot workspace, AnimusDocument document, String id) async {
     if (id == document.id) return null;
     if (locateDocument(documentPath(document.kind, id)) != DocumentLocation(document.kind, id)) {
-      return document.kind == DocumentKind.inventory || document.kind == DocumentKind.shop
-          ? 'Use namespace:path with a-z, 0-9, _ and -, such as town:menu.'
+      return const <DocumentKind>{DocumentKind.inventory, DocumentKind.shop, DocumentKind.hologram, DocumentKind.textAnimation}.contains(document.kind)
+          ? 'Use namespace:path with a-z, 0-9, _ and -, such as town:welcome.'
           : 'Use a path with a-z, 0-9, _, - and /, such as town/welcome.';
     }
     if (component.store.document(document.kind, id) != null) return '${document.kind.label}: $id already exists.';
