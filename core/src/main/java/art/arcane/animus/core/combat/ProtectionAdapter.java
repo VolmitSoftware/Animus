@@ -2,6 +2,7 @@ package art.arcane.animus.core.combat;
 
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -29,4 +30,10 @@ public interface ProtectionAdapter {
     ProtectionAdapter NONE = request -> Decision.ALLOW;
 
     Decision decide(Request request);
+
+    /**
+     * Whether the position is inside the named protection region. Empty when this adapter has no regions or the region
+     * does not exist in that world, so the caller treats the region rule as unavailable.
+     */
+    default Optional<Boolean> inRegion(String region, WorldPosition position) { return Optional.empty(); }
 }

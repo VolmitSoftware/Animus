@@ -219,6 +219,7 @@ public final class AnimusModRuntime {
     void respawned(ServerPlayer player) { Running active = running; if (active != null) active.living.respawned(player); }
     void died(ServerPlayer player) { Running active = running; if (active != null) active.living.died(player); }
     void realDamaged(LivingEntity victim, DamageSource source) { Running active = running; if (active != null) active.combat.realDamaged(victim, source); }
+    void chat(ServerPlayer player, String message) { Running active = running; if (active != null) active.combat.chat(player, message); }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }
     boolean suppressesDrops(LivingEntity entity) { Running active = running; return active != null && active.combat.suppressesDrops(entity); }
 }

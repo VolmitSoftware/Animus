@@ -5,8 +5,10 @@ import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.bukkit.event.VirtualNpcDamageEvent;
 import art.arcane.animus.bukkit.navigation.BukkitTerrain;
 import art.arcane.animus.core.runtime.RuntimeCombatWorld;
+import art.arcane.animus.core.combat.CombatLoadout;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatTarget;
+import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
@@ -16,6 +18,7 @@ import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -24,19 +27,36 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.World;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.damage.DamageType;
 import org.bukkit.entity.AbstractArrow;
-import org.bukkit.entity.Arrow;
+import org.bukkit.entity.Egg;
 import org.bukkit.entity.Enemy;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ExperienceOrb;
+import org.bukkit.entity.Explosive;
+import org.bukkit.entity.Fireball;
+import org.bukkit.entity.LargeFireball;
+import org.bukkit.entity.LlamaSpit;
+import org.bukkit.entity.Projectile;
+import org.bukkit.entity.SmallFireball;
+import org.bukkit.entity.Snowball;
+import org.bukkit.entity.SpectralArrow;
+import org.bukkit.entity.SplashPotion;
+import org.bukkit.entity.Trident;
+import org.bukkit.entity.WitherSkull;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
@@ -46,6 +66,9 @@ import org.bukkit.util.Vector;
  * uses a damage source with a location and no causing entity, and its arrows have no shooter.
  */
 public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStack> {
+    private static final Map<RangedWeapon, Class<? extends Projectile>> THROWN = Map.of(RangedWeapon.SNOWBALL, Snowball.class, RangedWeapon.EGG, Egg.class,
+            RangedWeapon.FIREBALL, LargeFireball.class, RangedWeapon.SMALL_FIREBALL, SmallFireball.class, RangedWeapon.WITHER_SKULL, WitherSkull.class,
+            RangedWeapon.LLAMA_SPIT, LlamaSpit.class, RangedWeapon.POTION, SplashPotion.class);
     private final Plugin plugin;
     private final NamespacedKey helperKey;
     private final Set<UUID> suppressedDrops = new HashSet<>();
@@ -90,7 +113,26 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         return Optional.of(new CombatTarget(new TargetRef(kind, creature.getUniqueId()), creature.getType().getKey().toString(), name,
                 new WorldPosition(at.getWorld().getUID().toString(), new Vec3(at.getX(), at.getY(), at.getZ())),
                 new Hitbox(new Vec3(box.getMinX(), box.getMinY(), box.getMinZ()), new Vec3(box.getMaxX(), box.getMaxY(), box.getMaxZ())),
-                creature.getHealth(), categories, "", Optional.empty()));
+                creature.getHealth(), categories, "", Optional.empty(), details(creature)));
+    }
+
+    /** What item, health and effect rules read from a real entity. */
+    private static CombatTarget.Details details(LivingEntity creature) {
+        AttributeInstance maximum = creature.getAttribute(Attribute.MAX_HEALTH);
+        EntityEquipment equipment = creature.getEquipment();
+        List<String> worn = new ArrayList<>();
+        String mainHand = CombatLoadout.EMPTY, offHand = CombatLoadout.EMPTY;
+        if (equipment != null) {
+            mainHand = item(equipment.getItemInMainHand());
+            offHand = item(equipment.getItemInOffHand());
+            for (ItemStack piece : equipment.getArmorContents()) if (piece != null && piece.getType() != Material.AIR) worn.add(item(piece));
+        }
+        Set<String> effects = new HashSet<>();
+        for (PotionEffect effect : creature.getActivePotionEffects()) effects.add(effect.getType().getKey().toString());
+        return new CombatTarget.Details(maximum == null ? 0 : maximum.getValue(), mainHand, offHand, worn, effects);
+    }
+    private static String item(ItemStack stack) {
+        return stack == null || stack.getType() == Material.AIR ? CombatLoadout.EMPTY : stack.getType().getKey().toString();
     }
 
     @Override public List<CombatTarget> nearbyReal(WorldPosition center, double radius, int limit) {
@@ -146,19 +188,50 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         }
         return new DamageOutcome(DamageStatus.APPLIED, applied, victim.isDead() || victim.getHealth() <= 0);
     }
-    @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity) {
+    @Override public boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect) {
+        Entity entity = plugin.getServer().getEntity(target.ref().id());
+        NamespacedKey key = NamespacedKey.fromString(effect.id());
+        PotionEffectType type = key == null ? null : Registry.EFFECT.get(key);
+        if (!(entity instanceof LivingEntity victim) || !victim.isValid() || victim.isDead() || type == null) return false;
+        return victim.addPotionEffect(new PotionEffect(type, effect.durationTicks(), effect.amplifier()));
+    }
+    @Override public boolean permitted(TargetRef player, String node) {
+        if (player.kind() != TargetKind.PLAYER) return false;
+        Player online = plugin.getServer().getPlayer(player.id());
+        return online != null && online.hasPermission(node);
+    }
+    @Override public void tell(UUID player, String speaker, String message) {
+        Player online = plugin.getServer().getPlayer(player);
+        if (online != null) online.sendMessage("[" + speaker + "]: " + message);
+    }
+    /** Every helper is a shooterless projectile tagged as a helper; it never saves with its chunk and never breaks blocks. */
+    @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon) {
         World world = world(from.world());
         Vec3 point = from.point();
         if (world == null || !world.isChunkLoaded(((int) Math.floor(point.x())) >> 4, ((int) Math.floor(point.z())) >> 4)) return Optional.empty();
         double speed = velocity.distance(Vec3.ZERO);
         if (speed < .0001) return Optional.empty();
-        Arrow arrow = world.spawnArrow(location(world, point), vector(velocity), (float) speed, 0);
-        if (!arrow.isValid()) return Optional.empty();
-        arrow.getPersistentDataContainer().set(helperKey, PersistentDataType.BYTE, (byte) 1);
-        arrow.setPersistent(false);
-        arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
-        arrow.setVelocity(vector(velocity));
-        return Optional.of(arrow.getUniqueId());
+        Location at = location(world, point);
+        Projectile projectile = switch (weapon) {
+            case ARROW -> world.spawnArrow(at, vector(velocity), (float) speed, 0);
+            case SPECTRAL_ARROW -> world.spawnArrow(at, vector(velocity), (float) speed, 0, SpectralArrow.class);
+            case TRIDENT -> world.spawnArrow(at, vector(velocity), (float) speed, 0, Trident.class);
+            default -> world.spawn(at, THROWN.get(weapon), (Projectile thrown) -> tag(thrown));
+        };
+        if (!projectile.isValid()) return Optional.empty();
+        tag(projectile);
+        if (projectile instanceof AbstractArrow arrow) arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+        if (projectile instanceof Fireball fireball) fireball.setAcceleration(vector(velocity.normalized().multiply(.1)));
+        projectile.setVelocity(vector(velocity));
+        return Optional.of(projectile.getUniqueId());
+    }
+    private void tag(Projectile projectile) {
+        projectile.getPersistentDataContainer().set(helperKey, PersistentDataType.BYTE, (byte) 1);
+        projectile.setPersistent(false);
+        if (projectile instanceof Explosive explosive) {
+            explosive.setYield(0);
+            explosive.setIsIncendiary(false);
+        }
     }
     @Override public Optional<Vec3> helperPosition(UUID helper) {
         Entity entity = plugin.getServer().getEntity(helper);

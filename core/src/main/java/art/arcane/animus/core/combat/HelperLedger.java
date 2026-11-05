@@ -22,16 +22,20 @@ public final class HelperLedger {
         private final double damage;
         private final double knockback;
         private final boolean safeShot;
+        private final Optional<CombatSettings.Effect> effect;
         private final long expiresAt;
         private Vec3 lastPosition;
 
-        public Shot(UUID helper, UUID owner, Optional<TargetRef> intended, double damage, double knockback, boolean safeShot, long expiresAt, Vec3 lastPosition) {
+        /** @param effect what the shot applies instead of damage, for a potion */
+        public Shot(UUID helper, UUID owner, Optional<TargetRef> intended, double damage, double knockback, boolean safeShot, Optional<CombatSettings.Effect> effect,
+                    long expiresAt, Vec3 lastPosition) {
             this.helper = Objects.requireNonNull(helper, "helper");
             this.owner = Objects.requireNonNull(owner, "owner");
             this.intended = Objects.requireNonNull(intended, "intended");
             this.damage = damage;
             this.knockback = knockback;
             this.safeShot = safeShot;
+            this.effect = Objects.requireNonNull(effect, "effect");
             this.expiresAt = expiresAt;
             this.lastPosition = Objects.requireNonNull(lastPosition, "lastPosition");
         }
@@ -41,6 +45,7 @@ public final class HelperLedger {
         public double damage() { return damage; }
         public double knockback() { return knockback; }
         public boolean safeShot() { return safeShot; }
+        public Optional<CombatSettings.Effect> effect() { return effect; }
         public long expiresAt() { return expiresAt; }
         public Vec3 lastPosition() { return lastPosition; }
         void moved(Vec3 position) { lastPosition = position; }
