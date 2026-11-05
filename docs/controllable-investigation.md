@@ -1,6 +1,6 @@
 # Controllable NPC investigation
 
-Investigated on 2026-11-04 using the cached exact Minecraft server and client jars, Java 25 `javap -p -c`, and the current packet/passenger adapter. No servers were started. The findings below are verified packet and code paths. [What was built from them](#real-rider-implementation) is described at the end; it has unit tests and exact-jar checks and has not yet run with a graphical client.
+Investigated on 2026-11-04 using the cached exact Minecraft server and client jars, Java 25 `javap -p -c`, and the current packet/passenger adapter. No servers were started. The findings below are verified packet and code paths. [What was built from them](#real-rider-implementation) is described at the end; riding passes live checks on Paper, Spigot and the mod loaders, and its look and feel on a real client is still unchecked.
 
 Implementation follow-up: the unmounted proof below is now present in source, with focused core tests and Bukkit compilation passing. Exact-version live control scenarios remain the acceptance gate. `ControlInput`, `ControlInbox` and `ControlLoop` separate semantic keys, a bounded latest-value mailbox and the authoritative proposal clock. The adapter reads keys and client-tick-end heartbeats without scheduling a callback for every packet; the owner polls at most eight active leases. Only tick-end heartbeats renew the two-second liveness deadline. An input rate above 80 packets per admission-aligned one-second window closes that lease; a coalesced shift still closes it.
 

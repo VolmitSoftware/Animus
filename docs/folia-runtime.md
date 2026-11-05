@@ -1,6 +1,6 @@
 # Persisted NPCs on Folia
 
-On Folia 26.1.2, 26.2 and 26.3, saved NPC definitions run on the region that owns each NPC's chunk. The commands, definitions, limits and events are the same as in the [persisted runtime](runtime.md). This page describes what differs. The source compiles against all three exact APIs and passes its unit tests; it has not yet been run on a live Folia server, so [implementation evidence](implementation.md) does not yet list it.
+On Folia 26.1.2, 26.2 and 26.3, saved NPC definitions run on the region that owns each NPC's chunk. The commands, definitions, limits and events are the same as in the [persisted runtime](runtime.md). This page describes what differs. Live checks pass on all three Folia builds: activation, triggers, behavior actions, a patrol crossing chunk owners, riding, mounts and combat reported unavailable, and a clean disable. Two truly separate regions could not be observed with a real client, because Folia merges adjacent loaded chunks into one region.
 
 ## What runs
 

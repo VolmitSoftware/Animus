@@ -6,7 +6,7 @@ Everything is in memory. The relay stores no documents, tokens or frames, and lo
 
 ## What the relay can see
 
-The relay is a trusted pass-through. TLS (Cloud Run's) protects traffic on the wire, but the relay process reads every frame it forwards, including the editor's bearer tokens and the documents being edited. End-to-end encryption between browser and server is planned for a later release. Until then, whoever operates the relay can read the traffic it forwards. Tokens are scoped, expire after 7 days by default and can be revoked with `/animus web revoke`.
+The relay is a trusted pass-through. TLS (Cloud Run's) protects traffic on the wire, but the relay process reads every frame it forwards, including the editor's bearer tokens and the documents being edited. End-to-end encryption between browser and server is planned for a later release. Until then, whoever operates the relay can read the traffic it forwards. Tokens are scoped, expire after 7 days by default and can be revoked with `/animus editor revoke`.
 
 The relay does not check tokens. The server checks every forwarded request the same way as a direct one (token, scope, `X-Animus-Counter`, origin).
 
