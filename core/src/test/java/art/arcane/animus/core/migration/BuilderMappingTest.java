@@ -68,7 +68,7 @@ class BuilderMappingTest {
         assertEquals("REQUIRES_REVIEW", report.get("/traits/constructor/preview").getAsString());
         try (DocumentStore store = new DocumentStore(root.resolve("out"))) {
             importer.apply(store, preview.id());
-            NpcDefinition definition = NpcDefinition.parse(store.read("npcs/world/citizens-7.json"));
+            NpcDefinition definition = NpcDefinition.parse(store.read("npcs/world-r0_0/citizens-7.json"));
             BuilderModule module = BuilderModule.of(definition).orElseThrow();
             assertFalse(module.reviewAccepted());
             assertEquals("tower.schem", module.schematic());

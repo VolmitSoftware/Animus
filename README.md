@@ -46,7 +46,7 @@ Preview writes `imports/<import-id>/` containing:
 - `source.yml`: original input, preserved exactly for valid UTF-8.
 - `records/<citizens-id>.json`: every original NPC record.
 - `reports/<citizens-id>.json`: per-field data classification and exact definition errors.
-- `npcs/<world>/citizens-<id>.json`: individually editable candidate definitions, one folder per world (after world mapping); NPCs with no world go in `npcs/citizens/`.
+- `npcs/<world>-r<x>_<z>/citizens-<id>.json`: individually editable candidate definitions, one folder per world (after world mapping) and region file, such as `npcs/world-r0_-1/` for `region/r.0.-1.mca`; see [where the files go](docs/migrating-from-citizens.md#where-the-files-go).
 - `skins/<sha256>.json`: deduplicated complete skin traits, including texture and signature.
 - `report.json`: counts, trait/Sentinel inventories, UUID mapping, world mapping, and a document hash manifest.
 

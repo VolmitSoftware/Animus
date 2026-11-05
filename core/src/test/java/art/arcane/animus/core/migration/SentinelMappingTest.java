@@ -344,7 +344,7 @@ class SentinelMappingTest {
     @Test void anImportConvertsStaysDisabledAndStillArchivesEverything() throws Exception {
         Path source = Files.writeString(root.resolve("saves.yml"), RECORD);
         CitizensImporter.Preview preview = new CitizensImporter().preview(source, root.resolve("out"), Map.of("old", "new"));
-        JsonObject candidate = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/new/citizens-1.json")));
+        JsonObject candidate = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/new-r0_-1/citizens-1.json")));
         JsonObject module = candidate.getAsJsonObject("modules").getAsJsonObject(CombatSettings.MODULE);
         assertFalse(module.get("enabled").getAsBoolean());
         assertFalse(module.get("reviewAccepted").getAsBoolean());
@@ -374,7 +374,7 @@ class SentinelMappingTest {
         CitizensImporter importer = new CitizensImporter();
         CitizensImporter.Preview preview = importer.preview(source, root.resolve("out"), Map.of("old", "new"));
         List<NpcDefinition> imported = new java.util.ArrayList<>();
-        for (int id = 1; id <= 2; id++) imported.add(NpcDefinition.parse(Files.readString(preview.directory().resolve("npcs/new/citizens-" + id + ".json"))));
+        for (int id = 1; id <= 2; id++) imported.add(NpcDefinition.parse(Files.readString(preview.directory().resolve((id == 1 ? "npcs/new-r0_-1/" : "npcs/new-r0_0/") + "citizens-" + id + ".json"))));
         ImportProjection.Result copy = ImportProjection.project(preview.id(), imported, List.of(), ImportProjection.Mode.DUPLICATE, "second");
         NpcDefinition guard = copy.definitions().stream().filter((NpcDefinition candidate) -> candidate.id().equals("citizens-1-second")).findFirst().orElseThrow();
         NpcDefinition charge = copy.definitions().stream().filter((NpcDefinition candidate) -> candidate.id().equals("citizens-2-second")).findFirst().orElseThrow();

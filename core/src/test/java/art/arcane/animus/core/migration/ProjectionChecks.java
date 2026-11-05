@@ -42,7 +42,7 @@ public final class ProjectionChecks {
             Path input=Files.writeString(temp.resolve("saves.yml"),source);
             var preview=new CitizensImporter().preview(input,temp.resolve("data"),Map.of());
             List<NpcDefinition> original=new ArrayList<>();
-            for(int id=1;id<=2;id++)original.add(NpcDefinition.parse(Files.readString(preview.directory().resolve("npcs/world/citizens-"+id+".json"))));
+            for(int id=1;id<=2;id++)original.add(NpcDefinition.parse(Files.readString(preview.directory().resolve("npcs/world-r0_0/citizens-"+id+".json"))));
             String firstBefore=original.getFirst().serialize();
             String id=preview.id();
             var fresh=ImportProjection.project(id,original,List.of(),ImportProjection.Mode.REJECT,null);

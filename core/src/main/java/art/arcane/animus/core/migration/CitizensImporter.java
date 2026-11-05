@@ -136,7 +136,7 @@ public final class CitizensImporter {
                         position.addProperty("pitch", facing.pitch());
                     });
                     definition.add("position", position);
-                    definition.addProperty("group", group(world));
+                    definition.addProperty("group", group(world, position.get("x"), position.get("z")));
                     for (Map.Entry<String, JsonElement> field : presentation.fields().entrySet()) definition.add(field.getKey(), field.getValue());
                     for (String warning : presentation.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
                     JsonObject modules = new JsonObject();
@@ -307,15 +307,28 @@ public final class CitizensImporter {
         return store.commit(changes);
     }
 
+    /** Blocks per side of a Minecraft region file, the area one import folder covers. */
+    public static final int GROUP_AREA = 512;
+
     /**
-     * The folder an imported NPC goes in: its world, after world mapping, as a lowercase path segment. An NPC without a
-     * world goes in {@code citizens}. The same world always gives the same folder, so paths are stable across imports.
+     * The folder an imported NPC goes in: its world after world mapping and the region file it stands in, such as
+     * {@code world-r0_-1} for {@code region/r.0.-1.mca}. The world becomes a lowercase path segment of at most 48
+     * characters. Without usable x and z coordinates the folder is the world alone, and without a world it is
+     * {@code citizens}. The same save always gives the same folders.
      */
-    public static String group(String world) {
+    public static String group(String world, JsonElement x, JsonElement z) {
         String lowered = world.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-").replaceAll("-{2,}", "-")
                 .replaceAll("^[^a-z0-9]+", "").replaceAll("[-_]+$", "");
-        if (lowered.length() > 64) lowered = lowered.substring(0, 64).replaceAll("[-_]+$", "");
-        return lowered.isEmpty() ? "citizens" : lowered;
+        if (lowered.length() > 48) lowered = lowered.substring(0, 48).replaceAll("[-_]+$", "");
+        if (lowered.isEmpty()) return "citizens";
+        if (!coordinate(x) || !coordinate(z)) return lowered;
+        long regionX = (long) Math.floor(x.getAsDouble() / GROUP_AREA), regionZ = (long) Math.floor(z.getAsDouble() / GROUP_AREA);
+        return lowered + "-r" + regionX + "_" + regionZ;
+    }
+
+    private static boolean coordinate(JsonElement value) {
+        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()
+                && Double.isFinite(value.getAsDouble()) && Math.abs(value.getAsDouble()) <= 30_000_000;
     }
 
     /** A Citizens {@code controllable} trait that is on becomes a disabled {@code animus:riding} section waiting for review. */

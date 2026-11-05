@@ -42,13 +42,13 @@ class CitizensImporterTest {
         try (DocumentStore store = new DocumentStore(target)) {
             String tx = importer.apply(store, preview.id());
             assertEquals("already-applied", importer.apply(store, preview.id()));
-            NpcDefinition definition = NpcDefinition.parse(store.read("npcs/world/citizens-1.json"));
+            NpcDefinition definition = NpcDefinition.parse(store.read("npcs/world-r0_-1/citizens-1.json"));
             assertEquals("world", definition.json().getAsJsonObject("position").get("world").getAsString());
             assertFalse(definition.json().get("spawned").getAsBoolean());
             assertFalse(definition.json().getAsJsonObject("modules").getAsJsonObject("animus:combat").get("enabled").getAsBoolean());
             assertEquals(42, definition.json().getAsJsonObject("modules").getAsJsonObject("citizens:review").getAsJsonObject("mystery").get("answer").getAsInt());
             store.rollback(tx);
-            assertNull(store.read("npcs/world/citizens-1.json"));
+            assertNull(store.read("npcs/world-r0_-1/citizens-1.json"));
             assertNull(store.read("imports/" + preview.id() + "/receipt.json"));
             importer.apply(store, preview.id());
         }
@@ -77,7 +77,7 @@ class CitizensImporterTest {
             importer.apply(store, first.id());
             assertThrows(IOException.class, () -> importer.apply(store, second.id()));
         }
-        Path staged = second.directory().resolve("npcs/another/citizens-1.json");
+        Path staged = second.directory().resolve("npcs/another-r0_-1/citizens-1.json");
         Files.writeString(staged, Files.readString(staged).replace("Guard", "Changed"));
         try (DocumentStore store = new DocumentStore(out)) {
             assertTrue(assertThrows(IOException.class, () -> importer.apply(store, second.id())).getMessage().contains("Preview changed"));
@@ -109,7 +109,7 @@ class CitizensImporterTest {
         String input = "npc:\n" + npc("1").replace("sentinel: {health: 40, targets: [MONSTERS]}", "sentinel: {health: 40, stats_punches: 23, spawnPoint: {world: old, worldid: old-world-uuid, x: 8, y: 65, z: 9}}") + extra.indent(4);
         Path source = source(input);
         var preview = new CitizensImporter().preview(source, root.resolve("out"), Map.of("old", "new"));
-        JsonObject candidate = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/new/citizens-1.json")));
+        JsonObject candidate = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/new-r0_-1/citizens-1.json")));
         JsonObject reviewed = candidate.getAsJsonObject("modules").getAsJsonObject("citizens:review");
         JsonObject guide = reviewed.getAsJsonObject("waypoints").getAsJsonObject("guided").getAsJsonArray("guides").get(0).getAsJsonObject().getAsJsonObject("location");
         assertEquals("new", guide.get("world").getAsString()); assertFalse(guide.has("worldid"));
@@ -156,7 +156,7 @@ class CitizensImporterTest {
         var preview = new CitizensImporter().preview(source(input), root.resolve("out"), Map.of("old", "old"));
         assertEquals(0, preview.summary().get("remappedLocations").getAsInt());
         assertEquals(0, preview.summary().get("unresolvedReferences").getAsInt());
-        JsonObject definition = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/old/citizens-1.json")));
+        JsonObject definition = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/old-r0_-1/citizens-1.json")));
         assertEquals("original", definition.getAsJsonObject("modules").getAsJsonObject("citizens:review").getAsJsonObject("location").get("worldid").getAsString());
     }
 
@@ -165,11 +165,11 @@ class CitizensImporterTest {
         var preview = importer.preview(source("npc:\n" + npc("1")), root.resolve("out"), Map.of());
         try (DocumentStore store = new DocumentStore(root.resolve("out"))) {
             importer.apply(store, preview.id());
-            Files.delete(root.resolve("out/npcs/old/citizens-1.json"));
+            Files.delete(root.resolve("out/npcs/old-r0_-1/citizens-1.json"));
             assertTrue(assertThrows(IOException.class, () -> importer.apply(store, preview.id())).getMessage().contains("incomplete"));
             // Remove only our generated receipt, then exercise the independent staged-combat check.
             Files.delete(root.resolve("out/imports/" + preview.id() + "/receipt.json"));
-            String name = "npcs/old/citizens-1.json";
+            String name = "npcs/old-r0_-1/citizens-1.json";
             Path candidatePath = preview.directory().resolve(name);
             JsonObject candidate = JsonDocuments.object(Files.readString(candidatePath));
             candidate.getAsJsonObject("modules").getAsJsonObject("animus:combat").addProperty("enabled", true);
@@ -177,7 +177,7 @@ class CitizensImporterTest {
             JsonObject report = preview.summary(); report.getAsJsonObject("documents").addProperty(name, JsonDocuments.hash(content));
             Files.writeString(preview.directory().resolve("report.json"), JsonDocuments.write(report));
             assertTrue(assertThrows(IOException.class, () -> importer.apply(store, preview.id())).getMessage().contains("disabled"));
-            assertFalse(Files.exists(root.resolve("out/npcs/old/citizens-1.json")));
+            assertFalse(Files.exists(root.resolve("out/npcs/old-r0_-1/citizens-1.json")));
         }
     }
 
@@ -190,7 +190,7 @@ class CitizensImporterTest {
         Path v1Directory = out.resolve("imports/" + v1Id);
         Files.move(v2.directory(), v1Directory);
         JsonObject summary = v2.summary(); summary.addProperty("converterVersion", 1); summary.addProperty("importId", v1Id);
-        String name = "npcs/old/citizens-1.json";
+        String name = "npcs/old-r0_-1/citizens-1.json";
         JsonObject definition = JsonDocuments.object(Files.readString(v1Directory.resolve(name)));
         definition.getAsJsonObject("migration").addProperty("importId", v1Id);
         JsonObject modules = definition.getAsJsonObject("modules"); modules.add("citizens:preserved", modules.remove("citizens:review"));
