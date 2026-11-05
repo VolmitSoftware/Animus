@@ -15,7 +15,7 @@ import java.util.List;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
-                             FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat,
+                             FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
                              ShopSettings shops) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
@@ -38,6 +38,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("modules", new Gson().toJsonTree(ModuleSettings.DEFAULT));
             document.add("behaviors", new Gson().toJsonTree(BehaviorSettings.DEFAULT));
             document.add("combat", new Gson().toJsonTree(CombatBudgets.DEFAULT));
+            document.add("builds", new Gson().toJsonTree(BuildSettings.DEFAULT));
             document.add("shops", shopDefaults());
         }
         String encoded;
@@ -103,10 +104,29 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         CombatBudgets combatBudgets;
         try { combatBudgets = combat(table(data.getAsJsonObject(), "combat")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": combat: " + e.getMessage(), e); }
+        BuildSettings buildSettings;
+        try { buildSettings = builds(table(data.getAsJsonObject(), "builds")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": builds: " + e.getMessage(), e); }
         ShopSettings shopSettings;
         try { shopSettings = shops(table(data.getAsJsonObject(), "shops")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": shops: " + e.getMessage(), e); }
-        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, shopSettings);
+        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings);
+    }
+
+    private static BuildSettings builds(JsonObject document) {
+        BuildSettings defaults = BuildSettings.DEFAULT;
+        return new BuildSettings(bool(document, "enabled", defaults.enabled()),
+                integer(document, "maximumBuilds", defaults.maximumBuilds()),
+                integer(document, "maximumTeam", defaults.maximumTeam()),
+                integer(document, "placementsPerTick", defaults.placementsPerTick()),
+                integer(document, "checksPerTick", defaults.checksPerTick()),
+                integer(document, "undoPerTick", defaults.undoPerTick()),
+                integer(document, "maximumVolume", defaults.maximumVolume()),
+                integer(document, "maximumPalette", defaults.maximumPalette()),
+                integer(document, "maximumSide", defaults.maximumSide()),
+                integer(document, "maximumFileBytes", defaults.maximumFileBytes()),
+                integer(document, "maximumUndoEntries", defaults.maximumUndoEntries()),
+                integer(document, "saveSeconds", defaults.saveSeconds()));
     }
 
     private static JsonObject shopDefaults() {
@@ -153,7 +173,10 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 integer(document, "helpersPerNpc", defaults.helpersPerNpc()),
                 integer(document, "helperUpdatesPerTick", defaults.helperUpdatesPerTick()),
                 integer(document, "helperLifetimeTicks", defaults.helperLifetimeTicks()),
-                integer(document, "idleSleepTicks", defaults.idleSleepTicks()));
+                integer(document, "idleSleepTicks", defaults.idleSleepTicks()),
+                integer(document, "eventsPerTick", defaults.eventsPerTick()),
+                integer(document, "maximumScanRange", defaults.maximumScanRange()),
+                integer(document, "maximumSpeed", defaults.maximumSpeed()));
     }
 
     private static BehaviorSettings behaviors(JsonObject document) {

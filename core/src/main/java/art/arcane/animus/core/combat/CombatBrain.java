@@ -6,9 +6,14 @@ import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /** One NPC's combat state machine. Owned by the engine and driven only on its thread. */
 final class CombatBrain {
@@ -17,14 +22,23 @@ final class CombatBrain {
     private static final int VISIBILITY_CANDIDATES = 8;
     private static final double FIELD_OF_VIEW_COSINE = Math.cos(Math.toRadians(70));
     private static final long GUARD_INTERVAL = 10;
+    private static final long REGION_INTERVAL = 10;
+    private static final int GREETING_MEMORY = 256;
 
     private final CombatEngine engine;
     private final CombatWorld world;
     private final UUID npc;
     private final String handle;
     private final CombatSettings settings;
+    private final CombatLoadout loadout;
+    private final TargetRules.Context context;
+    private final double meleeDamage;
+    private final double rangedDamage;
+    private final double armor;
     private final StrikeWindow meleeWindow = new StrikeWindow();
     private final StrikeWindow rangedWindow = new StrikeWindow();
+    private final Set<UUID> greeted = new HashSet<>();
+    private final Map<UUID, Long> lastGreeting = new HashMap<>();
     private CombatState state = CombatState.IDLE;
     private TargetRef target;
     private TargetRef threat;
@@ -35,6 +49,7 @@ final class CombatBrain {
     private boolean moving;
     private boolean alertPending;
     private boolean deathHandled;
+    private boolean regionReported;
     private WorldPosition anchor;
     private WorldPosition deathPlace;
     private SpatialNpcIndex.Cursor npcCursor;
@@ -46,16 +61,27 @@ final class CombatBrain {
     private long backoff;
     private long nextPlan;
     private long nextHeal;
+    private long nextRegionCheck;
     private long invulnerableUntil;
     private long respawnAt = -1;
     private int stuck;
+    private int ammunition;
 
-    CombatBrain(CombatEngine engine, CombatWorld world, UUID npc, String handle, CombatSettings settings) {
+    CombatBrain(CombatEngine engine, CombatWorld world, UUID npc, String handle, CombatSettings settings, CombatLoadout loadout) {
         this.engine = engine;
         this.world = world;
         this.npc = npc;
         this.handle = handle;
         this.settings = settings;
+        this.loadout = loadout;
+        context = new TargetRules.Context() {
+            @Override public Optional<UUID> owner() { return loadout.owner(); }
+            @Override public boolean permitted(TargetRef player, String node) { return world.permitted(player, node); }
+        };
+        meleeDamage = EquipmentStats.melee(settings.melee(), loadout);
+        rangedDamage = EquipmentStats.ranged(settings.ranged(), settings.melee(), loadout);
+        armor = EquipmentStats.armor(settings.defense(), loadout);
+        ammunition = settings.ranged().useAmmo() && !settings.ranged().weapon().ammunition().isEmpty() ? loadout.count(settings.ranged().weapon().ammunition()) : -1;
         guarded = settings.guard().player().map((UUID id) -> new TargetRef(TargetKind.PLAYER, id))
                 .or(() -> settings.guard().npc().map((UUID id) -> new TargetRef(TargetKind.NPC, id))).orElse(null);
     }
@@ -63,6 +89,8 @@ final class CombatBrain {
     UUID npc() { return npc; }
     String handle() { return handle; }
     CombatSettings settings() { return settings; }
+    CombatLoadout loadout() { return loadout; }
+    TargetRules.Context context() { return context; }
     CombatState state() { return state; }
     TargetRef target() { return target; }
     TargetRef guarded() { return guarded; }
@@ -74,11 +102,22 @@ final class CombatBrain {
     void npcCursor(SpatialNpcIndex.Cursor cursor) { npcCursor = cursor; }
     void retire() { retired = true; }
     boolean awaitsTarget() { return target == null && !disengaged && state != CombatState.DEAD; }
+    double meleeDamage() { return meleeDamage; }
+    double rangedDamage() { return rangedDamage; }
+    /** Shots left when ammunition is counted, or -1 when it is not. */
+    int ammunition() { return ammunition; }
+    /** Whether fight or chat rules make this NPC react to events nearby. */
+    boolean watches() {
+        return !settings.targets().events().empty() || !settings.avoids().events().empty() || !settings.targets().chat().isEmpty() || !settings.avoids().chat().isEmpty();
+    }
 
     boolean friendly(TargetRef other, Optional<String> otherSquad) {
         if (other.id().equals(npc) || other.equals(guarded)) return true;
         return settings.squad().name().isPresent() && settings.squad().name().equals(otherSquad);
     }
+
+    private double scanRange() { return Math.min(settings.targeting().scanRange(), engine.budgets().maximumScanRange()); }
+    private double speed() { return Math.min(settings.pursuit().speed(), engine.budgets().maximumSpeed()); }
 
     /** Runs one turn and returns the ticks until the next one. */
     long update(long now) {
@@ -106,11 +145,13 @@ final class CombatBrain {
         long interval = settings.targeting().scanIntervalTicks();
         if (!disengaged && now >= nextScan) {
             if (!engine.takeScan()) return 1;
-            double radius = Math.max(settings.targeting().scanRange(), settings.avoids().empty() ? 0 : settings.avoidance().range());
+            double radius = Math.max(scanRange(), settings.avoids().empty() ? 0 : settings.avoidance().range());
+            if (settings.greetings().enabled()) radius = Math.max(radius, settings.greetings().range() + 1);
             lastSeen = engine.scan(this, self.position(), radius);
             if (lastSeen.isEmpty()) backoff = Math.min(Math.max(interval, backoff * 2), Math.max(interval, engine.budgets().idleSleepTicks()));
             else backoff = 0;
             nextScan = now + (backoff > 0 ? backoff : interval);
+            greet(now, self);
             Optional<CombatTarget> feared = feared(self);
             if (feared.isPresent()) {
                 beginFlight(feared.get().ref(), self);
@@ -131,23 +172,86 @@ final class CombatBrain {
         return until;
     }
 
+    /** Says the greeting or warning to players who came within range since the last scan, at most once per cooldown each. */
+    private void greet(long now, VirtualNpcState.Snapshot self) {
+        CombatSettings.Greetings greetings = settings.greetings();
+        if (!greetings.enabled()) return;
+        Vec3 point = self.position().point();
+        Set<UUID> present = new HashSet<>();
+        int checks = 0;
+        for (CombatTarget seen : lastSeen) {
+            if (seen.ref().kind() != TargetKind.PLAYER) continue;
+            UUID player = seen.ref().id();
+            double distance = seen.position().point().distance(point);
+            if (distance >= greetings.range() + 1) continue;
+            if (greeted.contains(player)) {
+                present.add(player);
+                continue;
+            }
+            if (distance >= greetings.range() || checks++ >= VISIBILITY_CANDIDATES || !noticeable(self, seen)) continue;
+            present.add(player);
+            Long last = lastGreeting.get(player);
+            if (last != null && now - last < greetings.cooldownTicks()) continue;
+            lastGreeting.put(player, now);
+            boolean hostile = settings.targets().matches(seen, context) && !settings.ignores().matches(seen, context) && !friendly(seen.ref(), seen.squad());
+            Optional<String> line = hostile ? greetings.hostile() : greetings.friendly();
+            if (line.isPresent()) world.tell(player, engine.speaker(this), line.get());
+        }
+        greeted.clear();
+        greeted.addAll(present);
+        if (lastGreeting.size() > GREETING_MEMORY) lastGreeting.values().removeIf((Long at) -> now - at >= greetings.cooldownTicks());
+    }
+
     private Optional<CombatTarget> feared(VirtualNpcState.Snapshot self) {
         if (settings.avoids().empty()) return Optional.empty();
         Vec3 point = self.position().point();
+        Set<TargetRef> grouped = together(settings.avoids(), self, settings.avoidance().range());
         for (CombatTarget candidate : lastSeen) {
-            if (settings.avoids().matches(candidate) && !friendly(candidate.ref(), candidate.squad())
+            if ((settings.avoids().matches(candidate, context) || grouped.contains(candidate.ref())) && !friendly(candidate.ref(), candidate.squad())
                     && candidate.position().point().distance(point) <= settings.avoidance().range()) return Optional.of(candidate);
         }
         return Optional.empty();
     }
 
-    /** The nearest allowed candidate. Line-of-sight queries are capped per scan. */
+    /**
+     * Candidates that complete a {@code together} group: each rule set of the group matched by a different candidate in
+     * range at this scan. Every member of a completed group is eligible.
+     */
+    private Set<TargetRef> together(TargetRules rules, VirtualNpcState.Snapshot self, double range) {
+        if (rules.together().isEmpty()) return Set.of();
+        Vec3 point = self.position().point();
+        List<CombatTarget> pool = new ArrayList<>();
+        for (CombatTarget candidate : lastSeen) {
+            if (candidate.position().point().distance(point) <= range && !settings.ignores().matches(candidate, context) && !friendly(candidate.ref(), candidate.squad()))
+                pool.add(candidate);
+        }
+        pool.sort(Comparator.comparingDouble((CombatTarget candidate) -> candidate.position().point().distance(point)));
+        Set<TargetRef> result = new HashSet<>();
+        for (List<TargetRules> group : rules.together()) {
+            Set<TargetRef> used = new HashSet<>();
+            for (TargetRules part : group) {
+                for (CombatTarget candidate : pool) {
+                    if (!used.contains(candidate.ref()) && part.matchesAll(candidate, context)) {
+                        used.add(candidate.ref());
+                        break;
+                    }
+                }
+            }
+            if (used.size() == group.size()) result.addAll(used);
+        }
+        return result;
+    }
+
+    /** The nearest allowed candidate. Line-of-sight and region queries are capped per scan. */
     private Optional<CombatTarget> select(VirtualNpcState.Snapshot self) {
         Vec3 point = self.position().point();
+        boolean helpful = settings.ranged().enabled() && settings.ranged().helpful();
+        Set<TargetRef> grouped = together(settings.targets(), self, scanRange());
         List<CombatTarget> eligible = new ArrayList<>();
         for (CombatTarget candidate : lastSeen) {
-            if (!settings.targets().matches(candidate) || settings.ignores().matches(candidate) || friendly(candidate.ref(), candidate.squad())) continue;
-            if (candidate.position().point().distance(point) > settings.targeting().scanRange()) continue;
+            if (!(settings.targets().matches(candidate, context) || grouped.contains(candidate.ref())) || settings.ignores().matches(candidate, context)) continue;
+            if (candidate.ref().id().equals(npc) || !helpful && friendly(candidate.ref(), candidate.squad())) continue;
+            if (candidate.position().point().distance(point) > scanRange()) continue;
             if (anchor != null && guarded == null && anchor.point().distance(candidate.position().point()) > settings.pursuit().leashRange()) continue;
             eligible.add(candidate);
         }
@@ -155,9 +259,25 @@ final class CombatBrain {
         int checks = 0;
         for (CombatTarget candidate : eligible) {
             if (checks++ >= VISIBILITY_CANDIDATES) break;
+            if (!insideRegion(candidate.position())) continue;
             if (noticeable(self, candidate)) return Optional.of(candidate);
         }
         return Optional.empty();
+    }
+
+    /** Whether the position satisfies the pursuit region. Without one, or where regions are unavailable, every position does. */
+    private boolean insideRegion(WorldPosition position) {
+        Optional<String> region = settings.pursuit().region();
+        if (region.isEmpty()) return true;
+        Optional<Boolean> inside = engine.inRegion(region.get(), position);
+        if (inside.isEmpty()) {
+            if (!regionReported) {
+                regionReported = true;
+                engine.regionUnavailable(this, region.get());
+            }
+            return true;
+        }
+        return inside.get();
     }
 
     private boolean noticeable(VirtualNpcState.Snapshot self, CombatTarget candidate) {
@@ -183,6 +303,10 @@ final class CombatBrain {
             if (anchor.point().distance(point) > pursuit.leashRange()
                     || anchor.point().distance(seen.get().position().point()) > pursuit.leashRange() + reachMargin) return lose(self);
         }
+        if (pursuit.region().isPresent() && now >= nextRegionCheck) {
+            nextRegionCheck = now + REGION_INTERVAL;
+            if (!insideRegion(seen.get().position())) return lose(self);
+        }
         boolean visible = true;
         if (settings.targeting().lineOfSight() != CombatSettings.LineOfSight.IGNORED) {
             CombatWorld.Visibility visibility = world.lineOfSight(self.position().world(), eye(self), CombatGeometry.center(seen.get().bounds()));
@@ -194,8 +318,9 @@ final class CombatBrain {
             }
         }
         if (!settings.targeting().retainTarget() && !forced && !disengaged && now >= nextScan && engine.takeScan()) {
-            lastSeen = engine.scan(this, self.position(), settings.targeting().scanRange());
+            lastSeen = engine.scan(this, self.position(), Math.max(scanRange(), settings.greetings().enabled() ? settings.greetings().range() + 1 : 0));
             nextScan = now + settings.targeting().scanIntervalTicks();
+            greet(now, self);
             Optional<CombatTarget> nearer = select(self);
             if (nearer.isPresent() && !nearer.get().ref().equals(target)) {
                 target = nearer.get().ref();
@@ -210,8 +335,9 @@ final class CombatBrain {
         CombatSettings.Ranged ranged = settings.ranged();
         boolean ready = now >= reactionUntil;
         double distance = foe.position().point().distance(self.position().point());
-        boolean inMelee = melee.enabled() && CombatGeometry.reach(CombatGeometry.center(self.bounds()), foe.bounds()) <= melee.reach();
-        boolean rangedUsable = !inMelee && ranged.enabled() && visible && distance <= ranged.range() && distance >= ranged.minimumRange();
+        boolean meleeAllowed = melee.enabled() && !(ranged.enabled() && ranged.helpful());
+        boolean inMelee = meleeAllowed && CombatGeometry.reach(CombatGeometry.center(self.bounds()), foe.bounds()) <= melee.reach();
+        boolean rangedUsable = !inMelee && ranged.enabled() && ammunition != 0 && visible && distance <= ranged.range() && distance >= ranged.minimumRange();
         if (inMelee && visible) {
             if (ready && meleeWindow.reserve(now, melee.cooldownTicks())) {
                 try {
@@ -227,7 +353,7 @@ final class CombatBrain {
             if (ready && engine.helperCapacity(npc) && clearShot(self, foe) && rangedWindow.reserve(now, ranged.cooldownTicks())) {
                 try {
                     world.face(npc, CombatGeometry.center(foe.bounds()));
-                    engine.shoot(this, new WorldPosition(self.position().world(), eye(self)), foe);
+                    if (engine.shoot(this, new WorldPosition(self.position().world(), eye(self)), foe) && ammunition > 0) ammunition--;
                 } finally {
                     rangedWindow.release();
                 }
@@ -237,7 +363,7 @@ final class CombatBrain {
         boolean chase;
         if (inMelee && visible) chase = false;
         else if (rangedUsable) chase = settings.pursuit().rangedChase();
-        else if (melee.enabled()) chase = settings.pursuit().closeChase();
+        else if (meleeAllowed) chase = settings.pursuit().closeChase();
         else chase = settings.pursuit().rangedChase();
         if (chase) {
             state = CombatState.PURSUING;
@@ -273,7 +399,7 @@ final class CombatBrain {
     private void plan(long now, VirtualNpcState.Snapshot self, WorldPosition goal, Goal purpose) {
         if (now < nextPlan || !engine.takePath()) return;
         nextPlan = now + settings.pursuit().replanTicks();
-        CombatWorld.MoveStatus status = world.move(npc, goal, settings.pursuit().speed());
+        CombatWorld.MoveStatus status = world.move(npc, goal, speed());
         if (status == CombatWorld.MoveStatus.ACCEPTED) {
             moving = true;
             stuck = 0;
@@ -416,6 +542,45 @@ final class CombatBrain {
         engine.wake(this);
     }
 
+    /**
+     * A fight or a chat message nearby. The attacker or speaker becomes a target when the target rules ask for it, or a
+     * threat when the avoid rules do, provided this NPC could notice it. An NPC already fighting keeps its target.
+     */
+    void witnessed(CombatTarget subject, boolean asTarget, boolean asThreat) {
+        if (disengaged || state == CombatState.DEAD || subject.ref().id().equals(npc) || friendly(subject.ref(), subject.squad())) return;
+        if (settings.ignores().matches(subject, context)) return;
+        Optional<VirtualNpcState.Snapshot> current = world.npc(npc);
+        if (current.isEmpty() || !current.get().active()) return;
+        VirtualNpcState.Snapshot self = current.get();
+        if (!subject.position().world().equals(self.position().world())) return;
+        double distance = subject.position().point().distance(self.position().point());
+        boolean fear = asThreat && threat == null && distance <= settings.avoidance().range();
+        boolean attack = asTarget && awaitsTarget() && threat == null && distance <= scanRange();
+        if (!fear && !attack || !engine.takeSight() || !noticeable(self, subject)) return;
+        if (fear) beginFlight(subject.ref(), self);
+        else {
+            adopt(subject.ref(), false);
+            alertPending = settings.squad().name().isPresent();
+        }
+        engine.wake(this);
+    }
+
+    /** Whether these rules react to this fight. The victim is observed only when a rule needs it. */
+    boolean reacts(TargetRules rules, FightKind kind, TargetRef attacker, Supplier<Optional<CombatTarget>> victim) {
+        TargetRules.Fights fights = rules.events();
+        if (fights.kinds().contains(kind)) return true;
+        if (fights.playerAttacks().isPresent() && attacker.kind() == TargetKind.PLAYER
+                && victim.get().map((CombatTarget seen) -> fights.playerAttacks().get().matches(seen, context)).orElse(false)) return true;
+        return fights.anyAttacks().isPresent() && attacker.kind() != TargetKind.NPC
+                && victim.get().map((CombatTarget seen) -> fights.anyAttacks().get().matches(seen, context)).orElse(false);
+    }
+
+    /** Whether this message contains any of the rules' chat text. */
+    static boolean said(TargetRules rules, String folded) {
+        for (String text : rules.chat()) if (folded.contains(text)) return true;
+        return false;
+    }
+
     /** This NPC took damage. Wakes it, and it may fight back or flee. */
     void attacked(TargetRef attacker) {
         engine.wake(this);
@@ -443,8 +608,8 @@ final class CombatBrain {
         if (self.isEmpty()) return 0;
         if (defense.protectFromRange() > 0 && (!from.world().equals(self.get().position().world())
                 || from.point().distance(self.get().position().point()) > defense.protectFromRange())) return 0;
-        if (defense.protectedFromIgnored() && attackerView.isPresent() && settings.ignores().matches(attackerView.get())) return 0;
-        double reduced = amount * (1 - defense.armor());
+        if (defense.protectedFromIgnored() && attackerView.isPresent() && settings.ignores().matches(attackerView.get(), context)) return 0;
+        double reduced = amount * (1 - armor);
         if (reduced <= 0) return 0;
         invulnerableUntil = now + defense.invulnerableTicks();
         return reduced;
@@ -464,7 +629,7 @@ final class CombatBrain {
         }
     }
 
-    /** Processes a death exactly once: helpers, drops, experience and the respawn timer. */
+    /** Processes a death exactly once: helpers, drops, experience, and then the respawn timer or the deletion request. */
     void die(WorldPosition place) {
         if (deathHandled) return;
         deathHandled = true;
@@ -484,6 +649,7 @@ final class CombatBrain {
         if (!drops.isEmpty() || death.experience() > 0) world.drop(place, drops, death.experience());
         int delay = settings.respawn().delayTicks();
         respawnAt = delay < 0 ? -1 : engine.now() + delay;
+        if (settings.respawn().deleteOnDeath()) engine.requestDeletion(npc);
         engine.wake(this);
     }
 

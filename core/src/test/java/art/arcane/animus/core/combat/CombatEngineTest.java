@@ -23,11 +23,17 @@ class CombatEngineTest {
     private CombatBudgets budgets = CombatBudgets.DEFAULT;
     private CombatEngine engine;
 
+    private final List<String> diagnostics = new ArrayList<>();
+    private java.util.function.BiFunction<String, WorldPosition, Optional<Boolean>> regions = (String region, WorldPosition at) -> Optional.empty();
+
     private CombatEngine engine() {
-        if (engine == null) engine = new CombatEngine(budgets, world, request -> {
-            protectionCalls.add(request);
-            return protection.decide(request);
-        }, new Random(7), message -> {});
+        if (engine == null) engine = new CombatEngine(budgets, world, new ProtectionAdapter() {
+            @Override public Decision decide(Request request) {
+                protectionCalls.add(request);
+                return protection.decide(request);
+            }
+            @Override public Optional<Boolean> inRegion(String region, WorldPosition position) { return regions.apply(region, position); }
+        }, new Random(7), diagnostics::add);
         return engine;
     }
     private static CombatSettings settings(String json) {
@@ -37,7 +43,7 @@ class CombatEngineTest {
     }
     private UUID combatant(double x, double z, String json) {
         UUID npc = world.npc(x, z, 20);
-        assertTrue(engine().register(npc, "npc-" + npc, settings(json)));
+        assertTrue(engine().register(npc, "npc-" + npc, settings(json), CombatLoadout.NONE));
         return npc;
     }
     private void run(int ticks) { for (int i = 0; i < ticks; i++) engine().tick(); }
@@ -242,7 +248,7 @@ class CombatEngineTest {
         assertTrue(status(far).target().isEmpty());
     }
     @Test void squadAlertsAreBudgeted() {
-        budgets = new CombatBudgets(true, 64, 64, 64, 32, 32, 1, 2, 64, 4, 32, 100, 40);
+        budgets = new CombatBudgets(true, 64, 64, 64, 32, 32, 1, 2, 64, 4, 32, 100, 40, 8, 100, 8);
         String squad = "{\"targets\":{\"categories\":[\"monsters\"]},\"squad\":{\"name\":\"town\",\"alertRange\":40},\"targeting\":{\"scanIntervalTicks\":200,\"scanRange\":4}}";
         UUID seer = combatant(0, 0, squad);
         UUID a = combatant(20, 0, squad);
@@ -288,7 +294,7 @@ class CombatEngineTest {
     @Test void npcVersusNpcAppliesArmorDeathDropsAndRespawn() {
         UUID hunter = combatant(0, 0, "{\"targets\":{\"npcs\":[\"prey\"]},\"targeting\":{\"scanIntervalTicks\":1},\"melee\":{\"damage\":10,\"cooldownTicks\":1,\"knockback\":0.5}}");
         UUID prey = world.npc(2, 0, 10);
-        assertTrue(engine().register(prey, "prey", settings("{\"defense\":{\"maximumHealth\":10,\"armor\":0.5,\"invulnerableTicks\":0,\"knockback\":true},\"death\":{\"experience\":7,\"drops\":[{\"item\":\"minecraft:iron_ingot\",\"amount\":2,\"chance\":1},{\"item\":\"minecraft:gold_ingot\",\"chance\":0}]},\"respawn\":{\"delayTicks\":5,\"locations\":[{\"world\":\"world\",\"x\":40,\"y\":64,\"z\":40}]}}")));
+        assertTrue(engine().register(prey, "prey", settings("{\"defense\":{\"maximumHealth\":10,\"armor\":0.5,\"invulnerableTicks\":0,\"knockback\":true},\"death\":{\"experience\":7,\"drops\":[{\"item\":\"minecraft:iron_ingot\",\"amount\":2,\"chance\":1},{\"item\":\"minecraft:gold_ingot\",\"chance\":0}]},\"respawn\":{\"delayTicks\":5,\"locations\":[{\"world\":\"world\",\"x\":40,\"y\":64,\"z\":40}]}}"), CombatLoadout.NONE));
         run(1);
         assertEquals(mobless(TargetKind.NPC, prey), status(hunter).target().orElseThrow());
         assertEquals(5, world.npc(prey).orElseThrow().health(), "Armor halves the hit");
@@ -314,6 +320,30 @@ class CombatEngineTest {
         assertEquals(CombatState.DEAD, status(npc).state());
         assertEquals(3, world.experience);
         assertTrue(world.revived.isEmpty(), "A delay of -1 never respawns");
+    }
+    @Test void deleteOnDeathRequestsOneDeletionAndNeverRespawns() {
+        UUID npc = combatant(0, 0, "{\"respawn\":{\"delayTicks\":-1,\"deleteOnDeath\":true}}");
+        assertEquals(List.of(), engine().drainDeletions());
+        world.damageVirtual(npc, player(UUID.randomUUID()), 100);
+        run(200);
+        assertEquals(List.of(npc), engine().drainDeletions());
+        assertEquals(List.of(), engine().drainDeletions(), "A death is reported once");
+        assertTrue(world.revived.isEmpty());
+    }
+    @Test void deleteOnDeathCannotBeCombinedWithARespawnDelay() {
+        IllegalArgumentException invalid = assertThrows(IllegalArgumentException.class, () -> settings("{\"respawn\":{\"delayTicks\":5,\"deleteOnDeath\":true}}"));
+        assertTrue(invalid.getMessage().startsWith("$.modules.animus:combat.respawn.deleteOnDeath"), invalid.getMessage());
+    }
+    @Test void anOwnerIgnoreNeverTargetsTheDefinitionOwner() {
+        UUID owner = world.player("Owner", 2, 0);
+        UUID npc = world.npc(0, 0, 20);
+        assertTrue(engine().register(npc, "guard", settings("{\"targets\":{\"categories\":[\"players\"]},\"ignores\":{\"owner\":true},\"targeting\":{\"scanIntervalTicks\":1}}"),
+                new CombatLoadout(Optional.of(owner), java.util.Map.of(), java.util.Map.of())));
+        run(5);
+        assertTrue(status(npc).target().isEmpty(), "The owner is ignored");
+        UUID stranger = world.player("Stranger", 3, 0);
+        run(2);
+        assertEquals(player(stranger), status(npc).target().orElseThrow());
     }
     @Test void respawnWithoutAConfiguredLocationUsesThePlaceOfDeath() {
         UUID npc = combatant(3, 4, "{\"respawn\":{\"delayTicks\":1}}");
@@ -396,7 +426,7 @@ class CombatEngineTest {
     @Test void aRangedHitAppliesExactlyOnceWhenCollisionAndARealCallbackBothFire() {
         combatant(0, 0, ARCHER);
         UUID target = world.npc(10, 0, 20);
-        assertTrue(engine().register(target, "target", settings("{\"defense\":{\"invulnerableTicks\":0},\"targeting\":{\"fightBack\":false}}")));
+        assertTrue(engine().register(target, "target", settings("{\"defense\":{\"invulnerableTicks\":0},\"targeting\":{\"fightBack\":false}}"), CombatLoadout.NONE));
         run(2);
         assertEquals(1, world.helperLaunches);
         UUID helper = onlyHelper();
@@ -511,7 +541,7 @@ class CombatEngineTest {
         assertTrue(world.removedHelpers.contains(helper));
     }
     @Test void helperBudgetsLimitLaunches() {
-        budgets = new CombatBudgets(true, 64, 16, 4, 32, 32, 8, 2, 1, 1, 32, 100, 40);
+        budgets = new CombatBudgets(true, 64, 16, 4, 32, 32, 8, 2, 1, 1, 32, 100, 40, 8, 100, 8);
         combatant(0, 0, ARCHER.replace("\"cooldownTicks\":20", "\"cooldownTicks\":1"));
         world.monster("minecraft:zombie", 10, 0);
         run(10);
@@ -595,13 +625,13 @@ class CombatEngineTest {
         assertTrue(status(npc).target().isPresent());
     }
     @Test void targetScansAreCappedPerTick() {
-        budgets = new CombatBudgets(true, 64, 64, 2, 32, 32, 8, 2, 64, 4, 32, 100, 40);
+        budgets = new CombatBudgets(true, 64, 64, 2, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
         for (int i = 0; i < 10; i++) combatant(i, 0, HUNT_MONSTERS);
         engine().tick();
         assertEquals(2, world.realScans);
     }
     @Test void brainsPerTickIsCappedButFair() {
-        budgets = new CombatBudgets(true, 64, 2, 64, 32, 32, 8, 2, 64, 4, 32, 100, 40);
+        budgets = new CombatBudgets(true, 64, 2, 64, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
         for (int i = 0; i < 6; i++) combatant(i * 40, 0, HUNT_MONSTERS);
         engine().tick();
         assertEquals(2, world.realScans);
@@ -610,17 +640,17 @@ class CombatEngineTest {
         assertEquals(6, world.realScans);
     }
     @Test void pathRequestsAreCappedPerTick() {
-        budgets = new CombatBudgets(true, 64, 64, 64, 32, 32, 8, 1, 64, 4, 32, 100, 40);
+        budgets = new CombatBudgets(true, 64, 64, 64, 32, 32, 8, 1, 64, 4, 32, 100, 40, 8, 100, 8);
         for (int i = 0; i < 4; i++) combatant(i, 0, HUNT_MONSTERS);
         world.monster("minecraft:zombie", 10, 0);
         engine().tick();
         assertEquals(1, world.moves.size());
     }
     @Test void registrationIsBoundedAndReplacesSettingsInPlace() {
-        budgets = new CombatBudgets(true, 1, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40);
+        budgets = new CombatBudgets(true, 1, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
         UUID npc = combatant(0, 0, HUNT_MONSTERS);
-        assertTrue(engine().register(npc, "same", settings("{}")), "Replacing an existing NPC does not need capacity");
-        assertFalse(engine().register(world.npc(1, 1, 20), "other", settings("{}")));
+        assertTrue(engine().register(npc, "same", settings("{}"), CombatLoadout.NONE), "Replacing an existing NPC does not need capacity");
+        assertFalse(engine().register(world.npc(1, 1, 20), "other", settings("{}"), CombatLoadout.NONE));
         assertEquals(1, engine().size());
     }
     @Test void targetsMustBeInTheSameWorld() {
@@ -629,7 +659,7 @@ class CombatEngineTest {
         run(2);
         assertTrue(status(npc).target().isPresent());
         CombatTarget old = world.real.get(zombie);
-        world.real.put(zombie, new CombatTarget(old.ref(), old.type(), old.name(), new WorldPosition("nether", old.position().point()), old.bounds(), 20, old.categories(), "", Optional.empty()));
+        world.real.put(zombie, new CombatTarget(old.ref(), old.type(), old.name(), new WorldPosition("nether", old.position().point()), old.bounds(), 20, old.categories(), "", Optional.empty(), old.details()));
         run(1);
         assertTrue(status(npc).target().isEmpty());
     }

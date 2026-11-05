@@ -57,7 +57,8 @@ final class ModCombat implements AutoCloseable {
 
     String status() {
         return (module.active() ? "Combat ready" : "Combat unavailable") + module.status() + " | protection=" + PROTECTION
-                + " | manual attack" + (living.available() ? "" : " unavailable") + " | mob-control=unavailable on mod servers";
+                + " | manual attack" + (living.available() ? "" : " unavailable") + " | mob-control=unavailable on mod servers"
+                + " | pursuit-regions=unavailable (no protection plugin)";
     }
 
     String execute(String[] args) {
@@ -127,6 +128,10 @@ final class ModCombat implements AutoCloseable {
         if (!module.active()) return;
         TargetRef hurt = reference(victim), attacker = source.getEntity() == null ? null : reference(source.getEntity());
         if (hurt != null && attacker != null) module.engine().realDamaged(hurt, attacker);
+    }
+    /** A player's chat message; NPCs with chat rules nearby may react. */
+    void chat(ServerPlayer player, String message) {
+        if (module.active()) module.engine().chat(new TargetRef(TargetKind.PLAYER, player.getUUID()), message);
     }
     /** True when the projectile is an NPC helper; its hit is resolved here and vanilla's is skipped. */
     boolean helperHit(Projectile projectile, HitResult hit) {

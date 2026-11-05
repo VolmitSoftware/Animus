@@ -14,7 +14,8 @@ public final class DocumentStore implements AutoCloseable {
     public record Change(String path, String expectedHash, String content) {}
     /** A whole replacement of generated data, where null deletes it. Generated data has no editor, so nothing can conflict. */
     public record Generated(String path, String content) {}
-    private static final String GENERATED_PATH = "state/behavior-state/[a-z0-9_/-]+\\.json|state/behavior-catalog/last-valid/(?:packs/[a-z0-9_-]+/)?behaviors/[a-z0-9_/-]+\\.json";
+    private static final String GENERATED_PATH = "state/behavior-state/[a-z0-9_/-]+\\.json|state/behavior-catalog/last-valid/(?:packs/[a-z0-9_-]+/)?behaviors/[a-z0-9_/-]+\\.json"
+            + "|state/builds/[a-z0-9][a-z0-9_-]{0,63}(?:/undo-[0-9]{5})?\\.json";
     private static final long MAX_TRANSACTION_BYTES = 256L * 1024 * 1024;
     private final Path root;
     private final FileChannel lockChannel;
@@ -115,7 +116,7 @@ public final class DocumentStore implements AutoCloseable {
     /** Removes one invalid generated file whose bytes a journal cannot carry. A single unlink is already atomic. */
     public synchronized void deleteGenerated(String relative) throws IOException {
         ensureWritable();
-        if (!relative.startsWith("state/behavior-state/") && !relative.startsWith("state/behavior-catalog/last-valid/"))
+        if (!relative.startsWith("state/behavior-state/") && !relative.startsWith("state/behavior-catalog/last-valid/") && !relative.startsWith("state/builds/"))
             throw new IOException("Not a generated document path: " + relative);
         Path target = resolve(relative);
         if (Files.deleteIfExists(target)) syncDirectory(target.getParent());

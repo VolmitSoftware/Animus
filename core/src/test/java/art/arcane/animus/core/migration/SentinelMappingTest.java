@@ -1,7 +1,10 @@
 package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.combat.CombatSettings;
+import art.arcane.animus.core.combat.FightKind;
+import art.arcane.animus.core.combat.RangedWeapon;
 import art.arcane.animus.core.combat.TargetCategory;
+import art.arcane.animus.core.combat.TargetRules;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
@@ -49,8 +52,8 @@ class SentinelMappingTest {
             assertEquals(SentinelMapping.Disposition.STATISTIC, SentinelMapping.disposition(field), field);
             counts.merge(SentinelMapping.Disposition.STATISTIC, 1, Integer::sum);
         }
-        assertEquals(44, counts.get(SentinelMapping.Disposition.CONVERTED));
-        assertEquals(9, counts.get(SentinelMapping.Disposition.UNSUPPORTED));
+        assertEquals(51, counts.get(SentinelMapping.Disposition.CONVERTED));
+        assertEquals(2, counts.get(SentinelMapping.Disposition.UNSUPPORTED));
         assertEquals(16, counts.get(SentinelMapping.Disposition.STATISTIC));
         assertEquals(SentinelMapping.Disposition.UNKNOWN, SentinelMapping.disposition("somethingNew"));
     }
@@ -109,6 +112,26 @@ class SentinelMappingTest {
         assertEquals(-1, settings.respawn().delayTicks());
         assertFalse(settings.pursuit().teleportWhenStuck());
     }
+    @Test void aRespawnTimeOfZeroKeepsTheNpcDead() {
+        CombatSettings settings = settings(convert("{\"respawnTime\":0}"));
+        assertEquals(-1, settings.respawn().delayTicks(), "Zero means the NPC stays dead, not an instant respawn");
+        assertFalse(settings.respawn().deleteOnDeath());
+    }
+    @Test void aNegativeRespawnTimeDeletesTheNpcOnDeath() {
+        for (String time : List.of("-1", "-20")) {
+            CombatSettings settings = settings(convert("{\"respawnTime\":" + time + "}"));
+            assertEquals(-1, settings.respawn().delayTicks(), time);
+            assertTrue(settings.respawn().deleteOnDeath(), time);
+        }
+        assertFalse(settings(convert("{\"respawnTime\":40}")).respawn().deleteOnDeath());
+    }
+    @Test void theOwnerIgnoreConverts() {
+        SentinelMapping.Result result = convert("{\"allIgnores\":{\"targets\":[\"OWNER\",\"NPCS\"]},\"allTargets\":{\"targets\":[\"PLAYERS\"]}}");
+        CombatSettings settings = settings(result);
+        assertTrue(settings.ignores().owner());
+        assertFalse(settings.targets().owner());
+        assertFalse(result.module().getAsJsonObject("preservedSettings").has("allIgnores"), "OWNER is no longer left over");
+    }
     @Test void lineOfSightFollowsIgnoreThenRealistic() {
         assertEquals(CombatSettings.LineOfSight.REQUIRED, settings(convert("{}")).targeting().lineOfSight());
         assertEquals(CombatSettings.LineOfSight.FIELD_OF_VIEW, settings(convert("{\"realistic\":true}")).targeting().lineOfSight());
@@ -116,23 +139,72 @@ class SentinelMappingTest {
     }
     @Test void targetListsConvertWhatTheyCanAndPreserveTheRest() {
         SentinelMapping.Result result = convert("""
-                {"allTargets":{"targets":["MONSTERS","PLAYERS","WITCHES","ZOMBIE","OWNER"],"byPlayerName":["Griefer","^bad.*$"],"byNpcName":["Bandit Boss"],"byEntityName":["Bob"],"byOther":["squad:raiders","uuid:00000000-0000-0000-0000-000000000009","team:red"],"byHeldItem":["diamond_sword"]},
+                {"allTargets":{"targets":["MONSTERS","PLAYERS","WITCHES","ZOMBIE","OWNER"],"byPlayerName":["Griefer","^bad.*$","(unclosed"],"byNpcName":["Bandit Boss"],"byEntityName":["Bob"],
+                 "byOther":["squad:raiders","uuid:00000000-0000-0000-0000-000000000009","team:red","healthbelow:30","healthbelow:50","potion:INCREASE_DAMAGE","permission:town.outlaw"],
+                 "byHeldItem":["diamond_sword","name:Excalibur"],"byOffhandItem":["shield"],"byEquippedItem":["netherite"],"byInventoryItem":["tnt"],"byGroup":["bandits"],"byStatus":["angry"]},
                  "allIgnores":{"targets":["NPCS","PASSIVE_MOBS","MOBS"]},"allAvoids":{"targets":["CREEPER"]}}""");
         CombatSettings settings = settings(result);
-        assertEquals(Set.of(TargetCategory.MONSTERS, TargetCategory.PLAYERS), settings.targets().categories());
-        assertEquals(Set.of("minecraft:witch", "minecraft:zombie"), settings.targets().entityTypes());
-        assertEquals(Set.of("griefer", "00000000-0000-0000-0000-000000000009"), settings.targets().players());
-        assertEquals(Set.of("bandit boss"), settings.targets().npcs());
-        assertEquals(Set.of("bob"), settings.targets().names());
-        assertEquals(Set.of("raiders"), settings.targets().squads());
+        TargetRules targets = settings.targets();
+        assertEquals(Set.of(TargetCategory.MONSTERS, TargetCategory.PLAYERS), targets.categories());
+        assertEquals(Set.of("minecraft:witch", "minecraft:zombie"), targets.entityTypes());
+        assertTrue(targets.owner());
+        assertEquals(Set.of("00000000-0000-0000-0000-000000000009"), targets.players());
+        assertEquals(List.of("Griefer", "^bad.*$"), sources(targets.patterns().players()), "Sentinel names are patterns that match anywhere");
+        assertEquals(List.of("Bandit Boss"), sources(targets.patterns().npcs()));
+        assertEquals(List.of("Bob"), sources(targets.patterns().names()));
+        assertEquals(Set.of("raiders"), targets.squads());
+        assertEquals(50, targets.healthBelow().orElseThrow(), "Any of several thresholds is the widest one");
+        assertEquals(Set.of("minecraft:strength"), targets.effects());
+        assertEquals(Set.of("town.outlaw"), targets.permissions());
+        assertEquals(Set.of("bandits"), targets.groups());
+        assertEquals(List.of("diamond_sword"), sources(targets.items().mainHand()));
+        assertEquals(List.of("shield"), sources(targets.items().offHand()));
+        assertEquals(List.of("netherite"), sources(targets.items().worn()));
         assertEquals(Set.of(TargetCategory.NPCS, TargetCategory.ANIMALS, TargetCategory.MOBS), settings.ignores().categories());
         assertEquals(Set.of("minecraft:creeper"), settings.avoids().entityTypes());
         JsonObject residue = result.module().getAsJsonObject("preservedSettings").getAsJsonObject("allTargets");
-        assertEquals("[\"OWNER\"]", residue.get("targets").toString());
-        assertEquals("[\"^bad.*$\"]", residue.get("byPlayerName").toString());
+        assertFalse(residue.has("targets"));
+        assertEquals("[\"(unclosed\"]", residue.get("byPlayerName").toString(), "An invalid pattern is kept, not applied");
         assertEquals("[\"team:red\"]", residue.get("byOther").toString());
-        assertEquals("[\"diamond_sword\"]", residue.get("byHeldItem").toString());
+        assertEquals("[\"name:Excalibur\"]", residue.get("byHeldItem").toString());
+        assertEquals("[\"tnt\"]", residue.get("byInventoryItem").toString());
+        assertEquals("[\"angry\"]", residue.get("byStatus").toString());
         assertFalse(result.module().getAsJsonObject("preservedSettings").has("allIgnores"), "Nothing left over");
+    }
+    @Test void eventsChatAndGuardedFightsConvert() {
+        SentinelMapping.Result result = convert("""
+                {"allTargets":{"byEvent":["pvp","pvsentinel","npcvnpc","pv:zombies","ev:player:Bob","message:surrender","message,give up","guarded_fight","unknown"]},
+                 "allAvoids":{"byEvent":["eve","guarded_fight"]},"allIgnores":{"byEvent":["pvp"]}}""");
+        CombatSettings settings = settings(result);
+        TargetRules.Fights fights = settings.targets().events();
+        assertEquals(Set.of(FightKind.PLAYER_HURTS_PLAYER, FightKind.PLAYER_HURTS_NPC, FightKind.NPC_HURTS_NPC), fights.kinds());
+        assertEquals(Set.of("minecraft:zombie"), fights.playerAttacks().orElseThrow().entityTypes());
+        assertEquals(List.of("Bob"), sources(fights.anyAttacks().orElseThrow().patterns().players()));
+        assertEquals(Set.of("surrender", "give up"), settings.targets().chat());
+        assertTrue(settings.guard().assist());
+        assertEquals(Set.of(FightKind.MOB_HURTS_MOB), settings.avoids().events().kinds());
+        JsonObject preserved = result.module().getAsJsonObject("preservedSettings");
+        assertEquals("[\"unknown\"]", preserved.getAsJsonObject("allTargets").get("byEvent").toString());
+        assertEquals("[\"guarded_fight\"]", preserved.getAsJsonObject("allAvoids").get("byEvent").toString());
+        assertEquals("[\"pvp\"]", preserved.getAsJsonObject("allIgnores").get("byEvent").toString(), "Ignores cannot react to fights");
+    }
+    @Test void combinedListsConvertWhenEveryPartDoes() {
+        SentinelMapping.Result result = convert("""
+                {"allTargets":{"byAllInOne":[{"targets":["PLAYERS"],"byHeldItem":["diamond_sword"]},{"targets":["PLAYERS"],"byInventoryItem":["tnt"]}],
+                 "byMultiple":{"0":{"targets":["ZOMBIES","SKELETONS"]},"1":{"targets":["CREEPERS"]}}}}""");
+        TargetRules targets = settings(result).targets();
+        assertEquals(1, targets.all().size());
+        assertEquals(Set.of(TargetCategory.PLAYERS), targets.all().getFirst().categories());
+        assertEquals(List.of("diamond_sword"), sources(targets.all().getFirst().items().mainHand()));
+        assertEquals(1, targets.together().size());
+        assertEquals(List.of(Set.of("minecraft:zombie"), Set.of("minecraft:skeleton")),
+                targets.together().getFirst().stream().map(TargetRules::entityTypes).toList());
+        JsonObject residue = result.module().getAsJsonObject("preservedSettings").getAsJsonObject("allTargets");
+        assertEquals(1, residue.getAsJsonArray("byAllInOne").size(), "A part that cannot convert keeps the whole combined list");
+        assertEquals(1, residue.getAsJsonArray("byMultiple").size(), "A group of one is not a group");
+    }
+    private static List<String> sources(List<art.arcane.animus.core.combat.NamePattern> patterns) {
+        return patterns.stream().map(art.arcane.animus.core.combat.NamePattern::source).toList();
     }
     @Test void guardingConvertsThePlayerHalvesAndTheResolvedNpc() {
         UUID player = new UUID(5, 9);
@@ -162,16 +234,16 @@ class SentinelMappingTest {
     }
     @Test void outOfRangeAndSpecialValuesStayValidAndKeepTheOriginal() {
         SentinelMapping.Result result = convert("""
-                {"range":500,"reach":40,"health":99999,"attackRate":0,"speed":100,"damage":-1,"armor":-1,"healRate":-5,"respawnTime":9999999,"accuracy":99,"chaseRange":-4,"death_xp":-3,"reaction_slowdown":100000,"enemyTargetTime":999999,"avoidRange":0,"projectileRange":0}""");
+                {"range":500,"reach":40,"health":99999,"attackRate":0,"speed":100,"damage":-1,"armor":-1,"healRate":-5,"respawnTime":9999999,"accuracy":99,"chaseRange":-4,"death_xp":-3,"reaction_slowdown":100000,"enemyTargetTime":999999,"avoidRange":0,"projectileRange":0,"greet_range":500}""");
         CombatSettings settings = settings(result);
-        assertEquals(64, settings.targeting().scanRange());
+        assertEquals(256, settings.targeting().scanRange());
         assertEquals(6, settings.melee().reach());
         assertEquals(2048, settings.defense().maximumHealth());
         assertEquals(1, settings.melee().cooldownTicks());
-        assertEquals(5, settings.pursuit().speed());
-        assertEquals(0, settings.defense().armor());
+        assertEquals(10, settings.pursuit().speed());
+        assertEquals(64, settings.greetings().range());
         JsonObject preserved = result.module().getAsJsonObject("preservedSettings");
-        for (String field : List.of("range", "reach", "health", "attackRate", "speed", "damage", "armor", "accuracy"))
+        for (String field : List.of("range", "reach", "health", "attackRate", "speed", "accuracy", "greet_range"))
             assertTrue(preserved.has(field), field);
         assertFalse(result.notes().isEmpty());
         assertEquals(result.notes().size(), result.module().getAsJsonObject("migrationReport").getAsJsonArray("notes").size());
@@ -183,6 +255,36 @@ class SentinelMappingTest {
         for (String field : List.of("health", "squad", "allTargets", "spawnPoint", "drops", "guardingUpper", "fightback"))
             assertTrue(preserved.has(field), field);
     }
+    @Test void damageAndArmorOfMinusOneComeFromEquipment() {
+        SentinelMapping.Result result = convert("{\"damage\":-1,\"armor\":-1}");
+        CombatSettings settings = settings(result);
+        assertTrue(settings.melee().fromEquipment());
+        assertTrue(settings.ranged().fromEquipment());
+        assertTrue(settings.defense().armorFromEquipment());
+        JsonObject preserved = result.module().getAsJsonObject("preservedSettings");
+        assertFalse(preserved.has("damage"));
+        assertFalse(preserved.has("armor"));
+        assertTrue(settings(convert("{}")).melee().fromEquipment(), "Sentinel's default damage is -1");
+    }
+    @Test void greetingsWarningsRegionAmmoAndWeaponDamageConvert() {
+        CombatSettings settings = settings(convert("""
+                {"warning_text":"Halt, outlaw","greeting_text":"","greet_range":6,"greet_rate":40,"worldguard_region":"castle","needsAmmo":true,"weapon_damage_map":{"diamond_sword":9.5}}"""));
+        assertEquals("Halt, outlaw", settings.greetings().hostile().orElseThrow());
+        assertTrue(settings.greetings().friendly().isEmpty(), "Empty text means no line");
+        assertEquals(6, settings.greetings().range());
+        assertEquals(40, settings.greetings().cooldownTicks());
+        assertEquals("castle", settings.pursuit().region().orElseThrow());
+        assertTrue(settings.ranged().useAmmo());
+        assertEquals(Map.of("minecraft:diamond_sword", 9.5), settings.melee().weaponDamage());
+    }
+    @Test void theHeldItemChoosesTheRangedWeapon() {
+        for (Map.Entry<String, RangedWeapon> held : Map.of("BOW", RangedWeapon.ARROW, "TRIDENT", RangedWeapon.TRIDENT, "BLAZE_ROD", RangedWeapon.FIREBALL,
+                "SNOWBALL", RangedWeapon.SNOWBALL, "EGG", RangedWeapon.EGG).entrySet()) {
+            CombatSettings settings = settings(SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"" + held.getKey() + "\"}}"), new JsonArray()));
+            assertTrue(settings.ranged().enabled(), held.getKey());
+            assertEquals(held.getValue(), settings.ranged().weapon(), held.getKey());
+        }
+    }
     @Test void aDamageOfZeroDisablesMelee() {
         assertFalse(settings(convert("{\"damage\":0}")).melee().enabled());
     }
@@ -193,20 +295,19 @@ class SentinelMappingTest {
         assertFalse(settings(SentinelMapping.convert(json("{}"), json("{\"hand\":{\"type\":\"IRON_SWORD\"}}"), new JsonArray())).ranged().enabled());
     }
     @Test void statisticsAndUnsupportedSettingsAreKeptApart() {
-        SentinelMapping.Result result = convert("{\"stats_punches\":23,\"stats_potionsThrow\":1,\"needsAmmo\":true,\"warning_text\":\"Halt\",\"worldguard_region\":\"keep\",\"brandNewSetting\":1,\"health\":40}");
+        SentinelMapping.Result result = convert("{\"stats_punches\":23,\"stats_potionsThrow\":1,\"autoswitch\":true,\"weapon_redirect_map\":{\"stick\":\"bow\"},\"brandNewSetting\":1,\"health\":40}");
         JsonObject module = result.module();
         assertEquals(23, module.getAsJsonObject("historicalStatistics").get("stats_punches").getAsInt());
         assertEquals(1, module.getAsJsonObject("historicalStatistics").get("stats_potionsThrow").getAsInt());
         JsonObject preserved = module.getAsJsonObject("preservedSettings");
-        assertTrue(preserved.get("needsAmmo").getAsBoolean());
-        assertEquals("Halt", preserved.get("warning_text").getAsString());
-        assertEquals("keep", preserved.get("worldguard_region").getAsString());
+        assertTrue(preserved.get("autoswitch").getAsBoolean());
+        assertEquals("bow", preserved.getAsJsonObject("weapon_redirect_map").get("stick").getAsString());
         assertEquals(1, preserved.get("brandNewSetting").getAsInt());
         assertFalse(preserved.has("stats_punches"));
         assertFalse(preserved.has("health"), "A cleanly converted setting is not repeated");
         JsonObject report = module.getAsJsonObject("migrationReport");
         assertEquals("[\"health\"]", report.get("converted").toString());
-        assertEquals(new HashSet<>(List.of("\"needsAmmo\"", "\"warning_text\"", "\"worldguard_region\"")), new HashSet<>(strings(report.getAsJsonArray("unsupported"))));
+        assertEquals(new HashSet<>(List.of("\"autoswitch\"", "\"weapon_redirect_map\"")), new HashSet<>(strings(report.getAsJsonArray("unsupported"))));
         assertEquals("[\"brandNewSetting\"]", report.get("unknown").toString());
     }
     private static List<String> strings(JsonArray array) { return array.asList().stream().map(Object::toString).toList(); }
@@ -230,7 +331,7 @@ class SentinelMappingTest {
                     health: 40
                     guardedNPC: 2
                     stats_punches: 23
-                    needsAmmo: true
+                    autoswitch: true
                     spawnPoint: {world: old, x: 8, y: 65, z: 9}
                     allTargets: {targets: [MONSTERS]}
               '2':
@@ -255,13 +356,13 @@ class SentinelMappingTest {
         assertEquals(new UUID(0, 2), settings.guard().npc().orElseThrow());
         assertEquals("new", settings.respawn().locations().getFirst().world(), "World mapping applies to converted locations");
         assertEquals(23, module.getAsJsonObject("historicalStatistics").get("stats_punches").getAsInt());
-        assertTrue(module.getAsJsonObject("preservedSettings").get("needsAmmo").getAsBoolean());
+        assertTrue(module.getAsJsonObject("preservedSettings").get("autoswitch").getAsBoolean());
         JsonObject archived = JsonDocuments.object(Files.readString(preview.directory().resolve("records/1.json")));
         assertEquals(40, archived.getAsJsonObject("traits").getAsJsonObject("sentinel").get("health").getAsInt());
         assertEquals(40, candidate.getAsJsonObject("modules").getAsJsonObject("citizens:review").getAsJsonObject("sentinel").get("health").getAsInt());
         JsonObject report = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/1.json"))).getAsJsonObject("fields");
         assertEquals("CONVERTED", report.get("/traits/sentinel/health").getAsString());
-        assertEquals("UNSUPPORTED_PRESERVED", report.get("/traits/sentinel/needsAmmo").getAsString());
+        assertEquals("UNSUPPORTED_PRESERVED", report.get("/traits/sentinel/autoswitch").getAsString());
         assertEquals("UNSUPPORTED_PRESERVED", report.get("/traits/sentinel/stats_punches").getAsString());
         JsonObject counts = preview.summary().getAsJsonObject("sentinelMapping");
         assertTrue(counts.get("converted").getAsInt() >= 4);

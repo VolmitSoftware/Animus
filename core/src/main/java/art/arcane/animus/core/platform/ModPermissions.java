@@ -4,17 +4,18 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Permission nodes on mod servers. {@code animus.status} is open to everyone. Every other node is granted to
+ * Permission nodes on mod servers. {@code animus.status} and {@code animus.build.donate} are open to everyone. Every other node is granted to
  * operators, or by a permission mod through the vanilla permission atom whose identifier is the node with its first
  * dot as the namespace separator: {@code animus.ride.town} is {@code animus:ride.town}.
  */
 public final class ModPermissions {
     public static final String STATUS = "animus.status";
+    public static final String BUILD_DONATE = "animus.build.donate";
     private static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+"), PATH = Pattern.compile("[a-z0-9_./-]+");
 
     private ModPermissions() {}
 
-    public static boolean everyone(String node) { return STATUS.equals(node); }
+    public static boolean everyone(String node) { return STATUS.equals(node) || BUILD_DONATE.equals(node); }
 
     /** The permission atom identifier for a node, or empty when the node cannot name one. */
     public static Optional<String> atom(String node) {

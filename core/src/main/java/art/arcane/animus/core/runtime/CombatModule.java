@@ -6,6 +6,7 @@ import art.arcane.animus.api.Outcome;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.combat.CombatEngine;
+import art.arcane.animus.core.combat.CombatLoadout;
 import art.arcane.animus.core.combat.CombatOperations;
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatWorld;
@@ -14,6 +15,7 @@ import art.arcane.animus.core.combat.ProtectionGate;
 import art.arcane.animus.core.combat.TargetKind;
 import art.arcane.animus.core.combat.TargetRef;
 import art.arcane.animus.core.extension.CapabilityRefusal;
+import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.npc.NpcDefinition;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,6 +26,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.SplittableRandom;
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -34,7 +39,7 @@ import java.util.function.Predicate;
  */
 public final class CombatModule implements AutoCloseable {
     public static final String MODULE_USAGE = "combat status | combat <npc-id> status|engage|disengage|release | combat <npc-id> target <uuid> | combat <npc-id> guard <uuid>|stop";
-    private record Candidate(String id, CombatSettings settings) {}
+    private record Candidate(String id, CombatSettings settings, CombatLoadout loadout) {}
     private static final int DEFINITIONS_PER_TICK = 64;
     private static final int ACTIVATIONS_PER_TICK = 16;
     private final AnimusRuntime runtime;
@@ -43,6 +48,9 @@ public final class CombatModule implements AutoCloseable {
     private final ProtectionGate protection;
     private final String unavailable;
     private final Predicate<UUID> player;
+    private final Consumer<String> warnings;
+    private final AtomicLong deletedOnDeath = new AtomicLong();
+    private Executor files;
     private final Map<UUID, Candidate> candidates = new HashMap<>();
     private Map<UUID, Candidate> nextCandidates = new HashMap<>();
     private Map<String, NpcDefinition> observed;
@@ -56,6 +64,7 @@ public final class CombatModule implements AutoCloseable {
     public CombatModule(AnimusRuntime runtime, PersistedNpcService<?, ?> living, CombatWorld world, ProtectionAdapter adapter,
                         String unavailable, Consumer<String> warnings, Predicate<UUID> player) {
         this.runtime = Objects.requireNonNull(runtime); this.living = living; this.player = Objects.requireNonNull(player);
+        this.warnings = Objects.requireNonNull(warnings);
         String reason = unavailable;
         if (reason == null) { Objects.requireNonNull(living, "living"); Objects.requireNonNull(world, "world"); }
         if (reason == null && !runtime.combatBudgets().enabled()) reason = "disabled in config.toml";
@@ -73,7 +82,8 @@ public final class CombatModule implements AutoCloseable {
     public String status() {
         return engine == null ? " | module " + unavailable
                 : " | module npcs=" + engine.size() + " | helpers=" + engine.helperCount()
-                + " | protection-denials=" + protection.denials() + " | protection-failures=" + protection.failures();
+                + " | protection-denials=" + protection.denials() + " | protection-failures=" + protection.failures()
+                + " | dropped-events=" + engine.droppedEvents() + " | region-unavailable=" + engine.regionUnavailable() + " | deleted-on-death=" + deletedOnDeath.get();
     }
 
     /** {@code combat <npc-id> ...}: the module's own subcommands. */
@@ -86,7 +96,8 @@ public final class CombatModule implements AutoCloseable {
             case "status" -> {
                 if (args.length != 3) throw new IllegalArgumentException(MODULE_USAGE);
                 yield engine.status(npc).map((CombatEngine.Status state) -> new CombatOperations.Result(CombatOperations.Status.APPLIED,
-                        state.state() + " target=" + state.target().map((TargetRef ref) -> ref.kind() + ":" + ref.id()).orElse("none") + (state.disengaged() ? " disengaged" : "")))
+                        state.state() + " target=" + state.target().map((TargetRef ref) -> ref.kind() + ":" + ref.id()).orElse("none") + (state.disengaged() ? " disengaged" : "")
+                                + (state.ammunition() >= 0 ? " ammunition=" + state.ammunition() : "")))
                         .orElse(new CombatOperations.Result(CombatOperations.Status.NOT_COMBATANT, "not a combat NPC (combat disabled, review not accepted, or not active)"));
             }
             case "engage" -> engine.engage(npc);
@@ -153,6 +164,28 @@ public final class CombatModule implements AutoCloseable {
         if (engine == null) return;
         reconcile();
         engine.tick();
+        for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+    }
+
+    /** Deletes the definition on the file lane as one transaction, and names the transaction that undoes it. */
+    private void deleteDead(UUID npc) {
+        try {
+            if (files == null) files = runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
+                if (event == MutationLane.EngineTaskEvent.FAILED) warnings.accept("Combat could not delete a dead NPC: " + failure);
+            });
+            files.execute(() -> {
+                try {
+                    CombatDeletions.delete(runtime.npcs(), npc).ifPresent((CombatDeletions.Deleted deleted) -> {
+                        deletedOnDeath.incrementAndGet();
+                        warnings.accept("Combat NPC " + deleted.id() + " died and was deleted (respawn.deleteOnDeath); undo with /animus rollback " + deleted.transaction());
+                    });
+                } catch (java.io.IOException failure) {
+                    warnings.accept("Combat could not delete dead NPC " + npc + ": " + failure.getMessage());
+                }
+            });
+        } catch (IllegalStateException | RejectedExecutionException stopping) {
+            warnings.accept("Combat could not delete dead NPC " + npc + " while Animus stops: " + stopping.getMessage());
+        }
     }
 
     /**
@@ -170,7 +203,8 @@ public final class CombatModule implements AutoCloseable {
             for (int examined = 0; examined < DEFINITIONS_PER_TICK && pass.hasNext(); examined++) {
                 NpcDefinition definition = pass.next();
                 if (!definition.spawned()) continue;
-                CombatSettings.active(definition).ifPresent((CombatSettings settings) -> nextCandidates.put(definition.uuid(), new Candidate(definition.id(), settings)));
+                CombatSettings.active(definition).ifPresent((CombatSettings settings) ->
+                        nextCandidates.put(definition.uuid(), new Candidate(definition.id(), settings, CombatLoadout.of(definition))));
             }
             if (!pass.hasNext()) {
                 pass = null;
@@ -189,7 +223,7 @@ public final class CombatModule implements AutoCloseable {
             if (activations >= ACTIVATIONS_PER_TICK) break;
             if (retired.contains(entry.getKey())) continue;
             if (engine.status(entry.getKey()).isEmpty()) activations++;
-            if (!engine.register(entry.getKey(), entry.getValue().id(), entry.getValue().settings())) break;
+            if (!engine.register(entry.getKey(), entry.getValue().id(), entry.getValue().settings(), entry.getValue().loadout())) break;
         }
     }
 

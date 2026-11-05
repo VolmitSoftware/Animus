@@ -15,7 +15,9 @@ public enum TriggerKind {
     WAYPOINT("waypoint", false, "The NPC arrives at a route point.", "waypoint"),
     TIMER("timer", false, "An interval passes while the NPC is active.", "intervalTicks"),
     DIALOGUE_CHOICE("dialogue_choice", true, "A viewer clicks an option of an animus:choices prompt from this NPC.", "dialogue", "choice"),
-    MODULE("module", true, "The owning module publishes a trigger.", "key");
+    MODULE("module", true, "The owning module publishes a trigger.", "key"),
+    BUILD_FINISHED("build_finished", false, "A build this NPC works on places its last block."),
+    BUILD_PAUSED("build_paused", false, "A build this NPC works on is paused by command or starts waiting for terrain, materials or builders.");
 
     /** Fields every trigger accepts. */
     public static final List<String> COMMON_FIELDS = List.of("id", "event", "routine", "cooldownTicks");

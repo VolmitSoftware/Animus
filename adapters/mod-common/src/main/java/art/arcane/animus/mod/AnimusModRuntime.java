@@ -8,6 +8,9 @@ import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
+import art.arcane.animus.core.building.BuildCommands;
+import art.arcane.animus.core.building.BuildProtection;
+import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
@@ -73,6 +76,7 @@ public final class AnimusModRuntime {
         ModCombat combat;
         ModScreens screens;
         volatile art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> shops;
+        BuildService<ServerPlayer, ItemStack> builds;
         BuiltinCapabilities builtins;
         ExtensionRuntime extensions;
         volatile BehaviorCommands behaviors;
@@ -122,8 +126,12 @@ public final class AnimusModRuntime {
             });
             next.shops.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {});
             LOGGER.info(next.shops.status());
+            next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), BuildProtection.NONE,
+                    "none (mod servers have no standard protection API; every block change is allowed)", next.ticks::every,
+                    () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null);
+            LOGGER.info(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
-            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.ticks, () -> owner.shops),
+            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.shops),
                     next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
             next.extensions = new ExtensionRuntime(next.runtime.documents().resolve("modules"), modulePlatform(), next.runtime.definitionGateway(),
                     next.runtime.moduleSettings(), LOGGER::info, (ExtensionRuntime.State initialized) -> {
@@ -140,7 +148,8 @@ public final class AnimusModRuntime {
                 }
             }
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
-                    next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "shop", next.shops.shopCommand(), "gui", next.shops.guiCommand()), () -> owner.stopping));
+                    next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
+                            "shop", next.shops.shopCommand(), "gui", next.shops.guiCommand()), () -> owner.stopping));
             next.extensions.start();
             running = next;
             ModHooks.attach(this);
@@ -165,6 +174,7 @@ public final class AnimusModRuntime {
         if (active.screens != null) active.screens.closeAll();
         if (active.shops != null) active.shops.close();
         if (active.extensions != null) active.extensions.close();
+        if (active.builds != null) active.builds.close();
         if (active.combat != null) active.combat.close();
         if (active.living != null) active.living.close();
         if (active.ticks != null) active.ticks.close();
@@ -256,6 +266,7 @@ public final class AnimusModRuntime {
         active.living.died(player);
     }
     void realDamaged(LivingEntity victim, DamageSource source) { Running active = running; if (active != null) active.combat.realDamaged(victim, source); }
+    void chat(ServerPlayer player, String message) { Running active = running; if (active != null) active.combat.chat(player, message); }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }
     boolean suppressesDrops(LivingEntity entity) { Running active = running; return active != null && active.combat.suppressesDrops(entity); }
 }
