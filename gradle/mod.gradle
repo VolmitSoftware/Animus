@@ -45,11 +45,12 @@ Map<String, String> metadata = animus + [
     fabricLoaderVersion: targetProperties.fabricLoader,
     forgeLoaderRange: targetProperties.forgeLoaderRange,
     neoForgeVersion: targetProperties.neoforge ?: '',
-    javaVersion: targetProperties.javaVersion.toString()
+    javaVersion: targetProperties.javaVersion.toString(),
+    dataPackFormat: targetProperties.dataPackFormat.toString()
 ]
 tasks.named('processResources').configure {
     inputs.properties(metadata)
-    filesMatching(['fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) { expand(metadata) }
+    filesMatching(['fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta']) { expand(metadata) }
 }
 tasks.named('shadowJar').configure {
     String platform = [fabric: 'Fabric', forge: 'Forge', neoforge: 'NeoForge'][loader]

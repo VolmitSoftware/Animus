@@ -225,6 +225,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (visibleIds + body.reservedIds > BodyRules.MAX_BODIES_PER_VIEWER) return failed("Viewer presentation ID limit reached");
         if (session.visible.values().stream().anyMatch((Body other) -> other.uuid.equals(body.uuid))) return failed("A body with this UUID is already presented to the viewer");
         if (session.visible.containsKey(body.entityId)) return failed("Body is already visible");
+        if (!connected(session)) return failed(CONNECTION_CLOSED);
         send(session, spawnPackets(body, pose));
         for (int id : body.entityIds()) session.visible.put(id, body);
         return CompletableFuture.completedFuture(null);
@@ -240,8 +241,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (body.seatId >= 0) packets.add(BodyMotion.move(body.seatId, pose.x(), pose.y(), pose.z(), yaw, 0f, pose.onGround()));
         packets.add(BodyMotion.move(body.entityId, pose.x(), pose.y(), pose.z(), yaw, pose.pitch(), pose.onGround()));
         packets.add(rotateHead(body.entityId, yaw));
-        send(session, packets);
-        return CompletableFuture.completedFuture(null);
+        return send(session, packets);
     }
 
     @Override public CompletionStage<Void> passengers(ServerPlayer viewer, BodyTransport.Body carrier, List<? extends BodyTransport.Body> riders, ServerPlayer realRider, boolean authoritative) {
@@ -254,10 +254,10 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         List<Integer> passengerIds = requested.stream().map((Body passenger) -> passenger.entityId).toList();
         int realRiderId = realRider == null ? BodyRules.NO_REAL_RIDER : realRider.getId();
         int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayId);
+        if (!connected(session)) return failed(CONNECTION_CLOSED);
         try { session.passengers.replace(vehicle.entityId, passengerIds); }
         catch (IllegalArgumentException invalid) { return CompletableFuture.failedFuture(invalid); }
-        send(session, List.of(passengersPacket(vehicle.entityId, roster)));
-        return CompletableFuture.completedFuture(null);
+        return send(session, List.of(passengersPacket(vehicle.entityId, roster)));
     }
 
     @Override public CompletionStage<Void> dragonPhase(ServerPlayer viewer, BodyTransport.Body presented, int phase) {
@@ -266,8 +266,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Session session = existing(viewer);
         if (session == null) return failed("Viewer is not watched");
         if (session.visible.get(dragon.entityId) != dragon) return failed("Dragon is not visible to this viewer");
-        send(session, List.of(new ClientboundSetEntityDataPacket(dragon.entityId, List.of(SynchedEntityData.DataValue.create(EnderDragon.DATA_PHASE, phase)))));
-        return CompletableFuture.completedFuture(null);
+        return send(session, List.of(new ClientboundSetEntityDataPacket(dragon.entityId, List.of(SynchedEntityData.DataValue.create(EnderDragon.DATA_PHASE, phase)))));
     }
 
     /** The main-arm swing a player shows when placing a block. */
@@ -280,9 +279,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         try {
             buffer.writeVarInt(body.entityId);
             buffer.writeByte(0);
-            send(session, List.of(ClientboundAnimatePacket.STREAM_CODEC.decode(buffer)));
+            return send(session, List.of(ClientboundAnimatePacket.STREAM_CODEC.decode(buffer)));
         } finally { buffer.release(); }
-        return CompletableFuture.completedFuture(null);
     }
 
     @Override public CompletionStage<Void> equipment(ServerPlayer viewer, BodyTransport.Body presented, Map<EquipmentSlot, ItemStack> items) {
@@ -294,8 +292,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         for (Map.Entry<EquipmentSlot, ItemStack> item : items.entrySet())
             entries.add(Pair.of(net.minecraft.world.entity.EquipmentSlot.valueOf(BodyRules.nativeSlot(item.getKey())), item.getValue().copy()));
         if (entries.isEmpty()) return CompletableFuture.completedFuture(null);
-        send(session, List.of(new ClientboundSetEquipmentPacket(body.entityId, entries)));
-        return CompletableFuture.completedFuture(null);
+        return send(session, List.of(new ClientboundSetEquipmentPacket(body.entityId, entries)));
     }
 
     @Override public CompletionStage<Void> despawn(ServerPlayer viewer, BodyTransport.Body presented) {
@@ -304,7 +301,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session == null || session.viewer != viewer || session.visible.get(body.entityId) != body) return CompletableFuture.completedFuture(null);
         for (int id : body.entityIds()) session.visible.remove(id, body);
         session.passengers.remove(body.entityId);
-        if (viewer.connection.isAcceptingMessages()) send(session, removePackets(body));
+        if (connected(session)) send(session, removePackets(body));
         return CompletableFuture.completedFuture(null);
     }
 
@@ -448,10 +445,13 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         return packets;
     }
 
-    private void send(Session session, List<Packet<ClientGamePacketListener>> packets) {
-        if (!session.viewer.connection.isAcceptingMessages()) throw new IllegalStateException("Viewer connection is closed");
+    /** A closed connection is an ordinary failed stage, as on Bukkit; a player leaving mid-update is not a fault. */
+    private static CompletionStage<Void> send(Session session, List<Packet<ClientGamePacketListener>> packets) {
+        if (!connected(session)) return failed(CONNECTION_CLOSED);
         for (Packet<ClientGamePacketListener> packet : packets) session.viewer.connection.send(packet);
+        return CompletableFuture.completedFuture(null);
     }
+    private static boolean connected(Session session) { return session.viewer.connection.isAcceptingMessages(); }
     private void retire(Session session) {
         String reason = session.viewer.connection.isAcceptingMessages() ? "session-retired" : ControlInbox.CONNECTION_CLOSED;
         if (session.control != null) { session.control.inbox.close(reason); session.control = null; }
@@ -478,5 +478,6 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         return body;
     }
     private void ensureOpen() { if (closed) throw new IllegalStateException("Packet transport is closed"); }
+    private static final String CONNECTION_CLOSED = "Viewer connection is closed";
     private static CompletionStage<Void> failed(String reason) { return CompletableFuture.failedFuture(new IllegalStateException(reason)); }
 }
