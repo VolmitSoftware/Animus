@@ -6,7 +6,7 @@ import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.config.ShopSettings;
 import art.arcane.animus.core.gui.GuiDocument;
 import art.arcane.animus.core.gui.GuiScreen;
-import art.arcane.animus.core.gui.GuiText;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.Screen;
 import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.ScreenManager;
@@ -138,15 +138,15 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
 
     @Override public Optional<Screen> gui(ScreenManager<P, S>.Viewer viewer, String id, Map<String, String> args) {
         Optional<GuiDocument> document = catalog.gui(id);
-        if (document.isEmpty()) { host.message(viewer.player(), GuiText.colorize(settings.message("shopMissing").replace("{shop}", id))); return Optional.empty(); }
+        if (document.isEmpty()) { host.message(viewer.player(), RichText.colorize(settings.message("shopMissing").replace("{shop}", id))); return Optional.empty(); }
         GuiScreen<P, S> screen = new GuiScreen<>(document.get(), viewer, this, args);
-        if (!screen.shown()) { host.message(viewer.player(), GuiText.colorize(settings.message("shopPermission"))); return Optional.empty(); }
+        if (!screen.shown()) { host.message(viewer.player(), RichText.colorize(settings.message("shopPermission"))); return Optional.empty(); }
         return Optional.of(screen);
     }
 
     @Override public Optional<Screen> shop(ScreenManager<P, S>.Viewer viewer, String id) {
         Optional<ShopDocument> shop = catalog.shop(id);
-        if (shop.isEmpty()) { host.message(viewer.player(), GuiText.colorize(settings.message("shopMissing").replace("{shop}", id))); return Optional.empty(); }
+        if (shop.isEmpty()) { host.message(viewer.player(), RichText.colorize(settings.message("shopMissing").replace("{shop}", id))); return Optional.empty(); }
         return ShopScreen.open(shop.get(), viewer, context);
     }
 
@@ -196,7 +196,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
             case "status" -> actor.tell(status());
             case "list" -> {
                 actor.tell("Shops: " + catalog.shops().size());
-                catalog.shops().values().stream().limit(50).forEach((ShopDocument shop) -> actor.tell(shop.id() + " | " + GuiText.plain(shop.title()) + " | pages=" + shop.pages().size()));
+                catalog.shops().values().stream().limit(50).forEach((ShopDocument shop) -> actor.tell(shop.id() + " | " + RichText.plain(shop.title()) + " | pages=" + shop.pages().size()));
             }
             case "problems" -> problems(actor);
             case "reload" -> reload((ShopCatalog next) -> answer(actor, "Reloaded " + next.shops().size() + " shops and " + next.guis().size() + " GUIs; " + next.problems().size() + " problems"));

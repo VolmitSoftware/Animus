@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "4e45aca3-0218-5e06-ac1c-fc741aace107",
+  "id": "chainmail",
+  "group": "armour",
+  "name": "Chainmail",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 28.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "equipment": {
+    "head": {
+      "id": "minecraft:turtle_helmet"
+    },
+    "chest": {
+      "id": "minecraft:chainmail_chestplate"
+    },
+    "legs": {
+      "id": "minecraft:chainmail_leggings"
+    },
+    "feet": {
+      "id": "minecraft:chainmail_boots"
+    }
+  }
+}

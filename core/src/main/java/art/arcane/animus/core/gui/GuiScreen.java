@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.GuiModel.Action;
 import art.arcane.animus.core.gui.GuiModel.Click;
 import art.arcane.animus.core.gui.GuiModel.Component;
@@ -67,7 +68,7 @@ public final class GuiScreen<P, S> implements Screen {
             }
         });
         renderedAt = viewer.tick();
-        return new ScreenFrame(GuiText.colorize(title.render(scope)), document.resolution(), document.width(), document.rows(), items);
+        return new ScreenFrame(RichText.colorize(title.render(scope)), document.resolution(), document.width(), document.rows(), items);
     }
 
     @Override public boolean tick(long tick) {
@@ -103,9 +104,9 @@ public final class GuiScreen<P, S> implements Screen {
     }
 
     static ScreenFrame.Item item(GuiModel.Icon icon, GuiExpression.Scope scope) {
-        Optional<String> name = icon.name().map((GuiTemplate text) -> GuiText.colorize(text.render(scope)));
+        Optional<String> name = icon.name().map((GuiTemplate text) -> RichText.colorize(text.render(scope)));
         List<String> lore = new ArrayList<>();
-        for (GuiTemplate line : icon.lore()) lore.add(GuiText.colorize(line.render(scope)));
+        for (GuiTemplate line : icon.lore()) lore.add(RichText.colorize(line.render(scope)));
         if (icon.kind() == GuiModel.IconKind.PLAYER_HEAD)
             return new ScreenFrame.Item(new NpcItem("minecraft:player_head", 1, Optional.empty(), Optional.empty()), name, lore, Optional.of(icon.item().render(scope)));
         String id = icon.item().render(scope).trim().toLowerCase(java.util.Locale.ROOT);

@@ -42,6 +42,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
     int mountedCount() { return mounts.vehicleOf().size(); }
     int problemCount() { return mounts.diagnostics().size(); }
     String vehicleOf(String id) { return mounts.vehicleOf().get(id); }
+    boolean carries(String id) { return mounts.vehicleOf().containsValue(id); }
     RiderService.Vehicle<P> vehicle(PersistedNpcService<P, I>.Value value) { return new RideVehicle(value); }
 
     void activated(PersistedNpcService<P, I>.Value value) {
@@ -243,6 +244,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
         }
         @Override public MovementProfile body() { return BodyMobility.forBody(value.spec.type(), hullWidth(), hullHeight()); }
         @Override public void claim() { host.cancelRouteRead(value); value.waypoints = null; host.stopRoute(value, "cancelled: a player is riding"); }
+        @Override public void released() { value.poseRevision++; }
         @Override public void commit(Vec3 position, float nextYaw) {
             WorldPosition before = value.state.snapshot().position();
             if (!before.point().equals(position)) {

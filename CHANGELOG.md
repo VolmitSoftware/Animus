@@ -69,6 +69,11 @@
 - Shops with buy, sell and trade grids, limits, stock, discounts, command entries and confirmation, bound with the `animus:shop` module; `animus:open-shop` and `animus:open-gui` actions; `/animus shop` and `/animus gui`.
 - Vault economy on Bukkit; money prices fail closed elsewhere.
 - dtlTraders importer for shop files, `guis.yml`, trader traits, version 3 stock and `data.dat`.
+- Editor relay service (`animus-web/relay`) that connects the web editor to servers with no inbound ports, with Ed25519 server registration, per-browser routing, event streams, limits, an exact origin allowlist and a Cloud Run image.
+- Outbound editor relay client for all platforms, configured by the relay keys in `[editor]` of `config.toml` and off by default; server editor identity in `state/editor/identity.json`.
+- `animus:hire` NPC module: a chest window to hire a bodyguard for items or money, with durable contracts, renewal and hirer-only dismissal.
+- Answer buttons in `animus:choices` take optional `color`, `hover` and `style`; guard settings `catchUpDistance` and `replanDistance`.
+- Editor: 3D NPC preview covering every presented body type, the five definition poses, all eight equipment slots, armor stand parts and angles, nameplates and text display lines, with an orbit camera; skins from skin documents (arm model) or a PNG file or URL; `tool/extract_minecraft_world_assets.dart` generates the preview's Minecraft assets from a 26.3 client jar, not committed.
 
 ### Changed
 
@@ -100,9 +105,16 @@
 - Citizens converter version 6 maps the `trader` trait.
 
 - Reusable routes live in `routes/<id>.json` instead of `behaviors/routes/`, so route files are no longer reported as invalid behaviors.
+- One formatter for all player-facing text on every platform (`&` codes, hex, MiniMessage tags, section codes, unicode escapes).
+- NPC speech reads `Name » text`, and answers are coloured buttons with hover text.
+- Guards walk to a point behind their charge, replan as it moves, and teleport to catch up across distance or worlds.
+- Example packs restyled; personal-guard is hired through `animus:hire`.
 
 ### Fixed
 
+- A saddled NPC can be ridden again after a ride ends.
+- Hex colours render in holograms and in all mod-server text.
+- Combat teleports work beyond 2 blocks.
 - Swimming NPCs no longer suspend in deep water while searching for a bottom past the captured terrain.
 - Packet proof bodies stay visible after the shared runtime move.
 - A navigation job releases its slot before publishing its result.

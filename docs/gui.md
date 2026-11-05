@@ -167,7 +167,7 @@ Icons are `text`, `item`, `playerHead`, `block` and `entity`. Animus finds the h
 
 A text animation file in `gui/text-animations/<namespace>/` is a Gloss animation: `schemaVersion` 1, `revision`, `show`, `mode` (`ascend`, `descend`, `ascend_descend` or `random`), `frameIntervalMs` and `frames`. Text in holograms and menus shows the current frame with `|animation.<id>|`. An id without a namespace is found in the namespace of the document that uses it. All players see the same frame at the same time, and the `{{ }}` holes in a frame are filled for each player. A hologram or menu that shows an animation that did not load is refused. Chest GUIs refuse `|animation.` tokens.
 
-Gloss's `[RRGGBB]` colour shorthand is not read yet. Use `&#RRGGBB`.
+Gloss's `[RRGGBB]` colour shorthand works, so frames such as those of Gloss's rainbow animation colour the text that follows them.
 
 ## NPC bindings
 

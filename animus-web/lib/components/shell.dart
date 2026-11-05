@@ -173,6 +173,7 @@ class _EditorShellState extends State<EditorShell> {
             view: selected.view,
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
+            skinDocument: _skinOf(document),
           )
         else if (selected != null)
           dom.section(classes: 'animus-panel', <Widget>[
@@ -263,6 +264,12 @@ class _EditorShellState extends State<EditorShell> {
           ]),
         ]),
     ]);
+  }
+
+  AnimusDocument? _skinOf(AnimusDocument document) {
+    final Object? json = document.json;
+    if (document.kind != DocumentKind.npc || json is! Map<String, Object?> || json['skin'] is! String) return null;
+    return component.store.document(DocumentKind.skin, json['skin']! as String);
   }
 }
 

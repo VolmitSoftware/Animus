@@ -121,10 +121,14 @@ public final class AnimusModRuntime {
             next.displays = new VanillaDisplayTransport(next.screens::display, LOGGER::warn);
             next.guis = new art.arcane.animus.core.gui.HoloService<>(next.runtime, next.shops, next.displays, next.living, files,
                     art.arcane.animus.core.gui.GlossBridge.absent("Gloss is a Bukkit plugin and cannot run on mod servers"), LOGGER::info);
+            art.arcane.animus.core.hire.HireService<ServerPlayer, ItemStack> hires = new art.arcane.animus.core.hire.HireService<>(next.runtime, next.shops.screens(), next.living, files,
+                    next.combat.hireGuarding(), LOGGER::info);
+            next.ticks.every(hires::tick);
+            LOGGER.info(hires.status());
             art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
             art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> holoService = next.guis;
             next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) ->
-                    screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
+                    hires.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             next.ticks.every(() -> {
                 for (UUID viewer : screenService.screens().viewing()) {
                     ServerPlayer online = server.getPlayerList().getPlayer(viewer);

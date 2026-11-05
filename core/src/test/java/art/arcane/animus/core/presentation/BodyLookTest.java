@@ -40,7 +40,7 @@ class BodyLookTest {
     @Test void hologramLinesStackAboveTheNameWithFormattingCodes() {
         BodyLook native_ = BodyLook.of(ID, "minecraft:player", "Guard", appearance(List.of("&aQuest", "Talk to me"), true, NpcPose.STANDING));
         assertEquals("Guard", native_.profileName());
-        assertEquals(Optional.of("§aQuest\nTalk to me"), native_.text());
+        assertEquals(Optional.of("§aQuest\n§rTalk to me"), native_.text());
         assertFalse(native_.hideProfileName());
         assertTrue(native_.aboveNativeNameplate());
         BodyLook shown = BodyLook.of(ID, "minecraft:horse", "Old Bess", appearance(List.of("For hire"), true, NpcPose.STANDING));
@@ -91,9 +91,10 @@ class BodyLookTest {
         assertEquals(0x10 | 0x08, BodyLook.SEAT_FLAGS);
     }
 
-    @Test void formattingCodesTranslateOnlyRealCodes() {
-        assertEquals("§cRed §lBold & plain &z", BodyLook.legacy("&cRed &lBold & plain &z"));
-        assertEquals("§aAlready", BodyLook.legacy("§aAlready"));
+    @Test void hologramLinesAcceptHexAndTagsAndNeverTintTheNextLine() {
+        BodyLook look = BodyLook.of(ID, "minecraft:horse", "&#ffaa00Old Bess", appearance(List.of("<green>Ride me", "plain"), true, NpcPose.STANDING));
+        assertEquals(Optional.of("§aRide me\n§rplain\n§r§x§f§f§a§a§0§0Old Bess"), look.text());
+        assertTrue(BodyLook.of(ID, "minecraft:player", "<red>Guard", NpcAppearance.PLAIN).hideProfileName());
     }
 
     @Test void textSitsAboveTheHeadOrTheNativeNameplate() {

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "35ccbda0-fd91-591b-8233-e66f313510c6",
+  "id": "sitter",
+  "group": "players",
+  "name": "Sitter",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 8.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "pose": "sitting",
+  "nameplate": {
+    "visible": true
+  }
+}

@@ -31,6 +31,7 @@ Java (`core`):
 - every document fixture with `expect.java` is accepted or refused by `NpcDefinition`, `BehaviorCompiler` (after the catalog's revision check), `PackManifest`, `ShopDocument` and `GuiDocument` as listed;
 - `EditorScope` and `DocumentKind` match the scope and kind enums and the endpoint table;
 - `PairingCode` decodes and re-encodes every valid pairing fixture byte for byte and refuses every invalid one;
+- `EditorIdentity` reproduces the relay handshake golden, and `EditorRelayClient` answers the `relay-request` fixtures with the `relay-response` and `relay-event` fixtures;
 - `gloss/source.json` action lists equal the GUI parser's tables.
 
 Dart (`animus-web`):
@@ -46,6 +47,10 @@ The schemas check structure. The Java parsers stay authoritative: `fixtures/docu
 ## Pairing codes
 
 A pairing code is `ANM1.` followed by the payload JSON (`pairing-payload` in `editor-v1.schema.json`) in base64url without padding. Fields are written in the order `v`, `directUrl`, `relayUrl`, `fingerprint`, `serverKey`, `tokenId`, `secret`, `expiresAt`, `label`, `serverName`, without whitespace, so a decoded code encodes to the same text. A code needs `directUrl`, `relayUrl` or both. `directUrl` is `https://`, or `http://` only on `127.0.0.1` or `localhost`. `relayUrl` is `wss://`. `fingerprint` is `sha256:` and the hex SHA-256 of the raw 32-byte Ed25519 key in `serverKey`. The link is `https://animus-editor.web.app/#/pair/<code>`. `core/.../editor/PairingCode.java` implements this.
+
+## Relay frames
+
+The relay's frames are the `relay-*` definitions in `editor-v1.schema.json`; `relay` in `editor-v1.endpoints.json` lists which side sends which. `fixtures/editor/relay-handshake.json` is a registration golden: an Ed25519 seed, a nonce and the signature over `animus-relay/1 ` followed by the nonce. Ed25519 signatures are deterministic, so `EditorIdentityTest` (Java) and the relay's `server_identity_test.dart` both reproduce it byte for byte. The relay's `relay_frame_test.dart` decodes every `relay-*` message fixture on the side that sends it. The protocol is described in `animus-web/relay/README.md`.
 
 ## Rig sampling
 

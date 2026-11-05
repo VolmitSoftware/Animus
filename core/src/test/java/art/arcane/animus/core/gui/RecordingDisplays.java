@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.presentation.DisplayEntity;
 import art.arcane.animus.core.presentation.DisplayTransport;
 import java.util.ArrayList;
@@ -40,7 +41,7 @@ final class RecordingDisplays<P> implements DisplayTransport<P> {
     /** The plain text of every text display the viewer sees. */
     List<String> texts(P viewer) {
         return of(viewer).stream().filter((DisplayEntity entity) -> entity.content() instanceof DisplayEntity.Text)
-                .map((DisplayEntity entity) -> GuiText.plain(((DisplayEntity.Text) entity.content()).text())).toList();
+                .map((DisplayEntity entity) -> RichText.plain(((DisplayEntity.Text) entity.content()).text())).toList();
     }
 
     List<DisplayEntity> hitboxes(P viewer) { return of(viewer).stream().filter((DisplayEntity entity) -> entity.content() instanceof DisplayEntity.Hitbox).toList(); }

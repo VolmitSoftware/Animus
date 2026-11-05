@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.command.AnimusCommands;
@@ -348,13 +349,13 @@ public final class HoloService<P, S> implements AutoCloseable {
 
     boolean openMenu(Viewer viewer, String id, Map<String, String> args, boolean push) {
         Optional<MenuDocument> document = catalog.menu(id);
-        if (document.isEmpty()) { host.message(viewer.player, GuiText.colorize("&cNo menu named " + id + ".")); return false; }
-        if (transport.unavailable() != null) { host.message(viewer.player, GuiText.colorize("&cMenus are unavailable here: " + transport.unavailable())); return false; }
+        if (document.isEmpty()) { host.message(viewer.player, RichText.colorize("&cNo menu named " + id + ".")); return false; }
+        if (transport.unavailable() != null) { host.message(viewer.player, RichText.colorize("&cMenus are unavailable here: " + transport.unavailable())); return false; }
         Optional<ScreenHost.Pose> pose = host.pose(viewer.player);
         if (pose.isEmpty()) return false;
         if (!viewer.watched) { viewer.watched = true; P player = viewer.player; transport.watch(player, (DisplayTransport.Click click) -> click(player, click)); }
         MenuSession<P, S> next = new MenuSession<>(this, viewer, document.get(), args, pose.get());
-        if (!document.get().show().test(scope(viewer, id, Map.of(), args, 0))) { host.message(viewer.player, GuiText.colorize("&cYou cannot open that menu.")); return false; }
+        if (!document.get().show().test(scope(viewer, id, Map.of(), args, 0))) { host.message(viewer.player, RichText.colorize("&cYou cannot open that menu.")); return false; }
         if (viewer.menu != null) {
             if (push) { viewer.history.push(new Opened(viewer.menu.document.id(), viewer.menu.args)); while (viewer.history.size() > MAXIMUM_HISTORY) viewer.history.removeLast(); }
             viewer.menu.close();
@@ -413,7 +414,7 @@ public final class HoloService<P, S> implements AutoCloseable {
         if (binding == null || binding.open().isEmpty() || !binding.open().get().opensOn(attack)) return false;
         if (sneaking && host.permitted(player, "animus.admin")) return false;
         GuiBinding.Open target = binding.open().get();
-        if (refusal(target.kind()).isPresent()) { host.message(player, GuiText.colorize("&c" + refusal(target.kind()).get().getMessage())); return true; }
+        if (refusal(target.kind()).isPresent()) { host.message(player, RichText.colorize("&c" + refusal(target.kind()).get().getMessage())); return true; }
         open(player, target.kind(), target.id(), Map.of(), Optional.of(npc));
         return true;
     }

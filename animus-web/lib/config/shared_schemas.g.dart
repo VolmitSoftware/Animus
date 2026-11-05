@@ -106,7 +106,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "scope-missing": 403, "group-denied": 403, "origin-not-allowed": 403, "counter-replayed": 409,
     "not-found": 404, "invalid-request": 400, "too-large": 413, "rate-limited": 429, "busy": 503,
     "conflict": 409, "preview-refused": 422, "player-offline": 409, "gloss-unavailable": 422,
-    "unsupported-protocol": 400, "internal": 500
+    "unsupported-protocol": 400, "server-offline": 503, "timeout": 504, "internal": 500
   },
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
@@ -149,6 +149,18 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "relayPendingRequests": 64,
     "relayTimeoutSeconds": 10,
     "relayPingSeconds": 30
+  },
+  "relay": {
+    "agentPath": "/agent",
+    "appPath": "/app",
+    "challengePrefix": "animus-relay/1 ",
+    "streamPath": "/v1/events",
+    "closeCode": 4008,
+    "relayHeaders": ["Origin", "X-Forwarded-For"],
+    "agentToRelay": ["relay-register", "relay-response", "relay-event", "relay-close"],
+    "relayToAgent": ["relay-challenge", "relay-registered", "relay-request", "relay-close", "relay-error"],
+    "appToRelay": ["relay-subscribe", "relay-request", "relay-close"],
+    "relayToApp": ["relay-subscribed", "relay-status", "relay-response", "relay-event", "relay-close", "relay-error"]
   },
   "previewRefusedCapabilities": ["animus:command", "animus:combat-control"],
   "previewRefusedGuiActions": ["command", "give", "take", "economy", "animus:trade"]
@@ -214,7 +226,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     },
     "error-code": {
-      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "internal"]
+      "enum": ["unauthorized", "token-expired", "token-revoked", "scope-missing", "group-denied", "origin-not-allowed", "counter-replayed", "pairing-invalid", "pairing-expired", "not-found", "invalid-request", "too-large", "rate-limited", "busy", "conflict", "preview-refused", "player-offline", "gloss-unavailable", "unsupported-protocol", "server-offline", "timeout", "internal"]
     },
     "error-response": {
       "type": "object",
@@ -550,7 +562,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "required": ["type", "id", "method", "path"],
       "properties": {
         "type": {"const": "request"},
-        "id": {"type": "integer", "minimum": 1, "description": "Unique per browser connection; the relay rewrites it per server."},
+        "id": {"type": "integer", "minimum": 1, "maximum": 9007199254740991, "description": "Unique among the sender's open requests and streams; the relay rewrites it per server connection. GET /v1/events stays open as a stream under this id after a 2xx response."},
         "method": {"enum": ["GET", "POST", "DELETE"]},
         "path": {"type": "string", "pattern": "^/v1/"},
         "headers": {"type": "object", "additionalProperties": {"type": "string"}},
@@ -572,8 +584,72 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "relay-event": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "event"],
-      "properties": {"type": {"const": "event"}, "event": {"$ref": "#/$defs/event"}}
+      "required": ["type", "id", "event"],
+      "description": "One event on the stream opened by request id (GET /v1/events).",
+      "properties": {"type": {"const": "event"}, "id": {"type": "integer", "minimum": 1}, "event": {"$ref": "#/$defs/event"}}
+    },
+    "relay-close": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "description": "Ends request or stream id. The browser sends it to stop a stream, the server to end one, and the relay to tell a server that the browser left or the request timed out.",
+      "properties": {"type": {"const": "close"}, "id": {"type": "integer", "minimum": 1}}
+    },
+    "relay-challenge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "nonce"],
+      "description": "Relay to server, first frame on /agent.",
+      "properties": {"type": {"const": "challenge"}, "protocol": {"$ref": "#/$defs/protocol"}, "nonce": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}}
+    },
+    "relay-register": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "serverKey", "signature"],
+      "description": "Server to relay. signature is Ed25519 over the UTF-8 text 'animus-relay/1 ' followed by the nonce.",
+      "properties": {
+        "type": {"const": "register"},
+        "protocol": {"$ref": "#/$defs/protocol"},
+        "serverKey": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$", "description": "Raw 32-byte Ed25519 public key, base64url without padding."},
+        "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$", "description": "64-byte signature, base64url without padding."}
+      }
+    },
+    "relay-registered": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "fingerprint"],
+      "properties": {"type": {"const": "registered"}, "fingerprint": {"$ref": "#/$defs/fingerprint"}}
+    },
+    "relay-subscribe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "protocol", "fingerprint"],
+      "description": "Browser to relay, first frame on /app.",
+      "properties": {"type": {"const": "subscribe"}, "protocol": {"$ref": "#/$defs/protocol"}, "fingerprint": {"$ref": "#/$defs/fingerprint"}}
+    },
+    "relay-subscribed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "fingerprint", "online"],
+      "properties": {"type": {"const": "subscribed"}, "fingerprint": {"$ref": "#/$defs/fingerprint"}, "online": {"type": "boolean"}}
+    },
+    "relay-status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "online"],
+      "description": "Relay to browser when the subscribed server connects or disconnects.",
+      "properties": {"type": {"const": "status"}, "online": {"type": "boolean"}}
+    },
+    "relay-error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "code", "message"],
+      "description": "Relay to either side, just before it closes the connection with code 4008.",
+      "properties": {
+        "type": {"const": "error"},
+        "code": {"enum": ["invalid-frame", "unsupported-protocol", "too-large", "rate-limited", "handshake-failed", "timeout", "replaced", "capacity", "queue-full"]},
+        "message": {"type": "string", "minLength": 1, "maxLength": 2048}
+      }
     }
   }
 }
@@ -1357,6 +1433,24 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                             "type": "string",
                             "minLength": 1,
                             "maxLength": 128
+                          },
+                          "color": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 16
+                          },
+                          "hover": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          "style": {
+                            "enum": [
+                              "bold",
+                              "italic",
+                              "underlined",
+                              "plain"
+                            ]
                           }
                         },
                         "required": [
