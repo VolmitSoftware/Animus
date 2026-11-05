@@ -12,6 +12,7 @@ import art.arcane.animus.core.runtime.WaypointProgress;
 
 import art.arcane.animus.core.navigation.CaptureProvenance;
 import art.arcane.animus.core.navigation.ChunkOwnership;
+import art.arcane.animus.core.navigation.IdleFall;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
 import art.arcane.animus.core.navigation.NavigationPlan;
 import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
@@ -72,6 +73,8 @@ final class RegionActor implements RegionOwner.Body {
     volatile boolean replaced;
     /** A reload republished the same definition: read its reusable route file again. */
     volatile boolean reread;
+    /** A block under the NPC changed on some region thread: check its footing on the next owner tick. */
+    volatile boolean supportWanted;
 
     private Desired applied;
     DefinitionSpec<ItemStack> spec;
@@ -85,6 +88,7 @@ final class RegionActor implements RegionOwner.Body {
     float yaw, pitch;
     private boolean onGround = true;
     private long pose, arrivals, turns, appearance, equipmentRevision, revision;
+    private double fallSpeed;
     private Route route;
     private WaypointProgress waypoints;
     private String navigationStatus = "idle", routeError;
@@ -189,7 +193,8 @@ final class RegionActor implements RegionOwner.Body {
         }
         if (reread) { reread = false; routeReadWanted |= routeSource != null; }
         if (routeReadWanted) requestRouteRead();
-        if (route != null) navigate();
+        if (route != null) { navigate(); supportWanted = false; fallSpeed = 0; }
+        else if (supportWanted || fallSpeed > 0) support();
         ChunkPosition now = anchor();
         if (!now.equals(anchored)) { host.anchor(this, anchored, now); anchored = now; }
         publish(true);
@@ -353,6 +358,26 @@ final class RegionActor implements RegionOwner.Body {
             pose++; setPose(facing, 0, step.onGround());
             routeStatus(current, "moving", "kinematic; live collision revalidation; region owner");
             if (current.execution.finished()) arrive(current);
+        }
+    }
+    /** Idle gravity: one bounded step per owner tick while the NPC falls, charged to the region's motion cells. */
+    private void support() {
+        supportWanted = false;
+        World world = mount || !navigable() || !BodyMobility.falls(spec.type()) ? null : host.world(state.snapshot().position().world());
+        if (world == null) { fallSpeed = 0; return; }
+        int wanted = IdleFall.cells(hullWidth(), hullHeight()), granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
+        if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); supportWanted = true; return; }
+        ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
+        boolean swims = BodyMobility.forBody(spec.type(), hullWidth(), hullHeight()).supports(MovementProfile.Mode.SWIM);
+        WorldPosition at = state.snapshot().position();
+        IdleFall.Step step = IdleFall.step(at.point(), fallSpeed, hullWidth(), hullHeight(), swims, LiveMovementProbe.owned(world, owned));
+        host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted - step.sampled());
+        fallSpeed = step.speed();
+        boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
+        if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
+            state.move(new WorldPosition(at.world(), step.to()));
+            host.index.upsert(state.snapshot());
+            pose++; setPose(yaw, pitch, !falling);
         }
     }
     private void arrive(Route current) {

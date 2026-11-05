@@ -426,7 +426,7 @@ class Auditor:
         require(all(c.get('sourceAbsent') is True and c.get('checkpointAbsent') is True and not c.get('emergencySourceRemoved') and not c.get('emergencyCheckpointRemoved') for c in cleanup), 'Source/checkpoint cleanup receipt failed')
         data = instance / 'plugins/Animus'
         absent = [p for group, npc_id in groups for p in self.absent(data, group, npc_id)]
-        route = data / 'behaviors/routes' / f'{report["movementNpcId"]}.json'
+        route = data / 'routes' / f'{report["movementNpcId"]}.json'
         require(not lexists(route), f'Owned route remains: {route}')
         absent.append(str(route))
         details = [self.native_phase(p, version, report['port'], report['offlineRecovery']) for p in phases]

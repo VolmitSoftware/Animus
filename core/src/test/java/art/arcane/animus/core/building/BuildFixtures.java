@@ -102,6 +102,7 @@ final class BuildFixtures {
         final Map<String, Integer> swings = new HashMap<>();
         final Map<String, Optional<String>> held = new HashMap<>();
         final List<WorldPosition> walks = new ArrayList<>();
+        final List<BlockPos> terrain = new ArrayList<>();
         int relocations, stops;
         boolean walkInstantly = true;
 
@@ -121,6 +122,7 @@ final class BuildFixtures {
         @Override public void face(String npc, WorldPosition at) { }
         @Override public void swing(String npc) { swings.merge(npc, 1, Integer::sum); }
         @Override public void hold(String npc, Optional<String> item) { held.put(npc, item); }
+        @Override public void terrainChanged(String world, BlockPos at) { terrain.add(at); }
         private void move(String npc, WorldPosition to) {
             Member old = members.get(npc);
             members.put(npc, new Member(old.id(), old.uuid(), to, old.width(), old.height()));

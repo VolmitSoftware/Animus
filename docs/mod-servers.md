@@ -16,7 +16,7 @@ The Fabric jar carries the three Fabric API modules it uses, so the full Fabric 
 
 ## Files
 
-Everything lives in `config/animus/` in the server folder: `config.toml` holds the plugin-wide settings and the `npcs/`, `skins/`, `behaviors/`, `modules/`, `imports/` and other folders hold the JSON data. The layout is the same as `plugins/Animus/` on Bukkit, so the folder can be copied between platforms. Settings and data formats are described in [storage](storage.md) and [runtime](runtime.md).
+Everything lives in `config/animus/` in the server folder: `config.toml` holds the plugin-wide settings and the `npcs/`, `skins/`, `behaviors/`, `routes/`, `modules/`, `imports/` and other folders hold the JSON data. The layout is the same as `plugins/Animus/` on Bukkit, so the folder can be copied between platforms. Settings and data formats are described in [storage](storage.md) and [runtime](runtime.md).
 
 ## Worlds
 

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -209,6 +210,19 @@ class BuildSessionTest {
         assertEquals(3, session.reverted());
         assertEquals(1, session.undoSkipped());
         assertThrows(IllegalStateException.class, session::undo);
+    }
+
+    @Test void everyBlockTheBuildOrItsUndoChangesIsReportedSoNpcsAboveCanFall() {
+        BuildSession session = session(schematic(LEGEND, new String[]{"sp"}, new String[]{"gg"}), corner(), 100);
+        run(session, context(), 200);
+        List<BlockPos> built = List.copyOf(crew.terrain);
+        assertEquals(Set.of(new BlockPos(0, 64, 0), new BlockPos(1, 64, 0), new BlockPos(1, 65, 0), new BlockPos(0, 65, 0)), Set.copyOf(built));
+        assertEquals(4, built.size());
+        crew.terrain.clear();
+        session.undo();
+        run(session, context(), 200);
+        assertEquals(State.UNDONE, session.state());
+        assertEquals(built.reversed(), crew.terrain, "undo reverts, and reports, in reverse order");
     }
 
     @Test void excavationRemovesBlocksAndUndoPutsThemBack() {

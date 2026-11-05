@@ -12,6 +12,7 @@ import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyMobility;
 import art.arcane.animus.core.navigation.CaptureBounds;
 import art.arcane.animus.core.navigation.CaptureProvenance;
+import art.arcane.animus.core.navigation.IdleFall;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.navigation.NavigationLimits;
@@ -84,6 +85,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
     private static final int RECONCILE_WORK = 64, PACKET_WORK = 32, MAX_PENDING_PER_VIEWER = 8, MAX_ISSUED_IDS = 8192;
     private static final int MAX_ROUTES = 32, NAVIGATION_UPDATES = 16, NAVIGATION_CELLS = 2048, MOTION_CELLS = 256;
+    private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096;
     private static final double HULL_WIDTH_LIMIT = 4, HULL_HEIGHT_LIMIT = 8;
     /** Fastest route leg in blocks per second; combat pursuit is limited further by {@code [combat] maximumSpeed}. */
     public static final double MAXIMUM_SPEED = 10;
@@ -101,6 +103,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     final Map<UUID, Viewer> viewers = new HashMap<>();
     private final Deque<Viewer> viewerOrder = new ArrayDeque<>();
     private final Deque<Route> routeOrder = new ArrayDeque<>();
+    /** Idle NPCs whose footing changed, and NPCs still falling; each is queued at most once. */
+    private final Deque<Value> supportOrder = new ArrayDeque<>();
     private final Deque<Value> routeReadQueue = new ArrayDeque<>();
     private final Set<RouteReadTask> routeReads = new HashSet<>();
     private final ConcurrentLinkedQueue<RouteReadCompletion> routeReadCompletions = new ConcurrentLinkedQueue<>();
@@ -598,6 +602,43 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             if (routeCurrent(route)) routeOrder.addLast(route);
         }
     }
+    /**
+     * A block changed in a loaded chunk of this world, or is about to change in this tick. Idle walking NPCs over it check
+     * their footing on a later tick and fall when nothing holds them up. Owner thread; reads at most four index buckets.
+     */
+    public void terrainChanged(String world, BlockPos at) {
+        if (!available()) return;
+        owner();
+        for (UUID npc : IdleFall.standingOn(index, world, at)) {
+            Entry entry = byUuid.get(npc); Value value = entry == null ? null : entry.value;
+            if (value == null || value.supportQueued) continue;
+            value.supportQueued = true; supportOrder.addLast(value);
+        }
+    }
+    private boolean falls(Value value) {
+        return valueCurrent(value) && value.state.snapshot().active() && value.route == null && value.routeTask == null
+                && BodyMobility.falls(value.spec.type()) && mountRuntime.vehicleOf(value.spec.definition().id()) == null
+                && riders.riderOf(value.spec.definition().uuid()) == null;
+    }
+    private void tickSupport() {
+        int cells = SUPPORT_CELLS;
+        for (int i = 0, count = Math.min(SUPPORT_UPDATES, supportOrder.size()); i < count && cells > 0 && available(); i++) {
+            Value value = supportOrder.removeFirst();
+            WorldPosition at = value.state.snapshot().position();
+            if (!falls(value) || !host.worldLoaded(at.world())) { value.supportQueued = false; value.fallSpeed = 0; continue; }
+            boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
+            IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
+            cells -= step.sampled();
+            value.fallSpeed = step.speed();
+            boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
+            if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
+                value.state.move(new WorldPosition(at.world(), step.to())); index.upsert(value.state.snapshot());
+                value.poseRevision++; setPose(value, value.yaw, value.pitch, !falling);
+            }
+            if (falling) supportOrder.addLast(value);
+            else value.supportQueued = false;
+        }
+    }
     private void arrive(Route route) {
         Value value = route.value; if (!routeCurrent(route)) return;
         WaypointProgress progress = value.waypoints;
@@ -725,6 +766,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             mountRuntime.resolve();
             riders.tick();
             tickNavigation();
+            tickSupport();
             if (!available()) return; // Arrival listeners may disable the plugin or retire the entire runtime.
             mountRuntime.syncPassengers();
             mountRuntime.tickDragons();
@@ -1088,7 +1130,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         closed = true;
         closeQuietly(ticker);
         for (Route route : List.copyOf(routeOrder)) stopRoute(route.value, "cancelled: runtime shutdown");
-        routeOrder.clear(); if (navigation != null) navigation.close();
+        routeOrder.clear(); supportOrder.clear(); if (navigation != null) navigation.close();
         for (RouteReadTask task : routeReads) task.cancelled = true;
         routeReads.clear(); routeReadQueue.clear(); routeReadCompletions.clear();
         for (SkinTask task : skinTasks) task.cancelled = true;
@@ -1114,6 +1156,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         final String routeSource;
         RouteReadTask routeTask; boolean routeReadQueued;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
+        boolean supportQueued; double fallSpeed;
         Vec3 restingPoint; long lastMotionTick; int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; AppearanceTask appearanceTask;

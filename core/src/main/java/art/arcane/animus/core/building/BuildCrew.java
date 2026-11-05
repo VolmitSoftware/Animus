@@ -1,5 +1,6 @@
 package art.arcane.animus.core.building;
 
+import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,4 +21,6 @@ public interface BuildCrew {
     void swing(String npc);
     /** Shows the item in the main hand, or clears it. */
     void hold(String npc, Optional<String> item);
+    /** A build changed this block; NPCs standing on it check their footing and fall when nothing holds them up. */
+    void terrainChanged(String world, BlockPos at);
 }
