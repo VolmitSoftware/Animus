@@ -311,7 +311,7 @@ This follows React rather than Gloss. Gloss's long-poll snapshot relay suits who
 
 ### Direct path
 
-- The listener is off by default (`[editor] listenerEnabled = false`). It binds `listenAddress` and `port` (default `127.0.0.1:9797`).
+- The listener is on by default (`[editor] listenerEnabled = true`). It binds `listenAddress` and `port` (default `127.0.0.1:9797`).
 - An HTTPS page cannot call plain HTTP or WS endpoints, except that Chrome and Firefox allow `http://127.0.0.1` and `http://localhost`. Safari does not. So the direct path is for:
   - an HTTPS reverse proxy (Caddy, nginx, a host panel) in front of the listener, given to Animus as `advertisedUrl = "https://..."`;
   - or Animus serving TLS itself from an operator-provided certificate and key (`tlsCertificate`, `tlsPrivateKey` paths, PEM);
@@ -414,7 +414,7 @@ Request bodies 4 MiB (imports 16 MiB), change sets 512 documents, 8 concurrent r
 [editor]
 enabled = true
 editorUrl = "https://animus-editor.web.app"
-listenerEnabled = false
+listenerEnabled = true
 listenAddress = "127.0.0.1"
 port = 9797
 advertisedUrl = ""

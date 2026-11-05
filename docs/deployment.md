@@ -53,6 +53,6 @@ relayUrl = "wss://animus-relay-823521865655.us-central1.run.app"
 
 `relayUrl` must be `wss://host[:port][/path]`; plain `ws://` is accepted only on `127.0.0.1` or `localhost`. The server connects to `<relayUrl>/agent`. `relayEnabled` is true by default and points at the Volmit relay; set it to false to use only the direct listener.
 
-To use the direct listener instead of, or beside, the relay, set `listenerEnabled = true`. The listener serves plain HTTP only on a loopback `listenAddress`; on any other address set `tlsCertificate` and `tlsPrivateKey`, or put a TLS proxy in front of a loopback listener and set `advertisedUrl` to the public `https://` address. `allowedOrigins` must include `https://animus-editor.web.app`, as it does by default.
+The direct listener is on by default (`listenerEnabled = true`) on `127.0.0.1:9797`, beside the relay; set it to false to use only the relay. The listener serves plain HTTP only on a loopback `listenAddress`; on any other address set `tlsCertificate` and `tlsPrivateKey`, or put a TLS proxy in front of a loopback listener and set `advertisedUrl` to the public `https://` address. `allowedOrigins` must include `https://animus-editor.web.app`, as it does by default.
 
 After the restart, `/animus editor status` shows the listener and whether the relay is registered. `/animus editor pair` prints a pairing link that carries every enabled path; `/animus editor tokens` and `/animus editor revoke <token-id|all>` manage paired browsers.
