@@ -186,6 +186,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized boolean packetProofEnabled() { return settings().packetProofEnabled(); }
     public synchronized NpcRuntimeSettings npcSettings() { return settings().npcs(); }
     public synchronized ModuleSettings moduleSettings() { return settings().modules(); }
+    public synchronized art.arcane.animus.core.config.FileWorkSettings fileSettings() { return settings().files(); }
     public synchronized BehaviorSettings behaviorSettings() { return settings().behaviors(); }
     public synchronized CombatBudgets combatBudgets() { return settings().combat(); }
     public synchronized art.arcane.animus.core.config.ShopSettings shopSettings() { return settings().shops(); }
