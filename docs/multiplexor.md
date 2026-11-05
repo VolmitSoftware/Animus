@@ -122,6 +122,15 @@ node qa/multiplexor/live-features.mjs --project fabric --version 26.3 \
   --plugin "build/distributions/Animus v0.1.0 [Fabric] 26.3+0.19.5.jar" --results /path/to/new/results
 ```
 
+`--scenarios guardsoak` hires the example bodyguard and plays for `--soak-minutes` (default 16): wandering, a dirt-path road, standing still, far teleports, deaths, the nether, fights and one renewal. It fails when the guard stays more than 8 blocks behind for over 8 seconds outside a fight, and reports any guard watchdog lines. `--workspace main` uses the Multiplexor workspace that holds `--binary`, with its default root, and `--template <instance>` names the instance whose `server.jar` a new Paper instance uses. Instances named `animus-guarddebug-<platform>-<version>` are accepted. For example:
+
+```sh
+node qa/multiplexor/live-features.mjs --project paper --version 26.3 --scenarios guardsoak \
+  --instance-name animus-guarddebug-paper-26-3 --workspace main --binary ../ServerMultiplexor/multiplexor \
+  --template ../ServerMultiplexor/consumers/plugin-consumers/instances/animus-paper-26-3 \
+  --plugin "bukkit/build/libs/Animus v0.1.0 [CraftBukkit] 26.1.2-26.3.jar" --results /path/to/new/results
+```
+
 On 26.3 the default set is the full Paper set plus `worlds` (far teleport, short teleport, dimension change, an NPC in the nether, reconnect) and two mod-only checks: combat reports `protection=none` and unavailable pursuit regions, and shops report the economy unavailable. On 26.1.2 and 26.2 the default is `smoke`: spawn, interaction, navigation, a ride with steering and sneak dismount, and a restart that keeps the NPC. `gate.py --targets fabric-26.3,...` runs the same live set with the jar from `--mod-jars` (default `build/distributions`). The thread check after shutdown records `jvmExited` when a small mod server exits before `jcmd` attaches.
 
 ## Persisted runtime and real-combat scenarios

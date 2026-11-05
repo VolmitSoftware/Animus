@@ -15,7 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /** Deterministic world for driving the combat engine without a server. Moves are applied by the test. */
-final class MockCombatWorld implements CombatWorld {
+class MockCombatWorld implements CombatWorld {
     static final String WORLD = "world";
     final Map<UUID, VirtualNpcState> npcs = new HashMap<>();
     final SpatialNpcIndex index = new SpatialNpcIndex(256);
