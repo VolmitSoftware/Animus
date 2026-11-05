@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "5b3f413e-3eff-507a-96a6-0aaa79e3f243",
+  "id": "frog",
+  "group": "animals",
+  "name": "Ribbit",
+  "type": "minecraft:frog",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 18.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "7a57f020-e582-5e70-a266-19c2bacff829",
+  "id": "sleeper",
+  "group": "players",
+  "name": "Sleeper",
+  "type": "minecraft:player",
+  "spawned": true,
+  "position": {
+    "world": "world",
+    "x": 4.5,
+    "y": 64,
+    "z": 0.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "pose": "sleeping"
+}
