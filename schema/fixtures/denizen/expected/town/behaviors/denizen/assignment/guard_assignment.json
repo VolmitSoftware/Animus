@@ -2,57 +2,160 @@
   "schemaVersion": 1,
   "revision": 1,
   "id": "denizen:assignment/guard_assignment",
-  "entry": "on-click",
+  "entry": "on-assignment",
+  "variables": {
+    "d_amount": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_count": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_number": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_piece": {
+      "type": "any",
+      "initial": ""
+    },
+    "d_who": {
+      "type": "any",
+      "initial": ""
+    },
+    "i_1": {
+      "type": "integer",
+      "initial": 0
+    },
+    "r_tally": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_1": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_2": {
+      "type": "any",
+      "initial": ""
+    },
+    "t_3": {
+      "type": "any",
+      "initial": ""
+    }
+  },
   "routines": {
+    "on-assignment": {
+      "type": "condition",
+      "expression": "!has_flag('npc', 'assigned-guard_assignment')",
+      "then": {
+        "type": "sequence",
+        "steps": [
+          {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "assigned-guard_assignment",
+              "scope": "npc"
+            }
+          },
+          {
+            "type": "action",
+            "capability": "animus:set-equipment",
+            "arguments": {
+              "slot": "chest",
+              "item": "minecraft:iron_chestplate"
+            }
+          },
+          {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "guard_post",
+              "scope": "npc",
+              "value": true
+            }
+          }
+        ]
+      }
+    },
     "on-click": {
       "type": "sequence",
       "steps": [
         {
           "type": "action",
-          "capability": "animus:say",
+          "capability": "animus:message",
           "arguments": {
-            "text": "&aHello {player_name}, I am Guard."
+            "text": null
+          },
+          "templates": {
+            "/text": "&aHello {{ player.name }}, I am {{ npc.name }}."
           }
         },
         {
           "type": "condition",
-          "capability": "animus:flag-state",
-          "arguments": {
-            "name": "met_guard",
-            "scope": "player"
-          },
+          "expression": "has_flag('player', 'met_guard')",
           "then": {
-            "type": "action",
-            "capability": "animus:say",
-            "arguments": {
-              "text": "Welcome back.",
-              "audience": "nearby"
-            }
-          },
-          "else": {
             "type": "sequence",
             "steps": [
               {
                 "type": "action",
-                "capability": "animus:set-flag",
+                "capability": "animus:say",
                 "arguments": {
-                  "name": "met_guard",
-                  "scope": "player"
+                  "text": "Welcome back.",
+                  "audience": "nearby"
                 }
               },
               {
-                "type": "action",
-                "capability": "animus:advance-quest-state",
-                "arguments": {
-                  "name": "visits",
-                  "scope": "player"
-                }
-              },
-              {
-                "type": "call",
-                "routine": "task-greet_task"
+                "type": "return"
               }
             ]
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "met_guard",
+            "scope": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "visits",
+            "scope": "player",
+            "value": null
+          },
+          "expressions": {
+            "/value": "(num(flag('player', 'visits', 0)) + 1)"
+          }
+        },
+        {
+          "type": "call",
+          "routine": "task-greet_task"
+        },
+        {
+          "type": "call",
+          "routine": "task-tally_task",
+          "arguments": {
+            "d_who": {
+              "expression": "player.name"
+            },
+            "d_amount": 2
+          },
+          "result": "r_tally"
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "You have {{ r_tally }} marks."
           }
         }
       ]
@@ -60,6 +163,21 @@
     "task-greet_task": {
       "type": "sequence",
       "steps": [
+        {
+          "type": "set",
+          "variable": "d_count",
+          "value": 3
+        },
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "{{ d_count }} greetings."
+          }
+        },
         {
           "type": "wait",
           "ticks": 40
@@ -79,30 +197,32 @@
           "count": 2,
           "body": {
             "type": "action",
-            "capability": "animus:say",
+            "capability": "animus:message",
             "arguments": {
               "text": "Wave."
             }
           }
         },
         {
+          "type": "set",
+          "variable": "t_1",
+          "value": {
+            "expression": "flag('player', 'visits', '')"
+          }
+        },
+        {
           "type": "condition",
-          "capability": "animus:quest-state",
-          "arguments": {
-            "name": "visits",
-            "scope": "player",
-            "equals": 1
-          },
+          "expression": "same(t_1, 1)",
           "then": {
             "type": "action",
-            "capability": "animus:say",
+            "capability": "animus:message",
             "arguments": {
               "text": "First visit."
             }
           },
           "else": {
             "type": "action",
-            "capability": "animus:say",
+            "capability": "animus:message",
             "arguments": {
               "text": "Again."
             }
@@ -110,43 +230,210 @@
         },
         {
           "type": "action",
-          "capability": "animus:command",
+          "capability": "animus:title",
           "arguments": {
-            "command": "minecraft:title {player} times 20 40 20"
+            "title": "Guard",
+            "subtitle": null,
+            "fadeIn": 20,
+            "stay": 40,
+            "fadeOut": 20
+          },
+          "templates": {
+            "/subtitle": "{{ player.name }}"
           }
         },
         {
           "type": "action",
-          "capability": "animus:command",
+          "capability": "animus:actionbar",
           "arguments": {
-            "command": "minecraft:title {player} subtitle {\"text\":\"{player_name}\"}"
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:command",
-          "arguments": {
-            "command": "minecraft:title {player} title {\"text\":\"Guard\"}"
-          }
-        },
-        {
-          "type": "action",
-          "capability": "animus:command",
-          "arguments": {
-            "command": "minecraft:title {player} actionbar {\"text\":\"§eVisit logged\"}"
+            "text": "&eVisit logged"
           }
         },
         {
           "type": "call",
           "routine": "task-greet_task-extra"
+        },
+        {
+          "type": "foreach",
+          "list": {
+            "expression": "['sword', 'shield', 'helmet']"
+          },
+          "as": "d_piece",
+          "index": "i_1",
+          "body": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "condition",
+                "expression": "same(d_piece, 'shield')",
+                "then": {
+                  "type": "continue"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:message",
+                "arguments": {
+                  "text": null
+                },
+                "templates": {
+                  "/text": "{{ (i_1 + 1) }}. {{ upper(text(d_piece)) }}"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "set",
+          "variable": "t_2",
+          "value": {
+            "expression": "random(1, 3)"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "same(t_2, 1)",
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "A fine day.",
+              "audience": "nearby"
+            }
+          },
+          "else": {
+            "type": "condition",
+            "expression": "(same(t_2, 2) || same(t_2, 3))",
+            "then": {
+              "type": "action",
+              "capability": "animus:say",
+              "arguments": {
+                "text": "Stay alert.",
+                "audience": "nearby"
+              }
+            }
+          }
+        },
+        {
+          "type": "while",
+          "expression": "num(d_count) > 0",
+          "maximum": 1024,
+          "body": {
+            "type": "set",
+            "variable": "d_count",
+            "value": {
+              "expression": "(num(d_count) - 1)"
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:give-item",
+          "arguments": {
+            "item": "minecraft:torch",
+            "amount": null,
+            "name": "&6Lantern token",
+            "lore": [
+              "Shown at the gate"
+            ]
+          },
+          "expressions": {
+            "/amount": "int((num(d_count) + 1))"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-appearance",
+          "arguments": {
+            "name": "Gate Guard"
+          }
         }
       ]
     },
     "task-greet_task-extra": {
-      "type": "action",
-      "capability": "animus:say",
-      "arguments": {
-        "text": "Extra path."
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": "Extra path."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:teleport",
+          "arguments": {
+            "to": "npc"
+          }
+        }
+      ]
+    },
+    "task-tally_task": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "marks",
+            "scope": "player",
+            "value": null,
+            "expireSeconds": 86400
+          },
+          "expressions": {
+            "/value": "(num(flag('player', 'marks', 0)) + num(d_amount))"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "names",
+            "scope": "player",
+            "value": null
+          },
+          "expressions": {
+            "/value": "append(flag('player', 'names', []), d_who)"
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "(num(flag('player', 'marks', 0)) > 10 || (has_flag('player', 'names') && !(has_flag('player', 'banned'))))",
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "call",
+                "routine": "proc-double_proc",
+                "arguments": {
+                  "d_number": {
+                    "expression": "flag('player', 'marks', '')"
+                  }
+                },
+                "result": "t_3"
+              },
+              {
+                "type": "return",
+                "value": {
+                  "expression": "t_3"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "return",
+          "value": {
+            "expression": "flag('player', 'marks', '')"
+          }
+        }
+      ]
+    },
+    "proc-double_proc": {
+      "type": "return",
+      "value": {
+        "expression": "(num(d_number) * 2)"
       }
     },
     "on-enter-proximity": {
@@ -165,16 +452,20 @@
           "arguments": {
             "sound": "minecraft:entity.villager.yes",
             "volume": 1.0,
-            "pitch": 1.5
+            "pitch": 1.5,
+            "at": "player"
           }
         }
       ]
     },
     "on-exit-proximity": {
       "type": "action",
-      "capability": "animus:say",
+      "capability": "animus:message",
       "arguments": {
-        "text": "Farewell, {player_name}!"
+        "text": null
+      },
+      "templates": {
+        "/text": "Farewell, {{ player.name }}!"
       }
     },
     "on-spawn": {
@@ -200,6 +491,11 @@
     }
   },
   "triggers": [
+    {
+      "id": "on-assignment",
+      "event": "spawn",
+      "routine": "on-assignment"
+    },
     {
       "id": "on-click",
       "event": "interaction",
