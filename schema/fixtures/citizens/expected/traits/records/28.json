@@ -1,0 +1,43 @@
+{
+  "name": "Loud Banner",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000028",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "",
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "metadata": {
+      "nameplate-visible": "TRUE"
+    },
+    "hologramtrait": {
+      "lines": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17"
+      ]
+    },
+    "poses": {
+      "defaultPose": "missing",
+      "list": [
+        "wave;1;2"
+      ]
+    }
+  }
+}

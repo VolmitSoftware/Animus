@@ -1,0 +1,25 @@
+{
+  "name": "Unguarded",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000012",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 12,
+      "y": 64,
+      "z": 12
+    },
+    "sentinel": {
+      "guardedNPC": -1,
+      "damage": 6.5,
+      "guardingUpper": 1.5,
+      "guardingLower": 2,
+      "respawnTime": 200.4
+    },
+    "equipment": {
+      "hand": {
+        "type": "CROSSBOW"
+      }
+    }
+  }
+}

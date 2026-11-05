@@ -1,0 +1,251 @@
+/// Port of core's `NpcDefinition.validate` with `NpcAppearance`, `NpcItem`, `ArmorStandLook` and `NpcInventory`.
+///
+/// The module validators (`WaypointSettings`, `CombatSettings`, `MountDeclaration`, `RideSettings`, `ShopBinding`,
+/// `GuiBinding`, `HireTerms`) are not ported: the modules this converter writes are built to pass them, and the server
+/// validates every definition again when an import is applied, so a module the browser accepted wrongly is still refused.
+library;
+
+import 'java_json.dart';
+import 'java_lang.dart';
+import 'presentation.dart';
+
+const List<String> _poses = <String>['standing', 'sneaking', 'sleeping', 'swimming', 'sitting'];
+const List<String> _parts = <String>['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
+const Set<String> _lookFlags = <String>{'small', 'arms', 'basePlate', 'invisible'};
+const Set<String> _itemFields = <String>{'id', 'count', 'components', 'imported'};
+
+/// `NpcAppearance.displayText`.
+bool displayText(String? text) => text != null && text.length <= maxText && !text.runes.any(javaIsIsoControl);
+
+List<String> validateDefinition(JObject object) {
+  final List<String> errors = <String>[];
+  _integer(object, 'schemaVersion', BigInt.one, BigInt.one, errors);
+  _integer(object, 'revision', BigInt.one, javaLongMax, errors);
+  final String uuid = _string(object, 'uuid', errors);
+  if (!canonicalUuid(uuid)) errors.add(r'$.uuid: expected canonical UUID');
+  for (final String key in const <String>['id', 'group']) {
+    if (!RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$').hasMatch(_string(object, key, errors))) {
+      errors.add('\$.$key: expected 1–64 lowercase letters, digits, _ or -');
+    }
+  }
+  if (!displayText(_string(object, 'name', errors))) errors.add('\$.name: expected at most $maxText characters without control characters');
+  if (!RegExp(r'^[a-z0-9_]+:[a-z0-9_/]+$').hasMatch(_string(object, 'type', errors))) errors.add(r'$.type: expected namespace:type');
+  if (object.get('spawned') is! JBool) errors.add(r'$.spawned: expected boolean');
+  final JElement? position = object.get('position');
+  if (position is! JObject) {
+    errors.add(r'$.position: expected object');
+  } else {
+    final List<String> positionErrors = <String>[];
+    _string(position, 'world', positionErrors);
+    for (final String key in const <String>['x', 'y', 'z', 'yaw', 'pitch']) {
+      final JElement? value = position.get(key);
+      if (value is! JNumber || !value.asDouble.isFinite || value.asDouble.abs() > 30000000) {
+        positionErrors.add('\$.$key: expected finite coordinate within ±30000000');
+      }
+    }
+    for (final String error in positionErrors) {
+      errors.add('\$.position${error.substring(1)}');
+    }
+  }
+  if (object.has('skin')) {
+    final JElement? skin = object.get('skin');
+    if (skin is! JString || !RegExp(r'^[a-f0-9]{64}$').hasMatch(skin.value)) errors.add(r'$.skin: expected SHA-256 reference');
+  }
+  if (object.has('behaviors')) {
+    final JElement? behaviors = object.get('behaviors');
+    if (behaviors is! JArray) {
+      errors.add(r'$.behaviors: expected array');
+    } else {
+      for (final JElement reference in behaviors.elements) {
+        if (reference is! JString || !RegExp(r'^[a-z0-9_-]+:[a-z0-9_/-]+$').hasMatch(reference.value)) {
+          errors.add(r'$.behaviors: expected namespace:id references');
+        }
+      }
+    }
+  }
+  if (object.has('owner')) {
+    final JElement? owner = object.get('owner');
+    if (!canonicalUuid(owner is JString ? owner.value : '')) errors.add(r'$.owner: expected canonical player UUID');
+  }
+  _appearance(object, errors);
+  _inventory(object, errors);
+  if (object.has('modules') && object.get('modules') is! JObject) errors.add(r'$.modules: expected object');
+  return errors;
+}
+
+String _string(JObject data, String key, List<String> errors) {
+  final JElement? value = data.get(key);
+  if (value is! JString || javaIsBlank(value.value)) {
+    errors.add('\$.$key: expected nonblank string');
+    return '';
+  }
+  return value.value;
+}
+
+void _integer(JObject object, String key, BigInt minimum, BigInt maximum, List<String> errors) {
+  final JElement? value = object.get(key);
+  final BigInt? number = value is JNumber ? value.asDecimal.longValueExact() : null;
+  if (number == null || number < minimum || number > maximum) errors.add('\$.$key: expected integer $minimum..$maximum');
+}
+
+void _appearance(JObject definition, List<String> errors) {
+  final JElement? typeValue = definition.get('type');
+  final String type = typeValue is JPrimitive ? typeValue.asString : '';
+  if (definition.has('equipment')) {
+    final JElement value = definition.get('equipment')!;
+    if (value is! JObject) {
+      errors.add(r'$.equipment: expected object');
+    } else {
+      for (final MapEntry<String, JElement> entry in value.entries) {
+        if (!equipmentSlots.contains(entry.key)) {
+          errors.add('\$.equipment.${entry.key}: unknown slot; expected main_hand, off_hand, head, chest, legs, feet, body or saddle');
+          continue;
+        }
+        _item(entry.value, '\$.equipment.${entry.key}', errors);
+      }
+    }
+  }
+  if (definition.has('hologram')) {
+    final JElement value = definition.get('hologram')!;
+    if (value is! JObject) {
+      errors.add(r'$.hologram: expected object');
+    } else {
+      for (final String key in value.keys) {
+        if (key != 'lines') errors.add('\$.hologram.$key: unknown field');
+      }
+      final JElement? declared = value.get('lines');
+      if (declared is! JArray) {
+        errors.add(r'$.hologram.lines: expected array');
+      } else if (declared.length > maxLines) {
+        errors.add('\$.hologram.lines: expected at most $maxLines lines');
+      } else {
+        for (int i = 0; i < declared.length; i++) {
+          final JElement line = declared[i];
+          if (line is! JString) {
+            errors.add('\$.hologram.lines[$i]: expected string');
+          } else if (!displayText(line.value)) {
+            errors.add('\$.hologram.lines[$i]: expected at most $maxText characters without control characters');
+          }
+        }
+      }
+    }
+  }
+  if (definition.has('nameplate')) {
+    final JElement value = definition.get('nameplate')!;
+    if (value is! JObject) {
+      errors.add(r'$.nameplate: expected object');
+    } else {
+      for (final String key in value.keys) {
+        if (key != 'visible') errors.add('\$.nameplate.$key: unknown field');
+      }
+      final JElement? visible = value.get('visible');
+      if (visible != null && visible is! JBool) errors.add(r'$.nameplate.visible: expected boolean');
+    }
+  }
+  if (definition.has('pose')) {
+    final JElement value = definition.get('pose')!;
+    final String? pose = value is JString && _poses.contains(value.value) ? value.value : null;
+    if (pose == null) {
+      errors.add(r'$.pose: expected standing, sneaking, sleeping, swimming or sitting');
+    } else if (pose != 'standing' && type != 'minecraft:player') {
+      errors.add('\$.pose: $pose is available only for minecraft:player bodies');
+    }
+  }
+  if (definition.has('armorStand')) {
+    if (type != 'minecraft:armor_stand') {
+      errors.add(r'$.armorStand: available only for minecraft:armor_stand bodies');
+    } else {
+      _armorStand(definition.get('armorStand')!, errors);
+    }
+  }
+}
+
+void _armorStand(JElement value, List<String> errors) {
+  if (value is! JObject) {
+    errors.add(r'$.armorStand: expected object');
+    return;
+  }
+  for (final String key in value.keys) {
+    if (!_parts.contains(key) && !_lookFlags.contains(key)) errors.add('\$.armorStand.$key: unknown field');
+  }
+  for (final String key in const <String>['small', 'arms', 'basePlate', 'invisible']) {
+    final JElement? flag = value.get(key);
+    if (flag != null && flag is! JBool) errors.add('\$.armorStand.$key: expected boolean');
+  }
+  for (final String part in _parts) {
+    if (!value.has(part)) continue;
+    final JElement angles = value.get(part)!;
+    bool valid = angles is JArray && angles.length == 3;
+    if (angles is JArray && valid) {
+      for (final JElement angle in angles.elements) {
+        if (angle is! JNumber || !angle.asDouble.isFinite || angle.asDouble.abs() > 360) valid = false;
+      }
+    }
+    if (!valid) errors.add('\$.armorStand.$part: expected [x, y, z] degrees within -360..360');
+  }
+}
+
+void _item(JElement? value, String path, List<String> errors) {
+  if (value is! JObject) {
+    errors.add('$path: expected item object');
+    return;
+  }
+  for (final String key in value.keys) {
+    if (!_itemFields.contains(key)) errors.add('$path.$key: unknown field');
+  }
+  final JElement? id = value.get('id');
+  if (!validItemId(id is JString ? id.value : null)) errors.add('$path.id: expected namespace:item');
+  if (value.has('count')) {
+    final JElement count = value.get('count')!;
+    final int? number = count is JNumber ? count.asDecimal.intValueExact() : null;
+    if (number == null || number < 1 || number > maxItemCount) errors.add('$path.count: expected integer 1..$maxItemCount');
+  }
+  if (value.has('components')) {
+    final JElement text = value.get('components')!;
+    if (text is! JString || text.value.length > 4096 || !text.value.startsWith('[') || !text.value.endsWith(']')) {
+      errors.add('$path.components: expected [component=value,...] of at most 4096 characters');
+    }
+  }
+  if (value.has('imported')) {
+    final JElement data = value.get('imported')!;
+    if (data is! JObject || javaUtf8(writeJson(data)).length > maxImportedBytes) {
+      errors.add('$path.imported: expected an object of at most $maxImportedBytes bytes');
+    }
+  }
+}
+
+void _inventory(JObject definition, List<String> errors) {
+  if (!definition.has('inventory')) return;
+  final JElement value = definition.get('inventory')!;
+  if (value is! JObject) {
+    errors.add(r'$.inventory: expected object');
+    return;
+  }
+  for (final String key in value.keys) {
+    if (key != 'size' && key != 'slots') errors.add('\$.inventory.$key: unknown field');
+  }
+  final JElement? declared = value.get('size');
+  int? size = declared is JNumber ? declared.asDecimal.intValueExact() : null;
+  if (size == null || size < 9 || size > maxInventorySize || size % 9 != 0) {
+    errors.add('\$.inventory.size: expected a multiple of 9 within 9..$maxInventorySize');
+    size = maxInventorySize;
+  }
+  final JElement? contents = value.get('slots');
+  if (contents is! JObject) {
+    errors.add(r'$.inventory.slots: expected object');
+    return;
+  }
+  for (final MapEntry<String, JElement> entry in contents.entries) {
+    final String path = '\$.inventory.slots.${entry.key}';
+    if (!RegExp(r'^(?:0|[1-9][0-9]?)$').hasMatch(entry.key)) {
+      errors.add('$path: expected slot number');
+      continue;
+    }
+    final int slot = int.parse(entry.key);
+    if (slot >= size) {
+      errors.add('$path: slot outside the inventory size $size');
+      continue;
+    }
+    _item(entry.value, path, errors);
+  }
+}

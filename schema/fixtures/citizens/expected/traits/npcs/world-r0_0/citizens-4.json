@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000005",
+  "id": "citizens-4",
+  "group": "world-r0_0",
+  "name": "Bench Sitter",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "d06300ea137a9fefa8891b02208deb1cdd180bf1a240b5bab7dafc24a77e7706",
+    "citizensId": 4,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 2.5,
+    "y": 63.5,
+    "z": 2.5,
+    "yaw": -45.0,
+    "pitch": 10.0
+  },
+  "pose": "sitting",
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 2.5,
+        "y": 63.5,
+        "z": 2.5,
+        "yaw": -45.0,
+        "pitch": 10.0
+      },
+      "sittrait": {
+        "sittingAt": {
+          "world": "world",
+          "x": 2.5,
+          "y": 63.5,
+          "z": 2.5,
+          "yaw": 0
+        }
+      },
+      "sneak": {
+        "sneaking": true
+      },
+      "rotationtrait": {
+        "properties": {
+          "headOnly": false,
+          "immediate": false,
+          "maxPitchPerTick": 10.0
+        }
+      },
+      "targetable": {
+        "targetable": false
+      },
+      "attributetrait": {
+        "attributes": {
+          "generic_scale": 1.5
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "description": "Synthetic Citizens saves.yml fixtures shared by core's CitizensGoldenTest and animus-web's citizens_converter_test. Each case converts source with worldMap; expected/<name>/ is the exact staged imports/<importId>/ tree. Every file under invalid/ must be rejected.",
+  "cases": [
+    {
+      "name": "traits",
+      "source": "traits.yml",
+      "worldMap": {
+        "legacy": "world",
+        "Old Nether": "world_nether"
+      }
+    },
+    {
+      "name": "absent",
+      "source": "absent.yml",
+      "worldMap": {}
+    },
+    {
+      "name": "scalars",
+      "source": "scalars.yml",
+      "worldMap": {
+        "world": "Survival World"
+      }
+    }
+  ],
+  "invalid": "invalid"
+}

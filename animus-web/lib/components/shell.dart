@@ -16,6 +16,7 @@ import '../services/browser.dart';
 import '../state/editor_store.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
+import 'citizens_screen.dart';
 import 'document_view.dart';
 import 'rig/rig_actions.dart';
 import 'rig/rig_editor.dart';
@@ -158,7 +159,12 @@ class _EditorShellState extends State<EditorShell> {
         dom.div(key: const ValueKey<String>('banner'), classes: 'animus-banner', attributes: const <String, String>{'role': 'alert'}, <Widget>[
           Component.text(store.problem!),
         ]),
-      if (workspace == null) _home(store) else _workspace(workspace),
+      if (workspace == null && component.route is CitizensRoute)
+        const CitizensScreen(key: ValueKey<String>('citizens'))
+      else if (workspace == null)
+        _home(store)
+      else
+        _workspace(workspace),
     ]);
   }
 
@@ -241,6 +247,12 @@ class _EditorShellState extends State<EditorShell> {
         dom.div(classes: 'animus-row', <Widget>[
           Button.primary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), disabled: _busy, onPressed: () => _open(pickDirectory)),
           Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: _busy, onPressed: () => _open(pickZip)),
+          Button.ghost(
+            label: 'Convert Citizens save',
+            icon: ArcaneIcon.arrowRightLeft(),
+            disabled: _busy,
+            onPressed: () => component.onNavigate(const CitizensRoute()),
+          ),
         ]),
       ]),
       dom.section(classes: 'animus-panel', <Widget>[

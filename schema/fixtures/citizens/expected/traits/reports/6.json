@@ -1,0 +1,42 @@
+{
+  "citizensId": 6,
+  "presentationWarnings": [
+    "/traits/sittrait: a mounted NPC rides instead of sitting; kept for review"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/mounttrait/mountedon": "REQUIRES_REVIEW",
+    "/traits/sittrait/sittingAt/world": "UNSUPPORTED_PRESERVED",
+    "/traits/sittrait/sittingAt/x": "UNSUPPORTED_PRESERVED",
+    "/traits/sittrait/sittingAt/y": "UNSUPPORTED_PRESERVED",
+    "/traits/sittrait/sittingAt/z": "UNSUPPORTED_PRESERVED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    },
+    {
+      "source": "/traits/sittrait/sittingAt",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [
+    {
+      "source": "/traits/mounttrait/mountedon",
+      "kind": "mount",
+      "original": "00000000-dead-4bee-8000-000000000000",
+      "status": "missing"
+    }
+  ],
+  "validationErrors": []
+}

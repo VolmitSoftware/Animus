@@ -30,6 +30,11 @@ tasks.withType(Test).configureEach {
     File sharedSchemas = new File(animusRoot, 'schema')
     inputs.dir(sharedSchemas).withPropertyName('sharedSchemas')
     systemProperty('animusSchemaDirectory', sharedSchemas.absolutePath)
+    // -Danimus.regenerateGolden=true rewrites schema/fixtures/citizens/expected (see CitizensGoldenTest).
+    if (providers.systemProperty('animus.regenerateGolden').isPresent()) {
+        systemProperty('animus.regenerateGolden', providers.systemProperty('animus.regenerateGolden').get())
+        outputs.upToDateWhen { false }
+    }
     if (providers.gradleProperty('moduleFixtureEvidence').isPresent()) {
         systemProperty('fixtureEvidence', providers.gradleProperty('moduleFixtureEvidence').get())
     }

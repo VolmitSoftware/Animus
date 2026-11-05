@@ -1,0 +1,42 @@
+{
+  "name": "Bench Sitter",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000005",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 2.5,
+      "y": 63.5,
+      "z": 2.5,
+      "yaw": -45.0,
+      "pitch": 10.0
+    },
+    "sittrait": {
+      "sittingAt": {
+        "world": "legacy",
+        "x": 2.5,
+        "y": 63.5,
+        "z": 2.5,
+        "yaw": 0
+      }
+    },
+    "sneak": {
+      "sneaking": true
+    },
+    "rotationtrait": {
+      "properties": {
+        "headOnly": false,
+        "immediate": false,
+        "maxPitchPerTick": 10.0
+      }
+    },
+    "targetable": {
+      "targetable": false
+    },
+    "attributetrait": {
+      "attributes": {
+        "generic_scale": 1.5
+      }
+    }
+  }
+}

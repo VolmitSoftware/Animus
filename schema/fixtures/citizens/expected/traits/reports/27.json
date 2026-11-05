@@ -1,0 +1,32 @@
+{
+  "citizensId": 27,
+  "presentationWarnings": [
+    "/traits/owner: no player UUID; kept for review"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/owner/uuid": "REQUIRES_REVIEW",
+    "/traits/metadata/nameplate-visible": "UNSUPPORTED_PRESERVED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [],
+  "validationErrors": [
+    "$.uuid: expected canonical UUID",
+    "$.name: expected at most 256 characters without control characters",
+    "$.type: expected namespace:type",
+    "$.position.x: expected finite coordinate within ±30000000",
+    "$.position.z: expected finite coordinate within ±30000000"
+  ]
+}

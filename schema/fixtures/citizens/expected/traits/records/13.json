@@ -1,0 +1,16 @@
+{
+  "name": "Odd Guard",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000013",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 13,
+      "y": 64,
+      "z": 13
+    },
+    "sentinel": {
+      "guardedNPC": "abc"
+    }
+  }
+}

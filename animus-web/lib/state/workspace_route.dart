@@ -5,6 +5,7 @@
 /// #/                                         home
 /// #/workspace/<id>                           a workspace
 /// #/workspace/<id>/<kind>/<docId>?view=code  one document (docId URI-encoded)
+/// #/citizens                                 convert a Citizens save locally
 /// #/pair/<code>                              a pairing link
 /// #/server/<serverId>/<rest>                 a connected server
 /// ```
@@ -52,6 +53,8 @@ sealed class EditorRoute {
           return DocumentRoute(decode(parts[1]), kind, decode(parts[3]), view);
         }
         return const HomeRoute();
+      case 'citizens':
+        return parts.length == 1 ? const CitizensRoute() : const HomeRoute();
       case 'pair':
         return parts.length == 2 ? PairRoute(parts[1]) : const HomeRoute();
       case 'server':
@@ -75,6 +78,20 @@ class HomeRoute extends EditorRoute {
 
   @override
   int get hashCode => 0;
+}
+
+/// The local Citizens save converter.
+class CitizensRoute extends EditorRoute {
+  const CitizensRoute();
+
+  @override
+  String format() => '#/citizens';
+
+  @override
+  bool operator ==(Object other) => other is CitizensRoute;
+
+  @override
+  int get hashCode => 1;
 }
 
 class WorkspaceRoute extends EditorRoute {

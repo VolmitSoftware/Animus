@@ -1,0 +1,79 @@
+{
+  "name": "Absent 2",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000102",
+  "traits": {
+    "type": "LLAMA",
+    "location": {
+      "world": "world",
+      "x": 2,
+      "y": 64,
+      "z": 2
+    },
+    "sleeptrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    },
+    "slimesize": "text",
+    "withertrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "wolfmodifiers": {
+      "enabled": true
+    },
+    "woolcolor": [
+      1,
+      2
+    ],
+    "allaytrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    },
+    "areaeffectcloudtrait": "text",
+    "armadillotrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "axolotltrait": {
+      "enabled": true
+    },
+    "beetrait": [
+      1,
+      2
+    ],
+    "boattrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    },
+    "bossbar": "text",
+    "cameltrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "cattrait": {
+      "enabled": true
+    },
+    "chickentrait": [
+      1,
+      2
+    ],
+    "coppergolemtrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    }
+  }
+}

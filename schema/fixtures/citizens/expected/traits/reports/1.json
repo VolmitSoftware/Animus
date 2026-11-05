@@ -1,0 +1,93 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [
+    "/traits/hologramtrait/lines/2: control characters shown as spaces",
+    "/traits/hologramtrait: line margins, line height, view ranges and renderer settings are kept for review; lines use uniform spacing",
+    "/traits/poses: default pose wave sets the facing; other named poses are kept for review"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/location/yaw": "CONVERTED",
+    "/traits/location/pitch": "CONVERTED",
+    "/traits/skintrait/skinName": "CONVERTED",
+    "/traits/skintrait/signature": "CONVERTED",
+    "/traits/skintrait/textureRaw": "CONVERTED",
+    "/traits/skintrait/updateSkins": "CONVERTED",
+    "/traits/hologramtrait/lines/1/text": "CONVERTED",
+    "/traits/hologramtrait/lines/1/margintop": "REQUIRES_REVIEW",
+    "/traits/hologramtrait/lines/1/marginbottom": "REQUIRES_REVIEW",
+    "/traits/hologramtrait/lines/0/text": "CONVERTED",
+    "/traits/hologramtrait/lines/0/margintop": "REQUIRES_REVIEW",
+    "/traits/hologramtrait/lines/0/marginbottom": "REQUIRES_REVIEW",
+    "/traits/hologramtrait/lines/2": "CONVERTED",
+    "/traits/hologramtrait/lines/notaline": "REQUIRES_REVIEW",
+    "/traits/hologramtrait/lineHeight": "REQUIRES_REVIEW",
+    "/traits/hologramtrait/viewRange": "REQUIRES_REVIEW",
+    "/traits/metadata/nameplate-visible": "UNSUPPORTED_PRESERVED",
+    "/traits/poses/defaultPose": "CONVERTED",
+    "/traits/poses/list/0": "REQUIRES_REVIEW",
+    "/traits/poses/list/1": "REQUIRES_REVIEW",
+    "/traits/text/text/0": "REQUIRES_REVIEW",
+    "/traits/text/text/1": "REQUIRES_REVIEW",
+    "/traits/text/talk-close": "REQUIRES_REVIEW",
+    "/traits/text/random-talker": "REQUIRES_REVIEW",
+    "/traits/text/range": "REQUIRES_REVIEW",
+    "/traits/waypoints/provider": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/cycle": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/0/location/world": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/0/location/worldid": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/0/location/x": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/0/location/y": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/0/location/z": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/1/location/world": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/1/location/x": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/1/location/y": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/1/location/z": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/1/triggers/0/type": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/1/triggers/0/delay": "REQUIRES_REVIEW",
+    "/traits/waypoints/guided/availablewaypoints/0/location/world": "REQUIRES_REVIEW",
+    "/traits/waypoints/guided/availablewaypoints/0/location/x": "REQUIRES_REVIEW",
+    "/traits/waypoints/guided/availablewaypoints/0/location/y": "REQUIRES_REVIEW",
+    "/traits/waypoints/guided/availablewaypoints/0/location/z": "REQUIRES_REVIEW",
+    "/traits/waypoints/guided/helperwaypoints/0/location/world": "REQUIRES_REVIEW",
+    "/traits/waypoints/guided/helperwaypoints/0/location/x": "REQUIRES_REVIEW",
+    "/traits/waypoints/guided/helperwaypoints/0/location/y": "REQUIRES_REVIEW",
+    "/traits/waypoints/guided/helperwaypoints/0/location/z": "REQUIRES_REVIEW",
+    "/traits/scoreboardtrait/color": "UNSUPPORTED_PRESERVED",
+    "/traits/scoreboardtrait/tags/0": "UNSUPPORTED_PRESERVED",
+    "/traits/lookclose/enabled": "REQUIRES_REVIEW",
+    "/traits/lookclose/range": "REQUIRES_REVIEW"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "Old Nether",
+      "to": "world_nether"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/0/location",
+      "from": "legacy",
+      "to": "world",
+      "removedWorldId": "11111111-2222-3333-4444-555555555555"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/1/location",
+      "from": "legacy",
+      "to": "world"
+    },
+    {
+      "source": "/traits/waypoints/guided/availablewaypoints/0/location",
+      "from": "Old Nether",
+      "to": "world_nether"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

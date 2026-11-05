@@ -1,0 +1,31 @@
+{
+  "citizensId": 7,
+  "presentationWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/mounttrait/mountedon": "REQUIRES_REVIEW"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [
+    {
+      "source": "/traits/mounttrait/mountedon",
+      "kind": "mount",
+      "original": "0A1B2C3D-0000-4000-8000-000000000003",
+      "status": "invalid"
+    }
+  ],
+  "validationErrors": []
+}

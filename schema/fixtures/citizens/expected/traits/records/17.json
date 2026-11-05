@@ -1,0 +1,24 @@
+{
+  "name": "Old Smith 3000",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000017",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "legacy",
+      "x": 17,
+      "y": 64,
+      "z": 17
+    },
+    "trader": {
+      "type": "server",
+      "stock": {
+        "sell": {
+          "0": {
+            "item": "iron_ingot a:3",
+            "price": 5.0
+          }
+        }
+      }
+    }
+  }
+}

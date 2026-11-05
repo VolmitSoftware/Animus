@@ -1,0 +1,28 @@
+{
+  "citizensId": 30,
+  "presentationWarnings": [
+    "/traits/equipment/hand: item data beyond id, count and damage kept in imported; it is not shown",
+    "/traits/hologramtrait/lines/0: shortened to 256 characters",
+    "/traits/hologramtrait/lines/1: line has no text; kept for review",
+    "/traits/hologramtrait: line margins, line height, view ranges and renderer settings are kept for review; lines use uniform spacing"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/hologramtrait/lines/0": "CONVERTED",
+    "/traits/hologramtrait/lines/1/nottext": "REQUIRES_REVIEW",
+    "/traits/hologramtrait/lines/2/text": "CONVERTED",
+    "/traits/equipment/hand/type": "CONVERTED",
+    "/traits/equipment/hand/lore/0": "REQUIRES_REVIEW",
+    "/traits/equipment/hand/lore/1": "REQUIRES_REVIEW"
+  },
+  "worldRemaps": [],
+  "references": [],
+  "validationErrors": []
+}

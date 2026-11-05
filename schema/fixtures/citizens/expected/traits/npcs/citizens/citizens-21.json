@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000021",
+  "id": "citizens-21",
+  "group": "citizens",
+  "name": "Apprentice",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "d06300ea137a9fefa8891b02208deb1cdd180bf1a240b5bab7dafc24a77e7706",
+    "citizensId": 21,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "",
+    "x": null,
+    "y": null,
+    "z": null,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:builder": {
+      "schematic": "missing.schem",
+      "options": {
+        "anchor": "center"
+      },
+      "reviewAccepted": false,
+      "imported": {
+        "builder": {
+          "PatternXY": "zigzag",
+          "Origin": {
+            "x": 1
+          }
+        },
+        "notes": [
+          "builder trait names no schematic; set animus:builder.schematic by hand",
+          "builder pattern zigzag is unknown; the default spiral is used",
+          "builder origin is incomplete; the build will start where the NPC stands"
+        ]
+      }
+    },
+    "citizens:review": {
+      "type": "PLAYER",
+      "builder": {
+        "PatternXY": "zigzag",
+        "Origin": {
+          "x": 1
+        }
+      }
+    }
+  }
+}

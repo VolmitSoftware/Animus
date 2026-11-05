@@ -1,0 +1,74 @@
+{
+  "name": "Absent 3",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000103",
+  "traits": {
+    "type": "ARMADILLO",
+    "location": {
+      "world": "world",
+      "x": 3,
+      "y": 64,
+      "z": 3
+    },
+    "cowtrait": "text",
+    "displaytrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "enderdragontrait": {
+      "enabled": true
+    },
+    "foxtrait": [
+      1,
+      2
+    ],
+    "frogtrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    },
+    "goattrait": "text",
+    "interactiontrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "itemdisplaytrait": {
+      "enabled": true
+    },
+    "llamatrait": [
+      1,
+      2
+    ],
+    "mannequintrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    },
+    "mushroomcowtrait": "text",
+    "pandatrait": {
+      "nested": {
+        "flag": false,
+        "count": 2
+      }
+    },
+    "parrottrait": {
+      "enabled": true
+    },
+    "phantomtrait": [
+      1,
+      2
+    ],
+    "piglintrait": {
+      "value": 3.5,
+      "list": [
+        "a"
+      ]
+    },
+    "pigtrait": "text"
+  }
+}
