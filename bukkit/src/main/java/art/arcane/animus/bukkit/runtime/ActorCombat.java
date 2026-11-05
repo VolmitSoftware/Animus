@@ -90,11 +90,17 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     boolean matches(CombatSettings nextSettings, CombatLoadout nextLoadout) { return settings.equals(nextSettings) && loadout.equals(nextLoadout); }
     UUID guarded() { return guarded; }
 
-    void tick() {
+    /** One combat turn. False once combat was turned off and this engine has nothing left in flight: close it then. */
+    boolean tick() {
+        art.arcane.animus.core.config.CombatBudgets next = combat.budgets;
+        if (next != engine.budgets()) engine.reconfigure(next);
+        if (!next.enabled()) engine.stop();
+        else if (engine.stopping()) engine.resume();
         delivered.clear();
         engine.tick();
         for (UUID npc : engine.drainDeletions()) combat.deleteDead(npc);
         refreshIndexes();
+        return !engine.drained();
     }
     /** A status line for commands and the publication. */
     String status() {

@@ -86,8 +86,8 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         module = new CombatModule(runtime, living, world, adapter, folia ? (regionUnavailable == null ? "runs on each NPC's region on Folia" : regionUnavailable) : null,
                 (String message) -> plugin.getLogger().warning(message), (UUID id) -> plugin.getServer().getPlayer(id) != null);
         bridge = new BukkitCombatBridge(plugin, version, folia, CombatLimits.DEFAULT, this::bridgeAllows,
-                module.active() ? new EngineDefense() : BukkitCombatBridge.Defense.NONE);
-        if (module.active()) {
+                module.supported() ? new EngineDefense() : BukkitCombatBridge.Defense.NONE);
+        if (module.supported()) {
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             task = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 1, 1);
         }
@@ -164,7 +164,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void playerHit(VirtualNpcInteractionEvent event) {
-        if (event.isPreview() || event.getAction() != VirtualNpcInteractionEvent.Action.ATTACK || !module.engine().registered(event.getNpcId())) return;
+        if (event.isPreview() || event.getAction() != VirtualNpcInteractionEvent.Action.ATTACK || !module.running() || !module.engine().registered(event.getNpcId())) return;
         Player player = event.getViewer();
         AttributeInstance attack = player.getAttribute(Attribute.ATTACK_DAMAGE);
         double base = attack == null ? 1 : attack.getValue();
@@ -177,7 +177,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         if (!world.helper(projectile)) return;
         event.setCancelled(true);
         TargetRef struck = event.getHitEntity() == null ? null : reference(event.getHitEntity());
-        if (struck == null || !module.engine().helperHitReal(projectile.getUniqueId(), struck)) module.engine().helperHitBlock(projectile.getUniqueId());
+        if (module.running() && (struck == null || !module.engine().helperHitReal(projectile.getUniqueId(), struck))) module.engine().helperHitBlock(projectile.getUniqueId());
         projectile.remove();
     }
     @EventHandler(priority = EventPriority.LOWEST)
@@ -193,14 +193,14 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
             damager = shooter instanceof Entity source ? source : null;
         }
         TargetRef attacker = damager == null ? null : reference(damager);
-        if (victim != null && attacker != null) module.engine().realDamaged(victim, attacker);
+        if (victim != null && attacker != null && module.running()) module.engine().realDamaged(victim, attacker);
     }
     /** Chat arrives off the main thread; the engine takes it on its own thread and bounds its queue. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void chat(AsyncPlayerChatEvent event) {
         TargetRef speaker = new TargetRef(TargetKind.PLAYER, event.getPlayer().getUniqueId());
         String message = event.getMessage();
-        Runnable deliver = () -> { if (module.active()) module.engine().chat(speaker, message); };
+        Runnable deliver = () -> { if (module.running()) module.engine().chat(speaker, message); };
         if (plugin.getServer().isPrimaryThread()) deliver.run();
         else if (plugin.isEnabled()) plugin.getServer().getScheduler().runTask(plugin, deliver);
     }
@@ -217,6 +217,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     }
     @EventHandler
     public void unload(EntitiesUnloadEvent event) {
+        if (!module.running()) return;
         for (Entity entity : event.getEntities()) if (world.helper(entity)) module.engine().retire(entity.getUniqueId());
     }
 
@@ -234,10 +235,11 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     }
     private final class EngineDefense implements BukkitCombatBridge.Defense {
         @Override public double mitigate(UUID npc, LivingEntity attacker, double amount) {
+            if (!module.running()) return amount;
             return module.engine().mitigateExternal(npc, new TargetRef(TargetKind.MOB, attacker.getUniqueId()), position(attacker.getLocation()), amount);
         }
         @Override public void damaged(UUID npc, LivingEntity attacker, VirtualNpcState.Snapshot after) {
-            module.engine().externalHit(npc, new TargetRef(TargetKind.MOB, attacker.getUniqueId()), after);
+            if (module.running()) module.engine().externalHit(npc, new TargetRef(TargetKind.MOB, attacker.getUniqueId()), after);
         }
     }
     private static WorldPosition position(Location location) {
@@ -282,7 +284,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     /** Removes every helper arrow and ends all combat before the NPC runtime closes. */
     @Override public void close() {
         if (task != null) task.cancel();
-        if (module.active()) HandlerList.unregisterAll(this);
+        if (module.supported()) HandlerList.unregisterAll(this);
         module.close();
         bridge.close(); registrations.clear(); leases.clear();
     }

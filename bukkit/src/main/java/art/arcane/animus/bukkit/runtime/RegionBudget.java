@@ -32,7 +32,7 @@ final class RegionBudget {
     }
 
     /** Any thread: replaces every limit; each region uses the new ones from its next region tick. */
-    void limits(Map<Kind, Integer> limits) {
+    synchronized void limits(Map<Kind, Integer> limits) {
         EnumMap<Kind, Integer> copy = new EnumMap<>(Kind.class);
         copy.putAll(limits);
         int[] next = new int[Kind.values().length];
@@ -42,6 +42,14 @@ final class RegionBudget {
             next[kind.ordinal()] = limit;
         }
         this.limits = next;
+    }
+
+    /** A new limit, from any thread; regions use it from their next region tick on. */
+    synchronized void limit(Kind kind, int limit) {
+        if (limit < 1) throw new IllegalArgumentException("Invalid region budget: " + kind);
+        int[] next = limits.clone();
+        next[kind.ordinal()] = limit;
+        limits = next;
     }
 
     /** Grants at most {@code wanted} units for this region tick; zero away from a region thread. */

@@ -100,7 +100,6 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final FoliaRegions regions;
     final RegionBudget budget;
     private final RegionPickup<Live> live;
-    private final CombatBudgets combatBudgets;
     private final AutoCloseable settingsSubscription;
     /** Global region thread only: the navigation limits last given to the shared planner. */
     private NavigationSettings appliedNavigation;
@@ -160,9 +159,9 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         Live initial = new Live(Objects.requireNonNull(settings),
                 runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT,
                 runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT);
-        combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : CombatBudgets.DEFAULT;
+        CombatBudgets combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : CombatBudgets.DEFAULT;
         live = new RegionPickup<>(regions, initial);
-        budget = new RegionBudget(regions, limits(initial));
+        budget = new RegionBudget(regions, limits(initial, combatBudgets));
         appliedNavigation = initial.navigation();
         settingsSubscription = runtime.onSettings(this::published);
         if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
@@ -201,12 +200,12 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     /** On the file lane after a hotload: publishes only; each region adopts the new settings at its next region tick. */
     private void published(PluginSettings next) {
         Live adopted = new Live(PersistedNpcService.Settings.from(next.npcs()), next.navigation(), next.rigs());
-        budget.limits(limits(adopted));
+        budget.limits(limits(adopted, next.combat()));
         live.publish(adopted);
     }
 
-    /** Region budgets from the live tables; combat budgets stay as they were at startup. */
-    private Map<RegionBudget.Kind, Integer> limits(Live settings) {
+    /** Region budgets from the live tables, combat included, so one hotload sets them all together. */
+    private static Map<RegionBudget.Kind, Integer> limits(Live settings, CombatBudgets combatBudgets) {
         Map<RegionBudget.Kind, Integer> limits = new EnumMap<>(RegionBudget.Kind.class);
         NavigationSettings navigation = settings.navigation();
         PersistedNpcService.Settings npcs = settings.npcs();
@@ -370,11 +369,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
     /**
      * Starts combat on every NPC's owner. Null when it runs, otherwise why it cannot. Call once during startup, before
-     * definitions activate; each NPC opens its own engine on its next owner turn.
+     * definitions activate; each NPC opens its own engine on its next owner turn. Routing starts even while
+     * {@code [combat] enabled} is false, so a hotload can turn combat on.
      */
     public String enableCombat(art.arcane.animus.core.combat.ProtectionAdapter protection, String protectionName) {
         if (!available()) return "unavailable because the NPC runtime is: " + status();
-        if (!runtime.combatBudgets().enabled()) return "disabled in config.toml";
         if (combat == null) combat = new RegionCombat(this, runtime.combatBudgets(), protection, protectionName);
         return null;
     }

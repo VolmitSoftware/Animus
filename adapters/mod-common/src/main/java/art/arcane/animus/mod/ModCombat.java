@@ -118,7 +118,7 @@ final class ModCombat implements AutoCloseable {
 
     /** A validated player hit on a combat NPC, scaled by the player's attack charge like a vanilla hit. */
     void playerHit(ServerPlayer player, UUID npc) {
-        if (!module.active() || !module.engine().registered(npc)) return;
+        if (!module.running() || !module.engine().registered(npc)) return;
         double base = player.getAttributeValue(Attributes.ATTACK_DAMAGE);
         double charge = player.getAttackStrengthScale(.5f);
         net.minecraft.world.phys.Vec3 at = player.position();
@@ -127,18 +127,18 @@ final class ModCombat implements AutoCloseable {
     }
     /** A real player or mob was hurt by another; guards and allies may respond. */
     void realDamaged(LivingEntity victim, DamageSource source) {
-        if (!module.active()) return;
+        if (!module.running()) return;
         TargetRef hurt = reference(victim), attacker = source.getEntity() == null ? null : reference(source.getEntity());
         if (hurt != null && attacker != null) module.engine().realDamaged(hurt, attacker);
     }
     /** A player's chat message; NPCs with chat rules nearby may react. */
     void chat(ServerPlayer player, String message) {
-        if (module.active()) module.engine().chat(new TargetRef(TargetKind.PLAYER, player.getUUID()), message);
+        if (module.running()) module.engine().chat(new TargetRef(TargetKind.PLAYER, player.getUUID()), message);
     }
     /** True when the projectile is an NPC helper; its hit is resolved here and vanilla's is skipped. */
     boolean helperHit(Projectile projectile, HitResult hit) {
         if (world == null || !world.helper(projectile)) return false;
-        if (module.active()) {
+        if (module.running()) {
             TargetRef struck = hit instanceof EntityHitResult entityHit ? reference(entityHit.getEntity()) : null;
             if (struck == null || !module.engine().helperHitReal(projectile.getUUID(), struck)) module.engine().helperHitBlock(projectile.getUUID());
         }
