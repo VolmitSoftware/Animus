@@ -94,6 +94,8 @@
 - Editor: NPC browser with search, folders, tags and bulk edits as one undoable change set, plus spawn and despawn on a paired server; typed editors for equipment, skin, route (top-down grid and 3D stage), combat, shop and schema-described modules; a conversation tree for dialogue behaviors.
 - `[npcs] packetsPerTick`, `pendingSpawnsPerViewer` and `lookUpdatesPerTick` in `config.toml`.
 - NPC definitions, behaviors and shops upgrade to the current `schemaVersion` at startup in one journaled transaction with a rollback receipt; documents from a newer Animus are logged and left unchanged.
+- Modules receive NPC interaction notices as bounded module work on every platform, register import converters (`/animus import preview <file> [converter=ns:name]`), and provide protection and economy hooks that fail closed.
+- `animus-api` maven-publish setup with sources and javadoc, and `jitpack.yml`.
 
 ### Changed
 
@@ -139,6 +141,7 @@
 - Under packet budget pressure despawns go first, then moves and spawns; look-close turns, rig bones and timed hologram refreshes wait; `/animus status` shows `presentation=`.
 - Finding players near a point uses a chunk index instead of scanning every player.
 - Docs give the real editor, relay and `relayUrl` deployment steps.
+- Animus API version 1.1.0; compatibility rules in `docs/modules.md`.
 
 ### Fixed
 
