@@ -14,6 +14,10 @@ import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.editor.EditorCommands;
+import art.arcane.animus.core.editor.EditorHost;
+import art.arcane.animus.core.editor.EditorService;
+import art.arcane.animus.core.editor.RuntimeEditorHost;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.extension.ExtensionRuntime;
 import art.arcane.animus.core.extension.MutationLane;
@@ -81,6 +85,7 @@ public final class AnimusModRuntime {
         ExtensionRuntime extensions;
         volatile BehaviorCommands behaviors;
         AnimusCommands commands;
+        volatile EditorService editor;
         volatile boolean stopping;
     }
 
@@ -154,8 +159,9 @@ public final class AnimusModRuntime {
             }
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
                     next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
-                            "shop", next.shops.shopCommand(), "gui", next.shops.guiCommand()), () -> owner.stopping));
+                            "shop", next.shops.shopCommand(), "gui", next.shops.guiCommand(), "editor", new EditorCommands(() -> owner.editor, files)), () -> owner.stopping));
             next.extensions.start();
+            startEditor(server, next, files);
             running = next;
             ModHooks.attach(this);
             LOGGER.info(AnimusSplash.render(environment, platform + " / Minecraft " + environment.minecraftVersion(), true));
@@ -174,6 +180,9 @@ public final class AnimusModRuntime {
 
     private static void close(Running active) {
         active.stopping = true;
+        EditorService editor = active.editor;
+        active.editor = null;
+        if (editor != null) editor.close();
         if (active.behaviors != null) active.behaviors.close();
         if (active.builtins != null) active.builtins.close();
         if (active.screens != null) active.screens.closeAll();
@@ -184,6 +193,27 @@ public final class AnimusModRuntime {
         if (active.living != null) active.living.close();
         if (active.ticks != null) active.ticks.close();
         if (active.runtime != null) active.runtime.closeAsync();
+    }
+
+    /** The web editor API, the same as on Bukkit: the embedded listener and the relay client, both off until config.toml enables them. */
+    private void startEditor(MinecraftServer server, Running next, Executor files) {
+        art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> guiService = next.shops;
+        java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> Map.of(
+                "combat", EditorHost.Feature.yes(),
+                "gloss", EditorHost.Feature.no("Gloss is a Bukkit plugin"),
+                "placeholderapi", EditorHost.Feature.no("PlaceholderAPI is a Bukkit plugin"));
+        EditorService service = new EditorService(next.runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(next.runtime, files, next.living, () -> next.behaviors,
+                next.extensions, () -> guiService.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {}), platform.name().toLowerCase(java.util.Locale.ROOT), "", features,
+                (ServerPlayer player) -> VanillaRuntimeHost.permitted(player.permissions(), "animus.admin"), Optional.empty(),
+                "viewer-private NPC presentation is not built for mod loaders yet", LOGGER::info)), LOGGER::info);
+        try {
+            service.start();
+            next.editor = service;
+            service.status().forEach(LOGGER::info);
+        } catch (IOException | RuntimeException failure) {
+            LOGGER.warn("The web editor API could not start", failure);
+            service.close();
+        }
     }
 
     /** Call once after every server tick, on the server thread. */

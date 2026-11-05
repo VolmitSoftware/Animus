@@ -1,0 +1,166 @@
+package art.arcane.animus.core.config;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * {@code [editor]} in {@code config.toml}: the web editor API, its embedded listener, tokens and bounds. Requires a restart.
+ * The listener serves plain HTTP only on a loopback address; any other address needs {@code tlsCertificate} and {@code tlsPrivateKey}.
+ */
+public record EditorSettings(boolean enabled, String editorUrl, boolean listenerEnabled, String listenAddress, int port, String advertisedUrl,
+                             String tlsCertificate, String tlsPrivateKey, List<String> allowedOrigins,
+                             int tokenDays, int auditDays, int requestBodyBytes, int importBodyBytes, int changeSetDocuments,
+                             int concurrentRequestsPerToken, int requestsPerSecond, int pairAttemptsPerMinute, int openConnections,
+                             int eventFramesPerSecond, int previewsPerServer, int npcsPerPreview, int previewMinutes, int idempotencyHours) {
+    public static final List<String> FIELDS = List.of("enabled", "editorUrl", "listenerEnabled", "listenAddress", "port", "advertisedUrl",
+            "tlsCertificate", "tlsPrivateKey", "allowedOrigins", "tokenDays", "auditDays", "requestBodyBytes",
+            "importBodyBytes", "changeSetDocuments", "concurrentRequestsPerToken", "requestsPerSecond", "pairAttemptsPerMinute", "openConnections",
+            "eventFramesPerSecond", "previewsPerServer", "npcsPerPreview", "previewMinutes", "idempotencyHours");
+    /** The relay client's keys share the table and are read by {@link EditorRelaySettings}. */
+    public static final List<String> RELAY_FIELDS = List.of("relayEnabled", "relayUrl", "relayReconnectMinSeconds", "relayReconnectMaxSeconds", "relayFrameBytes",
+            "relayConcurrentRequests");
+    private static final Set<String> LOOPBACK = Set.of("127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1");
+    public static final EditorSettings DEFAULT = new EditorSettings(true, "https://animus-editor.web.app", false, "127.0.0.1", 9797, "", "", "",
+            List.of("https://animus-editor.web.app", "http://127.0.0.1:8098"),
+            7, 30, 4 * 1024 * 1024, 16 * 1024 * 1024, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24);
+
+    public EditorSettings {
+        url("editorUrl", editorUrl, Set.of("https", "http"));
+        if (listenAddress == null || listenAddress.isBlank() || listenAddress.length() > 255) throw new IllegalArgumentException("listenAddress must be a host name or address");
+        require("port", port, 1, 65535);
+        if (!advertisedUrl.isEmpty()) url("advertisedUrl", advertisedUrl, Set.of("https", "http"));
+        if (tlsCertificate.isEmpty() != tlsPrivateKey.isEmpty()) throw new IllegalArgumentException("tlsCertificate and tlsPrivateKey must be set together");
+        if (listenerEnabled && tlsCertificate.isEmpty() && !loopback(listenAddress))
+            throw new IllegalArgumentException("listenAddress " + listenAddress + " is not loopback; plain HTTP is served only on 127.0.0.1, so set tlsCertificate and tlsPrivateKey or use a TLS proxy in front of a loopback listener");
+        if (allowedOrigins.size() > 32) throw new IllegalArgumentException("allowedOrigins allows at most 32 origins");
+        for (String origin : allowedOrigins) origin(origin);
+        allowedOrigins = List.copyOf(allowedOrigins);
+        require("tokenDays", tokenDays, 1, 365);
+        require("auditDays", auditDays, 1, 3650);
+        require("requestBodyBytes", requestBodyBytes, 1024, 64 * 1024 * 1024);
+        require("importBodyBytes", importBodyBytes, 1024, 256 * 1024 * 1024);
+        require("changeSetDocuments", changeSetDocuments, 1, 512);
+        require("concurrentRequestsPerToken", concurrentRequestsPerToken, 1, 64);
+        require("requestsPerSecond", requestsPerSecond, 1, 1000);
+        require("pairAttemptsPerMinute", pairAttemptsPerMinute, 1, 600);
+        require("openConnections", openConnections, 1, 1024);
+        require("eventFramesPerSecond", eventFramesPerSecond, 1, 100);
+        require("previewsPerServer", previewsPerServer, 0, 64);
+        require("npcsPerPreview", npcsPerPreview, 1, 64);
+        require("previewMinutes", previewMinutes, 1, 120);
+        require("idempotencyHours", idempotencyHours, 1, 168);
+    }
+
+    public static boolean loopback(String host) { return LOOPBACK.contains(host.toLowerCase(Locale.ROOT)); }
+
+    public boolean tls() { return !tlsCertificate.isEmpty(); }
+
+    public static EditorSettings parse(JsonObject table) {
+        for (String key : table.keySet()) if (!FIELDS.contains(key) && !RELAY_FIELDS.contains(key)) throw new IllegalArgumentException(key + " is not an editor setting");
+        EditorSettings d = DEFAULT;
+        return new EditorSettings(bool(table, "enabled", d.enabled), text(table, "editorUrl", d.editorUrl), bool(table, "listenerEnabled", d.listenerEnabled),
+                text(table, "listenAddress", d.listenAddress), integer(table, "port", d.port), text(table, "advertisedUrl", d.advertisedUrl),
+                text(table, "tlsCertificate", d.tlsCertificate), text(table, "tlsPrivateKey", d.tlsPrivateKey), strings(table, "allowedOrigins", d.allowedOrigins), integer(table, "tokenDays", d.tokenDays),
+                integer(table, "auditDays", d.auditDays), integer(table, "requestBodyBytes", d.requestBodyBytes), integer(table, "importBodyBytes", d.importBodyBytes),
+                integer(table, "changeSetDocuments", d.changeSetDocuments), integer(table, "concurrentRequestsPerToken", d.concurrentRequestsPerToken),
+                integer(table, "requestsPerSecond", d.requestsPerSecond), integer(table, "pairAttemptsPerMinute", d.pairAttemptsPerMinute),
+                integer(table, "openConnections", d.openConnections), integer(table, "eventFramesPerSecond", d.eventFramesPerSecond),
+                integer(table, "previewsPerServer", d.previewsPerServer), integer(table, "npcsPerPreview", d.npcsPerPreview),
+                integer(table, "previewMinutes", d.previewMinutes), integer(table, "idempotencyHours", d.idempotencyHours));
+    }
+
+    /** The table written into a new config.toml. */
+    public JsonObject toJson() {
+        JsonObject table = new JsonObject();
+        table.addProperty("enabled", enabled);
+        table.addProperty("editorUrl", editorUrl);
+        table.addProperty("listenerEnabled", listenerEnabled);
+        table.addProperty("listenAddress", listenAddress);
+        table.addProperty("port", port);
+        table.addProperty("advertisedUrl", advertisedUrl);
+        table.addProperty("tlsCertificate", tlsCertificate);
+        table.addProperty("tlsPrivateKey", tlsPrivateKey);
+        JsonArray origins = new JsonArray();
+        allowedOrigins.forEach(origins::add);
+        table.add("allowedOrigins", origins);
+        table.addProperty("tokenDays", tokenDays);
+        table.addProperty("auditDays", auditDays);
+        table.addProperty("requestBodyBytes", requestBodyBytes);
+        table.addProperty("importBodyBytes", importBodyBytes);
+        table.addProperty("changeSetDocuments", changeSetDocuments);
+        table.addProperty("concurrentRequestsPerToken", concurrentRequestsPerToken);
+        table.addProperty("requestsPerSecond", requestsPerSecond);
+        table.addProperty("pairAttemptsPerMinute", pairAttemptsPerMinute);
+        table.addProperty("openConnections", openConnections);
+        table.addProperty("eventFramesPerSecond", eventFramesPerSecond);
+        table.addProperty("previewsPerServer", previewsPerServer);
+        table.addProperty("npcsPerPreview", npcsPerPreview);
+        table.addProperty("previewMinutes", previewMinutes);
+        table.addProperty("idempotencyHours", idempotencyHours);
+        return table;
+    }
+
+    private static void origin(String origin) {
+        URI uri = url("allowedOrigins", origin, Set.of("https", "http"));
+        if (uri.getRawPath() != null && !uri.getRawPath().isEmpty() || uri.getRawQuery() != null || uri.getRawFragment() != null || origin.endsWith("/"))
+            throw new IllegalArgumentException("allowedOrigins entries are scheme://host[:port] with no path: " + origin);
+        if (uri.getScheme().equals("http") && !loopback(uri.getHost()))
+            throw new IllegalArgumentException("allowedOrigins accepts http:// only on loopback: " + origin);
+    }
+
+    private static URI url(String field, String value, Set<String> schemes) {
+        try {
+            URI uri = new URI(value);
+            if (uri.getScheme() == null || !schemes.contains(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null)
+                throw new URISyntaxException(value, "unexpected scheme or host");
+            return uri;
+        } catch (URISyntaxException invalid) {
+            throw new IllegalArgumentException(field + " must be an absolute " + String.join(" or ", schemes) + " URL: " + value);
+        }
+    }
+
+    private static void require(String field, int value, int minimum, int maximum) {
+        if (value < minimum || value > maximum) throw new IllegalArgumentException(field + " must be within " + minimum + ".." + maximum);
+    }
+
+    private static boolean bool(JsonObject table, String key, boolean fallback) {
+        if (!table.has(key)) return fallback;
+        JsonElement value = table.get(key);
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) throw new IllegalArgumentException(key + " must be a boolean");
+        return value.getAsBoolean();
+    }
+
+    private static String text(JsonObject table, String key, String fallback) {
+        if (!table.has(key)) return fallback;
+        JsonElement value = table.get(key);
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) throw new IllegalArgumentException(key + " must be a string");
+        return value.getAsString();
+    }
+
+    private static int integer(JsonObject table, String key, int fallback) {
+        if (!table.has(key)) return fallback;
+        JsonElement value = table.get(key);
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) throw new IllegalArgumentException(key + " must be an integer");
+        try { return value.getAsBigDecimal().intValueExact(); }
+        catch (ArithmeticException invalid) { throw new IllegalArgumentException(key + " must be an integer", invalid); }
+    }
+
+    private static List<String> strings(JsonObject table, String key, List<String> fallback) {
+        if (!table.has(key)) return fallback;
+        JsonElement value = table.get(key);
+        if (!value.isJsonArray()) throw new IllegalArgumentException(key + " must be an array of strings");
+        List<String> values = new ArrayList<>();
+        for (JsonElement entry : value.getAsJsonArray()) {
+            if (!entry.isJsonPrimitive() || !entry.getAsJsonPrimitive().isString()) throw new IllegalArgumentException(key + " must be an array of strings");
+            values.add(entry.getAsString());
+        }
+        return values;
+    }
+}
