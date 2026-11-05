@@ -288,6 +288,54 @@ void main() {
     expect(session.log.map((LiveNotice notice) => notice.message), contains(startsWith('Applied 1 document')));
   });
 
+  test('should settle a change set still being written at reconnect from its change event', () async {
+    await session.openDocuments(session.catalog);
+    await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
+    ApiRequest? held;
+    network.handler = serverHandler(rest: (ApiRequest request) {
+      if (request.method == 'POST' && request.path == '/v1/changes' && held == null) {
+        // Queued on the server's file lane; the answer is lost with the connection.
+        held = request;
+        return const ApiResponse(503, <String, Object?>{'error': <String, Object?>{'code': 'busy', 'message': 'lost'}});
+      }
+      if (request.path.startsWith('/v1/changes/') && server.results.isEmpty) {
+        return ApiResponse(200, <String, Object?>{'idempotencyKey': request.path.split('/').last, 'status': 'pending'});
+      }
+      return server.handle(request);
+    });
+    network.dropAfter = (ApiRequest request) => request.path == '/v1/changes';
+    await session.apply();
+    await settle();
+    expect(connection.status.online, isTrue);
+    expect(session.log.map((LiveNotice notice) => notice.message), contains(contains('still being written')));
+    expect(store.workspace!.server!.pending, isNotEmpty);
+    final ApiResponse finished = server.handle(held!);
+    network.lastStream.emit(<String, Object?>{'type': 'change', 'result': finished.body});
+    await settle();
+    expect(store.workspace!.server!.pending, isEmpty);
+    expect(store.workspace!.server!.bases['npc:town/guard']!.revision, 2);
+    expect(session.drafts, isEmpty);
+    expect(server.applied, 1, reason: 'the change set was never sent twice');
+  });
+
+  test('should explain an event stream closed at its limit, reconnect and refetch what changed meanwhile', () async {
+    await session.openDocuments(session.catalog);
+    final int catalogLoads = network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/catalog').length;
+    // Events the editor never read: the server dropped them with the stream.
+    server.put(DocumentKind.npc, 'town/baker', <String, Object?>{'schemaVersion': 1, 'id': 'baker', 'group': 'town', 'name': 'Night Baker'});
+    final FakeSubscription stream = network.lastStream;
+    stream.emit(<String, Object?>{'type': 'closing', 'reason': 'limit'});
+    await stream.end('limit');
+    await settle();
+    final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
+    expect(messages, contains(allOf(contains('fell too far behind'), contains('limit'))));
+    expect(connection.status.online, isTrue);
+    expect(network.streams.length, greaterThan(1), reason: 'a new event stream is open');
+    expect(network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/catalog').length, greaterThan(catalogLoads));
+    expect((store.document(DocumentKind.npc, 'town/baker')!.json! as Map<String, Object?>)['name'], 'Night Baker');
+    expect(session.stateOf(DocumentKind.npc, 'town/baker'), DraftState.clean);
+  });
+
   test('should report a change set that never reached the server after a reconnect', () async {
     await session.openDocuments(session.catalog);
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
