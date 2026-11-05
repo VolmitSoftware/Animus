@@ -19,11 +19,13 @@ const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) 
 const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
 const javaHome = args.get('java-home') ?? '/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home';
-const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs,appearance')).split(',');
-const name = `animus-live-${project}-${version.replaceAll('.', '-')}`;
+const scenarios = (args.get('scenarios') ?? (project === 'folia' ? 'folia' : 'triggers,state,actions,mounts,riding,dragon,terrain,combat,packs,appearance,building,shops')).split(',');
+const name = args.get('instance-name') ?? `animus-live-${project}-${version.replaceAll('.', '-')}`;
+assert(new RegExp(`^animus-(?:live|gate-live)-${project}-${version.replaceAll('.', '-')}$`).test(name), 'Instance name must bind the requested platform/version');
 const instances = path.join(workspace, 'consumers/plugin-consumers/instances');
 const instance = path.join(instances, name), data = path.join(instance, 'plugins/Animus'), logFile = path.join(instance, 'logs/latest.log');
 const session = `mc-plugin-${name}`;
+const serverLibraries = path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
 const OWNER = { uuid: 'b2b7d4ea-c517-3a19-8a16-ee03e26cbe9f', name: 'AnimusProofQA' };
 const PEER = { uuid: '262b16de-d06b-325b-b115-4ad978f962f2', name: 'AnimusProofPeer' };
 const FORBIDDEN = /moved too quickly|moved wrongly|Flying is not enabled|was kicked/i;
@@ -54,8 +56,15 @@ function muxEnvironment() {
   if (buildHome) environment.MULTIPLEXOR_BUILD_HOME = buildHome;
   return environment;
 }
+// Multiplexor serializes workspace commands; a concurrent target's command makes this one retry briefly.
+const BUSY = /Another network command is running|Another project operation owns the workspace/;
 function mux(...command) {
-  const done = spawnSync(binary, ['--root', workspace, '--consumer', 'plugin', ...command], { encoding: 'utf8', env: muxEnvironment() });
+  const deadline = Date.now() + 30_000;
+  let done = spawnSync(binary, ['--root', workspace, '--consumer', 'plugin', ...command], { encoding: 'utf8', env: muxEnvironment() });
+  while (done.status && BUSY.test(done.stderr + done.stdout) && Date.now() < deadline) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    done = spawnSync(binary, ['--root', workspace, '--consumer', 'plugin', ...command], { encoding: 'utf8', env: muxEnvironment() });
+  }
   if (done.status) throw new Error(`multiplexor ${command.slice(0, 2).join(' ')}: ${(done.stderr || done.stdout).slice(0, 400)}`);
   return done.stdout;
 }
@@ -82,7 +91,7 @@ class Server {
     copyFileSync(path.join(template, 'eula.txt'), path.join(instance, 'eula.txt'));
     const plugins = path.join(instance, 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && path.basename(instance).startsWith('animus-live-'));
+    assert(data.startsWith(instances) && /^animus-(?:gate-)?live-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     for (const entry of readdirSync(plugins)) if (/^Animus.*\.jar$/.test(entry)) unlinkSync(path.join(plugins, entry));
@@ -1293,6 +1302,7 @@ async function folia() {
   });
   await owner.close();
   await server.cmd('animus delete fnpc', /Deleted/);
+  await foliaBuildsRefused();
 }
 
 async function appearance() {
@@ -1572,6 +1582,57 @@ async function combat() {
     assert.equal(status, 'helpers=0');
     return `health ${samples.join(' -> ')}; arrows in flight before disengage=${inFlight}, after=${left}; ${disengaged}`;
   });
+  await check('fireballs hit once each with no explosion', async () => {
+    const target = await summon(15, 'minecraft:husk', -36, 61, -6, sturdy(100));
+    // A bystander inside any explosion radius; the NPC never targets cows.
+    const bystander = await summon(16, 'minecraft:cow', -34.5, 61, -6, sturdy(100));
+    await server.npc('cfire', 'minecraft:player', -36.5, 61, -22.5, 'Pyro', combatNpc({
+      targets: { entityTypes: ['minecraft:husk'] }, targeting: { scanRange: 24, scanIntervalTicks: 5, lineOfSight: 'ignored' },
+      melee: { enabled: false }, pursuit: { closeChase: false, rangedChase: false },
+      ranged: { enabled: true, weapon: 'fireball', damage: 3, range: 24, minimumRange: 2, cooldownTicks: 40, velocity: 1.6, inaccuracy: 0, safeShot: true },
+    }));
+    const samples = [100];
+    await until(async () => { const h = await entityNumber(target, 'Health'); if (h !== samples.at(-1)) samples.push(h); return { ok: samples.length >= 3, samples }; }, 30000, 'fewer than two fireball hits');
+    const disengaged = await combatCommand('cfire', 'disengage');
+    await delay(300);
+    const left = await entityCount('@e[type=fireball]');
+    const status = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/helpers=\d+/)?.[0];
+    const spared = await entityNumber(bystander, 'Health');
+    const crater = plain(await server.capture('fill -40 60 -10 -31 60 -2 stone replace air', /Successfully filled[^\n]*|No blocks were filled[^\n]*/));
+    const fire = plain(await server.capture('fill -40 61 -10 -31 63 -2 air replace minecraft:fire', /Successfully filled[^\n]*|No blocks were filled[^\n]*/));
+    await server.cmd('animus delete cfire', /Deleted/);
+    await server.cmd(`kill ${target}`, /Killed/);
+    await server.cmd(`kill ${bystander}`, /Killed/);
+    const hits = samples.slice(1).map((h, i) => +(samples[i] - h).toFixed(3));
+    assert(hits.every(d => Math.abs(d - hits[0]) < .01 && d > 0), `hits ${hits}`);
+    assert.equal(spared, 100, `bystander health ${spared}`);
+    assert(/No blocks were filled/.test(crater), `floor changed: ${crater}`);
+    assert(/No blocks were filled/.test(fire), `fire placed: ${fire}`);
+    assert.equal(left, 0, `${left} fireballs after disengage`);
+    assert.equal(status, 'helpers=0');
+    return `health ${samples.join(' -> ')}; bystander ${spared}; ${crater.slice(0, 40)}; ${disengaged}`;
+  });
+  await check('imported-style guard with ignores.owner never targets its owner', async () => {
+    await server.cmd(`effect give ${OWNER.name} minecraft:instant_health 1 5 true`, /Applied|effect/i);
+    await owner.tp(-20, 61, -12);
+    const peer = await join(PEER.name, 'survival');
+    await server.npc('cowned', 'minecraft:player', -20.5, 61, -14.5, 'Sentry', { owner: OWNER.uuid, ...combatNpc({
+      targets: { categories: ['players'] }, ignores: { owner: true }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' },
+      melee: { damage: 1, reach: 3, cooldownTicks: 20 }, pursuit: { speed: 3, giveUpRange: 24, leashRange: 24 },
+    }) });
+    const from = owner.events.length;
+    const quiet = [];
+    for (let i = 0; i < 8; i++) { quiet.push(await combatOf('cowned')); await delay(500); }
+    const ownerHit = owner.events.slice(from).some(e => e.event === 'health' && e.health < 20);
+    await peer.tp(-22, 61, -14);
+    const peerTarget = await until(async () => { const s = await combatOf('cowned'); return { ok: s.includes(PEER.uuid), s }; }, 15000, 'never targeted the other player');
+    await server.cmd('animus delete cowned', /Deleted/);
+    await peer.close();
+    assert(quiet.every(s => /target=none/.test(s) && !s.includes(OWNER.uuid)), quiet.find(s => !/target=none/.test(s)));
+    assert(!ownerHit, 'owner took damage');
+    assert(!peerTarget.s.includes(OWNER.uuid), peerTarget.s);
+    return `owner alone: ${quiet.at(-1).slice(0, 80)}; with peer: ${peerTarget.s.slice(0, 100)}`;
+  });
   await check('pursuit, leash and return to post', async () => {
     const post = { x: -10.5, z: -30.5 };
     const zombie = await summon(14, 'minecraft:zombie', -10, 61, -24, sturdy(200));
@@ -1607,7 +1668,7 @@ async function combat() {
   });
   await owner.close();
   if (fixture) await check('qa/combat-client.mjs', async () => {
-    const done = spawnSync('node', [path.join(root, 'qa/combat-client.mjs'), '--version', version, '--port', String(server.port), '--libraries', path.join(instance, 'libraries'), '--results', results, '--event-fixture', '--id', 'combat-live'], { encoding: 'utf8', timeout: 300_000 });
+    const done = spawnSync('node', [path.join(root, 'qa/combat-client.mjs'), '--version', version, '--port', String(server.port), '--libraries', serverLibraries, '--results', results, '--event-fixture', '--id', 'combat-live'], { encoding: 'utf8', timeout: 300_000 });
     writeFileSync(path.join(results, 'combat-client.out'), (done.stdout ?? '') + (done.stderr ?? ''));
     const passed = (done.stdout ?? '').split('\n').filter(line => line.includes('"status":"passed"')).length;
     assert.equal(done.status, 0, `exit ${done.status}; ${(done.stdout + done.stderr).split('\n').filter(Boolean).slice(-3).join(' | ').slice(0, 500)}`);
@@ -1731,10 +1792,13 @@ async function packs() {
     const reload = await server.reload();
     await owner.chat('All quiet.', from, 90_000);
     const seconds = ((Date.now() - started) / 1000).toFixed(0);
-    const trace = plain(await server.capture('animus behaviors trace patroller', /Behavior trace[^\n]*/, 400));
-    const round = trace.split('\n').find(line => /trigger=patrol:route#rounds/.test(line)) ?? '';
+    // The closing say finishes on a later tick than its chat delivery, so the round may still read active for a moment.
+    await until(async () => {
+      const trace = plain(await server.capture('animus behaviors trace patroller', /Behavior trace[^\n]*/, 400));
+      const line = trace.split('\n').find(text => /trigger=patrol:route#rounds/.test(text)) ?? trace.slice(0, 400);
+      return { ok: /state=COMPLETED/.test(line), round: line };
+    }, 10_000, 'round never completed');
     const end = await inspect('patroller');
-    assert(/state=COMPLETED/.test(round), round || trace.slice(0, 400));
     assert(Math.hypot(end.x - .5, end.z - .5) < .8, end.line.slice(0, 200));
     await owner.tp(-7.5, 64, 3);
     const clickAt = await click(owner, greeter);
@@ -1796,17 +1860,18 @@ async function packs() {
     const attacker = await summon(22, 'minecraft:zombie', 18, 64, 14, sturdy(20, true));
     const defended = await until(async () => ({ ok: await entityCount('@e[type=zombie,nbt={UUID:[I;22,0,0,1]}]') === 0 }), 40000, 'bodyguard did not kill the attacker');
     await delay(2200);
-    const near = await inspect('bodyguard');
     from = await click(owner, bodyguard);
     const dismissed = await choose(owner, from, 'dismiss');
     await owner.chat('Stay safe out there.', dismissed.after);
     const status = await combatOf('bodyguard');
+    // Sampled after dismissal: a follow step that was already under way may land before it.
+    const near = await inspect('bodyguard');
     await owner.tp(25, 64, -15);
     await delay(5000);
     const stayed = await inspect('bodyguard');
     await gamemode('creative');
     assert(/target=none/.test(status), status);
-    assert(Math.hypot(stayed.x - near.x, stayed.z - near.z) < 2, `followed after dismissal: ${near.line.slice(0, 120)} -> ${stayed.line.slice(0, 120)}`);
+    assert(Math.hypot(stayed.x - near.x, stayed.z - near.z) < 2, `followed after dismissal: ${near.line.match(/position=[^;]*/)?.[0]} -> ${stayed.line.match(/position=[^;]*/)?.[0]}`);
     return `followed to ${followed.n.match(/position=[^;]*/)?.[0]}; attacker killed=${defended.ok}; after dismiss ${status}`;
   });
   await check('the bakery shop and its counter GUI load from the shop pack', async () => {
@@ -1832,7 +1897,196 @@ function copyTree(from, to, keep = () => true) {
   }
 }
 
-const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, folia };
+// ---- shared helpers -------------------------------------------------------------------------
+
+async function blockIs(x, y, z, id) {
+  const found = await server.cmd(`execute if block ${x} ${y} ${z} ${id}`, /Test (passed|failed)/);
+  return found[1] === 'passed';
+}
+async function buildStatus(id) {
+  const pattern = new RegExp(`Build ${id}: [^\\n]*|No build for ${id}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
+  return plain(await server.capture(`animus build ${id} status`, pattern, 150)).match(pattern)[0];
+}
+// The next chest window after `from`, with the contents the server sent for it.
+async function windowOpened(client, from, timeout = 10_000) {
+  const opened = await client.wait(e => e.event === 'open_screen', from, timeout);
+  const content = await client.wait(e => e.event === 'container_content' && e.container === opened.container && e.sequence > opened.sequence, from, timeout);
+  return { container: opened.container, menu: opened.menu, title: opened.title, size: content.size, items: content.items };
+}
+// One left click (vanilla PICKUP, button 0; Bukkit ClickType.LEFT) on a slot of an open window.
+async function clickSlot(client, container, slot) {
+  const from = client.events.length;
+  client.send('click_container', { container, slot, button: 0, mode: 'pickup' });
+  await client.wait(e => e.event === 'container_click_sent' && e.container === container && e.slot === slot, from, 5000);
+  return from;
+}
+async function closeWindow(client, container) {
+  const from = client.events.length;
+  client.send('close_container', { container });
+  await client.wait(e => e.event === 'container_close_sent' && e.container === container, from, 5000);
+}
+
+// ---- scenario: building ---------------------------------------------------------------------
+
+// x 24..26, y 61..62, z 24..26: clear of every fill, setblock, tp and NPC position the other scenarios use.
+const BUILD = { npc: 'mason', file: 'live-tiny.nbt', origin: [24, 61, 24] };
+async function building() {
+  const owner = await join(OWNER.name, 'survival');
+  await check('npc builds a tiny .nbt with creative materials', async () => {
+    const [ox, oy, oz] = BUILD.origin;
+    const box = `${ox} ${oy} ${oz} ${ox + 2} ${oy + 1} ${oz + 2}`;
+    const file = path.join(data, 'schematics', BUILD.file);
+    let created = false;
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      const made = spawnSync('python3', ['-I', path.join(root, 'qa/multiplexor/make-nbt.py'), file], { encoding: 'utf8' });
+      assert.equal(made.status, 0, made.stderr);
+      const blocks = JSON.parse(made.stdout).blocks.map(b => ({ x: ox + b.pos[0], y: oy + b.pos[1], z: oz + b.pos[2], id: b.name }));
+      assert.equal(blocks.length, 18);
+      await server.cmd(`fill ${box} air`, /Successfully filled|No blocks were filled/);
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+      const kinds = ['minecraft:stone', 'minecraft:oak_planks', 'minecraft:glass'];
+      for (const id of kinds) await server.cmd(`give ${OWNER.name} ${id} 5`, /Gave/);
+      await owner.tp(20.5, 61, 20.5);
+      await server.npc(BUILD.npc, 'minecraft:player', 22.5, 61, 25.5, 'Mason');
+      created = true;
+      await until(async () => { const n = await inspect(BUILD.npc); return { ok: /: active/.test(n.line), line: n.line.slice(0, 160) }; }, 15_000, 'mason never became active');
+      const listed = plain(await server.capture('animus build schematics', /Schematics \(\d+\):[^\n]*|No schematics[^\n]*/));
+      assert(listed.includes(BUILD.file), listed);
+      const from = logText().length;
+      const startPattern = new RegExp(`Started build ${BUILD.npc}[^\\n]*|Cannot start build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
+      const started = plain((await server.cmd(`animus build start ${BUILD.npc} ${BUILD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=1 timeout=5`, startPattern))[0]);
+      assert.match(started, new RegExp(`^Started build ${BUILD.npc}: ${BUILD.file.replace('.', '\\.')} 18 steps from ${ox} ${oy} ${oz} to ${ox + 2} ${oy + 1} ${oz + 2}$`));
+      // BuildService logs "Build <id> finished" when the last block is placed (the console starter gets no chat line).
+      await server.waitLog(new RegExp(`Build ${BUILD.npc} finished`), from, 90_000);
+      const status = await buildStatus(BUILD.npc);
+      assert.match(status, /: finished 18\/18 \(100%\)/);
+      assert.match(status, /placed=18 skipped=0 denied=0 no-item=0 refused=0/);
+      assert.match(status, /materials=creative \| undo=18\b/);
+      const survey = plain(await server.capture(`animus build ${BUILD.npc} survey`, new RegExp(`Build ${BUILD.npc} [^\\n]*`)));
+      assert(survey.includes(`Build ${BUILD.npc} uses creative materials; nothing is needed`), survey);
+      const wrong = [];
+      for (const b of blocks) if (!await blockIs(b.x, b.y, b.z, b.id)) wrong.push(`${b.x},${b.y},${b.z}!=${b.id}`);
+      assert.deepEqual(wrong, []);
+      // Nothing outside the box changed: one cell on each open side.
+      for (const [x, y, z] of [[ox - 1, oy, oz], [ox + 3, oy, oz + 2], [ox + 1, oy + 2, oz + 1], [ox + 1, oy, oz - 1], [ox + 1, oy, oz + 3]])
+        assert(await blockIs(x, y, z, 'minecraft:air'), `cell ${x},${y},${z} changed`);
+      // Creative materials take nothing from anyone: the owner still holds exactly what was given.
+      const held = [];
+      for (const id of kinds) held.push(await itemCount(OWNER.name, id));
+      assert.deepEqual(held, [5, 5, 5]);
+      // Undo puts the air back; it does not walk and is limited by undoPerTick (32), so 18 cells take one tick.
+      const undo = plain((await server.cmd(`animus build ${BUILD.npc} undo`, new RegExp(`Undoing \\d+ changes of build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      assert.equal(undo, `Undoing 18 changes of build ${BUILD.npc}`);
+      const undone = await until(async () => { const s = await buildStatus(BUILD.npc); return { ok: /: undone /.test(s), s }; }, 20_000, 'undo did not finish');
+      assert.match(undone.s, /restored=18 kept=0/);
+      const left = [];
+      for (const b of blocks) if (!await blockIs(b.x, b.y, b.z, 'minecraft:air')) left.push(`${b.x},${b.y},${b.z}`);
+      assert.deepEqual(left, []);
+      return `${started.slice(0, 90)}; ${status.match(/placed=[^|]*/)[0].trim()}; undo ${undone.s.match(/restored=\d+ kept=\d+/)[0]}`;
+    } finally {
+      await server.cmd(`fill ${box} air`, /Successfully filled|No blocks were filled/);
+      if (created) await server.cmd(`animus delete ${BUILD.npc}`, /Deleted|Unknown/);
+      if (existsSync(file)) unlinkSync(file);
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+    }
+  });
+  await gamemode('creative');
+  await owner.close();
+}
+
+// ---- scenario: shops ------------------------------------------------------------------------
+
+// Slot 11 of a 3-row page; the bottom row (18..26) holds the controls, and only close (slot 22) shows
+// because the shop has one page and one mode.
+const SHOP = { id: 'live:swap', npc: 'swapper', slot: 11, at: [-26.5, 61, 26.5] };
+const swapShop = () => ({
+  schemaVersion: 1, revision: 1, id: SHOP.id, title: '&bSwap', modes: ['trade'],
+  pages: [{ name: 'Swap', rows: 3, trade: { [String(SHOP.slot)]: {
+    id: 'diamond-for-emeralds', type: 'trade', item: { id: 'minecraft:diamond' },
+    needs: [{ item: { id: 'minecraft:emerald' }, amount: 2 }],
+    gives: [{ item: { id: 'minecraft:diamond' }, amount: 1 }],
+  } } }],
+});
+async function shops() {
+  const owner = await join(OWNER.name, 'survival');
+  await check('shop item-for-item trade', async () => {
+    const file = path.join(data, 'shops', 'live', 'swap.json');
+    let created = false, open = null;
+    const counts = async () => ({ emerald: await itemCount(OWNER.name, 'minecraft:emerald'), diamond: await itemCount(OWNER.name, 'minecraft:diamond') });
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, JSON.stringify(swapShop(), null, 1) + '\n');
+      const reloaded = plain((await server.cmd('animus shop reload', /Reloaded \d+ shops and \d+ GUIs; \d+ problems/))[0]);
+      const listed = plain(await server.capture('animus shop list', /Shops: \d+/, 400));
+      assert(new RegExp(`${SHOP.id} \\| [^|]*Swap \\| pages=1`).test(listed), listed);
+      const problems = plain(await server.capture('animus shop problems', /Shop and GUI problems: \d+/, 400));
+      assert(!/live[:/]swap/.test(problems), problems);
+      const uuid = await server.npc(SHOP.npc, 'minecraft:player', ...SHOP.at, 'Swapper', { modules: { 'animus:shop': { shop: SHOP.id, openOn: 'right' } } });
+      created = true;
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+      await server.cmd(`give ${OWNER.name} minecraft:emerald 2`, /Gave/);
+      await owner.tp(SHOP.at[0], 61, SHOP.at[2] - 3);
+      assert.deepEqual(await counts(), { emerald: 2, diamond: 0 });
+
+      // 1. Open by right-clicking the NPC (animus:shop, openOn right) and trade with one left click.
+      let from = await click(owner, uuid);
+      open = await windowOpened(owner, from);
+      assert.equal(open.menu, 'minecraft:generic_9x3', JSON.stringify(open));
+      assert.equal(open.size, 27 + 36);
+      assert.equal(open.items.find(i => i.slot === SHOP.slot)?.item, 'minecraft:diamond', JSON.stringify(open.items));
+      assert.equal(open.items.find(i => i.slot === 22)?.item, 'minecraft:barrier', JSON.stringify(open.items));
+      from = await clickSlot(owner, open.container, SHOP.slot);
+      const traded = await owner.chat('Traded for', from, 8000);
+      const paid = await until(async () => { const c = await counts(); return { ok: c.emerald === 0 && c.diamond === 1, ...c }; }, 5000, 'trade did not change the inventory');
+      // Every click is cancelled: nothing was left on the cursor, and the window stays open (no closeAfterPurchase).
+      assert(!owner.has(e => e.event === 'container_slot' && e.container === -1 && e.item !== 'empty', from), 'an item reached the cursor');
+      assert(!owner.has(e => e.event === 'container_closed' && e.container === open.container, from), 'window closed after the trade');
+      await closeWindow(owner, open.container);
+      open = null;
+
+      // 2. Open again with the command and try once more without the price: nothing changes.
+      from = owner.events.length;
+      await server.cmd(`animus shop open ${SHOP.id} ${OWNER.name}`);
+      open = await windowOpened(owner, from);
+      from = await clickSlot(owner, open.container, SHOP.slot);
+      const refused = await owner.chat('You do not have the items for that.', from, 8000);
+      await delay(500);
+      assert.deepEqual(await counts(), { emerald: 0, diamond: 1 });
+      await closeWindow(owner, open.container);
+      open = null;
+      const status = plain(await server.capture('animus shop status', /Shops [^\n]*/, 400)).match(/Shops [^\n]*/)[0];
+      assert(/\| open=0 \|/.test(status), status);
+      return `${reloaded}; "${traded.text}" -> emerald=${paid.emerald} diamond=${paid.diamond}; again: "${refused.text}"`;
+    } finally {
+      if (open) await closeWindow(owner, open.container).catch(() => {});
+      if (created) await server.cmd(`animus delete ${SHOP.npc}`, /Deleted|Unknown/);
+      if (existsSync(file)) unlinkSync(file);
+      await server.cmd('animus shop reload', /Reloaded \d+ shops/);
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+    }
+  });
+  await gamemode('creative');
+  await owner.close();
+}
+
+// ---- folia(): add inside the existing folia scenario ----------------------------------------
+
+// AnimusPlugin.startBuilds sets this reason when there is no main-thread runtime; BuildCommands answers
+// every /animus build form with "Builds unavailable: " + reason before reading any argument.
+const FOLIA_BUILDS = 'Builds unavailable: unavailable on Folia: a build site, its NPC team and its material container have no shared region owner, and no handoff for a build exists yet';
+async function foliaBuildsRefused() {
+  await check('builds refuse on Folia with the reason', async () => {
+    const pattern = /Builds unavailable: [^\n]*/;
+    const status = plain((await server.cmd('animus build', pattern))[0]);
+    const start = plain((await server.cmd(`animus build start nobody ${BUILD.file} at=0,61,0`, pattern))[0]);
+    assert.equal(status, FOLIA_BUILDS);
+    assert.equal(start, FOLIA_BUILDS);
+    return status;
+  });
+}
+
+const SCENARIOS = { triggers, state, actions, mounts, riding, dragon, terrain, combat, packs, appearance, building, shops, folia };
 function finalLogReview(text, label) {
   const lines = text.split('\n');
   const bad = lines.filter(line => /\b(ERROR|SEVERE)\b|Exception|Nag author|Could not pass event/.test(line));
@@ -1847,8 +2101,7 @@ try {
   await server.properties();
   const skin = args.get('skin-file');
   if (skin) { mkdirSync(path.join(data, 'skins'), { recursive: true }); copyFileSync(skin, path.join(data, 'skins', path.basename(skin))); }
-  const libraries = path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
-  const harnessArgs = new Map([['version', version], ['port', String(server.port)], ['libraries', libraries], ['results', results]]);
+  const harnessArgs = new Map([['version', version], ['port', String(server.port)], ['libraries', serverLibraries], ['results', results]]);
   await server.start();
   harness = prepareNative(harnessArgs, import.meta.url, 'live');
   for (const scenario of scenarios) {

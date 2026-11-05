@@ -18,7 +18,7 @@ a=p.parse_args();a.binary=a.binary.resolve();a.workspace=a.workspace.resolve();a
 assert '.qa' in a.workspace.parts
 root=Path(__file__).resolve().parents[2];name='animus-folia-'+a.version.replace('.','-')
 if a.instance_name:
-    assert re.fullmatch(r'animus-r[1-9][0-9]*-folia-'+re.escape(a.version.replace('.','-')),a.instance_name),'Instance name must bind the requested Folia version'
+    assert re.fullmatch(r'animus-(?:r[1-9][0-9]*|gate)-folia-'+re.escape(a.version.replace('.','-')),a.instance_name),'Instance name must bind the requested Folia version'
     name=a.instance_name
 instance=a.workspace/'consumers/plugin-consumers/instances'/name
 assert instance.is_dir();assert run(a,'instance','isolated',name).strip()=='true'
@@ -34,6 +34,10 @@ shutil.copy2(a.fixture,instance/'plugins'/a.fixture.name)
 data=instance/'plugins/Animus';(data/'skins').mkdir(parents=True,exist_ok=True)
 shutil.copy2(a.skin_file,data/'skins'/a.skin_file.name)
 assert 'packetProofEnabled = true' in (data/'config.toml').read_text()
+# The persisted Folia runtime watches every player; it stays off so transport counts belong to the proof alone.
+config=(data/'config.toml').read_text()
+if '[npcs]' not in config:(data/'config.toml').write_text(config.rstrip('\n')+'\n[npcs]\nenabled = false\n')
+assert '[npcs]\nenabled = false' in (data/'config.toml').read_text()
 players=[]
 for index in range(10):
     username=f'AnimusFolia{index}'
@@ -70,11 +74,11 @@ try:
         wait_log(log,r'.*Done \([\d.]+s\)!.*')
         disabled=[]
         for command,pattern in [
-            ('animus status',r'.*NPC runtime unavailable on Folia.*'),
+            ('animus status',r'.*NPC runtime disabled in config\.toml.*'),
             ('animus proof status',r'.*Packet proof unavailable on Folia.*'),
             ('animus proof control status',r'.*Proof presentation requires a player viewer.*'),
             ('animus combat status',r'.*Combat unavailable: .*Folia.*'),
-            ('animus navigation folia-qa status',r'.*Navigation .*unavailable on Folia.*')]:
+            ('animus navigation folia-qa status',r'.*Navigation folia-qa: disabled in config\.toml.*')]:
             disabled.append(console(session,log,command,pattern))
         ready=console(session,log,'animus foliaproof status',r'.*Folia stationary proof ready.*admitted=0/8.*')
         transcript=evidence/f'{phase}-client.ndjson'
@@ -123,7 +127,7 @@ finally:
         'queued-cancellation':['queued-spawn-clear-before-owner-admission','reentrant-clear-revokes-authority','reentrant-replacement-isolated','queued-skin-clear-before-completion','pending-spawn-teleport-before-owner-admission','pending-same-position-teleport-retirement'],
         'bounds':['eight-viewers-ninth-refused','lifetime-admission-ceiling','command-callback-bound','concurrent-skin-read-bound','slow-netty-retirement-bound'],
         'retirement-shutdown':['explicit-clear-entity-and-profile-cleanup','scheduler-retirement-cleanup','plugin-disable-pending-work-cleanup','disabled-late-completions-inert','no-live-wire-bodies-or-profiles-after-cleanup']}
-    report['limitations']=['Viewer-private stationary preview only; general Folia runtime remains disabled','Graphical appearance and performance unverified','Unowned terrain covered through the production lower-level admission method, not an actual command at an unowned or partially owned four-chunk boundary','Ticket counts are locked before/after snapshots; transient ticket absence is unverified']
+    report['limitations']=['Viewer-private stationary preview only; the persisted Folia region runtime is disabled here and covered by live-features.mjs','Graphical appearance and performance unverified','Unowned terrain covered through the production lower-level admission method, not an actual command at an unowned or partially owned four-chunk boundary','Ticket counts are locked before/after snapshots; transient ticket absence is unverified']
     report['gates']=[]
     for gate in gate_ids:
         required=mapping.get(gate,[]);passed=bool(required) and all(x in ids for x in required)

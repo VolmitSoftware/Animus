@@ -87,6 +87,9 @@ class Scenario:
         assert self.observer['fixtureSha256'] == sha(args.observer)
         assert self.observer['pluginSha256'] == args.artifact_sha256
         self.name = f'animus-behaviors-{args.project}-{args.version.replace(".", "-")}'
+        if args.instance_name:
+            assert re.fullmatch(r'animus-gate-behaviors-' + args.project + '-' + re.escape(args.version.replace('.', '-')), args.instance_name), 'Instance name must bind requested platform/version'
+            self.name = args.instance_name
         baseline_name = f'animus-{args.project}-{args.version.replace(".", "-")}'
         self.instances = args.workspace / 'consumers/plugin-consumers/instances'
         self.baseline = self.instances / baseline_name
@@ -489,7 +492,12 @@ historyEntries = 64
         state = self.status(); assert counter(state['runtime'], 'tick') >= due
         self.check('logical-final-wait', dueTick=due, terminal=terminal, status=state)
         refusals = []
-        for name in ('bad-argument', 'bad-binding'):
+        # A wrong literal argument type is rejected when the catalog loads, so it never starts.
+        self.action('reset'); invalid = self.catalog_entry('bad-argument', 'INVALID', False, 0, 'none')
+        diagnostic = wait_log(self.log, r'.*Behavior diagnostic: behaviors/qabehavior/bad-argument\.json \| behavior-arguments-invalid \| \$\.routines\.main\.arguments/longValue \|.*expected integer.*', 0, 5)
+        refused = self.run_behavior('bad-argument', expected='UNAVAILABLE')
+        assert not self.action('inspect')['events']; refusals.append({'behavior': 'bad-argument', 'catalog': invalid, 'diagnostic': diagnostic, 'run': refused})
+        for name in ('bad-binding',):
             self.action('reset'); execution = self.run_behavior(name); result = self.terminal(execution, 'FAILED')
             offset = self.report['commands'][-1]['logOffset']
             diagnostic = wait_log(self.log, r'.*Behavior diagnostic: execution \|.*longValue.*', offset, 5)
@@ -714,6 +722,7 @@ def main():
     parser.add_argument('--artifact-sha256', required=True)
     parser.add_argument('--project', choices=('paper', 'spigot', 'folia'), required=True)
     parser.add_argument('--version', choices=('26.1.2', '26.2', '26.3'), required=True)
+    parser.add_argument('--instance-name', help='Explicit animus-gate-behaviors-<project>-<version> isolated QA instance')
     Scenario(parser.parse_args()).execute()
 
 

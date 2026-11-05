@@ -55,7 +55,7 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
                 +" | admitted="+sessions.size()+"/8 | lifetime admissions="+admissions.get()+"/64"
                 +" | pending-spawns="+pendingSpawns.size()+"/8 | command-work="+commandWork.size()+"/8"
                 +" | skin-reads="+(2-reads.availablePermits())+"/2 | retired="+retirements.get()
-                +" | one PLAYER per viewer | general Folia runtime remains disabled";
+                +" | one PLAYER per viewer | separate from the Folia NPC runtime";
     }
     /** Bounded admission; entity reads require the owner at capture and in every scheduled callback. */
     public boolean execute(Player viewer, String operation, String skinHash) {

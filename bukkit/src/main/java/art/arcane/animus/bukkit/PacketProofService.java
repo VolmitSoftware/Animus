@@ -142,7 +142,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         if (body.moving) throw new IllegalStateException("Movement update already pending");
         var old = body.pose;
         var next = new BodyPose(old.world(), old.x() + dx, old.y() + dy, old.z() + dz, old.yaw(), old.pitch(), old.onGround());
-        if (!viewer.getWorld().getUID().equals(next.world()) || !viewer.getWorld().isChunkLoaded(((int) Math.floor(next.x())) >> 4, ((int) Math.floor(next.z())) >> 4)
+        if (!inWorld(viewer, next.world()) || !viewer.getWorld().isChunkLoaded(((int) Math.floor(next.x())) >> 4, ((int) Math.floor(next.z())) >> 4)
                 || viewer.getLocation().toVector().distanceSquared(new Vector(next.x(), next.y(), next.z())) > 64 * 64)
             throw new IllegalArgumentException("Target is outside visible loaded terrain");
         body.moving = true;
@@ -170,7 +170,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 || body.moving && !body.controlMove)
             throw new IllegalStateException("Control requires a detached player proof body without a manual movement pending");
         Vec3 point = body.state.snapshot().position().point();
-        if (!viewer.getWorld().getUID().equals(body.pose.world()) || point.distance(position(viewer.getLocation()).point()) > 32)
+        if (!inWorld(viewer, body.pose.world()) || point.distance(position(viewer.getLocation()).point()) > 32)
             throw new IllegalStateException("Control body must be in this world within 32 blocks");
         var terrain = LiveMovementProbe.check(viewer.getWorld(), point, point, body.body.width(), body.body.height(), MotionValidator.Medium.GROUND, true, 128);
         if (!terrain.clear()) throw new IllegalStateException("Control requires supported flat loaded terrain: " + terrain.status());
@@ -211,7 +211,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 if (!current(session) || viewer.isDead() || !viewer.hasPermission("animus.admin") || viewer.isInsideVehicle()
                         || session.bodies.get(body.body.entityId()) != body || !body.state.snapshot().active()
                         || mounted(session, body.body.entityId()) || session.mountPending.contains(body.body.entityId())
-                        || !viewer.getWorld().getUID().equals(body.pose.world())) {
+                        || !inWorld(viewer, body.pose.world())) {
                     stopControl(session, "authority-retired", true); continue;
                 }
                 Vec3 point = body.state.snapshot().position().point();
@@ -398,7 +398,7 @@ final class PacketProofService implements Listener, AutoCloseable {
             for (ProofBody body : List.copyOf(session.bodies.values())) {
                 if (body.controlDeliveryFailed) { clear(session.viewer); break; }
                 var pose = body.pose;
-                if (!session.viewer.getWorld().getUID().equals(pose.world())
+                if (!inWorld(session.viewer, pose.world())
                         || !session.viewer.getWorld().isChunkLoaded(((int) Math.floor(pose.x())) >> 4, ((int) Math.floor(pose.z())) >> 4)
                         || session.viewer.getLocation().toVector().distanceSquared(new Vector(pose.x(), pose.y(), pose.z())) > 64 * 64) {
                     // A mount is one presentation unit: invalidate the whole proof rather than leave
@@ -470,6 +470,9 @@ final class PacketProofService implements Listener, AutoCloseable {
             guard = new ViewerSession(viewer.getUniqueId(), UUID.randomUUID(), new ViewerSession.Limits(MAX_BODIES, 64, 100_000_000L, 4.5));
         }
     }
+    /** Body poses name their world by UUID text; a Bukkit UUID never equals that string itself. */
+    private static boolean inWorld(Player viewer, String world) { return viewer.getWorld().getUID().toString().equals(world); }
+
     private static final class ProofBody {
         final NativePacketAdapter.Body body;
         final VirtualNpcState state;

@@ -34,7 +34,7 @@ def main():
     reference_name=f'animus-{a.project}-{a.version.replace(".","-")}'
     name=f'animus-import-{a.project}-{a.version.replace(".","-")}'
     if a.instance_name:
-        assert re.fullmatch(r'animus-r[1-9][0-9]*-import-'+a.project+'-'+re.escape(a.version.replace('.','-')),a.instance_name),'Instance name must bind requested platform/version'
+        assert re.fullmatch(r'animus-(?:r[1-9][0-9]*|gate)-import-'+a.project+'-'+re.escape(a.version.replace('.','-')),a.instance_name),'Instance name must bind requested platform/version'
         name=a.instance_name
     reference=a.workspace/'consumers/plugin-consumers/instances'/reference_name
     instance=a.workspace/'consumers/plugin-consumers/instances'/name

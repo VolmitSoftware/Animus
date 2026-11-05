@@ -90,7 +90,12 @@ def duplicate(data,import_id,application_id,label):
         target=json.loads(candidates[relative]);source=read(data/'imports'/import_id/f'npcs/citizens/citizens-{legacy}.json')
         assert target['uuid']==copied_uuid and target['revision']==1
         assert target['migration']['copy']=={'label':label,'sourceUuid':source_uuid,'sourceId':source['id']}
-        assert target['modules']==source['modules'],'Preserved module data must not be guessed or rewritten'
+        # A copy guards the copy of its guarded NPC; every other preserved module value stays byte-for-byte.
+        expected=json.loads(json.dumps(source['modules']))
+        guard=expected.get('animus:combat',{}).get('guard')
+        if isinstance(guard,dict) and 'npc' in guard and any(r['status']=='resolved' and r['source']=='/traits/sentinel/guardedNPC' for r in source['migration'].get('references',[])):
+            guard['npc']=plan['uuidMap'][guard['npc']]
+        assert target['modules']==expected,'Preserved module data must not be guessed or rewritten'
         for before,after in zip(source['migration']['references'],target['migration']['references']):
             assert after['original']==before['original'] and after['source']==before['source']
             if before['status']=='resolved':
