@@ -41,9 +41,11 @@ class EditorStore {
   final List<StoreListener> _listeners = <StoreListener>[];
   final List<WorkspaceSnapshot> _undo = <WorkspaceSnapshot>[];
 
-  static const int undoLimit = 100;
+  /// Undo steps kept per workspace, in memory and in the repository.
+  static const int undoLimit = 50;
 
   WorkspaceSnapshot? _workspace;
+  WorkspaceSnapshot? _deleted;
   Future<void> _queue = Future<void>.value();
   String? _coalesce;
   List<WorkspaceSummary> _workspaces = const <WorkspaceSummary>[];
@@ -73,6 +75,65 @@ class EditorStore {
   Future<void> refreshWorkspaces() async {
     _workspaces = await repository.list();
     _changed();
+  }
+
+  /// The workspace deleted last in this page, which [restoreDeleted] brings
+  /// back.
+  WorkspaceSnapshot? get deleted => _deleted;
+
+  /// A stored workspace without opening it (for export from the list).
+  Future<WorkspaceSnapshot?> loadWorkspace(String id) async => _workspace?.id == id ? _workspace : repository.load(id);
+
+  /// A new, empty local workspace, opened.
+  Future<WorkspaceSnapshot> createWorkspace(String name) => openFiles(name, const <String, Uint8List>{});
+
+  Future<void> renameWorkspace(String id, String name) async {
+    final String trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final WorkspaceSnapshot? current = _workspace;
+    if (current?.id == id) {
+      await _enqueue(() => _save(current!, current.next(name: trimmed), recordUndo: false));
+    } else {
+      final WorkspaceSnapshot? stored = await repository.load(id);
+      if (stored == null) return;
+      await repository.save(stored.next(name: trimmed));
+    }
+    await refreshWorkspaces();
+  }
+
+  /// Copies a workspace's documents and resources into a new local
+  /// workspace (a copy of a server workspace is not bound to the server).
+  Future<WorkspaceSnapshot?> duplicateWorkspace(String id, String name) async {
+    final WorkspaceSnapshot? source = await loadWorkspace(id);
+    if (source == null) return null;
+    final WorkspaceSnapshot copy = WorkspaceSnapshot(
+      id: _newId(),
+      name: name.trim().isEmpty ? '${source.name} copy' : name.trim(),
+      generation: 1,
+      documents: source.documents,
+      resources: source.resources,
+    );
+    await repository.save(copy);
+    await refreshWorkspaces();
+    return copy;
+  }
+
+  /// Puts the last deleted workspace back, with a fresh generation.
+  Future<WorkspaceSnapshot?> restoreDeleted() async {
+    final WorkspaceSnapshot? deleted = _deleted;
+    if (deleted == null) return null;
+    final WorkspaceSnapshot restored = WorkspaceSnapshot(
+      id: deleted.id,
+      name: deleted.name,
+      generation: 1,
+      documents: deleted.documents,
+      resources: deleted.resources,
+      server: deleted.server,
+    );
+    await repository.save(restored);
+    _deleted = null;
+    await refreshWorkspaces();
+    return restored;
   }
 
   /// Imports a picked folder or zip as a new workspace and opens it.
@@ -116,13 +177,18 @@ class EditorStore {
     return snapshot;
   }
 
-  /// Opens a stored workspace; returns false when it does not exist.
+  /// Opens a stored workspace with its saved undo steps; returns false when
+  /// it does not exist.
   Future<bool> openWorkspace(String id) async {
     if (_workspace?.id == id) return true;
     final WorkspaceSnapshot? snapshot = await repository.load(id);
+    final List<WorkspaceSnapshot> steps = snapshot == null ? const <WorkspaceSnapshot>[] : await repository.loadUndo(id);
     _workspace = snapshot;
     _ignored = const <String>[];
-    _undo.clear();
+    _undo
+      ..clear()
+      ..addAll(steps);
+    _coalesce = null;
     _problem = snapshot == null ? 'Workspace $id is not in this browser.' : null;
     _changed();
     return snapshot != null;
@@ -134,8 +200,12 @@ class EditorStore {
     _changed();
   }
 
+  /// Deletes a workspace and its undo steps. [restoreDeleted] brings the
+  /// last one back while this page is open.
   Future<void> deleteWorkspace(String id) async {
+    _deleted = await loadWorkspace(id);
     await repository.delete(id);
+    await repository.clearUndo(id);
     if (_workspace?.id == id) closeWorkspace();
     await refreshWorkspaces();
   }
@@ -225,8 +295,19 @@ class EditorStore {
     if (current == null || _undo.isEmpty) return;
     final WorkspaceSnapshot previous = _undo.removeLast();
     _coalesce = null;
+    await _persistUndo(() => repository.popUndo(current.id));
     await _save(current, current.next(documents: previous.documents, resources: previous.resources), recordUndo: false);
   });
+
+  /// Undo steps are a convenience: a failed write to them never blocks the
+  /// edit itself.
+  Future<void> _persistUndo(Future<void> Function() write) async {
+    try {
+      await write();
+    } on Object {
+      return;
+    }
+  }
 
   Future<void> _enqueue(Future<void> Function() task) {
     final Future<void> run = _queue.then((void _) => task());
@@ -241,12 +322,14 @@ class EditorStore {
       _problem = 'Another tab changed this workspace (generation ${conflict.storedGeneration}). Reloaded its copy; your last edit was not saved.';
       _workspace = await repository.load(current.id);
       _undo.clear();
+      await _persistUndo(() => repository.clearUndo(current.id));
       _changed();
       return;
     }
     if (recordUndo) {
       _undo.add(current);
       if (_undo.length > undoLimit) _undo.removeAt(0);
+      await _persistUndo(() => repository.pushUndo(current.id, current, undoLimit));
     }
     _workspace = next;
     _problem = null;

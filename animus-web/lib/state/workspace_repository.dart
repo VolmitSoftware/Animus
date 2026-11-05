@@ -119,11 +119,47 @@ abstract class WorkspaceRepository {
   Future<void> save(WorkspaceSnapshot snapshot);
 
   Future<void> delete(String id);
+
+  /// The workspace's undo steps, oldest first: the snapshots an undo returns
+  /// to, kept so undo works after a reload.
+  Future<List<WorkspaceSnapshot>> loadUndo(String id);
+
+  /// Adds the newest undo step and drops the oldest beyond [limit].
+  Future<void> pushUndo(String id, WorkspaceSnapshot snapshot, int limit);
+
+  /// Drops the newest undo step.
+  Future<void> popUndo(String id);
+
+  Future<void> clearUndo(String id);
 }
 
 /// In-memory repository for tests and for browsers without IndexedDB.
 class MemoryWorkspaceRepository implements WorkspaceRepository {
   final Map<String, String> _stored = <String, String>{};
+  final Map<String, List<String>> _undo = <String, List<String>>{};
+
+  @override
+  Future<List<WorkspaceSnapshot>> loadUndo(String id) async =>
+      <WorkspaceSnapshot>[for (final String text in _undo[id] ?? const <String>[]) WorkspaceSnapshot.decode(text)];
+
+  @override
+  Future<void> pushUndo(String id, WorkspaceSnapshot snapshot, int limit) async {
+    final List<String> steps = _undo.putIfAbsent(id, () => <String>[])..add(snapshot.encode());
+    while (steps.length > limit) {
+      steps.removeAt(0);
+    }
+  }
+
+  @override
+  Future<void> popUndo(String id) async {
+    final List<String>? steps = _undo[id];
+    if (steps != null && steps.isNotEmpty) steps.removeLast();
+  }
+
+  @override
+  Future<void> clearUndo(String id) async {
+    _undo.remove(id);
+  }
 
   @override
   Future<List<WorkspaceSummary>> list() async {

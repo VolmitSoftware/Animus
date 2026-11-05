@@ -5,6 +5,8 @@
 /// #/                                         home
 /// #/workspace/<id>                           a workspace
 /// #/workspace/<id>/npcs                      the NPC browser
+/// #/workspace/<id>/new[/<kind>]              create a document
+/// #/workspace/<id>/sync                      push to or pull from a server
 /// #/workspace/<id>/<kind>/<docId>?view=code  one document (docId URI-encoded)
 /// #/citizens                                 convert a Citizens save locally
 /// #/pair/<code>                              a pairing link
@@ -43,6 +45,9 @@ sealed class EditorRoute {
       case 'workspace':
         if (parts.length == 2) return WorkspaceRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'npcs') return NpcListRoute(decode(parts[1]));
+        if (parts.length == 3 && parts[2] == 'new') return NewDocumentRoute(decode(parts[1]));
+        if (parts.length == 3 && parts[2] == 'sync') return SyncRoute(decode(parts[1]));
+        if (parts.length == 4 && parts[2] == 'new') return NewDocumentRoute(decode(parts[1]), DocumentKind.parse(parts[3]));
         if (parts.length == 4) {
           final DocumentKind? kind = DocumentKind.parse(parts[2]);
           if (kind == null) return WorkspaceRoute(decode(parts[1]));
@@ -125,6 +130,39 @@ class NpcListRoute extends EditorRoute {
 
   @override
   int get hashCode => Object.hash('npcs', workspaceId);
+}
+
+/// The New page of a workspace, optionally on one kind's guided step.
+class NewDocumentRoute extends EditorRoute {
+  const NewDocumentRoute(this.workspaceId, [this.kind]);
+
+  final String workspaceId;
+  final DocumentKind? kind;
+
+  @override
+  String format() => '#/workspace/${Uri.encodeComponent(workspaceId)}/new${kind == null ? '' : '/${kind!.wireName}'}';
+
+  @override
+  bool operator ==(Object other) => other is NewDocumentRoute && other.workspaceId == workspaceId && other.kind == kind;
+
+  @override
+  int get hashCode => Object.hash('new', workspaceId, kind);
+}
+
+/// Pushing a local workspace to a paired server, or pulling from one.
+class SyncRoute extends EditorRoute {
+  const SyncRoute(this.workspaceId);
+
+  final String workspaceId;
+
+  @override
+  String format() => '#/workspace/${Uri.encodeComponent(workspaceId)}/sync';
+
+  @override
+  bool operator ==(Object other) => other is SyncRoute && other.workspaceId == workspaceId;
+
+  @override
+  int get hashCode => Object.hash('sync', workspaceId);
 }
 
 class DocumentRoute extends EditorRoute {
