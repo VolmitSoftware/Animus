@@ -347,6 +347,14 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                             : Optional.of(named.get().equals("player") ? requirePlayer(call) : UUID.fromString(named.get()));
                     return onOwner(call, () -> { platform.combat(call.npc(), operation, target); return "{}"; });
                 });
+        action("open-shop", Effect.WORLD, "Opens a shop for the triggering player.",
+                schema(string("shop", 256), required("shop")),
+                (arguments, problems) -> matches(arguments, "shop", art.arcane.animus.core.shop.ShopDocument.ID, problems),
+                call -> openScreen(call, BehaviorPlatform.ScreenKind.SHOP, "shop"));
+        action("open-gui", Effect.WORLD, "Opens a chest GUI for the triggering player.",
+                schema(string("gui", 256), required("gui")),
+                (arguments, problems) -> matches(arguments, "gui", art.arcane.animus.core.shop.ShopDocument.ID, problems),
+                call -> openScreen(call, BehaviorPlatform.ScreenKind.GUI, "gui"));
         action("set-flag", Effect.STATE_WRITE, "Sets a flag, true unless value says otherwise.",
                 schema(STATE + "," + bool("value"), required("name")),
                 (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
@@ -399,6 +407,12 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             platform.runCommand(source, player, command);
             return "{}";
         });
+    }
+
+    private CompletionStage<String> openScreen(Call call, BehaviorPlatform.ScreenKind kind, String field) {
+        UUID player = requirePlayer(call);
+        String id = text(call.arguments, field).orElseThrow();
+        return onOwner(call, () -> result("delivered", platform.openScreen(call.npc(), player, kind, id) ? 1 : 0));
     }
 
     private CompletionStage<String> navigate(Call call) {

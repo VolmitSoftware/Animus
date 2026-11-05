@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.runtime.NpcPresentation;
+import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
@@ -249,6 +250,8 @@ final class RegionViewer {
         TriggerDispatcher dispatcher = host.triggers;
         if (dispatcher != null) dispatcher.publish(new TriggerEvent.Interaction(actor.uuid, id,
                 action == VirtualNpcInteractionEvent.Action.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT));
+        NpcRuntime.InteractionListener<Player> listener = host.interactions;
+        if (listener != null && listener.interacted(player, actor.uuid, action == VirtualNpcInteractionEvent.Action.ATTACK, input.secondaryAction())) return;
         if (actor.publication.ride() && action == VirtualNpcInteractionEvent.Action.INTERACT && !input.secondaryAction() && "MAIN_HAND".equals(input.hand())) {
             player.sendMessage("Cannot ride " + actor.spec.name() + ": " + RegionNpcRuntime.RIDING_UNAVAILABLE);
             return;

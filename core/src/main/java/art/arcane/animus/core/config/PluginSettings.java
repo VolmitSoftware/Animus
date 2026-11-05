@@ -15,7 +15,8 @@ import java.util.List;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
-                             FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat) {
+                             FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat,
+                             ShopSettings shops) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -37,6 +38,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("modules", new Gson().toJsonTree(ModuleSettings.DEFAULT));
             document.add("behaviors", new Gson().toJsonTree(BehaviorSettings.DEFAULT));
             document.add("combat", new Gson().toJsonTree(CombatBudgets.DEFAULT));
+            document.add("shops", shopDefaults());
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -101,7 +103,40 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         CombatBudgets combatBudgets;
         try { combatBudgets = combat(table(data.getAsJsonObject(), "combat")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": combat: " + e.getMessage(), e); }
-        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets);
+        ShopSettings shopSettings;
+        try { shopSettings = shops(table(data.getAsJsonObject(), "shops")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": shops: " + e.getMessage(), e); }
+        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, shopSettings);
+    }
+
+    private static JsonObject shopDefaults() {
+        ShopSettings defaults = ShopSettings.DEFAULT;
+        JsonObject shops = new JsonObject();
+        shops.addProperty("enabled", defaults.enabled());
+        shops.addProperty("economy", defaults.economy());
+        shops.addProperty("priceFormat", defaults.priceFormat());
+        shops.addProperty("flushMillis", defaults.flushMillis());
+        return shops;
+    }
+
+    private static ShopSettings shops(JsonObject document) {
+        ShopSettings defaults = ShopSettings.DEFAULT;
+        for (String key : document.keySet())
+            if (!java.util.Set.of("enabled", "economy", "priceFormat", "flushMillis", "messages").contains(key)) throw new IllegalArgumentException(key + " is not a shop setting");
+        java.util.Map<String, String> messages = new java.util.LinkedHashMap<>();
+        for (java.util.Map.Entry<String, JsonElement> entry : table(document, "messages").entrySet()) {
+            if (!entry.getValue().isJsonPrimitive() || !entry.getValue().getAsJsonPrimitive().isString())
+                throw new IllegalArgumentException("messages." + entry.getKey() + " must be a string");
+            messages.put(entry.getKey(), entry.getValue().getAsString());
+        }
+        return new ShopSettings(bool(document, "enabled", defaults.enabled()), text(document, "economy", defaults.economy()),
+                text(document, "priceFormat", defaults.priceFormat()), integer(document, "flushMillis", defaults.flushMillis()), messages);
+    }
+
+    private static String text(JsonObject document, String key, String fallback) {
+        if (!document.has(key)) return fallback;
+        if (!document.get(key).isJsonPrimitive() || !document.getAsJsonPrimitive(key).isString()) throw new IllegalArgumentException(key + " must be a string");
+        return document.get(key).getAsString();
     }
 
     private static CombatBudgets combat(JsonObject document) {

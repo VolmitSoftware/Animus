@@ -27,7 +27,7 @@ public record NpcItem(String id, int count, Optional<String> components, Optiona
     public static boolean validId(String id) { return id != null && id.length() <= 128 && id.matches(ID); }
 
     /** Appends exact field errors and returns empty when the value is invalid. */
-    static Optional<NpcItem> parse(JsonElement value, String path, List<String> errors) {
+    public static Optional<NpcItem> parse(JsonElement value, String path, List<String> errors) {
         if (value == null || !value.isJsonObject()) { errors.add(path + ": expected item object"); return Optional.empty(); }
         JsonObject item = value.getAsJsonObject();
         int before = errors.size();

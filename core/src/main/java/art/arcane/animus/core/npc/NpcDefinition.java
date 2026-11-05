@@ -86,6 +86,8 @@ public final class NpcDefinition {
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { RideSettings.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.shop.ShopBinding.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
         }
         return List.copyOf(errors);
     }

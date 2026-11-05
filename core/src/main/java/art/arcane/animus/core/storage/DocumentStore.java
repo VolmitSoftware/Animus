@@ -300,7 +300,8 @@ public final class DocumentStore implements AutoCloseable {
 
     private void writable(String path) throws IOException {
         resolve(path);
-        if (!path.matches("(?:npcs|skins|behaviors|packs|imports)/[a-zA-Z0-9_./-]+\\.json")
+        if (!path.matches("(?:npcs|skins|behaviors|packs|imports|shops|gui)/[a-zA-Z0-9_./-]+\\.json")
+                && !path.matches("state/shops/imports/[a-f0-9]{64}\\.json")
                 && !path.matches("state/npc-definitions/last-valid/npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json")
                 && !path.matches(GENERATED_PATH))
             throw new IOException("Not a writable document path: " + path);
