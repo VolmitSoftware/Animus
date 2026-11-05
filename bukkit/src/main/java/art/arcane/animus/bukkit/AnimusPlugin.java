@@ -45,6 +45,9 @@ import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.behavior.builtin.DialogueChoice;
 import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
+import art.arcane.animus.core.behavior.SnapshotFacts;
+import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
+import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.BehaviorCommands;
 import art.arcane.animus.core.command.CommandActor;
@@ -113,6 +116,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private AutoCloseable metricsTicks;
     private volatile ReactBridge react;
     private HotloadService hotload;
+    private BukkitServerBehaviors serverBehaviors;
 
 
     @Override
@@ -187,8 +191,9 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(shops.status());
             getLogger().info(guis.status());
             startBuilds(mainThread);
+            BukkitOwners scheduling = new BukkitOwners(this, regions);
             builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, () -> buildsUnavailable,
-                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis),
+                    (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new ExtensionRuntime(runtime.documents().resolve("modules"),
@@ -219,6 +224,19 @@ public final class AnimusPlugin extends JavaPlugin {
                     triggers.unavailable(living.status());
                     getLogger().info("Behavior triggers unavailable: " + living.status());
                 }
+            }
+            ServerTriggerDispatcher servers = behaviors.servers();
+            if (servers != null) {
+                if (living.available()) servers.connect();
+                else servers.unavailable(living.status());
+            }
+            if (behaviors.diagnosticRuntime() != null) {
+                Function<UUID, Optional<VirtualNpcState.Snapshot>> states = owners::published;
+                AnimusRuntime definitions = runtime;
+                SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(() -> definitions.npcs().snapshot(), states));
+                serverBehaviors = new BukkitServerBehaviors(this, scheduling, servers, facts, (String message) -> getLogger().info(message));
+                behaviors.facts(facts);
+                serverBehaviors.start();
             }
             Map<String, AnimusCommands.Extra> extras = new HashMap<>();
             extras.put("proof", new ProofCommand());
@@ -280,6 +298,7 @@ public final class AnimusPlugin extends JavaPlugin {
         react = null;
         if (bridge != null) bridge.close();
         debugWatch.clear();
+        if (serverBehaviors != null) { serverBehaviors.close(); serverBehaviors = null; }
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
         for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks, metricsTicks)) {
