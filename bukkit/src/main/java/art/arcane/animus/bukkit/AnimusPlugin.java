@@ -127,7 +127,7 @@ public final class AnimusPlugin extends JavaPlugin {
             PersistedNpcService<Player, ItemStack> mainThread = regions == null ? BukkitRuntimeHost.start(this, runtime, environment.minecraftVersion(), commands, settings, (Player player, Runnable task) -> replies.reply(player, task)) : null;
             living = regions == null ? mainThread : new RegionNpcRuntime(this, runtime, environment.minecraftVersion(), commands, settings, regions);
             getLogger().info(living.status());
-            combat = new RuntimeCombatService(this, runtime, mainThread, environment.minecraftVersion(), replies.isFolia());
+            combat = new RuntimeCombatService(this, runtime, mainThread, environment.minecraftVersion(), replies.isFolia(), living instanceof RegionNpcRuntime regionized ? regionized : null);
             getLogger().info(combat.status());
             getLogger().info(proof.status(null));
             Platform modulePlatform = modulePlatform();

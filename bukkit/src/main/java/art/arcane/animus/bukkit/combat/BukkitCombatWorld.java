@@ -93,8 +93,10 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
     }
 
     /** A combat observation of a living player or mob, or empty when it cannot be a participant. */
-    public Optional<CombatTarget> observe(Entity entity) {
-        if (!(entity instanceof LivingEntity creature) || !creature.isValid() || creature.isDead() || creature.getHealth() <= 0 || helper(entity)) return Optional.empty();
+    public Optional<CombatTarget> observe(Entity entity) { return observe(entity, this::helper); }
+    /** On the entity's owner: a combat observation, or empty when it cannot be a participant or is a helper. */
+    public static Optional<CombatTarget> observe(Entity entity, java.util.function.Predicate<Entity> helper) {
+        if (!(entity instanceof LivingEntity creature) || !creature.isValid() || creature.isDead() || creature.getHealth() <= 0 || helper.test(entity)) return Optional.empty();
         TargetKind kind;
         Set<TargetCategory> categories;
         String name;
@@ -161,14 +163,23 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
     @Override public DamageOutcome damageReal(UUID attacker, CombatTarget target, double amount, DamageKind kind, double reach, double knockback, boolean victimDrops) {
         Entity entity = plugin.getServer().getEntity(target.ref().id());
         Optional<VirtualNpcState.Snapshot> self = npc(attacker);
-        if (!(entity instanceof LivingEntity victim) || !victim.isValid() || victim.isDead() || self.isEmpty() || !self.get().active())
-            return new DamageOutcome(DamageStatus.INVALID, 0, false);
+        if (!(entity instanceof LivingEntity victim) || self.isEmpty()) return new DamageOutcome(DamageStatus.INVALID, 0, false);
+        return damage(plugin, attacker, self.get(), victim, amount, kind, knockback, victimDrops, suppressedDrops,
+                () -> npc(attacker).filter(VirtualNpcState.Snapshot::active).isPresent());
+    }
+    /**
+     * On the victim's owner: one NPC hit with no causing entity. {@code attacking} is asked again after listeners ran,
+     * so a hit from an NPC that despawned meanwhile does nothing.
+     */
+    public static DamageOutcome damage(Plugin plugin, UUID attacker, VirtualNpcState.Snapshot self, LivingEntity victim, double amount, DamageKind kind,
+                                       double knockback, boolean victimDrops, Set<UUID> suppressedDrops, java.util.function.BooleanSupplier attacking) {
+        if (!victim.isValid() || victim.isDead() || !self.active()) return new DamageOutcome(DamageStatus.INVALID, 0, false);
         VirtualNpcDamageEvent event = new VirtualNpcDamageEvent(attacker, victim, Math.min(100, amount));
         plugin.getServer().getPluginManager().callEvent(event);
         if (event.isCancelled()) return new DamageOutcome(DamageStatus.CANCELLED, 0, false);
-        if (!victim.isValid() || victim.isDead() || npc(attacker).filter(VirtualNpcState.Snapshot::active).isEmpty())
+        if (!victim.isValid() || victim.isDead() || !attacking.getAsBoolean())
             return new DamageOutcome(DamageStatus.INVALID, 0, false);
-        Vec3 origin = self.get().bounds().min().add(self.get().bounds().max()).multiply(.5);
+        Vec3 origin = self.bounds().min().add(self.bounds().max()).multiply(.5);
         DamageSource source = DamageSource.builder(kind == DamageKind.PROJECTILE ? DamageType.ARROW : DamageType.MOB_ATTACK)
                 .withDamageLocation(location(victim.getWorld(), origin)).build();
         double before = victim.getHealth() + victim.getAbsorptionAmount();
@@ -190,7 +201,10 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         return new DamageOutcome(DamageStatus.APPLIED, applied, victim.isDead() || victim.getHealth() <= 0);
     }
     @Override public boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect) {
-        Entity entity = plugin.getServer().getEntity(target.ref().id());
+        return effect(plugin.getServer().getEntity(target.ref().id()), effect);
+    }
+    /** On the entity's owner: a potion helper's only effect. */
+    public static boolean effect(Entity entity, CombatSettings.Effect effect) {
         NamespacedKey key = NamespacedKey.fromString(effect.id());
         PotionEffectType type = key == null ? null : Registry.EFFECT.get(key);
         if (!(entity instanceof LivingEntity victim) || !victim.isValid() || victim.isDead() || type == null) return false;
@@ -210,6 +224,10 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         World world = world(from.world());
         Vec3 point = from.point();
         if (world == null || !world.isChunkLoaded(((int) Math.floor(point.x())) >> 4, ((int) Math.floor(point.z())) >> 4)) return Optional.empty();
+        return launch(world, point, velocity, weapon, this::tag).map(Projectile::getUniqueId);
+    }
+    /** On the owner of the launch chunk: a shooterless helper projectile, tagged before it can touch anything. */
+    public static Optional<Projectile> launch(World world, Vec3 point, Vec3 velocity, RangedWeapon weapon, java.util.function.Consumer<Projectile> tag) {
         double speed = velocity.distance(Vec3.ZERO);
         if (speed < .0001) return Optional.empty();
         Location at = location(world, point);
@@ -217,17 +235,19 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
             case ARROW -> world.spawnArrow(at, vector(velocity), (float) speed, 0);
             case SPECTRAL_ARROW -> world.spawnArrow(at, vector(velocity), (float) speed, 0, SpectralArrow.class);
             case TRIDENT -> world.spawnArrow(at, vector(velocity), (float) speed, 0, Trident.class);
-            default -> world.spawn(at, THROWN.get(weapon), (Projectile thrown) -> tag(thrown));
+            default -> world.spawn(at, THROWN.get(weapon), tag::accept);
         };
         if (!projectile.isValid()) return Optional.empty();
-        tag(projectile);
+        tag.accept(projectile);
         if (projectile instanceof AbstractArrow arrow) arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
         if (projectile instanceof Fireball fireball) fireball.setAcceleration(vector(velocity.normalized().multiply(.1)));
         projectile.setVelocity(vector(velocity));
-        return Optional.of(projectile.getUniqueId());
+        return Optional.of(projectile);
     }
-    private void tag(Projectile projectile) {
-        projectile.getPersistentDataContainer().set(helperKey, PersistentDataType.BYTE, (byte) 1);
+    private void tag(Projectile projectile) { tag(projectile, helperKey, (byte) 1); }
+    /** Marks a helper so its own hits, damage and explosion never apply; it never saves with its chunk. */
+    public static void tag(Projectile projectile, NamespacedKey key, byte value) {
+        projectile.getPersistentDataContainer().set(key, PersistentDataType.BYTE, value);
         projectile.setPersistent(false);
         if (projectile instanceof Explosive explosive) {
             explosive.setYield(0);
@@ -253,6 +273,10 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         World world = world(at.world());
         Vec3 point = at.point();
         if (world == null || !world.isChunkLoaded(((int) Math.floor(point.x())) >> 4, ((int) Math.floor(point.z())) >> 4)) return;
+        drop(world, point, items, experience);
+    }
+    /** On the owner of the chunk: death drops and experience. */
+    public static void drop(World world, Vec3 point, List<Drop> items, int experience) {
         Location place = location(world, point);
         for (Drop drop : items) {
             Material material = Material.matchMaterial(drop.item());

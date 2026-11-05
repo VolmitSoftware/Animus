@@ -26,6 +26,8 @@ import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.mount.MountDeclaration;
+import art.arcane.animus.core.mount.MountRelations;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -57,6 +59,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -72,11 +75,10 @@ import org.bukkit.plugin.java.JavaPlugin;
  * on its own entity scheduler ({@link RegionViewer}). The global region thread only reconciles definitions, admits
  * file reads, expires lost handoffs and asks loaded chunks to wake dormant NPCs; it never reads a player, block or
  * live NPC state. A dormant NPC starts on its region when its chunk loads or a player nearby is on the same region.
- * Riding, mounted NPCs and combat stay unavailable here.
+ * A mounted group has one owner, the region of its root vehicle; a ride runs on the NPC's owner, which also holds the
+ * rider standing at its feet.
  */
 public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Listener {
-    static final String RIDING_UNAVAILABLE = "riding is unavailable on Folia: the rider and the NPC have separate owners and a ride has no region handoff yet";
-    static final String MOUNTS_UNAVAILABLE = "mounted NPCs are unavailable on Folia: a vehicle and its passengers have separate owners and seat coupling has no region handoff yet";
     static final int MAX_ISSUED_IDS = 8192;
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, RECONCILE_WORK = 64, MAX_READS = 8, WAKES_PER_TICK = 64, ADMISSIONS_PER_PASS = 16;
     record Geometry(double width, double height, int ids, art.arcane.animus.core.mount.SeatGeometry seat) {}
@@ -98,6 +100,13 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final Map<UUID, RegionActor> byUuid = new ConcurrentHashMap<>();
     final Set<RegionActor> transfers = ConcurrentHashMap.newKeySet();
     final Map<UUID, String> selections = new ConcurrentHashMap<>();
+    /** Passenger relations of every spawned definition, recomputed on the global region thread when definitions change. */
+    volatile MountRelations.Resolution mounts = MountRelations.Resolution.EMPTY;
+    final RegionRides<RegionActor> rides = new RegionRides<>();
+    /** The combat module, when the server configuration enables it. */
+    volatile RegionCombat combat;
+    private final AtomicBoolean mountsDirty = new AtomicBoolean(true);
+    private Map<String, NpcDefinition> mountSnapshot;
     final AtomicLong accepted = new AtomicLong(), rejected = new AtomicLong();
     final ViewerPreviews previews;
     volatile NativePacketAdapter packets;
@@ -143,6 +152,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         limits.put(RegionBudget.Kind.PACKETS, RegionViewer.PACKETS_PER_REGION); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, 32);
         rigs = runtime.isRunning() ? runtime.rigSettings() : art.arcane.animus.core.config.RigSettings.DEFAULT;
         limits.put(RegionBudget.Kind.RIG_PLANS, rigs.plansPerTick());
+        art.arcane.animus.core.config.CombatBudgets combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : art.arcane.animus.core.config.CombatBudgets.DEFAULT;
+        limits.put(RegionBudget.Kind.COMBAT_BRAINS, combatBudgets.brainsPerTick()); limits.put(RegionBudget.Kind.COMBAT_SCANS, combatBudgets.targetScansPerTick());
+        limits.put(RegionBudget.Kind.COMBAT_PATHS, combatBudgets.pathRequestsPerTick()); limits.put(RegionBudget.Kind.COMBAT_ALERTS, combatBudgets.squadAlertsPerTick());
+        limits.put(RegionBudget.Kind.COMBAT_HELPERS, combatBudgets.helperUpdatesPerTick());
         budget = new RegionBudget(regions, limits);
         if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
         try {
@@ -189,7 +202,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 + " | routes-sleeping=" + sleeping + " | navigation-pressure=" + navigationPressureStatus
                 + " | viewers=" + viewers.size() + " | visible=" + visible + " | handoffs=" + transfers.size() + " | file-reads=" + reads.get()
                 + " | accepted=" + accepted.get() + " | rejected=" + rejected.get() + " | path-jobs=" + navigation.outstandingJobs()
-                + " | riding, mounts and combat unavailable on Folia" + (failures.last() == null ? "" : " | last-error=" + failures.last());
+                + " | mounted=" + mounts.vehicleOf().size() + " | mount-problems=" + mounts.diagnostics().size() + " | riders=" + rides.size()
+                + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
 
     @Override public String inspect(String id) {
@@ -206,16 +220,102 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         return "Runtime " + id + ": " + state + "; uuid=" + actor.uuid + "; revision=" + definition.revision() + "; owner=" + phase.name().toLowerCase(java.util.Locale.ROOT)
                 + "; health=" + view.snapshot().health() + "; position=" + view.snapshot().position().point() + "; navigation=" + view.navigation()
                 + NpcPresentation.describe(view.spec(), view.equipment().size(), packets.presentationAvailable())
-                + (view.mount() ? "; mount=" + MOUNTS_UNAVAILABLE : "") + (view.ride() ? "; ride=" + RIDING_UNAVAILABLE : "")
+                + actor.mountStatus() + (view.ride() ? "; ride=" + actor.rideSummary() : "")
                 + actor.rigStatus()
                 + (actor.error == null ? "" : "; last-valid-retained=true; " + actor.error);
     }
     @Override public List<String> validateActivation(NpcDefinition definition) {
         if (!available()) return List.of("NPC runtime " + (closed ? "closed" : unavailable));
-        return DefinitionSpec.validate(Objects.requireNonNull(definition), geometries.keySet(), this::worldKey, DefinitionItems::stack);
+        List<String> errors = new ArrayList<>(DefinitionSpec.validate(Objects.requireNonNull(definition), geometries.keySet(), this::worldKey, DefinitionItems::stack));
+        errors.addAll(mountBlockers(definition));
+        return List.copyOf(errors);
     }
-    @Override public String rideStatus() { return "Riding unavailable: " + RIDING_UNAVAILABLE; }
-    @Override public boolean stopRider(String playerName) { throw new IllegalStateException(RIDING_UNAVAILABLE); }
+    /** Structural mount problems stop an edit; a missing or dormant vehicle does not. Any thread: reads published definitions. */
+    private List<String> mountBlockers(NpcDefinition definition) {
+        Map<String, NpcDefinition> snapshot = runtime.npcs().snapshot();
+        Map<String, MountRelations.Node> nodes = new HashMap<>();
+        for (RegionActor actor : actors.values()) {
+            DefinitionSpec<ItemStack> spec = actor.desired.spec();
+            if (spec != null) nodes.put(actor.id, node(actor.id, actor.uuid, spec.definition()));
+        }
+        nodes.put(definition.id(), node(definition.id(), definition.uuid(), definition));
+        return MountRelations.resolve(nodes.values(), (String id) -> uuidOf(snapshot, id)).diagnostics().stream()
+                .filter((MountRelations.Diagnostic problem) -> problem.code().blocksActivation() && problem.id().equals(definition.id()))
+                .map((MountRelations.Diagnostic problem) -> problem.field() + ": " + problem.message()).toList();
+    }
+    private static MountRelations.Node node(String id, UUID uuid, NpcDefinition definition) {
+        return new MountRelations.Node(id, uuid, MountDeclaration.parse(definition.json()).orElse(null));
+    }
+    private static UUID uuidOf(Map<String, NpcDefinition> snapshot, String id) { NpcDefinition known = snapshot.get(id); return known == null ? null : known.uuid(); }
+    /** Global region thread: passenger relations follow definition changes. */
+    private void resolveMounts(Map<String, NpcDefinition> snapshot) {
+        if (snapshot == mountSnapshot && !mountsDirty.getAndSet(false)) return;
+        mountSnapshot = snapshot;
+        // Relations follow the published definitions, so an edit counts as soon as it is published.
+        List<MountRelations.Node> nodes = new ArrayList<>();
+        for (RegionActor actor : actors.values()) {
+            NpcDefinition definition = snapshot.get(actor.id);
+            if (DefinitionSpec.spawned(definition) && definition.uuid().equals(actor.uuid)) nodes.add(node(actor.id, actor.uuid, definition));
+        }
+        MountRelations.Resolution next = MountRelations.resolve(nodes, (String id) -> uuidOf(snapshot, id), (MountRelations.Node node) -> {
+            NpcDefinition current = snapshot.get(node.id());
+            return !DefinitionSpec.spawned(current) || !current.uuid().equals(node.uuid());
+        });
+        List<MountRelations.Diagnostic> reported = new ArrayList<>(next.diagnostics());
+        reported.removeAll(mounts.diagnostics());
+        reported.stream().limit(20).forEach((MountRelations.Diagnostic problem) -> plugin.getLogger().warning("NPC mount: " + problem));
+        mounts = next;
+    }
+
+    @Override public String rideStatus() {
+        if (!available()) return "Riding unavailable: NPC runtime " + (closed ? "closed" : unavailable);
+        if (packets.riderUnavailable() != null) return "Riding unavailable: " + packets.riderUnavailable();
+        List<String> lines = new ArrayList<>();
+        for (RegionRides.Lease<RegionActor> lease : rides.leases()) { String line = lease.actor().rideLine(); if (line != null) lines.add(line); }
+        return "Riders " + rides.size() + "/" + art.arcane.animus.core.control.RideLedger.MAX_RIDERS + (lines.isEmpty() ? "" : " | " + String.join(" | ", lines));
+    }
+    /** Any thread: the ride's end runs on the NPC's owner. */
+    @Override public boolean stopRider(String playerName) {
+        if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
+        for (RegionRides.Lease<RegionActor> lease : rides.leases()) {
+            Player rider = online.get(lease.player());
+            if (rider != null && rider.getName().equalsIgnoreCase(playerName))
+                return endRide(lease, "stopped by administrator", ActorRide.Exit.RESTORE_POSITION);
+        }
+        return false;
+    }
+    /** Hands the end of a ride to the NPC's owner with the ride's epoch; a dormant NPC's lease simply ends. */
+    private boolean endRide(RegionRides.Lease<RegionActor> lease, String reason, ActorRide.Exit exit) {
+        RegionActor actor = lease.actor();
+        boolean queued = actor.owner.submit(new OwnerMailbox.Work() {
+            @Override public void run() { actor.endRide(lease.generation(), reason, exit); }
+            @Override public void refuse(String why) { rides.release(lease); }
+        });
+        if (!queued) rides.release(lease);
+        return true;
+    }
+    /** Owner of the player: the rider's viewer presents this NPC now. */
+    boolean presents(Player player, UUID npc) {
+        RegionViewer viewer = viewers.get(player.getUniqueId());
+        return viewer != null && viewer.player == player && viewer.presents(npc);
+    }
+    /**
+     * After a ride ended on the NPC's owner: on the rider's own scheduler, the detach reaches the rider's client before
+     * the dismount teleport, then the player is told why.
+     */
+    void dismounted(Player player, RegionActor actor, WorldPosition target, String message) {
+        if (!available()) return;
+        players.deliver(player.getUniqueId(), (Player rider) -> {
+            RegionViewer viewer = viewers.get(rider.getUniqueId());
+            if (viewer != null && viewer.player == rider) viewer.detach(actor);
+            if (target != null && rider.isOnline() && !rider.isDead()) {
+                World world = world(target.world());
+                org.bukkit.Location place = new org.bukkit.Location(world, target.point().x(), target.point().y(), target.point().z(), rider.getLocation().getYaw(), rider.getLocation().getPitch());
+                if (world != null) regions.teleport(rider, place);
+            }
+            if (message != null && rider.isOnline()) rider.sendMessage(message);
+        });
+    }
     @Override public Optional<String> selection(UUID viewer) {
         String id = selections.get(viewer);
         return id != null && runtime.npcs().snapshot().containsKey(id) ? Optional.of(id) : Optional.empty();
@@ -225,6 +325,38 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (!runtime.npcs().snapshot().containsKey(id)) throw new IllegalArgumentException("Unknown NPC: " + id);
         if (!selections.containsKey(viewer) && selections.size() >= settings.maximumViewers()) throw new IllegalStateException("Selection capacity reached");
         selections.put(viewer, id);
+    }
+    /**
+     * Starts combat on every NPC's owner. Null when it runs, otherwise why it cannot. Call once during startup, before
+     * definitions activate; each NPC opens its own engine on its next owner turn.
+     */
+    public String enableCombat(art.arcane.animus.core.combat.ProtectionAdapter protection, String protectionName) {
+        if (!available()) return "unavailable because the NPC runtime is: " + status();
+        if (!runtime.combatBudgets().enabled()) return "disabled in config.toml";
+        if (combat == null) combat = new RegionCombat(this, runtime.combatBudgets(), protection, protectionName);
+        return null;
+    }
+    public String combatStatus() { RegionCombat module = combat; return module == null ? null : module.status(); }
+    public String combatCommand(String[] args) { return Objects.requireNonNull(combat, "Combat is not running").execute(args); }
+    public String combatOperate(UUID npc, art.arcane.animus.core.behavior.builtin.BehaviorPlatform.CombatOperation operation, Optional<UUID> target) {
+        RegionCombat module = combat;
+        if (module == null) throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "combat-unavailable", "Combat is not running");
+        return module.operate(npc, operation, target);
+    }
+    public art.arcane.animus.core.hire.HireDesk.Guarding combatGuarding() { return Objects.requireNonNull(combat, "Combat is not running").guarding(); }
+    /** A combat NPC that has died while its definition stays spawned is still a combatant, so its death routine can speak. */
+    @Override public Optional<ActiveNpc> combatant(UUID npc) {
+        RegionActor actor = available() ? byUuid.get(npc) : null;
+        RegionActor.Publication view = actor == null ? null : actor.publication;
+        if (view == null || view.combat() == null || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(actor.id))) return active(npc);
+        return Optional.of(new ActiveNpc(actor.id, view.name(), view.snapshot()));
+    }
+    Player onlinePlayer(UUID id) { return online.get(id); }
+    void damaged(UUID npc, double amount, boolean died) {
+        TriggerDispatcher dispatcher = triggers;
+        if (dispatcher == null) return;
+        dispatcher.publish(new TriggerEvent.Damage(npc, amount));
+        if (died) { dispatcher.publish(new TriggerEvent.Death(npc)); dispatcher.dead(npc); }
     }
     @Override public Optional<ActiveNpc> active(UUID npc) {
         RegionActor actor = available() ? byUuid.get(npc) : null;
@@ -336,6 +468,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (to != null) join(anchored, to, actor);
     }
     void forget(RegionActor actor) {
+        mountsDirty.set(true);
         actors.remove(actor.id, actor);
         byUuid.remove(actor.uuid, actor);
         wakeRequests.remove(actor);
@@ -492,6 +625,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             Map<String, NpcDefinition> snapshot = runtime.npcs().snapshot();
             if (snapshot.size() > MAX_DEFINITIONS) throw new IllegalStateException("Definition runtime limit exceeded: " + MAX_DEFINITIONS);
             definitions.publish(snapshot, forced);
+            resolveMounts(snapshot);
             if (forced) viewerFailures.clear();
             int work = 0;
             while (work < RECONCILE_WORK) {
@@ -602,6 +736,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private void create(RegionActor.Desired desired, boolean announced) {
         RegionActor actor = new RegionActor(this, desired, announced);
         actors.put(actor.id, actor); byUuid.put(actor.uuid, actor);
+        mountsDirty.set(true);
         rest(actor, desired.spec().position().chunk());
         wakeRequests.add(actor);
     }
@@ -620,6 +755,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     }
     @EventHandler public void quit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
+        rideEnding(player, "offline");
         online.remove(player.getUniqueId(), player);
         previews.left(player.getUniqueId());
         RegionViewer viewer = viewers.get(player.getUniqueId());
@@ -627,8 +763,14 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         selections.remove(player.getUniqueId());
         viewerFailures.remove(player.getUniqueId());
     }
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void teleport(PlayerTeleportEvent event) { resetLater(event.getPlayer()); }
-    @EventHandler public void changedWorld(PlayerChangedWorldEvent event) { resetLater(event.getPlayer()); }
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true) public void teleport(PlayerTeleportEvent event) { rideEnding(event.getPlayer(), "teleported"); resetLater(event.getPlayer()); }
+    @EventHandler public void changedWorld(PlayerChangedWorldEvent event) { rideEnding(event.getPlayer(), "world-changed"); resetLater(event.getPlayer()); }
+    @EventHandler(priority = EventPriority.MONITOR) public void death(PlayerDeathEvent event) { rideEnding(event.getEntity(), "death"); }
+    /** On the player's own scheduler: the destination of a quit, death or teleport belongs to someone else, so the rider stays where it is. */
+    private void rideEnding(Player player, String reason) {
+        RegionRides.Lease<RegionActor> lease = rides.ofRider(player.getUniqueId());
+        if (lease != null) endRide(lease, reason, ActorRide.Exit.LEAVE_POSITION);
+    }
     @EventHandler public void respawn(PlayerRespawnEvent event) { resetLater(event.getPlayer()); }
     @EventHandler public void chunkLoaded(ChunkLoadEvent event) {
         ChunkPosition chunk = new ChunkPosition(event.getWorld().getUID().toString(), event.getChunk().getX(), event.getChunk().getZ());
@@ -653,6 +795,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (control != null) try { control.close(); } catch (Exception ignored) { /* The global scheduler already stopped. */ }
         HandlerList.unregisterAll(this);
         for (RegionActor actor : actors.values()) actor.owner.shutdown();
+        rides.clear();
+        if (combat != null) combat.close();
         // Viewer state belongs to each player's region; shutdown only stops the tasks and closes the network sessions.
         for (RegionViewer viewer : viewers.values()) viewer.stop();
         viewers.clear(); actors.clear(); byUuid.clear(); transfers.clear(); wakeRequests.clear(); resting.clear(); anchored.clear();
