@@ -423,6 +423,7 @@ final class RegionActor implements RegionOwner.Body {
                             || !loaded(new ChunkPosition(current.goal.world(), Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16)))) {
                         suspendRoute("unavailable terrain; no chunk loading requested"); return;
                     }
+                    if (fallBeforeLeg(current, world, owned)) return;
                     var bounds = PersistedNpcService.captureBounds(state.snapshot().position(), current.goal, hullWidth(), hullHeight());
                     if (!host.regions.owns(current.goal.world(), Math.floorDiv(bounds.minX(), 16), Math.floorDiv(bounds.minZ(), 16),
                             Math.floorDiv(bounds.minX() + bounds.sizeX() - 1, 16), Math.floorDiv(bounds.minZ() + bounds.sizeZ() - 1, 16))) {
@@ -493,6 +494,28 @@ final class RegionActor implements RegionOwner.Body {
     boolean watched() {
         long seen = watchedNanos;
         return seen != 0 && System.nanoTime() - seen < WATCHED_NANOS;
+    }
+    /**
+     * A walking body standing in the air falls one step per turn before it plans a leg, so the leg starts on the ground
+     * instead of failing from the air. True while it falls; the step is charged to the region's motion cells.
+     */
+    private boolean fallBeforeLeg(Route current, World world, ChunkOwnership owned) {
+        if (current.mode != MovementProfile.Mode.WALK || mount || !BodyMobility.falls(spec.type())) return false;
+        int wanted = IdleFall.cells(hullWidth(), hullHeight()), granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
+        if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return false; }
+        boolean swims = BodyMobility.forBody(spec.type(), hullWidth(), hullHeight()).supports(MovementProfile.Mode.SWIM);
+        WorldPosition at = state.snapshot().position();
+        IdleFall.Step step = IdleFall.step(at.point(), fallSpeed, hullWidth(), hullHeight(), swims, LiveMovementProbe.owned(world, owned));
+        host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted - step.sampled());
+        fallSpeed = step.speed();
+        boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
+        if (falling || step.outcome() == IdleFall.Outcome.LANDED) {
+            state.move(new WorldPosition(at.world(), step.to()));
+            host.index.upsert(state.snapshot());
+            pose++; setPose(yaw, pitch, !falling);
+        }
+        if (falling) routeStatus(current, "falling", "to the ground before the leg starts");
+        return falling;
     }
     /** Idle gravity: one bounded step per owner tick while the NPC falls, charged to the region's motion cells. */
     private void support() {
