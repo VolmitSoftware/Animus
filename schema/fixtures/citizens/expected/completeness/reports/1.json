@@ -1,0 +1,56 @@
+{
+  "citizensId": 1,
+  "presentationWarnings": [],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/uuid": "CONVERTED",
+    "/name": "CONVERTED",
+    "/metadata/nameplate-visible": "CONVERTED",
+    "/metadata/protected": "UNSUPPORTED_PRESERVED",
+    "/metadata/minecraft-ai": "UNSUPPORTED_PRESERVED",
+    "/metadata/flyable": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/location/yaw": "CONVERTED",
+    "/traits/location/pitch": "CONVERTED",
+    "/traits/age/age": "CONVERTED",
+    "/traits/age/locked": "CONVERTED",
+    "/traits/gravity/enabled": "CONVERTED",
+    "/traits/horsemodifiers/saddle/type": "CONVERTED",
+    "/traits/horsemodifiers/saddle/amount": "CONVERTED",
+    "/traits/horsemodifiers/color": "REQUIRES_REVIEW",
+    "/traits/targetable/targetable": "UNSUPPORTED_PRESERVED",
+    "/traits/spawned": "CONVERTED",
+    "/traits/controllable/enabled": "CONVERTED",
+    "/traits/mounttrait/mountedon": "CONVERTED",
+    "/traits/poses/list/0": "UNSUPPORTED_PRESERVED",
+    "/traits/lookclose/enabled": "CONVERTED",
+    "/traits/lookclose/perplayer": "REQUIRES_REVIEW",
+    "/traits/sneak": "CONVERTED"
+  },
+  "reasons": {
+    "/metadata/protected": "Animus NPCs take damage only through an enabled animus:combat module, which this NPC does not have",
+    "/metadata/minecraft-ai": "Animus bodies have no vanilla mob AI; use routes, look-close or combat instead",
+    "/traits/horsemodifiers/color": "horse colours, markings and chests are not shown",
+    "/traits/targetable/targetable": "Animus bodies are packet-only, so hostile mobs never target them",
+    "/traits/poses/list/0": "named poses are used by Citizens pose commands; Animus has no named poses, only the default facing",
+    "/traits/lookclose/perplayer": "every viewer sees the NPC look at the same target"
+  },
+  "worldRemaps": [],
+  "references": [
+    {
+      "source": "/traits/mounttrait/mountedon",
+      "kind": "mount",
+      "original": "0a1b2c3d-0000-4000-8000-000000000500",
+      "npcUuid": "0a1b2c3d-0000-4000-8000-000000000500",
+      "npcId": "citizens-0",
+      "citizensId": 0,
+      "status": "resolved"
+    }
+  ],
+  "validationErrors": []
+}

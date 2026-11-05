@@ -4,6 +4,7 @@
   "package": "art.arcane.animus.mod.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "AgeableDataAccess",
     "AvatarDataAccess",
     "BlockDisplayDataAccess",
     "DisplayDataAccess",
@@ -12,12 +13,16 @@
     "GamePacketHooks",
     "InteractionDataAccess",
     "ItemDisplayDataAccess",
+    "LivingDataAccess",
     "LivingEntityHooks",
+    "PiglinDataAccess",
     "PlayerInfoUpdateAccess",
     "PlayerListHooks",
     "ProjectileHooks",
     "ServerPlayerHooks",
-    "TextDisplayDataAccess"
+    "TextDisplayDataAccess",
+    "ZoglinDataAccess",
+    "ZombieDataAccess"
   ],
   "injectors": {
     "defaultRequire": 1

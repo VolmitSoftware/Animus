@@ -357,7 +357,7 @@
       "additionalProperties": false,
       "required": ["categories"],
       "properties": {
-        "categories": {"type": "array", "minItems": 1, "maxItems": 7, "items": {"enum": ["spawn", "patrols", "combat", "riding", "shops", "builder", "all"]}}
+        "categories": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"enum": ["spawn", "patrols", "combat", "riding", "shops", "builder", "denizen", "all"]}}
       }
     },
     "import-review": {
@@ -378,6 +378,10 @@
         "shopkeepers": {
           "type": "object", "additionalProperties": false, "required": ["importId", "source", "state", "report", "waiting"],
           "properties": {"importId": {"$ref": "#/$defs/importId"}, "source": {"type": "string"}, "state": {"enum": ["staged", "applied", "rolled-back"]}, "report": {"type": "string"}, "waiting": {"type": "integer", "minimum": 0}}
+        },
+        "denizen": {
+          "type": "object", "additionalProperties": false, "required": ["importId", "source", "state", "report"],
+          "properties": {"importId": {"$ref": "#/$defs/importId"}, "source": {"type": "string"}, "state": {"enum": ["staged", "applied", "rolled-back"]}, "report": {"type": "string"}}
         },
         "pending": {"type": "object", "description": "Applied: NPCs waiting in each review category.", "additionalProperties": {"type": "integer", "minimum": 0}},
         "preserved": {"type": "object", "description": "Applied: Citizens data kept but not run, by kind.", "additionalProperties": {"type": "integer", "minimum": 0}},

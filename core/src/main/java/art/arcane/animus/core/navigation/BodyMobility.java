@@ -28,6 +28,8 @@ public final class BodyMobility {
         Objects.requireNonNull(type, "type");
         return !FLYERS.contains(type) && !AQUATIC.contains(type);
     }
+    /** Bodies that sink in water instead of swimming. */
+    public static boolean sinks(String type) { return SINKERS.contains(Objects.requireNonNull(type, "type")); }
     /** A route's requested mode: walk stays on land, swim also crosses water at the surface (aquatic bodies dive), fly flies. */
     public static MovementProfile forRoute(String type, double width, double height, MovementProfile.Mode mode) {
         Objects.requireNonNull(type, "type"); Objects.requireNonNull(mode, "mode");

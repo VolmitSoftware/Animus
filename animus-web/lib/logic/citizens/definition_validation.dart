@@ -1,10 +1,12 @@
-/// Port of core's `NpcDefinition.validate` with `NpcAppearance`, `NpcItem`, `ArmorStandLook` and `NpcInventory`.
+/// Port of core's `NpcDefinition.validate` with `NpcAppearance`, `HologramStyle`, `BodyTraits`, `NpcItem`, `ArmorStandLook`,
+/// `NpcInventory` and `MovementSettings`.
 ///
 /// The module validators (`WaypointSettings`, `CombatSettings`, `MountDeclaration`, `RideSettings`, `ShopBinding`,
 /// `GuiBinding`, `HireTerms`) are not ported: the modules this converter writes are built to pass them, and the server
 /// validates every definition again when an import is applied, so a module the browser accepted wrongly is still refused.
 library;
 
+import 'citizens_traits.dart' show teamColors;
 import 'java_json.dart';
 import 'java_lang.dart';
 import 'presentation.dart';
@@ -13,6 +15,10 @@ const List<String> _poses = <String>['standing', 'sneaking', 'sleeping', 'swimmi
 const List<String> _parts = <String>['head', 'body', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
 const Set<String> _lookFlags = <String>{'small', 'arms', 'basePlate', 'invisible'};
 const Set<String> _itemFields = <String>{'id', 'count', 'components', 'imported'};
+const Set<String> _hologramFields = <String>{'lines', 'lineHeight', 'viewRange', 'billboard', 'shadowed', 'seeThrough', 'interpolationDelay', 'interpolationDuration'};
+const Set<String> _lineFields = <String>{'text', 'marginTop', 'marginBottom'};
+const Set<String> _billboards = <String>{'center', 'fixed', 'vertical', 'horizontal'};
+const Set<String> _movementFields = <String>{'speed', 'avoidWater', 'fly', 'stepHeight', 'maximumFall', 'pathRange', 'arrivalMargin', 'stuck'};
 
 /// `NpcAppearance.displayText`.
 bool displayText(String? text) => text != null && text.length <= maxText && !text.runes.any(javaIsIsoControl);
@@ -69,6 +75,7 @@ List<String> validateDefinition(JObject object) {
   }
   _appearance(object, errors);
   _inventory(object, errors);
+  _movement(object, errors);
   if (object.has('modules') && object.get('modules') is! JObject) errors.add(r'$.modules: expected object');
   return errors;
 }
@@ -145,7 +152,7 @@ void _appearance(JObject definition, List<String> errors) {
       errors.add(r'$.hologram: expected object');
     } else {
       for (final String key in value.keys) {
-        if (key != 'lines') errors.add('\$.hologram.$key: unknown field');
+        if (!_hologramFields.contains(key)) errors.add('\$.hologram.$key: unknown field');
       }
       final JElement? declared = value.get('lines');
       if (declared is! JArray) {
@@ -154,13 +161,23 @@ void _appearance(JObject definition, List<String> errors) {
         errors.add('\$.hologram.lines: expected at most $maxLines lines');
       } else {
         for (int i = 0; i < declared.length; i++) {
-          final JElement line = declared[i];
-          if (line is! JString) {
-            errors.add('\$.hologram.lines[$i]: expected string');
-          } else if (!displayText(line.value)) {
-            errors.add('\$.hologram.lines[$i]: expected at most $maxText characters without control characters');
-          }
+          final String path = '\$.hologram.lines[$i]';
+          final String? line = _hologramLine(declared[i], path, errors);
+          if (line != null && !displayText(line)) errors.add('$path: expected at most $maxText characters without control characters');
         }
+      }
+      _decimal(value, 'lineHeight', r'$.hologram', 0, 4, 'blocks', errors);
+      _decimal(value, 'viewRange', r'$.hologram', 1, 512, 'blocks', errors);
+      final JElement? billboard = value.get('billboard');
+      if (billboard != null && !(billboard is JString && _billboards.contains(billboard.value))) {
+        errors.add(r'$.hologram.billboard: expected center, fixed, vertical or horizontal');
+      }
+      for (final String key in const <String>['shadowed', 'seeThrough']) {
+        if (value.has(key) && value.get(key) is! JBool) errors.add('\$.hologram.$key: expected boolean');
+      }
+      for (final String key in const <String>['interpolationDelay', 'interpolationDuration']) {
+        final JElement? ticks = value.get(key);
+        if (ticks != null && !_whole(ticks, 0, 1200)) errors.add('\$.hologram.$key: expected 0..1200 ticks');
       }
     }
   }
@@ -191,6 +208,77 @@ void _appearance(JObject definition, List<String> errors) {
     } else {
       _armorStand(definition.get('armorStand')!, errors);
     }
+  }
+  for (final String key in const <String>['glowing', 'baby', 'usingItem', 'listed', 'gravity']) {
+    if (definition.has(key) && definition.get(key) is! JBool) errors.add('\$.$key: expected boolean');
+  }
+  final JElement? color = definition.get('teamColor');
+  if (color != null && !(color is JString && teamColors.contains(color.value))) errors.add(r'$.teamColor: expected a team colour such as red, dark_aqua or gold');
+}
+
+/// `HologramStyle.line`: a string, or an object with text and margins.
+String? _hologramLine(JElement value, String path, List<String> errors) {
+  if (value is JString) return value.value;
+  if (value is! JObject) {
+    errors.add('$path: expected string or object with text');
+    return null;
+  }
+  for (final String key in value.keys) {
+    if (!_lineFields.contains(key)) errors.add('$path.$key: unknown field');
+  }
+  final JElement? text = value.get('text');
+  if (text is! JString) {
+    errors.add('$path.text: expected string');
+    return null;
+  }
+  _decimal(value, 'marginTop', path, -4, 4, 'blocks', errors);
+  _decimal(value, 'marginBottom', path, -4, 4, 'blocks', errors);
+  return text.value;
+}
+
+void _decimal(JObject object, String key, String path, double minimum, double maximum, String unit, List<String> errors) {
+  final JElement? value = object.get(key);
+  if (value == null) return;
+  if (value is! JNumber || !value.asDouble.isFinite || value.asDouble < minimum || value.asDouble > maximum) {
+    errors.add('$path.$key: expected ${_format(minimum)}..${_format(maximum)} $unit');
+  }
+}
+
+String _format(double value) => value == value.roundToDouble() ? '${value.toInt()}' : javaDoubleToString(value);
+
+bool _whole(JElement value, double minimum, double maximum) =>
+    value is JNumber && value.asDouble == value.asDouble.roundToDouble() && value.asDouble >= minimum && value.asDouble <= maximum;
+
+/// `MovementSettings.read`.
+void _movement(JObject definition, List<String> errors) {
+  final JElement? value = definition.get('movement');
+  if (value == null) return;
+  if (value is! JObject) {
+    errors.add(r'$.movement: expected object');
+    return;
+  }
+  _decimal(value, 'speed', r'$.movement', 1, 5, 'blocks/second', errors);
+  for (final String key in const <String>['avoidWater', 'fly']) {
+    if (value.has(key) && value.get(key) is! JBool) errors.add('\$.movement.$key: expected boolean');
+  }
+  _decimal(value, 'stepHeight', r'$.movement', 0, 1.5, 'blocks', errors);
+  if (value.has('maximumFall') && !_whole(value.get('maximumFall')!, 0, 16)) errors.add(r'$.movement.maximumFall: expected whole 0..16 blocks');
+  _decimal(value, 'pathRange', r'$.movement', 1, 256, 'blocks', errors);
+  _decimal(value, 'arrivalMargin', r'$.movement', 0, 4, 'blocks', errors);
+  if (value.has('stuck')) {
+    final JElement stuck = value.get('stuck')!;
+    if (stuck is! JObject) {
+      errors.add(r'$.movement.stuck: expected object');
+    } else {
+      for (final String key in stuck.keys) {
+        if (key != 'afterTicks' && key != 'teleport') errors.add('\$.movement.stuck.$key: unknown field');
+      }
+      if (stuck.has('afterTicks') && !_whole(stuck.get('afterTicks')!, 1, 12000)) errors.add(r'$.movement.stuck.afterTicks: expected whole 1..12000 ticks');
+      if (stuck.has('teleport') && stuck.get('teleport') is! JBool) errors.add(r'$.movement.stuck.teleport: expected boolean');
+    }
+  }
+  for (final String key in value.keys) {
+    if (!_movementFields.contains(key)) errors.add('\$.movement.$key: unknown field');
   }
 }
 

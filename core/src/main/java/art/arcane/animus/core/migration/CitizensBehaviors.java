@@ -28,14 +28,20 @@ final class CitizensBehaviors {
         LOOK_DEFAULTS.put("realisticlooking", false);
         LOOK_DEFAULTS.put("disablewhilenavigating", true);
     }
-    private static final List<String> LOOK_UNSUPPORTED = List.of("enableRandomLook", "headonly", "linkedbody", "perplayer", "randomSwitchTargets", "targetnpcs");
+    /** Look-close options Animus does not have, with what the NPC does instead. */
+    private static final Map<String, String> LOOK_UNSUPPORTED = Map.of("headonly", "Animus turns the whole body, not only the head",
+            "linkedbody", "Animus turns the whole body with the head", "perplayer", "every viewer sees the NPC look at the same target",
+            "randomSwitchTargets", "the NPC keeps looking at the nearest target");
+    /** Citizens' default random look delay in ticks. */
+    static final int DEFAULT_RANDOM_LOOK_DELAY = 60;
 
     record Document(String path, String content) {}
     record Result(Optional<JsonObject> navigation, Optional<JsonObject> lookClose, List<String> behaviors, List<Document> documents,
-                  List<String> warnings, Set<String> converted, int points, int guides) {
+                  List<String> warnings, Set<String> converted, Map<String, CitizensImporter.Note> notes, int points, int guides) {
         Result {
             navigation = navigation.map(JsonObject::deepCopy); lookClose = lookClose.map(JsonObject::deepCopy);
             behaviors = List.copyOf(behaviors); documents = List.copyOf(documents); warnings = List.copyOf(warnings); converted = Set.copyOf(converted);
+            notes = Map.copyOf(notes);
         }
     }
 
@@ -43,6 +49,7 @@ final class CitizensBehaviors {
     private final JsonObject traits, record, defaults;
     private final List<String> warnings = new ArrayList<>();
     private final Set<String> converted = new HashSet<>();
+    private final Map<String, CitizensImporter.Note> notes = new HashMap<>();
     private final List<String> behaviors = new ArrayList<>();
     private final List<Document> documents = new ArrayList<>();
     private int points, guides;
@@ -63,7 +70,7 @@ final class CitizensBehaviors {
         mapping.commands();
         List<String> sorted = new ArrayList<>(mapping.warnings);
         Collections.sort(sorted);
-        return new Result(navigation, look, mapping.behaviors, mapping.documents, sorted, mapping.converted, mapping.points, mapping.guides);
+        return new Result(navigation, look, mapping.behaviors, mapping.documents, sorted, mapping.converted, mapping.notes, mapping.points, mapping.guides);
     }
 
     /**
@@ -109,6 +116,11 @@ final class CitizensBehaviors {
         JsonObject data = object(waypoints.get(provider));
         if (data == null) data = new JsonObject();
         String at = base + "/" + pointer(provider);
+        for (String other : waypoints.keySet())
+            if (!other.equals("provider") && !other.equals(provider))
+                notes.put(base + "/" + pointer(other), new CitizensImporter.Note(CitizensImporter.Status.UNSUPPORTED_PRESERVED,
+                        "settings of the " + other + " waypoint provider, which this NPC does not use"));
+        if (data.isEmpty()) converted.add(at);
         String order;
         JsonArray route = new JsonArray(), helpers = new JsonArray();
         int dropped = 0;
@@ -179,13 +191,7 @@ final class CitizensBehaviors {
         if (order.equals("random")) {
             module.add("guides", helpers);
             module.addProperty("linkDistance", link);
-            int isolated = isolated(route, helpers, link);
-            if (isolated > 0) warnings.add(at + ": " + isolated + " of " + route.size() + " destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them");
         } else if (order.equals("wander")) module.add("wander", wander);
-        else {
-            int far = longLegs(route, order.equals("sequence") && route.size() > 1);
-            if (far > 0) warnings.add(at + ": " + far + " legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one until points are added between them");
-        }
         return module;
     }
 
@@ -207,6 +213,10 @@ final class CitizensBehaviors {
             point.addProperty("y", (long) Math.floor(y));
             point.addProperty("z", Math.floor(z) + 0.5);
             for (String axis : List.of("world", "x", "y", "z")) converted.add(locationPath + "/" + axis);
+            // Citizens walks to the block centre and never turns to a waypoint's facing; the world UUID only names the world.
+            for (String unused : List.of("yaw", "pitch", "worldid")) if (location.has(unused)) converted.add(locationPath + "/" + unused);
+            if (!triggers && item != null && item.has("triggers"))
+                notes.put(at + "/triggers", new CitizensImporter.Note(CitizensImporter.Status.CONVERTED, "Citizens never runs triggers on guide waypoints"));
             if (triggers && item != null && item.has("triggers")) {
                 long delay = 0;
                 for (Map.Entry<String, JsonElement> trigger : entries(item.get("triggers"))) {
@@ -232,41 +242,13 @@ final class CitizensBehaviors {
         JsonElement modifier = navigator == null ? null : navigator.get("speedmodifier");
         double factor = 1;
         if (positive(modifier)) { factor = modifier.getAsDouble(); converted.add("/navigator/speedmodifier"); }
+        return speed(factor);
+    }
+
+    /** Blocks per second for a Citizens speed modifier, within Animus' 1..5. */
+    static double speed(double factor) {
         double speed = Math.round(CITIZENS_WALK_SPEED * factor * 100) / 100.0;
         return Math.min(5.0, Math.max(1.0, speed));
-    }
-
-    private static boolean fits(JsonObject from, JsonObject to) {
-        return Math.abs(from.get("x").getAsDouble() - to.get("x").getAsDouble()) <= LEG_HORIZONTAL
-                && Math.abs(from.get("z").getAsDouble() - to.get("z").getAsDouble()) <= LEG_HORIZONTAL
-                && Math.abs(from.get("y").getAsDouble() - to.get("y").getAsDouble()) <= LEG_VERTICAL;
-    }
-
-    private static int longLegs(JsonArray route, boolean loop) {
-        int count = 0;
-        for (int index = 1; index < route.size(); index++) if (!fits(route.get(index - 1).getAsJsonObject(), route.get(index).getAsJsonObject())) count++;
-        if (loop && !fits(route.get(route.size() - 1).getAsJsonObject(), route.get(0).getAsJsonObject())) count++;
-        return count;
-    }
-
-    private static int isolated(JsonArray destinations, JsonArray helpers, double link) {
-        List<JsonObject> nodes = new ArrayList<>();
-        destinations.forEach((JsonElement node) -> nodes.add(node.getAsJsonObject()));
-        helpers.forEach((JsonElement node) -> nodes.add(node.getAsJsonObject()));
-        int count = 0;
-        for (int index = 0; index < destinations.size(); index++) {
-            JsonObject from = nodes.get(index);
-            boolean linked = false;
-            for (int other = 0; other < nodes.size() && !linked; other++) {
-                if (other == index) continue;
-                JsonObject to = nodes.get(other);
-                double dx = from.get("x").getAsDouble() - to.get("x").getAsDouble(), dy = from.get("y").getAsDouble() - to.get("y").getAsDouble(),
-                        dz = from.get("z").getAsDouble() - to.get("z").getAsDouble();
-                linked = Math.sqrt(dx * dx + dy * dy + dz * dz) <= link && fits(from, to);
-            }
-            if (!linked) count++;
-        }
-        return count;
     }
 
     // ---- Look-close ----
@@ -277,22 +259,64 @@ final class CitizensBehaviors {
         String base = "/traits/lookclose";
         JsonObject values = defaults.getAsJsonObject("lookclose");
         boolean enabled = flag(look, "enabled", values.get("enabled").getAsBoolean(), base);
-        if (!enabled) return null;
         boolean realistic = flag(look, "realisticlooking", values.get("realisticlooking").getAsBoolean(), base);
         boolean disabled = flag(look, "disablewhilenavigating", values.get("disablewhilenavigating").getAsBoolean(), base);
         double range = 10;
         if (positive(look.get("range"))) { range = look.get("range").getAsDouble(); converted.add(base + "/range"); }
-        if (range > MAX_LOOK_RANGE) { warnings.add(base + "/range: look ranges above 64 blocks became 64"); range = MAX_LOOK_RANGE; }
+        if (range > MAX_LOOK_RANGE) { warnings.add(base + "/range: look ranges above 64 blocks became 64; lower it in animus:look-close if that is too far"); range = MAX_LOOK_RANGE; }
         if (range < 1) range = 1;
-        for (String option : LOOK_UNSUPPORTED)
-            if (bool(look.get(option), false)) warnings.add(base + "/" + option + ": not supported; the NPC looks at the nearest player");
-        if (look.has("filter") && look.get("filter").isJsonPrimitive()) warnings.add(base + "/filter: entity filters are not supported; the NPC looks at the nearest player");
+        for (Map.Entry<String, String> option : new TreeMap<>(LOOK_UNSUPPORTED).entrySet()) {
+            JsonElement value = look.get(option.getKey());
+            if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) continue;
+            if (!value.getAsBoolean()) converted.add(base + "/" + option.getKey());
+            else notes.put(base + "/" + option.getKey(), new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, option.getValue()));
+        }
+        if (look.has("filter") && look.get("filter").isJsonPrimitive())
+            notes.put(base + "/filter", new CitizensImporter.Note(CitizensImporter.Status.REQUIRES_REVIEW, "entity filters are not available; the NPC looks at the nearest target"));
+        boolean npcs = flag(look, "targetnpcs", false, base);
         JsonObject module = new JsonObject();
-        module.addProperty("enabled", true);
+        module.addProperty("enabled", enabled);
         module.addProperty("range", range);
         module.addProperty("lineOfSight", realistic);
         module.addProperty("whileNavigating", !disabled);
+        if (npcs) module.addProperty("npcs", true);
+        JsonObject random = randomLook(look, base);
+        if (random != null) module.add("randomLook", random);
         return module;
+    }
+
+    /** Citizens' idle random looking, kept with its delay and ranges even while it is off. */
+    private JsonObject randomLook(JsonObject look, String base) {
+        boolean declared = false;
+        for (String key : List.of("enableRandomLook", "randomlookdelay", "randomLookDelay", "randomYawRange", "randomPitchRange")) declared |= look.has(key);
+        if (!declared) return null;
+        JsonObject random = new JsonObject();
+        random.addProperty("enabled", flag(look, "enableRandomLook", false, base));
+        String delayKey = look.has("randomlookdelay") ? "randomlookdelay" : "randomLookDelay";
+        JsonElement delay = look.get(delayKey);
+        long ticks = DEFAULT_RANDOM_LOOK_DELAY;
+        if (number(delay)) {
+            ticks = clamp((long) Math.floor(delay.getAsDouble()), 1, MAX_WAIT);
+            converted.add(base + "/" + delayKey);
+        }
+        random.addProperty("delayTicks", ticks);
+        random.add("yaw", angles(look, "randomYawRange", -360, 360, 0, 360, base));
+        random.add("pitch", angles(look, "randomPitchRange", -90, 90, 0, 0, base));
+        return random;
+    }
+
+    private JsonArray angles(JsonObject look, String key, double minimum, double maximum, double low, double high, String base) {
+        List<Map.Entry<String, JsonElement>> bounds = entries(look.get(key));
+        if (bounds.size() == 2 && number(bounds.get(0).getValue()) && number(bounds.get(1).getValue())) {
+            double a = bounds.get(0).getValue().getAsDouble(), b = bounds.get(1).getValue().getAsDouble();
+            low = Math.max(minimum, Math.min(a, b));
+            high = Math.min(maximum, Math.max(a, b));
+            for (Map.Entry<String, JsonElement> bound : bounds) converted.add(base + "/" + key + "/" + bound.getKey());
+        }
+        JsonArray range = new JsonArray();
+        range.add(low);
+        range.add(high);
+        return range;
     }
 
     private boolean flag(JsonObject object, String field, boolean fallback, String base) {

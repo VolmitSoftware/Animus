@@ -101,21 +101,41 @@ class WaypointProgressTest {
         }
         assertTrue(seen.containsAll(List.of(0, 1, 2)), seen.toString());
     }
-    @Test void randomWithoutAnyPathPausesInsteadOfHalting() throws Exception {
-        WaypointSettings apart = route("\"order\":\"random\",\"linkDistance\":5,\"waitTicks\":200,\"points\":[{\"x\":30,\"y\":1,\"z\":0},{\"x\":-30,\"y\":1,\"z\":0}]");
-        WaypointProgress progress = progress(apart, 2);
-        WaypointProgress.Leg pause = progress.start(HOME).orElseThrow();
-        assertTrue(pause.pause()); assertEquals(200, pause.waitTicks());
-        assertTrue(progress.resume(pause, HOME).orElseThrow().pause());
-        assertFalse(progress.complete());
-    }
-    @Test void randomLinksRespectLegBoundsEvenWithinLinkDistance() throws Exception {
-        WaypointSettings tall = route("\"order\":\"random\",\"mode\":\"fly\",\"linkDistance\":64,\"points\":[{\"x\":0,\"y\":1,\"z\":0},{\"x\":0,\"y\":20,\"z\":0}]");
-        WaypointProgress progress = progress(tall, 5);
+    @Test void anIsolatedDestinationIsReachedThroughTheClosestNodeInsteadOfNever() throws Exception {
+        // Destination 2 lies 170 blocks beyond everything else; the link distance is a preference, not a wall.
+        WaypointSettings guided = route("""
+                "order":"random","linkDistance":20,
+                "points":[{"x":0,"y":1,"z":0},{"x":30,"y":1,"z":0},{"x":200,"y":30,"z":0}],
+                "guides":[{"x":15,"y":1,"z":0}]""");
+        WaypointProgress progress = progress(guided, 7);
+        Set<Integer> seen = new TreeSet<>();
         WaypointProgress.Leg leg = progress.start(HOME).orElseThrow();
-        // From the first point the second is 19 blocks up, beyond the 8 block leg bound, so the route pauses.
-        if (!leg.pause()) { assertEquals(0, leg.arrival()); leg = progress.arrived(leg, leg.goal()).orElseThrow(); }
-        assertTrue(leg.pause());
+        for (int i = 0; i < 60; i++) {
+            assertFalse(leg.pause(), "every destination is reachable");
+            seen.add(leg.arrival());
+            WaypointProgress.Leg next = progress.arrived(leg, leg.goal()).orElseThrow();
+            if (next.arrival() == 2 && leg.arrival() != 2) assertEquals(1, leg.arrival(), "the long hop leaves from the closest node");
+            leg = next;
+        }
+        assertTrue(seen.containsAll(List.of(0, 1, 2, 3)), seen.toString());
+    }
+    @Test void linkedHopsArePreferredOverALongHop() throws Exception {
+        WaypointSettings guided = route("""
+                "order":"random","linkDistance":20,
+                "points":[{"x":0,"y":1,"z":0},{"x":60,"y":1,"z":0}],
+                "guides":[{"x":15,"y":1,"z":0},{"x":30,"y":1,"z":0},{"x":45,"y":1,"z":0}]""");
+        WaypointProgress progress = progress(guided, 3);
+        WaypointProgress.Leg leg = progress.start(HOME).orElseThrow();
+        for (int i = 0; i < 30; i++) {
+            WaypointProgress.Leg next = progress.arrived(leg, leg.goal()).orElseThrow();
+            assertTrue(leg.goal().distance(next.goal()) <= 20, "a linked path exists, so every hop follows a link");
+            leg = next;
+        }
+    }
+    @Test void randomLinksIgnoreTheOldLegBounds() throws Exception {
+        WaypointSettings tall = route("\"order\":\"random\",\"mode\":\"fly\",\"linkDistance\":64,\"points\":[{\"x\":0,\"y\":1,\"z\":0},{\"x\":0,\"y\":20,\"z\":0}]");
+        // 19 blocks up was beyond the old 8 block leg and paused the route; now the points link and every leg walks.
+        assertEquals(6, walk(progress(tall, 5), 6).size());
     }
     @Test void seededRandomIsDeterministic() throws Exception {
         WaypointSettings many = route("\"order\":\"random\",\"points\":[{\"x\":0,\"y\":1,\"z\":0},{\"x\":4,\"y\":1,\"z\":0},{\"x\":8,\"y\":1,\"z\":0},{\"x\":4,\"y\":1,\"z\":4}]");
@@ -123,18 +143,16 @@ class WaypointProgressTest {
         assertEquals(walked, walk(progress(many, 42), 30));
         for (int i = 1; i < walked.size(); i++) assertNotEquals(walked.get(i - 1), walked.get(i), "A new destination differs from the current point");
     }
-    @Test void wanderTargetsStayInsideRadiusHeightAndLegBounds() throws Exception {
+    @Test void wanderTargetsStayInsideRadiusAndHeightOfAnyCentre() throws Exception {
         WaypointSettings around = route("\"order\":\"wander\",\"wander\":{\"radius\":5,\"height\":2},\"points\":[{\"x\":100,\"y\":64,\"z\":100},{\"x\":-100,\"y\":64,\"z\":-100}]");
         WaypointProgress progress = progress(around, 9);
         Vec3 at = new Vec3(100, 64, 100);
         WaypointProgress.Leg leg = progress.start(at).orElseThrow();
         for (int i = 0; i < 200; i++) {
             Vec3 goal = leg.goal();
-            assertTrue(Math.abs(goal.x() - at.x()) <= 32 && Math.abs(goal.z() - at.z()) <= 32 && Math.abs(goal.y() - at.y()) <= 8);
             assertEquals(.5, goal.x() - Math.floor(goal.x())); assertEquals(goal.y(), Math.rint(goal.y()));
             Vec3 centre = around.points().get(leg.arrival()).position();
-            boolean clamped = Math.abs(centre.x() - at.x()) > 26;
-            if (!clamped) assertTrue(Math.abs(goal.x() - .5 - centre.x()) <= 5 && Math.abs(goal.y() - centre.y()) <= 2, goal + " near " + centre);
+            assertTrue(Math.abs(goal.x() - .5 - centre.x()) <= 5 && Math.abs(goal.y() - centre.y()) <= 2, goal + " near " + centre);
             at = goal;
             leg = progress.arrived(leg, at).orElseThrow();
         }

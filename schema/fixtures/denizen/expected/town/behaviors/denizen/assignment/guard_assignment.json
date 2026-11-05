@@ -1,0 +1,230 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:assignment/guard_assignment",
+  "entry": "on-click",
+  "routines": {
+    "on-click": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "&aHello {player_name}, I am Guard."
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:flag-state",
+          "arguments": {
+            "name": "met_guard",
+            "scope": "player"
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Welcome back.",
+              "audience": "nearby"
+            }
+          },
+          "else": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:set-flag",
+                "arguments": {
+                  "name": "met_guard",
+                  "scope": "player"
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:advance-quest-state",
+                "arguments": {
+                  "name": "visits",
+                  "scope": "player"
+                }
+              },
+              {
+                "type": "call",
+                "routine": "task-greet_task"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "task-greet_task": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "wait",
+          "ticks": 40
+        },
+        {
+          "type": "action",
+          "capability": "animus:spawn-particle",
+          "arguments": {
+            "particle": "minecraft:happy_villager",
+            "count": 10,
+            "spread": 0.5,
+            "audience": "nearby"
+          }
+        },
+        {
+          "type": "repeat",
+          "count": 2,
+          "body": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Wave."
+            }
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "visits",
+            "scope": "player",
+            "equals": 1
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "First visit."
+            }
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Again."
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "minecraft:title {player} times 20 40 20"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "minecraft:title {player} subtitle {\"text\":\"{player_name}\"}"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "minecraft:title {player} title {\"text\":\"Guard\"}"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "minecraft:title {player} actionbar {\"text\":\"§eVisit logged\"}"
+          }
+        },
+        {
+          "type": "call",
+          "routine": "task-greet_task-extra"
+        }
+      ]
+    },
+    "task-greet_task-extra": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Extra path."
+      }
+    },
+    "on-enter-proximity": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:play-sound",
+          "arguments": {
+            "sound": "minecraft:entity.villager.yes",
+            "volume": 1.0,
+            "pitch": 1.5
+          }
+        }
+      ]
+    },
+    "on-exit-proximity": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Farewell, {player_name}!"
+      }
+    },
+    "on-spawn": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-equipment",
+          "arguments": {
+            "slot": "main_hand",
+            "item": "minecraft:iron_sword"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-equipment",
+          "arguments": {
+            "slot": "head",
+            "item": "minecraft:iron_helmet"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-click",
+      "event": "interaction",
+      "action": "interact",
+      "routine": "on-click",
+      "cooldownTicks": 40
+    },
+    {
+      "id": "on-enter-proximity",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 6,
+      "routine": "on-enter-proximity"
+    },
+    {
+      "id": "on-exit-proximity",
+      "event": "proximity",
+      "phase": "leave",
+      "radius": 6,
+      "routine": "on-exit-proximity"
+    },
+    {
+      "id": "on-spawn",
+      "event": "spawn",
+      "routine": "on-spawn"
+    }
+  ]
+}

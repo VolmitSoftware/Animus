@@ -4,6 +4,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'field_notes.dart';
 import 'java_json.dart';
 
 const double citizensWalkSpeed = 4.3;
@@ -24,7 +25,23 @@ const int _defaultWanderWait = 60;
 
 /// Lookclose booleans Citizens writes only when they differ from the server default, with Citizens' own defaults.
 const Map<String, bool> lookDefaults = <String, bool>{'enabled': false, 'realisticlooking': false, 'disablewhilenavigating': true};
-const List<String> _lookUnsupported = <String>['enableRandomLook', 'headonly', 'linkedbody', 'perplayer', 'randomSwitchTargets', 'targetnpcs'];
+/// Look-close options Animus does not have, with what the NPC does instead, in key order.
+const Map<String, String> _lookUnsupported = <String, String>{
+  'headonly': 'Animus turns the whole body, not only the head',
+  'linkedbody': 'Animus turns the whole body with the head',
+  'perplayer': 'every viewer sees the NPC look at the same target',
+  'randomSwitchTargets': 'the NPC keeps looking at the nearest target',
+};
+
+/// Citizens' default random look delay in ticks.
+const int _defaultRandomLookDelay = 60;
+
+/// `CitizensBehaviors.speed`: blocks per second for a Citizens speed modifier, within Animus' 1..5.
+double citizensSpeed(double factor) {
+  final double speed = javaRound(citizensWalkSpeed * factor * 100).toDouble() / 100.0;
+  final double capped = speed < 5.0 ? speed : 5.0;
+  return capped > 1.0 ? capped : 1.0;
+}
 
 class BehaviorDocument {
   const BehaviorDocument(this.path, this.content);
@@ -34,7 +51,7 @@ class BehaviorDocument {
 }
 
 class RuntimeResult {
-  const RuntimeResult(this.navigation, this.lookClose, this.behaviors, this.documents, this.warnings, this.converted, this.points, this.guides);
+  const RuntimeResult(this.navigation, this.lookClose, this.behaviors, this.documents, this.warnings, this.converted, this.notes, this.points, this.guides);
 
   final JObject? navigation;
   final JObject? lookClose;
@@ -42,6 +59,7 @@ class RuntimeResult {
   final List<BehaviorDocument> documents;
   final List<String> warnings;
   final Set<String> converted;
+  final Map<String, FieldNote> notes;
   final int points;
   final int guides;
 }
@@ -83,7 +101,8 @@ RuntimeResult mapRuntime(String key, String name, String world, JObject traits, 
   mapping.text();
   mapping.commands();
   final List<String> sorted = List<String>.of(mapping.warnings)..sort();
-  return RuntimeResult(navigation, look, mapping.behaviors, mapping.documents, sorted, mapping.converted, mapping.points, mapping.guides);
+  return RuntimeResult(navigation, look, mapping.behaviors, mapping.documents, sorted, mapping.converted, Map<String, FieldNote>.of(mapping.notes), mapping.points,
+      mapping.guides);
 }
 
 class _Command {
@@ -106,6 +125,7 @@ class _Runtime {
   final JObject defaults;
   final List<String> warnings = <String>[];
   final Set<String> converted = <String>{};
+  final Map<String, FieldNote> notes = <String, FieldNote>{};
   final List<String> behaviors = <String>[];
   final List<BehaviorDocument> documents = <BehaviorDocument>[];
   int points = 0;
@@ -121,6 +141,12 @@ class _Runtime {
     if (waypoints.has('provider')) converted.add('$base/provider');
     final JObject data = _object(waypoints.get(provider)) ?? JObject();
     final String at = '$base/${pointer(provider)}';
+    for (final String other in waypoints.keys) {
+      if (other != 'provider' && other != provider) {
+        notes['$base/${pointer(other)}'] = FieldNote(unsupportedPreserved, 'settings of the $other waypoint provider, which this NPC does not use');
+      }
+    }
+    if (data.isEmpty) converted.add(at);
     final String order;
     final JArray route = JArray();
     final JArray helpers = JArray();
@@ -213,15 +239,8 @@ class _Runtime {
     if (order == 'random') {
       module.add('guides', helpers);
       module.addDouble('linkDistance', link!);
-      final int isolated = _isolated(route, helpers, link);
-      if (isolated > 0) {
-        warnings.add('$at: $isolated of ${route.length} destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them');
-      }
     } else if (order == 'wander') {
       module.add('wander', wander);
-    } else {
-      final int far = _longLegs(route, order == 'sequence' && route.length > 1);
-      if (far > 0) warnings.add('$at: $far legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one until points are added between them');
     }
     return module;
   }
@@ -259,6 +278,13 @@ class _Runtime {
       for (final String axis in const <String>['world', 'x', 'y', 'z']) {
         converted.add('$locationPath/$axis');
       }
+      // Citizens walks to the block centre and never turns to a waypoint's facing; the world UUID only names the world.
+      for (final String unused in const <String>['yaw', 'pitch', 'worldid']) {
+        if (location.has(unused)) converted.add('$locationPath/$unused');
+      }
+      if (!triggers && item != null && item.has('triggers')) {
+        notes['$at/triggers'] = const FieldNote(statusConverted, 'Citizens never runs triggers on guide waypoints');
+      }
       if (triggers && item != null && item.has('triggers')) {
         int delay = 0;
         for (final MapEntry<String, JElement> trigger in listEntries(item.get('triggers'))) {
@@ -293,9 +319,7 @@ class _Runtime {
       factor = modifier!.asPrimitive.asDouble;
       converted.add('/navigator/speedmodifier');
     }
-    final double speed = javaRound(citizensWalkSpeed * factor * 100).toDouble() / 100.0;
-    final double capped = speed < 5.0 ? speed : 5.0;
-    return capped > 1.0 ? capped : 1.0;
+    return citizensSpeed(factor);
   }
 
   // ---- Look-close ----
@@ -306,7 +330,6 @@ class _Runtime {
     const String base = '/traits/lookclose';
     final JObject values = defaults.get('lookclose')! as JObject;
     final bool enabled = _flag(look, 'enabled', values.get('enabled')!.asPrimitive.asBoolean, base);
-    if (!enabled) return null;
     final bool realistic = _flag(look, 'realisticlooking', values.get('realisticlooking')!.asPrimitive.asBoolean, base);
     final bool disabled = _flag(look, 'disablewhilenavigating', values.get('disablewhilenavigating')!.asPrimitive.asBoolean, base);
     double range = 10;
@@ -315,21 +338,72 @@ class _Runtime {
       converted.add('$base/range');
     }
     if (range > _maxLookRange) {
-      warnings.add('$base/range: look ranges above 64 blocks became 64');
+      warnings.add('$base/range: look ranges above 64 blocks became 64; lower it in animus:look-close if that is too far');
       range = _maxLookRange.toDouble();
     }
     if (range < 1) range = 1;
-    for (final String option in _lookUnsupported) {
-      if (_bool(look.get(option), false)) warnings.add('$base/$option: not supported; the NPC looks at the nearest player');
+    final List<String> options = _lookUnsupported.keys.toList()..sort();
+    for (final String option in options) {
+      final JElement? value = look.get(option);
+      if (value is! JBool) continue;
+      if (!value.value) {
+        converted.add('$base/$option');
+      } else {
+        notes['$base/$option'] = FieldNote(requiresReview, _lookUnsupported[option]!);
+      }
     }
     if (look.has('filter') && look.get('filter') is JPrimitive) {
-      warnings.add('$base/filter: entity filters are not supported; the NPC looks at the nearest player');
+      notes['$base/filter'] = const FieldNote(requiresReview, 'entity filters are not available; the NPC looks at the nearest target');
     }
-    return JObject()
-      ..addBool('enabled', true)
+    final bool npcs = _flag(look, 'targetnpcs', false, base);
+    final JObject module = JObject()
+      ..addBool('enabled', enabled)
       ..addDouble('range', range)
       ..addBool('lineOfSight', realistic)
       ..addBool('whileNavigating', !disabled);
+    if (npcs) module.addBool('npcs', true);
+    final JObject? random = _randomLook(look, base);
+    if (random != null) module.add('randomLook', random);
+    return module;
+  }
+
+  JObject? _randomLook(JObject look, String base) {
+    bool declared = false;
+    for (final String key in const <String>['enableRandomLook', 'randomlookdelay', 'randomLookDelay', 'randomYawRange', 'randomPitchRange']) {
+      declared |= look.has(key);
+    }
+    if (!declared) return null;
+    final JObject random = JObject();
+    random.addBool('enabled', _flag(look, 'enableRandomLook', false, base));
+    final String delayKey = look.has('randomlookdelay') ? 'randomlookdelay' : 'randomLookDelay';
+    final JElement? delay = look.get(delayKey);
+    int ticks = _defaultRandomLookDelay;
+    if (_number(delay)) {
+      ticks = _floorClamp(delay!.asPrimitive.asDouble, 1, _maxWait);
+      converted.add('$base/$delayKey');
+    }
+    random.addInt('delayTicks', ticks);
+    random.add('yaw', _angles(look, 'randomYawRange', -360, 360, 0, 360, base));
+    random.add('pitch', _angles(look, 'randomPitchRange', -90, 90, 0, 0, base));
+    return random;
+  }
+
+  JArray _angles(JObject look, String key, double minimum, double maximum, double low, double high, String base) {
+    final List<MapEntry<String, JElement>> bounds = listEntries(look.get(key));
+    if (bounds.length == 2 && _number(bounds[0].value) && _number(bounds[1].value)) {
+      final double a = bounds[0].value.asPrimitive.asDouble;
+      final double b = bounds[1].value.asPrimitive.asDouble;
+      final double smaller = math.min(a, b);
+      final double larger = math.max(a, b);
+      low = smaller > minimum ? smaller : minimum;
+      high = larger < maximum ? larger : maximum;
+      for (final MapEntry<String, JElement> bound in bounds) {
+        converted.add('$base/$key/${bound.key}');
+      }
+    }
+    return JArray()
+      ..addDouble(low)
+      ..addDouble(high);
   }
 
   bool _flag(JObject object, String field, bool fallback, String base) {
@@ -607,39 +681,6 @@ JObject _sequence(List<JObject> steps) {
 }
 
 JObject _arguments(String field, String value) => JObject()..addString(field, value);
-
-bool _fits(JObject from, JObject to) =>
-    (from.get('x')!.asPrimitive.asDouble - to.get('x')!.asPrimitive.asDouble).abs() <= _legHorizontal &&
-    (from.get('z')!.asPrimitive.asDouble - to.get('z')!.asPrimitive.asDouble).abs() <= _legHorizontal &&
-    (from.get('y')!.asPrimitive.asDouble - to.get('y')!.asPrimitive.asDouble).abs() <= _legVertical;
-
-int _longLegs(JArray route, bool loop) {
-  int count = 0;
-  for (int index = 1; index < route.length; index++) {
-    if (!_fits(route[index - 1] as JObject, route[index] as JObject)) count++;
-  }
-  if (loop && !_fits(route[route.length - 1] as JObject, route[0] as JObject)) count++;
-  return count;
-}
-
-int _isolated(JArray destinations, JArray helpers, double link) {
-  final List<JObject> nodes = <JObject>[for (final JElement node in destinations.elements) node as JObject, for (final JElement node in helpers.elements) node as JObject];
-  int count = 0;
-  for (int index = 0; index < destinations.length; index++) {
-    final JObject from = nodes[index];
-    bool linked = false;
-    for (int other = 0; other < nodes.length && !linked; other++) {
-      if (other == index) continue;
-      final JObject to = nodes[other];
-      final double dx = from.get('x')!.asPrimitive.asDouble - to.get('x')!.asPrimitive.asDouble;
-      final double dy = from.get('y')!.asPrimitive.asDouble - to.get('y')!.asPrimitive.asDouble;
-      final double dz = from.get('z')!.asPrimitive.asDouble - to.get('z')!.asPrimitive.asDouble;
-      linked = math.sqrt(dx * dx + dy * dy + dz * dz) <= link && _fits(from, to);
-    }
-    if (!linked) count++;
-  }
-  return count;
-}
 
 /// `CitizensBehaviors.entries`: items of a YAML sequence, or of a mapping with integer keys in numeric order.
 List<MapEntry<String, JElement>> listEntries(JElement? value) {

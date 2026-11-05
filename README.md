@@ -64,7 +64,7 @@ converter/build/install/converter/bin/converter validate /path/to/Animus
 converter/build/install/converter/bin/converter rollback /path/to/Animus <transaction-id>
 ```
 
-Apply installs definitions with `spawned: false` and imported combat disabled. Unknown traits, Denizen flags/assignments, and unimplemented settings remain preserved. Denizen script definitions are needed for future behavior translation. Version 2 remaps known spawn, waypoint, Sentinel, and sitting locations and resolves known mount/guard references through the UUID map. Unknown references remain preserved with diagnostics. Reviewable transformed traits live in `modules["citizens:review"]`; original records remain unchanged in the archive. Sentinel historical statistics are separated from settings. These data transformations do not execute behavior.
+Apply installs definitions with `spawned: false` and imported combat disabled. Unknown traits, Denizen flags/assignments, and unimplemented settings remain preserved. Denizen scripts convert through `/animus import citizens` or `converter denizen-preview`; see [migrating from Citizens](docs/migrating-from-citizens.md#denizen). Version 2 remaps known spawn, waypoint, Sentinel, and sitting locations and resolves known mount/guard references through the UUID map. Unknown references remain preserved with diagnostics. Reviewable transformed traits live in `modules["citizens:review"]`; original records remain unchanged in the archive. Sentinel historical statistics are separated from settings. These data transformations do not execute behavior.
 
 A repeated identical preview reuses its versioned import ID. Version 1 bundles remain readable; version 2 conversion uses a distinct identity. Repeated default apply reports `already-applied`; other identity/path collisions are rejected. A modified candidate fails hash verification; import it first, then edit installed definitions through the validation service. Rollback refuses to overwrite subsequent edits and removes the receipt, allowing a fresh apply afterward.
 
@@ -82,7 +82,7 @@ The local CLI cannot open a running server's data directory: both hold the same 
 
 ## Server commands
 
-`animus.status` is available by default; `animus.admin` defaults to operators. Commands, imports and API edits share one serial file worker, with 32 admitted operations by default. Separate bounded workers deliver API results. Replies use the Bukkit scheduler or Folia player/global scheduler. Commands are also usable from the console.
+`animus.status` is available by default; `animus.admin` and `animus.debug` default to operators. `/animus debug` shows what Animus measured on this server: `network [player]` for packets and estimated bytes by kind and viewer, `performance` for server time per subsystem over 1, 10 and 60 seconds, `npc <id>` for one NPC's share, and `watch` to toggle a live action-bar line. [docs/react.md](docs/react.md) lists the metrics Animus publishes to React. Commands, imports and API edits share one serial file worker, with 32 admitted operations by default. Separate bounded workers deliver API results. Replies use the Bukkit scheduler or Folia player/global scheduler. Commands are also usable from the console.
 
 ```text
 /animus status

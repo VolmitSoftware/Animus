@@ -1,6 +1,8 @@
 package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.config.CombatBudgets;
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.RuntimeGauges;
 import art.arcane.animus.core.config.NavigationSettings;
 import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.config.RigSettings;
@@ -103,6 +105,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private final AutoCloseable settingsSubscription;
     /** Global region thread only: the navigation limits last given to the shared planner. */
     private NavigationSettings appliedNavigation;
+    /** The metrics of the server start that built this runtime. */
+    final AnimusMetrics metrics = AnimusMetrics.current();
     /** Global region thread only: whether route turns were refused for a while across regions. */
     private final NavigationPressure navigationPressure = new NavigationPressure();
     private volatile String navigationPressureStatus = "none";
@@ -176,6 +180,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(this::terrainChanged), plugin);
             control = regions.globalTicks(this::controlTick);
+            metrics.gauges(this::gauges);
             for (Player player : plugin.getServer().getOnlinePlayers()) {
                 online.put(player.getUniqueId(), player);
                 regions.execute(player, () -> admit(player), () -> {});
@@ -245,6 +250,25 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
                 + " | mounted=" + mounts.vehicleOf().size() + " | mount-problems=" + mounts.diagnostics().size() + " | riders=" + rides.size()
                 + (settings().enabled() ? "" : " | enabled=false applies after a restart on Folia")
                 + (failures.last() == null ? "" : " | last-error=" + failures.last());
+    }
+
+    /** Any thread: concurrent maps and published views only. Presentation strain is reported when any region was short in the last second. */
+    RuntimeGauges gauges() {
+        if (!available()) return RuntimeGauges.NONE;
+        int visible = 0, sleeping = 0;
+        for (RegionViewer viewer : viewers.values()) visible += viewer.shown.get();
+        List<RuntimeGauges.NpcPlace> places = new ArrayList<>();
+        for (RegionActor actor : actors.values()) {
+            if (actor.routeSleeping) sleeping++;
+            RegionActor.Publication view = actor.publication;
+            if (view == null || !view.live()) continue;
+            ChunkPosition chunk = view.snapshot().position().chunk();
+            places.add(new RuntimeGauges.NpcPlace(actor.uuid, chunk.world(), chunk.x(), chunk.z()));
+        }
+        int active = index.size();
+        return new RuntimeGauges("Folia regions", runtime.npcs().snapshot().size(), active, Math.max(0, actors.size() - active), sleeping,
+                viewers.size(), visible, 0, navigationPressure.lastDeferred(), navigation.outstandingJobs(), navigationPressure.pressured(),
+                budget.recentlyShortOfPackets(), 0, navigationPressure.lastDeferred() > 0 ? 100 : 0, budget.recentlyShortOfPackets() ? 100 : 0, places);
     }
 
     @Override public String inspect(String id) {

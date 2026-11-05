@@ -71,14 +71,14 @@ class CitizensBehaviorsTest {
         assertFalse(result.converted().contains("/traits/waypoints/linear/points/2/location/x"));
     }
 
-    @Test void cycleBecomesPingpongAndLongLegsAreReported() {
+    @Test void cycleBecomesPingpongAndLongLegsNeedNoWarning() {
         CitizensBehaviors.Result result = map("{\"waypoints\":{\"linear\":{\"cycle\":true,\"points\":{\"1\":" + location(100, 64, 0) + ",\"0\":" + location(0, 64, 0) + "}}}}");
         JsonObject navigation = result.navigation().orElseThrow();
         assertEquals("pingpong", navigation.get("order").getAsString());
         assertFalse(navigation.has("loop"));
         assertEquals(4.3, navigation.get("speed").getAsDouble());
         assertEquals(0.5, navigation.getAsJsonArray("points").get(0).getAsJsonObject().get("x").getAsDouble(), "map keys in numeric order");
-        assertTrue(result.warnings().stream().anyMatch((String warning) -> warning.contains("1 legs are longer than 32 blocks")), result.warnings().toString());
+        assertTrue(result.warnings().stream().noneMatch((String warning) -> warning.contains("legs are longer")), "a long leg is walked: " + result.warnings());
     }
 
     @Test void guidedWaypointsBecomeARandomRouteThroughGuides() {
@@ -91,7 +91,7 @@ class CitizensBehaviorsTest {
         assertEquals(1, navigation.getAsJsonArray("guides").size());
         assertEquals(100, navigation.getAsJsonArray("points").get(0).getAsJsonObject().get("waitTicks").getAsInt());
         assertEquals(1, result.guides());
-        assertTrue(result.warnings().contains("/traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them"), result.warnings().toString());
+        assertTrue(result.warnings().stream().noneMatch((String warning) -> warning.contains("destinations have no guide")), "an isolated destination is reached: " + result.warnings());
     }
 
     @Test void guidedWithoutDistanceUsesTheNavigatorRange() {
@@ -120,10 +120,11 @@ class CitizensBehaviorsTest {
         JsonObject onlyFalse = defaults("{\"1\":{\"traits\":{\"lookclose\":{\"enabled\":false}}},\"2\":{\"traits\":{\"lookclose\":{\"range\":5}}}}");
         assertEquals(json("{\"lookclose\":{\"enabled\":true,\"realisticlooking\":false,\"disablewhilenavigating\":true},\"inferred\":[\"enabled\"]}"), onlyFalse);
         CitizensBehaviors.Result unset = CitizensBehaviors.map("2", "Guard", "world", json("{\"lookclose\":{\"range\":5,\"targetnpcs\":true}}"), json("{}"), onlyFalse);
-        assertEquals(json("{\"enabled\":true,\"range\":5.0,\"lineOfSight\":false,\"whileNavigating\":false}"), unset.lookClose().orElseThrow());
-        assertEquals(List.of("/traits/lookclose/targetnpcs: not supported; the NPC looks at the nearest player"), unset.warnings());
-        assertTrue(CitizensBehaviors.map("1", "Guard", "world", json("{\"lookclose\":{\"enabled\":false}}"), json("{}"), onlyFalse).lookClose().isEmpty());
-        assertTrue(map("{\"lookclose\":{\"range\":5}}").lookClose().isEmpty(), "Citizens default is off");
+        assertEquals(json("{\"enabled\":true,\"range\":5.0,\"lineOfSight\":false,\"whileNavigating\":false,\"npcs\":true}"), unset.lookClose().orElseThrow());
+        assertEquals(List.of(), unset.warnings());
+        assertTrue(unset.converted().contains("/traits/lookclose/targetnpcs"));
+        assertFalse(CitizensBehaviors.map("1", "Guard", "world", json("{\"lookclose\":{\"enabled\":false}}"), json("{}"), onlyFalse).lookClose().orElseThrow().get("enabled").getAsBoolean());
+        assertFalse(map("{\"lookclose\":{\"range\":5}}").lookClose().orElseThrow().get("enabled").getAsBoolean(), "Citizens default is off");
         JsonObject explicit = map("{\"lookclose\":{\"enabled\":true,\"range\":100,\"realisticlooking\":true,\"disablewhilenavigating\":false}}").lookClose().orElseThrow();
         assertEquals(json("{\"enabled\":true,\"range\":64.0,\"lineOfSight\":true,\"whileNavigating\":true}"), explicit);
         JsonObject mixed = defaults("{\"1\":{\"traits\":{\"lookclose\":{\"enabled\":false}}},\"2\":{\"traits\":{\"lookclose\":{\"enabled\":true}}}}");
@@ -209,5 +210,26 @@ class CitizensBehaviorsTest {
         CitizensBehaviors.Result result = map("{\"commandtrait\":{\"cost\":5.0,\"commands\":{\"0\":{\"command\":\"a\",\"hand\":\"BOTH\"}}}}");
         assertTrue(result.behaviors().isEmpty());
         assertEquals(List.of("/traits/commandtrait: the commands cost money, experience or items, which Animus cannot charge, so none were converted"), result.warnings());
+    }
+
+    @Test void randomLookKeepsItsDelayAndRangesAndCosmeticOptionsGetReasons() {
+        CitizensBehaviors.Result result = map("{\"lookclose\":{\"enabled\":true,\"randomlookdelay\":120,\"randomYawRange\":[0.0,360.0],\"randomPitchRange\":[-8.0,8.0],"
+                + "\"headonly\":true,\"perplayer\":false}}");
+        assertEquals(json("{\"enabled\":false,\"delayTicks\":120,\"yaw\":[0.0,360.0],\"pitch\":[-8.0,8.0]}"), result.lookClose().orElseThrow().get("randomLook"));
+        for (String path : List.of("/traits/lookclose/randomlookdelay", "/traits/lookclose/randomYawRange/0", "/traits/lookclose/randomPitchRange/1", "/traits/lookclose/perplayer"))
+            assertTrue(result.converted().contains(path), path);
+        assertEquals(CitizensImporter.Status.REQUIRES_REVIEW, result.notes().get("/traits/lookclose/headonly").status());
+        assertEquals(List.of(), result.warnings());
+    }
+
+    @Test void waypointFacingWorldIdsAndGuideTriggersCountAsConverted() {
+        CitizensBehaviors.Result result = map("""
+                {"location":{"world":"world"},"waypoints":{"provider":"guided","guided":{"destinations":[{"location":{"world":"world","worldid":"x","x":0,"y":64,"z":0,"yaw":5,"pitch":1}}],
+                 "guides":[{"location":{"world":"world","x":3,"y":64,"z":0,"yaw":1,"pitch":2},"triggers":[{"type":"delay","delay":20}]}]},"wander":{"xrange":5}}}
+                """);
+        for (String path : List.of("/traits/waypoints/guided/destinations/0/location/yaw", "/traits/waypoints/guided/destinations/0/location/worldid",
+                "/traits/waypoints/guided/guides/0/location/pitch")) assertTrue(result.converted().contains(path), path);
+        assertEquals(CitizensImporter.Status.CONVERTED, result.notes().get("/traits/waypoints/guided/guides/0/triggers").status());
+        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traits/waypoints/wander").status());
     }
 }

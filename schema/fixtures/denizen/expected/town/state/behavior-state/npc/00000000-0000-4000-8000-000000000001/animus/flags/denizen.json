@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "behavior": "animus:flags/denizen",
+  "scope": "npc",
+  "npc": "00000000-0000-4000-8000-000000000001",
+  "values": {
+    "guard_post": {
+      "type": "boolean",
+      "value": true
+    }
+  }
+}

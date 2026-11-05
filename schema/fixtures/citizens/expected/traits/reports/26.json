@@ -12,6 +12,7 @@
     "/traits/location/z": "CONVERTED",
     "/traits/equipment/hand/type": "CONVERTED"
   },
+  "reasons": {},
   "worldRemaps": [
     {
       "source": "/traits/location",

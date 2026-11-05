@@ -161,6 +161,9 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         return entity instanceof Mob ? new TargetRef(TargetKind.MOB, entity.getUniqueId()) : null;
     }
     private void tick() { module.tick(); }
+    /** Combat NPCs waiting for a slot on the main thread; 0 on Folia, where each region keeps its own queue. */
+    int waiting() { return regions != null ? 0 : module.waiting(); }
+    int load() { return regions != null ? 0 : module.load(); }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void playerHit(VirtualNpcInteractionEvent event) {

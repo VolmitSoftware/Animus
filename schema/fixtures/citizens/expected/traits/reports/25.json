@@ -10,9 +10,10 @@
     "/traits/location/x": "CONVERTED",
     "/traits/location/y": "CONVERTED",
     "/traits/location/z": "CONVERTED",
-    "/traits/age/age": "UNSUPPORTED_PRESERVED",
-    "/traits/age/locked": "UNSUPPORTED_PRESERVED"
+    "/traits/age/age": "CONVERTED",
+    "/traits/age/locked": "CONVERTED"
   },
+  "reasons": {},
   "worldRemaps": [
     {
       "source": "/traits/location",

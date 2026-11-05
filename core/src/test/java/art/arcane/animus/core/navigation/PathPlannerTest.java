@@ -81,11 +81,28 @@ class PathPlannerTest {
         var unknown = new VoxelSnapshot.Builder("world", 0, 0, 0, 5, 5, 5).availableChunk(0, 0).build();
         assertEquals(UNAVAILABLE_TERRAIN, plan(unknown, START, new BlockPos(3, 1, 2), FLAT).status());
     }
-    @Test void partialSnapshotBoundaryProducesUnavailableRatherThanProvenUnreachable() {
+    @Test void captureBoundaryIsUnreachableHereButFlaggedAndOnlyUnloadedChunksWait() {
         var builder = new VoxelSnapshot.Builder("world", 0, 0, 0, 7, 5, 5).fill(AIR).availableChunk(0, 0);
         for (int x = 0; x < 7; x++) for (int z = 0; z < 5; z++) builder.set(x, 0, z, SOLID);
         for (int y = 1; y < 5; y++) for (int z = 0; z < 5; z++) builder.set(4, y, z, SOLID);
-        assertEquals(UNAVAILABLE_TERRAIN, plan(builder.build(), START, new BlockPos(5, 1, 2), FLAT).status());
+        var bounded = plan(builder.build(), START, new BlockPos(5, 1, 2), FLAT);
+        assertEquals(UNREACHABLE, bounded.status()); assertTrue(bounded.encounteredUnavailableTerrain(), "a larger capture may still find a way");
+        var unloaded = new VoxelSnapshot.Builder("world", 0, 0, 0, 20, 5, 5).fill(AIR).availableChunk(0, 0);
+        for (int x = 0; x < 20; x++) for (int z = 0; z < 5; z++) unloaded.set(x, 0, z, SOLID);
+        for (int y = 1; y < 5; y++) for (int z = 0; z < 5; z++) unloaded.set(4, y, z, SOLID);
+        assertEquals(UNAVAILABLE_TERRAIN, plan(unloaded.build(), START, new BlockPos(5, 1, 2), FLAT).status());
+    }
+    @Test void aPartialSearchEndsAtTheReachablePlaceClosestToAGoalOutsideItsCapture() {
+        var partial = new PathPlanner.Limits(5000, 5000, 500, true);
+        var open = room(10, 5, 10).build();
+        var result = planner.plan(open, START, new BlockPos(100, 1, 7), FLAT, partial, () -> false);
+        assertEquals(PARTIAL, result.status()); assertEquals(new BlockPos(8, 1, 7), result.path().getLast().feet());
+        assertEquals(FOUND, planner.plan(open, START, new BlockPos(7, 1, 7), FLAT, partial, () -> false).status(), "a goal inside is reached exactly");
+        var sealed = room(10, 5, 10);
+        for (int x = 1; x < 9; x++) for (int y = 1; y < 4; y++) sealed.set(x, y, 3, SOLID);
+        for (int z = 1; z < 3; z++) for (int y = 1; y < 4; y++) sealed.set(3, y, z, SOLID);
+        assertEquals(UNREACHABLE, planner.plan(sealed.build(), new BlockPos(2, 1, 1), new BlockPos(100, 1, 1), FLAT, partial, () -> false).status(),
+                "no step gets closer: the way is blocked, not waiting for terrain");
     }
     @Test void narrowGapRequiresEnoughFootprintClearance() {
         var builder = room(11, 5, 11);

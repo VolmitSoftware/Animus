@@ -1,5 +1,7 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Subsystem;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
 import art.arcane.animus.api.Outcome;
@@ -202,20 +204,32 @@ public final class CombatModule implements AutoCloseable {
         CombatBudgets next = pending.getAndSet(null);
         if (next != null) apply(next);
         if (engine == null) return;
-        if (!enabled) {
+        AnimusMetrics metrics = AnimusMetrics.current();
+        long started = metrics.start();
+        try {
+            if (!enabled) {
+                engine.tick();
+                for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+                if (engine.drained()) {
+                    engine.close();
+                    engine = null;
+                    candidates.clear();
+                    warnings.accept("Combat stopped: disabled in config.toml");
+                }
+                return;
+            }
+            reconcile();
             engine.tick();
             for (UUID npc : engine.drainDeletions()) deleteDead(npc);
-            if (engine.drained()) {
-                engine.close();
-                engine = null;
-                candidates.clear();
-                warnings.accept("Combat stopped: disabled in config.toml");
-            }
-            return;
-        }
-        reconcile();
-        engine.tick();
-        for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+        } finally { metrics.stop(Subsystem.COMBAT, started); }
+    }
+    /** Combat NPCs waiting for a slot; owner thread. */
+    public int waiting() { return engine == null ? 0 : engine.waitingCount(); }
+    /** 0-100: combat slots in use; 100 while any NPC waits for one. Owner thread. */
+    public int load() {
+        if (engine == null) return 0;
+        if (engine.waitingCount() > 0) return 100;
+        return engine.slotLimit() <= 0 ? 0 : Math.min(100, engine.activeCount() * 100 / engine.slotLimit());
     }
 
     /** Owner thread: budgets swap in, and combat starts, resumes or winds down when {@code enabled} changed. */
