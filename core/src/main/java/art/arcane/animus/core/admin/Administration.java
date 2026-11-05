@@ -21,9 +21,24 @@ public final class Administration {
     public static final List<String> COMMANDS = List.of("status", "list", "create", "inspect", "edit", "clone", "delete", "spawn", "despawn", "validate", "reload", "import", "rollback");
     private final AnimusRuntime runtime;
     public Administration(AnimusRuntime runtime) { this.runtime = runtime; }
+    /** The main budgets of config.toml as they run now; a hotload changes this line without a restart. */
+    private String settingsInEffect() {
+        art.arcane.animus.core.config.NpcRuntimeSettings npcs = runtime.npcSettings();
+        art.arcane.animus.core.config.EditorSettings editor = runtime.editorSettings();
+        art.arcane.animus.core.config.CombatBudgets combat = runtime.combatBudgets();
+        return "Settings in effect: npcs " + (npcs.enabled() ? "on" : "off") + " viewDistance=" + npcs.viewDistance() + " packetsPerTick=" + npcs.packetsPerTick()
+                + " | navigation routesPerTick=" + runtime.navigationSettings().routesPerTick()
+                + " | combat " + (combat.enabled() ? "on" : "off") + " brainsPerTick=" + combat.brainsPerTick() + " maximumNpcs=" + combat.maximumNpcs()
+                + " | behaviors " + (runtime.behaviorSettings().enabled() ? "on" : "off") + " operationsPerTick=" + runtime.behaviorSettings().operationsPerTick()
+                + " | builds " + (runtime.buildSettings().enabled() ? "on" : "off") + " maximumBuilds=" + runtime.buildSettings().maximumBuilds()
+                + " | files maximumOperations=" + runtime.fileSettings().maximumOperations()
+                + " | editor listener " + (editor.enabled() && editor.listenerEnabled() ? editor.listenAddress() + ":" + editor.port() : "off")
+                + " relay " + (runtime.editorRelaySettings().enabled() ? "on" : "off");
+    }
+
     public List<String> execute(String[] args) throws IOException {
         if (args.length == 0 || args[0].equals("status")) {
-            List<String> lines = new ArrayList<>(List.of(runtime.status(), "NPC definitions: " + runtime.npcs().all().size()));
+            List<String> lines = new ArrayList<>(List.of(runtime.status(), "NPC definitions: " + runtime.npcs().all().size(), settingsInEffect()));
             if (!runtime.npcs().diagnostics().isEmpty()) lines.add("Definition file problems: " + runtime.npcs().diagnostics().size() + "; validate for field errors; retained definitions remain active");
             return List.copyOf(lines);
         }
