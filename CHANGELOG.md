@@ -81,6 +81,8 @@
 - Editor: chest GUI, shop, holographic menu and hologram editors with in-game window and 3D previews, expression checks and completion, refused features flagged by field; Gloss Web workspace bundle import and export.
 - The chest GUI schema accepts teleport, bossbar, broadcast, effect, particle, parallel and repeat.
 - Rigs and animations shown as packet-only display bones riding the NPC body, on Bukkit, Folia and the mod loaders; `animus:play-animation` and `animus:stop-animation` actions, the `animation_finished` trigger, automatic idle and walk clips; `[rigs]` settings, `/animus rigs` and `/animus pack build` for turning Blockbench models into a reproducible resource pack shared with the editor (layout in `docs/runtime.md`).
+- Editor: pairing from `/animus editor pair` links with pinned server fingerprints, per-server tokens, direct and relay connections with failover and reconnect; live editing of a connected server with server validation, viewer-private previews, apply with revisions, three-way conflict merge, change status after reconnect, undo and refresh from server events; schema-driven NPC inspector, behavior node editor and a JSON code view with completion and inline diagnostics; `tool/fake_server.dart` for local development.
+- Web editor previews show candidate NPCs to the pairing player only, as inert packet-only bodies on every platform.
 
 ### Changed
 
@@ -118,6 +120,7 @@
 - Example packs restyled; personal-guard is hired through `animus:hire`.
 - `/animus gui` covers menus, holograms and animations; ids without a namespace resolve in the referring document's namespace.
 - `/animus reload` also reloads rigs and animations.
+- Pairing codes accept `ws://` relay URLs on loopback for local development.
 
 ### Fixed
 
