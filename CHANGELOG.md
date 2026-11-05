@@ -119,6 +119,8 @@
 
 ### Fixed
 
+- Logging out while riding on a mod server no longer warns about a closed connection.
+- Forge jars ship a `pack.mcmeta`, so Forge no longer reports a missing data pack.
 - A saddled NPC can be ridden again after a ride ends.
 - Hex colours render in holograms and in all mod-server text.
 - Combat teleports work beyond 2 blocks.
