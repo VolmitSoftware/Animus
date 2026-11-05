@@ -15,7 +15,7 @@ import java.util.*;
 public final class BehaviorCompiler {
     public static final int MAX_BYTES=256*1024,MAX_NODES=2048,MAX_DEPTH=32,MAX_ROUTINES=32,MAX_VARIABLES=32,MAX_WAIT_TICKS=72000,MAX_REPEAT=128,MAX_STEPS=128,MAX_BRANCHES=8,MAX_STRING_BYTES=4096;
     /** Top-level fields the compiler reads. Catalog sources also carry {@code revision}, which the catalog removes before compiling. */
-    public static final List<String> DOCUMENT_FIELDS=List.of("schemaVersion","id","entry","variables","routines","triggers");
+    public static final List<String> DOCUMENT_FIELDS=List.of("schemaVersion","id","server","entry","variables","routines","triggers");
     public record Result(Optional<BehaviorProgram> program,List<Diagnostic> diagnostics){public Result{diagnostics=List.copyOf(diagnostics);}}
         private final Map<String,Value> variables=new LinkedHashMap<>();
     private final Map<String,ScopedVariable> scoped=new LinkedHashMap<>();
@@ -62,11 +62,13 @@ public final class BehaviorCompiler {
         if(id.length()>256||!id.matches("[a-z0-9_-]+:[a-z0-9_/-]+"))throw new Invalid("$.id","expected a lowercase namespace:path behavior reference within 256 characters");
         if(id.matches("animus:(flags|quests)(/.*)?"))throw new Invalid("$.id","reserved for built-in flag and quest state");
         String entry=identifier(text(object,"entry","$"),"$.entry");
+        boolean server=server(object);
         if(object.has("variables")){
             JsonObject vars=object(object.get("variables"),"$.variables");if(vars.size()>MAX_VARIABLES)throw new Invalid("$.variables","at most 32 variables");
             for(var item:vars.entrySet()){
                 String path="$.variables."+item.getKey();identifier(item.getKey(),path);JsonObject var=object(item.getValue(),path);keys(var,path,"variable",List.of("type","initial","scope","lifetime"));
                 ScopedVariable declaration=scope(var,path);if(declaration!=null)scoped.put(item.getKey(),declaration);
+                if(server&&declaration!=null&&(declaration.scope()==Scope.NPC||declaration.scope()==Scope.RELATIONSHIP))throw new Invalid(path+".scope","a server behavior has no NPC: expected execution, player or global");
                 Type type;try{type=Type.valueOf(text(var,"type",path).toUpperCase(Locale.ROOT));}catch(IllegalArgumentException unsupported){throw new Invalid(path+".type","expected boolean, integer, decimal or string"+schemaHint(text(var,"type",path),List.of("boolean","integer","decimal","string")));}
                 variables.put(item.getKey(),value(var.get("initial"),type,path+".initial"));
             }
@@ -78,9 +80,15 @@ public final class BehaviorCompiler {
         if(!routines.containsKey(entry))throw new Invalid("$.entry","unknown routine; declared: "+Suggestions.list(new ArrayList<>(routines.keySet()))+schemaHint(entry,new ArrayList<>(routines.keySet())));
         for(Call call:references)if(!routines.containsKey(call.routine()))throw new Invalid(call.path()+".routine","unknown routine; declared: "+Suggestions.list(new ArrayList<>(routines.keySet()))+schemaHint(call.routine(),new ArrayList<>(routines.keySet())));
         List<TriggerBinding> triggers;
-        try{triggers=object.has("triggers")?TriggerCompiler.compile(object.get("triggers"),routines.keySet()):List.of();}
+        try{triggers=object.has("triggers")?TriggerCompiler.compile(object.get("triggers"),routines.keySet(),server):List.of();}
         catch(TriggerCompiler.Invalid invalid){throw new Invalid(invalid.field(),invalid.getMessage());}
-        return new BehaviorProgram(id,entry,variables,scoped,routines,nodes,triggers);
+        return new BehaviorProgram(id,entry,variables,scoped,routines,nodes,triggers,server);
+    }
+    /** {@code "server": true} makes a server-wide behavior: no NPC, server events only, execution, player and global variables only. */
+    private static boolean server(JsonObject object){
+        JsonElement value=object.get("server");if(value==null)return false;
+        if(!value.isJsonPrimitive()||!value.getAsJsonPrimitive().isBoolean())throw new Invalid("$.server","expected true or false");
+        return value.getAsBoolean();
     }
     /** Null means the default execution scope. Scope and lifetime words are exact: no case folding or coercion. */
     private static ScopedVariable scope(JsonObject variable,String path){

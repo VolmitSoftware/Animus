@@ -42,6 +42,9 @@ public interface BehaviorState {
     /** Applies every write or none of them. */
     void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations);
 
+    /** Applies every write or none of them; a key in {@code expiresAtMillis} reads as unset from that epoch millisecond on. */
+    default void write(Subject subject,Map<String,Value> writes,Map<String,ScopedVariable> declarations,Map<String,Long> expiresAtMillis){if(!expiresAtMillis.isEmpty())throw new Rejected(art.arcane.animus.api.Outcome.Status.UNAVAILABLE,"behavior-state-expiry-unavailable","$","This state service does not store expiring values");write(subject,writes,declarations);}
+
     /** Cheap periodic owner-turn hook; durable implementations use it to queue a coalesced flush. */
     default void maintain(){}
 }

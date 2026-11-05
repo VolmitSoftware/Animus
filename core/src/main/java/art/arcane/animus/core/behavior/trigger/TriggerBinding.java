@@ -1,6 +1,7 @@
 package art.arcane.animus.core.behavior.trigger;
 
 import art.arcane.animus.api.Capabilities;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
@@ -21,7 +22,7 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     public record Proximity(Phase phase, double radius) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.PROXIMITY; }
     }
-    /** Spawn, despawn, damage, death and build events: events with no further filter. */
+    /** Events with no further filter: spawn, despawn, damage, death, build, player quit, death and respawn, server start. */
     public record Lifecycle(TriggerKind kind) implements Spec {}
     public record Waypoint(OptionalInt waypoint) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.WAYPOINT; }
@@ -39,6 +40,25 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     public record ModuleEvent(Capabilities.Key key) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.MODULE; }
     }
+    /** An empty first matches every join. */
+    public record PlayerJoin(Optional<Boolean> first) implements Spec {
+        public PlayerJoin { Objects.requireNonNull(first); }
+        @Override public TriggerKind kind() { return TriggerKind.PLAYER_JOIN; }
+    }
+    /** An empty pattern matches every message. */
+    public record PlayerChat(Optional<String> pattern) implements Spec {
+        public PlayerChat { Objects.requireNonNull(pattern); }
+        @Override public TriggerKind kind() { return TriggerKind.PLAYER_CHAT; }
+    }
+    public record Command(String name, List<String> aliases, Optional<String> permission, Optional<String> description, Optional<String> usage) implements Spec {
+        public Command { Objects.requireNonNull(name); aliases = List.copyOf(aliases); Objects.requireNonNull(permission); Objects.requireNonNull(description); Objects.requireNonNull(usage); }
+        @Override public TriggerKind kind() { return TriggerKind.COMMAND; }
+    }
+    /** An empty world matches every world. */
+    public record WorldChange(Optional<String> from, Optional<String> to) implements Spec {
+        public WorldChange { Objects.requireNonNull(from); Objects.requireNonNull(to); }
+        @Override public TriggerKind kind() { return TriggerKind.PLAYER_WORLD_CHANGE; }
+    }
 
     /** key is the {@code behavior#trigger} name proximity events use to select one binding. */
     boolean matches(TriggerEvent event, String key) {
@@ -55,6 +75,10 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
             case ModuleEvent module -> event instanceof TriggerEvent.Module input && module.key().equals(input.key());
             case AnimationFinished finished -> event instanceof TriggerEvent.AnimationFinished input
                     && (finished.animation().isEmpty() || finished.animation().get().equals(input.animation()));
+            case PlayerJoin ignored -> false;
+            case PlayerChat ignored -> false;
+            case Command ignored -> false;
+            case WorldChange ignored -> false;
         };
     }
 }
