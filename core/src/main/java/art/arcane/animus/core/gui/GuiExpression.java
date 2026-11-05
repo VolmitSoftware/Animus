@@ -264,7 +264,10 @@ public final class GuiExpression {
             case "contains" -> { arity(call, values, 2); yield values.get(0) instanceof List<?> items ? items.contains(values.get(1)) : text(values.get(0)).contains(text(values.get(1))); }
             case "lower" -> { arity(call, values, 1); yield text(values.get(0)).toLowerCase(Locale.ROOT); }
             case "upper" -> { arity(call, values, 1); yield text(values.get(0)).toUpperCase(Locale.ROOT); }
-            default -> throw new Invalid("unknown function '" + name + "' at position " + call.position());
+            default -> {
+                if (!GuiTextFunctions.NAMES.contains(name)) throw new Invalid("unknown function '" + name + "' at position " + call.position());
+                yield GuiTextFunctions.call(name, values);
+            }
         };
     }
 
@@ -421,7 +424,7 @@ public final class GuiExpression {
                 if (name.equals("true")) return new Literal(true);
                 if (name.equals("false")) return new Literal(false);
                 if (take("(")) {
-                    if (!FUNCTIONS.contains(name)) throw new Invalid("unknown function '" + name + "' at position " + start);
+                    if (!FUNCTIONS.contains(name) && !GuiTextFunctions.NAMES.contains(name)) throw new Invalid("unknown function '" + name + "' at position " + start);
                     List<Node> arguments = new ArrayList<>();
                     if (!take(")")) {
                         do arguments.add(ternary()); while (take(","));

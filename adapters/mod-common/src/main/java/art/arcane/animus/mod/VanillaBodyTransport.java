@@ -369,12 +369,12 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             switch (bone.kind()) {
                 case ITEM -> {
                     boneTypes[i] = itemDisplayType;
-                    values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$item(), bone.item().copy()));
-                    values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$itemContext(), bone.itemContext()));
+                    values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$stack(), bone.item().copy()));
+                    values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$context(), bone.itemContext()));
                 }
                 case BLOCK -> {
                     boneTypes[i] = blockDisplayType;
-                    values.add(SynchedEntityData.DataValue.create(BlockDisplayDataAccess.animus$blockState(), blockState(bone.block())));
+                    values.add(SynchedEntityData.DataValue.create(BlockDisplayDataAccess.animus$state(), blockState(bone.block())));
                 }
                 case TEXT -> {
                     boneTypes[i] = textDisplayType;
@@ -467,7 +467,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     }
     private static List<SynchedEntityData.DataValue<?>> transformValues(DisplayTransform transform, int duration) {
         return List.of(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$interpolationStart(), 0),
-                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$interpolationDuration(), duration),
+                SynchedEntityData.DataValue.create(DisplayDataAccess.animus$transformInterpolation(), duration),
                 SynchedEntityData.DataValue.create(DisplayDataAccess.animus$translation(), new Vector3f(transform.tx(), transform.ty(), transform.tz())),
                 SynchedEntityData.DataValue.create(DisplayDataAccess.animus$leftRotation(), new Quaternionf(transform.lx(), transform.ly(), transform.lz(), transform.lw())),
                 SynchedEntityData.DataValue.create(DisplayDataAccess.animus$scale(), new Vector3f(transform.sx(), transform.sy(), transform.sz())),

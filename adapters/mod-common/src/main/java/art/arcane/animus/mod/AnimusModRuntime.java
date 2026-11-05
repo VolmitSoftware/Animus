@@ -80,6 +80,8 @@ public final class AnimusModRuntime {
         ModCombat combat;
         ModScreens screens;
         volatile art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> shops;
+        VanillaDisplayTransport displays;
+        volatile art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> guis;
         BuildService<ServerPlayer, ItemStack> builds;
         BuiltinCapabilities builtins;
         ExtensionRuntime extensions;
@@ -121,27 +123,34 @@ public final class AnimusModRuntime {
             next.shops = new art.arcane.animus.core.shop.ShopService<>(next.runtime, next.screens, next.living, files,
                     (String name) -> Optional.ofNullable(server.getPlayerList().getPlayerByName(name)).map(ServerPlayer::getUUID), LOGGER::info);
             next.screens.bind(next.shops.screens());
+            next.displays = new VanillaDisplayTransport(next.screens::display, LOGGER::warn);
+            next.guis = new art.arcane.animus.core.gui.HoloService<>(next.runtime, next.shops, next.displays, next.living, files,
+                    art.arcane.animus.core.gui.GlossBridge.absent("Gloss is a Bukkit plugin and cannot run on mod servers"), LOGGER::info);
             art.arcane.animus.core.hire.HireService<ServerPlayer, ItemStack> hires = new art.arcane.animus.core.hire.HireService<>(next.runtime, next.shops.screens(), next.living, files,
                     next.combat.hireGuarding(), LOGGER::info);
-            art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> clickShops = next.shops;
-            next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) -> hires.interacted(player, npc, attack, sneaking) || clickShops.interacted(player, npc, attack, sneaking));
             next.ticks.every(hires::tick);
             LOGGER.info(hires.status());
             art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
+            art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> holoService = next.guis;
+            next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) ->
+                    hires.interacted(player, npc, attack, sneaking) || screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
             next.ticks.every(() -> {
                 for (UUID viewer : screenService.screens().viewing()) {
                     ServerPlayer online = server.getPlayerList().getPlayer(viewer);
                     if (online != null) screenService.screens().tick(online);
                 }
+                for (ServerPlayer online : List.copyOf(server.getPlayerList().getPlayers())) holoService.tick(online);
             });
             next.shops.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {});
+            next.guis.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {});
             LOGGER.info(next.shops.status());
+            LOGGER.info(next.guis.status());
             next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), BuildProtection.NONE,
                     "none (mod servers have no standard protection API; every block change is allowed)", next.ticks::every,
                     () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null);
             LOGGER.info(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
-            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.shops),
+            next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis),
                     next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
             next.extensions = new ExtensionRuntime(next.runtime.documents().resolve("modules"), modulePlatform(), next.runtime.definitionGateway(),
                     next.runtime.moduleSettings(), LOGGER::info, (ExtensionRuntime.State initialized) -> {
@@ -159,7 +168,7 @@ public final class AnimusModRuntime {
             }
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
                     next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
-                            "shop", next.shops.shopCommand(), "gui", next.shops.guiCommand(), "editor", new EditorCommands(() -> owner.editor, files)), () -> owner.stopping));
+                            "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files)), () -> owner.stopping));
             next.extensions.start();
             startEditor(server, next, files);
             running = next;
@@ -186,6 +195,7 @@ public final class AnimusModRuntime {
         if (active.behaviors != null) active.behaviors.close();
         if (active.builtins != null) active.builtins.close();
         if (active.screens != null) active.screens.closeAll();
+        if (active.guis != null) active.guis.close();
         if (active.shops != null) active.shops.close();
         if (active.extensions != null) active.extensions.close();
         if (active.builds != null) active.builds.close();
@@ -262,7 +272,8 @@ public final class AnimusModRuntime {
     boolean interact(ServerPlayer player, int entityId, boolean attack, String hand, boolean secondary) {
         Running active = running;
         VanillaBodyTransport transport = active == null ? null : active.host.transport();
-        return transport != null && transport.interact(player, entityId, attack, hand, secondary);
+        if (transport != null && transport.interact(player, entityId, attack, hand, secondary)) return true;
+        return active != null && active.displays != null && active.displays.interact(player, entityId, attack, hand, secondary);
     }
     void input(ServerPlayer player, Input input) {
         Running active = running;
@@ -279,6 +290,7 @@ public final class AnimusModRuntime {
         Running active = running;
         if (active == null || player.position().distanceToSqr(x, y, z) < CORRECTION_SQUARED) return;
         if (active.shops != null) active.shops.screens().teleported(player);
+        if (active.guis != null) active.guis.teleported(player);
         active.living.teleported(player);
     }
     void joined(ServerPlayer player) { Running active = running; if (active != null) active.living.joined(player); }
@@ -286,18 +298,21 @@ public final class AnimusModRuntime {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().quit(player);
+        if (active.guis != null) active.guis.quit(player);
         active.living.quit(player);
     }
     void respawned(ServerPlayer player) {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().worldChanged(player);
+        if (active.guis != null) active.guis.worldChanged(player);
         active.living.respawned(player);
     }
     void died(ServerPlayer player) {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().died(player);
+        if (active.guis != null) active.guis.died(player);
         active.living.died(player);
     }
     void realDamaged(LivingEntity victim, DamageSource source) { Running active = running; if (active != null) active.combat.realDamaged(victim, source); }

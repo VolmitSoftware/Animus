@@ -17,6 +17,12 @@ class RichTextTest {
         assertEquals("Tom & Jerry <3", RichText.colorize("Tom & Jerry <3"));
     }
 
+    @Test void glossBracketHexShorthandColorizes() {
+        assertEquals("§x§f§f§0§0§0§0Red", RichText.colorize("[FF0000]Red"));
+        assertEquals("a §x§1§2§3§4§5§6b", RichText.colorize("a [123456]b"));
+        assertEquals("[12345] [GGGGGG] [1234567]", RichText.colorize("[12345] [GGGGGG] [1234567]"));
+    }
+
     @Test void unicodeEscapesAndLiteralSymbolsSurvive() {
         assertEquals("§aok", RichText.colorize("\\u00a7aok"));
         assertEquals("§c❤ love", RichText.colorize("&c\\u2764 love"));

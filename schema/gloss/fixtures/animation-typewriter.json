@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "show": true,
+  "mode": "ascend",
+  "frameIntervalMs": 1000,
+  "frames": [
+    "&f{{ typewriter('WELCOME', floor(time.seconds * 4) + 7, 1) }}"
+  ]
+}

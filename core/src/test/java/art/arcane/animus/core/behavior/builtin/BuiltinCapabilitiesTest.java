@@ -128,6 +128,16 @@ class BuiltinCapabilitiesTest {
         assertEquals("preview-refused", code(action("open-shop", "{\"shop\":\"town:baker\"}", Optional.of(PLAYER), true, false, Optional.empty())));
     }
 
+    @Test void openGuiOpensMenusAndGlossMenusByKind() throws Exception {
+        start();
+        assertEquals(Outcome.Status.OK, action("open-gui", "{\"gui\":\"town:hall\",\"kind\":\"menu\"}").status());
+        assertEquals(Outcome.Status.OK, action("open-gui", "{\"gui\":\"lobby/Main\",\"kind\":\"gloss\"}").status());
+        assertEquals(Outcome.Status.OK, action("open-gui", "{\"gui\":\"town:baker\",\"kind\":\"shop\"}").status());
+        assertEquals(List.of("screen:MENU:town:hall", "screen:GLOSS:lobby/Main", "screen:SHOP:town:baker"), platform.calls);
+        assertEquals(Outcome.Status.INVALID, action("open-gui", "{\"gui\":\"lobby/Main\",\"kind\":\"menu\"}").status());
+        assertEquals(Outcome.Status.INVALID, action("open-gui", "{\"gui\":\"town:hall\",\"kind\":\"window\"}").status());
+    }
+
     @Test void openShopNamesAShopId() throws Exception {
         start();
         assertEquals(Outcome.Status.INVALID, action("open-shop", "{\"shop\":\"Baker Shop\"}").status());

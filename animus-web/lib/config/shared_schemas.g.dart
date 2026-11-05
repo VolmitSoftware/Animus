@@ -772,7 +772,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         },
         {
           "const": "animus:open-gui",
-          "description": "Opens a chest GUI for the triggering player."
+          "description": "Opens a chest GUI (kind inventory, the default), holographic menu, shop or, with Gloss installed, a Gloss menu for the triggering player."
         },
         {
           "const": "animus:open-shop",
@@ -1783,12 +1783,20 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 256
+                    },
+                    "kind": {
+                      "enum": [
+                        "inventory",
+                        "menu",
+                        "shop",
+                        "gloss"
+                      ]
                     }
                   },
                   "required": [
                     "gui"
                   ],
-                  "description": "Opens a chest GUI for the triggering player."
+                  "description": "Opens a chest GUI (kind inventory, the default), holographic menu, shop or, with Gloss installed, a Gloss menu for the triggering player."
                 }
               },
               "required": [
@@ -4008,7 +4016,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {
       "id": "animus:open-gui",
       "kind": "action",
-      "description": "Opens a chest GUI for the triggering player.",
+      "description": "Opens a chest GUI (kind inventory, the default), holographic menu, shop or, with Gloss installed, a Gloss menu for the triggering player.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -4018,6 +4026,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": true,
           "minLength": 1,
           "maxLength": 256
+        },
+        "kind": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "inventory",
+            "menu",
+            "shop",
+            "gloss"
+          ]
         }
       }
     },
@@ -5488,6 +5506,255 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     }
   }
+}
+''',
+  'gloss/fixtures/animation-flash.json': r'''
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "show": true,
+  "mode": "ascend",
+  "frameIntervalMs": 1000,
+  "frames": [
+    "{{ flash('&a&lBOOSTED', '&7BOOSTED', floor(time.seconds * 4)) }}"
+  ]
+}
+''',
+  'gloss/fixtures/animation-marquee.json': r'''
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "show": true,
+  "mode": "ascend",
+  "frameIntervalMs": 1000,
+  "frames": [
+    "&b{{ marquee('GLOSS REALMS', 12, floor(time.seconds * 4)) }}"
+  ]
+}
+''',
+  'gloss/fixtures/animation-rainbow.json': r'''
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "show": true,
+  "mode": "ascend",
+  "frameIntervalMs": 53,
+  "frames": [
+    "[FF0000]",
+    "[FF1A00]",
+    "[FF3300]",
+    "[FF4D00]",
+    "[FF6600]",
+    "[FF8000]",
+    "[FF9900]",
+    "[FFB300]",
+    "[FFCC00]",
+    "[FFE600]",
+    "[FFFF00]",
+    "[E5FF00]",
+    "[CCFF00]",
+    "[B2FF00]",
+    "[99FF00]",
+    "[7FFF00]",
+    "[66FF00]",
+    "[4CFF00]",
+    "[33FF00]",
+    "[19FF00]",
+    "[00FF00]",
+    "[00FF1A]",
+    "[00FF33]",
+    "[00FF4D]",
+    "[00FF66]",
+    "[00FF80]",
+    "[00FF99]",
+    "[00FFB3]",
+    "[00FFCC]",
+    "[00FFE6]",
+    "[00FFFF]",
+    "[00E5FF]",
+    "[00CCFF]",
+    "[00B2FF]",
+    "[0099FF]",
+    "[007FFF]",
+    "[0066FF]",
+    "[004CFF]",
+    "[0033FF]",
+    "[0019FF]",
+    "[0000FF]",
+    "[1A00FF]",
+    "[3300FF]",
+    "[4D00FF]",
+    "[6600FF]",
+    "[8000FF]",
+    "[9900FF]",
+    "[B300FF]",
+    "[CC00FF]",
+    "[E600FF]",
+    "[FF00FF]",
+    "[FF00E5]",
+    "[FF00CC]",
+    "[FF00B2]",
+    "[FF0099]",
+    "[FF007F]",
+    "[FF0066]",
+    "[FF004C]",
+    "[FF0033]",
+    "[FF0019]"
+  ]
+}
+''',
+  'gloss/fixtures/animation-typewriter.json': r'''
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "show": true,
+  "mode": "ascend",
+  "frameIntervalMs": 1000,
+  "frames": [
+    "&f{{ typewriter('WELCOME', floor(time.seconds * 4) + 7, 1) }}"
+  ]
+}
+''',
+  'gloss/fixtures/hologram-baseline.json': r'''
+{
+  "schemaVersion": 3,
+  "revision": 1,
+  "anchor": {
+    "world": "world",
+    "position": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "lines": [
+    "&dNew hologram"
+  ],
+  "particleLayers": [],
+  "style": {
+    "billboard": "center",
+    "seeThrough": true,
+    "scaleX": 1.0,
+    "scaleY": 1.0,
+    "scaleZ": 1.0
+  },
+  "box": {
+    "enabled": false,
+    "padding": 4,
+    "borderWidth": 1,
+    "backgroundArgb": "#B31B1B22",
+    "borderArgb": "#FFAAAAAA"
+  }
+}
+''',
+  'gloss/fixtures/inventory-example.json': r'''
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "show": "false",
+  "title": "&8Shop &7- {{ viewer.name }}",
+  "resolution": "9x6",
+  "mask": [
+    "#########",
+    "#.......#",
+    "#.......#",
+    "#.......#",
+    "#.......#",
+    "#<##X##>#"
+  ],
+  "keys": {
+    "#": { "type": "decoration", "icon": { "type": "item", "item": "minecraft:gray_stained_glass_pane", "name": " " } },
+    "<": { "type": "button", "icon": { "type": "item", "item": "minecraft:arrow", "name": "&7Previous" },
+           "actions": [ { "type": "navigate", "mode": "page", "target": "prev" } ] },
+    ">": { "type": "button", "icon": { "type": "item", "item": "minecraft:arrow", "name": "&7Next" },
+           "actions": [ { "type": "navigate", "mode": "page", "target": "next" } ] },
+    "X": { "type": "button", "icon": { "type": "item", "item": "minecraft:barrier", "name": "&cClose" },
+           "actions": [ { "type": "close" } ] }
+  },
+  "slots": {
+    "10": {
+      "type": "button",
+      "icon": { "type": "item", "item": "minecraft:diamond_sword", "name": "&bSword", "lore": ["&7100 coins"] },
+      "show": "viewer.level >= 5",
+      "actions": [
+        { "type": "message", "message": "&aThe shop is an example; edit inventories/example.json." }
+      ]
+    }
+  },
+  "list": {
+    "area": ".",
+    "var": "entry",
+    "source": "['stone','dirt','oak_log']",
+    "pageSize": 28,
+    "template": {
+      "type": "button",
+      "icon": { "type": "item", "item": "minecraft:stone", "name": "&f{{ entry }}" },
+      "actions": [ { "type": "message", "message": "&7You picked &f{{ entry }}&7." } ]
+    }
+  },
+  "closeOnTeleport": true,
+  "variants": []
+}
+''',
+  'gloss/fixtures/menu-default.json': r'''
+{
+  "offset": [0.0, 1.7, 2.5],
+  "lockPosition": false,
+  "followPlayer": false,
+  "closeOnDeath": true,
+  "closeOnTeleport": true,
+  "particleLayers": [],
+  "components": [
+    {
+      "id": "title",
+      "offset": [0.0, 0.35, 0.0],
+      "data": {
+        "type": "decoration",
+        "icon": {
+          "type": "text",
+          "text": "&6&lGloss Menu"
+        }
+      }
+    },
+    {
+      "id": "body",
+      "offset": [0.0, 0.05, 0.0],
+      "data": {
+        "type": "decoration",
+        "icon": {
+          "type": "text",
+          "text": "&7Edit menus/default.json or use the web editor."
+        }
+      }
+    },
+    {
+      "id": "close",
+      "offset": [0.0, -0.35, 0.0],
+      "data": {
+        "type": "button",
+        "highlightModifier": 0.05,
+        "hoverDurationTicks": 7,
+        "hoverEasing": "back_out",
+        "icon": {
+          "type": "text",
+          "text": "&cClose"
+        },
+        "actions": [
+          {
+            "type": "sound",
+            "sound": "ui.button.click",
+            "source": "master",
+            "volume": 1.0,
+            "pitch": 1.0
+          },
+          {
+            "type": "navigate",
+            "mode": "close"
+          }
+        ]
+      }
+    }
+  ]
 }
 ''',
   'gloss/gloss-holograms.schema.json': r'''
@@ -10326,12 +10593,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "gloss-presets.schema.json": {"kind": "presets", "schemaVersion": 1, "animusFolder": "gui"}
   },
   "notCopied": {
-    "text-animation": "Gloss text animations have no schema file; Animus validates them in its parser (lane E)."
+    "text-animation": "Gloss text animations have no schema file; Animus validates them in TextAnimation (schemaVersion 1, folder gui/text-animations)."
   },
   "actions": {
-    "supported": ["command", "sound", "message", "title", "actionbar", "close", "navigate", "inventory", "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call"],
+    "supported": ["command", "sound", "message", "title", "actionbar", "close", "navigate", "inventory", "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call", "teleport", "bossbar", "broadcast", "effect", "particle", "parallel", "repeat"],
     "animus": ["animus:open-shop"],
-    "refused": ["teleport", "connect", "bossbar", "surface", "prompt", "dialog", "book", "parallel", "repeat", "emit", "broadcast", "effect", "particle", "setState", "addState", "clearState", "sky", "camera", "glow"]
+    "refused": ["connect", "surface", "prompt", "dialog", "book", "emit", "setState", "addState", "clearState", "sky", "camera", "glow"]
   }
 }
 ''',
