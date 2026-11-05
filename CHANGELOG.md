@@ -85,6 +85,8 @@
 - Web editor previews show candidate NPCs to the pairing player only, as inert packet-only bodies on every platform.
 - Drop-in Citizens migration with `/animus import citizens` (preview, apply, review, accept, rollback), with dtlTraders shops and Builder schematics found beside the save; `docs/migrating-from-citizens.md`.
 - Editor: local-only browser Citizens converter, byte-identical to the Java converter.
+- Citizens waypoints convert to navigation routes (accepted with `/animus import citizens accept patrols`), look-close converts to `animus:look-close`, and Citizens text and commands convert to generated behaviors in `behaviors/citizens/` (commands stay denied until allow-listed).
+- Navigation routes take `order` (`sequence`, `pingpong`, `random`, `wander`), per-point `waitTicks`, `guides`, `linkDistance` and `wander`; `animus:set-quest-state` accepts `random`; `animus:say` and `animus:command` fill in `{player_name}`.
 
 ### Changed
 
@@ -124,6 +126,7 @@
 - `/animus reload` also reloads rigs and animations.
 - Pairing codes accept `ws://` relay URLs on loopback for local development.
 - Converter version 7 puts imported NPCs in `npcs/<world>-r<x>_<z>/` folders; controllable NPCs import with riding disabled, imported shops wait for review, and imported NPCs stay despawned while Citizens is enabled.
+- The Citizens converter is version 8, so every import ID changes.
 
 ### Fixed
 
