@@ -78,6 +78,8 @@
 - Editor: rig editor with a bone tree, display bone inspector, stage gizmos, keyframe timeline with easing and loop modes, and playback on the shared sampler; Blockbench `.bbmodel` import into rigs, animations and item model sources; workspace zip export and per-rig server files export.
 - Gloss holograms, holographic menus and text animations, drawn with packet-only displays for each player on Bukkit, Folia and mod servers; the `modules["animus:gui"]` NPC binding; `animus:open-gui` takes `kind`; Gloss actions `teleport`, `bossbar`, `broadcast`, `effect`, `particle`, `parallel` and `repeat`; Gloss text animation functions and `time.*`.
 - Optional Gloss bridge, and Gloss folder and gloss-web bundle import and export through `/animus gui import|export gloss|file`; Gloss `[RRGGBB]` colour shorthand.
+- Editor: chest GUI, shop, holographic menu and hologram editors with in-game window and 3D previews, expression checks and completion, refused features flagged by field; Gloss Web workspace bundle import and export.
+- The chest GUI schema accepts teleport, bossbar, broadcast, effect, particle, parallel and repeat.
 
 ### Changed
 
