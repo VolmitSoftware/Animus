@@ -1,6 +1,8 @@
 package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.presentation.BodyRules;
+import art.arcane.animus.core.runtime.DefinitionSpec;
 import art.arcane.animus.core.storage.*;
 import com.google.gson.*;
 import org.yaml.snakeyaml.*;
@@ -16,7 +18,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 8;
+    public static final int CONVERTER_VERSION = 9;
     /** A staged or installed imported definition path; groups other than {@code citizens} come from converter version 7. */
     static final String NPC_PATH = "npcs/[a-z0-9][a-z0-9_-]{0,63}/citizens-[0-9]+\\.json";
     static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/citizens-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+)\\.json";
@@ -33,7 +35,8 @@ public final class CitizensImporter {
             if (!summary.has("conversions")) return "nothing (converter v" + converterVersion() + ")";
             JsonObject counts = summary.getAsJsonObject("conversions");
             return counts.get("routes").getAsInt() + " routes (" + counts.get("routePoints").getAsInt() + " points, " + counts.get("routeGuides").getAsInt() + " guides), look-close "
-                    + counts.get("lookClose").getAsInt() + ", text behaviors " + counts.get("textBehaviors").getAsInt() + ", command behaviors " + counts.get("commandBehaviors").getAsInt();
+                    + counts.get("lookClose").getAsInt() + ", text behaviors " + counts.get("textBehaviors").getAsInt() + ", command behaviors " + counts.get("commandBehaviors").getAsInt()
+                    + (counts.has("skinsKept") && counts.get("skinsKept").getAsInt() > 0 ? ", skins kept for review " + counts.get("skinsKept").getAsInt() : "");
         }
         public int converterVersion() { return summary.get("converterVersion").getAsInt(); }
         public int warningCount() { return summary.has("migrationWarnings") ? summary.getAsJsonArray("migrationWarnings").size() : 0; }
@@ -78,7 +81,7 @@ public final class CitizensImporter {
                 JsonObject mapping = identityMap(root.getAsJsonObject("npc"));
                 JsonObject citizensDefaults = CitizensBehaviors.defaults(root.getAsJsonObject("npc"));
                 JsonObject conversions = new JsonObject();
-                for (String counter : List.of("routes", "routePoints", "routeGuides", "lookClose", "textBehaviors", "commandBehaviors")) conversions.addProperty(counter, 0);
+                for (String counter : List.of("routes", "routePoints", "routeGuides", "lookClose", "textBehaviors", "commandBehaviors", "skinsKept")) conversions.addProperty(counter, 0);
                 int behaviorDocuments = 0;
                 Map<String, List<String>> reverseIds = new HashMap<>();
                 mapping.entrySet().forEach(e -> reverseIds.computeIfAbsent(e.getValue().getAsString(), ignored -> new ArrayList<>()).add(e.getKey()));
@@ -158,7 +161,14 @@ public final class CitizensImporter {
                     definition.add("position", position);
                     definition.addProperty("group", group(world, position.get("x"), position.get("z")));
                     for (Map.Entry<String, JsonElement> field : presentation.fields().entrySet()) definition.add(field.getKey(), field.getValue());
-                    for (String warning : presentation.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
+                    // A skin is only drawn on a player body; any other body keeps it under citizens:review.
+                    boolean skinApplied = traits.has("skintrait") && definition.get("type").getAsString().equals(BodyRules.PLAYER);
+                    List<String> presentationWarnings = new ArrayList<>(presentation.warnings());
+                    if (traits.has("skintrait") && !skinApplied) {
+                        presentationWarnings.add("/traits/skintrait: skins show only on player bodies; kept for review");
+                        increment(conversions, "skinsKept");
+                    }
+                    for (String warning : presentationWarnings) migrationWarnings.add("citizens-" + key + ": " + warning);
                     JsonObject modules = new JsonObject();
                     if (traits.has("sentinel")) {
                         SentinelMapping.Result combat = SentinelMapping.convertRaw(reviewed.get("sentinel"), reviewed.get("equipment"), references);
@@ -204,11 +214,11 @@ public final class CitizensImporter {
                     for (CitizensBehaviors.Document document : runtime.documents()) { writeBundle(temporary, document.path(), document.content(), manifest); behaviorDocuments++; }
                     for (String warning : runtime.warnings()) migrationWarnings.add("citizens-" + key + ": " + warning);
                     // This review copy applies only known location transformations. Exact originals stay in records/ and source.yml.
-                    reviewed.remove("skintrait");
+                    if (skinApplied) reviewed.remove("skintrait");
                     modules.add("citizens:review", reviewed);
                     if (!runtime.behaviors().isEmpty()) definition.add("behaviors", GSON.toJsonTree(runtime.behaviors()));
                     definition.add("modules", modules);
-                    if (traits.has("skintrait")) {
+                    if (skinApplied) {
                         JsonElement skin = traits.get("skintrait");
                         String serialized = JsonDocuments.write(skin);
                         String hash = JsonDocuments.hash(serialized);
@@ -222,13 +232,14 @@ public final class CitizensImporter {
                     Set<String> convertedFields = new HashSet<>(presentation.converted());
                     convertedFields.addAll(runtime.converted());
                     classify(record, "", fields, convertedFields);
-                    report.add("presentationWarnings", GSON.toJsonTree(presentation.warnings()));
+                    if (!skinApplied) for (String path : fields.keySet()) if (path.startsWith("/traits/skintrait/")) fields.addProperty(path, Status.UNSUPPORTED_PRESERVED.name());
+                    report.add("presentationWarnings", GSON.toJsonTree(presentationWarnings));
                     report.add("runtimeWarnings", GSON.toJsonTree(runtime.warnings()));
                     report.addProperty("fieldPathFormat", "json-pointer");
                     report.add("fields", fields);
                     report.add("worldRemaps", worldRemaps);
                     report.add("references", references);
-                    List<String> errors = new ArrayList<>(NpcDefinition.validate(definition));
+                    List<String> errors = new ArrayList<>(validate(definition));
                     try { if (!uuids.add(UUID.fromString(uuid))) errors.add("$.uuid: duplicate NPC UUID"); }
                     catch (IllegalArgumentException e) { /* already diagnosed by validator */ }
                     report.add("validationErrors", GSON.toJsonTree(errors));
@@ -437,6 +448,15 @@ public final class CitizensImporter {
             return new JsonPrimitive(number);
         }
         throw new IOException("Unsupported YAML scalar type: " + value.getClass().getSimpleName() + "; original input was not changed");
+    }
+
+    /** The schema rules, then the activation rules every server applies, so the valid count matches what can spawn. */
+    static List<String> validate(JsonObject definition) {
+        List<String> errors = new ArrayList<>(NpcDefinition.validate(definition));
+        if (!errors.isEmpty()) return List.copyOf(errors);
+        try { errors.addAll(DefinitionSpec.activation(NpcDefinition.parse(JsonDocuments.write(definition)))); }
+        catch (IOException | IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+        return List.copyOf(errors);
     }
 
     private static void classify(JsonElement value, String path, JsonObject fields, Set<String> converted) {

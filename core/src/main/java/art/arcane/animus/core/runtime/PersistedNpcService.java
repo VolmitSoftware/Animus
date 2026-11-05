@@ -107,6 +107,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private final ViewerPreviews previews;
     private final AtomicBoolean refresh = new AtomicBoolean(true);
     private final DefinitionQueue definitions = new DefinitionQueue();
+    private final ActivationWarnings activationWarnings = new ActivationWarnings(this::warnActivation);
     private final Deque<DefinitionQueue.Change> changes = new ArrayDeque<>();
     final Map<String, Entry> entries = new HashMap<>();
     private final Map<UUID, Entry> byUuid = new HashMap<>();
@@ -971,9 +972,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         }
     }
 
+    private void warnActivation(String message) { host.warn(message); }
     private boolean reconcile(DefinitionQueue.Change change) {
         NpcDefinition definition = change.definition(); Entry entry = entries.get(change.id());
-        if (!DefinitionSpec.spawned(definition)) { if (entry != null) remove(entry); return true; }
+        if (!DefinitionSpec.spawned(definition)) { activationWarnings.cleared(change.id()); if (entry != null) remove(entry); return true; }
         if (entry == null) {
             if (entries.size() >= MAX_ACTIVE) { lastFailure = "Active definition capacity reached: " + MAX_ACTIVE; return true; }
             entry = new Entry(change.id()); entries.put(change.id(), entry);
@@ -981,8 +983,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (entry.task != null && entry.task.spec.definition() != definition) { entry.task.cancelled = true; entry.task = null; }
         DefinitionSpec<I> spec;
         try { spec = DefinitionSpec.parse(definition, geometries.keySet(), this::world, host::item); }
-        catch (IllegalArgumentException invalid) { entry.error = invalid.getMessage(); return true; }
-        if (entry.value != null && entry.value.spec.serialized().equals(spec.serialized())) { entry.error = null; requestRouteRead(entry.value); return true; }
+        catch (IllegalArgumentException invalid) { entry.error = invalid.getMessage(); activationWarnings.failed(change.id(), entry.error); return true; }
+        if (entry.value != null && entry.value.spec.serialized().equals(spec.serialized())) { entry.error = null; activationWarnings.cleared(change.id()); requestRouteRead(entry.value); return true; }
         if (entry.task != null) return true;
         if (spec.skin() == null) { activate(entry, spec, null); return true; }
         if (skinTasks.size() >= MAX_SKIN_READS) return false;
@@ -996,7 +998,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (closed || task.cancelled || entries.get(task.entry.id) != task.entry || task.entry.task != task
                 || runtime.npcs().snapshot().get(task.entry.id) != task.spec.definition()) return;
         task.entry.task = null;
-        if (completion.error != null) { task.entry.error = "$.skin: " + completion.error; return; }
+        if (completion.error != null) { task.entry.error = "$.skin: " + completion.error; activationWarnings.failed(task.entry.id, task.entry.error); return; }
         activate(task.entry, task.spec, completion.skin);
     }
     private void activate(Entry entry, DefinitionSpec<I> spec, BodySkin skin) {
@@ -1013,7 +1015,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         boolean sameNpc = previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid());
         if (previous != null) removeValue(entry);
         if (previous != null && !sameNpc && triggers != null) triggers.removed(previous.spec.definition().uuid());
-        entry.value = new Value(spec, skin, state, geometry.ids, geometry.seat); entry.error = null;
+        entry.value = new Value(spec, skin, state, geometry.ids, geometry.seat); entry.error = null; activationWarnings.cleared(entry.id);
         byUuid.put(spec.definition().uuid(), entry); index.upsert(state.snapshot());
         mountRuntime.activated(entry.value);
         if (entry.value.rigId != null) { bindRig(entry.value); rigOrder.addLast(entry.value); }

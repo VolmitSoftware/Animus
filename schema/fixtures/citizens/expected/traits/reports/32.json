@@ -1,0 +1,31 @@
+{
+  "citizensId": 32,
+  "presentationWarnings": [
+    "/traits/skintrait: skins show only on player bodies; kept for review"
+  ],
+  "runtimeWarnings": [],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/spawned": "REQUIRES_REVIEW",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/skintrait/skinName": "UNSUPPORTED_PRESERVED",
+    "/traits/skintrait/signature": "UNSUPPORTED_PRESERVED",
+    "/traits/skintrait/textureRaw": "UNSUPPORTED_PRESERVED",
+    "/traits/skintrait/updateSkins": "UNSUPPORTED_PRESERVED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "legacy",
+      "to": "world"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

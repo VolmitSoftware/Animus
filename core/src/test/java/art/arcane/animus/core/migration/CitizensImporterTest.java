@@ -53,6 +53,30 @@ class CitizensImporterTest {
             importer.apply(store, preview.id());
         }
     }
+    @Test void mobBodiesKeepTheirCitizensSkinForReviewInsteadOfActivatingWithIt() throws Exception {
+        String frog = npc("2").replace("type: PLAYER", "type: FROG").replace("textureRaw: abc", "textureRaw: frog");
+        CitizensImporter.Preview preview = new CitizensImporter().preview(source("npc:\n" + npc("1") + frog), root.resolve("out"), Map.of("old", "world"));
+        assertEquals(2, preview.valid()); assertEquals(1, preview.skins());
+        JsonObject definition = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/world-r0_-1/citizens-2.json")));
+        assertFalse(definition.has("skin"));
+        JsonObject review = definition.getAsJsonObject("modules").getAsJsonObject("citizens:review");
+        assertEquals("frog", review.getAsJsonObject("skintrait").get("textureRaw").getAsString());
+        JsonObject report = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/2.json")));
+        assertEquals("UNSUPPORTED_PRESERVED", report.getAsJsonObject("fields").get("/traits/skintrait/textureRaw").getAsString());
+        assertTrue(report.getAsJsonArray("presentationWarnings").toString().contains("/traits/skintrait"));
+        assertEquals(1, preview.summary().getAsJsonObject("conversions").get("skinsKept").getAsInt());
+        assertTrue(preview.conversions().contains("skins kept for review 1"));
+        JsonObject player = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/world-r0_-1/citizens-1.json")));
+        assertTrue(player.has("skin"));
+        assertFalse(player.getAsJsonObject("modules").getAsJsonObject("citizens:review").has("skintrait"));
+    }
+    @Test void previewCountsADefinitionTheRuntimeWouldRefuseAsInvalid() throws Exception {
+        JsonObject definition = JsonDocuments.object("""
+                {"schemaVersion":1,"revision":1,"uuid":"00000000-0000-0000-0000-000000000001","id":"frog","group":"test","name":"Frog",
+                 "type":"minecraft:frog","spawned":false,"skin":"%s","position":{"world":"world","x":1,"y":64,"z":2,"yaw":0,"pitch":0}}
+                """.formatted("a".repeat(64)));
+        assertEquals(java.util.List.of("$.skin: textures require a player body"), CitizensImporter.validate(definition));
+    }
     @Test void rejectsDuplicateUnsafeRecursiveAndOversizedYaml() throws Exception {
         var importer = new CitizensImporter();
         for (String text : new String[]{"npc: {}\nnpc: {}", "npc: !!java.net.URL [http://localhost]", "npc: &x {a: *x}", "npc: {a: &x text, b: *x}", "npc: " + "[".repeat(70) + "0" + "]".repeat(70), "npc: {1: {}, '1': {}}"})

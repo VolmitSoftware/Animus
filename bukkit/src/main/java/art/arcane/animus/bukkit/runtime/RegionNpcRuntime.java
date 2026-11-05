@@ -2,6 +2,7 @@ package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.DefinitionSpec;
+import art.arcane.animus.core.runtime.ActivationWarnings;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.presentation.BodySkin;
@@ -107,6 +108,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private final Map<UUID, Player> online = new ConcurrentHashMap<>();
     private final Map<UUID, String> viewerFailures = new ConcurrentHashMap<>();
     private final Map<String, String> definitionErrors = new ConcurrentHashMap<>();
+    private final ActivationWarnings activationWarnings = new ActivationWarnings(this::warnActivation);
     private final Semaphore viewerSlots;
     private final AtomicInteger reads = new AtomicInteger();
     private final AtomicBoolean refresh = new AtomicBoolean(true);
@@ -477,11 +479,12 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
             plugin.getLogger().warning("NPC control tick failed: " + lastFailure);
         }
     }
+    private void warnActivation(String message) { plugin.getLogger().warning(message); }
     private boolean reconcile(DefinitionQueue.Change change) {
         NpcDefinition definition = change.definition();
         RegionActor actor = actors.get(change.id());
         if (!DefinitionSpec.spawned(definition)) {
-            definitionErrors.remove(change.id());
+            definitionErrors.remove(change.id()); activationWarnings.cleared(change.id());
             SkinRead read = skinReads.remove(change.id()); if (read != null) read.cancelled = true;
             if (actor != null) remove(actor);
             return true;
@@ -492,10 +495,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         try { spec = DefinitionSpec.parse(definition, geometries.keySet(), this::worldKey, DefinitionItems::stack); }
         catch (IllegalArgumentException invalid) {
             if (actor != null) actor.error = invalid.getMessage(); else definitionErrors.put(change.id(), invalid.getMessage());
+            activationWarnings.failed(change.id(), invalid.getMessage());
             return true;
         }
         RegionActor.Desired current = actor == null ? null : actor.desired;
-        if (current != null && current.spec() != null && current.spec().serialized().equals(spec.serialized())) { actor.error = null; actor.reread = true; return true; }
+        if (current != null && current.spec() != null && current.spec().serialized().equals(spec.serialized())) { actor.error = null; actor.reread = true; activationWarnings.cleared(change.id()); return true; }
         if (pending != null) return true;
         if (spec.skin() == null) { apply(spec, null); return true; }
         if (skinReads.size() >= MAX_READS) return false;
@@ -512,13 +516,14 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         if (read.failure != null) {
             RegionActor actor = actors.get(read.spec.definition().id());
             if (actor != null) actor.error = "$.skin: " + read.failure; else definitionErrors.put(read.spec.definition().id(), "$.skin: " + read.failure);
+            activationWarnings.failed(read.spec.definition().id(), "$.skin: " + read.failure);
             return;
         }
         apply(read.spec, read.skin);
     }
     private void apply(DefinitionSpec<ItemStack> spec, BodySkin skin) {
         String id = spec.definition().id();
-        definitionErrors.remove(id);
+        definitionErrors.remove(id); activationWarnings.cleared(id);
         RegionActor.Desired desired = new RegionActor.Desired(spec, skin);
         RegionActor actor = actors.get(id);
         if (actor != null && !actor.uuid.equals(spec.definition().uuid())) { remove(actor); actor = null; }

@@ -17,7 +17,7 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
    /animus import citizens
    ```
 
-   This converts the save, stages a reviewed plan and prints the counts: NPCs, valid definitions, skins, folders, the patrols, look-close and behaviors it made, what stays off and what is kept but not run. Nothing is installed. The full report is `imports/<import-id>/report.json`, with one report per NPC under `reports/`.
+   This converts the save, stages a reviewed plan and prints the counts: NPCs, valid definitions, skins, folders, the patrols, look-close and behaviors it made, what stays off and what is kept but not run. Nothing is installed. A definition counts as valid only when it also passes the spawn checks that do not depend on the server, such as a skin needing a player body. A spawned NPC that still cannot start is logged once as a warning that names the field. The full report is `imports/<import-id>/report.json`, with one report per NPC under `reports/`.
 
    Options: world mappings such as `world_old=world` when a world has a new name, and a mode for NPCs that already exist in Animus: `reject` (the default, refuse any collision), `replace` (update definitions from an earlier import) or `duplicate <label>` (install a second copy under `npcs/copy-<label>/`). For example `/animus import citizens replace world_old=world`.
 7. Apply:
@@ -79,6 +79,10 @@ Each NPC becomes `npcs/<world>-r<x>_<z>/citizens-<id>.json`. The folder is the N
 ## What converts
 
 Name, type, position and facing, skin, equipment, inventory, hologram lines, poses, sneaking and sitting, armor stand settings, owner, mounts, Sentinel settings, dtlTraders shop links, Builder settings, waypoints, look-close, text and commands. [Compatibility](compatibility.md) lists every trait and field.
+
+### Skins
+
+A skin on a player NPC becomes `skins/<sha256>.json`. Only player bodies show a skin, so a skin on any other body (a llama, frog or ender dragon) is not set: it stays in `modules["citizens:review"]`, the NPC's report lists it, and the preview counts it as a skin kept for review.
 
 ### Patrols
 
