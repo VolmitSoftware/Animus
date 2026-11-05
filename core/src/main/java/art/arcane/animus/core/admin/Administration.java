@@ -6,10 +6,14 @@ import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.migration.CitizensImporter;
 import art.arcane.animus.core.migration.ImportApplications;
+import art.arcane.animus.core.migration.ModuleImports;
+import art.arcane.animus.core.extension.ModuleHooks;
+import art.arcane.animus.api.ImportConverters;
 import art.arcane.animus.core.npc.*;
 import art.arcane.animus.core.storage.*;
 import com.google.gson.*;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.*;
 
 /** Shared, filesystem-only administration. The platform is responsible for permission and scheduling. */
@@ -92,16 +96,30 @@ public final class Administration {
                     lines.addAll(catalogs(dropIn.committed(), dropIn.rolledBack()));
                     yield lines;
                 }
-                if (args.length < 3) throw new IOException("import citizens [apply|review|accept|rollback] | import preview <inbox-file.yml> [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");
+                if (args.length < 3) throw new IOException("import citizens [apply|review|accept|rollback] | import preview <inbox-file> [converter=<namespace:name>] [oldWorld=newWorld ...] | apply <import-id> | stage <import-id> [reject|replace|duplicate <label>] | apply-plan <import-id> <application-id>");
                 CitizensImporter importer = new CitizensImporter();
                 if (args[1].equals("preview")) {
-                    if (!args[2].matches("[a-zA-Z0-9_-]+\\.yml")) throw new IOException("Use a .yml filename under imports/inbox/");
+                    if (!args[2].matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Use a plain filename under imports/inbox/");
                     Map<String, String> worlds = new TreeMap<>();
+                    Optional<String> converter = Optional.empty();
                     for (int i = 3; i < args.length; i++) {
+                        if (args[i].startsWith("converter=") && converter.isEmpty()) { converter = Optional.of(args[i].substring(10)); continue; }
                         String[] pair = args[i].split("=", 2);
                         if (pair.length != 2 || pair[0].isBlank() || pair[1].isBlank() || worlds.putIfAbsent(pair[0], pair[1]) != null) throw new IOException("Invalid world mapping: " + args[i]);
                     }
-                    var preview = importer.preview(runtime.documents().resolve("imports/inbox/" + args[2]), runtime.documents(), worlds);
+                    Path file = runtime.documents().resolve("imports/inbox/" + args[2]);
+                    CitizensImporter.Preview preview;
+                    if (converter.isEmpty() && args[2].endsWith(".yml") && CitizensImporter.recognizes(JsonDocuments.read(file)))
+                        preview = importer.preview(file, runtime.documents(), worlds);
+                    else {
+                        if (!worlds.isEmpty()) throw new IOException("World mappings apply only to Citizens imports");
+                        ImportConverters.Source source = ModuleImports.source(file);
+                        ModuleHooks.Converter selected = ModuleImports.select(runtime.moduleHooks(), source, converter);
+                        preview = ModuleImports.preview(runtime.documents(), source, selected);
+                        if (preview.valid() != preview.records())
+                            yield List.of("Preview " + preview.id() + " by " + selected.descriptor().key(), "Records: " + preview.records() + ", valid: " + preview.valid(),
+                                    "Review " + preview.directory().resolve("report.json") + "; fix the source or converter before import apply.");
+                    }
                     yield List.of("Preview " + preview.id(), "Records: " + preview.records() + ", valid: " + preview.valid() + ", skins: " + preview.skins(), "Review " + preview.directory().resolve("report.json") + " before import apply.");
                 }
                 if (args[1].equals("stage")) {

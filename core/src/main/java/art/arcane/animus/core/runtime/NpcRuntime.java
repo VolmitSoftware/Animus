@@ -43,9 +43,14 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     /** A validated click on an active NPC, on the player's owner. True when the click was used, which skips riding and selection. */
     @FunctionalInterface interface InteractionListener<P> { boolean interacted(P player, UUID npc, boolean attack, boolean sneaking); }
 
+    /** Engine-owned observer of every accepted click, called on the player's owner; quick, nonblocking and thread-safe. */
+    @FunctionalInterface interface InteractionObserver { void accepted(UUID npc, UUID viewer, boolean attack, double distance, boolean preview); }
+
     boolean available();
     /** Connect during startup. A later call replaces the listener. */
     void interactions(InteractionListener<P> listener);
+    /** Connect during startup. A later call replaces the observer. */
+    void observeInteractions(InteractionObserver observer);
     String status();
     /** Connect during startup, before the first NPC can activate. */
     void bindTriggers(TriggerDispatcher dispatcher);

@@ -27,6 +27,27 @@ class ApiContractTest {
         assertThrows(IllegalArgumentException.class,()->new Capabilities.Invocation(handle,Optional.empty(),"é".repeat(32769),false,()->false,Optional.empty()));
         assertThrows(IllegalArgumentException.class,()->new RevisionToken(0,"0".repeat(64)));
     }
+    @Test void minorVersionOneAddsHooksWithoutBreakingMajorOneModules(){
+        assertEquals(new Version(1,1,0),AnimusApi.API_VERSION);
+        assertEquals("animus-api-"+AnimusApi.API_VERSION+"-SNAPSHOT.jar",java.nio.file.Path.of(System.getProperty("apiJar")).getFileName().toString(),"Published artifact version follows the contract version");
+        assertTrue(new ApiRange(1,1).accepts(AnimusApi.API_VERSION));
+    }
+    @Test void importAndIntegrationRecordsAreBoundedAndCopied(){
+        List<String> warnings=new ArrayList<>(List.of("note"));
+        var record=new ImportConverters.Record(0,"{}",warnings);warnings.clear();
+        assertEquals(List.of("note"),record.warnings());
+        assertThrows(IllegalArgumentException.class,()->new ImportConverters.Record(-1,"{}",List.of()));
+        assertThrows(IllegalArgumentException.class,()->new ImportConverters.Conversion(List.of(),List.of()));
+        assertThrows(IllegalArgumentException.class,()->new ImportConverters.Source("x","a".repeat(16*1024*1024+1)));
+        assertThrows(IllegalArgumentException.class,()->new ImportConverters.Descriptor(new Capabilities.Key("a","b"),"d","p",Set.of()));
+        assertThrows(IllegalArgumentException.class,()->new Integrations.Position("world",Double.NaN,0,0));
+        assertThrows(IllegalArgumentException.class,()->new Integrations.Descriptor("d",Set.of()));
+        Set<String> categories=new HashSet<>(Set.of("animals"));
+        var party=new Integrations.Party(Integrations.PartyKind.NPC,UUID.randomUUID());var at=new Integrations.Position("world",0,0,0);
+        var request=new Integrations.ProtectionRequest(Integrations.ProtectionAction.BLOCK_PLACE,party,at,Optional.empty(),at,categories,Optional.empty());
+        categories.clear();assertEquals(Set.of("animals"),request.targetCategories());
+        assertThrows(IllegalArgumentException.class,()->new InteractionNotice(new NpcHandle(UUID.randomUUID()),UUID.randomUUID(),InteractionNotice.Action.ATTACK,-1,false,0));
+    }
     @Test void selfAndDuplicateDependenciesAreRejected(){
         var dep=new ModuleManifest.Dependency("example",new Version(1,0,0),new Version(2,0,0));
         assertThrows(IllegalArgumentException.class,()->new ModuleManifest("example",new Version(1,0,0),new ApiRange(1,1),Set.of(Platform.PAPER),List.of(dep)));

@@ -146,6 +146,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private AutoCloseable ticker;
     private TriggerBridge triggers;
     private volatile InteractionListener<P> interactions;
+    private volatile InteractionObserver observer;
     private volatile String unavailable;
     private final RuntimeFailures failures;
     private volatile boolean closed;
@@ -197,6 +198,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     @Override public boolean available() { return !closed && packets != null; }
     /** Connect during startup, before the first runtime tick can activate an NPC. */
     @Override public void interactions(InteractionListener<P> listener) { interactions = listener; }
+    @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); dispatcher.hide(previews); triggers = new TriggerBridge(dispatcher, index); }
     @Override public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
@@ -1304,6 +1306,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         accepted++;
         if (triggers != null) triggers.interaction(body.body.uuid(), host.id(viewer.player),
                 action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, false);
+        InteractionObserver observed = observer;
+        if (observed != null) observed.accepted(body.body.uuid(), host.id(viewer.player), action == RuntimeHost.Interaction.ATTACK, validated.distance(), false);
         InteractionListener<P> listener = interactions;
         if (listener != null && listener.interacted(viewer.player, body.body.uuid(), action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
