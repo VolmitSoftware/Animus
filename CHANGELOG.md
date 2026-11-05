@@ -90,6 +90,8 @@
 - Shopkeepers `save.yml` import through `/animus import citizens`, with Citizens links resolved in either import order, mob shopkeepers as dormant NPCs, and a matching browser converter; `converter shopkeepers-preview` and `shopkeepers-apply`.
 - Owned container shops (`owner`, `containers`) with atomic, protection-checked item-for-item trades; shop messages `containerFull` and `containerUnavailable`.
 - Editor: import a Citizens saves.yml, Shopkeepers save.yml and config.yml, and dtlTraders files on a paired server through `/v1/imports`, then review, apply, accept categories and roll back; hologram and menu previews play `|animation.id|` text animations; `preview-response` lists the live NPCs a preview hides.
+- NPC definitions accept an optional `tags` list (at most 32 unique lowercase labels).
+- Editor: NPC browser with search, folders, tags and bulk edits as one undoable change set, plus spawn and despawn on a paired server; typed editors for equipment, skin, route (top-down grid and 3D stage), combat, shop and schema-described modules; a conversation tree for dialogue behaviors.
 
 ### Changed
 
