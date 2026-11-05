@@ -16,7 +16,7 @@ import java.util.List;
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
-                             ShopSettings shops) {
+                             ShopSettings shops, EditorRelaySettings relay) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -40,6 +40,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("combat", new Gson().toJsonTree(CombatBudgets.DEFAULT));
             document.add("builds", new Gson().toJsonTree(BuildSettings.DEFAULT));
             document.add("shops", shopDefaults());
+            document.add("editor", editorDefaults());
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -110,7 +111,10 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         ShopSettings shopSettings;
         try { shopSettings = shops(table(data.getAsJsonObject(), "shops")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": shops: " + e.getMessage(), e); }
-        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings);
+        EditorRelaySettings relaySettings;
+        try { relaySettings = relay(table(data.getAsJsonObject(), "editor")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": editor: " + e.getMessage(), e); }
+        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings, relaySettings);
     }
 
     private static BuildSettings builds(JsonObject document) {
@@ -127,6 +131,24 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 integer(document, "maximumFileBytes", defaults.maximumFileBytes()),
                 integer(document, "maximumUndoEntries", defaults.maximumUndoEntries()),
                 integer(document, "saveSeconds", defaults.saveSeconds()));
+    }
+
+    private static JsonObject editorDefaults() {
+        EditorRelaySettings defaults = EditorRelaySettings.DEFAULT;
+        JsonObject editor = new JsonObject();
+        editor.addProperty("relayEnabled", defaults.enabled());
+        editor.addProperty("relayUrl", defaults.url());
+        return editor;
+    }
+
+    /** Reads only the relay keys of {@code [editor]}; the listener and pairing keys are read elsewhere. */
+    private static EditorRelaySettings relay(JsonObject editor) {
+        EditorRelaySettings defaults = EditorRelaySettings.DEFAULT;
+        return new EditorRelaySettings(bool(editor, "relayEnabled", defaults.enabled()), text(editor, "relayUrl", defaults.url()),
+                integer(editor, "relayReconnectMinSeconds", defaults.reconnectMinSeconds()),
+                integer(editor, "relayReconnectMaxSeconds", defaults.reconnectMaxSeconds()),
+                integer(editor, "relayFrameBytes", defaults.frameBytes()),
+                integer(editor, "relayConcurrentRequests", defaults.concurrentRequests()));
     }
 
     private static JsonObject shopDefaults() {

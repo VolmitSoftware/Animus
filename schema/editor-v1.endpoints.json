@@ -32,7 +32,7 @@
     "scope-missing": 403, "group-denied": 403, "origin-not-allowed": 403, "counter-replayed": 409,
     "not-found": 404, "invalid-request": 400, "too-large": 413, "rate-limited": 429, "busy": 503,
     "conflict": 409, "preview-refused": 422, "player-offline": 409, "gloss-unavailable": 422,
-    "unsupported-protocol": 400, "internal": 500
+    "unsupported-protocol": 400, "server-offline": 503, "timeout": 504, "internal": 500
   },
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
@@ -75,6 +75,18 @@
     "relayPendingRequests": 64,
     "relayTimeoutSeconds": 10,
     "relayPingSeconds": 30
+  },
+  "relay": {
+    "agentPath": "/agent",
+    "appPath": "/app",
+    "challengePrefix": "animus-relay/1 ",
+    "streamPath": "/v1/events",
+    "closeCode": 4008,
+    "relayHeaders": ["Origin", "X-Forwarded-For"],
+    "agentToRelay": ["relay-register", "relay-response", "relay-event", "relay-close"],
+    "relayToAgent": ["relay-challenge", "relay-registered", "relay-request", "relay-close", "relay-error"],
+    "appToRelay": ["relay-subscribe", "relay-request", "relay-close"],
+    "relayToApp": ["relay-subscribed", "relay-status", "relay-response", "relay-event", "relay-close", "relay-error"]
   },
   "previewRefusedCapabilities": ["animus:command", "animus:combat-control"],
   "previewRefusedGuiActions": ["command", "give", "take", "economy", "animus:trade"]
