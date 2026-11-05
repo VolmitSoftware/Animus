@@ -1,0 +1,37 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/object/equipment": "REQUIRES_REVIEW",
+    "/object/profession": "REQUIRES_REVIEW",
+    "/object/type": "CONVERTED",
+    "/object/villagerLevel": "REQUIRES_REVIEW",
+    "/object/villagerType": "REQUIRES_REVIEW",
+    "/recipes/1": "REQUIRES_REVIEW",
+    "/recipes/2": "UNSUPPORTED_PRESERVED",
+    "/recipes/3": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/recipes/1: item data Animus cannot write exactly is kept in imported, so the offer shows but does not trade: old Bukkit item data is kept in imported; load and save the shop once with a current Shopkeepers to convert it exactly",
+    "/recipes/2: the offer has no result item or no first item; kept in source.yml",
+    "/object/profession: mob settings are kept in the NPC's shopkeepers:review section",
+    "/object/villagerType: mob settings are kept in the NPC's shopkeepers:review section",
+    "/object/villagerLevel: mob settings are kept in the NPC's shopkeepers:review section",
+    "/object/equipment: mob settings are kept in the NPC's shopkeepers:review section",
+    "a new minecraft:villager NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+  ],
+  "counts": {
+    "CONVERTED": 10,
+    "REQUIRES_REVIEW": 5,
+    "UNSUPPORTED_PRESERVED": 1
+  },
+  "shopkeeper": 3,
+  "shop": "shopkeepers:shop-3"
+}

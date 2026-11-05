@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-4",
+  "title": "Closed Board",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "static",
+          "item": {
+            "id": "minecraft:map",
+            "count": 1
+          },
+          "imported": {
+            "source": "Shopkeepers",
+            "needs": [
+              {
+                "item": {
+                  "id": "minecraft:paper",
+                  "count": 1
+                },
+                "amount": 9
+              }
+            ],
+            "gives": [
+              {
+                "item": {
+                  "id": "minecraft:map",
+                  "count": 1
+                },
+                "amount": 1
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 4,
+    "uniqueId": "6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0004",
+    "type": "admin",
+    "location": {
+      "world": "world",
+      "x": 0,
+      "y": 65,
+      "z": 0,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "sign",
+      "wallSign": true,
+      "glowingText": false
+    },
+    "open": false
+  }
+}

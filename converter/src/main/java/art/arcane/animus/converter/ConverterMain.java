@@ -7,6 +7,7 @@ import art.arcane.animus.core.migration.CitizensImporter;
 import art.arcane.animus.core.migration.ImportApplications;
 import art.arcane.animus.core.migration.ImportDigest;
 import art.arcane.animus.core.migration.ShopImporter;
+import art.arcane.animus.core.migration.ShopkeepersImporter;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import java.nio.file.Path;
@@ -19,7 +20,7 @@ public final class ConverterMain {
         catch (Exception e) { System.err.println("Animus: " + e.getMessage()); System.exit(1); }
     }
     static String run(String[] args) throws Exception {
-        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir> | shops-preview <dtlTraders-folder> <data-dir> [saves.yml] | shops-apply <data-dir> <import-id>");
+        if (args.length < 2) throw new IllegalArgumentException("Usage: preview <saves.yml> <data-dir> [oldWorld=newWorld ...] | apply <data-dir> <import-id> | stage <data-dir> <import-id> [reject|replace|duplicate <label>] | apply-plan <data-dir> <import-id> <application-id> | rollback <data-dir> <transaction-id> | validate <data-dir> | validate-behaviors <directory> | schema <output-dir> | shops-preview <dtlTraders-folder> <data-dir> [saves.yml] | shops-apply <data-dir> <import-id> | shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>] | shopkeepers-apply <data-dir> <import-id> | digest <staged-dir>");
         // The canonical hash of a staged Citizens import, comparable with the browser converter's (ImportDigest).
         if (args[0].equals("digest")) { require(args, 2); return ImportDigest.outputHash(Path.of(args[1])); }
         if (args[0].equals("validate-behaviors")) { require(args, 2); return validateBehaviors(Path.of(args[1])); }
@@ -31,6 +32,17 @@ public final class ConverterMain {
                 return "Shop preview " + preview.id() + "\nShops: " + preview.shops() + ", entries: " + preview.entries()
                         + "\nIssues: " + preview.issues() + "; limit data: " + preview.limitStatus()
                         + "\nReport: " + preview.directory().resolve("report.json") + "\nNothing installed. Inspect the report before shops-apply.";
+            }
+        }
+        if (args[0].equals("shopkeepers-preview")) return shopkeepersPreview(args);
+        if (args[0].equals("shopkeepers-apply")) {
+            require(args, 3);
+            try (DocumentStore store = new DocumentStore(Path.of(args[1]))) {
+                NpcRepository repository = new NpcRepository(store);
+                repository.reload();
+                ShopkeepersImporter.Applied applied = new ShopkeepersImporter().apply(store, args[2], repository.all());
+                return "Shopkeepers import transaction: " + applied.transaction() + "\nBound to installed Citizens NPCs: " + applied.bound() + "; waiting for their NPC: " + applied.waiting()
+                        + (applied.problems().isEmpty() ? "" : "\nNot bound: " + String.join("; ", applied.problems()));
             }
         }
         if (args[0].equals("shops-apply")) {
@@ -73,6 +85,28 @@ public final class ConverterMain {
             };
         }
     }
+    /** {@code shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>]}: aggregate counts only. */
+    private static String shopkeepersPreview(String[] args) throws Exception {
+        String usage = "shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>]";
+        if (args.length < 3 || args.length > 5) throw new IllegalArgumentException(usage);
+        Optional<Path> config = Optional.empty(), citizens = Optional.empty();
+        for (int index = 3; index < args.length; index++) {
+            String[] pair = args[index].split("=", 2);
+            if (pair.length != 2 || pair[1].isBlank()) throw new IllegalArgumentException(usage);
+            switch (pair[0]) {
+                case "config" -> { if (config.isPresent()) throw new IllegalArgumentException(usage); config = Optional.of(Path.of(pair[1])); }
+                case "citizens" -> { if (citizens.isPresent()) throw new IllegalArgumentException(usage); citizens = Optional.of(Path.of(pair[1])); }
+                default -> throw new IllegalArgumentException(usage);
+            }
+        }
+        try (DocumentStore store = new DocumentStore(Path.of(args[2]))) {
+            ShopkeepersImporter.Preview preview = new ShopkeepersImporter().preview(Path.of(args[1]), config, citizens, store);
+            return "Shopkeepers preview " + preview.id() + "\n" + String.join("\n", preview.aggregate())
+                    + "\nOutput hash: " + ImportDigest.outputHash(preview.directory())
+                    + "\nReport: " + preview.directory().resolve("report.json") + "\nNothing installed. Inspect the report before shopkeepers-apply.";
+        }
+    }
+
     /** Offline check of a data directory or pack. An invalid result is an error, so the process exits with status 1. */
     private static String validateBehaviors(Path directory) throws Exception {
         try (OfflineCapabilities capabilities = new OfflineCapabilities()) {

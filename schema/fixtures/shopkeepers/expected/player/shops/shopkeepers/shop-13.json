@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-13",
+  "title": "Library",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "log": true,
+  "owner": {
+    "uuid": "00000000-0000-4000-8000-00000000a1e5",
+    "name": "Alex"
+  },
+  "containers": [
+    {
+      "world": "world",
+      "x": 41,
+      "y": 64,
+      "z": 5
+    }
+  ],
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 1
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 13,
+    "uniqueId": "0b5e3d8a-1111-4c2a-9e6f-00000000000d",
+    "type": "book",
+    "location": {
+      "world": "world",
+      "x": 40,
+      "y": 64,
+      "z": 5,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "hanging-sign"
+    }
+  }
+}

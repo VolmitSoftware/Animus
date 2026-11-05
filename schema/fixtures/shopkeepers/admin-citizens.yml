@@ -1,0 +1,30 @@
+npc:
+  '0':
+    name: Weaponsmith
+    uuid: 3f0c2b1e-0000-4000-8000-000000000001
+    traits:
+      type: PLAYER
+      location:
+        world: world
+        x: 100.5
+        y: 64.0
+        z: -19.5
+  '7':
+    name: Old Guard
+    uuid: 3f0c2b1e-0000-4000-8000-000000000007
+    traits:
+      type: PLAYER
+      location:
+        world: world
+        x: 5.5
+        y: 64.0
+        z: 5.5
+  '9':
+    name: No UUID
+    traits:
+      type: PLAYER
+      location:
+        world: world
+        x: 0.5
+        y: 64.0
+        z: 0.5

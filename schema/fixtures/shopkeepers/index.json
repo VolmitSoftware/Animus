@@ -1,0 +1,10 @@
+{
+  "description": "Synthetic Shopkeepers save.yml fixtures shared by core's ShopkeepersGoldenTest and animus-web's shopkeepers_converter_test. Each case converts source with the optional config (Shopkeepers config.yml) and citizens (Citizens saves.yml); expected/<name>/ is the exact staged imports/shopkeepers/<importId>/ tree. Every file under invalid/ must be rejected.",
+  "cases": [
+    {"name": "admin", "source": "admin.yml", "citizens": "admin-citizens.yml"},
+    {"name": "admin-unchecked", "source": "admin.yml"},
+    {"name": "player", "source": "player.yml", "config": "player-config.yml"},
+    {"name": "minimal", "source": "minimal.yml"}
+  ],
+  "invalid": "invalid"
+}

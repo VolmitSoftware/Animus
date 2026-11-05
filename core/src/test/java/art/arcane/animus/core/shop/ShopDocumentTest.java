@@ -53,4 +53,30 @@ class ShopDocumentTest {
         definition.getAsJsonObject("modules").getAsJsonObject("animus:shop").addProperty("openOn", "middle");
         assertEquals(List.of("$.modules[\"animus:shop\"].openOn: expected right, left or both"), NpcDefinition.validate(definition));
     }
+
+    private static final String OWNED = """
+            {"schemaVersion": 1, "revision": 1, "id": "town:baker", "owner": {"uuid": "00000000-0000-0000-0000-00000000000a", "name": "Alex"},
+             "containers": [{"world": "world", "x": 10, "y": 64, "z": -3}],
+             "pages": [{"name": "Stock", "trade": {"0": {"id": "t", "type": "trade", "item": {"id": "minecraft:diamond"},
+               "needs": [{"item": {"id": "minecraft:emerald"}, "amount": 3}], "gives": [{"item": {"id": "minecraft:diamond"}, "amount": 1}]}}}]}
+            """;
+
+    @Test void ownedShopsReadTheirOwnerAndContainers() {
+        assertEquals(List.of(), problems(OWNED));
+        ShopDocument shop = ShopDocument.parse("town:baker", OWNED).shop().orElseThrow();
+        assertEquals("00000000-0000-0000-0000-00000000000a", shop.owner().orElseThrow().uuid().toString());
+        assertEquals(Optional.of("Alex"), shop.owner().orElseThrow().name());
+        assertEquals(List.of(new ShopDocument.Container("world", 10, 64, -3)), shop.containers());
+    }
+
+    @Test void containerShopsTradeItemsForItemsAndNeedAnOwner() {
+        assertTrue(problems(OWNED.replace("\"owner\": {\"uuid\": \"00000000-0000-0000-0000-00000000000a\", \"name\": \"Alex\"},", "")).contains("$.owner: a shop with containers needs an owner"));
+        assertTrue(problems(OWNED.replace("\"needs\"", "\"price\": 5, \"needs\"")).contains("$.pages[0].trade.0.price: a container shop trades items for items; remove the price"));
+        assertTrue(problems(OWNED.replace("\"needs\"", "\"stock\": {\"maximum\": 4}, \"needs\"")).contains("$.pages[0].trade.0.stock: a container shop's stock is its containers"));
+        String buying = OWNED.replace("\"trade\": {\"0\": {\"id\": \"t\", \"type\": \"trade\",", "\"buy\": {\"0\": {\"id\": \"t\", \"type\": \"buy\", \"price\": 1,")
+                .replace(",\n   \"needs\": [{\"item\": {\"id\": \"minecraft:emerald\"}, \"amount\": 3}], \"gives\": [{\"item\": {\"id\": \"minecraft:diamond\"}, \"amount\": 1}]", "");
+        assertTrue(problems(buying).contains("$.pages[0].buy.0.type: a container shop has only trade and static entries"), problems(buying).toString());
+        assertTrue(problems(OWNED.replace("\"y\": 64", "\"y\": 99999")).contains("$.containers[0].y: expected integer -2048..2048"));
+        assertTrue(problems(OWNED.replace("\"uuid\": \"00000000-0000-0000-0000-00000000000a\"", "\"uuid\": \"alex\"")).contains("$.owner.uuid: expected canonical player UUID"));
+    }
 }

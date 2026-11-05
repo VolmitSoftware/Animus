@@ -1,6 +1,6 @@
 # Citizens add-on parity
 
-Servers that move from Citizens to Animus often also run add-on plugins that store their settings in Citizens `saves.yml` or next to it. This page lists what three popular add-ons do, what Animus covers today, how their saved data should import, and the order in which to build the missing parts. It describes these plugins only as import and migration targets.
+Servers that move from Citizens to Animus often also run add-on plugins that store their settings in Citizens `saves.yml` or next to it. This page lists what three popular add-ons, and Shopkeepers, do, what Animus covers today, how their saved data should import, and the order in which to build the missing parts. It describes these plugins only as import and migration targets.
 
 Research date: 2026-11-04. SpigotMC pages refused automated access, so listing text came from the Spiget mirror of each resource. Each claim links its source. "Not confirmed" means no public source answered it.
 
@@ -291,6 +291,44 @@ Still open:
 4. Packet-only preview and mark.
 5. Multi-part builds, and the Constructor importer once a sample save is available.
 6. Folia support, once a build can be handed between regions.
+
+## 4. Shopkeepers (villager-style shops)
+
+### Versions and sources
+
+Shopkeepers is not a Citizens add-on, but it can use Citizens NPCs as shop bodies, so servers that leave Citizens often leave Shopkeepers too. It keeps every shopkeeper in `plugins/Shopkeepers/data/save.yml`, keyed by shopkeeper id, with a `data-version` entry. Current saves write each item as `DataVersion`, `id`, `count` and `components`, where each component is SNBT text; older saves used Bukkit item serialization (`type`, `amount`, `meta`). Format read from the [Shopkeepers source](https://github.com/Shopkeepers/Shopkeepers) (`AbstractShopkeeper`, `SKRegularAdminShopkeeper`, the player shop types, `SKTradeOffer`, `SKPriceOffer`, `SKBookOffer`, `SKShopContainer`, `SKCitizensShopObject`, `ItemStackSerializers`) and its [wiki](https://github.com/Shopkeepers/Shopkeepers/wiki). Research date: 2026-11-05.
+
+### How a shop works
+
+A shopkeeper has a shop type and a shop object. Admin shops (`admin`) trade without stock: each recipe gives a result item for one or two items. Player shops have an owner and a container (a chest, or a list of stock and earnings containers in newer versions): selling shops (`sell`, old name `player`) sell items for currency items, buying shops (`buy`) pay currency for items, trading shops (`trade`) swap items, and book shops (`book`) sell copies of written books by title. Prices are counted in currency items from `config.yml`: a base currency (default emerald) and an optional high currency (default emerald block worth 9, used above a minimum cost of 20). The object is a mob, a Citizens NPC, a sign or hanging sign, or nothing (virtual). Trades happen in the vanilla villager window.
+
+### Feature table
+
+| Feature | Animus status | Animus design |
+| --- | --- | --- |
+| Admin item-for-item recipes | covered | `trade` entries with no stock limit |
+| Exact items with components | covered | Component SNBT becomes the item's `components`, removed components included |
+| Old Bukkit item meta | partial | Type and amount convert; meta is kept in `imported` and the offer only shows |
+| Trade permission (`tradePerm`) | covered | Shop `permission` |
+| Closed shops (`open: false`) | partial | Offers show and do not trade |
+| Selling, buying and trading player shops | covered | [Container shops](shops.md#container-shops): stock taken from and earnings put into the owner's containers, atomic on both sides |
+| Currency and high currency | covered | Read from `config.yml`; prices become the same currency item stacks Shopkeepers asks for |
+| Separate stock and earnings containers | partial | All containers form one pool |
+| Container protection | covered | WorldGuard `build` and `chest-access` for the owner on Bukkit |
+| Book shops | missing | Kept in the source and reported; copying a book by title is not an item trade |
+| Citizens NPC objects | covered | `animus:shop` on the converted Citizens NPC, matched by UUID or old numeric id, in either import order |
+| Mob objects | covered | New NPC of that mob, despawned until reviewed; mob settings kept in `shopkeepers:review` |
+| Mob settings (profession, baby, colours, equipment) | missing | Kept for review, not shown |
+| Sign and virtual objects | partial | Shop only; open it with a command or bind it to an NPC |
+| Trading history (`trade-log-storage`) | partial | Turns on the shop `log` file; CSV and SQLite history are not converted |
+| Members, hire, expiry, notifications | missing | Kept in the shop's `imported` section |
+| Per-offer trade limits | not in Shopkeepers | Animus `limit` can be added by hand |
+| Villager trading window | partial | Animus shows trades in its chest window |
+| Shopkeeper snapshots | missing | Kept in the staged `source.yml` |
+
+### Import mapping
+
+`/animus import citizens` finds the save and imports it with the Citizens save; see [migrating from Citizens](migrating-from-citizens.md#shopkeepers) for the full mapping and [compatibility](compatibility.md) for the reference counts.
 
 ## Shared work
 

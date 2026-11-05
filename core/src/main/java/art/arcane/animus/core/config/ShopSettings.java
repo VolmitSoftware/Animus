@@ -47,6 +47,8 @@ public record ShopSettings(boolean enabled, String economy, String priceFormat, 
         texts.put("nothingToSell", "&cYou have no {item} to sell.");
         texts.put("paymentFailed", "&cThe payment failed; your items were returned.");
         texts.put("failed", "&cThat trade failed and was undone: {reason}");
+        texts.put("containerFull", "&cThe shop's chest has no room for your items.");
+        texts.put("containerUnavailable", "&cThe shop's chest cannot be used: {reason}");
         texts.put("shopMissing", "&cThe shop {shop} is not available.");
         texts.put("shopPermission", "&cYou cannot use this shop.");
         texts.put("noPages", "&cThis shop has nothing you can use.");

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-14",
+  "title": "Ownerless",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "log": true,
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "static",
+          "item": {
+            "id": "minecraft:milk_bucket",
+            "count": 1
+          },
+          "imported": {
+            "source": "Shopkeepers",
+            "needs": [
+              {
+                "item": {
+                  "id": "minecraft:gold_nugget",
+                  "count": 1
+                },
+                "amount": 3
+              }
+            ],
+            "gives": [
+              {
+                "item": {
+                  "id": "minecraft:milk_bucket",
+                  "count": 1
+                },
+                "amount": 1
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 14,
+    "uniqueId": "0b5e3d8a-1111-4c2a-9e6f-00000000000e",
+    "type": "sell",
+    "location": {
+      "world": "world",
+      "x": 50,
+      "y": 64,
+      "z": 5,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "cow"
+    }
+  }
+}

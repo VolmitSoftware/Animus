@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-6",
+  "title": "Shopkeeper 6",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:stone",
+            "count": 64
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald",
+                "count": 1
+              },
+              "amount": 1
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:stone",
+                "count": 1
+              },
+              "amount": 64
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 6,
+    "uniqueId": "6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0006",
+    "type": "admin",
+    "location": {
+      "world": "world",
+      "x": 1,
+      "y": 64,
+      "z": 1,
+      "yaw": 0.0
+    },
+    "object": {}
+  }
+}

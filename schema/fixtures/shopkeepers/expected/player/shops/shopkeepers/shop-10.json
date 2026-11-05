@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-10",
+  "title": "Alex's shop",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "log": true,
+  "owner": {
+    "uuid": "00000000-0000-4000-8000-00000000a1e5",
+    "name": "Alex"
+  },
+  "containers": [
+    {
+      "world": "world",
+      "x": 11,
+      "y": 64,
+      "z": 5
+    }
+  ],
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:cooked_beef",
+            "count": 8
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:gold_ingot",
+                "count": 1
+              },
+              "amount": 3
+            },
+            {
+              "item": {
+                "id": "minecraft:gold_nugget",
+                "count": 1
+              },
+              "amount": 3
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:cooked_beef",
+                "count": 1
+              },
+              "amount": 8
+            }
+          ]
+        },
+        "1": {
+          "id": "offer-2",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:diamond",
+            "count": 1
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:gold_nugget",
+                "count": 1
+              },
+              "amount": 5
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:diamond",
+                "count": 1
+              },
+              "amount": 1
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 10,
+    "uniqueId": "0b5e3d8a-1111-4c2a-9e6f-00000000000a",
+    "type": "sell",
+    "location": {
+      "world": "world",
+      "x": 10,
+      "y": 64,
+      "z": 5,
+      "yaw": 270.0
+    },
+    "object": {
+      "type": "villager"
+    }
+  }
+}

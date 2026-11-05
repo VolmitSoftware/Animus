@@ -44,6 +44,33 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
    | `shops` | Lets dtlTraders NPCs open their shop on right click. |
    | `builder` | Lets Builder sections run with `/animus build start <npc-id>`. Builds never start on their own. |
 
+## Shopkeepers
+
+`/animus import citizens` also imports a Shopkeepers save. There is no separate command: the Shopkeepers shops join the same preview, apply, review, accept and rollback, so one rollback undoes both imports in order.
+
+1. Remove the Shopkeepers jar from `plugins/` and keep its data folder. Animus refuses to apply Shopkeepers shops while Shopkeepers is enabled, so no shop trades twice.
+2. Leave `plugins/Shopkeepers/data/save.yml` where it is, or copy it to `plugins/Animus/imports/shopkeepers/save.yml` (`imports/inbox/shopkeepers/save.yml` also works). The `config.yml` beside it is read too (`plugins/Shopkeepers/config.yml`, or `config.yml` next to the copied save): its currency items, high currency value and minimum cost, and trade log setting change how player shops convert.
+3. Run `/animus import citizens`. The preview lists shops, trading offers, offers that only show, offers kept in the source, new mob NPCs and how many Citizens links it found. The report is `imports/shopkeepers/<import-id>/report.json`, with one report per shopkeeper under `reports/`.
+4. `/animus import citizens apply`, then `review` and `accept shops` (and `accept spawn` for the new mob NPCs).
+
+The order does not matter. With both saves present, both stage together. If the Citizens import is already applied, a Shopkeepers save found later stages on its own and binds to the installed NPCs. If the Shopkeepers save is applied first, its Citizens shopkeepers wait, and they bind when the Citizens import is applied.
+
+| Shopkeeper | Becomes |
+| --- | --- |
+| Any shopkeeper | Shop `shopkeepers:shop-<id>` in `shops/shopkeepers/shop-<id>.json`, one trade entry per offer, 45 offers a page. The name becomes the title. |
+| Admin shop | Unlimited trades: each recipe's first and second item are the needs, the result item is the gift. `tradePerm` becomes the shop permission. A closed shop (`open: false`) shows its offers and trades nothing. |
+| Selling player shop | An owned shop whose stock is its container. The price becomes the currency items Shopkeepers asks for: high currency first when the price is above the minimum cost, the rest in base currency. |
+| Buying player shop | The player gives the item and gets the price in base currency from the container. |
+| Trading player shop | The player gives the first and second item and gets the result item from the container. |
+| Book player shop | Kept in the source and reported. A book offer copies a book by title, which is not an item-for-item trade. |
+| Citizens object | `modules["animus:shop"]` on the NPC converted from that Citizens NPC, matched by its Citizens UUID (or old numeric id). It opens nothing until `accept shops`. |
+| Mob object | A new NPC `npcs/shopkeepers/shopkeeper-<id>.json` of that mob at the shopkeeper's place, despawned until `accept spawn`, with its shop bound. Mob settings (profession, baby, equipment and so on) are kept in `modules["shopkeepers:review"]`. |
+| Sign, hanging sign or virtual object | The shop only, with the sign data kept in the shop's `imported` section. Open it with `/animus shop open <shop>` or bind it to an NPC. |
+
+Items are written exactly: Shopkeepers saves each item component as the text the give command reads, and that text becomes the item's `components`. An offer with item data that cannot be written exactly (old Bukkit item meta, components over 4096 characters) shows in the shop, trades nothing, and keeps the data in `imported`; the report lists it. A player shop without an owner or a container also only shows its offers. Owners, members, hire settings and expiry are kept in the shop's `imported` section and not used.
+
+The offline converter does the same: `converter shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>]` prints only counts and the output hash, and `converter shopkeepers-apply <data-dir> <import-id>` installs it. Owned shops are described in [shops](shops.md#container-shops).
+
 ## Where the files go
 
 Each NPC becomes `npcs/<world>-r<x>_<z>/citizens-<id>.json`. The folder is the NPC's world after world mapping and the 512-block region file it stands in, so NPCs of one town share a folder: an NPC at x 100, z -40 in `world` goes in `npcs/world-r0_-1/`, the area of `region/r.0.-1.mca`. The world name is lowercased with other characters changed to `-` (`World Nether` becomes `world-nether`) and cut to 48 characters. An NPC without coordinates goes in `npcs/<world>/`, and one with no world in `npcs/citizens/`. Citizens has no NPC groups of its own, so the location is the grouping. The ID is always `citizens-<Citizens id>` and the UUID is the Citizens UUID, so the same save always gives the same files. Skins go in `skins/<sha256>.json`, one file for each different skin.
@@ -71,4 +98,4 @@ This undoes every acceptance, the shops and the NPC definitions, newest first, a
 
 ## Converting in the browser
 
-The [editor](../animus-web/README.md) can convert a `saves.yml` in the browser with the same rules: open it, choose Convert Citizens save, and pick the file. The file is read on your computer and never uploaded. It shows the same report and downloads a zip to unpack into the data folder. The zip holds `imports/saves.yml` and the staged `imports/<import-id>/` folder, so `/animus import citizens` on the server finds the same preview, byte for byte, and continues from step 6.
+The [editor](../animus-web/README.md) can convert a `saves.yml` in the browser with the same rules: open it, choose Convert Citizens save, and pick the file. The file is read on your computer and never uploaded. It shows the same report and downloads a zip to unpack into the data folder. The zip holds `imports/saves.yml` and the staged `imports/<import-id>/` folder, so `/animus import citizens` on the server finds the same preview, byte for byte, and continues from step 6. A Shopkeepers `save.yml` (with its `config.yml`, if you have it) converts the same way; its zip holds `imports/shopkeepers/save.yml` and the staged `imports/shopkeepers/<import-id>/` folder. Load the Citizens save first so the browser checks the links.

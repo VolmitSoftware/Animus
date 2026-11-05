@@ -25,7 +25,34 @@
     "confirm": {"type": "boolean"},
     "log": {"type": "boolean"},
     "pages": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/page"}},
-    "imported": {"type": "object", "description": "Preserved source data from an importer."}
+    "imported": {"type": "object", "description": "Preserved source data from an importer."},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uuid"],
+      "properties": {
+        "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+        "name": {"type": "string", "description": "Last known name, for messages only."}
+      },
+      "description": "The player who owns a container shop. Required with containers."
+    },
+    "containers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["world", "x", "y", "z"],
+        "properties": {
+          "world": {"type": "string", "minLength": 1},
+          "x": {"type": "integer", "minimum": -30000000, "maximum": 30000000},
+          "y": {"type": "integer", "minimum": -2048, "maximum": 2048},
+          "z": {"type": "integer", "minimum": -30000000, "maximum": 30000000}
+        }
+      },
+      "description": "Blocks holding an owned shop's stock. Each trade takes its gives from them and puts its needs in them; only trade and static entries, no money prices and no stock fields. The owner must be allowed to open each block."
+    }
   },
   "$defs": {
     "mode": {"enum": ["buy", "sell", "trade"]},

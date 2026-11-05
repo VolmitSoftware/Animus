@@ -1,0 +1,185 @@
+data-version: 4|4189
+'1':
+  uniqueId: 6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0001
+  name: '&6Weaponsmith'
+  world: world
+  x: 100
+  y: 64
+  z: -20
+  yaw: 90.0
+  type: admin
+  open: true
+  object:
+    type: citizen
+    npcId: 3f0c2b1e-0000-4000-8000-000000000001
+  recipes:
+    '1':
+      resultItem:
+        DataVersion: 4189
+        id: minecraft:diamond_sword
+        count: 1
+        components:
+          minecraft:custom_name: '{text:"Blade",italic:0b}'
+          minecraft:enchantments: '{"minecraft:sharpness":5}'
+          minecraft:lore: '[{text:"Sharp",color:"gray"}]'
+      item1:
+        DataVersion: 4189
+        id: minecraft:emerald
+        count: 20
+      item2:
+        DataVersion: 4189
+        id: minecraft:diamond
+        count: 2
+    '2':
+      resultItem:
+        DataVersion: 4189
+        id: minecraft:bread
+        count: 6
+        components:
+          '!minecraft:food': '{}'
+      item1:
+        DataVersion: 4189
+        id: minecraft:emerald
+        count: 1
+'2':
+  uniqueId: 6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0002
+  name: VIP Trader
+  world: world
+  x: 120
+  y: 70
+  z: 4
+  yaw: -45.5
+  type: admin
+  tradePerm: town.shop.vip
+  object:
+    type: citizen
+    npcId: 3f0c2b1e-0000-4000-8000-0000000000ff
+  recipes:
+    '1':
+      resultItem:
+        DataVersion: 4082
+        id: minecraft:golden_apple
+        count: 1
+      item1:
+        DataVersion: 4082
+        id: minecraft:gold_ingot
+        count: 8
+'3':
+  uniqueId: 6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0003
+  name: Farmer Joe
+  world: world_nether
+  x: -8
+  y: 70
+  z: 33
+  yaw: 180.0
+  type: admin
+  object:
+    type: villager
+    profession: minecraft:farmer
+    villagerType: minecraft:plains
+    villagerLevel: 2
+    equipment:
+      mainhand:
+        DataVersion: 4189
+        id: minecraft:iron_hoe
+        count: 1
+  recipes:
+    '1':
+      resultItem:
+        ==: org.bukkit.inventory.ItemStack
+        v: 3700
+        type: IRON_INGOT
+        amount: 3
+        meta:
+          ==: ItemMeta
+          meta-type: UNSPECIFIC
+          display-name: '{"text":"Old Iron"}'
+      item1:
+        DataVersion: 4189
+        id: minecraft:wheat
+        count: 32
+    '2':
+      resultItem:
+        DataVersion: 4189
+        id: minecraft:carrot
+        count: 4
+    '3':
+      resultItem:
+        ==: org.bukkit.inventory.ItemStack
+        v: 3700
+        type: POTATO
+        amount: 5
+      item1:
+        DataVersion: 4189
+        id: minecraft:emerald
+        count: 1
+'4':
+  uniqueId: 6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0004
+  name: Closed Board
+  world: world
+  x: 0
+  y: 65
+  z: 0
+  yaw: 0.0
+  type: admin
+  open: false
+  object:
+    type: sign
+    wallSign: true
+    glowingText: false
+  recipes:
+    '1':
+      resultItem:
+        DataVersion: 4189
+        id: minecraft:map
+        count: 1
+      item1:
+        DataVersion: 4189
+        id: minecraft:paper
+        count: 9
+'5':
+  uniqueId: 6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0005
+  name: Old Guard
+  world: world
+  x: 5
+  y: 64
+  z: 5
+  yaw: 0.0
+  type: admin
+  object:
+    type: citizen
+    npcId: 7
+  recipes: {}
+'6':
+  uniqueId: 6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0006
+  name: ''
+  world: world
+  x: 1
+  y: 64
+  z: 1
+  yaw: 0.0
+  type: admin
+  tradePerm: bad perm!
+  snapshots: []
+  customField: kept
+  recipes:
+    '1':
+      resultItem:
+        DataVersion: 4189
+        id: minecraft:stone
+        count: 64
+      item1:
+        DataVersion: 4189
+        id: minecraft:emerald
+        count: 1
+'7':
+  uniqueId: 6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0007
+  name: Custom
+  world: world
+  x: 2
+  y: 64
+  z: 2
+  type: custom-shop
+  object:
+    type: villager
+note: not a shopkeeper

@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-11",
+  "title": "Grain Buyer",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "log": true,
+  "owner": {
+    "uuid": "00000000-0000-4000-8000-00000000b0b0",
+    "name": "Bob"
+  },
+  "containers": [
+    {
+      "world": "world",
+      "x": 20,
+      "y": 63,
+      "z": 5
+    }
+  ],
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:wheat",
+            "count": 16
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:wheat",
+                "count": 1
+              },
+              "amount": 16
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:gold_nugget",
+                "count": 1
+              },
+              "amount": 2
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 11,
+    "uniqueId": "0b5e3d8a-1111-4c2a-9e6f-00000000000b",
+    "type": "buy",
+    "location": {
+      "world": "world",
+      "x": 20,
+      "y": 64,
+      "z": 5,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "sign",
+      "wallSign": false
+    }
+  }
+}

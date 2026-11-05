@@ -7,6 +7,7 @@ import art.arcane.animus.core.gui.Screen;
 import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.gui.ScreenHost;
 import art.arcane.animus.core.gui.ScreenManager;
+import art.arcane.animus.core.inventory.TradeInventory;
 import art.arcane.animus.core.npc.NpcItem;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
@@ -123,7 +124,13 @@ public final class ShopScreen<P, S> implements Screen {
         if (ready.isEmpty()) { host.message(player, RichText.colorize(text("failed").replace("{reason}", "an item in this entry does not exist on this server"))); return; }
         ShopTransactions.Buyer<S> buyer = new ShopTransactions.Buyer<>(viewer.id(), (String node) -> host.permitted(player, node), host.inventory(player),
                 (S stack) -> host.drop(player, stack));
-        ShopTransactions.Outcome outcome = context.transactions().perform(shop.id(), ready.get(), buyer, fullStack);
+        Optional<TradeInventory<S>> stock = Optional.empty();
+        if (shop.stocked()) {
+            ShopStock<S> opened = host.stock(shop);
+            if (opened.inventory().isEmpty()) { host.message(player, RichText.colorize(text("containerUnavailable").replace("{reason}", opened.refusal().orElse("")).replace("{shop}", shop.id()))); return; }
+            stock = opened.inventory();
+        }
+        ShopTransactions.Outcome outcome = context.transactions().perform(shop.id(), ready.get(), buyer, fullStack, stock);
         String item = describe(ready.get(), entry, outcome.units());
         String price = price(outcome.price());
         String key = switch (outcome.status()) {
@@ -145,6 +152,8 @@ public final class ShopScreen<P, S> implements Screen {
             case NOTHING_TO_SELL -> "nothingToSell";
             case PAYMENT_FAILED -> "paymentFailed";
             case FAILED -> "failed";
+            case CONTAINER_FULL -> "containerFull";
+            case CONTAINER_UNAVAILABLE -> "containerUnavailable";
         };
         host.message(player, RichText.colorize(fill(text(key), item, price, outcome.detail().orElse(""))));
         if (!outcome.done()) return;

@@ -1,0 +1,21 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/object/npcId": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [],
+  "counts": {
+    "CONVERTED": 10
+  },
+  "shopkeeper": 5,
+  "shop": "shopkeepers:shop-5"
+}

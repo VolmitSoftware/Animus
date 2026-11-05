@@ -1,0 +1,30 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/containers": "CONVERTED",
+    "/name": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/offers/1": "CONVERTED",
+    "/offers/2": "CONVERTED",
+    "/offers/3": "UNSUPPORTED_PRESERVED",
+    "/owner": "CONVERTED",
+    "/owner uuid": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/offers/3: price 700 needs more than one stack of each currency item, which Shopkeepers also skips",
+    "a new minecraft:villager NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+  ],
+  "counts": {
+    "CONVERTED": 14,
+    "UNSUPPORTED_PRESERVED": 1
+  },
+  "shopkeeper": 10,
+  "shop": "shopkeepers:shop-10"
+}

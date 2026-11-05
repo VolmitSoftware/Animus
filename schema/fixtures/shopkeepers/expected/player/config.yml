@@ -1,0 +1,7 @@
+config-version: 9
+currency-item: minecraft:gold_nugget
+high-currency-item:
+  id: minecraft:gold_ingot
+high-currency-value: 9
+high-currency-min-cost: 20
+trade-log-storage: CSV

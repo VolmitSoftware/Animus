@@ -56,6 +56,9 @@ The bottom row holds the controls: previous page in slot 2, close in slot 4, nex
 | `match` | How sold and traded items are compared: `strict` (default; every piece of item data) or `legacy` (type, damage, name, lore, enchantments, potion and book text; used by imports). |
 | `closeAfterPurchase`, `confirm`, `log` | Close after a completed purchase, ask before each purchase, and write each completed purchase to `logs/shops/<namespace>/<path>/<date>.log`. |
 | `pages` | 1 to 64 pages of `name`, `rows` (1 to 6, default 3), optional `permission`, and the `buy`, `sell` and `trade` grids, each a map of slot number to entry. |
+| `owner` | `uuid` and an optional `name` of the player who owns a [container shop](#container-shops). Required with `containers`. |
+| `containers` | 1 to 8 blocks (`world`, `x`, `y`, `z`) that hold the stock of a container shop. |
+| `imported` | Source data an importer kept. Never read. |
 
 ## Entry fields
 
@@ -87,7 +90,13 @@ Every purchase runs on the player's own thread and completes fully or changes no
 - **Sell**: counts matching items anywhere in the 36 main slots, takes them from as many stacks as needed, then pays. If the payment fails, the items are put back.
 - **Trade**: takes every needed item, gives every reward, then takes any money price. If any step fails, the player gets back exactly what they had.
 
+- **Trade in a container shop**: takes the rewards out of the shop's containers, takes every needed item from the player, puts the needed items into the containers, then gives the rewards. If the containers lack a reward the trade is out of stock; if they have no room for the needed items it is refused with `containerFull`. Either way both sides keep exactly what they had.
+
 Only the hotbar and the three storage rows are used; armour, the offhand and the cursor are never touched. Every click in the window is cancelled, so no item can be taken out of it; see [chest GUI safety](gui.md#safety).
+
+## Container shops
+
+A shop with `owner` and `containers` is a player's shop: its stock is whatever is in those chests, barrels or other container blocks, and its earnings go into them. It trades items for items only, so its entries are `trade` or `static`, with no money price and no `stock` field. A trade only runs when every container is in a loaded chunk on the buyer's thread, still holds an inventory, and protection lets the owner open it; otherwise the buyer sees `containerUnavailable` with the reason. On Bukkit the protection check is WorldGuard's `build` and `chest-access` rules for the owner, online or not; without WorldGuard every container can be used, and if WorldGuard is installed but cannot be used, container shops stay closed. Two listed halves of one double chest count once. Mod servers do not open containers yet, so container shops refuse there. Shopkeepers player shops import as container shops; see [migrating from Citizens](migrating-from-citizens.md#shopkeepers).
 
 ## Money
 

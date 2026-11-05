@@ -1,0 +1,28 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/containers": "CONVERTED_WITH_CHANGES",
+    "/name": "CONVERTED",
+    "/object/npcId": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/offers/1": "CONVERTED",
+    "/owner": "CONVERTED",
+    "/owner uuid": "CONVERTED",
+    "/type": "CONVERTED",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/containers: stock and earnings containers are one pool in Animus: trades take from and pay into all of them"
+  ],
+  "counts": {
+    "CONVERTED_WITH_CHANGES": 1,
+    "CONVERTED": 13
+  },
+  "shopkeeper": 12,
+  "shop": "shopkeepers:shop-12"
+}

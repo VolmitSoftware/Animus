@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-3",
+  "title": "Farmer Joe",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "static",
+          "item": {
+            "id": "minecraft:iron_ingot",
+            "count": 3,
+            "imported": {
+              "source": "Shopkeepers",
+              "unconverted": {
+                "meta": {
+                  "==": "ItemMeta",
+                  "meta-type": "UNSPECIFIC",
+                  "display-name": "{\"text\":\"Old Iron\"}"
+                }
+              }
+            }
+          },
+          "imported": {
+            "source": "Shopkeepers",
+            "needs": [
+              {
+                "item": {
+                  "id": "minecraft:wheat",
+                  "count": 1
+                },
+                "amount": 32
+              }
+            ],
+            "gives": [
+              {
+                "item": {
+                  "id": "minecraft:iron_ingot",
+                  "count": 1
+                },
+                "amount": 3
+              }
+            ]
+          }
+        },
+        "1": {
+          "id": "offer-3",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:potato",
+            "count": 5
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald",
+                "count": 1
+              },
+              "amount": 1
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:potato",
+                "count": 1
+              },
+              "amount": 5
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 3,
+    "uniqueId": "6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0003",
+    "type": "admin",
+    "location": {
+      "world": "world_nether",
+      "x": -8,
+      "y": 70,
+      "z": 33,
+      "yaw": 180.0
+    },
+    "object": {
+      "type": "villager",
+      "profession": "minecraft:farmer",
+      "villagerType": "minecraft:plains",
+      "villagerLevel": 2,
+      "equipment": {
+        "mainhand": {
+          "DataVersion": 4189,
+          "id": "minecraft:iron_hoe",
+          "count": 1
+        }
+      }
+    }
+  }
+}

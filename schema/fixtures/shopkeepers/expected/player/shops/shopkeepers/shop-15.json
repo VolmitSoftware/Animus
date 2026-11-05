@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-15",
+  "title": "Hired Hand",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "log": true,
+  "owner": {
+    "uuid": "00000000-0000-4000-8000-00000000c0de",
+    "name": "Casey"
+  },
+  "containers": [
+    {
+      "world": "world",
+      "x": 61,
+      "y": 64,
+      "z": 5
+    }
+  ],
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:rotten_flesh",
+            "count": 10,
+            "components": "[minecraft:custom_name=\"Snack\"]"
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:gold_nugget",
+                "count": 1
+              },
+              "amount": 1
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:rotten_flesh",
+                "count": 1,
+                "components": "[minecraft:custom_name=\"Snack\"]"
+              },
+              "amount": 10
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 15,
+    "uniqueId": "0b5e3d8a-1111-4c2a-9e6f-00000000000f",
+    "type": "sell",
+    "location": {
+      "world": "world",
+      "x": 60,
+      "y": 64,
+      "z": 5,
+      "yaw": 0.0
+    },
+    "object": {
+      "type": "zombie",
+      "baby": true
+    },
+    "notifyOnTrades": false,
+    "forHire": true,
+    "hirecost": {
+      "DataVersion": 4189,
+      "id": "minecraft:emerald",
+      "count": 32
+    },
+    "members": [
+      {
+        "uuid": "00000000-0000-4000-8000-00000000d00d",
+        "name": "Dana",
+        "access": "trade"
+      }
+    ],
+    "expiration": "2026-12-01T00:00:00Z"
+  }
+}

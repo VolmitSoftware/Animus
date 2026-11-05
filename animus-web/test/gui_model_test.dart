@@ -431,4 +431,17 @@ void main() {
       expect(store.document(DocumentKind.shop, 'town:market'), isNull);
     });
   });
+
+  group('owned shops', () {
+    test('should keep owner and containers untouched when the shop editor writes a field', () {
+      final JsonMap shop = asMap(readFixture('shopkeepers/expected/player/shops/shopkeepers/shop-10.json'));
+      expect(shop['owner'], isNotNull);
+      expect(shop['containers'], isNotNull);
+      final JsonMap edited = asMap(writeIn(shop, <JsonStep>['title'], 'Renamed'));
+      expect(edited['title'], 'Renamed');
+      expect(jsonEncode(edited['owner']), jsonEncode(shop['owner']));
+      expect(jsonEncode(edited['containers']), jsonEncode(shop['containers']));
+      expect(<String>[for (final Diagnostic d in validateGui(DocumentKind.shop, edited)) d.path].where((String path) => path.contains('owner') || path.contains('containers')), isEmpty);
+    });
+  });
 }

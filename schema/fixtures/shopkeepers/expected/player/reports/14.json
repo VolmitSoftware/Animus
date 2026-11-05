@@ -1,0 +1,29 @@
+{
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/object/type": "CONVERTED",
+    "/offers/1": "CONVERTED_WITH_CHANGES",
+    "/owner uuid": "REQUIRES_REVIEW",
+    "/type": "CONVERTED_WITH_CHANGES",
+    "/uniqueId": "CONVERTED",
+    "/world": "CONVERTED",
+    "/x": "CONVERTED",
+    "/y": "CONVERTED",
+    "/yaw": "CONVERTED",
+    "/z": "CONVERTED"
+  },
+  "notes": [
+    "/type: the old player type is a selling shop",
+    "/owner uuid: no valid owner; the shop's offers show but do not trade",
+    "/offers/1: converted as a display entry; the shop cannot trade yet",
+    "a new minecraft:cow NPC stands at the shopkeeper's place, despawned until the spawn review is accepted"
+  ],
+  "counts": {
+    "CONVERTED": 8,
+    "CONVERTED_WITH_CHANGES": 2,
+    "REQUIRES_REVIEW": 1
+  },
+  "shopkeeper": 14,
+  "shop": "shopkeepers:shop-14"
+}

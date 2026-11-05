@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0003",
+  "id": "shopkeeper-3",
+  "group": "shopkeepers",
+  "name": "Farmer Joe",
+  "type": "minecraft:villager",
+  "spawned": false,
+  "position": {
+    "world": "world_nether",
+    "x": -7.5,
+    "y": 70,
+    "z": 33.5,
+    "yaw": 180.0,
+    "pitch": 0
+  },
+  "migration": {
+    "importId": "6e128e439c7602e903a1f0041fea7a2fceec1c55d4b5cb382e2e68b108be3b85",
+    "source": "Shopkeepers",
+    "shopkeeper": 3,
+    "originalSpawned": true
+  },
+  "modules": {
+    "animus:shop": {
+      "shop": "shopkeepers:shop-3",
+      "openOn": "right",
+      "reviewAccepted": false,
+      "imported": {
+        "source": "Shopkeepers",
+        "shopkeeper": 3
+      }
+    },
+    "shopkeepers:review": {
+      "profession": "minecraft:farmer",
+      "villagerType": "minecraft:plains",
+      "villagerLevel": 2,
+      "equipment": {
+        "mainhand": {
+          "DataVersion": 4189,
+          "id": "minecraft:iron_hoe",
+          "count": 1
+        }
+      }
+    }
+  }
+}

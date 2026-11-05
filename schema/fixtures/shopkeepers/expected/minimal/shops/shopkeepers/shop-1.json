@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "shopkeepers:shop-1",
+  "title": "Wanderer",
+  "modes": [
+    "trade"
+  ],
+  "defaultMode": "trade",
+  "match": "strict",
+  "pages": [
+    {
+      "name": "Page 1",
+      "rows": 2,
+      "trade": {
+        "0": {
+          "id": "offer-1",
+          "type": "trade",
+          "item": {
+            "id": "minecraft:compass",
+            "count": 1
+          },
+          "needs": [
+            {
+              "item": {
+                "id": "minecraft:emerald",
+                "count": 1
+              },
+              "amount": 3
+            }
+          ],
+          "gives": [
+            {
+              "item": {
+                "id": "minecraft:compass",
+                "count": 1
+              },
+              "amount": 1
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "imported": {
+    "source": "Shopkeepers",
+    "shopkeeper": 1,
+    "uniqueId": "not-a-uuid",
+    "type": "admin",
+    "location": {
+      "world": "world",
+      "x": -3,
+      "y": 70,
+      "z": 12
+    },
+    "object": {
+      "type": "wandering-trader"
+    }
+  }
+}
