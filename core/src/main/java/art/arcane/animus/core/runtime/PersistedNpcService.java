@@ -27,6 +27,7 @@ import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BodyTransport;
+import art.arcane.animus.core.config.NavigationSettings;
 import art.arcane.animus.core.config.RigSettings;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.rig.AnimationDocument;
@@ -95,7 +96,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private record Geometry(double width, double height, int ids, SeatGeometry seat) {}
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
     private static final int RECONCILE_WORK = 64, PACKET_WORK = 32, MAX_PENDING_PER_VIEWER = 8, MAX_ISSUED_IDS = 8192;
-    private static final int MAX_ROUTES = 32, NAVIGATION_UPDATES = 16, NAVIGATION_CELLS = 2048, MOTION_CELLS = 256;
+    /** Collision cells one step may check; a route waits for a later tick when fewer are left. */
+    private static final int MOTION_CELLS = 256;
+    /** A sleeping route looks for a nearby player again after this many ticks. */
+    private static final int AWAKE_RECHECK_TICKS = 20;
     private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096, LOOK_UPDATES = 32;
     private static final double HULL_WIDTH_LIMIT = 4, HULL_HEIGHT_LIMIT = 8;
     /** Fastest route leg in blocks per second; combat pursuit is limited further by {@code [combat] maximumSpeed}. */
@@ -115,7 +119,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private final Map<String, Geometry> geometries = new HashMap<>();
     final Map<UUID, Viewer> viewers = new HashMap<>();
     private final Deque<Viewer> viewerOrder = new ArrayDeque<>();
-    private final Deque<Route> routeOrder = new ArrayDeque<>();
+    /** Every route takes turns here; there is no limit on how many exist, only on the work done in one tick. */
+    private final RouteScheduler<Route> routeOrder;
+    private final NavigationSettings navigationSettings;
+    private final NavigationPressure navigationPressure = new NavigationPressure();
+    private int planStarts, motionCells;
     /** Idle NPCs whose footing changed, and NPCs still falling; each is queued at most once. */
     private final Deque<Value> supportOrder = new ArrayDeque<>();
     /** Active NPCs whose definition names a rig; planning takes turns through it. */
@@ -164,6 +172,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         previews = new ViewerPreviews(io, runtime.documents());
         completions = new ArrayBlockingQueue<>(settings.maximumViewers() * (MAX_PENDING_PER_VIEWER + 2));
         rigSettings = runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT;
+        navigationSettings = runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT;
+        routeOrder = new RouteScheduler<>(navigationSettings.routesPerTick(), navigationSettings.wakeChecksPerTick(), (Route route) -> route.nextAttempt);
         if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
         owner();
         try {
@@ -195,7 +205,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         int visible = viewers.values().stream().mapToInt((Viewer v) -> v.visible.size()).sum();
         return "NPC runtime ready | active=" + index.size() + " | viewers=" + viewers.size() + " | visible=" + visible
                 + " | skin-reads=" + skinTasks.size() + " | accepted=" + accepted + " | rejected=" + rejected
-                + " | routes=" + routeOrder.size() + " | path-jobs=" + navigation.outstandingJobs() + " | route-reads=" + routeReads.size()
+                + " | routes=" + routeOrder.size() + " | routes-sleeping=" + routeOrder.sleeping() + " | routes-waiting=" + routeOrder.waiting()
+                + " | navigation-pressure=" + navigationPressure.describe() + " | path-jobs=" + navigation.outstandingJobs() + " | route-reads=" + routeReads.size()
                 + " | mounted=" + mountRuntime.mountedCount() + " | mount-problems=" + mountRuntime.problemCount() + " | riders=" + riders.count()
                 + " | chunks=" + host.chunkDelivery() + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
@@ -271,13 +282,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     @Override public UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond) {
         Value value = navigable(id); Objects.requireNonNull(destination); Objects.requireNonNull(mode);
         validateDestination(value, destination, mode, blocksPerSecond);
-        if (value.route == null && routeOrder.size() >= MAX_ROUTES) throw new IllegalStateException("Navigation capacity reached: " + MAX_ROUTES);
         failWatch(value, "cancelled: replaced by a new route");
         stopRoute(value, "cancelled: replaced by manual route");
         cancelRouteRead(value);
         value.waypoints = null;
         Route route = new Route(value, destination, mode, blocksPerSecond, null);
-        value.route = route; routeOrder.addLast(route); value.navigationStatus = "queued; route=" + route.id;
+        value.route = route; routeOrder.add(route, tickNumber); value.navigationStatus = "queued; route=" + route.id;
         return route.id;
     }
     @Override public boolean stopNavigation(String id) {
@@ -670,7 +680,6 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (progress == null || next.isEmpty() || !value.state.snapshot().active()) return;
         WaypointProgress.Leg leg = next.get();
         WaypointSettings waypointSettings = progress.settings();
-        if (routeOrder.size() >= MAX_ROUTES) { value.navigationStatus = "unavailable: navigation capacity " + MAX_ROUTES; failWatch(value, value.navigationStatus); return; }
         WorldPosition at = value.state.snapshot().position();
         WorldPosition goal = leg.pause() ? at : new WorldPosition(at.world(), leg.goal());
         if (!leg.pause()) {
@@ -684,7 +693,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         }
         Route route = new Route(value, goal, waypointSettings.mode(), waypointSettings.speed(), leg);
         route.nextAttempt = tickNumber + Math.max(1, leg.waitTicks());
-        value.route = route; routeOrder.addLast(route); routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
+        value.route = route; routeOrder.add(route, tickNumber); routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
     }
     /** A leg that cannot finish: random and wander routes pause and choose again, every other route halts. */
     private void failLeg(Route route, String reason) {
@@ -710,74 +719,101 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         route.nextAttempt = tickNumber + 40; routeStatus(route, "suspended", reason);
     }
     private void tickNavigation() {
-        int cells = NAVIGATION_CELLS;
-        for (int i = 0, count = Math.min(NAVIGATION_UPDATES, routeOrder.size()); i < count && cells >= MOTION_CELLS * 2 && available() && !routeOrder.isEmpty(); i++) {
-            Route route = routeOrder.removeFirst(); Value value = route.value;
-            if (!routeCurrent(route)) { stopRoute(value, "cancelled by definition/lifecycle change"); continue; }
-            if (tickNumber < route.nextAttempt) { routeOrder.addLast(route); continue; }
-            if (route.leg != null && route.leg.pause()) {
-                value.route = null;
-                if (value.waypoints != null) beginLeg(value, value.waypoints.resume(route.leg, value.state.snapshot().position().point()));
-                continue;
+        planStarts = navigationSettings.planningStartsPerTick(); motionCells = navigationSettings.motionCellsPerTick();
+        RouteScheduler.Tick turn = routeOrder.tick(tickNumber, new RouteScheduler.Listener<>() {
+            @Override public boolean awake(Route route) { return routeAwake(route); }
+            @Override public RouteScheduler.Result work(Route route) { return available() ? workRoute(route) : RouteScheduler.Result.DEFER; }
+            @Override public void slept(Route route) {
+                if (route.plan != null) route.plan.cancel(); route.plan = null; route.result = null;
+                routeStatus(route, "sleeping", "no player within " + (int) settings.viewDistance() + " blocks");
             }
-            String world = route.goal.world();
-            if (!host.worldLoaded(world)) { stopRoute(value, "cancelled: world unavailable"); continue; }
-            try {
-                if (route.execution == null) {
-                    if (route.plan == null) {
-                        BlockPos feet = BlockPos.containing(value.state.snapshot().position().point());
-                        BlockPos goal = BlockPos.containing(route.goal.point());
-                        if (!host.chunkLoaded(world, Math.floorDiv(feet.x(), 16), Math.floorDiv(feet.z(), 16))
-                                || !host.chunkLoaded(world, Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16))) {
-                            suspend(route, "unavailable terrain; no chunk loading requested");
-                        } else {
-                            route.plan = navigation.plan(world, captureBounds(value, route.goal), feet, goal, profile(value, route.mode),
-                                    new PathPlanner.Limits(4096, 4096, 256));
-                            route.result = route.plan.future().toCompletableFuture(); routeStatus(route, "planning", "");
-                        }
-                    } else if (route.result.isDone()) {
-                        PathPlanner.Result planned = route.result.join(); route.capture = route.plan.capture().orElse(null); route.plan = null; route.result = null;
-                        if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspend(route, "unavailable captured terrain");
-                        else if (planned.status() != PathPlanner.Status.FOUND) failLeg(route, "failed: " + planned.status());
-                        else {
-                            route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), route.goal.point(), profile(value, route.mode));
-                            routeStatus(route, "moving", "kinematic; live collision revalidation");
-                        }
-                    }
-                }
-                if (routeCurrent(route) && route.execution != null && tickNumber >= route.nextAttempt) {
-                    if (!route.execution.position().equals(value.state.snapshot().position().point())) { stopRoute(value, "cancelled: authoritative position changed"); }
-                    else if (route.execution.finished()) arrive(route);
-                    else {
-                        PathExecution.Proposal step = route.execution.next(route.speed / 20).orElseThrow();
-                        int sweep = motionCells(value, step.from().distance(step.to())), settle = motionCells(value, 0);
-                        if (cells < sweep + (step.landing() ? settle : 0)) { routeOrder.addFirst(route); break; }
-                        MotionValidator.Sampler terrain = host.collision(world);
-                        MotionValidator.Result validation = MotionValidator.check(step.from(), step.to(), moveWidth(value), moveHeight(value), step.medium(), step.requireSupport(), sweep, terrain);
-                        cells -= validation.sampledCells();
-                        if (validation.clear() && step.landing()) {
-                            validation = MotionValidator.check(step.to(), step.to(), moveWidth(value), moveHeight(value),
-                                    route.mode == MovementProfile.Mode.SWIM ? MotionValidator.Medium.WATER : MotionValidator.Medium.GROUND,
-                                    route.mode != MovementProfile.Mode.SWIM, settle, terrain);
-                            cells -= validation.sampledCells();
-                        }
-                        if (validation.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) suspend(route, validation.detail());
-                        else if (!validation.clear()) failLeg(route, "blocked: " + validation.status() + "; " + validation.detail());
-                        else {
-                            route.execution.commit(step);
-                            Vec3 delta = step.to().subtract(step.from());
-                            float yaw = Math.hypot(delta.x(), delta.z()) > .000001 ? (float) Math.toDegrees(Math.atan2(-delta.x(), delta.z())) : value.yaw;
-                            value.state.move(new WorldPosition(route.goal.world(), step.to())); index.upsert(value.state.snapshot());
-                            value.poseRevision++; setPose(value, yaw, 0, step.onGround());
-                            routeStatus(route, "moving", "kinematic; live collision revalidation");
-                            if (route.execution.finished()) arrive(route);
-                        }
-                    }
-                }
-            } catch (RejectedExecutionException full) { route.nextAttempt = tickNumber + 20; routeStatus(route, "queued", "path capacity"); }
-            catch (RuntimeException failure) { if (value.route == route) failLeg(route, "failed: " + concise(failure)); else stopRoute(value, "failed: " + concise(failure)); }
-            if (routeCurrent(route)) routeOrder.addLast(route);
+            @Override public void woke(Route route) { routeStatus(route, "queued", "a player is near"); }
+        });
+        navigationPressure.observe(tickNumber, turn.deferred(), "routesPerTick=" + navigationSettings.routesPerTick()
+                + ", motionCellsPerTick=" + navigationSettings.motionCellsPerTick() + ", planningStartsPerTick=" + navigationSettings.planningStartsPerTick()
+                + " in [navigation] of config.toml").ifPresent(host::warn);
+    }
+    /**
+     * A patrol sleeps while no player is within view distance: it holds no turn, plan or budget. A manual route, and one
+     * a behavior waits for, never sleeps. The answer is kept for a second, so checking costs one player scan per route per second.
+     */
+    private boolean routeAwake(Route route) {
+        if (route.leg == null || route.value.routeWatch != null || !routeCurrent(route)) return true;
+        if (tickNumber - route.awakeChecked < AWAKE_RECHECK_TICKS) return route.awake;
+        route.awakeChecked = tickNumber;
+        route.awake = !host.playersNear(route.value.state.snapshot().position(), settings.viewDistance(), 1).isEmpty();
+        return route.awake;
+    }
+    private RouteScheduler.Result workRoute(Route route) {
+        Value value = route.value;
+        if (!routeCurrent(route)) { stopRoute(value, "cancelled by definition/lifecycle change"); return RouteScheduler.Result.DONE; }
+        if (route.leg != null && route.leg.pause()) {
+            value.route = null;
+            if (value.waypoints != null) beginLeg(value, value.waypoints.resume(route.leg, value.state.snapshot().position().point()));
+            return RouteScheduler.Result.DONE;
         }
+        String world = route.goal.world();
+        if (!host.worldLoaded(world)) { stopRoute(value, "cancelled: world unavailable"); return RouteScheduler.Result.DONE; }
+        try {
+            if (route.execution == null) {
+                if (route.plan == null) {
+                    BlockPos feet = BlockPos.containing(value.state.snapshot().position().point());
+                    BlockPos goal = BlockPos.containing(route.goal.point());
+                    if (!host.chunkLoaded(world, Math.floorDiv(feet.x(), 16), Math.floorDiv(feet.z(), 16))
+                            || !host.chunkLoaded(world, Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16))) {
+                        suspend(route, "unavailable terrain; no chunk loading requested");
+                    } else if (planStarts <= 0) {
+                        routeStatus(route, "queued", "waiting for a planning turn");
+                        return RouteScheduler.Result.YIELD;
+                    } else {
+                        planStarts--;
+                        route.plan = navigation.plan(world, captureBounds(value, route.goal), feet, goal, profile(value, route.mode),
+                                new PathPlanner.Limits(4096, 4096, 256));
+                        route.result = route.plan.future().toCompletableFuture(); routeStatus(route, "planning", "");
+                    }
+                } else if (route.result.isDone()) {
+                    PathPlanner.Result planned = route.result.join(); route.capture = route.plan.capture().orElse(null); route.plan = null; route.result = null;
+                    if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspend(route, "unavailable captured terrain");
+                    else if (planned.status() != PathPlanner.Status.FOUND) failLeg(route, "failed: " + planned.status());
+                    else {
+                        route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), route.goal.point(), profile(value, route.mode));
+                        routeStatus(route, "moving", "kinematic; live collision revalidation");
+                    }
+                }
+            }
+            if (routeCurrent(route) && route.execution != null && tickNumber >= route.nextAttempt) {
+                if (!route.execution.position().equals(value.state.snapshot().position().point())) { stopRoute(value, "cancelled: authoritative position changed"); }
+                else if (route.execution.finished()) arrive(route);
+                else {
+                    PathExecution.Proposal step = route.execution.next(route.speed / 20).orElseThrow();
+                    int sweep = motionCells(value, step.from().distance(step.to())), settle = motionCells(value, 0);
+                    // A step larger than the whole tick's cells still runs when it is the tick's first, so a big body never stalls.
+                    if (motionCells < sweep + (step.landing() ? settle : 0) && motionCells < navigationSettings.motionCellsPerTick()) return RouteScheduler.Result.DEFER;
+                    MotionValidator.Sampler terrain = host.collision(world);
+                    MotionValidator.Result validation = MotionValidator.check(step.from(), step.to(), moveWidth(value), moveHeight(value), step.medium(), step.requireSupport(), sweep, terrain);
+                    motionCells -= validation.sampledCells();
+                    if (validation.clear() && step.landing()) {
+                        validation = MotionValidator.check(step.to(), step.to(), moveWidth(value), moveHeight(value),
+                                route.mode == MovementProfile.Mode.SWIM ? MotionValidator.Medium.WATER : MotionValidator.Medium.GROUND,
+                                route.mode != MovementProfile.Mode.SWIM, settle, terrain);
+                        motionCells -= validation.sampledCells();
+                    }
+                    if (validation.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) suspend(route, validation.detail());
+                    else if (!validation.clear()) failLeg(route, "blocked: " + validation.status() + "; " + validation.detail());
+                    else {
+                        route.execution.commit(step);
+                        Vec3 delta = step.to().subtract(step.from());
+                        float yaw = Math.hypot(delta.x(), delta.z()) > .000001 ? (float) Math.toDegrees(Math.atan2(-delta.x(), delta.z())) : value.yaw;
+                        value.state.move(new WorldPosition(route.goal.world(), step.to())); index.upsert(value.state.snapshot());
+                        value.poseRevision++; setPose(value, yaw, 0, step.onGround());
+                        routeStatus(route, "moving", "kinematic; live collision revalidation");
+                        if (route.execution.finished()) arrive(route);
+                    }
+                }
+            }
+        } catch (RejectedExecutionException full) { route.nextAttempt = tickNumber + 20; routeStatus(route, "queued", "path capacity"); }
+        catch (RuntimeException failure) { if (value.route == route) failLeg(route, "failed: " + concise(failure)); else stopRoute(value, "failed: " + concise(failure)); }
+        return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
     }
     /**
      * A block changed in a loaded chunk of this world, or is about to change in this tick. Idle walking NPCs over it check
@@ -842,7 +878,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     }
     private void requestRouteRead(Value value) {
         if (value.routeSource == null || value.routeReadQueued || value.routeTask != null) return;
-        if (routeReadQueue.size() >= MAX_ROUTES) { value.routeError = "Reusable route read queue full; retry reload"; return; }
+        // Each NPC queues at most once, so the queue never outgrows the active NPCs; reads start a few per tick.
         value.routeReadQueued = true; routeReadQueue.addLast(value);
         if (value.route == null) value.navigationStatus = "loading reusable route";
     }
@@ -1342,7 +1378,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     public void worldLoaded() { if (available()) refresh(); }
     public void worldUnloaded(String world) {
         if (!available()) return;
-        for (Route route : List.copyOf(routeOrder)) if (route.goal.world().equals(world))
+        for (Route route : routeOrder.routes()) if (route.goal.world().equals(world))
             stopRoute(route.value, "cancelled: world unloaded");
         refresh();
     }
@@ -1353,7 +1389,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         closed = true;
         previews.close();
         closeQuietly(ticker);
-        for (Route route : List.copyOf(routeOrder)) stopRoute(route.value, "cancelled: runtime shutdown");
+        for (Route route : routeOrder.routes()) stopRoute(route.value, "cancelled: runtime shutdown");
         routeOrder.clear(); supportOrder.clear(); rigOrder.clear(); lookOrder.clear(); if (navigation != null) navigation.close();
         for (RouteReadTask task : routeReads) task.cancelled = true;
         routeReads.clear(); routeReadQueue.clear(); routeReadCompletions.clear();
@@ -1404,7 +1440,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         final UUID id = UUID.randomUUID(); final Value value; final WorldPosition goal;
         final MovementProfile.Mode mode; final double speed; final int waypoint; final WaypointProgress.Leg leg;
         NavigationPlan plan; CompletableFuture<PathPlanner.Result> result; PathExecution execution; CaptureProvenance capture;
-        long nextAttempt;
+        long nextAttempt, awakeChecked = Long.MIN_VALUE;
+        boolean awake = true;
         Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) {
             this.value = value; this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
         }

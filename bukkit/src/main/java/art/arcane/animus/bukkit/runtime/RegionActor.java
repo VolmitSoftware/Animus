@@ -69,7 +69,8 @@ final class RegionActor implements RegionOwner.Body {
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig) {}
-    private static final int NAVIGATION_CELLS = 2048;
+    /** A viewer marks nearby NPCs every second; a patrol stays awake this long after the last mark. */
+    private static final long WATCHED_NANOS = 3_000_000_000L;
     private final RegionNpcRuntime host;
     final String id;
     final UUID uuid;
@@ -86,6 +87,12 @@ final class RegionActor implements RegionOwner.Body {
     volatile boolean reread;
     /** A block under the NPC changed on some region thread: check its footing on the next owner tick. */
     volatile boolean supportWanted;
+    /** {@link System#nanoTime()} when a viewer within view distance last saw this NPC; written from viewer regions. */
+    volatile long watchedNanos;
+    /** The patrol sleeps: no player is near, so it holds no route turn or plan. Read by status. */
+    volatile boolean routeSleeping;
+    /** Ticks in a row this route wanted a turn and was refused; longest waiting goes first. */
+    private int routeWaited;
 
     private Desired applied;
     DefinitionSpec<ItemStack> spec;
@@ -225,6 +232,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     @Override public void suspended(String reason) {
         cancelPlan();
+        routeSleeping = false;
         if (routeWatch != null) stopRoute("unavailable: NPC became dormant because " + reason);
         else if (route != null) routeStatus(route, "suspended", "dormant: " + reason);
         host.transfers.remove(this);
@@ -389,6 +397,13 @@ final class RegionActor implements RegionOwner.Body {
         Route current = route;
         if (turns < current.nextAttempt) return;
         if (!state.snapshot().active()) { stopRoute("cancelled by definition/lifecycle change"); return; }
+        // A patrol with no player near sleeps: no turn, plan or budget until a viewer marks it again.
+        if (current.leg != null && routeWatch == null && !watched()) {
+            if (!routeSleeping) { routeSleeping = true; cancelPlan(); routeStatus(current, "sleeping", "no player within " + (int) host.settings.viewDistance() + " blocks"); }
+            routeWaited = 0;
+            return;
+        }
+        if (routeSleeping) { routeSleeping = false; routeStatus(current, "queued", "a player is near"); }
         if (current.leg != null && current.leg.pause()) {
             route = null;
             if (waypoints != null) beginLeg(waypoints.resume(current.leg, state.snapshot().position().point()));
@@ -396,7 +411,9 @@ final class RegionActor implements RegionOwner.Body {
         }
         World world = host.world(current.goal.world());
         if (world == null) { stopRoute("cancelled: world unavailable"); return; }
-        if (host.budget.take(RegionBudget.Kind.ROUTES, 1) == 0) return;
+        int waited = routeWaited;
+        if (!host.budget.takeRoute(waited)) { routeWaited = waited + 1; return; }
+        routeWaited = 0;
         ChunkOwnership owned = (x, z) -> host.regions.owns(world, x, z, x, z);
         try {
             if (current.execution == null) {
@@ -410,6 +427,10 @@ final class RegionActor implements RegionOwner.Body {
                     if (!host.regions.owns(current.goal.world(), Math.floorDiv(bounds.minX(), 16), Math.floorDiv(bounds.minZ(), 16),
                             Math.floorDiv(bounds.minX() + bounds.sizeX() - 1, 16), Math.floorDiv(bounds.minZ() + bounds.sizeZ() - 1, 16))) {
                         suspendRoute("route terrain belongs to another region; retrying"); return;
+                    }
+                    if (host.budget.take(RegionBudget.Kind.ROUTE_PLANS, 1) == 0) {
+                        host.budget.routeRefused(waited); routeWaited = waited + 1;
+                        routeStatus(current, "queued", "waiting for a planning turn"); return;
                     }
                     current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, goal, profile(current.mode), new PathPlanner.Limits(4096, 4096, 256));
                     current.result = current.plan.future().toCompletableFuture();
@@ -431,19 +452,20 @@ final class RegionActor implements RegionOwner.Body {
                     }
                 }
             }
-            if (route == current && current.execution != null) step(current, world, owned);
+            if (route == current && current.execution != null && !step(current, world, owned)) { host.budget.routeRefused(waited); routeWaited = waited + 1; }
         } catch (RejectedExecutionException full) { current.nextAttempt = turns + 20; routeStatus(current, "queued", "path capacity"); }
         catch (RuntimeException failure) { if (route == current) failLeg(current, "failed: " + PersistedNpcService.concise(failure)); else stopRoute("failed: " + PersistedNpcService.concise(failure)); }
     }
-    private void step(Route current, World world, ChunkOwnership owned) {
-        if (!current.execution.position().equals(state.snapshot().position().point())) { stopRoute("cancelled: authoritative position changed"); return; }
-        if (current.execution.finished()) { arrive(current); return; }
+    /** One kinematic step. False when the region had too few collision cells left this tick, so the route waits. */
+    private boolean step(Route current, World world, ChunkOwnership owned) {
+        if (!current.execution.position().equals(state.snapshot().position().point())) { stopRoute("cancelled: authoritative position changed"); return true; }
+        if (current.execution.finished()) { arrive(current); return true; }
         PathExecution.Proposal step = current.execution.next(current.speed / 20).orElseThrow();
         int sweep = PersistedNpcService.motionCells(hullWidth(), hullHeight(), step.from().distance(step.to()));
         int settle = PersistedNpcService.motionCells(hullWidth(), hullHeight(), 0);
-        int wanted = Math.min(NAVIGATION_CELLS, sweep + (step.landing() ? settle : 0));
+        int wanted = Math.min(host.navigationSettings.motionCellsPerTick(), sweep + (step.landing() ? settle : 0));
         int granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
-        if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return; }
+        if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return false; }
         MotionValidator.Result validation = LiveMovementProbe.check(world, owned, step.from(), step.to(), hullWidth(), hullHeight(), step.medium(), step.requireSupport(), sweep);
         int used = validation.sampledCells();
         if (validation.clear() && step.landing()) {
@@ -465,6 +487,12 @@ final class RegionActor implements RegionOwner.Body {
             routeStatus(current, "moving", "kinematic; live collision revalidation; region owner");
             if (current.execution.finished()) arrive(current);
         }
+        return true;
+    }
+    /** True while a viewer within view distance marked this NPC recently. Any thread. */
+    boolean watched() {
+        long seen = watchedNanos;
+        return seen != 0 && System.nanoTime() - seen < WATCHED_NANOS;
     }
     /** Idle gravity: one bounded step per owner tick while the NPC falls, charged to the region's motion cells. */
     private void support() {
@@ -540,7 +568,7 @@ final class RegionActor implements RegionOwner.Body {
         route.plan = null; route.result = null;
     }
     private void stopRoute(String reason) {
-        Route current = route; route = null;
+        Route current = route; route = null; routeSleeping = false; routeWaited = 0;
         if (current == null) { navigationStatus = reason; return; }
         if (current.plan != null) current.plan.cancel();
         if (current.execution != null) current.execution.cancel();

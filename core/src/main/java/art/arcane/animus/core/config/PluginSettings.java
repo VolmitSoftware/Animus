@@ -16,7 +16,8 @@ import java.util.List;
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
-                             ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs) {
+                             ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
+                             NavigationSettings navigation) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -42,6 +43,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("shops", shopDefaults());
             document.add("editor", editorDefaults());
             document.add("rigs", new Gson().toJsonTree(RigSettings.DEFAULT));
+            document.add("navigation", new Gson().toJsonTree(NavigationSettings.DEFAULT));
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -115,6 +117,9 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         RigSettings rigSettings;
         try { rigSettings = rigs(table(data.getAsJsonObject(), "rigs")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": rigs: " + e.getMessage(), e); }
+        NavigationSettings navigationSettings;
+        try { navigationSettings = navigation(table(data.getAsJsonObject(), "navigation")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": navigation: " + e.getMessage(), e); }
         EditorRelaySettings relaySettings;
         EditorSettings editorSettings;
         try {
@@ -122,7 +127,18 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             editorSettings = EditorSettings.parse(table(data.getAsJsonObject(), "editor"));
         } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": editor: " + e.getMessage(), e); }
         return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
-                relaySettings, editorSettings, rigSettings);
+                relaySettings, editorSettings, rigSettings, navigationSettings);
+    }
+
+    private static NavigationSettings navigation(JsonObject document) {
+        NavigationSettings defaults = NavigationSettings.DEFAULT;
+        for (String key : document.keySet())
+            if (!java.util.Set.of("routesPerTick", "motionCellsPerTick", "planningStartsPerTick", "wakeChecksPerTick").contains(key))
+                throw new IllegalArgumentException(key + " is not a navigation setting");
+        return new NavigationSettings(integer(document, "routesPerTick", defaults.routesPerTick()),
+                integer(document, "motionCellsPerTick", defaults.motionCellsPerTick()),
+                integer(document, "planningStartsPerTick", defaults.planningStartsPerTick()),
+                integer(document, "wakeChecksPerTick", defaults.wakeChecksPerTick()));
     }
 
     private static RigSettings rigs(JsonObject document) {
