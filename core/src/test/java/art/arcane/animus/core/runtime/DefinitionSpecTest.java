@@ -60,6 +60,20 @@ class DefinitionSpecTest {
         assertEquals(List.of("$.pose: a sitting NPC cannot also ride another NPC; remove the pose or the mount"), DefinitionSpec.validate(definition, TYPES, ignored -> WORLD, ITEMS));
     }
 
+    @Test void activationWarningsLogEachFailureOnceUntilItChangesOrClears() {
+        List<String> logged = new ArrayList<>();
+        ActivationWarnings warnings = new ActivationWarnings(logged::add);
+        warnings.failed("frog", "$.skin: textures require a player body");
+        warnings.failed("frog", "$.skin: textures require a player body");
+        assertEquals(List.of("NPC frog cannot activate: $.skin: textures require a player body"), logged);
+        warnings.failed("frog", "$.position.world: world is not loaded");
+        assertEquals(2, logged.size());
+        warnings.cleared("frog");
+        warnings.failed("frog", "$.position.world: world is not loaded");
+        assertEquals(3, logged.size());
+        assertTrue(logged.get(1).contains("$.position.world"));
+    }
+
     @Test void deliveredChunkKeysPreserveNegativeCoordinatesWithoutAliasing() {
         Set<Long> keys = new HashSet<>();
         for (int x : new int[]{Integer.MIN_VALUE, -1, 0, 1, Integer.MAX_VALUE})

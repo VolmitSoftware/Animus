@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 8,
+  "converterVersion": 9,
   "fieldPathFormat": "json-pointer",
-  "importId": "5d097b7bfff0b0e64d7c1ee6fbcddb4b26539d03c2e7b482cb14c1f031197c5a",
+  "importId": "16498f1ce9c5de7bf6865e1ff83d80657ec2be5ad0174acac90c9417e1fcec1a",
   "sourceSha256": "af47d1342d6ceb90babb1439357ec6f225b699137a6bc95e549fe1d9f3baed5d",
   "worldMap": {
     "old_town": "town"
@@ -18,7 +18,8 @@
     "routeGuides": 1,
     "lookClose": 2,
     "textBehaviors": 2,
-    "commandBehaviors": 1
+    "commandBehaviors": 1,
+    "skinsKept": 0
   },
   "citizensDefaults": {
     "lookclose": {
@@ -74,13 +75,13 @@
     "4": "0a1b2c3d-0000-4000-8000-000000000304"
   },
   "documents": {
-    "npcs/town-r0_0/citizens-0.json": "a689357afe0793d8f9e1d2f875f00f3687b355abdee44e17d5dbf5249aa43ec6",
-    "npcs/town-r0_0/citizens-1.json": "0303d179d101728b7aabd92648cbaca357ae464feabf279302ae88763c468d25",
+    "npcs/town-r0_0/citizens-0.json": "95d1ac684da3b6a05e8715ea97c657fc83a6b158ff1e3bafd802a57c82ab3d6c",
+    "npcs/town-r0_0/citizens-1.json": "35a55f47695cc7641c187abaca14c83b9d2c52fc95cf9909ffbccdda0ee84213",
     "behaviors/citizens/text-2.json": "fd86b6d89e566471ce36cb74f5c889cd2355336dd7330f02375f7421cafd5674",
-    "npcs/town-r-1_0/citizens-2.json": "f8973293c0533a655f384a870119dc3281f250e9a172503b71b8889927367181",
+    "npcs/town-r-1_0/citizens-2.json": "e39d2a5fa0239e493c8df2825eafbb096b1b41207f9797ba45b734346ec5a768",
     "behaviors/citizens/text-3.json": "2500899a3646cabd0c82cd0c2ddc83ee3a2be0f694052a1b2e4ae7049be79f75",
     "behaviors/citizens/commands-3.json": "56f79ffcffec46c36987f97bd074c2cf148401ff4bdff425837ed408ff96417d",
-    "npcs/town-r0_0/citizens-3.json": "e9ee3afe433c176c14d865a43b52e69f2d8a0652114518b0a10fe5b86efff167",
-    "npcs/town-r0_0/citizens-4.json": "6ef2f5eb713b5a29e94f679d280a8a1ba4cb79e7f62a4a43d4567f8b63ce74e4"
+    "npcs/town-r0_0/citizens-3.json": "7a36af6572a791a8e81931a242471a8a4c10e07f1dffbc68a8fb8ba044e8a811",
+    "npcs/town-r0_0/citizens-4.json": "0f98dd06bcc227ff8b0a2b72b2631346f161e91f4e883181a503f67b1fb2ffe6"
   }
 }
