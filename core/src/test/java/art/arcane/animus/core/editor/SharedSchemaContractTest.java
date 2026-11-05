@@ -86,6 +86,8 @@ class SharedSchemaContractTest {
             }
             case "shop" -> ShopDocument.parse(id, source).problems();
             case "inventory" -> GuiDocument.parse(id, source).problems();
+            case "rig" -> art.arcane.animus.core.rig.RigDocument.parse(id, source).problems();
+            case "animation" -> art.arcane.animus.core.rig.AnimationDocument.parse(id, source).problems();
             default -> { fail("No Java parser for fixture kind " + kind); yield List.of(); }
         };
     }

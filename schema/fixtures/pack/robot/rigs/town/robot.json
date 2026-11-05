@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:robot",
+  "units": "blocks",
+  "body": "hidden",
+  "bones": [
+    {
+      "id": "root",
+      "pivot": [
+        0,
+        0,
+        0
+      ],
+      "visual": {
+        "type": "item",
+        "item": {
+          "id": "minecraft:paper",
+          "components": "[item_model=\"animus:robot/root\"]"
+        }
+      }
+    },
+    {
+      "id": "body",
+      "pivot": [
+        0,
+        0.5,
+        0
+      ],
+      "visual": {
+        "type": "item",
+        "item": {
+          "id": "minecraft:paper",
+          "components": "[item_model=\"animus:robot/body\"]"
+        }
+      }
+    },
+    {
+      "id": "head",
+      "parent": "body",
+      "pivot": [
+        0,
+        1.25,
+        0
+      ],
+      "visual": {
+        "type": "item",
+        "item": {
+          "id": "minecraft:paper",
+          "components": "[item_model=\"animus:robot/head\"]"
+        }
+      }
+    },
+    {
+      "id": "arm",
+      "parent": "body",
+      "pivot": [
+        -0.3125,
+        1.25,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        10
+      ]
+    },
+    {
+      "id": "arm-blade",
+      "parent": "arm",
+      "pivot": [
+        -0.3125,
+        1.25,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        -30
+      ],
+      "visual": {
+        "type": "item",
+        "item": {
+          "id": "minecraft:paper",
+          "components": "[item_model=\"animus:robot/arm-blade\"]"
+        }
+      }
+    }
+  ],
+  "animations": {
+    "walk": "town:robot/walk",
+    "idle": "town:robot/idle"
+  }
+}

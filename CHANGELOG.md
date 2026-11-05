@@ -80,6 +80,7 @@
 - Optional Gloss bridge, and Gloss folder and gloss-web bundle import and export through `/animus gui import|export gloss|file`; Gloss `[RRGGBB]` colour shorthand.
 - Editor: chest GUI, shop, holographic menu and hologram editors with in-game window and 3D previews, expression checks and completion, refused features flagged by field; Gloss Web workspace bundle import and export.
 - The chest GUI schema accepts teleport, bossbar, broadcast, effect, particle, parallel and repeat.
+- Rigs and animations shown as packet-only display bones riding the NPC body, on Bukkit, Folia and the mod loaders; `animus:play-animation` and `animus:stop-animation` actions, the `animation_finished` trigger, automatic idle and walk clips; `[rigs]` settings, `/animus rigs` and `/animus pack build` for turning Blockbench models into a reproducible resource pack shared with the editor (layout in `docs/runtime.md`).
 
 ### Changed
 
@@ -116,9 +117,12 @@
 - Guards walk to a point behind their charge, replan as it moves, and teleport to catch up across distance or worlds.
 - Example packs restyled; personal-guard is hired through `animus:hire`.
 - `/animus gui` covers menus, holograms and animations; ids without a namespace resolve in the referring document's namespace.
+- `/animus reload` also reloads rigs and animations.
 
 ### Fixed
 
+- Logging out while riding on a mod server no longer warns about a closed connection.
+- Forge jars ship a `pack.mcmeta`, so Forge no longer reports a missing data pack.
 - A saddled NPC can be ridden again after a ride ends.
 - Hex colours render in holograms and in all mod-server text.
 - Combat teleports work beyond 2 blocks.
