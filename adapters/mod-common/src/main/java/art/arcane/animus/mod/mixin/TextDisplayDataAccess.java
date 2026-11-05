@@ -12,4 +12,8 @@ public interface TextDisplayDataAccess {
     static EntityDataAccessor<Component> animus$text() { throw new AssertionError("Mixin accessor was not applied"); }
     @Accessor("DATA_LINE_WIDTH_ID")
     static EntityDataAccessor<Integer> animus$lineWidth() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_BACKGROUND_COLOR_ID")
+    static EntityDataAccessor<Integer> animus$background() { throw new AssertionError("Mixin accessor was not applied"); }
+    @Accessor("DATA_STYLE_FLAGS_ID")
+    static EntityDataAccessor<Byte> animus$styleFlags() { throw new AssertionError("Mixin accessor was not applied"); }
 }

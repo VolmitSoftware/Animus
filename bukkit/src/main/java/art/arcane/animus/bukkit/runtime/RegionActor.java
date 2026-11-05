@@ -36,6 +36,13 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.List;
+import java.util.ArrayList;
+import art.arcane.animus.core.rig.AnimationDocument;
+import art.arcane.animus.core.rig.NpcRig;
+import art.arcane.animus.core.rig.RigCatalog;
+import art.arcane.animus.core.rig.RigPlayback;
+import art.arcane.animus.core.rig.RigReference;
 import java.util.OptionalInt;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -57,7 +64,7 @@ final class RegionActor implements RegionOwner.Body {
     record Publication(boolean live, VirtualNpcState.Snapshot snapshot, DefinitionSpec<ItemStack> spec, String type, String name, BodySkin skin,
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
-                       String navigation, long arrivals, boolean ride, boolean mount, long revision) {}
+                       String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig) {}
     private static final int NAVIGATION_CELLS = 2048;
     private final RegionNpcRuntime host;
     final String id;
@@ -100,6 +107,9 @@ final class RegionActor implements RegionOwner.Body {
     private AppearanceRead appearanceRead;
     private final EnumMap<EquipmentSlot, ItemStack> equipment = new EnumMap<>(EquipmentSlot.class);
     private ChunkPosition anchored;
+    private String rigId, rigProblem;
+    private NpcRig<ItemStack> rig;
+    private long rigGeneration = -1;
 
     RegionActor(RegionNpcRuntime host, Desired desired, boolean announced) {
         this.host = host; this.desired = desired; this.announced = announced;
@@ -124,6 +134,50 @@ final class RegionActor implements RegionOwner.Body {
         equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec, ItemStack::clone)); equipmentRevision++; appearance++; pose++;
         waypoints = WaypointSettings.parse(spec.definition()).map(WaypointProgress::new).orElse(null);
         routeReadWanted = waypoints == null && routeSource != null;
+        rigId = RigReference.parse(spec.definition().json()).orElse(null);
+        rig = null; rigProblem = null; rigGeneration = -1;
+    }
+
+    /** Binds the rig after a definition change or catalog reload; a replaced rig re-presents the body. Owner only. */
+    private void tickRig() {
+        if (rigId == null) return;
+        RigCatalog catalog = host.runtime.isRunning() ? host.runtime.rigs().catalog() : null;
+        if (catalog == null) return;
+        if (catalog.generation() != rigGeneration) {
+            rigGeneration = catalog.generation();
+            if (rig == null || !rig.refresh(catalog, turns)) {
+                boolean had = rig != null;
+                rig = null; rigProblem = null;
+                if (!host.rigs.enabled()) rigProblem = "rigs are disabled in config.toml";
+                else if (!host.packets.bonesAvailable()) rigProblem = "display bones are unavailable on this server build";
+                else {
+                    List<String> problems = new ArrayList<>();
+                    rig = NpcRig.bind(rigId, catalog, host.geometry(spec.type()).seat(), DefinitionItems::stack, problems).orElse(null);
+                    if (rig == null) rigProblem = String.join("; ", problems.subList(0, Math.min(3, problems.size())));
+                }
+                if (had || rig != null) appearance++;
+            }
+        }
+        if (rig == null || !state.snapshot().active()) return;
+        boolean walking = route != null && route.execution != null && !route.execution.finished();
+        for (RigPlayback.Finished done : rig.tick(turns, walking)) host.animationFinished(uuid, done.animation(), done.layer());
+        if (rig.due(turns, yaw) && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs.sampleTicks(), System.nanoTime());
+    }
+    void playAnimation(String animation, double speed, Optional<String> loop, int layer) {
+        Optional<AnimationDocument.Loop> mode = loop.map((String text) -> AnimationDocument.Loop.parse(text)
+                .orElseThrow(() -> new IllegalArgumentException("loop must be once, loop, pingpong or hold")));
+        requireRig().play(animation, speed, mode, layer, turns);
+    }
+    void stopAnimation(java.util.OptionalInt layer, int fadeTicks) { requireRig().stop(layer, fadeTicks, turns); }
+    private NpcRig<ItemStack> requireRig() {
+        if (rig == null) throw new IllegalStateException(rigId == null ? "NPC " + id + " has no rig" : "Rig " + rigId + " is unavailable: " + rigProblem);
+        return rig;
+    }
+    /** For inspect, from any thread: a racy but harmless read of the owner's fields. */
+    String rigStatus() {
+        NpcRig<ItemStack> current = rig;
+        if (rigId == null) return "";
+        return current != null ? "; " + current.status() : "; rig=" + rigId + " unavailable: " + rigProblem;
     }
 
     // ---- RegionOwner.Body: owner-confined lifecycle ----
@@ -195,6 +249,7 @@ final class RegionActor implements RegionOwner.Body {
         if (routeReadWanted) requestRouteRead();
         if (route != null) { navigate(); supportWanted = false; fallSpeed = 0; }
         else if (supportWanted || fallSpeed > 0) support();
+        tickRig();
         ChunkPosition now = anchor();
         if (!now.equals(anchored)) { host.anchor(this, anchored, now); anchored = now; }
         publish(true);
@@ -532,11 +587,15 @@ final class RegionActor implements RegionOwner.Body {
         boolean presented = live && snapshot.active();
         if (previous != null && previous.live() == presented && previous.snapshot().equals(snapshot) && previous.appearance() == appearance
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
-                && Objects.equals(previous.navigation(), navigation())) return;
+                && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot()) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         equipment.forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
-                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision);
+                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot());
+    }
+    private NpcRig.Snapshot<ItemStack> rigSnapshot() {
+        NpcRig<ItemStack> current = rig;
+        return current == null ? null : current.snapshot();
     }
     private String navigation() {
         return navigationStatus + (routeSource == null ? "" : "; route-source=" + routeSource) + (routeError == null ? "" : "; route-error=" + routeError);

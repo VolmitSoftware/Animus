@@ -17,7 +17,8 @@ public enum TriggerKind {
     DIALOGUE_CHOICE("dialogue_choice", true, "A viewer clicks an option of an animus:choices prompt from this NPC.", "dialogue", "choice"),
     MODULE("module", true, "The owning module publishes a trigger.", "key"),
     BUILD_FINISHED("build_finished", false, "A build this NPC works on places its last block."),
-    BUILD_PAUSED("build_paused", false, "A build this NPC works on is paused by command or starts waiting for terrain, materials or builders.");
+    BUILD_PAUSED("build_paused", false, "A build this NPC works on is paused by command or starts waiting for terrain, materials or builders."),
+    ANIMATION_FINISHED("animation_finished", false, "An animation started by animus:play-animation reaches its end: a once clip stops, a hold clip starts holding.", "animation");
 
     /** Fields every trigger accepts. */
     public static final List<String> COMMON_FIELDS = List.of("id", "event", "routine", "cooldownTicks");

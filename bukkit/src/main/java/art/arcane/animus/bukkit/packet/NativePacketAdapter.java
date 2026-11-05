@@ -9,6 +9,8 @@ import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodySkin;
+import art.arcane.animus.core.presentation.BoneDisplay;
+import art.arcane.animus.core.rig.DisplayTransform;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.control.ControlInput;
 import art.arcane.animus.core.control.ControlInbox;
@@ -72,10 +74,28 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         public SeatGeometry seat() { return seat; }
         public int[] entityIds() { return java.util.stream.IntStream.range(0, reservedIds).map(offset -> entityId + offset).toArray(); }
     }
+    /** A rig's display bones on one body. IDs come from the server allocator in blocks of at most 16. */
+    public static final class Bones implements BodyTransport.Bones {
+        private final NativePacketAdapter owner;
+        private final Body body;
+        private final int[] ids;
+        private final UUID[] uuids;
+        private final Object[] types;
+        private final List<List<Object>> content;
+        private Bones(NativePacketAdapter owner, Body body, int[] ids, Object[] types, List<List<Object>> content) {
+            this.owner = owner; this.body = body; this.ids = ids; this.types = types; this.content = List.copyOf(content);
+            uuids = new UUID[ids.length];
+            for (int i = 0; i < ids.length; i++) uuids[i] = UUID.randomUUID();
+        }
+        @Override public int count() { return ids.length; }
+        @Override public int[] entityIds() { return ids.clone(); }
+    }
     private final Plugin plugin;
     private final NativeBindings nativeApi;
     private final Capabilities capabilities;
     private final ConcurrentMap<UUID, Session> sessions = new ConcurrentHashMap<>();
+    /** Bones a viewer may see at once across every body; the runtime's {@code [rigs] maximumBones} is lower by default. */
+    static final int MAX_BONES_PER_VIEWER = 4096;
     private final String handlerName = "animus_virtual_" + UUID.randomUUID().toString().replace("-", "");
     private final String riderUnavailable;
     private final Scheduler owner;
@@ -90,6 +110,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         if (riderUnavailable == null) operations.add("real-rider");
         if (nativeApi.equipment != null) operations.add("equipment");
         if (nativeApi.presentation != null) operations.add("presentation");
+        if (nativeApi.bones != null) operations.add("rig-bones");
         capabilities = new Capabilities(version, BodyRules.TYPES, operations, "explicit-packets/no-native-entity-bodies; signature binding is not gameplay certification");
     }
     /** For callers that always pass their own scheduler to {@link #watch(Player, Scheduler, Consumer)}. */
@@ -275,11 +296,14 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         int realRiderId = realRider == null ? BodyRules.NO_REAL_RIDER : realRider.getEntityId();
         submit(session, result, authoritative, () -> {
             List<Integer> passengerIds = requested.stream().map(Body::entityId).toList();
-            Object packet = nativeApi.passengers(vehicle.entityId, BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayId));
+            int[] roster = BodyRules.withText(BodyRules.passengerRoster(passengerIds, realRiderId), vehicle.displayId);
+            Object packet;
             synchronized (session) {
                 for (Presentation presentation : presentations)
                     if (session.visible.get(presentation.body.entityId) != presentation) throw new CancellationException("Mount presentation retired");
                 session.passengers.replace(vehicle.entityId, passengerIds);
+                session.rosters.put(vehicle.entityId, roster);
+                packet = nativeApi.passengers(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId)));
             }
             write(session, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
         });
@@ -338,6 +362,106 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         return result;
     }
 
+    @Override public boolean bonesAvailable() { return nativeApi.bones != null; }
+
+    @Override public Bones createBones(BodyTransport.Body presented, List<BoneDisplay<ItemStack>> displays) {
+        Body body = checkBody(presented);
+        if (nativeApi.bones == null) throw new IllegalStateException("Rig display bones are unavailable on this server build");
+        if (displays.isEmpty() || displays.size() > 64) throw new IllegalArgumentException("A rig shows 1..64 bones");
+        List<List<Object>> content = new ArrayList<>(displays.size());
+        Object[] types = new Object[displays.size()];
+        try {
+            for (int i = 0; i < displays.size(); i++) { content.add(nativeApi.bones.content(displays.get(i))); types[i] = nativeApi.bones.type(displays.get(i)); }
+        } catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot build rig bones: " + failure.getClass().getSimpleName(), failure); }
+        int[] ids = new int[displays.size()];
+        for (int start = 0; start < ids.length; start += 16) {
+            int count = Math.min(16, ids.length - start), first = nativeApi.ids.reserve(count);
+            for (int i = 0; i < count; i++) ids[start + i] = first + i;
+        }
+        return new Bones(this, body, ids, types, content);
+    }
+
+    @Override public CompletionStage<Void> showBones(Player viewer, BodyTransport.Body presented, BodyTransport.Bones created, BodyPose pose, List<DisplayTransform> transforms, boolean hideBody) {
+        Body body = checkBody(presented);
+        Bones bones = checkBones(created, body);
+        if (transforms.size() != bones.ids.length) return failed("Every bone needs a transform");
+        Session session = session(viewer, pose);
+        Presentation presentation;
+        synchronized (session) {
+            presentation = session.visible.get(body.entityId);
+            if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+            if (session.bones.values().stream().mapToInt(value -> value.ids.length).sum() + bones.ids.length > MAX_BONES_PER_VIEWER) return failed("Viewer rig bone limit reached");
+            if (session.bones.putIfAbsent(body.entityId, bones) != null) return failed("The body already shows bones");
+        }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, false, () -> {
+            if (session.visible.get(body.entityId) != presentation || session.bones.get(body.entityId) != bones) throw new CancellationException("Body was despawned before its bones");
+            List<Object> packets = new ArrayList<>(bones.ids.length * 2 + 2);
+            for (int i = 0; i < bones.ids.length; i++) {
+                packets.add(nativeApi.addEntity.newInstance(bones.ids[i], bones.uuids[i], pose.x(), pose.y(), pose.z(), 0f, 0f, bones.types[i], 0, nativeApi.zeroVelocity, 0d));
+                List<Object> values = new ArrayList<>(bones.content.get(i));
+                values.addAll(nativeApi.bones.transform(transforms.get(i), 0));
+                packets.add(nativeApi.metadataPacket.newInstance(bones.ids[i], values));
+            }
+            int[] base = session.rosters.getOrDefault(body.entityId, body.displayId >= 0 ? new int[]{body.displayId} : new int[0]);
+            packets.add(nativeApi.passengers(body.entityId, withBones(base, bones)));
+            if (hideBody && nativeApi.presentation != null) packets.add(nativeApi.metadataPacket.newInstance(body.entityId, List.of(nativeApi.presentation.visibility(body.look, true))));
+            write(session, packets).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        result.whenComplete((nothing, failure) -> { if (failure != null) session.bones.remove(body.entityId, bones); });
+        return result;
+    }
+
+    @Override public CompletionStage<Void> moveBones(Player viewer, BodyTransport.Bones moved, int[] indices, DisplayTransform[] transforms, int[] durations) {
+        Bones bones = checkBones(moved, null);
+        if (indices.length != transforms.length || indices.length != durations.length) return failed("Bone updates need a transform and duration each");
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return failed("Viewer is not watched");
+        if (session.bones.get(bones.body.entityId) != bones) return failed("Bones are not shown to this viewer");
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, false, () -> {
+            if (session.bones.get(bones.body.entityId) != bones) throw new CancellationException("Bones were removed");
+            List<Object> packets = new ArrayList<>(indices.length);
+            for (int i = 0; i < indices.length; i++) {
+                if (indices[i] < 0 || indices[i] >= bones.ids.length) throw new IllegalArgumentException("Unknown bone index " + indices[i]);
+                packets.add(nativeApi.metadataPacket.newInstance(bones.ids[indices[i]], nativeApi.bones.transform(transforms[i], Math.max(0, durations[i]))));
+            }
+            write(session, packets).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
+    @Override public CompletionStage<Void> hideBones(Player viewer, BodyTransport.Bones shown) {
+        Bones bones = checkBones(shown, null);
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !session.bones.remove(bones.body.entityId, bones)) return CompletableFuture.completedFuture(null);
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, true, () -> {
+            List<Object> packets = new ArrayList<>(3);
+            packets.add(nativeApi.removeEntities.newInstance((Object) bones.ids.clone()));
+            Presentation presentation = session.visible.get(bones.body.entityId);
+            if (presentation != null && presentation.body == bones.body) {
+                int[] base = session.rosters.getOrDefault(bones.body.entityId, bones.body.displayId >= 0 ? new int[]{bones.body.displayId} : new int[0]);
+                packets.add(nativeApi.passengers(bones.body.entityId, base));
+                if (nativeApi.presentation != null) packets.add(nativeApi.metadataPacket.newInstance(bones.body.entityId, List.of(nativeApi.presentation.visibility(bones.body.look, false))));
+            }
+            write(session, packets).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
+    private Bones checkBones(BodyTransport.Bones presented, Body body) {
+        ensureOpen();
+        if (!(presented instanceof Bones bones) || bones.owner != this || (body != null && bones.body != body)) throw new IllegalArgumentException("Bones belong to another body or adapter");
+        return bones;
+    }
+    private static int[] withBones(int[] roster, Bones bones) {
+        if (bones == null) return roster;
+        int[] result = Arrays.copyOf(roster, roster.length + bones.ids.length);
+        System.arraycopy(bones.ids, 0, result, roster.length, bones.ids.length);
+        return result;
+    }
+
     /**
      * Owner thread only. Moves the real rider's server position without a client teleport: while its client believes it
      * is a passenger the client follows the vehicle and ignores position packets, so one would only produce stale
@@ -356,6 +480,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         Session session = sessions.get(viewer.getUniqueId());
         if (session == null || session.viewer != viewer) return CompletableFuture.completedFuture(null);
         boolean present;
+        Bones attached;
         synchronized (session) {
             Presentation visible = session.visible.get(body.entityId);
             Presentation spawning = session.spawning.get(body.entityId);
@@ -363,10 +488,14 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             for (int id : body.entityIds()) session.visible.computeIfPresent(id, (key, value) -> value.body == body ? null : value);
             session.spawning.computeIfPresent(body.entityId, (key, value) -> value.body == body ? null : value);
             session.passengers.remove(body.entityId);
+            session.rosters.remove(body.entityId);
+            Bones before = session.bones.get(body.entityId);
+            attached = before != null && before.body == body && session.bones.remove(body.entityId, before) ? before : null;
         }
         if (!present) return CompletableFuture.completedFuture(null);
         CompletableFuture<Void> result = new CompletableFuture<>();
-        try { session.channel.eventLoop().execute(() -> removePackets(session, body).whenComplete((nothing, failure) -> complete(result, failure))); }
+        Bones removed = attached;
+        try { session.channel.eventLoop().execute(() -> removePackets(session, body, removed).whenComplete((nothing, failure) -> complete(result, failure))); }
         catch (RejectedExecutionException e) { result.completeExceptionally(e); }
         return result;
     }
@@ -430,10 +559,17 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         } catch (RuntimeException e) { return CompletableFuture.failedFuture(e); }
         return CompletableFuture.allOf(results.toArray(CompletableFuture[]::new));
     }
-    private CompletionStage<Void> removePackets(Session session, Body body) {
+    private CompletionStage<Void> removePackets(Session session, Body body) { return removePackets(session, body, null); }
+    private CompletionStage<Void> removePackets(Session session, Body body, Bones bones) {
         try {
             List<Object> packets = new ArrayList<>();
-            packets.add(nativeApi.removeEntities.newInstance((Object) body.entityIds()));
+            int[] ids = body.entityIds();
+            if (bones != null) {
+                int[] all = Arrays.copyOf(ids, ids.length + bones.ids.length);
+                System.arraycopy(bones.ids, 0, all, ids.length, bones.ids.length);
+                ids = all;
+            }
+            packets.add(nativeApi.removeEntities.newInstance((Object) ids));
             if (body.playerInfo != null) packets.add(nativeApi.removePlayerInfo.newInstance(List.of(body.uuid)));
             if (body.nameTeam != null) packets.add(body.nameTeam[1]);
             return write(session, packets);
@@ -451,18 +587,24 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     private void retire(Session session) { retire(session, "session-retired"); }
     private void retire(Session session, String reason) {
         Set<Body> bodies = new HashSet<>();
+        Map<Integer, Bones> retiredBones = new HashMap<>();
         synchronized (session) {
             if (!session.active.compareAndSet(true, false)) return;
             ControlSubscription control = session.control.getAndSet(null);
             if (control != null) control.inbox.close(reason);
             session.visible.values().forEach(value -> bodies.add(value.body));
             session.spawning.values().forEach(value -> bodies.add(value.body));
-            session.visible.clear(); session.spawning.clear(); session.passengers.clear();
+            for (Bones attached : session.bones.values()) if (attached.body != null) bodies.add(attached.body);
+            retiredBones.putAll(session.bones);
+            session.visible.clear(); session.spawning.clear(); session.passengers.clear(); session.bones.clear(); session.rosters.clear();
         }
         session.ready.completeExceptionally(new CancellationException("Viewer session retired"));
         try {
             session.channel.eventLoop().execute(() -> {
-                for (Body body : bodies) removePackets(session, body);
+                for (Body body : bodies) {
+                    Bones attached = retiredBones.get(body.entityId);
+                    removePackets(session, body, attached != null && attached.body == body ? attached : null);
+                }
                 ChannelHandler handler = session.channel.pipeline().get(handlerName);
                 if (handler instanceof InputHandler input && input.session == session) session.channel.pipeline().remove(handler);
             });
@@ -530,6 +672,9 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final AtomicBoolean active = new AtomicBoolean(true), inputScheduled = new AtomicBoolean(), reportedFailure = new AtomicBoolean();
         private final AtomicInteger pendingOperations = new AtomicInteger();
         private final PassengerGraph passengers = new PassengerGraph();
+        /** Bones riding each vehicle, and the last roster sent without them; every roster write appends the bones. */
+        private final ConcurrentMap<Integer, Bones> bones = new ConcurrentHashMap<>();
+        private final ConcurrentMap<Integer, int[]> rosters = new ConcurrentHashMap<>();
         private final AtomicReference<ControlSubscription> control = new AtomicReference<>();
         private long lastInputNanos = Long.MIN_VALUE / 2; // Accessed exclusively by the channel event loop.
         private Session(Player viewer, Channel channel, Scheduler scheduler, Consumer<Interaction> interactions) {
@@ -564,6 +709,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     private static final class NativeBindings {
         private final EquipmentBindings equipment;
         private final NativePresentation presentation;
+        private final NativeBones bones;
         private final Object textDisplayType, seatType;
         private final NativeEntityIds ids;
         private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
@@ -665,6 +811,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC poses, text and long names unavailable: " + missing.getClass().getSimpleName()); }
             presentation = boundPresentation;
             textDisplayType = entityType("minecraft:text_display"); seatType = entityType("minecraft:armor_stand");
+            NativeBones boundBones = null;
+            try { boundBones = new NativeBones(dataValueCreate, craftPackage, entityType("minecraft:item_display"), entityType("minecraft:block_display"), textDisplayType); }
+            catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC rig bones unavailable: " + missing.getClass().getSimpleName()); }
+            bones = boundBones;
             playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
             networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
             channel = field(type("net.minecraft.network.Connection"), "channel");

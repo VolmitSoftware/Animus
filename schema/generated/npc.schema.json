@@ -108,6 +108,20 @@
         "pattern": "^[a-z0-9_-]+:[a-z0-9_/-]+$"
       }
     },
+    "rig": {
+      "type": "object",
+      "description": "The rig under rigs/ this NPC's body shows.",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$"
+        }
+      }
+    },
     "modules": {
       "type": "object",
       "description": "Per-NPC module settings, keyed by namespace:name. Unknown modules are kept.",

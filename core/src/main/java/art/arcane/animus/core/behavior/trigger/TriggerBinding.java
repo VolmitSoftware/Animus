@@ -32,6 +32,10 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
     public record DialogueChoice(String dialogue, Optional<String> choice) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.DIALOGUE_CHOICE; }
     }
+    /** An empty animation matches every clip. */
+    public record AnimationFinished(Optional<String> animation) implements Spec {
+        @Override public TriggerKind kind() { return TriggerKind.ANIMATION_FINISHED; }
+    }
     public record ModuleEvent(Capabilities.Key key) implements Spec {
         @Override public TriggerKind kind() { return TriggerKind.MODULE; }
     }
@@ -49,6 +53,8 @@ public record TriggerBinding(String id, Spec spec, Optional<String> routine, Opt
             case DialogueChoice dialogue -> event instanceof TriggerEvent.DialogueChoice input && dialogue.dialogue().equals(input.dialogue())
                     && (dialogue.choice().isEmpty() || dialogue.choice().get().equals(input.choice()));
             case ModuleEvent module -> event instanceof TriggerEvent.Module input && module.key().equals(input.key());
+            case AnimationFinished finished -> event instanceof TriggerEvent.AnimationFinished input
+                    && (finished.animation().isEmpty() || finished.animation().get().equals(input.animation()));
         };
     }
 }

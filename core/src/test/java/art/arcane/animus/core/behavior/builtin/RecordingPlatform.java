@@ -95,6 +95,8 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public void lookAtPlayer(NpcHandle npc, UUID player) { record("look-player"); }
     @Override public void setAppearance(NpcHandle npc, AppearanceChange change) { record("appearance:" + change.name().orElse("") + ":" + change.reset()); }
     @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) { record("equipment:" + slot + ":" + item.orElse("none")); }
+    @Override public void playAnimation(NpcHandle npc, String animation, double speed, Optional<String> loop, int layer) { record("animation:" + animation + ":" + speed + ":" + loop.orElse("clip") + ":" + layer); }
+    @Override public void stopAnimation(NpcHandle npc, java.util.OptionalInt layer, int fadeTicks) { record("stop-animation:" + (layer.isPresent() ? layer.getAsInt() : "all") + ":" + fadeTicks); }
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) { record("sound:" + sound.sound()); return delivered; }
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect particle) { record("particle:" + particle.particle() + ":" + particle.count()); return delivered; }
     @Override public boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) { record("screen:" + kind + ":" + id); return true; }

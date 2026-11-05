@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:golem/walk",
+  "rig": "town:golem",
+  "durationTicks": 20,
+  "tracks": [
+    {"bone": "torso", "target": "rotation",
+     "keyframes": [{"tick": 10, "value": [0, 0, 4]}, {"tick": 5, "value": [0, 0, -4]}]}
+  ]
+}

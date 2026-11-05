@@ -175,6 +175,28 @@ While riding, the player's server position is the NPC's feet, not its seat. Vani
 /animus ride stop <player>
 ```
 
+## Rigs and animations
+
+A definition with `"rig": {"id": "town:golem"}` shows the rig at `rigs/town/golem.json` on its body. Animations live at `animations/<namespace>/<path>.json`. Both formats are in [editor-design.md](editor-design.md) and `schema/rig-v1.schema.json` and `schema/animation-v1.schema.json`; sampling follows [editor-contracts.md](editor-contracts.md#rig-sampling). Player bodies keep their vanilla body; a rig with `"body": "shown"` adds parts to it, and `"body": "hidden"` (the default) makes the body invisible while it keeps the hitbox.
+
+Each visible bone is a packet-only item, block or text display that rides the body in its passenger list, so it follows movement with no teleports. The server plans segments of the animation and sends each changed bone's transform once per segment with client interpolation. Segments start at `sampleTicks` and grow to 20 ticks while every bone moves in a straight line within 0.01 blocks and 0.5 degrees. A turn of the body plans a new segment at once. Bones are removed with the body, when the viewer leaves and at shutdown.
+
+Rigs and animations load at startup and on `/animus reload` or `/animus rigs reload`. A broken or refused edit keeps the last valid document, a changed document needs a higher `revision`, and after a restart the last valid copy comes from `state/rig-catalog/`. `/animus rigs status` and `/animus rigs problems` show what was refused. `/animus rigs play <npc> <animation> [layer] [speed] [loop]` and `/animus rigs stop <npc> [layer] [fadeTicks]` test clips; behaviors use [`animus:play-animation` and `animus:stop-animation`](behaviors.md#actions) and the `animation_finished` trigger. Layer 0 plays the rig's `idle` clip, and `walk` while the NPC follows a route, unless a played clip uses it. Animation `events` are checked but not run yet.
+
+`[rigs]` settings:
+
+| Setting | Default | Range |
+| --- | ---: | ---: |
+| `enabled` | `true` | Boolean |
+| `maximumBones` |512|1–4096 bones shown per viewer|
+| `updatesPerTick` |64|1–512 bone transform packets per viewer per tick|
+| `sampleTicks` |2|1–20 ticks, the shortest segment|
+| `plansPerTick` |64|1–1024 NPCs that plan a segment per tick (per region on Folia)|
+
+A viewer short of budget sends the newest transforms on later ticks with the interpolation that is left. Bones are cosmetic: hits use the body's hitbox.
+
+`/animus pack build` turns every Blockbench model at `models/<namespace>/<name>.bbmodel` into `pack/out/animus-rigs.zip` (with its SHA-1 beside it) and the same files as a folder in `pack/out/pack/` for merging into a server pack. Each group becomes a bone and its cubes one item model, chosen by `assets/animus/items/rig_bone.json` from the item's `custom_model_data` string `namespace:name/bone`. The zip is reproducible and declares pack formats 84 to 97 (26.1.2 to 26.3). The matching rig and one animation per Blockbench animation are written to `pack/out/documents/`; copy them into `rigs/` and `animations/`. Only embedded PNG textures are read, nothing is fetched, and files over 8 MiB, more than 64 models, 64 groups, 4,096 cubes or 16 textures per model are refused. Cube rotations outside one axis in 22.5 degree steps are dropped with a warning, and Molang keyframe values are skipped.
+
 ## Ender dragon presentation
 
 A `minecraft:ender_dragon` definition is presented with packets only: no world entity, no boss bar and no dragon AI. Its model faces the opposite way from its rotation field, so Animus mirrors the rotation it sends and `yaw`, `/animus look` and route facing all mean the direction its head points. It sits with folded wings when resting on solid ground, flies in place when resting in the air and flaps while moving. Clients may play its normal wing and growl sounds.

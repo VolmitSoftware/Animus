@@ -12,6 +12,8 @@ import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.extension.RepositoryDefinitions;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.npc.NpcRepository;
+import art.arcane.animus.core.rig.RigCheckpoints;
+import art.arcane.animus.core.rig.RigLibrary;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Duration;
@@ -31,6 +33,7 @@ public final class AnimusRuntime implements AutoCloseable {
     private MutationLane fileWork;
     private RepositoryDefinitions definitions;
     private BehaviorStateStore behaviorState;
+    private RigLibrary rigs;
 
     public AnimusRuntime(RuntimeEnvironment environment) {
         this(environment, failure -> System.getLogger("Animus").log(System.Logger.Level.ERROR,
@@ -63,11 +66,14 @@ public final class AnimusRuntime implements AutoCloseable {
                     failure -> { cleanupFailure = failure; cleanupFailureObserver.accept(failure); });
             RepositoryDefinitions facade = new RepositoryDefinitions(repository, lane);
             state.attach(lane.executor((task, event, failure) -> state.flushAbandoned()));
+            RigLibrary rigLibrary = new RigLibrary(environment.dataDirectory(), new RigCheckpoints(opened));
+            rigLibrary.reload();
             documents = opened;
             npcs = repository;
             fileWork = lane;
             definitions = facade;
             behaviorState = state;
+            rigs = rigLibrary;
             cleanupFailure = null;
             closing = false;
             settings = loaded;
@@ -107,7 +113,7 @@ public final class AnimusRuntime implements AutoCloseable {
             finally { if (owned != null) owned.close(); }
         }
         catch (IOException failure) { throw new UncheckedIOException(failure); }
-        finally { documents = null; npcs = null; definitions = null; settings = null; behaviorState = null; }
+        finally { documents = null; npcs = null; definitions = null; settings = null; behaviorState = null; rigs = null; }
     }
 
     public synchronized Executor fileExecutor(MutationLane.EngineTaskObserver observer) {
@@ -156,6 +162,12 @@ public final class AnimusRuntime implements AutoCloseable {
         return behaviorState;
     }
 
+    /** Rigs and animations; reload on the file lane. */
+    public synchronized RigLibrary rigs() {
+        if (rigs == null) throw new IllegalStateException("Animus is not running");
+        return rigs;
+    }
+
     public synchronized boolean packetProofEnabled() { return settings().packetProofEnabled(); }
     public synchronized NpcRuntimeSettings npcSettings() { return settings().npcs(); }
     public synchronized ModuleSettings moduleSettings() { return settings().modules(); }
@@ -163,6 +175,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized CombatBudgets combatBudgets() { return settings().combat(); }
     public synchronized art.arcane.animus.core.config.ShopSettings shopSettings() { return settings().shops(); }
     public synchronized BuildSettings buildSettings() { return settings().builds(); }
+    public synchronized art.arcane.animus.core.config.RigSettings rigSettings() { return settings().rigs(); }
     private PluginSettings settings() {
         if (!isRunning()) throw new IllegalStateException("Animus is not running");
         return settings;

@@ -5,10 +5,12 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "AvatarDataAccess",
+    "BlockDisplayDataAccess",
     "DisplayDataAccess",
     "EntityCounterAccessor",
     "EntityDataAccess",
     "GamePacketHooks",
+    "ItemDisplayDataAccess",
     "LivingEntityHooks",
     "PlayerInfoUpdateAccess",
     "PlayerListHooks",
