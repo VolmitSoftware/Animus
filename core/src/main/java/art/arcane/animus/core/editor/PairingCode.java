@@ -102,7 +102,10 @@ public record PairingCode(Optional<String> directUrl, Optional<String> relayUrl,
 
     private static void checkRelay(String url) {
         URI uri = uri(url, "$.relayUrl");
-        if (!"wss".equalsIgnoreCase(uri.getScheme())) throw new IllegalArgumentException("$.relayUrl: expected wss://");
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        boolean loopback = LOOPBACK.contains(uri.getHost().toLowerCase(Locale.ROOT));
+        if (!scheme.equals("wss") && !(scheme.equals("ws") && loopback))
+            throw new IllegalArgumentException("$.relayUrl: expected wss://, or ws:// only on 127.0.0.1 or localhost for local development");
     }
 
     private static URI uri(String url, String path) {

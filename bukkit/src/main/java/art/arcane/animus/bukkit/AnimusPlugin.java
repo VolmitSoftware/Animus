@@ -237,8 +237,7 @@ public final class AnimusPlugin extends JavaPlugin {
         };
         EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, () -> behaviors, extensions,
                 () -> guiService.reload(catalog -> {}), modulePlatform.name().toLowerCase(Locale.ROOT), "", features,
-                (Player player) -> player.hasPermission("animus.admin"), Optional.empty(), "viewer-private NPC presentation is not built for Bukkit yet",
-                (String message) -> getLogger().info(message))), (String message) -> getLogger().info(message));
+                (Player player) -> player.hasPermission("animus.admin"), (String message) -> getLogger().info(message))), (String message) -> getLogger().info(message));
         try {
             service.start();
             editor = service;

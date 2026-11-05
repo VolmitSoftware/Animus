@@ -390,10 +390,11 @@ This follows React rather than Gloss. Gloss's long-poll snapshot relay suits who
 
 - Validate runs the same validators as `/animus validate` and `/animus behaviors validate` against the candidate registry and catalog, including cross-document checks (behavior references, GUI references, rig and animation pairs).
 - Preview shows the candidate only to the token's admin player, if online:
-  - previewed NPCs are presented to that one viewer; other players keep seeing the live version;
-  - behaviors run as preview runs, which already read stored state and never write it;
-  - `animus:command`, `animus:combat-control`, `give`, `take`, `economy` and `animus:trade` are refused in previews with `preview-refused`, and preview NPCs take and deal no damage;
-  - a preview ends after 15 minutes, when the token's connections close, or when the player leaves.
+  - previewed NPCs are presented to that one viewer as packet-only bodies, never world entities and never saved; for an NPC that already exists, the viewer sees the candidate in place of the live one, and a new NPC appears only for them; other players keep seeing the live version;
+  - preview NPCs stand still at their definition position with their appearance, equipment and skin; they run no behaviors or triggers, and the live NPC they replace keeps running for everyone;
+  - `animus:command`, `animus:combat-control`, `give`, `take`, `economy` and `animus:trade` are refused in previews with `preview-refused`; preview NPCs take and deal no damage, and clicking or hitting one does nothing: no trigger, selection, GUI, shop or ride;
+  - a viewer has one preview at a time: replacing it swaps the shown set, and a preview from another token ends the earlier one;
+  - a preview ends after 15 minutes, when the token's connections close, when the player leaves, or on request, and the viewer then sees the live NPCs again.
 - Apply re-validates, then writes every document in one transaction through the existing journal on the shared file lane, together with its checkpoints and a rollback receipt. It is all or nothing: if any document's base revision or hash no longer matches, nothing is written and the response is `conflict` with the current server version of each conflicting document.
 - The editor resolves conflicts field by field with a three-way view (base, mine, server), then sends a new change set based on the server's revision.
 - The response returns only after the journal commit, so an `applied` answer is durable. Each applied change set gets a change id and the new revisions.

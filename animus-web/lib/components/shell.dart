@@ -12,13 +12,24 @@ import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_templates.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
+import '../model/server_binding.dart';
 import '../services/browser.dart';
 import '../state/editor_store.dart';
+import '../state/live_session.dart';
+import '../state/server_hub.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
 import 'document_view.dart';
+import 'server/connection_pill.dart';
+import 'server/live_bar.dart';
+import 'server/pair_page.dart';
+import 'server/server_overview.dart';
 import 'rig/rig_actions.dart';
 import 'rig/rig_editor.dart';
+
+/// Kinds whose Visual view edits the parsed JSON (GUI editors and the
+/// schema-driven NPC and behavior inspectors).
+const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.behavior};
 
 /// Kinds listed in the sidebar, in this order.
 const List<DocumentKind> listedKinds = <DocumentKind>[
@@ -40,14 +51,20 @@ const List<DocumentKind> listedKinds = <DocumentKind>[
 class EditorShell extends StatefulWidget {
   const EditorShell({
     required this.store,
+    required this.hub,
     required this.route,
     required this.brightness,
     required this.onToggleTheme,
     required this.onNavigate,
+    this.session,
     super.key,
   });
 
   final EditorStore store;
+  final ServerHub hub;
+
+  /// Live editing for the open workspace when it belongs to a paired server.
+  final LiveSession? session;
   final EditorRoute route;
   final Brightness brightness;
   final void Function() onToggleTheme;
@@ -158,7 +175,24 @@ class _EditorShellState extends State<EditorShell> {
         dom.div(key: const ValueKey<String>('banner'), classes: 'animus-banner', attributes: const <String, String>{'role': 'alert'}, <Widget>[
           Component.text(store.problem!),
         ]),
-      if (workspace == null) _home(store) else _workspace(workspace),
+      if (component.route is PairRoute)
+        PairPage(
+          key: ValueKey<String>('pair:${(component.route as PairRoute).code}'),
+          code: (component.route as PairRoute).code,
+          hub: component.hub,
+          onPaired: (String id) => replaceHash(ServerRoute(id, const <String>[]).format()),
+        )
+      else if (component.route is ServerRoute && component.hub.server((component.route as ServerRoute).serverId) == null)
+        const dom.main_(classes: 'animus-home', <Widget>[
+          dom.section(classes: 'animus-panel', <Widget>[
+            dom.h1(<Widget>[Component.text('This server is not paired in this browser')]),
+            dom.p(<Widget>[Component.text('Run /animus editor pair on the server and open the link it prints.')]),
+          ]),
+        ])
+      else if (workspace == null)
+        _home(store)
+      else
+        _workspace(workspace),
     ]);
   }
 
@@ -171,6 +205,8 @@ class _EditorShellState extends State<EditorShell> {
       ]),
       if (workspace != null)
         dom.span(classes: 'animus-topbar-workspace', <Widget>[Component.text(workspace.name)]),
+      if (component.session != null)
+        ConnectionPill(status: component.session!.connection.status, hasToken: component.session!.connection.token != null),
       dom.div(classes: 'animus-topbar-actions', <Widget>[
         Button.secondary(
           label: 'Open folder',
@@ -243,6 +279,7 @@ class _EditorShellState extends State<EditorShell> {
           Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: _busy, onPressed: () => _open(pickZip)),
         ]),
       ]),
+      ServersPanel(hub: component.hub, onNavigate: component.onNavigate),
       dom.section(classes: 'animus-panel', <Widget>[
         const dom.h2(<Widget>[Component.text('Workspaces in this browser')]),
         if (store.workspaces.isEmpty)
@@ -251,8 +288,15 @@ class _EditorShellState extends State<EditorShell> {
           dom.ul(classes: 'animus-workspace-list', <Widget>[
             for (final WorkspaceSummary summary in store.workspaces)
               dom.li(<Widget>[
-                dom.a(href: WorkspaceRoute(summary.id).format(), <Widget>[Component.text(summary.name)]),
-                dom.span(classes: 'animus-muted', <Widget>[Component.text('${summary.documentCount} documents')]),
+                dom.a(
+                  href: summary.serverId != null && component.hub.server(summary.serverId!) != null
+                      ? ServerRoute(summary.serverId!, const <String>[]).format()
+                      : WorkspaceRoute(summary.id).format(),
+                  <Widget>[Component.text(summary.name)],
+                ),
+                dom.span(classes: 'animus-muted', <Widget>[
+                  Component.text('${summary.documentCount} documents${summary.serverId == null ? '' : ', live on a server'}'),
+                ]),
                 Button.ghost(label: 'Remove', size: ButtonSize.small, onPressed: () => store.deleteWorkspace(summary.id)),
               ]),
           ]),
@@ -264,9 +308,16 @@ class _EditorShellState extends State<EditorShell> {
     final EditorRoute route = component.route;
     final DocumentRoute? selected = route is DocumentRoute ? route : null;
     final AnimusDocument? document = selected == null ? null : component.store.document(selected.kind, selected.documentId);
+    final LiveSession? session = workspace.server == null ? null : component.session;
     return dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'animus-workspace', <Widget>[
       _sidebar(workspace, selected),
       dom.main_(classes: 'animus-main', <Widget>[
+        if (session != null)
+          LiveBar(
+            session: session,
+            focus: document == null ? null : documentKey(document.kind, document.id),
+            onOpenServer: () => component.onNavigate(WorkspaceRoute(workspace.id)),
+          ),
         if (selected != null && document != null)
           DocumentPane(
             key: ValueKey<String>('${selected.kind.wireName}:${selected.documentId}'),
@@ -274,7 +325,7 @@ class _EditorShellState extends State<EditorShell> {
             view: selected.view,
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
-            onJson: guiKinds.contains(document.kind)
+            onJson: jsonEditedKinds.contains(document.kind)
                 ? (Object? json, {String? coalesce}) => component.store.commit(
                       documents: <DocumentChange>[DocumentChange(document.kind, document.id, prettyJson(json))],
                       coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',
@@ -290,11 +341,21 @@ class _EditorShellState extends State<EditorShell> {
                 : null,
             skinDocument: _skinOf(document),
             editor: _rigEditor(workspace, document),
+            serverDiagnostics: session?.serverDiagnostics[documentKey(document.kind, document.id)] ?? const <Diagnostic>[],
+            liveSchemas: session?.schemas,
+            workspaceDocuments: workspace.documents,
           )
         else if (selected != null)
           dom.section(classes: 'animus-panel', <Widget>[
             Component.text('${selected.kind.label}: ${selected.documentId} is not in this workspace.'),
           ])
+        else if (session != null)
+          ServerOverview(
+            key: ValueKey<String>('server-overview:${session.serverId}'),
+            hub: component.hub,
+            session: session,
+            onOpened: (DocumentKind kind, String id) => component.onNavigate(DocumentRoute(workspace.id, kind, id)),
+          )
         else
           _overview(workspace),
       ]),
@@ -342,6 +403,12 @@ class _EditorShellState extends State<EditorShell> {
                           dom.span(classes: 'animus-tree-id', <Widget>[Component.text(document.id)]),
                         if (!document.valid)
                           dom.span(classes: 'animus-badge is-error', <Widget>[Component.text('${errorCount(document)}')]),
+                        if (component.session != null && workspace.server != null && draftBadge(component.session!, kind, document.id) != null)
+                          dom.span(
+                            classes: 'animus-badge is-draft',
+                            attributes: <String, String>{'data-draft': draftBadge(component.session!, kind, document.id)!},
+                            <Widget>[Component.text(draftBadge(component.session!, kind, document.id)!)],
+                          ),
                       ],
                     ),
                   ]),

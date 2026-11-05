@@ -48,6 +48,7 @@ final class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
             @Override public boolean console(Runnable action) { action.run(); return true; }
         };
     }
+    @Override public art.arcane.animus.core.runtime.ViewerPreviews previews() { throw new UnsupportedOperationException(); }
     @Override public boolean onOwner(UUID npc, Runnable work, Consumer<String> refused) { work.run(); return true; }
     @Override public boolean onOwner(String id, Runnable work, Consumer<String> refused) { work.run(); return true; }
     @Override public WorldPosition navigationOrigin(String id) { throw new UnsupportedOperationException(); }
