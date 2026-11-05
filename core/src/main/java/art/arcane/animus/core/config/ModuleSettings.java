@@ -1,6 +1,10 @@
 package art.arcane.animus.core.config;
 
-/** Trusted modules load at startup; changing these settings requires restart. */
+/**
+ * {@code [modules]} in {@code config.toml}. Every key applies on hotload: the limits apply to the next invocation, and
+ * {@code enabled} suspends or resumes discovered modules without a restart. Module archives load once per server start,
+ * so adding, removing or replacing a module jar requires a restart.
+ */
 public record ModuleSettings(boolean enabled, int maximumInvocations, int invocationTimeoutMillis,
                              int deliveryBudgetMillis) {
     public static final ModuleSettings DEFAULT = new ModuleSettings(true, 64, 1000, 250);
