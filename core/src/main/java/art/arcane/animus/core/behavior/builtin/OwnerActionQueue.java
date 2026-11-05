@@ -10,6 +10,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -18,13 +20,26 @@ import java.util.function.Supplier;
 
 /**
  * Bounded hand-off to the platform owner. Budgets defer work to a later tick; only a full queue refuses it.
- * The router places each item where its NPC is owned, which on a single-owner server is the tick itself.
+ * The router places each item where its NPC, its player or the server is owned, which on a single-owner server is the tick itself.
  */
 final class OwnerActionQueue implements AutoCloseable {
     /** Accepted work runs exactly once, or {@code refused} runs if the owner later drops it. */
     @FunctionalInterface interface Router {
         Router INLINE = (npc, work, refused) -> { work.run(); return true; };
         boolean dispatch(NpcHandle npc, Runnable work, Consumer<String> refused);
+        /** Places work where the player is owned. A single owner runs it inline. */
+        default boolean player(UUID player, Runnable work, Consumer<String> refused) { work.run(); return true; }
+        /** Places work on the global owner. A single owner runs it inline. */
+        default boolean global(Runnable work, Consumer<String> refused) { work.run(); return true; }
+    }
+    /** Where one item runs: the NPC's owner, a player's owner, or the global owner. Per-owner budgets count by the same key. */
+    record Route(NpcHandle npc, Optional<UUID> player, boolean global) {
+        private static final Object GLOBAL = new Object();
+        Route { Objects.requireNonNull(npc); Objects.requireNonNull(player); }
+        static Route npc(NpcHandle npc) { return new Route(npc, Optional.empty(), false); }
+        static Route player(NpcHandle npc, UUID player) { return new Route(npc, Optional.of(player), false); }
+        static Route global(NpcHandle npc) { return new Route(npc, Optional.empty(), true); }
+        Object budget() { return global ? GLOBAL : player.isPresent() ? player.get() : npc; }
     }
     record Limits(int perTick, int perNpc, int queued) {
         Limits {
@@ -40,8 +55,10 @@ final class OwnerActionQueue implements AutoCloseable {
 
     OwnerActionQueue(Limits limits, Router router) { this.limits = Objects.requireNonNull(limits); this.router = Objects.requireNonNull(router); }
 
-    <T> CompletionStage<T> submit(NpcHandle npc, Capabilities.Cancellation token, Supplier<T> work) {
-        Item<T> item = new Item<>(Objects.requireNonNull(npc), Objects.requireNonNull(token), Objects.requireNonNull(work));
+    <T> CompletionStage<T> submit(NpcHandle npc, Capabilities.Cancellation token, Supplier<T> work) { return submit(Route.npc(npc), token, work); }
+
+    <T> CompletionStage<T> submit(Route route, Capabilities.Cancellation token, Supplier<T> work) {
+        Item<T> item = new Item<>(Objects.requireNonNull(route), Objects.requireNonNull(token), Objects.requireNonNull(work));
         synchronized (this) {
             if (closed) throw stopped();
             if (pending.size() >= limits.queued())
@@ -59,20 +76,21 @@ final class OwnerActionQueue implements AutoCloseable {
             snapshot = new ArrayList<>(pending);
         }
         int remaining = limits.perTick();
-        Map<NpcHandle, Integer> used = new HashMap<>();
+        Map<Object, Integer> used = new HashMap<>();
         for (Item<?> item : snapshot) {
             if (item.token.cancelled()) {
                 if (remove(item)) item.result.completeExceptionally(new CapabilityRefusal(Outcome.Status.CANCELLED, "action-cancelled", "Action was cancelled before it reached the owner"));
                 continue;
             }
             if (remaining == 0) break;
-            int spent = used.getOrDefault(item.npc, 0);
+            Object budget = item.route.budget();
+            int spent = used.getOrDefault(budget, 0);
             if (spent >= limits.perNpc()) continue;
             if (!remove(item)) continue;
             remaining--;
-            used.put(item.npc, spent + 1);
+            used.put(budget, spent + 1);
             boolean accepted;
-            try { accepted = router.dispatch(item.npc, item::run, item::refuse); }
+            try { accepted = dispatch(item); }
             catch (RuntimeException | LinkageError failure) { item.result.completeExceptionally(failure); continue; }
             if (!accepted) item.refuse("The NPC's owner cannot accept work now");
         }
@@ -88,19 +106,26 @@ final class OwnerActionQueue implements AutoCloseable {
         for (Item<?> item : dropped) item.result.completeExceptionally(stopped());
     }
 
+    private boolean dispatch(Item<?> item) {
+        Route route = item.route;
+        if (route.global()) return router.global(item::run, item::refuse);
+        if (route.player().isPresent()) return router.player(route.player().get(), item::run, item::refuse);
+        return router.dispatch(route.npc(), item::run, item::refuse);
+    }
+
     private synchronized boolean remove(Item<?> item) { return pending.remove(item); }
     private static CapabilityRefusal stopped() {
         return new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "actions-stopping", "Built-in actions are stopping");
     }
 
     private static final class Item<T> {
-        final NpcHandle npc;
+        final Route route;
         final Capabilities.Cancellation token;
         final Supplier<T> work;
         final CompletableFuture<T> result = new CompletableFuture<>();
 
-        Item(NpcHandle npc, Capabilities.Cancellation token, Supplier<T> work) {
-            this.npc = npc;
+        Item(Route route, Capabilities.Cancellation token, Supplier<T> work) {
+            this.route = route;
             this.token = token;
             this.work = work;
         }
