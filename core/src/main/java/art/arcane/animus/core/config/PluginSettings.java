@@ -86,7 +86,9 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         try {
             npcSettings = new NpcRuntimeSettings(enabled,
                     integer(npc, "viewDistance", defaults.viewDistance()), integer(npc, "maximumVisible", defaults.maximumVisible()),
-                    integer(npc, "maximumViewers", defaults.maximumViewers()), integer(npc, "updatesPerTick", defaults.updatesPerTick()));
+                    integer(npc, "maximumViewers", defaults.maximumViewers()), integer(npc, "updatesPerTick", defaults.updatesPerTick()),
+                    integer(npc, "packetsPerTick", defaults.packetsPerTick()), integer(npc, "pendingSpawnsPerViewer", defaults.pendingSpawnsPerViewer()),
+                    integer(npc, "lookUpdatesPerTick", defaults.lookUpdatesPerTick()));
         } catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": npcs: " + e.getMessage(), e); }
         FileWorkSettings fileSettings;
         try {

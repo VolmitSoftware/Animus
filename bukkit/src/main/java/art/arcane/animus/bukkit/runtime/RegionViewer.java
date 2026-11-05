@@ -47,7 +47,7 @@ import org.bukkit.util.Vector;
  * also owns the NPC; otherwise it is refused, never answered from another region's live state.
  */
 final class RegionViewer {
-    static final int MAX_PENDING_SPAWNS = 8, MAX_COMPLETIONS = 64, PACKETS_PER_REGION = 32, WAKE_INTERVAL = 20;
+    static final int MAX_COMPLETIONS = 64, WAKE_INTERVAL = 20;
     private final RegionNpcRuntime host;
     final Player player;
     final UUID id, world;
@@ -55,7 +55,7 @@ final class RegionViewer {
     final ViewerSession guard;
     final PreviewBodies<Player, ItemStack> preview;
     private final Map<UUID, Presented> visible = new HashMap<>(), retiring = new HashMap<>();
-    private final Deque<Presented> retirements = new ArrayDeque<>(), presentationOrder = new ArrayDeque<>();
+    private final Deque<Presented> retirements = new ArrayDeque<>(), presentationOrder = new ArrayDeque<>(), rigOrder = new ArrayDeque<>();
     private final ConcurrentLinkedQueue<Runnable> completions = new ConcurrentLinkedQueue<>();
     private final AtomicInteger queued = new AtomicInteger();
     final AtomicInteger shown = new AtomicInteger();
@@ -114,9 +114,13 @@ final class RegionViewer {
         int stride = Math.max(1, (host.viewerCount() + host.settings.updatesPerTick() - 1) / host.settings.updatesPerTick());
         if ((ticks + phase) % stride != 0 || host.budget.take(RegionBudget.Kind.VIEWERS, 1) == 0) return;
         // An equal share of the region's packet work, so the first viewers in scheduler order cannot use all of it.
-        int share = Math.max(2, PACKETS_PER_REGION / Math.max(1, Math.min(host.settings.updatesPerTick(), host.viewerCount())));
+        int share = Math.max(2, host.settings.packetsPerTick() / Math.max(1, Math.min(host.settings.updatesPerTick(), host.viewerCount())));
         int budget = host.budget.take(RegionBudget.Kind.PACKETS, share);
-        host.budget.refund(RegionBudget.Kind.PACKETS, budget - update(at, budget));
+        int used = update(at, budget);
+        if (used >= budget) host.budget.shortOfPackets();
+        // Cosmetic work spends only what this viewer's despawns, moves and spawns left, and pauses while the region is short.
+        if (host.budget.cosmeticAllowed()) used += presentCosmetics(budget - used);
+        host.budget.refund(RegionBudget.Kind.PACKETS, budget - used);
     }
 
     private int update(WorldPosition at, int packetBudget) {
@@ -133,24 +137,23 @@ final class RegionViewer {
                 if (failure != null) host.fail(this, "despawn", body.actor, failure); else release(body);
             }));
         }
-        int[] rigBudget = {host.rigs.updatesPerTick()};
-        if (ready && retirements.isEmpty()) {
+        if (!retirements.isEmpty()) return sent;
+        if (ready) {
             for (int i = 0, count = presentationOrder.size(); i < count && sent < packetBudget; i++) {
                 Presented body = presentationOrder.removeFirst();
                 if (body.retired) continue;
                 presentationOrder.addLast(body);
                 RegionActor.Publication now = body.actor.publication;
-                if (now.appearance() != body.appearance) { retire(body); continue; }
+                if (now.appearance() != body.appearance || rigReplaced(body, now)) { retire(body); continue; }
                 if (body.spawnFinished && !body.moving && body.pose != now.pose()) { move(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && !body.equipping && sent < packetBudget && body.equipment != now.equipmentRevision()) { equip(body, now); sent++; if (!host.current(this)) return sent; }
-                if (now.rig() != null || body.rigIdentity != 0) { sent += presentRig(body, now, packetBudget - sent, rigBudget); if (!host.current(this)) return sent; }
             }
         }
         if (ready && sent < packetBudget)
             sent += preview.update(player, host.packets, at, host.settings.viewDistance(), sentChunk, host::previewSpec,
                     (Runnable completion) -> enqueue(() -> { if (host.current(this)) completion.run(); }), nativeIds, packetBudget - sent);
-        if (!ready || !retirements.isEmpty() || sent >= packetBudget || pendingSpawns >= MAX_PENDING_SPAWNS || visible.size() >= host.settings.maximumVisible()) return sent;
-        int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(host.settings.maximumVisible() - visible.size(), MAX_PENDING_SPAWNS - pendingSpawns));
+        if (!ready || !retirements.isEmpty() || sent >= packetBudget || pendingSpawns >= host.settings.pendingSpawnsPerViewer() || visible.size() >= host.settings.maximumVisible()) return sent;
+        int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(host.settings.maximumVisible() - visible.size(), host.settings.pendingSpawnsPerViewer() - pendingSpawns));
         SpatialNpcIndex.Scan scan = host.index.scan(new SpatialNpcIndex.Query(at, host.settings.viewDistance()), cursor, new SpatialNpcIndex.Budget(32, Math.max(1, capacity * 2)), sentChunk);
         cursor = scan.next().orElse(null);
         for (VirtualNpcState.Snapshot candidate : scan.candidates()) {
@@ -178,7 +181,7 @@ final class RegionViewer {
         try {
             NativePacketAdapter.Body body = host.packets.createBody(now.spec().definition().uuid(), now.spec().type(), now.name(), now.spec().appearance(), now.skin());
             Presented presented = new Presented(actor, body, now);
-            visible.put(actor.uuid, presented); presentationOrder.addLast(presented);
+            visible.put(actor.uuid, presented); presentationOrder.addLast(presented); rigOrder.addLast(presented);
             nativeIds += presented.ids; pendingSpawns++; shown.incrementAndGet();
             host.packets.spawn(player, body, pose(now)).whenComplete((nothing, failure) -> enqueue(() -> {
                 if (!host.current(this)) return;
@@ -214,11 +217,29 @@ final class RegionViewer {
             }));
         } catch (RuntimeException failure) { body.equipping = false; body.equipment = now.equipmentRevision(); host.cosmeticFailed(this, "equipment", body.actor, failure); }
     }
+    /** The body shows bones of a rig the NPC no longer has: it is respawned, which is authoritative work. */
+    private static boolean rigReplaced(Presented body, RegionActor.Publication now) {
+        return body.rigIdentity != 0 && (now.rig() == null || now.rig().identity() != body.rigIdentity);
+    }
+    /** Rig bones for this viewer, taking turns so its rig budget reaches every body over a few ticks. Returns packet budget used. */
+    private int presentCosmetics(int packetBudget) {
+        if (!ready || !retirements.isEmpty()) return 0;
+        int sent = 0;
+        int[] rigBudget = {host.rigs.updatesPerTick()};
+        for (int i = 0, count = rigOrder.size(); i < count && (sent < packetBudget || rigBudget[0] > 0); i++) {
+            Presented body = rigOrder.removeFirst();
+            if (body.retired) continue;
+            rigOrder.addLast(body);
+            RegionActor.Publication now = body.actor.publication;
+            if (now.rig() != null || body.rigIdentity != 0) sent += presentRig(body, now, packetBudget - sent, rigBudget);
+            if (!host.current(this)) return sent;
+        }
+        return sent;
+    }
     /** Shows the body's bones once it is spawned, then sends changed bone transforms within this viewer's rig budget. */
     private int presentRig(Presented body, RegionActor.Publication now, int packetBudget, int[] rigBudget) {
         NpcRig.Snapshot<ItemStack> shown = now.rig();
-        if (body.rigIdentity != 0 && (shown == null || shown.identity() != body.rigIdentity)) { retire(body); return 0; }
-        if (shown == null || shown.frame() == null || !body.spawnFinished || body.retired || body.rigFailed) return 0;
+        if (rigReplaced(body, now) || shown == null || shown.frame() == null || !body.spawnFinished || body.retired || body.rigFailed) return 0;
         RigFrame frame = shown.frame();
         if (body.bones == null) {
             if (packetBudget <= 0 || bones + shown.displays().size() > host.rigs.maximumBones()) return 0;
@@ -253,7 +274,7 @@ final class RegionViewer {
         if (body.retired) return;
         if (body.bones != null) { bones -= body.bones.count(); body.bones = null; }
         body.retired = true; visible.remove(body.actor.uuid, body); guard.unbind(body.body.entityId());
-        presentationOrder.remove(body); shown.decrementAndGet();
+        presentationOrder.remove(body); rigOrder.remove(body); shown.decrementAndGet();
         retiring.put(body.actor.uuid, body); retirements.addLast(body);
     }
     private void release(Presented body) {
@@ -265,7 +286,7 @@ final class RegionViewer {
     }
     /** Network and pure state only: callable from a retirement callback without world access. */
     void close() {
-        guard.close(); visible.clear(); retiring.clear(); retirements.clear(); presentationOrder.clear(); completions.clear(); shown.set(0);
+        guard.close(); visible.clear(); retiring.clear(); retirements.clear(); presentationOrder.clear(); rigOrder.clear(); completions.clear(); shown.set(0);
         if (proximity != null) proximity.forget(id);
         AutoCloseable running = task;
         if (running != null) try { running.close(); } catch (Exception ignored) { /* Folia already retired the task. */ }
