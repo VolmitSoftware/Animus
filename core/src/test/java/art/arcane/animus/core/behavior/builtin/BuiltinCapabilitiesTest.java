@@ -44,7 +44,8 @@ class BuiltinCapabilitiesTest {
         @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
     };
     private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "look", "set-appearance",
-            "set-equipment", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui");
+            "set-equipment", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
+            "play-animation", "stop-animation");
     private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state");
 
     private final RecordingPlatform platform = new RecordingPlatform();
@@ -168,6 +169,8 @@ class BuiltinCapabilitiesTest {
                 Map.entry("spawn-particle", "{\"particle\":\"minecraft:flame\",\"count\":100000}"),
                 Map.entry("combat-control", "{\"operation\":\"explode\"}"),
                 Map.entry("set-quest-state", "{\"name\":\"q\"}"),
+                Map.entry("play-animation", "{\"animation\":\"town:golem/wave\",\"speed\":9}"),
+                Map.entry("stop-animation", "{\"fadeTicks\":41}"),
                 Map.entry("choices", "{\"id\":\"c\",\"prompt\":\"p\",\"options\":[]}"));
         for (Map.Entry<String, String> entry : invalid.entrySet()) {
             Outcome<String> outcome = action(entry.getKey(), entry.getValue());
@@ -187,6 +190,7 @@ class BuiltinCapabilitiesTest {
                 Map.entry("set-appearance", "{\"skin\":\"abc\"}"),
                 Map.entry("set-equipment", "{\"slot\":\"head\",\"item\":\"NOT A KEY\"}"),
                 Map.entry("play-sound", "{\"sound\":\"NOT A KEY\"}"),
+                Map.entry("play-animation", "{\"animation\":\"Not An Id\"}"),
                 Map.entry("combat-control", "{\"operation\":\"target\",\"target\":\"not-a-uuid\"}"));
         for (Map.Entry<String, String> entry : invalid.entrySet())
             assertFalse(builtins.validate(key(entry.getKey()), entry.getValue()).isEmpty(), entry.getKey());
@@ -206,12 +210,15 @@ class BuiltinCapabilitiesTest {
         valid.put("play-sound", "{\"sound\":\"minecraft:entity.villager.yes\",\"volume\":1,\"pitch\":1}");
         valid.put("spawn-particle", "{\"particle\":\"minecraft:flame\",\"count\":8}");
         valid.put("combat-control", "{\"operation\":\"target\",\"target\":\"" + target + "\"}");
+        valid.put("play-animation", "{\"animation\":\"town:golem/wave\",\"speed\":2,\"loop\":\"pingpong\",\"layer\":2}");
+        valid.put("stop-animation", "{\"layer\":2,\"fadeTicks\":10}");
         for (Map.Entry<String, String> entry : valid.entrySet()) {
             Outcome<String> outcome = action(entry.getKey(), entry.getValue());
             assertEquals(Outcome.Status.OK, outcome.status(), entry.getKey() + outcome.diagnostics());
         }
         assertEquals(List.of("navigate:FLY:3.0", "stop", "look-point", "appearance:Guard:false", "equipment:MAIN_HAND:minecraft:iron_sword",
-                "sound:minecraft:entity.villager.yes", "particle:minecraft:flame:8", "combat:TARGET:true"), platform.calls);
+                "sound:minecraft:entity.villager.yes", "particle:minecraft:flame:8", "combat:TARGET:true",
+                "animation:town:golem/wave:2.0:pingpong:2", "stop-animation:2:10"), platform.calls);
     }
 
     @Test void combatControlGuardsAParticipantOrStopsGuarding() throws Exception {
@@ -251,6 +258,7 @@ class BuiltinCapabilitiesTest {
                 Map.entry("look", "{\"x\":1,\"y\":64,\"z\":3}"),
                 Map.entry("set-appearance", "{\"name\":\"Guard\"}"),
                 Map.entry("set-equipment", "{\"slot\":\"head\"}"),
+                Map.entry("play-animation", "{\"animation\":\"town:golem/wave\"}"),
                 Map.entry("choices", "{\"id\":\"c\",\"prompt\":\"p\",\"options\":[{\"id\":\"a\",\"text\":\"A\"}]}"),
                 Map.entry("set-flag", "{\"name\":\"met\"}"),
                 Map.entry("set-quest-state", "{\"name\":\"main\",\"value\":1}"),

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:golem",
+  "bones": [
+    {"id": "head", "parent": "torso", "pivot": [0, 1.6, 0]},
+    {"id": "torso", "pivot": [0, 1.1, 0]}
+  ]
+}

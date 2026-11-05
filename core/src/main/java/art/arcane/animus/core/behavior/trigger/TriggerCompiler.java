@@ -74,6 +74,13 @@ public final class TriggerCompiler {
             case DIALOGUE_CHOICE -> new TriggerBinding.DialogueChoice(identifier(object, "dialogue", path),
                     object.has("choice") ? Optional.of(identifier(object, "choice", path)) : Optional.empty());
             case MODULE -> new TriggerBinding.ModuleEvent(key(text(object, "key", path), path + ".key"));
+            case ANIMATION_FINISHED -> {
+                if (!object.has("animation")) yield new TriggerBinding.AnimationFinished(Optional.empty());
+                String animation = text(object, "animation", path);
+                if (animation.length() > 256 || !animation.matches("[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}"))
+                    throw new Invalid(path + ".animation", "expected an animation id such as town:golem/wave");
+                yield new TriggerBinding.AnimationFinished(Optional.of(animation));
+            }
         };
     }
 

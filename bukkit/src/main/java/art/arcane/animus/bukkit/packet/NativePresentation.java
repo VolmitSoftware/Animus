@@ -101,6 +101,12 @@ final class NativePresentation {
                 dataValue.invoke(null, translation, vector.newInstance(0f, (float) lift, 0f)));
     }
 
+    /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
+    Object visibility(BodyLook look, boolean hidden) throws ReflectiveOperationException {
+        boolean invisible = hidden || look.armorStand().map(ArmorStandLook::invisible).orElse(false);
+        return dataValue.invoke(null, sharedFlags, BodyLook.sharedFlags(look.pose(), invisible));
+    }
+
     /** Formatted text as a styled vanilla component, so hex colours render; a plain literal would show them as codes. */
     Object component(String content) throws ReflectiveOperationException {
         Object root = empty.invoke(null);

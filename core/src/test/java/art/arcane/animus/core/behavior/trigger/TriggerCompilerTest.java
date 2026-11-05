@@ -52,6 +52,19 @@ class TriggerCompilerTest {
         assertEquals("dialogue_choice",triggers.get(11).spec().kind().jsonName());
         assertEquals(new TriggerBinding.ModuleEvent(new Capabilities.Key("sample","door_open")),triggers.get(12).spec());
     }
+    @Test void animationFinishedFiltersByAnimationWhenNamed(){
+        BehaviorCompiler.Result result=BehaviorCompiler.compile(document("""
+                [{"id":"any","event":"animation_finished"},{"id":"wave","event":"animation_finished","animation":"town:golem/wave"}]"""));
+        assertEquals(List.of(),result.diagnostics());
+        List<TriggerBinding> triggers=result.program().orElseThrow().triggers();
+        assertEquals(new TriggerBinding.AnimationFinished(java.util.Optional.empty()),triggers.get(0).spec());
+        TriggerBinding wave=triggers.get(1);
+        java.util.UUID npc=java.util.UUID.randomUUID();
+        assertTrue(wave.matches(new TriggerEvent.AnimationFinished(npc,"town:golem/wave",1),"example:greeter#wave"));
+        assertFalse(wave.matches(new TriggerEvent.AnimationFinished(npc,"town:golem/bow",1),"example:greeter#wave"));
+        assertTrue(triggers.get(0).matches(new TriggerEvent.AnimationFinished(npc,"town:golem/bow",0),"example:greeter#any"));
+        assertFalse(BehaviorCompiler.compile(document("[{\"id\":\"bad\",\"event\":\"animation_finished\",\"animation\":\"Not An Id\"}]")).diagnostics().isEmpty());
+    }
     @Test void documentsWithoutTriggersCompileWithNoBindings(){
         BehaviorProgram program=BehaviorCompiler.compile("{\"schemaVersion\":1,\"id\":\"example:plain\",\"entry\":\"main\","+ROUTINES+"}").program().orElseThrow();
         assertEquals(List.of(),program.triggers());

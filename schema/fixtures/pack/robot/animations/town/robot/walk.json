@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:robot/walk",
+  "rig": "town:robot",
+  "durationTicks": 20,
+  "loop": "loop",
+  "tracks": [
+    {
+      "bone": "head",
+      "target": "rotation",
+      "blend": "replace",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tick": 10,
+          "value": [
+            10,
+            -20,
+            -5
+          ],
+          "easing": "ease_in_out"
+        },
+        {
+          "tick": 20,
+          "value": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "bone": "body",
+      "target": "translation",
+      "blend": "replace",
+      "keyframes": [
+        {
+          "tick": 0,
+          "value": [
+            0,
+            0,
+            0
+          ],
+          "easing": "hold"
+        },
+        {
+          "tick": 10,
+          "value": [
+            0.0625,
+            0.125,
+            -0.1875
+          ]
+        }
+      ]
+    },
+    {
+      "bone": "body",
+      "target": "scale",
+      "blend": "replace",
+      "keyframes": [
+        {
+          "tick": 5,
+          "value": [
+            1,
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  ]
+}

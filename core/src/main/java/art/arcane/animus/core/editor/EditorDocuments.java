@@ -188,6 +188,8 @@ public final class EditorDocuments {
             }
             case SHOP -> problems(diagnostics, ShopDocument.parse(id, text).problems());
             case INVENTORY -> problems(diagnostics, GuiDocument.parse(id, text).problems());
+            case RIG -> problems(diagnostics, art.arcane.animus.core.rig.RigDocument.parse(id, text).problems());
+            case ANIMATION -> problems(diagnostics, art.arcane.animus.core.rig.AnimationDocument.parse(id, text).problems());
             case ROUTE -> {
                 try { WaypointSettings.document(text); }
                 catch (IOException | RuntimeException invalid) { problems(diagnostics, List.of(String.valueOf(invalid.getMessage()))); }
@@ -197,7 +199,7 @@ public final class EditorDocuments {
                     diagnostics.add(diagnostic("error", "$", "skins are named by the SHA-256 of their bytes; this content hashes to " + JsonDocuments.hash(text), "skin-hash"));
             }
             default -> {
-                // Menus, holograms, text animations, presets, rigs and animations have no Java parser in this build; the shared schemas check their shape.
+                // Menus, holograms, text animations and presets have no Java parser in this build; the shared schemas check their shape.
             }
         }
         return diagnostics;
