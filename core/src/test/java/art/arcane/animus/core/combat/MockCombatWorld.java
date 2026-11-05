@@ -24,10 +24,15 @@ final class MockCombatWorld implements CombatWorld {
     final Map<UUID, Vec3> helpers = new HashMap<>();
     final Set<UUID> removedHelpers = new HashSet<>();
     final List<WorldPosition> moves = new ArrayList<>();
+    final List<Double> speeds = new ArrayList<>();
     final List<Drop> drops = new ArrayList<>();
     final List<UUID> revived = new ArrayList<>();
     final Set<UUID> released = new HashSet<>();
     final Map<UUID, Double> knocked = new HashMap<>();
+    final Map<UUID, List<String>> told = new HashMap<>();
+    final Map<UUID, List<CombatSettings.Effect>> effects = new HashMap<>();
+    final Map<UUID, RangedWeapon> launched = new HashMap<>();
+    final Set<String> permissions = new HashSet<>();
     int experience, realScans, npcScans, helperLaunches, stops, teleports, lineChecks;
     boolean blocked, unavailableTerrain, walkInstantly, refuseHelpers;
     MoveStatus moveStatus = MoveStatus.ACCEPTED;
@@ -60,8 +65,15 @@ final class MockCombatWorld implements CombatWorld {
         VirtualNpcState state = npcs.get(id);
         index.upsert(state.move(at(x, 64, z)));
     }
-    private static CombatTarget target(TargetRef ref, String type, String name, double x, double z, Set<TargetCategory> categories) {
-        return new CombatTarget(ref, type, name, at(x, 64, z), Hitbox.atFeet(new Vec3(x, 64, z), .6, 1.8), 20, categories, "", Optional.empty());
+    /** Replaces what item, effect and health rules see on a real entity. */
+    void details(UUID id, double health, CombatTarget.Details details) {
+        CombatTarget old = real.get(id);
+        real.put(id, new CombatTarget(old.ref(), old.type(), old.name(), old.position(), old.bounds(), health, old.categories(), "", Optional.empty(), details));
+    }
+    private CombatTarget target(TargetRef ref, String type, String name, double x, double z, Set<TargetCategory> categories) {
+        CombatTarget.Details details = real.containsKey(ref.id()) ? real.get(ref.id()).details() : new CombatTarget.Details(20, CombatLoadout.EMPTY, CombatLoadout.EMPTY, List.of(), Set.of());
+        double health = real.containsKey(ref.id()) ? real.get(ref.id()).health() : 20;
+        return new CombatTarget(ref, type, name, at(x, 64, z), Hitbox.atFeet(new Vec3(x, 64, z), .6, 1.8), health, categories, "", Optional.empty(), details);
     }
 
     @Override public Optional<VirtualNpcState.Snapshot> npc(UUID npc) {
@@ -90,6 +102,7 @@ final class MockCombatWorld implements CombatWorld {
     @Override public MoveStatus move(UUID npc, WorldPosition goal, double speed) {
         if (moveStatus == MoveStatus.ACCEPTED) {
             moves.add(goal);
+            speeds.add(speed);
             if (walkInstantly) index.upsert(npcs.get(npc).move(goal));
         }
         return moveStatus;
@@ -115,10 +128,17 @@ final class MockCombatWorld implements CombatWorld {
         return new DamageOutcome(DamageStatus.APPLIED, amount, !after.active());
     }
     @Override public void knockback(UUID npc, Vec3 direction, double strength) { knocked.merge(npc, strength, Double::sum); }
-    @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity) {
+    @Override public boolean applyEffect(UUID attacker, CombatTarget target, CombatSettings.Effect effect) {
+        effects.computeIfAbsent(target.ref().id(), (UUID key) -> new ArrayList<>()).add(effect);
+        return true;
+    }
+    @Override public boolean permitted(TargetRef player, String node) { return player.kind() == TargetKind.PLAYER && permissions.contains(player.id() + " " + node); }
+    @Override public void tell(UUID player, String speaker, String message) { told.computeIfAbsent(player, (UUID key) -> new ArrayList<>()).add("[" + speaker + "]: " + message); }
+    @Override public Optional<UUID> launchHelper(UUID owner, WorldPosition from, Vec3 velocity, RangedWeapon weapon) {
         if (refuseHelpers) return Optional.empty();
         UUID helper = UUID.randomUUID();
         helpers.put(helper, from.point());
+        launched.put(helper, weapon);
         helperLaunches++;
         return Optional.of(helper);
     }

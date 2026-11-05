@@ -59,6 +59,10 @@ public final class ModHooks {
         AnimusModRuntime active = runtime;
         if (active != null) active.died(player);
     }
+    public static void chat(ServerPlayer player, String message) {
+        AnimusModRuntime active = runtime;
+        if (active != null) active.chat(player, message);
+    }
     public static void realDamaged(LivingEntity victim, DamageSource source) {
         AnimusModRuntime active = runtime;
         if (active != null && !victim.level().isClientSide()) active.realDamaged(victim, source);

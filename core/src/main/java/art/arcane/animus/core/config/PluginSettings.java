@@ -118,7 +118,10 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 integer(document, "helpersPerNpc", defaults.helpersPerNpc()),
                 integer(document, "helperUpdatesPerTick", defaults.helperUpdatesPerTick()),
                 integer(document, "helperLifetimeTicks", defaults.helperLifetimeTicks()),
-                integer(document, "idleSleepTicks", defaults.idleSleepTicks()));
+                integer(document, "idleSleepTicks", defaults.idleSleepTicks()),
+                integer(document, "eventsPerTick", defaults.eventsPerTick()),
+                integer(document, "maximumScanRange", defaults.maximumScanRange()),
+                integer(document, "maximumSpeed", defaults.maximumSpeed()));
     }
 
     private static BehaviorSettings behaviors(JsonObject document) {

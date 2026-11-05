@@ -120,95 +120,76 @@ Format quirks to accept: the discount duration and confirmation flags are read a
 
 ## 2. Sentinel (combat)
 
-Animus already has a Sentinel-style combat module ([combat.md](combat.md)) and a field-by-field importer ([compatibility.md](compatibility.md#sentinel-settings)). This section lists only what is still missing or partial. Sentinel is open source; facts below come from the pinned commit [96672f1](https://github.com/mcmonkeyprojects/Sentinel/tree/96672f1b03f2182d11f8e3188cae24b9cdaf14a8) used in [upstream-inventory.md](upstream-inventory.md), its [README](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/README.md) and [plugin.yml](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/resources/plugin.yml).
+Animus has a Sentinel-style combat module ([combat.md](combat.md)) and a field-by-field importer ([compatibility.md](compatibility.md#sentinel-settings)). This section lists what each Sentinel feature maps to and what is still missing. Sentinel is open source; facts below come from the pinned commit [96672f1](https://github.com/mcmonkeyprojects/Sentinel/tree/96672f1b03f2182d11f8e3188cae24b9cdaf14a8) used in [upstream-inventory.md](upstream-inventory.md), its [README](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/README.md) and [plugin.yml](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/resources/plugin.yml).
 
-### Import defects found
+### Import defects (fixed)
 
-These change how imported NPCs behave and should be fixed before any new feature.
-
-| Problem | Sentinel behavior | Animus behavior | Fix |
-| --- | --- | --- | --- |
-| `respawnTime: 0` | The NPC stays dead and is marked not spawned ([onDeath](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelTrait.java)) | Converts to `delayTicks: 0`, which respawns at once | Convert 0 to `-1` |
-| `respawnTime` below 0 | The NPC is deleted on death | Never respawns, but is not deleted | Add `respawn.deleteOnDeath` or report the difference in `migrationReport` |
-| `OWNER` ignore | Added to every new Sentinel's ignores, so it never attacks its owner ([onAttach](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelTrait.java)) | Kept unsupported, so an imported guard that targets players can attack its owner | Add an `owner` rule that uses the definition's `owner` |
+| Problem | Sentinel behavior | Animus now |
+| --- | --- | --- |
+| `respawnTime: 0` | The NPC stays dead and is marked not spawned ([onDeath](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelTrait.java)) | Converts to `delayTicks: -1`: the NPC stays dead |
+| `respawnTime` below 0 | The NPC is deleted on death | Converts to `delayTicks: -1` with `deleteOnDeath: true`: the definition is deleted through the normal transaction path, and the log names the transaction that `/animus rollback` undoes |
+| `OWNER` ignore | Added to every new Sentinel's ignores, so it never attacks its owner ([onAttach](https://github.com/mcmonkeyprojects/Sentinel/blob/96672f1b03f2182d11f8e3188cae24b9cdaf14a8/src/main/java/org/mcmonkey/sentinel/SentinelTrait.java)) | Converts to `ignores.owner: true`, matched against the definition's `owner` |
 
 ### Feature table
 
-| Feature | What it does | Animus status | Proposed Animus design |
+| Feature | What it does | Animus status | Animus design |
 | --- | --- | --- | --- |
-| Basic categories and entity types | `PLAYERS`, `NPCS`, `MONSTERS`, `MOBS`, `PASSIVE_MOBS`, and about 80 entity names with plural aliases | covered | Already converted |
-| `OWNER` target and ignore | The NPC's Citizens owner | missing | Rule entry `owner: true` |
-| Name patterns | `player:`, `npc:` and `entityname:` are regular expressions | partial | Animus matches exact names. Add `patterns` lists with a bounded regex engine |
-| Held and worn items | `helditem:`, `offhand:`, `equipped:`, `in_inventory:` item matchers | missing | Rule `items` with slot and material or pattern |
-| Permission groups | `group:` through Vault | missing | Rule `groups` through a permission adapter |
-| Permission nodes | `permission:` | missing | Rule `permissions` |
-| Health | `healthabove:` and `healthbelow:` percentage | missing | Rule `health` with `above` and `below` |
-| Potion effects | `potion:` | missing | Rule `effects` |
-| Scoreboard | `sbteam:`, `sbscoreabove:`, `sbscorebelow:` | missing | Rule `teams` and `scores` |
-| Mob status | `status:angry`, `status:passive` | missing | Rule `status` |
-| NPCs owned by | `npc_owned_by:<target>` | missing | Rule `ownedBy` with a nested rule |
-| Squad and UUID | `squad:`, `uuid:` | covered | Already converted |
-| Combined rules | `multi:` (several separate targets together) and `allinone:` (one entity matches all parts) | missing | Rule `all` (one entity, all parts) and `together` (several entities) |
-| Fight events | `event:pvp`, `pve`, `eve`, `pvnpc`, `pvsentinel`, `npcvnpc`, `pv:<target>`, `ev:<target>` target whoever starts that kind of fight nearby | missing | Rule `events` evaluated from Bukkit damage events within scan range |
-| Guarded fight | `event:guarded_fight` attacks what the guarded player attacks | partial | Animus guards defend their charge; add `guard.assist` |
-| Chat trigger | `event:message:<text>` targets a visible player whose chat contains the text | missing | Rule `chat` with a substring list |
-| Other plugins | Towny, Factions, SimpleClans, War, SimplePets, BeautyQuests, Denizen procedures | missing | Optional target adapters later; keep entries for review |
+| Basic categories and entity types | `PLAYERS`, `NPCS`, `MONSTERS`, `MOBS`, `PASSIVE_MOBS`, and about 80 entity names with plural aliases | covered | Converted |
+| `OWNER` target and ignore | The NPC's Citizens owner | covered | Rule `owner: true` |
+| Name patterns | `player:`, `npc:` and `entityname:` are regular expressions | covered | Rule `patterns`; compiled once, bounded, invalid patterns refused with the field |
+| Held and worn items | `helditem:`, `offhand:`, `equipped:`, `in_inventory:` item matchers | partial | Rule `items` with `mainHand`, `offHand` and `worn`. Inventory contents and `name:`/`lore:` matchers are kept for review |
+| Permission groups | `group:` through Vault | covered | Rule `groups`, read as the permission `group.<name>` that permission plugins grant |
+| Permission nodes | `permission:` | covered | Rule `permissions` |
+| Health | `healthabove:` and `healthbelow:` percentage | covered | Rules `healthAbove` and `healthBelow` |
+| Potion effects | `potion:` | covered | Rule `effects` |
+| Scoreboard | `sbteam:`, `sbscoreabove:`, `sbscorebelow:` | missing | Kept for review |
+| Mob status | `status:angry`, `status:passive` | missing | Kept for review |
+| NPCs owned by | `npc_owned_by:<target>` | missing | Kept for review |
+| Squad and UUID | `squad:`, `uuid:` | covered | Converted |
+| Combined rules | `multi:` (several separate targets together) and `allinone:` (one entity matches all parts) | covered | Rules `together` and `all` |
+| Fight events | `event:pvp`, `pve`, `eve`, `pvnpc`, `pvsentinel`, `npcvnpc`, `pv:<target>`, `ev:<target>` target whoever starts that kind of fight nearby | covered | Rule `events`; queued and examined within `eventsPerTick` |
+| Guarded fight | `event:guarded_fight` attacks what the guarded player attacks | covered | `guard.assist` |
+| Chat trigger | `event:message:<text>` targets a visible player whose chat contains the text | covered | Rule `chat` |
+| Other plugins | Towny, Factions, SimpleClans, War, SimplePets, BeautyQuests, Denizen procedures | missing | Kept for review; optional target adapters later |
 | Melee and arrows | Melee with reach and rate; bows and crossbows | covered | |
-| Other weapons | Trident, fireball from blaze rod, splash and lingering potions, lightning from nether star, spectral arrows, snowballs, eggs, ender pearls, wither skulls, llama spit, shulker bullets, evoker fangs | missing | `ranged.weapon` values added one at a time, each with one damage authority |
-| Arrow type from inventory | Tipped, spectral or fire arrows set by inventory contents | missing | `ranged.arrow` from definition inventory |
-| Healer NPC | Potions on friendly targets, as in the README healer example | missing | `ranged.weapon: potion` with `effect`, used with health rules |
-| Damage and armor from equipment | `damage: -1` and `armor: -1` use held item and worn armor | partial | Converts to fixed values. Add `fromEquipment: true` using item attributes |
-| Weapon damage map | `weapondamage MATERIAL DAMAGE` | missing | `melee.weaponDamage` map |
-| Weapon redirect | Treat one material as another | missing | `weapons.redirect` map |
-| Ammunition | `needammo` uses arrows and potions from the NPC inventory | missing | `ranged.useAmmo` that reduces definition inventory at runtime only |
-| Auto switch | Swap between bow and sword by distance using inventory items | partial | Animus switches between its own melee and ranged sections. Add showing the matching held item |
-| CrackShot and QualityArmory guns | Fire gun items | missing | Out of scope; keep for review |
-| Greeting and warning | Messages to friendly or hostile players in `greet_range`, every `greet_rate` ticks | missing | `greetings` section with `friendly`, `hostile`, `range`, `cooldownTicks`, or a behavior trigger `combat-greet`. 60 imported records use `warning_text` |
-| WorldGuard region leash | `wgregion` keeps chasing inside one region | missing | `pursuit.region` checked through the existing WorldGuard adapter |
+| Other weapons | Trident, fireball from blaze rod, splash and lingering potions, lightning from nether star, spectral arrows, snowballs, eggs, ender pearls, wither skulls, llama spit, shulker bullets, evoker fangs | partial | `ranged.weapon`: trident, fireball, small fireball, potion, spectral arrow, snowball, egg, wither skull and llama spit, each a tracked helper with one damage authority. Lightning, pearls, shulker bullets and evoker fangs are missing |
+| Arrow type from inventory | Tipped, spectral or fire arrows set by inventory contents | missing | Ammunition counts tipped and spectral arrows, but the arrow fired is always plain |
+| Healer NPC | Potions on friendly targets, as in the README healer example | covered | `ranged.weapon: potion` with a helpful `effect`, used with health rules |
+| Damage and armor from equipment | `damage: -1` and `armor: -1` use held item and worn armor | covered | `melee.fromEquipment`, `ranged.fromEquipment`, `defense.armorFromEquipment`; enchantments are not read |
+| Weapon damage map | `weapondamage MATERIAL DAMAGE` | covered | `melee.weaponDamage` |
+| Weapon redirect | Treat one material as another | missing | Kept for review |
+| Ammunition | `needammo` uses arrows and potions from the NPC inventory | covered | `ranged.useAmmo`; a runtime count, the stored inventory never changes |
+| Auto switch | Swap between bow and sword by distance using inventory items | partial | Animus switches between its own melee and ranged sections; the held item does not change. `autoswitch` is kept for review |
+| CrackShot and QualityArmory guns | Fire gun items | missing | Out of scope; kept for review |
+| Greeting and warning | Messages to friendly or hostile players in `greet_range`, every `greet_rate` ticks | covered | `greetings` with `friendly`, `hostile`, `range` and `cooldownTicks`. The 60 imported `warning_text` records convert |
+| WorldGuard region leash | `wgregion` keeps chasing inside one region | covered on Bukkit | `pursuit.region` through the WorldGuard adapter; unavailable with a diagnostic where no protection plugin provides regions, including mod servers |
 | Path guarding | Guards a Citizens path or point and returns to it | partial | Return to post and patrol resume exist; patrol restarts from the first waypoint |
-| Scan range | Any value; default 20, many servers use 50 to 100 | partial | Limited to 64 |
-| Speed | Speed modifier | partial | Limited to 1 to 5 blocks per second |
+| Scan range | Any value; default 20, many servers use 50 to 100 | covered | Up to 256, capped by `[combat] maximumScanRange` (default 100) |
+| Speed | Speed modifier | covered | Up to 10 blocks per second, capped by `[combat] maximumSpeed` (default 8) |
 | Mobs fight NPCs | Sentinel NPCs are real entities that mobs target | partial | Only the zombie adapter targets NPCs |
 | Player damage rules | Vanilla damage including enchantments, potions and critical hits | partial | Attack attribute and charge only |
-| Kill, respawn, forgive | `/sentinel kill`, `respawn`, `forgive` | partial | `release` acts like forgive. Add `kill` and `respawn` operations |
+| Kill, respawn, forgive | `/sentinel kill`, `respawn`, `forgive` | partial | `release` acts like forgive. `kill` and `respawn` operations are missing |
 | Info and statistics | `/sentinel info`, `stats`, `targets`, `ignores`, `avoids` | partial | `/animus combat <npc> status` exists. Counters are imported but not updated |
 | Death messages | Custom death messages for kills | missing | `death.message` text |
 | Invisible targets | `random.ignore invisible targets` | missing | `targeting.ignoreInvisible` |
-| Armor stand targets | Off by default (`random.allow armor stand targets`) | partial | Armor stands count as mobs; confirm they are excluded by default |
+| Armor stand targets | Off by default (`random.allow armor stand targets`) | covered | Armor stands are not mobs, so they are never targets |
 | Guard damage | Guards cannot hurt the player they guard (`random.no guard damage`) | covered | Guards never target their charge |
-| Explosion blocks | Fireballs and skulls do not break blocks | missing | Needed with explosive weapons |
+| Explosion blocks | Fireballs and skulls do not break blocks | covered | Helper projectiles never explode |
 | Defaults from config | `sentinel defaults.*` in Sentinel's config set new NPC values | missing | Optional `[combat.defaults]` in TOML; imports already write Sentinel defaults |
-| API events | Attack, chase start and end, combat state, no more targets, wants to path | partial | `damage` and `death` triggers exist. Add `combat-start`, `combat-end` and `target-lost` triggers |
+| API events | Attack, chase start and end, combat state, no more targets, wants to path | partial | `damage` and `death` triggers exist. `combat-start`, `combat-end` and `target-lost` triggers are missing |
 | Editing by command | About 55 `/sentinel` subcommands with `sentinel.<name>` permissions and `sentinel.admin` for other owners' NPCs | partial | Animus edits JSON with `animus.admin`. Owner-scoped editing is not planned |
 
 ### Import mapping
 
-The saves.yml path is `npc.<id>.traits.sentinel`; the current mapping is in [compatibility.md](compatibility.md#sentinel-settings). Changes this section adds:
+The saves.yml path is `npc.<id>.traits.sentinel`; the full mapping is in [compatibility.md](compatibility.md#sentinel-settings). Of the 69 persisted fields, 51 settings convert, 2 are kept for review (`autoswitch`, `weapon_redirect_map`) and 16 statistics are kept separately. Inside target lists, `byInventoryItem`, `byStatus`, `name:` and `lore:` item matchers, and `byOther` entries from scoreboards, `npc_owned_by` and other plugins are kept for review.
 
-| Sentinel key | Change |
-| --- | --- |
-| `respawnTime` | 0 becomes `-1`; below 0 sets `deleteOnDeath` or is reported |
-| `allIgnores` containing `OWNER` | Becomes `ignores.owner: true` |
-| `allTargets` and others: `byPlayerName`, `byNpcName`, `byEntityName` | Become `patterns` once regex rules exist |
-| `byHeldItem`, `byOffhandItem`, `byEquippedItem`, `byInventoryItem` | Become `items` rules |
-| `byGroup`, `byStatus`, `byOther` (`healthabove`, `potion`, `permission`, `sbteam`, `npc_owned_by`) | Become the matching new rules |
-| `byEvent` | Becomes `events`, `chat` and `guard.assist` |
-| `byAllInOne`, `byMultiple` | Become `all` and `together` |
-| `warning_text`, `greeting_text`, `greet_range`, `greet_rate` | Become `greetings` |
-| `worldguard_region` | Becomes `pursuit.region` |
-| `needsAmmo`, `autoswitch`, `weapon_damage_map`, `weapon_redirect_map` | Become `ranged.useAmmo`, held-item switching, `melee.weaponDamage`, `weapons.redirect` |
-| `damage: -1`, `armor: -1` | Become `fromEquipment: true` |
+### Remaining work
 
-### Implementation order
-
-1. Fix the three import defects above.
-2. Greetings and warnings (60 imported records use them).
-3. Regex name patterns, item rules, health and permission rules, and `all` combined rules.
-4. Fight event rules and guard assist.
-5. Damage and armor from equipment, weapon damage map and the held item display for switching.
-6. WorldGuard region leash, `kill` and `respawn` operations, and combat start and end triggers.
-7. Extra weapons in this order: potions (healer), trident, snowball and egg, fireball, lightning, the rest.
-8. Optional third-party target adapters.
+1. `kill` and `respawn` operations, and `combat-start`, `combat-end` and `target-lost` triggers.
+2. Lightning, ender pearls, shulker bullets and evoker fangs; arrow type from inventory.
+3. Held-item display when switching, and weapon redirects.
+4. Scoreboard, mob status and `npc_owned_by` rules; invisible-target and death-message settings.
+5. Optional third-party target adapters.
 
 ## 3. Constructor, formerly Builder (NPCs that build)
 
