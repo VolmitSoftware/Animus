@@ -75,12 +75,14 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
             requireOwner();
             try { adapter = new NativeMobController(plugin, exactVersion); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
-                mobUnavailable = "Zombie control binding failed: " + error.getClass().getSimpleName() + ": " + error.getMessage();
+                mobUnavailable = "Mob control binding failed: " + error.getClass().getSimpleName() + ": " + error.getMessage();
             }
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
         }
         nativeMobs = adapter;
-        capabilities = new Capabilities(unavailable == null, adapter == null ? Set.of() : Set.of("minecraft:zombie"), unavailable, mobUnavailable);
+        Set<String> types = new TreeSet<>();
+        if (adapter != null) for (EntityType type : NativeMobController.TYPES) types.add(type.getKey().toString());
+        capabilities = new Capabilities(unavailable == null, types, unavailable, mobUnavailable);
     }
     public Capabilities capabilities() { return capabilities; }
     public boolean available() { return capabilities.realDamage() && !closed; }

@@ -835,6 +835,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Plays a sound at the NPC for the triggering player or nearby players."
         },
         {
+          "const": "animus:pose",
+          "description": "Turns the NPC to one of the named poses in its definition's poses."
+        },
+        {
           "const": "animus:say",
           "description": "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name."
         },
@@ -2022,6 +2026,52 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "sound"
                   ],
                   "description": "Plays a sound at the NPC for the triggering player or nearby players."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:pose"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "pose": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "required": [
+                    "pose"
+                  ],
+                  "description": "Turns the NPC to one of the named poses in its definition's poses."
                 }
               },
               "required": [
@@ -4216,6 +4266,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "anyPlayer": {
           "type": "boolean",
           "required": false
+        }
+      }
+    },
+    {
+      "id": "animus:pose",
+      "kind": "action",
+      "description": "Turns the NPC to one of the named poses in its definition's poses.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "pose": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 32
         }
       }
     },

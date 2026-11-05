@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.TerrainReader;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.presentation.BodyTransport;
@@ -62,6 +63,8 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     boolean chunkSent(P player, int chunkX, int chunkZ);
     /** No collidable block lies between the eye and the point {@code distance} along the direction. Loaded chunks only. */
     boolean clearSight(P player, Vec3 eye, Vec3 direction, double distance);
+    /** Opens and closes real doors for NPCs whose movement opens doors, behind the platform's protection. */
+    DoorPassage.Doors doors();
     /** The block is loaded, inside the world's height and solid. */
     boolean solid(String world, int x, int y, int z);
     /** A registered server entity uses this UUID, for diagnostics. */

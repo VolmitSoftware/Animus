@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
+import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.MovementSettings;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.DefinitionSpec;
@@ -118,6 +119,7 @@ final class RegionActor implements RegionOwner.Body {
     private boolean mount;
     private LookClose lookClose;
     private MovementSettings movement = MovementSettings.DEFAULT;
+    private DoorPassage doors;
     private boolean falls = true, routeSpeedDeclared = true;
     private long nextRandomLook;
     private long nextLook;
@@ -153,6 +155,7 @@ final class RegionActor implements RegionOwner.Body {
     RegionActor(RegionNpcRuntime host, Desired desired, boolean announced) {
         this.host = host; this.desired = desired; this.announced = announced;
         spec = desired.spec(); id = spec.definition().id(); uuid = spec.definition().uuid();
+        doors = new DoorPassage(uuid);
         RegionNpcRuntime.Geometry geometry = host.geometry(spec.type());
         state = new VirtualNpcState(uuid, spec.position(), geometry.width(), geometry.height(), PersistedNpcService.maximumHealth(spec));
         state.spawn();
@@ -266,6 +269,7 @@ final class RegionActor implements RegionOwner.Body {
         riding.end("npc-dormant", ActorRide.Exit.RESTORE_POSITION);
         closeCombat();
         cancelPlan();
+        doors.closeAll(host.doors);
         routeSleeping = false;
         if (routeWatch != null) stopRoute("unavailable: NPC became dormant because " + reason);
         else if (route != null) routeStatus(route, "suspended", "dormant: " + reason);
@@ -559,6 +563,12 @@ final class RegionActor implements RegionOwner.Body {
         publish(true);
         return running;
     }
+    void pose(String name) {
+        art.arcane.animus.core.npc.NamedPoses.Facing facing = art.arcane.animus.core.npc.NamedPoses.parse(spec.definition().json()).find(name)
+                .orElseThrow(() -> new IllegalArgumentException("The NPC has no pose named " + name));
+        setPose(facing.yaw(), facing.pitch(), onGround);
+        publish(true);
+    }
     void lookAt(WorldPosition target) {
         WorldPosition from = state.snapshot().position();
         if (!from.world().equals(target.world()) || from.point().distance(target.point()) > 64)
@@ -674,7 +684,7 @@ final class RegionActor implements RegionOwner.Body {
         if (!state.snapshot().active()) { stopRoute("cancelled by definition/lifecycle change"); return; }
         // A patrol with no player near sleeps: no turn, plan or budget until a viewer marks it again.
         if (current.leg != null && routeWatch == null && !watched()) {
-            if (!routeSleeping) { routeSleeping = true; cancelPlan(); routeStatus(current, "sleeping", "no player within " + (int) host.settings.viewDistance() + " blocks"); }
+            if (!routeSleeping) { routeSleeping = true; cancelPlan(); doors.closeAll(host.doors); routeStatus(current, "sleeping", "no player within " + (int) host.settings.viewDistance() + " blocks"); }
             routeWaited = 0;
             return;
         }
@@ -743,6 +753,14 @@ final class RegionActor implements RegionOwner.Body {
         int wanted = Math.min(host.navigationSettings.motionCellsPerTick(), sweep + (step.landing() ? settle : 0));
         int granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
         if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return false; }
+        if (current.mode == MovementProfile.Mode.WALK && movement.openDoors()) {
+            Optional<BlockPos> door = doors.prepare(current.goal.world(), step.from(), step.to(), hullWidth(), hullHeight(), LiveMovementProbe.owned(world, owned), host.doors);
+            if (door.isPresent()) {
+                host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted);
+                failLeg(current, "blocked: the door at " + door.get().x() + " " + door.get().y() + " " + door.get().z() + " could not be opened");
+                return true;
+            }
+        }
         MotionValidator.Result validation = LiveMovementProbe.check(world, owned, step.from(), step.to(), hullWidth(), hullHeight(), step.medium(), step.requireSupport(), sweep);
         int used = validation.sampledCells();
         if (validation.clear() && step.landing()) {
@@ -761,6 +779,7 @@ final class RegionActor implements RegionOwner.Body {
             state.move(new WorldPosition(current.goal.world(), step.to()));
             host.index.upsert(state.snapshot());
             pose++; setPose(facing, 0, step.onGround());
+            doors.passed(step.to(), hullWidth(), host.doors);
             current.progressTurn = turns;
             routeStatus(current, "moving", "kinematic; live collision revalidation; region owner");
             if (current.execution.finished() || movement.arrived(step.to(), current.goal.point())) arrive(current);
@@ -822,7 +841,13 @@ final class RegionActor implements RegionOwner.Body {
             pose++; setPose(yaw, pitch, !falling);
         }
     }
+    /** Arrival keeps doors the NPC still stands in only while another leg follows; a finished route closes them all. */
     private void arrive(Route current) {
+        arriveAt(current);
+        if (route == null) doors.closeAll(host.doors);
+        else doors.passed(state.snapshot().position().point(), hullWidth(), host.doors);
+    }
+    private void arriveAt(Route current) {
         if (route != current) return;
         WaypointProgress progress = waypoints;
         route = null; routeStatus(current, "arrived", ""); arrivals++;
@@ -901,6 +926,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     private void stopRoute(String reason) {
         Route current = route; route = null; routeSleeping = false; routeWaited = 0;
+        if (doors != null) doors.closeAll(host.doors);
         if (current == null) { navigationStatus = reason; return; }
         if (current.plan != null) current.plan.cancel();
         if (current.execution != null) current.execution.cancel();

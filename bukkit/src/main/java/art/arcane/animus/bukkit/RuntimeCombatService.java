@@ -24,12 +24,19 @@ import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
+import org.bukkit.FluidCollisionMode;
+import org.bukkit.World;
+import org.bukkit.util.Vector;
 import org.bukkit.Location;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -54,11 +61,17 @@ import org.bukkit.scheduler.BukkitTask;
 
 /**
  * The combat module on Bukkit: runs the core engine for NPCs whose definitions enable combat, and keeps the
- * explicit administrator adapter (one manual hit, ordinary-zombie control). Preview services never reach this.
+ * explicit administrator adapter (one manual hit, mob control). NPCs whose combat sets {@code targetableByMobs} draw
+ * idle nearby melee hostile mobs through the same bounded, restorable mob control. Preview services never reach this.
  */
 final class RuntimeCombatService implements Listener, AutoCloseable {
     private record Registration(String id, VirtualNpcState state, BukkitCombatBridge.Combatant combatant) {}
-    private static final String USAGE = CombatModule.MODULE_USAGE + " | attack <npc-id> <target-uuid> [damage] | target <npc-id> <zombie-uuid>|stop";
+    private static final String USAGE = CombatModule.MODULE_USAGE + " | attack <npc-id> <target-uuid> [damage] | target <npc-id> <mob-uuid>|stop";
+    /** How often targetable NPCs look for idle mobs, how far, how many mobs one NPC draws at once, and NPCs per pass. */
+    static final int TARGETABLE_SCAN_TICKS = 20, TARGETABLE_PER_NPC = 3, TARGETABLE_NPCS_PER_PASS = 32;
+    static final double TARGETABLE_RANGE = 16;
+    /** A drawn mob returns to its own AI after this long, so it can choose a player again. */
+    static final int TARGETABLE_LEASE_TICKS = 200;
     private final JavaPlugin plugin;
     private final AnimusRuntime runtime;
     private final PersistedNpcService<Player, ItemStack> living;
@@ -69,6 +82,8 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private final Map<UUID, Registration> registrations = new HashMap<>();
     private final Map<UUID, BukkitCombatBridge.MobLease> leases = new HashMap<>();
     private BukkitTask task;
+    private long ticks;
+    private int targetableCursor;
     /** Folia: combat runs on each NPC's region owner; null elsewhere. */
     private final RegionNpcRuntime regions;
     /** Why region combat cannot run, or null while it runs. */
@@ -160,7 +175,72 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         if (entity instanceof Player) return new TargetRef(TargetKind.PLAYER, entity.getUniqueId());
         return entity instanceof Mob ? new TargetRef(TargetKind.MOB, entity.getUniqueId()) : null;
     }
-    private void tick() { module.tick(); }
+    private void tick() {
+        module.tick();
+        if (++ticks % TARGETABLE_SCAN_TICKS == 0) drawMobs();
+    }
+
+    /**
+     * Each targetable NPC draws nearby melee hostile mobs that have no target of their own and can see it, up to a few at
+     * once. A drawn mob walks to the NPC and attacks it under the NPC's defense, then returns to its own AI.
+     */
+    private void drawMobs() {
+        if (!bridge.available() || bridge.capabilities().controlledMobTypes().isEmpty()) return;
+        prune();
+        List<NpcDefinition> targetable = new ArrayList<>();
+        for (NpcDefinition definition : runtime.npcs().snapshot().values())
+            if (CombatModule.targetableByMobs(definition)) targetable.add(definition);
+        if (targetable.isEmpty()) return;
+        int passes = Math.min(TARGETABLE_NPCS_PER_PASS, targetable.size());
+        for (int i = 0; i < passes; i++) {
+            NpcDefinition definition = targetable.get(Math.floorMod(targetableCursor++, targetable.size()));
+            try { draw(definition); }
+            catch (RuntimeException refused) { /* Inactive, protected or at the control limit: the next pass tries again. */ }
+        }
+    }
+
+    private void draw(NpcDefinition definition) {
+        if (living.combat(definition.id()).isEmpty()) return;
+        Registration npc = registration(definition.id(), CombatModule::targetableByMobs);
+        UUID npcId = npc.combatant().npcId();
+        int drawn = 0;
+        for (BukkitCombatBridge.MobLease lease : leases.values()) if (lease.npcId().equals(npcId)) drawn++;
+        if (drawn >= TARGETABLE_PER_NPC) return;
+        VirtualNpcState.Snapshot snapshot = npc.state().snapshot();
+        World world;
+        try { world = plugin.getServer().getWorld(UUID.fromString(snapshot.position().world())); }
+        catch (IllegalArgumentException notUuid) { return; }
+        Vec3 at = snapshot.position().point();
+        if (world == null || !world.isChunkLoaded(((int) Math.floor(at.x())) >> 4, ((int) Math.floor(at.z())) >> 4)) return;
+        Location centre = new Location(world, at.x(), at.y() + 1, at.z());
+        List<Mob> idle = new ArrayList<>();
+        for (Entity entity : world.getNearbyEntities(centre, TARGETABLE_RANGE, TARGETABLE_RANGE / 2, TARGETABLE_RANGE))
+            if (entity instanceof Mob mob && bridge.capabilities().controlledMobTypes().contains(mob.getType().getKey().toString())
+                    && mob.getTarget() == null && !leases.containsKey(mob.getUniqueId()) && sees(mob, centre)) idle.add(mob);
+        idle.sort(Comparator.comparingDouble((Mob mob) -> mob.getLocation().distanceSquared(centre)));
+        for (Mob mob : idle) {
+            if (drawn >= TARGETABLE_PER_NPC) return;
+            try {
+                AttributeInstance attack = mob.getAttribute(Attribute.ATTACK_DAMAGE);
+                leases.put(mob.getUniqueId(), npc.combatant().control(mob, drawnProfile(attack == null ? OptionalDouble.empty() : OptionalDouble.of(attack.getValue()))));
+                drawn++;
+            } catch (RuntimeException refused) { /* Protection, ownership or limits refused this mob; try the next. */ }
+        }
+    }
+
+    private static boolean sees(Mob mob, Location target) {
+        Location eye = mob.getEyeLocation();
+        Vector direction = target.toVector().subtract(eye.toVector());
+        double distance = direction.length();
+        return distance < 0.0001 || eye.getWorld().rayTraceBlocks(eye, direction.normalize(), distance, FluidCollisionMode.NEVER, true) == null;
+    }
+
+    /** The mob's own melee damage, a vanilla melee reach and attack interval, and a lease that ends after ten seconds. */
+    static MobProfile drawnProfile(OptionalDouble attackDamage) {
+        double damage = attackDamage.isEmpty() || !Double.isFinite(attackDamage.getAsDouble()) ? AttackProfile.DEFAULT.damage()
+                : Math.max(0.5, Math.min(100, attackDamage.getAsDouble()));
+        return new MobProfile(new AttackProfile(damage, AttackProfile.DEFAULT.reach(), 20), 1.0, TARGETABLE_RANGE, 20, TARGETABLE_LEASE_TICKS);
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void playerHit(VirtualNpcInteractionEvent event) {
@@ -244,9 +324,11 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
         return new WorldPosition(location.getWorld().getUID().toString(), new Vec3(location.getX(), location.getY(), location.getZ()));
     }
 
-    private Registration registration(String id) {
+    private Registration registration(String id) { return registration(id, CombatModule::manualAllowed); }
+
+    private Registration registration(String id, Predicate<NpcDefinition> allowed) {
         runtime.npcs().find(id).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + id));
-        CombatPolicy policy = new CombatPolicy(id);
+        CombatPolicy policy = new CombatPolicy(id, allowed);
         if (!policy.allowed()) throw new IllegalStateException("NPC combat is disabled or its migration review has not been accepted");
         PersistedNpcService.CombatBinding binding = living.combat(id).orElseThrow(() -> new IllegalStateException("NPC must have an active runtime before combat"));
         UUID uuid = binding.state().snapshot().npcId();
@@ -262,12 +344,13 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     /** Immutable publication identity avoids copying module JSON on every combat tick. */
     private final class CombatPolicy {
         private final String id;
+        private final Predicate<NpcDefinition> rule;
         private NpcDefinition observedDefinition;
         private boolean accepted;
-        private CombatPolicy(String id) { this.id = id; }
+        private CombatPolicy(String id, Predicate<NpcDefinition> rule) { this.id = id; this.rule = rule; }
         private boolean allowed() {
             NpcDefinition current = runtime.npcs().find(id).orElse(null);
-            if (current != observedDefinition) { accepted = CombatModule.manualAllowed(current); observedDefinition = current; }
+            if (current != observedDefinition) { accepted = current != null && rule.test(current); observedDefinition = current; }
             return current != null && accepted;
         }
     }

@@ -60,6 +60,7 @@ class ExtensionRuntimeBuiltinsTest {
         @Override public boolean stopNavigation(NpcHandle npc) { throw new AssertionError(); }
         @Override public void look(NpcHandle npc, Vec3 target) { throw new AssertionError(); }
         @Override public void lookAtPlayer(NpcHandle npc, UUID player) { throw new AssertionError(); }
+        @Override public void pose(NpcHandle npc, String pose) { throw new AssertionError(); }
         @Override public void setAppearance(NpcHandle npc, AppearanceChange change) { throw new AssertionError(); }
         @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) { throw new AssertionError(); }
         @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) { throw new AssertionError(); }
