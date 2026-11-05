@@ -1,0 +1,13 @@
+{
+  "type": "request",
+  "id": 7,
+  "method": "POST",
+  "path": "/v1/validate",
+  "headers": {
+    "Authorization": "Bearer anm_x",
+    "X-Animus-Counter": "12"
+  },
+  "body": {
+    "documents": []
+  }
+}

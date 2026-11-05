@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "title": "&8Bakery counter",
+  "resolution": "9x3",
+  "mask": [
+    "#########",
+    "#  B H  #",
+    "####X####"
+  ],
+  "keys": {
+    "#": {
+      "type": "decoration",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:brown_stained_glass_pane",
+        "name": " "
+      }
+    },
+    "B": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:bread",
+        "name": "&eBrowse the bakery",
+        "lore": [
+          "&7Opens the shop."
+        ]
+      },
+      "actions": [
+        {
+          "type": "sound",
+          "sound": "minecraft:ui.button.click"
+        },
+        {
+          "type": "animus:open-shop",
+          "shop": "shop:bakery"
+        }
+      ]
+    },
+    "H": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:clock",
+        "name": "&fOpening hours",
+        "lore": [
+          "&7It is {{ time.hour }}:00."
+        ]
+      },
+      "actions": [
+        {
+          "type": "message",
+          "message": "&6Baker&7: We bake every morning, {{ viewer.name }}."
+        }
+      ]
+    },
+    "X": {
+      "type": "button",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:barrier",
+        "name": "&cClose"
+      },
+      "actions": [
+        {
+          "type": "camera"
+        }
+      ]
+    }
+  },
+  "closeOnTeleport": true
+}

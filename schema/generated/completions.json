@@ -1,0 +1,1325 @@
+{
+  "schemaVersion": 1,
+  "capabilities": [
+    {
+      "id": "animus:advance-quest-state",
+      "kind": "action",
+      "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "arguments": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "scope": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "global",
+            "npc",
+            "player",
+            "relationship"
+          ]
+        },
+        "by": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "maximum": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 1000000000000
+        }
+      }
+    },
+    {
+      "id": "animus:build",
+      "kind": "action",
+      "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "operation": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "start",
+            "pause",
+            "resume",
+            "cancel",
+            "undo"
+          ]
+        },
+        "schematic": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 132
+        },
+        "x": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "y": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "z": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "rotation": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 270
+        },
+        "mirror": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "none",
+            "x",
+            "z"
+          ]
+        },
+        "anchor": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "center",
+            "corner",
+            "schematic"
+          ]
+        },
+        "pattern": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "spiral",
+            "reversespiral",
+            "linear",
+            "reverselinear"
+          ]
+        },
+        "materials": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "creative",
+            "donate"
+          ]
+        },
+        "excavate": {
+          "type": "boolean",
+          "required": false
+        },
+        "ignoreAir": {
+          "type": "boolean",
+          "required": false
+        },
+        "ignoreLiquids": {
+          "type": "boolean",
+          "required": false
+        }
+      }
+    },
+    {
+      "id": "animus:choices",
+      "kind": "action",
+      "description": "Presents clickable options to the triggering player and publishes the validated click.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "id": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "prompt": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "lifetimeSeconds": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 600
+        },
+        "options": {
+          "type": "array",
+          "required": true
+        }
+      }
+    },
+    {
+      "id": "animus:combat-control",
+      "kind": "action",
+      "description": "Engages or disengages the NPC's combat, attacks or releases a target, or guards a participant (no target stops guarding; player is the triggering player). Needs enabled combat settings; protection still applies.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "operation": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "enable",
+            "disable",
+            "target",
+            "release",
+            "guard"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
+      "id": "animus:command",
+      "kind": "action",
+      "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
+      "privileged": true,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "command": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "as": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "console",
+            "player"
+          ]
+        }
+      }
+    },
+    {
+      "id": "animus:flag-state",
+      "kind": "condition",
+      "description": "Compares a flag. An unset flag is false.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "arguments": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "scope": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "global",
+            "npc",
+            "player",
+            "relationship"
+          ]
+        },
+        "value": {
+          "type": "boolean",
+          "required": false
+        }
+      }
+    },
+    {
+      "id": "animus:has-permission",
+      "kind": "condition",
+      "description": "True when the triggering player holds a permission. False when there is no triggering player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "permission": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    {
+      "id": "animus:look",
+      "kind": "action",
+      "description": "Turns the NPC toward a position or the triggering player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "x": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "y": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "z": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "target": {
+          "type": "string",
+          "required": false,
+          "const": "player"
+        }
+      },
+      "oneOfRequired": [
+        [
+          "target"
+        ],
+        [
+          "x",
+          "y",
+          "z"
+        ]
+      ]
+    },
+    {
+      "id": "animus:navigate",
+      "kind": "action",
+      "description": "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "route": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "x": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "y": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "z": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "mode": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "walk",
+            "swim",
+            "fly"
+          ]
+        },
+        "speed": {
+          "type": "number",
+          "required": false,
+          "minimum": 1.0,
+          "maximum": 5.0
+        },
+        "wait": {
+          "type": "boolean",
+          "required": false
+        },
+        "timeoutTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 20,
+          "maximum": 12000
+        }
+      },
+      "oneOfRequired": [
+        [
+          "route"
+        ],
+        [
+          "x",
+          "y",
+          "z"
+        ]
+      ]
+    },
+    {
+      "id": "animus:npc-state",
+      "kind": "condition",
+      "description": "Compares the NPC's spawned state and current health.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "spawned": {
+          "type": "boolean",
+          "required": false
+        },
+        "minimumHealth": {
+          "type": "number",
+          "required": false,
+          "minimum": 0.0,
+          "maximum": 1000000.0
+        },
+        "maximumHealth": {
+          "type": "number",
+          "required": false,
+          "minimum": 0.0,
+          "maximum": 1000000.0
+        }
+      },
+      "oneOfRequired": [
+        [
+          "spawned"
+        ],
+        [
+          "minimumHealth"
+        ],
+        [
+          "maximumHealth"
+        ]
+      ]
+    },
+    {
+      "id": "animus:open-gui",
+      "kind": "action",
+      "description": "Opens a chest GUI for the triggering player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "gui": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    {
+      "id": "animus:open-shop",
+      "kind": "action",
+      "description": "Opens a shop for the triggering player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "shop": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    {
+      "id": "animus:play-sound",
+      "kind": "action",
+      "description": "Plays a sound at the NPC for the triggering player or nearby players.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "sound": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "volume": {
+          "type": "number",
+          "required": false,
+          "minimum": 0.0,
+          "maximum": 4.0
+        },
+        "pitch": {
+          "type": "number",
+          "required": false,
+          "minimum": 0.5,
+          "maximum": 2.0
+        },
+        "audience": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "trigger",
+            "nearby"
+          ]
+        },
+        "radius": {
+          "type": "number",
+          "required": false,
+          "minimum": 1.0,
+          "maximum": 64.0
+        }
+      }
+    },
+    {
+      "id": "animus:player-in-range",
+      "kind": "condition",
+      "description": "True when the triggering player, or any player with anyPlayer, is within the radius.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "radius": {
+          "type": "number",
+          "required": true,
+          "minimum": 1.0,
+          "maximum": 64.0
+        },
+        "anyPlayer": {
+          "type": "boolean",
+          "required": false
+        }
+      }
+    },
+    {
+      "id": "animus:quest-state",
+      "kind": "condition",
+      "description": "Compares a quest stage. An unset quest is stage zero.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "arguments": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "scope": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "global",
+            "npc",
+            "player",
+            "relationship"
+          ]
+        },
+        "equals": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 1000000000000
+        },
+        "atLeast": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 1000000000000
+        },
+        "atMost": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 1000000000000
+        }
+      },
+      "oneOfRequired": [
+        [
+          "equals"
+        ],
+        [
+          "atLeast"
+        ],
+        [
+          "atMost"
+        ]
+      ]
+    },
+    {
+      "id": "animus:say",
+      "kind": "action",
+      "description": "Sends dialogue text to the triggering player or to nearby players.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "text": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "audience": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "trigger",
+            "nearby"
+          ]
+        },
+        "radius": {
+          "type": "number",
+          "required": false,
+          "minimum": 1.0,
+          "maximum": 64.0
+        }
+      }
+    },
+    {
+      "id": "animus:set-appearance",
+      "kind": "action",
+      "description": "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "name": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "skin": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "reset": {
+          "type": "boolean",
+          "required": false
+        }
+      },
+      "oneOfRequired": [
+        [
+          "name"
+        ],
+        [
+          "skin"
+        ],
+        [
+          "reset"
+        ]
+      ]
+    },
+    {
+      "id": "animus:set-equipment",
+      "kind": "action",
+      "description": "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "slot": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "main_hand",
+            "off_hand",
+            "head",
+            "chest",
+            "legs",
+            "feet",
+            "body"
+          ]
+        },
+        "item": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    {
+      "id": "animus:set-flag",
+      "kind": "action",
+      "description": "Sets a flag, true unless value says otherwise.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "arguments": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "scope": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "global",
+            "npc",
+            "player",
+            "relationship"
+          ]
+        },
+        "value": {
+          "type": "boolean",
+          "required": false
+        }
+      }
+    },
+    {
+      "id": "animus:set-quest-state",
+      "kind": "action",
+      "description": "Sets a quest stage.",
+      "privileged": false,
+      "available": true,
+      "reason": "available",
+      "arguments": {
+        "name": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "scope": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "global",
+            "npc",
+            "player",
+            "relationship"
+          ]
+        },
+        "value": {
+          "type": "integer",
+          "required": true,
+          "minimum": 0,
+          "maximum": 1000000000000
+        }
+      }
+    },
+    {
+      "id": "animus:spawn-particle",
+      "kind": "action",
+      "description": "Shows a particle effect at the NPC to the triggering player or nearby players.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "particle": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "count": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 64
+        },
+        "spread": {
+          "type": "number",
+          "required": false,
+          "minimum": 0.0,
+          "maximum": 8.0
+        },
+        "audience": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "trigger",
+            "nearby"
+          ]
+        },
+        "radius": {
+          "type": "number",
+          "required": false,
+          "minimum": 1.0,
+          "maximum": 64.0
+        }
+      }
+    },
+    {
+      "id": "animus:stop-navigation",
+      "kind": "action",
+      "description": "Stops the NPC's current route and any route it is following.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {}
+    }
+  ],
+  "triggers": {
+    "interaction": {
+      "description": "A viewer's validated hit on the NPC.",
+      "carriesPlayer": true,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "interaction"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "action": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "interact",
+            "attack",
+            "any"
+          ],
+          "description": "Which hit fires it; interact by default."
+        }
+      }
+    },
+    "proximity": {
+      "description": "A viewer crosses a radius around the NPC.",
+      "carriesPlayer": true,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "proximity"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "type": "string",
+          "required": true,
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius."
+        },
+        "radius": {
+          "type": "number",
+          "required": true,
+          "maximum": 64.0,
+          "exclusiveMinimum": 0,
+          "description": "Blocks, above 0."
+        }
+      }
+    },
+    "spawn": {
+      "description": "The runtime first presents the NPC.",
+      "carriesPlayer": false,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "spawn"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "despawn": {
+      "description": "A spawned NPC is despawned.",
+      "carriesPlayer": false,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "despawn"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "damage": {
+      "description": "Authoritative NPC health falls.",
+      "carriesPlayer": false,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "damage"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "death": {
+      "description": "Authoritative NPC health reaches zero.",
+      "carriesPlayer": false,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "death"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "waypoint": {
+      "description": "The NPC arrives at a route point.",
+      "carriesPlayer": false,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "waypoint"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "waypoint": {
+          "type": "integer",
+          "required": false,
+          "minimum": -1,
+          "maximum": 4095,
+          "description": "A route point index; -1 is a manually requested destination. Omit for any arrival."
+        }
+      }
+    },
+    "timer": {
+      "description": "An interval passes while the NPC is active.",
+      "carriesPlayer": false,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "timer"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "intervalTicks": {
+          "type": "integer",
+          "required": true,
+          "minimum": 1,
+          "maximum": 72000,
+          "description": "Ticks between firings while the NPC is active."
+        }
+      }
+    },
+    "dialogue_choice": {
+      "description": "A viewer clicks an option of an animus:choices prompt from this NPC.",
+      "carriesPlayer": true,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "dialogue_choice"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "dialogue": {
+          "type": "identifier",
+          "required": true,
+          "description": "The id of an animus:choices prompt."
+        },
+        "choice": {
+          "type": "identifier",
+          "required": false,
+          "description": "An option id of that prompt. Omit for any option."
+        }
+      }
+    },
+    "module": {
+      "description": "The owning module publishes a trigger.",
+      "carriesPlayer": true,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "module"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "key": {
+          "type": "capability",
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}$",
+          "description": "A trigger a module registered, namespace:name."
+        }
+      }
+    },
+    "build_finished": {
+      "description": "A build this NPC works on places its last block.",
+      "carriesPlayer": false,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "build_finished"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "build_paused": {
+      "description": "A build this NPC works on is paused by command or starts waiting for terrain, materials or builders.",
+      "carriesPlayer": false,
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "build_paused"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    }
+  },
+  "language": {
+    "nodes": {
+      "sequence": {
+        "description": "Runs its steps in order.",
+        "fields": {
+          "steps": {
+            "type": "nodes",
+            "required": true,
+            "description": "Steps run in order."
+          }
+        }
+      },
+      "action": {
+        "description": "Runs a capability and waits for its result.",
+        "fields": {
+          "capability": {
+            "type": "capability",
+            "required": true,
+            "description": "An action capability, namespace:name."
+          },
+          "arguments": {
+            "type": "arguments",
+            "required": false,
+            "description": "The capability's arguments."
+          },
+          "bindings": {
+            "type": "bindings",
+            "required": false
+          }
+        }
+      },
+      "condition": {
+        "description": "Tests a capability, then runs then or else.",
+        "fields": {
+          "capability": {
+            "type": "capability",
+            "required": true,
+            "description": "A condition capability, namespace:name."
+          },
+          "arguments": {
+            "type": "arguments",
+            "required": false,
+            "description": "The capability's arguments."
+          },
+          "bindings": {
+            "type": "bindings",
+            "required": false
+          },
+          "then": {
+            "type": "node",
+            "required": true,
+            "description": "Runs when the condition is true."
+          },
+          "else": {
+            "type": "node",
+            "required": false,
+            "description": "Runs when the condition is false."
+          }
+        }
+      },
+      "wait": {
+        "description": "Waits a number of behavior ticks.",
+        "fields": {
+          "ticks": {
+            "type": "integer",
+            "required": true,
+            "minimum": 1,
+            "maximum": 72000,
+            "description": "Behavior ticks, about 50 ms each."
+          }
+        }
+      },
+      "repeat": {
+        "description": "Runs its body a fixed number of times.",
+        "fields": {
+          "count": {
+            "type": "integer",
+            "required": true,
+            "minimum": 0,
+            "maximum": 128,
+            "description": "How many times the body runs."
+          },
+          "body": {
+            "type": "node",
+            "required": true,
+            "description": "The repeated step."
+          }
+        }
+      },
+      "parallel": {
+        "description": "Runs independent branches, then joins them.",
+        "fields": {
+          "branches": {
+            "type": "nodes",
+            "required": true,
+            "description": "Branches run together and join."
+          }
+        }
+      },
+      "call": {
+        "description": "Runs another routine of this document.",
+        "fields": {
+          "routine": {
+            "type": "routine",
+            "required": true,
+            "description": "A routine of this document."
+          }
+        }
+      },
+      "set": {
+        "description": "Writes a declared variable.",
+        "fields": {
+          "variable": {
+            "type": "variable",
+            "required": true,
+            "pattern": "\\S",
+            "description": "A declared variable."
+          },
+          "value": {
+            "type": "value",
+            "required": true,
+            "description": "A literal of the variable's type, or {\"variable\": \"name\"} of the same type."
+          }
+        }
+      }
+    },
+    "variableTypes": [
+      "boolean",
+      "integer",
+      "decimal",
+      "string"
+    ],
+    "variableScopes": [
+      "execution",
+      "npc",
+      "player",
+      "relationship",
+      "global"
+    ],
+    "variableLifetimes": [
+      "transient",
+      "persistent"
+    ],
+    "documentFields": [
+      "schemaVersion",
+      "revision",
+      "id",
+      "entry",
+      "variables",
+      "routines",
+      "triggers"
+    ]
+  }
+}

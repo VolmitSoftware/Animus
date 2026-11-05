@@ -1,0 +1,8 @@
+{
+  "previewId": "prev_0001",
+  "viewer": "00000000-0000-0000-0000-0000000000a1",
+  "expiresAt": "2026-11-04T12:15:00Z",
+  "npcs": [
+    "examples/greeter"
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "greeter:greeter",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "teleport"
+    },
+    "wave": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:look",
+          "arguments": {
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:spawn-particle",
+          "arguments": {
+            "particle": "minecraft:happy_villager",
+            "count": 8,
+            "spread": 0.5
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "cooldownTicks": 40
+    },
+    {
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 6,
+      "routine": "wave",
+      "cooldownTicks": 200
+    }
+  ]
+}

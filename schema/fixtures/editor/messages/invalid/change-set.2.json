@@ -1,0 +1,12 @@
+{
+  "idempotencyKey": "6f1c2d3e4f5a6b7c",
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "a/b",
+      "baseRevision": null,
+      "baseHash": null,
+      "delete": true
+    }
+  ]
+}

@@ -8,3 +8,24 @@ dependencies {
     testRuntimeOnly('org.junit.platform:junit-platform-launcher:1.10.2')
 }
 application { mainClass = 'art.arcane.animus.converter.ConverterMain' }
+
+// Editor-facing schemas generated from the built-in capability registry. The checked-in copy under schema/generated/ is
+// what animus-web and the shared fixture tests read; core's SharedSchemaSyncTest fails when it drifts from the generator.
+Provider<Directory> generatedSchemaOutput = layout.buildDirectory.dir('editor-schemas')
+TaskProvider<JavaExec> generateEditorSchemas = tasks.register('generateEditorSchemas', JavaExec) {
+    group = 'build'
+    description = 'Runs the converter schema command into build/editor-schemas.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'art.arcane.animus.converter.ConverterMain'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    outputs.dir(generatedSchemaOutput)
+    doFirst { delete(generatedSchemaOutput) }
+    args('schema', generatedSchemaOutput.get().asFile.absolutePath)
+}
+tasks.register('syncEditorSchemas', Sync) {
+    group = 'build'
+    description = 'Copies the generated npc, behavior and pack schemas and completions into schema/generated/.'
+    dependsOn(generateEditorSchemas)
+    from(generatedSchemaOutput.map { Directory output -> output.dir('schemas') })
+    into(new File(animusRoot, 'schema/generated'))
+}

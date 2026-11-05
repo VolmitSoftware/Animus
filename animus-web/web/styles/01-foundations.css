@@ -1,0 +1,99 @@
+@font-face {
+  font-family: "Geist";
+  src: url("../assets/fonts/geist/Geist-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist";
+  src: url("../assets/fonts/geist/Geist-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../assets/fonts/geist/GeistMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "lucide";
+  src: url("../assets/fonts/lucide/lucide.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --animus-gap: 0.75rem;
+  --animus-radius: 0.5rem;
+  --animus-panel: var(--card, #181a16);
+  --animus-border: var(--border, #2c2f29);
+  --animus-muted: var(--muted-foreground, #9aa094);
+  --animus-error: var(--destructive, #e5484d);
+  --animus-ok: #46a758;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+html.dark body {
+  background: #111310;
+  color: #e8ebe3;
+}
+
+html.light body {
+  background: #f6f5f0;
+  color: #242822;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+code,
+pre,
+textarea {
+  font-family: var(--font-mono);
+}
+
+.animus-boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 999;
+}
+
+.animus-boot-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(128, 128, 128, 0.25);
+  border-top-color: currentColor;
+  animation: animus-boot-spin 800ms linear infinite;
+}
+
+@keyframes animus-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animus-boot-spinner {
+    animation: none;
+  }
+}

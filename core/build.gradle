@@ -27,6 +27,9 @@ tasks.withType(Test).configureEach {
     dependsOn(moduleContractJar)
     inputs.file(moduleContractJar.flatMap { it.archiveFile })
     systemProperty('apiJar', moduleContractJar.get().archiveFile.get().asFile.absolutePath)
+    File sharedSchemas = new File(animusRoot, 'schema')
+    inputs.dir(sharedSchemas).withPropertyName('sharedSchemas')
+    systemProperty('animusSchemaDirectory', sharedSchemas.absolutePath)
     if (providers.gradleProperty('moduleFixtureEvidence').isPresent()) {
         systemProperty('fixtureEvidence', providers.gradleProperty('moduleFixtureEvidence').get())
     }

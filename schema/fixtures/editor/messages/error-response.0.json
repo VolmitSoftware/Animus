@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "scope-missing",
+    "message": "This token lacks apply:gui."
+  }
+}

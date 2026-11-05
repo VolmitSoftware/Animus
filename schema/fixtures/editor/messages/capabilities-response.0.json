@@ -1,0 +1,15 @@
+{
+  "features": {
+    "combat": {
+      "available": false,
+      "reason": "Folia combat is not available"
+    },
+    "rigs": {
+      "available": true
+    },
+    "gloss": {
+      "available": false,
+      "reason": "Gloss is not installed"
+    }
+  }
+}

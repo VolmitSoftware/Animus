@@ -1,0 +1,19 @@
+{
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "examples/greeter",
+      "path": "npcs/examples/greeter.json",
+      "revision": 1,
+      "hash": "sha256:f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d"
+    },
+    {
+      "kind": "menu",
+      "id": "town/main",
+      "path": "gui/menus/town/main.json",
+      "revision": 0,
+      "hash": "sha256:dba0082ec68e72d47fa926dcc91fb9b00961ceb4342554a0c2aa567144a5a6d3"
+    }
+  ],
+  "next": null
+}

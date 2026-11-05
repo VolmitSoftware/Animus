@@ -1,0 +1,20 @@
+{
+  "description": "Gloss schemas copied unchanged for the GUI kinds Animus adopts. Animus never edits these files; when Gloss raises a version, copy the new file, update the commit and add support in an Animus release.",
+  "repository": "VolmitSoftware/Gloss",
+  "commit": "feb33148e3a0c66d755c1b9f982a2931c91d4522",
+  "copied": "2026-11-04",
+  "files": {
+    "gloss-inventories.schema.json": {"kind": "inventory", "schemaVersion": 1, "animusFolder": "gui/inventories", "animusSchema": "../gui-inventory-v1.schema.json"},
+    "gloss.schema.json": {"kind": "menu", "schemaVersion": null, "animusFolder": "gui/menus"},
+    "gloss-holograms.schema.json": {"kind": "hologram", "schemaVersion": 3, "animusFolder": "gui/holograms"},
+    "gloss-presets.schema.json": {"kind": "presets", "schemaVersion": 1, "animusFolder": "gui"}
+  },
+  "notCopied": {
+    "text-animation": "Gloss text animations have no schema file; Animus validates them in its parser (lane E)."
+  },
+  "actions": {
+    "supported": ["command", "sound", "message", "title", "actionbar", "close", "navigate", "inventory", "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call"],
+    "animus": ["animus:open-shop"],
+    "refused": ["teleport", "connect", "bossbar", "surface", "prompt", "dialog", "book", "parallel", "repeat", "emit", "broadcast", "effect", "particle", "setState", "addState", "clearState", "sky", "camera", "glow"]
+  }
+}
