@@ -200,30 +200,27 @@ class _RigEditorState extends State<RigEditor> {
     );
     final List<McSceneNode> nodes = <McSceneNode>[];
     final List<NpcText> texts = <NpcText>[];
-    McBounds bounds = scene.bounds;
+    final McBounds bounds = scene.bounds;
+    final List<McVec3> frame = <McVec3>[
+      for (final double x in <double>[bounds.min.x, bounds.max.x])
+        for (final double y in <double>[bounds.min.y, bounds.max.y])
+          for (final double z in <double>[bounds.min.z, bounds.max.z]) McVec3(x, y, z),
+    ];
     if (rigJson['body'] == 'shown') {
       final NpcScene body = npcScene(NpcLook.fromDefinition(<String, Object?>{'type': _bodyType}));
       nodes.addAll(body.scene.nodes);
       texts.addAll(body.texts);
-      final McBounds? around = body.scene.bounds;
-      if (around != null) {
-        bounds = McBounds(
-          McVec3(_min(bounds.min.x, around.min.x), _min(bounds.min.y, around.min.y), _min(bounds.min.z, around.min.z)),
-          McVec3(_max(bounds.max.x, around.max.x), _max(bounds.max.y, around.max.y), _max(bounds.max.z, around.max.z)),
-        );
-      }
+      frame.addAll(body.scene.frame);
     }
     nodes.addAll(scene.nodes);
     texts.addAll(scene.texts);
     _poses = poses;
     _notes = scene.notes;
-    _stage.show(McScene(nodes, bounds: bounds), texts, yawDeg: 0, frame: !_framed);
+    _stage.show(McScene(nodes, frame: frame), texts, yawDeg: 0, frame: !_framed);
     _framed = true;
     if (mounted) setState(() {});
   }
 
-  static double _min(double a, double b) => a < b ? a : b;
-  static double _max(double a, double b) => a > b ? a : b;
 
   // --- commits ---------------------------------------------------------------
 
