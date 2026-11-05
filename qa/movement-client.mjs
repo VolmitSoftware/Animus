@@ -165,12 +165,19 @@ try {
   await owner.arrive({ x: 3.5, y: 64, z: 3.5 }, 'fly', 3);
   passed('flying route reaches an unsupported elevated target without a world entity');
 
+  // A walking body swims at the water surface and climbs out; only aquatic bodies dive.
+  // Walls inside the route capture leave a one-block lane, so the pond is the only way across.
   await owner.reset();
-  await owner.command('fill -2 61 1 7 64 5 stone', /filled/i);
-  await owner.command('fill -1 61 2 6 63 4 water', /filled/i);
-  await owner.arrive({ x: 4.5, y: 61, z: 3.5 }, 'swim', 2);
-  passed('swimming route executes inside an explicitly prepared water volume');
-  await owner.command('fill -3 61 0 8 64 6 air', /filled/i);
+  await owner.command('fill -1 61 2 5 63 4 stone', /filled/i);
+  await owner.command('fill 0 61 3 4 63 3 air', /filled/i);
+  await owner.command('fill 0 57 2 4 59 4 stone', /filled/i);
+  await owner.command('fill 1 58 3 3 60 3 water', /filled/i);
+  const swum = await owner.arrive({ x: 4.5, y: 61, z: 3.5 }, 'swim', 2);
+  const strokes = owner.events.slice(swum.from).filter(e => e.event === 'move' && e.id === owner.body().id && e.x > 1.5 && e.x < 3.5);
+  assert(strokes.length && strokes.every(e => Math.abs(e.y - 60) < .00001), 'Pond crossing must stay at the water surface: ' + JSON.stringify(strokes.slice(0, 4)));
+  passed('swimming route crosses a prepared pond at the surface and climbs out', { strokes: strokes.length });
+  await owner.command('fill 1 58 3 3 60 3 stone', /filled/i);
+  await owner.command('fill -1 61 2 5 63 4 air', /filled/i);
 
   const waypointFrom = owner.events.length;
   await owner.reset(origin, { 'animus:navigation': { enabled: true, mode: 'walk', speed: 3, loop: false, waitTicks: 10, points: [{ x: 1.5, y: 61, z: 3.5 }, { x: 1.5, y: 61, z: 3.5 }, { x: 3.5, y: 61, z: 3.5 }] } });

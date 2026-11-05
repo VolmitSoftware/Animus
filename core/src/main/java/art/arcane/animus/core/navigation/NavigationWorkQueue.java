@@ -142,13 +142,15 @@ public final class NavigationWorkQueue implements AutoCloseable {
         VoxelSnapshot snapshot = job.builder.build(); job.builder = null;
         job.handle.captured(new CaptureProvenance(job.world, job.bounds, job.firstTick, tick, job.firstNanos, clock.getAsLong(), job.sampled, job.unavailable));
         job.phase = Phase.PLANNING;
+        // The slot is released before the result is published, so an observer of the result never sees the job outstanding.
         job.worker = () -> {
+            PathPlanner.Result result;
             try {
-                PathPlanner.Result result = planner.plan(snapshot, job.start, job.goal, job.profile, job.searchLimits,
+                result = planner.plan(snapshot, job.start, job.goal, job.profile, job.searchLimits,
                         () -> job.handle.cancelled() || Thread.currentThread().isInterrupted());
-                job.handle.complete(result);
-            } catch (RuntimeException failure) { job.handle.fail(failure); }
-            finally { release(job); }
+            } catch (RuntimeException failure) { release(job); job.handle.fail(failure); return; }
+            release(job);
+            job.handle.complete(result);
         };
         return () -> {
             try { executor.execute(job.worker); }

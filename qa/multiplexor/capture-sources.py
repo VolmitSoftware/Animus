@@ -17,7 +17,9 @@ projects=[args.animus,(args.volmlib or args.animus.parent/'VolmLib').resolve()]
 if args.output.exists():parser.error('Use a new snapshot directory; existing snapshots are preserved')
 manifest={}
 for project in projects:
-    source=args.output/project.name
+    # A worktree checkout keeps the canonical project directory name in the capture.
+    label='Animus' if project==args.animus else project.name
+    source=args.output/label
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=project).decode().split('\0')
     hashes={}
     for name in sorted(set(names)-{''}):
@@ -32,8 +34,8 @@ for project in projects:
         shutil.copy2(origin,target)
         hashes[name]=hashlib.sha256(target.read_bytes()).hexdigest()
     head=subprocess.run(['git','rev-parse','HEAD'],cwd=project,text=True,capture_output=True)
-    manifest[project.name]={'sourcePath':str(project),'gitHead':head.stdout.strip() if head.returncode==0 else None,'files':hashes,'snapshotSha256':hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()}
-    print(project.name,len(hashes),manifest[project.name]['snapshotSha256'])
+    manifest[label]={'sourcePath':str(project),'gitHead':head.stdout.strip() if head.returncode==0 else None,'files':hashes,'snapshotSha256':hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()}
+    print(label,len(hashes),manifest[label]['snapshotSha256'])
 # Avoid Git resolving ignored QA copies against the containing development checkout.
 subprocess.run(['git','init','-q',str(args.output)],check=True)
 args.manifest.parent.mkdir(parents=True,exist_ok=True)

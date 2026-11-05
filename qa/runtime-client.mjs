@@ -213,7 +213,7 @@ try {
       assert(!owner.events.slice(from).some(e => e.event === 'chat' && e.text.includes(`Selected ${state.id} via`)));
       passed('third-party cancellation prevents production selection');
     }
-    for (const [suffix, type, world, name] of [['world', 'minecraft:player', 'animus_missing_world', 'Missing World'], ['type', 'minecraft:not_a_type', 'world', 'Missing Type'], ['name', 'minecraft:player', 'world', 'Name Longer Than Sixteen']]) {
+    for (const [suffix, type, world, name] of [['world', 'minecraft:player', 'animus_missing_world', 'Missing World'], ['type', 'minecraft:not_a_type', 'world', 'Missing Type']]) {
       const id = `${state.id}-${suffix}`;
       await owner.command(`animus create ${id} ${type} ${world} 0 61 3 ${state.group} ${name}`, `Created dormant ${id}`);
       const before = (await owner.inspect(id)).document;
@@ -222,7 +222,18 @@ try {
       assert.deepEqual(after, before, 'Rejected activation must preserve revision and spawned flag');
       await owner.command(`animus delete ${id}`, 'Deleted;');
     }
-    passed('missing world, unsupported type, and long profile reject before activation commit');
+    passed('missing world and unsupported type reject before activation commit');
+    // Names longer than a player profile name are presentation text, so they activate.
+    const longId = `${state.id}-name`;
+    await owner.command(`animus create ${longId} minecraft:player world 0 61 3 ${state.group} Name Longer Than Sixteen`, `Created dormant ${longId}`);
+    const longBefore = (await owner.inspect(longId)).document;
+    await owner.command(`animus spawn ${longId}`, `Spawn requested for ${longId}`);
+    const longAfter = (await owner.inspect(longId)).document;
+    assert.equal(longAfter.spawned, true);
+    assert.equal(longAfter.revision, longBefore.revision + 1);
+    assert.equal(longAfter.name, 'Name Longer Than Sixteen');
+    await owner.command(`animus delete ${longId}`, 'Deleted;');
+    passed('long display name activates and deletes cleanly');
     state.revision = (await owner.inspect()).document.revision;
     writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n');
     passed('spawned definition retained for managed restart', { stateFile, revision: state.revision });

@@ -24,7 +24,10 @@ import net.minecraft.tags.TagNetworkSerialization;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.PositionMoveRotation;
 import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
 import java.io.*;
 import java.net.*;
@@ -62,6 +65,8 @@ public final class NativeProtocolClient {
     private volatile boolean tickHeartbeat = true;
     private volatile int ownEntity, ridingVehicle;
     private volatile boolean expectedDisconnect;
+    // The open container window (0 is the player's own inventory) and the state id the server last sent for it.
+    private volatile int windowId, windowState;
     private int positionReminder;
     private Vec3 queuedMove;
     private boolean positioned;
@@ -71,7 +76,8 @@ public final class NativeProtocolClient {
         "entity_position_sync", "teleport_entity", "player_position", "system_chat", "respawn",
         "keep_alive", "ping", "disconnect", "chunk_batch_finished", "set_entity_data",
         "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health",
-        "login", "sound", "level_particles", "boss_event", "move_entity_rot", "move_entity_pos_rot");
+        "login", "sound", "level_particles", "boss_event", "move_entity_rot", "move_entity_pos_rot",
+        "open_screen", "container_set_content", "container_set_slot", "container_close");
 
     private NativeProtocolClient(int port, String username) throws Exception {
         this.username = username;
@@ -299,7 +305,7 @@ public final class NativeProtocolClient {
             event("equipment", "id", p.getEntity(), "slots", slots);
         }
         else if (packet instanceof ClientboundSoundPacket p) event("sound", "sound", p.getSound().unwrapKey().map(key -> key.identifier().toString()).orElse(p.getSound().value().location().toString()), "volume", p.getVolume(), "pitch", p.getPitch());
-        else if (packet instanceof ClientboundLevelParticlesPacket p) event("particle", "particle", BuiltInRegistries.PARTICLE_TYPE.getKey(p.particle().getType()).toString(), "count", p.count());
+        else if (packet instanceof ClientboundLevelParticlesPacket p) event("particle", "particle", BuiltInRegistries.PARTICLE_TYPE.getKey(ProtocolRevision.particle(p).getType()).toString(), "count", ProtocolRevision.particleCount(p));
         else if (packet instanceof ClientboundBossEventPacket) event("boss_event");
         else if (packet instanceof ClientboundRotateHeadPacket p) event("head", "id", reflectedId(p), "yaw", p.getYHeadRot());
         else if (packet instanceof ClientboundMoveEntityPacket p && p.hasRotation()) event("rotation", "id", reflectedId(p), "yaw", p.getYRot(), "pitch", p.getXRot());
@@ -318,6 +324,34 @@ public final class NativeProtocolClient {
             event("expected_disconnect","reason",p.reason().getString());close();
         }
         else if (packet instanceof ClientboundLoginDisconnectPacket p) throw new IOException("Login disconnected: " + p.reason().getString());
+        else if (packet instanceof ClientboundOpenScreenPacket p) {
+            windowId = p.getContainerId();
+            windowState = 0;
+            event("open_screen", "container", p.getContainerId(), "menu", String.valueOf(BuiltInRegistries.MENU.getKey(p.getType())), "title", p.getTitle().getString());
+        } else if (packet instanceof ClientboundContainerSetContentPacket p) {
+            if (p.containerId() == windowId) windowState = p.stateId();
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (int slot = 0; slot < p.items().size(); slot++) {
+                ItemStack stack = p.items().get(slot);
+                if (!stack.isEmpty()) items.add(stack(slot, stack));
+            }
+            event("container_content", "container", p.containerId(), "state", p.stateId(), "size", p.items().size(), "items", items);
+        } else if (packet instanceof ClientboundContainerSetSlotPacket p) {
+            if (p.getContainerId() == windowId) windowState = p.getStateId();
+            event("container_slot", "container", p.getContainerId(), "state", p.getStateId(), "slot", p.getSlot(),
+                    "item", p.getItem().isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(p.getItem().getItem()).toString(), "count", p.getItem().getCount());
+        } else if (packet instanceof ClientboundContainerClosePacket p) {
+            if (p.getContainerId() == windowId) { windowId = 0; windowState = 0; }
+            event("container_closed", "container", p.getContainerId());
+        }
+    }
+
+    private static Map<String, Object> stack(int slot, ItemStack stack) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("slot", slot);
+        item.put("item", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+        item.put("count", stack.getCount());
+        return item;
     }
 
     private static List<String> clicks(net.minecraft.network.chat.Component root) {
@@ -393,6 +427,27 @@ public final class NativeProtocolClient {
                 if (!command.has("enabled")) throw new IllegalArgumentException("Heartbeat enabled flag required");
                 tickHeartbeat = flag(command, "enabled");
                 event("heartbeat", "enabled", tickHeartbeat);
+            }
+            case "click_container" -> {
+                // One vanilla container click. The server answers with fresh slot contents, so no predicted
+                // changes are sent; a cancelled click (every Animus GUI click) is resynced the same way.
+                int container = command.has("container") ? command.get("container").getAsInt() : windowId;
+                if (container <= 0) throw new IllegalStateException("No open container window to click");
+                int slot = command.get("slot").getAsInt();
+                int button = command.has("button") ? command.get("button").getAsInt() : 0;
+                if (slot < 0 || slot > 255) throw new IllegalArgumentException("QA container slot 0..255 required");
+                if (button < 0 || button > 8) throw new IllegalArgumentException("QA container button 0..8 required");
+                ContainerInput mode = command.has("mode") ? ContainerInput.valueOf(command.get("mode").getAsString().toUpperCase(Locale.ROOT)) : ContainerInput.PICKUP;
+                int state = windowState;
+                send(new ServerboundContainerClickPacket(container, state, (short) slot, (byte) button, mode, new Int2ObjectOpenHashMap<HashedStack>(), HashedStack.EMPTY));
+                event("container_click_sent", "container", container, "state", state, "slot", slot, "button", button, "mode", mode.name());
+            }
+            case "close_container" -> {
+                int container = command.has("container") ? command.get("container").getAsInt() : windowId;
+                if (container <= 0) throw new IllegalStateException("No open container window to close");
+                send(new ServerboundContainerClosePacket(container));
+                if (container == windowId) { windowId = 0; windowState = 0; }
+                event("container_close_sent", "container", container);
             }
             case "expect_disconnect" -> { expectedDisconnect=true;event("disconnect_armed"); }
             case "close" -> close();
