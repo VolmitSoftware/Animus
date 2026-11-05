@@ -1,5 +1,7 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Subsystem;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonElement;
 import art.arcane.animus.api.Outcome;
@@ -169,9 +171,21 @@ public final class CombatModule implements AutoCloseable {
 
     public void tick() {
         if (engine == null) return;
-        reconcile();
-        engine.tick();
-        for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+        AnimusMetrics metrics = AnimusMetrics.current();
+        long started = metrics.start();
+        try {
+            reconcile();
+            engine.tick();
+            for (UUID npc : engine.drainDeletions()) deleteDead(npc);
+        } finally { metrics.stop(Subsystem.COMBAT, started); }
+    }
+    /** Combat NPCs waiting for a slot; owner thread. */
+    public int waiting() { return engine == null ? 0 : engine.waitingCount(); }
+    /** 0-100: combat slots in use; 100 while any NPC waits for one. Owner thread. */
+    public int load() {
+        if (engine == null) return 0;
+        if (engine.waitingCount() > 0) return 100;
+        return engine.slotLimit() <= 0 ? 0 : Math.min(100, engine.activeCount() * 100 / engine.slotLimit());
     }
 
     /** Deletes the definition on the file lane as one transaction, and names the transaction that undoes it. */

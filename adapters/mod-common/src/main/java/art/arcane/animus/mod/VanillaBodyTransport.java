@@ -1,5 +1,8 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Load;
+import art.arcane.animus.core.metrics.PacketKind;
 import art.arcane.animus.core.control.ControlInbox;
 import art.arcane.animus.core.control.ControlInput;
 import art.arcane.animus.core.mount.SeatGeometry;
@@ -104,6 +107,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         private final ClientboundPlayerInfoUpdatePacket playerInfo;
         private final BodyLook look;
         private final List<Packet<ClientGamePacketListener>> nameTeam;
+        /** Bound on the first write so probe bodies never register. Server thread only. */
+        private Load traffic;
 
         private Body(VanillaBodyTransport owner, int entityId, int baseIds, UUID uuid, String typeKey, EntityType<?> type, SeatGeometry seat,
                      ClientboundPlayerInfoUpdatePacket playerInfo, BodyLook look, List<Packet<ClientGamePacketListener>> nameTeam) {
@@ -122,6 +127,10 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         @Override public double height() { return height; }
         @Override public SeatGeometry seat() { return seat; }
         @Override public int[] entityIds() { return IntStream.range(0, reservedIds).map((int offset) -> entityId + offset).toArray(); }
+        private Load traffic() {
+            if (traffic == null) traffic = owner.metrics.npc(uuid);
+            return traffic;
+        }
     }
 
     /** A rig's display bones on one body. */
@@ -152,7 +161,11 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         ControlSubscription control;
         long lastInputNanos = Long.MIN_VALUE / 2;
         boolean reportedFailure;
-        Session(ServerPlayer viewer, Consumer<Interaction> interactions) { this.viewer = viewer; this.interactions = interactions; }
+        final Load traffic;
+        Session(ServerPlayer viewer, Consumer<Interaction> interactions) {
+            this.viewer = viewer; this.interactions = interactions;
+            traffic = metrics.viewer(viewer.getUUID(), viewer.getGameProfile().name());
+        }
     }
 
     final class ControlSubscription implements BodyTransport.ControlSubscription {
@@ -173,6 +186,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     private final EntityType<?> textDisplayType, seatType, itemDisplayType, blockDisplayType;
     static final int MAX_BONES_PER_VIEWER = 4096;
     private final java.util.function.Consumer<String> warnings;
+    private final AnimusMetrics metrics = AnimusMetrics.current();
     private boolean closed;
 
     VanillaBodyTransport(java.util.function.Consumer<String> warnings) {
@@ -289,7 +303,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (session.visible.values().stream().anyMatch((Body other) -> other.uuid.equals(body.uuid))) return failed("A body with this UUID is already presented to the viewer");
         if (session.visible.containsKey(body.entityId)) return failed("Body is already visible");
         if (!connected(session)) return unwatched(CONNECTION_CLOSED);
-        send(session, spawnPackets(body, pose));
+        send(session, body, PacketKind.SPAWN, spawnPackets(body, pose));
         for (int id : body.entityIds()) session.visible.put(id, body);
         return CompletableFuture.completedFuture(null);
     }
@@ -304,7 +318,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (body.seatId >= 0) packets.add(BodyMotion.move(body.seatId, pose.x(), pose.y(), pose.z(), yaw, 0f, pose.onGround()));
         packets.add(BodyMotion.move(body.entityId, pose.x(), pose.y(), pose.z(), yaw, pose.pitch(), pose.onGround()));
         packets.add(rotateHead(body.entityId, yaw));
-        return send(session, packets);
+        return send(session, body, PacketKind.MOVE, packets);
     }
 
     @Override public CompletionStage<Void> passengers(ServerPlayer viewer, BodyTransport.Body carrier, List<? extends BodyTransport.Body> riders, ServerPlayer realRider, boolean authoritative) {
@@ -321,7 +335,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         try { session.passengers.replace(vehicle.entityId, passengerIds); }
         catch (IllegalArgumentException invalid) { return CompletableFuture.failedFuture(invalid); }
         session.rosters.put(vehicle.entityId, roster);
-        return send(session, List.of(passengersPacket(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId)))));
+        return send(session, vehicle, PacketKind.PASSENGERS, List.of(passengersPacket(vehicle.entityId, withBones(roster, session.bones.get(vehicle.entityId)))));
     }
 
     @Override public CompletionStage<Void> dragonPhase(ServerPlayer viewer, BodyTransport.Body presented, int phase) {
@@ -330,7 +344,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Session session = existing(viewer);
         if (session == null) return unwatched("Viewer is not watched");
         if (session.visible.get(dragon.entityId) != dragon) return failed("Dragon is not visible to this viewer");
-        return send(session, List.of(new ClientboundSetEntityDataPacket(dragon.entityId, List.of(SynchedEntityData.DataValue.create(EnderDragon.DATA_PHASE, phase)))));
+        return send(session, dragon, PacketKind.METADATA, List.of(new ClientboundSetEntityDataPacket(dragon.entityId, List.of(SynchedEntityData.DataValue.create(EnderDragon.DATA_PHASE, phase)))));
     }
 
     /** The main-arm swing a player shows when placing a block. */
@@ -343,7 +357,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         try {
             buffer.writeVarInt(body.entityId);
             buffer.writeByte(0);
-            return send(session, List.of(ClientboundAnimatePacket.STREAM_CODEC.decode(buffer)));
+            return send(session, body, PacketKind.METADATA, List.of(ClientboundAnimatePacket.STREAM_CODEC.decode(buffer)));
         } finally { buffer.release(); }
     }
 
@@ -356,7 +370,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         for (Map.Entry<EquipmentSlot, ItemStack> item : items.entrySet())
             entries.add(Pair.of(net.minecraft.world.entity.EquipmentSlot.valueOf(BodyRules.nativeSlot(item.getKey())), item.getValue().copy()));
         if (entries.isEmpty()) return CompletableFuture.completedFuture(null);
-        return send(session, List.of(new ClientboundSetEquipmentPacket(body.entityId, entries)));
+        return send(session, body, PacketKind.EQUIPMENT, List.of(new ClientboundSetEquipmentPacket(body.entityId, entries)));
     }
 
     @Override public CompletionStage<Void> despawn(ServerPlayer viewer, BodyTransport.Body presented) {
@@ -368,7 +382,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         session.rosters.remove(body.entityId);
         Bones attached = session.bones.get(body.entityId);
         if (attached != null && attached.body == body) session.bones.remove(body.entityId); else attached = null;
-        if (connected(session)) send(session, removePackets(body, attached));
+        if (connected(session)) send(session, body, PacketKind.DESPAWN, removePackets(body, attached));
         return CompletableFuture.completedFuture(null);
     }
 
@@ -450,7 +464,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         int[] base = session.rosters.getOrDefault(body.entityId, body.displayIds.clone());
         packets.add(passengersPacket(body.entityId, withBones(base, bones)));
         if (hideBody) packets.add(new ClientboundSetEntityDataPacket(body.entityId, List.of(visibility(body.look, true))));
-        send(session, packets);
+        send(session, body, PacketKind.RIG_BONES, packets);
         return CompletableFuture.completedFuture(null);
     }
 
@@ -465,7 +479,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             if (indices[i] < 0 || indices[i] >= bones.ids.length) return failed("Unknown bone index " + indices[i]);
             packets.add(new ClientboundSetEntityDataPacket(bones.ids[indices[i]], transformValues(transforms[i], Math.max(0, durations[i]))));
         }
-        send(session, packets);
+        send(session, bones.body, PacketKind.RIG_BONES, packets);
         return CompletableFuture.completedFuture(null);
     }
 
@@ -481,7 +495,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             packets.add(passengersPacket(bones.body.entityId, base));
             packets.add(new ClientboundSetEntityDataPacket(bones.body.entityId, List.of(visibility(bones.body.look, false))));
         }
-        send(session, packets);
+        send(session, bones.body, PacketKind.RIG_BONES, packets);
         return CompletableFuture.completedFuture(null);
     }
 
@@ -532,8 +546,9 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Body body = session == null ? null : session.visible.get(entityId);
         if (body == null) return false;
         long now = System.nanoTime();
-        if (now - session.lastInputNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS) return true;
+        if (now - session.lastInputNanos < BodyRules.MIN_INPUT_INTERVAL_NANOS) { metrics.inbound(session.traffic, false); return true; }
         session.lastInputNanos = now;
+        metrics.inbound(session.traffic, true);
         try { session.interactions.accept(new Interaction(body, attack ? Action.ATTACK : Action.INTERACT, hand, secondary, now)); }
         catch (RuntimeException failure) {
             if (!session.reportedFailure) { session.reportedFailure = true; warnings.accept("Virtual interaction callback failed: " + failure.getClass().getSimpleName()); }
@@ -657,8 +672,9 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     }
 
     /** A closed connection is an ordinary failed stage, as on Bukkit; a player leaving mid-update is not a fault. */
-    private static CompletionStage<Void> send(Session session, List<Packet<ClientGamePacketListener>> packets) {
+    private CompletionStage<Void> send(Session session, Body body, PacketKind kind, List<Packet<ClientGamePacketListener>> packets) {
         if (!connected(session)) return unwatched(CONNECTION_CLOSED);
+        metrics.sent(session.traffic, body.traffic(), kind, packets.size());
         for (Packet<ClientGamePacketListener> packet : packets) session.viewer.connection.send(packet);
         return CompletableFuture.completedFuture(null);
     }
@@ -673,7 +689,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         if (!session.viewer.connection.isAcceptingMessages()) return;
         for (Body body : bodies) {
             Bones bones = attached.get(body.entityId);
-            send(session, removePackets(body, bones != null && bones.body == body ? bones : null));
+            send(session, body, PacketKind.DESPAWN, removePackets(body, bones != null && bones.body == body ? bones : null));
         }
     }
     private Session session(ServerPlayer viewer, BodyPose pose) {

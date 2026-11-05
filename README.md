@@ -82,7 +82,7 @@ The local CLI cannot open a running server's data directory: both hold the same 
 
 ## Server commands
 
-`animus.status` is available by default; `animus.admin` defaults to operators. Commands, imports and API edits share one serial file worker, with 32 admitted operations by default. Separate bounded workers deliver API results. Replies use the Bukkit scheduler or Folia player/global scheduler. Commands are also usable from the console.
+`animus.status` is available by default; `animus.admin` and `animus.debug` default to operators. `/animus debug` shows what Animus measured on this server: `network [player]` for packets and estimated bytes by kind and viewer, `performance` for server time per subsystem over 1, 10 and 60 seconds, `npc <id>` for one NPC's share, and `watch` to toggle a live action-bar line. [docs/react.md](docs/react.md) lists the metrics Animus publishes to React. Commands, imports and API edits share one serial file worker, with 32 admitted operations by default. Separate bounded workers deliver API results. Replies use the Bukkit scheduler or Folia player/global scheduler. Commands are also usable from the console.
 
 ```text
 /animus status

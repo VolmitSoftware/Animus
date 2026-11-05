@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.NpcRuntime;
@@ -82,8 +83,10 @@ final class RegionViewer {
 
     /** Player owner only. A fault ends this viewer's lease; it never escapes into the region tick. */
     void tick() {
+        long started = host.metrics.start();
         try { turn(); }
         catch (RuntimeException failure) { host.fail(this, "viewer tick", null, failure); }
+        finally { host.metrics.stop(Subsystem.PRESENTATION, started); }
     }
     private void turn() {
         if (!host.current(this)) return;
