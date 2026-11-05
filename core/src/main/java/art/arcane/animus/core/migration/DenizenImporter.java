@@ -189,8 +189,23 @@ public final class DenizenImporter {
         receipt.addProperty("behaviors", behaviors);
         receipt.addProperty("states", states);
         receipt.addProperty("bound", edited.size());
+        receipt.add("serverBehaviors", serverBehaviors(preview.report()));
         changes.add(new DocumentStore.Change(receiptPath, "missing", JsonDocuments.write(receipt)));
         return new Applied(DefinitionBatch.commit(store, edited, expected, changes), behaviors, states, edited.size(), problems);
+    }
+
+    /** The report's server behaviors, which accepting the denizen review enables; empty for reports without the field. */
+    static JsonArray serverBehaviors(JsonObject report) {
+        JsonArray listed = new JsonArray();
+        JsonElement field = report.get("serverBehaviors");
+        if (field == null || !field.isJsonArray()) return listed;
+        for (JsonElement id : field.getAsJsonArray()) {
+            if (!id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) continue;
+            try { art.arcane.animus.core.behavior.catalog.BehaviorPath.forId(id.getAsString()); }
+            catch (IllegalArgumentException invalid) { continue; }
+            if (!listed.contains(id)) listed.add(id.deepCopy());
+        }
+        return listed;
     }
 
     /** Lists a bound NPC's Denizen behaviors in its {@code behaviors}, once each, and marks the binding accepted. */
