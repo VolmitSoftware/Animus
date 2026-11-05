@@ -94,10 +94,6 @@ public final class EditorDocuments {
                 case BEHAVIOR -> Optional.of(BehaviorPath.idFor(path));
                 case PACK -> path.matches("packs/" + SEGMENT + "/pack\\.json") ? Optional.of(path.substring(6, path.length() - 10)) : Optional.empty();
                 case PRESETS -> path.equals("gui/presets.json") ? Optional.of("presets") : Optional.empty();
-                case MENU -> {
-                    String rest = path.startsWith(folder) ? path.substring(folder.length(), path.length() - 5) : "";
-                    yield rest.matches(SEGMENT + "(?:/" + SEGMENT + "){0,15}") ? Optional.of(rest) : Optional.empty();
-                }
                 default -> {
                     String rest = path.startsWith(folder) ? path.substring(folder.length(), path.length() - 5) : "";
                     int slash = rest.indexOf('/');
@@ -111,7 +107,7 @@ public final class EditorDocuments {
     /** The path a new document of this id gets. Behaviors outside packs go under {@code behaviors/}. */
     public static String pathFor(DocumentKind kind, String id) throws EditorError {
         String path = switch (kind) {
-            case NPC, ROUTE, MENU -> kind.folder() + "/" + id + ".json";
+            case NPC, ROUTE -> kind.folder() + "/" + id + ".json";
             case SKIN -> "skins/" + id + ".json";
             case BEHAVIOR -> {
                 try { yield BehaviorPath.forId(id); }

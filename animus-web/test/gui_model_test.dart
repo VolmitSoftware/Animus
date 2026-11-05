@@ -340,7 +340,7 @@ void main() {
       expect(imported.error, isNull);
       expect(<String>[for (final GlossImportedDocument d in imported.documents) '${d.location} ${d.path}'], <String>[
         'inventory:gloss:chest gui/inventories/gloss/chest.json',
-        'menu:lobby/main gui/menus/lobby/main.json',
+        'menu:gloss:lobby/main gui/menus/gloss/lobby/main.json',
         'hologram:gloss:spawn gui/holograms/gloss/spawn.json',
       ]);
       expect(imported.skipped, <String>['Sidebar: Gloss scoreboard documents have no Animus equivalent']);
@@ -366,16 +366,20 @@ void main() {
       expect(exported.skipped, <String>['Chest GUIs: town:board uses animus: actions, which Gloss cannot run']);
       expect(exported.exported, 3, reason: 'gloss-only, hub and welcome; the shop is not a Gloss kind');
       final JsonMap bundle = jsonDecode(exported.bundle) as JsonMap;
-      expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town/hub', 'town.welcome', 'town/gloss-only'});
+      expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town.hub', 'town.welcome', 'town.gloss-only'});
       final GlossImport back = readGlossBundle(exported.bundle);
-      // Gloss holograms are flat, so town:welcome leaves as town.welcome and
-      // comes back into the gloss namespace, as the server's import does.
-      const Map<String, String> returned = <String, String>{'hologram:gloss:town-welcome': 'hologram:town:welcome'};
+      // Gloss ids carry no namespace, so town:welcome leaves as town.welcome
+      // and comes back into the gloss namespace, as the server's import does.
+      const Map<String, String> returned = <String, String>{
+        'hologram:gloss:town-welcome': 'hologram:town:welcome',
+        'menu:gloss:town-hub': 'menu:town:hub',
+        'inventory:gloss:town-gloss-only': 'inventory:town:gloss-only',
+      };
       for (final GlossImportedDocument document in back.documents) {
         final String key = returned['${document.location}'] ?? '${document.location}';
         final AnimusDocument original = folder.documents.firstWhere((AnimusDocument d) => '${d.kind.wireName}:${d.id}' == key);
         if (key != '${document.location}') {
-          expect(document.path, 'gui/holograms/gloss/town-welcome.json');
+          expect(document.path, '${document.location.kind.folder}/gloss/${document.location.id.substring(6)}.json');
           expect(document.source, original.source);
           continue;
         }
@@ -433,7 +437,7 @@ void main() {
         for (final GlossImportedDocument d in imported.documents) DocumentChange(d.location.kind, d.location.id, d.source),
       ]);
       expect(store.workspace!.documents.length, before + 3);
-      expect(store.document(DocumentKind.menu, 'lobby/main')!.valid, isTrue);
+      expect(store.document(DocumentKind.menu, 'gloss:lobby/main')!.valid, isTrue);
       await store.undo();
       expect(store.workspace!.documents.length, before);
       await store.commit(documents: const <DocumentChange>[DocumentChange(DocumentKind.shop, 'town:market', null)]);

@@ -83,10 +83,10 @@ Animus reads and runs these Gloss document shapes itself. The field names, nesti
 
 | Animus kind | Gloss kind | Gloss version | Animus folder |
 | --- | --- | --- | --- |
-| Chest GUI | `inventories/` (`gloss-inventories.schema.json`) | 1 | `plugins/Animus/gui/inventories/<id>.json` |
-| Holographic menu | `menus/` (`gloss.schema.json`, unversioned) | none | `plugins/Animus/gui/menus/<path>.json` |
-| Hologram | `holograms/` (`gloss-holograms.schema.json`) | 3 | `plugins/Animus/gui/holograms/<id>.json` |
-| Text animation | `animations/` (frame lists) | 1 | `plugins/Animus/gui/text-animations/<id>.json` |
+| Chest GUI | `inventories/` (`gloss-inventories.schema.json`) | 1 | `plugins/Animus/gui/inventories/<namespace>/<path>.json` |
+| Holographic menu | `menus/` (`gloss.schema.json`, unversioned) | none | `plugins/Animus/gui/menus/<namespace>/<path>.json` |
+| Hologram | `holograms/` (`gloss-holograms.schema.json`) | 3 | `plugins/Animus/gui/holograms/<namespace>/<path>.json` |
+| Text animation | `animations/` (frame lists) | 1 | `plugins/Animus/gui/text-animations/<namespace>/<path>.json` |
 | Presets | `presets.json` | 1 | `plugins/Animus/gui/presets.json` |
 
 Gloss menus have no envelope. Animus wraps nothing around them either; it identifies them by content hash, as Gloss does, and gives them a revision only inside the editor API (section 6).
@@ -111,7 +111,7 @@ dtlTraders-style shops are an Animus document kind that combines a Gloss-format 
   "schemaVersion": 1,
   "revision": 1,
   "id": "town:baker",
-  "layout": "town/baker",
+  "layout": "town:baker",
   "currency": "vault",
   "offers": {
     "bread": {
@@ -134,7 +134,7 @@ New built-in action:
 
 ```json
 {"type": "action", "capability": "animus:open-gui",
- "arguments": {"gui": "town/baker", "kind": "inventory"}}
+ "arguments": {"gui": "town:baker", "kind": "inventory"}}
 ```
 
 `kind` is `inventory`, `menu`, `shop` or `gloss`. The first three are always Animus's own documents. `gloss` opens a Gloss menu by id through `GlossAPI.open`, and is the only place Animus calls Gloss at run time.

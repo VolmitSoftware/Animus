@@ -13,7 +13,7 @@ import com.google.gson.JsonObject;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** The hologram and text-animation id contract in schema/fixtures/gui, which animus-web checks too. */
+/** The chest GUI, menu, hologram and text-animation id contract in schema/fixtures/gui, which animus-web checks too. */
 class GuiIdContractTest {
     private static GuiKind guiKind(String kind) {
         return switch (kind) {

@@ -33,7 +33,7 @@ Java (`core`):
 - `PairingCode` decodes and re-encodes every valid pairing fixture byte for byte and refuses every invalid one;
 - `EditorIdentity` reproduces the relay handshake golden, and `EditorRelayClient` answers the `relay-request` fixtures with the `relay-response` and `relay-event` fixtures;
 - `gloss/source.json` action lists equal the GUI parser's tables;
-- `fixtures/gui/ids.json`: hologram and text-animation paths map to `namespace:path` ids and back, relative `|animation.<id>|` references resolve in the referencing document's namespace, and Gloss ids map as `GlossIds` does;
+- `fixtures/gui/ids.json`: chest GUI, holographic menu, hologram and text-animation paths map to `namespace:path` ids and back, relative `|animation.<id>|` references resolve in the referencing document's namespace, and Gloss ids map as `GlossIds` does;
 - `fixtures/gui/text-animation-frames.json`: `TextAnimation.frame` picks every listed frame.
 
 Dart (`animus-web`):
@@ -43,7 +43,7 @@ Dart (`animus-web`):
 - every endpoint names existing definitions and scopes;
 - the export fixture opens into exactly the documents in `fixtures/export.expected.json`;
 - the Dart sampler matches every golden sample;
-- the editor locates, resolves and maps the ids in `fixtures/gui/ids.json`, moves workspaces saved with the old plain-path hologram and text-animation ids as its `migration` list says, and picks the frames in `fixtures/gui/text-animation-frames.json`.
+- the editor locates, resolves and maps the ids in `fixtures/gui/ids.json`, moves workspaces saved with the old plain-path hologram, text-animation and menu ids as its `migration` list says, and picks the frames in `fixtures/gui/text-animation-frames.json`.
 
 The schemas check structure. The Java parsers stay authoritative: `fixtures/documents/shop/id-mismatch.json` passes the schema and is refused by Java, which the index records. The editor adds the location checks (ids against paths) itself.
 

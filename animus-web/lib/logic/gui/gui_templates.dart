@@ -10,7 +10,7 @@ String newDocumentId(DocumentKind kind, Set<String> taken) {
   final String base = switch (kind) {
     DocumentKind.inventory => 'example:menu',
     DocumentKind.shop => 'example:shop',
-    DocumentKind.menu => 'example/menu',
+    DocumentKind.menu => 'example:menu',
     DocumentKind.hologram => 'example:hologram',
     _ => 'example',
   };

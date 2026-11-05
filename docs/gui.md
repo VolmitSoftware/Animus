@@ -134,7 +134,7 @@ A hologram file in `gui/holograms/<namespace>/` is a Gloss hologram. Animus show
 
 ## Holographic menus
 
-A menu file in `gui/menus/<namespace>/` is a Gloss menu. It opens in front of the player. The menu's `offset` is measured from the player's feet, with x to their right, y up and z the way they face. Each component's `offset` is measured from that centre. Open a menu with `/animus gui menu <id> [player]`, with `animus:open-gui` and `"kind": "menu"`, with an [NPC binding](#npc-bindings), or with `navigate` from another menu.
+A menu file in `gui/menus/<namespace>/` is a Gloss menu. A file at `lobby/main.json` has the id `lobby:main`. It opens in front of the player. The menu's `offset` is measured from the player's feet, with x to their right, y up and z the way they face. Each component's `offset` is measured from that centre. Open a menu with `/animus gui menu <id> [player]`, with `animus:open-gui` and `"kind": "menu"`, with an [NPC binding](#npc-bindings), or with `navigate` from another menu.
 
 ```json
 {

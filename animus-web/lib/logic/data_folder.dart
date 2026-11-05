@@ -72,7 +72,7 @@ DocumentLocation? locateDocument(String path) {
       if (!valid(rest)) return null;
       return switch (parts[1]) {
         'inventories' => rest.length >= 2 ? DocumentLocation(DocumentKind.inventory, namespaced(rest)) : null,
-        'menus' => DocumentLocation(DocumentKind.menu, rest.join('/')),
+        'menus' => rest.length >= 2 ? DocumentLocation(DocumentKind.menu, namespaced(rest)) : null,
         'holograms' => rest.length >= 2 ? DocumentLocation(DocumentKind.hologram, namespaced(rest)) : null,
         'text-animations' => rest.length >= 2 ? DocumentLocation(DocumentKind.textAnimation, namespaced(rest)) : null,
         _ => null,

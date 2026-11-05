@@ -135,7 +135,7 @@ async function run(browser, viewport, tag) {
   assert.equal(json.lines[5], '&fText');
 
   // Menu: 3D stage, rename a component.
-  await open(page, 'town/hub');
+  await open(page, 'town:hub');
   await page.waitForFunction(() => Number(document.querySelector('.animus-mc-gl-host')?.getAttribute('data-frames') || 0) > 0);
   await page.getByRole('button', {name: /^market \(button\)/}).click();
   const componentId = page.getByLabel('Component id');
@@ -181,13 +181,13 @@ async function run(browser, viewport, tag) {
   assert.equal(exported.format, 'gloss-editor-workspace');
   assert.equal(exported.version, 1);
   assert.equal(exported.workspace.schemaVersion, 2);
-  assert.deepEqual(exported.workspace.documents.map(d => d.runtimeId).sort(), ['town.welcome', 'town/gloss-only', 'town/hub']);
+  assert.deepEqual(exported.workspace.documents.map(d => d.runtimeId).sort(), ['town.gloss-only', 'town.hub', 'town.welcome']);
   for (const document of exported.workspace.documents) JSON.parse(document.json);
   const bundleChooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Import Gloss bundle'}).click();
   await (await bundleChooser).setFiles(bundle);
   await page.locator('.animus-sidebar').getByText('gloss:chest', {exact: true}).waitFor();
-  await page.locator('.animus-sidebar').getByText('lobby/main', {exact: true}).waitFor();
+  await page.locator('.animus-sidebar').getByText('gloss:lobby/main', {exact: true}).waitFor();
   await open(page, 'gloss:chest');
   await page.locator('.animus-chest-slot').first().waitFor();
   assert.equal(await page.locator('.animus-chest-slot').count(), 9);

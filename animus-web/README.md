@@ -107,7 +107,7 @@ Chest GUIs, shops, holographic menus and holograms (Gloss formats, docs/gui.md a
 - Menu: components with offsets, data, icons and actions, menu placement and named lists, drawn in front of the viewer in the 3D stage.
 - Actions: only the actions in `schema/gloss/source.json` that the surface accepts are offered, with fields per type. A refused action, component, icon or field is flagged with its exact path, as the server words it.
 - Expressions: text and condition fields check `{{ }}` holes and expressions with the engine copied from Gloss Web (`lib/logic/gui/gui_expr.dart`), complete names and functions as you type, and previews fill holes with a sample viewer.
-- New and Rename create and move GUI documents; Import and Export Gloss bundle read and write `gloss-editor-workspace` files (chest GUIs, menus, holograms, presets; documents with `animus:` actions are skipped on export).
+- New and Rename create and move GUI documents; Import and Export Gloss bundle read and write `gloss-editor-workspace` files (chest GUIs, menus, holograms, text animations, presets; documents with `animus:` actions are skipped on export). Ids map as the server's `gui import gloss` and `gui export gloss` map them: a Gloss id comes in as `gloss:<id>`, and an Animus id goes out as its path in namespace `gloss`, otherwise as `<namespace>.<path>`.
 
 Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. The Java parsers are authoritative.
 
