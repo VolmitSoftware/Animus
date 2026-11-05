@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:golem",
+  "units": "blocks",
+  "body": "hidden",
+  "bones": [
+    {
+      "id": "root",
+      "pivot": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "torso",
+      "parent": "root",
+      "pivot": [
+        0,
+        1.1,
+        0
+      ],
+      "visual": {
+        "type": "item",
+        "item": {
+          "id": "minecraft:paper",
+          "components": "[item_model=\"animus:golem/torso\"]"
+        },
+        "translation": [
+          0,
+          0.3,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "id": "head",
+      "parent": "torso",
+      "pivot": [
+        0,
+        1.6,
+        0
+      ],
+      "rotation": [
+        0,
+        15,
+        0
+      ],
+      "visual": {
+        "type": "block",
+        "block": "minecraft:carved_pumpkin",
+        "translation": [
+          -0.3,
+          0,
+          -0.3
+        ],
+        "scale": [
+          0.6,
+          0.6,
+          0.6
+        ]
+      }
+    },
+    {
+      "id": "arm",
+      "parent": "torso",
+      "pivot": [
+        0.5,
+        1.5,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        -10
+      ],
+      "visual": {
+        "type": "item",
+        "item": {
+          "id": "minecraft:stick"
+        },
+        "translation": [
+          0,
+          -0.4,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          45
+        ],
+        "scale": [
+          0.8,
+          0.8,
+          0.8
+        ]
+      }
+    },
+    {
+      "id": "label",
+      "parent": "head",
+      "pivot": [
+        0,
+        2.1,
+        0
+      ],
+      "visual": {
+        "type": "text",
+        "text": "&6Golem",
+        "billboard": "center"
+      }
+    }
+  ],
+  "sockets": {
+    "main_hand": "arm"
+  },
+  "animations": {
+    "idle": "town:golem/idle",
+    "walk": "town:golem/walk"
+  }
+}
