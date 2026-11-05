@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:animus_editor/logic/citizens/citizens_converter.dart';
 import 'package:animus_editor/logic/citizens/citizens_review.dart';
+import 'package:animus_editor/logic/citizens/definition_validation.dart';
 import 'package:animus_editor/logic/citizens/java_json.dart';
 import 'package:animus_editor/logic/citizens/java_lang.dart';
 import 'package:animus_editor/logic/citizens/sentinel.dart';
@@ -81,7 +82,7 @@ void main() {
       }
       final CitizensReview review = CitizensReview.of(convertCitizens(_source('traits.yml'), const <String, String>{'legacy': 'world'}));
       final Map<String, Object?> aggregate = review.aggregate();
-      expect(aggregate['records'], 32);
+      expect(aggregate['records'], 33);
       expect((aggregate['classification']! as Map<String, int>).values.fold<int>(0, (int a, int b) => a + b), greaterThan(100));
       expect(jsonEncode(aggregate), isNot(contains('Guard Captain')));
       expect(EditorRoute.parse('#/citizens'), const CitizensRoute());
@@ -92,10 +93,26 @@ void main() {
       final Map<String, Object?> aggregate = review.aggregate();
       expect(aggregate['behaviors'], 3);
       expect(aggregate['conversions'], <String, int>{
-        'commandBehaviors': 1, 'lookClose': 2, 'routeGuides': 1, 'routePoints': 6, 'routes': 3, 'textBehaviors': 2, //
+        'commandBehaviors': 1, 'lookClose': 2, 'routeGuides': 1, 'routePoints': 6, 'routes': 3, 'skinsKept': 0, 'textBehaviors': 2, //
       });
       expect(review.preview.files.keys.where((String path) => path.startsWith('behaviors/citizens/')).toList()..sort(),
           <String>['behaviors/citizens/commands-3.json', 'behaviors/citizens/text-2.json', 'behaviors/citizens/text-3.json']);
+    });
+
+    test('a mob body keeps its Citizens skin for review and the preview applies the activation rules', () {
+      final CitizensPreview preview = convertCitizens(_source('traits.yml'), const <String, String>{'legacy': 'world'});
+      final String path = preview.files.keys.firstWhere((String file) => file.endsWith('/citizens-32.json'));
+      final Map<String, Object?> frog = jsonDecode(preview.files[path]!) as Map<String, Object?>;
+      expect(frog.containsKey('skin'), isFalse);
+      final Map<String, Object?> modules = frog['modules']! as Map<String, Object?>;
+      expect((modules['citizens:review']! as Map<String, Object?>).containsKey('skintrait'), isTrue);
+      final Map<String, Object?> report = jsonDecode(preview.files['reports/32.json']!) as Map<String, Object?>;
+      expect((report['fields']! as Map<String, Object?>)['/traits/skintrait/textureRaw'], 'UNSUPPORTED_PRESERVED');
+      expect(CitizensReview.of(preview).conversions['skinsKept'], 1);
+      final JObject skinnedMob = JObject()
+        ..addString('type', 'minecraft:frog')
+        ..addString('skin', 'a' * 64);
+      expect(activationErrors(skinnedMob), <String>[r'$.skin: textures require a player body']);
     });
 
     test('world mappings must be nonblank', () {

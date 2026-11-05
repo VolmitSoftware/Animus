@@ -6,7 +6,7 @@ This is a development inventory, not a release-parity claim. To run a migration,
 |---|---|---|
 | UUID, readable ID, Citizens numeric ID | Converted; explicit ID map | Definition identity supported |
 | Name, type, main world/location | Converted; optional world mapping. Converter version 7 and later put each definition in `npcs/<world>-r<x>_<z>/citizens-<id>.json`, named after its world after mapping and the region file it stands in | Names up to 256 characters. Short plain player names use the player nameplate; longer or coloured player names and every non-player name show in a packet-only text display. See [appearance](runtime.md#appearance-text-and-inventory) |
-| Skins (489 traits, 409 unique complete documents) | Texture/signature/settings preserved and deduplicated | Signed textures in persisted runtime and opt-in proof; see artifact-specific evidence |
+| Skins (489 traits, 409 unique complete documents) | Texture/signature/settings preserved and deduplicated. Converter version 9 and later: a skin on a body other than `minecraft:player` is kept in `citizens:review` and counted as kept for review, because only player bodies show skins | Signed textures in persisted runtime and opt-in proof; see artifact-specific evidence |
 | Equipment (123) | All eight slots convert to `equipment`; a cosmetic item replaces its slot. Item id, count and damage convert; other item data is kept in the item's `imported` field | Shown to every viewer from the definition, across restart. Kept item data (names, lore, enchantment glint, custom model data) is not shown. Equipment does not change combat damage or armor |
 | Inventory (121) | Slots 0–71 convert to `inventory` slot for slot, with the same item rules | Stored for behaviors and modules to read; never rendered. Shops and chest GUIs are separate documents ([shops](shops.md), [chest GUIs](gui.md)) and never read the NPC's inventory |
 | Waypoints (318) | Converter version 8 and later: `linear`, `guided` and `wander` become a disabled `animus:navigation` route with world mappings applied; `delay` triggers become point waits. In the reference, 298 NPCs get a route (288 guided, 9 linear, 1 wander) with 3,963 points and 26,059 guides; the other 20 have no points. Other providers and triggers are kept and reported | `/animus import citizens accept patrols` turns routes on. Guided routes walk to random destinations through guides; legs are limited to 32 blocks across and 8 up or down, and the report counts destinations no guide reaches (37 in 29 NPCs of the reference). See [migrating](migrating-from-citizens.md#patrols) |
@@ -53,7 +53,7 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 | scoreboardtrait | 495 | Unsupported, preserved |
 | sentinel | 103 | Converted to combat settings; disabled pending review |
 | sittrait | 1 | Converted to `pose: sitting` |
-| skintrait | 489 | Converted to skin documents; opt-in signed-texture proof |
+| skintrait | 489 | Converted to skin documents for player bodies; kept in `citizens:review` on other bodies; opt-in signed-texture proof |
 | sneak | 1 | Converted to `pose: sneaking` |
 | sneaking | 1 | Unsupported, preserved |
 | spawned | 11 | Requires review; candidate spawned=false |
