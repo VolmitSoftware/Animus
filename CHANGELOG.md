@@ -69,6 +69,8 @@
 - Shops with buy, sell and trade grids, limits, stock, discounts, command entries and confirmation, bound with the `animus:shop` module; `animus:open-shop` and `animus:open-gui` actions; `/animus shop` and `/animus gui`.
 - Vault economy on Bukkit; money prices fail closed elsewhere.
 - dtlTraders importer for shop files, `guis.yml`, trader traits, version 3 stock and `data.dat`.
+- Editor relay service (`animus-web/relay`) that connects the web editor to servers with no inbound ports, with Ed25519 server registration, per-browser routing, event streams, limits, an exact origin allowlist and a Cloud Run image.
+- Outbound editor relay client for all platforms, configured by the relay keys in `[editor]` of `config.toml` and off by default; server editor identity in `state/editor/identity.json`.
 
 ### Changed
 
