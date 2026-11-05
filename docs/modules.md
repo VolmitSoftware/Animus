@@ -79,7 +79,7 @@ A `.yml` Citizens saves file still uses the built-in Citizens converter. For any
 
 | Point | Called for | Combined with the platform |
 |---|---|---|
-| `protection` | NPC combat (`NPC_ATTACK`, `PLAYER_ATTACK`, `MOB_ATTACK`, `MOB_CONTROL`) and NPC build block changes (`BLOCK_PLACE`, `BLOCK_BREAK`) | Both must allow: WorldGuard on Bukkit, nothing on mod servers |
+| `protection` | NPC combat (`NPC_ATTACK`, `PLAYER_ATTACK`, `MOB_ATTACK`, `MOB_CONTROL`) NPC build block changes (`BLOCK_PLACE`, `BLOCK_BREAK`) and doors, fence gates and trapdoors an NPC opens on its route (`BLOCK_USE`) | Both must allow: WorldGuard on Bukkit, nothing on mod servers |
 | `economy` | Shop and GUI money prices | Used only where the platform has no provider: always on mod servers, on Bukkit without Vault |
 
 Hooks run synchronously on the platform owner thread that needs the answer, so they must be quick, nonblocking and thread-safe. A throw or a null answer denies the action or refuses the payment. A call past the module invocation deadline suspends the module. A registered provider whose module is suspended or stopped fails closed: protection denies and money prices are refused. Hooks take effect when modules finish enabling after startup. `/animus modules status` lists the bound hooks, converters and hook failures.
