@@ -160,6 +160,7 @@ public final class AnimusRuntime implements AutoCloseable {
     public synchronized ModuleSettings moduleSettings() { return settings().modules(); }
     public synchronized BehaviorSettings behaviorSettings() { return settings().behaviors(); }
     public synchronized CombatBudgets combatBudgets() { return settings().combat(); }
+    public synchronized art.arcane.animus.core.config.ShopSettings shopSettings() { return settings().shops(); }
     private PluginSettings settings() {
         if (!isRunning()) throw new IllegalStateException("Animus is not running");
         return settings;

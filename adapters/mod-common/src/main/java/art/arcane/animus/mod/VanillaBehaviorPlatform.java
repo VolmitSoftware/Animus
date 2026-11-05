@@ -44,8 +44,11 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     private final PersistedNpcService<ServerPlayer, ItemStack> living;
     private final ModCombat combat;
     private final ModTicks ticks;
+    private final java.util.function.Supplier<art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack>> shops;
 
-    VanillaBehaviorPlatform(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, ModCombat combat, ModTicks ticks) {
+    VanillaBehaviorPlatform(MinecraftServer server, PersistedNpcService<ServerPlayer, ItemStack> living, ModCombat combat, ModTicks ticks,
+                            java.util.function.Supplier<art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack>> shops) {
+        this.shops = shops;
         this.server = Objects.requireNonNull(server); this.living = Objects.requireNonNull(living);
         this.combat = Objects.requireNonNull(combat); this.ticks = Objects.requireNonNull(ticks);
     }
@@ -203,5 +206,15 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         List<ServerPlayer> nearby = living.players().ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
         for (ServerPlayer viewer : nearby) action.accept(viewer);
         return nearby.size();
+    }
+
+    @Override public boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) {
+        art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> service = shops.get();
+        if (service == null || !service.enabled())
+            throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "screens-unavailable", "Shops and chest GUIs are disabled in config.toml");
+        return living.players().deliver(player, (ServerPlayer target) -> {
+            if (kind == ScreenKind.SHOP) service.openShop(target, id, Optional.of(npc.uuid()));
+            else service.openGui(target, id, java.util.Map.of(), Optional.of(npc.uuid()));
+        });
     }
 }

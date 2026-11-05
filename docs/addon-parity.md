@@ -14,7 +14,7 @@ Design words:
 
 - **module**: a section under `modules["animus:..."]` in the NPC definition JSON, checked field by field like `animus:combat`.
 - **action** / **condition**: a built-in behavior capability, as in [behaviors.md](behaviors.md#built-in-capabilities).
-- **GUI**: a server-side inventory screen that Animus opens for a player. Animus has no inventory screens yet; dtlTraders and Constructor both need one shared screen framework.
+- **GUI**: a server-side inventory screen that Animus opens for a player. Animus has a chest screen framework that reads Gloss's inventory format ([chest GUIs](gui.md)); shops use it and Constructor can too.
 - **pack file**: a JSON file in a behavior pack, outside the NPC definition, for data shared by many NPCs.
 
 ## 1. dtlTraders (shops)
@@ -41,42 +41,42 @@ A Citizens NPC with the `trader` trait opens its linked shop on right click. Lef
 
 | Feature | What it does | Animus status | Proposed Animus design |
 | --- | --- | --- | --- |
-| NPC opens a shop on click | Right click opens the linked shop; left click can be enabled | missing | `animus:shop` module with `shop` (a shop ID) and `openOn` (`right`, `left`, `both`) |
-| Shop definitions | Named shop shared by many NPCs, with title, permission and enabled modes | missing | Pack file `shops/<id>.json`, checked like definitions |
-| Pages | Several pages per shop, each with a name, size and optional permission; pages a player cannot use are skipped | missing | `pages` array in the shop file; page `permission` |
-| Buy, sell and trade modes | Three grids per page, with a mode switch button | missing | Each page has `buy`, `sell` and `trade` slot maps; GUI mode button |
-| Static items | Decoration only | missing | Slot entry `type: static` |
-| Money buy | Left click buys the stack size, shift click buys a full stack, right click asks for a custom amount. Price is for the stack and is divided per item | missing | Slot entry `type: buy`, `price`, `amount`, `allowStack`, `allowCustomAmount`; transactional economy adapter |
-| Money sell | Takes matching items from anywhere in the inventory. Can sell fewer than the amount when `sell-all-when-not-enough-items` is on | missing | Slot entry `type: sell`, `price`, `amount`, `sellPartial` |
-| Barter trade | Needed items plus an optional money price give the obtainable items | missing | Slot entry `type: trade`, `needs`, `gives`, `price` |
-| Command items (premium) | A purchase runs commands as player, console or op. `BUY_AND_KEEP` gives a token item that runs the commands when used | missing | Slot entry `type: command` that runs a behavior or the `animus:command` allow-list; token items marked by a persistent data key |
-| Run as op | Runs a command with op rights through a temporary op player | missing | Not planned. Map to console commands and report each converted entry |
-| On-purchase commands | Commands that run after a buy, sell or trade | partial | `onPurchase` runs a behavior; `animus:command` exists but needs the allow-list |
-| Item matching | Sell and trade compare material, damage, name, lore, enchantments, potion type and book content. Trade also compares the head texture. Hidden data and custom model data are not compared | missing | `match` rule per entry: `strict` (all item data) or `dtl` (the legacy rule set); imports use `dtl` |
-| Per-player limits | Each item ID has a per-player count; `-1` is no limit | missing | Entry `limit.perPlayer`; counts stored as behavior state with `player` scope |
-| Limit reset | One server-uptime counter clears every player's count for an item every N seconds. The time shown in lore is wrong after a restart | missing | `limit.resetSeconds` using wall-clock time per player; note the change in the import report |
-| Global limits and stock | Not present in dtlTraders (a global limit is an open request, issue 7) | missing (not needed for parity) | Optional later `limit.global` and `stock` |
-| Item permissions | Items need a permission; players without it see a notice | missing | Entry `permission`, shown greyed out in the GUI |
-| Lore and display | Price, item lore, description and limit lines in lore; or custom display keys from `messages.yml` | missing | Entry `display` with `showPrice`, `showLimit`, `description`; message templates in plugin TOML |
+| NPC opens a shop on click | Right click opens the linked shop; left click can be enabled | covered | `modules["animus:shop"]` with `shop` and `openOn`; see [shops](shops.md) |
+| Shop definitions | Named shop shared by many NPCs, with title, permission and enabled modes | covered | `shops/<namespace>/<path>.json`, checked field by field |
+| Pages | Several pages per shop, each with a name, size and optional permission; pages a player cannot use are skipped | covered | `pages` with `permission`; hidden pages are skipped |
+| Buy, sell and trade modes | Three grids per page, with a mode switch button | covered | `buy`, `sell` and `trade` grids; mode switch in the bottom row |
+| Static items | Decoration only | covered | `type: static` |
+| Money buy | Left click buys the stack size, shift click buys a full stack, right click asks for a custom amount. Price is for the stack and is divided per item | partial | `type: buy` with `price` and `allowStack`; a typed custom amount is not available |
+| Money sell | Takes matching items from anywhere in the inventory. Can sell fewer than the amount when `sell-all-when-not-enough-items` is on | covered | `type: sell` with `sellPartial` |
+| Barter trade | Needed items plus an optional money price give the obtainable items | covered | `type: trade` with `needs`, `gives` and an optional `price` |
+| Command items (premium) | A purchase runs commands as player, console or op. `BUY_AND_KEEP` gives a token item that runs the commands when used | partial | `type: command`; commands run on purchase. `BUY_AND_KEEP` tokens are not made |
+| Run as op | Runs a command with op rights through a temporary op player | covered | Not planned. Imports run OP commands from the console and report each one |
+| On-purchase commands | Commands that run after a buy, sell or trade | covered | Entry `commands`, on the command allow-list |
+| Item matching | Sell and trade compare material, damage, name, lore, enchantments, potion type and book content. Trade also compares the head texture. Hidden data and custom model data are not compared | covered | `match`: `strict` (default) or `legacy` (imports) |
+| Per-player limits | Each item ID has a per-player count; `-1` is no limit | covered | `limit.perPlayer`, saved in `state/shops/` |
+| Limit reset | One server-uptime counter clears every player's count for an item every N seconds. The time shown in lore is wrong after a restart | covered | `limit.resetSeconds` in real time per player; the import notes the change |
+| Global limits and stock | Not present in dtlTraders (a global limit is an open request, issue 7) | covered | `limit.global` and `stock` with `restockSeconds` |
+| Item permissions | Items need a permission; players without it see a notice | covered | Entry `permission` with a "needs permission" line |
+| Lore and display | Price, item lore, description and limit lines in lore; or custom display keys from `messages.yml` | covered | Entry `display`; message templates under `[shops.messages]` |
 | PlaceholderAPI in lore | Placeholders resolve in lore and descriptions | missing | Optional PlaceholderAPI adapter for shop text only |
-| Broadcast | Chat broadcast on purchase with item, price and player | missing | Entry `broadcast` text |
-| Close after purchase | Per shop and per item | missing | Shop and entry `closeAfterPurchase` |
-| Full inventory | Refuses when no empty slot, or drops extra items with `drop-item-on-full-inventory` | missing | Fit check that counts partial stacks; `dropWhenFull` per entry |
-| Confirmation window (premium) | Asks before a purchase | missing | GUI confirm screen; `confirm` per shop |
-| Discounts (premium) | A discount price with start, duration and end dates | missing | Entry `discount` with `price`, `start`, `end`; percentage use is not confirmed |
-| Shop logs (premium) | Daily log file per shop with each transaction | missing | Append-only log per shop under the Animus data folder |
-| Open shop by command (premium) | `/dtl open <player> <shop>` and a per-shop command | missing | `/animus shop open <player> <shop>` and an `animus:open-shop` action |
+| Broadcast | Chat broadcast on purchase with item, price and player | covered | Entry `broadcast` |
+| Close after purchase | Per shop and per item | covered | Shop and entry `closeAfterPurchase` |
+| Full inventory | Refuses when no empty slot, or drops extra items with `drop-item-on-full-inventory` | covered | Fit check counts partial stacks; `dropWhenFull` |
+| Confirmation window (premium) | Asks before a purchase | covered | Shop `confirm` |
+| Discounts (premium) | A discount price with start, duration and end dates | partial | Entry `discount` with `price`, `start` and `end`; percentages are not converted |
+| Shop logs (premium) | Daily log file per shop with each transaction | covered | Shop `log`, daily files under `logs/shops/` |
+| Open shop by command (premium) | `/dtl open <player> <shop>` and a per-shop command | covered | `/animus shop open <shop> [player]` and `animus:open-shop`; no per-shop command |
 | Mirror and clone (premium) | Copy a page into another mode or shop | missing | Editor commands; pages can reference another page |
-| In-game editor | Drag-and-drop editor with anvil text input | missing | Phase 2: GUI editor. Phase 1: JSON files plus `/animus shop` commands |
-| Selector items | `/dtl selector` gives page and mode buttons | missing | Fixed GUI buttons; configurable materials in TOML |
-| Economy providers | One server economy: Vault, or OptEco, GemsEconomy or BeastTokens | missing | Economy adapter with a Vault provider first; others report as unavailable |
-| Old 3.x item strings and wallets | Prices per item or bundle, health, food, XP and level costs, patterns, tiers, wallets, limits by player name | missing | Convert money buy and sell entries only; keep everything else for review |
+| In-game editor | Drag-and-drop editor with anvil text input | partial | JSON files and `/animus shop` commands; no editor yet |
+| Selector items | `/dtl selector` gives page and mode buttons | partial | Fixed controls in the bottom row; materials are not configurable |
+| Economy providers | One server economy: Vault, or OptEco, GemsEconomy or BeastTokens | partial | Vault on Bukkit; OptEco, GemsEconomy and BeastTokens are not supported; mod servers have no money |
+| Old 3.x item strings and wallets | Prices per item or bundle, health, food, XP and level costs, patterns, tiers, wallets, limits by player name | covered | Money buy and sell entries convert; the rest is reported and kept |
 
 ### Commands and permissions to map
 
 dtlTraders commands are `/dtltraders`, aliased `/dtl` and `/traders`: `trait`, `trait <npcId> [shop]`, `create`, `delete`, `list`, `edit [shop] <page>`, `editshop`, `toggle [buy|sell|trade] <shop>`, `reload`, `info`, `loadconfig`, `save`, `selector`, and `open <player> <shop>`. Permissions are `dtltraders.admin`, wildcards `dtltraders.shop.*`, `dtltraders.page.*` and `dtltraders.items.*`, one node per command, `dtltraders.inv.*` editor nodes, and the shop, page and item permissions that the data itself names. Sources: [README and permissions.yml](https://github.com/Minevid/dtlTraders-plus), [messages.yml](https://github.com/Minevid/dtlTraders-plus/blob/master/English/messages.yml).
 
-Animus equivalents: `/animus shop list|open|reload|link <npc> <shop>|unlink <npc>` under `animus.admin`. Shop, page and item permissions import unchanged, so existing permission setups keep working.
+Animus equivalents: `/animus shop status|list|open|reload|reset|problems|import` under `animus.admin`. Linking an NPC is an edit of its definition (`modules["animus:shop"]`); there is no separate link command. Shop, page and item permissions import unchanged, so existing permission setups keep working.
 
 ### Import mapping
 
@@ -108,6 +108,8 @@ Format quirks to accept: the discount duration and confirmation flags are read a
 - Every money change and item change must happen together or not at all, on the player's owning thread.
 
 ### Implementation order
+
+Steps 1 to 7 are built; see [shops](shops.md) and [chest GUIs](gui.md). Step 8 remains.
 
 1. Inventory screen framework (pages, buttons, click types, safe close, no item theft through shift, number keys or the offhand key).
 2. Economy adapter with Vault, transactional withdraw and deposit, and failure reporting.
@@ -309,8 +311,8 @@ Files: Builder schematics are in `plugins/Builder/schematics/` (setting `Schemat
 
 All three add-ons need the same pieces. Building them once avoids three versions:
 
-- An inventory screen framework (shops, materials lists, excavated items, editors).
-- An economy adapter (shops; not needed by the other two).
+- An inventory screen framework (shops, materials lists, excavated items, editors). Built: [chest GUIs](gui.md).
+- An economy adapter (shops; not needed by the other two). Built: Vault on Bukkit.
 - A protection adapter for block changes, next to the existing combat protection adapter.
 - A per-player and per-NPC state store for limits, build progress and undo data, reusing behavior state.
 

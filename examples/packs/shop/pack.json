@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "shop",
-  "name": "Shop interaction",
-  "version": "1.0.0",
-  "description": "Sells bread for emeralds to the clicking player, taking payment first. Needs the command allow-list."
+  "name": "Bakery shop",
+  "version": "2.0.0",
+  "description": "A bakery NPC: right click opens a shop of trades, purchases and sales; left click opens a counter menu. No commands."
 }

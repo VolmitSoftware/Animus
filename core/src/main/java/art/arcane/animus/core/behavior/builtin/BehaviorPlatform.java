@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 public interface BehaviorPlatform {
     enum CommandSource { CONSOLE, PLAYER }
     enum CombatOperation { ENABLE, DISABLE, TARGET, RELEASE, GUARD }
+    enum ScreenKind { SHOP, GUI }
     record NpcStatus(boolean spawned, double health) {}
     /** A present player addresses only that viewer. An empty player addresses every viewer within the radius. */
     record Audience(Optional<UUID> player, double radius) {
@@ -76,4 +77,12 @@ public interface BehaviorPlatform {
     int playSound(NpcHandle npc, Audience audience, SoundEffect sound);
     int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect particle);
     void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target);
+    /**
+     * Opens a shop or chest GUI for the player, handing the work to the player's owner. Returns false when the player
+     * is offline. Platforms without screens refuse as unavailable.
+     */
+    default boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) {
+        throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "screens-unavailable",
+                "Shops and chest GUIs are not available on this platform");
+    }
 }

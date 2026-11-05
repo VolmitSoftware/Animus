@@ -9,6 +9,7 @@ import art.arcane.animus.core.behavior.builtin.PlatformRefusals;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.shop.ShopService;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
 import java.util.List;
@@ -41,8 +42,11 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     private final NpcRuntime<Player, ItemStack> living;
     private final RuntimeCombatService combat;
     private final Function<Runnable, AutoCloseable> ticks;
+    private final Supplier<ShopService<Player, ItemStack>> shops;
 
-    BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, Function<Runnable, AutoCloseable> ticks) {
+    BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, Function<Runnable, AutoCloseable> ticks,
+                           Supplier<ShopService<Player, ItemStack>> shops) {
+        this.shops = shops;
         server = plugin.getServer();
         this.living = living;
         this.combat = combat;
@@ -234,5 +238,16 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         List<Player> nearby = living.players().ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
         for (Player viewer : nearby) action.accept(viewer);
         return nearby.size();
+    }
+
+    /** Hands the window to the player's owner, which on Folia may be another region. */
+    @Override public boolean openScreen(NpcHandle npc, UUID player, ScreenKind kind, String id) {
+        ShopService<Player, ItemStack> service = shops.get();
+        if (service == null || !service.enabled())
+            throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "screens-unavailable", "Shops and chest GUIs are disabled in config.toml");
+        return living.players().deliver(player, (Player target) -> {
+            if (kind == ScreenKind.SHOP) service.openShop(target, id, Optional.of(npc.uuid()));
+            else service.openGui(target, id, java.util.Map.of(), Optional.of(npc.uuid()));
+        });
     }
 }

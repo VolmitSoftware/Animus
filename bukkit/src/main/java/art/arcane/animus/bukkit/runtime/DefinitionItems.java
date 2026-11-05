@@ -11,7 +11,7 @@ import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 
 /** Turns definition items into server item stacks on the owner thread, reporting each unusable field. */
-final class DefinitionItems {
+public final class DefinitionItems {
     private DefinitionItems() {}
 
     static Map<EquipmentSlot, ItemStack> equipment(NpcAppearance appearance, List<String> errors) {
@@ -23,7 +23,7 @@ final class DefinitionItems {
         return stacks;
     }
 
-    static ItemStack stack(NpcItem item, String path, List<String> errors) {
+    public static ItemStack stack(NpcItem item, String path, List<String> errors) {
         Material material = Material.matchMaterial(item.id());
         if (material == null || !material.isItem() || material.isAir()) { errors.add(path + ".id: unknown item " + item.id() + " on this server"); return null; }
         ItemStack stack = new ItemStack(material, item.count());

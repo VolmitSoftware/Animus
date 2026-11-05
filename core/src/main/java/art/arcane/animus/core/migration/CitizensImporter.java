@@ -15,7 +15,7 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 4;
+    public static final int CONVERTER_VERSION = 5;
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
     public record Preview(String id, Path directory, int records, int valid, int skins, JsonObject summary) {
         public Preview { summary = summary.deepCopy(); }
@@ -149,6 +149,11 @@ public final class CitizensImporter {
                                 if (field.startsWith("stats_")) reviewedSentinel.remove(field);
                             }
                         }
+                    }
+                    if (traits.has("trader")) {
+                        TraderMapping.Result trader = TraderMapping.map(traits.get("trader"), definition.get("name").getAsString());
+                        trader.module().ifPresent((JsonObject shop) -> modules.add("animus:shop", shop));
+                        trader.warning().ifPresent((String warning) -> migrationWarnings.add("citizens-" + key + ": " + warning));
                     }
                     // This review copy applies only known location transformations. Exact originals stay in records/ and source.yml.
                     reviewed.remove("skintrait");
@@ -288,7 +293,7 @@ public final class CitizensImporter {
         return store.commit(changes);
     }
 
-    private static JsonObject parseYaml(String content) throws IOException {
+    static JsonObject parseYaml(String content) throws IOException {
         LoaderOptions options = new LoaderOptions();
         options.setAllowDuplicateKeys(false);
         options.setMaxAliasesForCollections(0);
@@ -357,6 +362,7 @@ public final class CitizensImporter {
                 };
                 else if (INTEGRATIONS.contains(trait) || trait.startsWith("denizen")) status = Status.REQUIRES_INTEGRATION;
                 else if (trait.equals("skintrait")) status = Status.CONVERTED;
+                else if (trait.equals("trader")) status = parts.length > 1 && Set.of("guiName", "converted-to-v5").contains(parts[1]) ? Status.CONVERTED : Status.REQUIRES_INTEGRATION;
                 else if (REVIEW.contains(trait)) status = Status.REQUIRES_REVIEW;
             }
             fields.addProperty(path, status.name());

@@ -242,6 +242,8 @@ This greeter faces the player who started it, asks a question, and records that 
 | `animus:play-sound` | `sound`, optional `volume` (0-4), `pitch` (0.5-2), `audience`, `radius` | Plays the sound at the NPC for its audience only. |
 | `animus:spawn-particle` | `particle`, optional `count` (1-64), `spread` (0-8), `audience`, `radius` | Shows the particle at the NPC to its audience only. Particles that need extra data are rejected. |
 | `animus:combat-control` | `operation` (`enable`, `disable`, `target`, `release`, `guard`), `target` (an entity or NPC UUID, or `player` for the triggering player): required for `target`, optional for `guard`, refused otherwise | Drives the [combat module](combat.md#behaviors-and-commands). Needs enabled combat settings; protection still applies. |
+| `animus:open-shop` | `shop` (a shop id such as `town:baker`) | Opens the [shop](shops.md) for the triggering player. Reports `delivered` 0 when they are offline. |
+| `animus:open-gui` | `gui` (a chest GUI id such as `town:menu`) | Opens the [chest GUI](gui.md) for the triggering player. |
 | `animus:set-flag` | `name`, optional `scope`, optional `value` (default true) | Sets the flag. |
 | `animus:set-quest-state` | `name`, `value`, optional `scope` | Sets the stage. |
 | `animus:advance-quest-state` | `name`, optional `scope`, `by` (default 1), `maximum` | Adds to the stage without passing `maximum`. Reports `value`. |
@@ -330,7 +332,7 @@ Accepted ranges are 1-256 actions per tick, 1-64 per NPC per tick and no more th
 
 World and player work waits in a bounded queue and runs on the server's owner thread. Past the per-tick or per-NPC budget, an action waits for a later tick. A full queue fails the action as `BUSY`, which ends that run. Waiting is included in the module invocation deadline (`modules.invocationTimeoutMillis`), except for a navigate with `wait`, which has its own timeout. An action that misses the deadline fails its run and is dropped without running, and unlike a Java module the built-in capabilities are not suspended.
 
-A preview run refuses `command`, `combat-control`, `navigate`, `stop-navigation`, `look`, `set-appearance`, `set-equipment`, `choices` and every flag or quest write. `say`, `play-sound` and `spawn-particle` work in a preview only for the viewer's own `trigger` audience. Conditions still read normally.
+A preview run refuses `command`, `combat-control`, `navigate`, `stop-navigation`, `look`, `set-appearance`, `set-equipment`, `choices`, `open-shop`, `open-gui` and every flag or quest write. `say`, `play-sound` and `spawn-particle` work in a preview only for the viewer's own `trigger` audience. Conditions still read normally.
 
 ## Packs
 
