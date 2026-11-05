@@ -207,36 +207,36 @@ The linked source repository, github.com/Weefle/Constructor, is not available. C
 
 | Feature | What it does | Animus status | Proposed Animus design |
 | --- | --- | --- | --- |
-| Schematic files | Builder: `.schematic`. Constructor: Sponge `.schem` and structure `.nbt`, own reader as a fallback | missing | Animus reader for Sponge `.schem` versions 2 and 3 and vanilla `.nbt`, no WorldEdit needed; legacy `.schematic` through a one-time conversion |
+| Schematic files | Builder: `.schematic`. Constructor: Sponge `.schem` and structure `.nbt`, own reader as a fallback | covered | Animus reads Sponge `.schem` versions 1 to 3 and vanilla `.nbt` with bounded parsing, no WorldEdit needed. Legacy MCEdit `.schematic` is refused with a message: save it again as `.schem`. See [building](building.md#schematic-files) |
 | Multi-part builds (Constructor) | A YAML file lists parts built in order with offsets | missing | `build` pack file with `parts` and offsets; YAML layout not confirmed |
-| Build module | NPC has a loaded schematic, an origin and options | missing | `animus:builder` module with `schematic`, `origin`, `options` |
-| Origin | NPC position, player position, a set point, or the schematic's own origin. Builder centres X and Z on the origin and trims empty bottom layers | missing | `origin` with `mode` (`npc`, `point`, `schematic`) and `yOffset`; centre rule kept for Builder imports |
-| Rotation (Constructor) | Rotates the build, with block state fixes | missing | `rotation` 0, 90, 180, 270 with block state rotation |
-| Mirroring | Not mentioned | missing (not needed for parity) | Later |
-| Build order | Bottom up in groups of `layers:N`. Within a group: air, base blocks, furniture, redstone, liquids and falling blocks, then decorations. `groupall` groups the whole build | missing | Built-in planner with the same phase order; `layers` and `groupAll` options |
-| Layer pattern | `spiral` (default), `reversespiral`, `linear`, `reverselinear` | missing | `pattern` option |
-| Skip matching blocks | Blocks that already match are skipped. Repair mode replaces changed blocks and removes added ones | missing | Planner compares each block before queuing; `mode: build` or `repair` |
-| Ignore air and liquids | `ignoreair`, `ignoreliquid`; Constructor places air only with both ignore air and excavate | missing | `ignoreAir`, `ignoreLiquids` |
-| Excavate | Clears the site top down before building | missing | `excavate` option; removed blocks are kept as described below |
-| Walking to blocks | NPC walks next to each block, then places it. Teleports after a timeout (default 2 seconds) or when stuck. Walks back at the end | partial | Navigator exists (walking, 30 blocks per request, `teleportWhenStuck`). Add a reach search around each block and `moveTimeoutSeconds` |
-| Build speed | Walking speed plus the timeout; no ticks-per-block setting | partial | Navigator speed 1 to 5; add `blocksPerTick` limits in TOML |
-| Place effects | Swing arm, hold the block (or a pickaxe for air), block sound and particles | partial | `animus:set-equipment`, sound and particle exist. Add arm swing and per-block effect |
-| Containers and signs | Constructor keeps chest, furnace, shulker, sign and banner contents. Builder 0.7.1 does not | missing | Copy block entity data from the schematic |
+| Build module | NPC has a loaded schematic, an origin and options | covered | `animus:builder` definition section with `schematic`, `origin`, `options`; `/animus build start <npc-id>` runs it |
+| Origin | NPC position, player position, a set point, or the schematic's own origin. Builder centres X and Z on the origin and trims empty bottom layers | covered | The leader's block or `at=`; `anchor` `center` (Builder's rule, the default), `corner` or `schematic`; `offset` and `yoffset` |
+| Rotation (Constructor) | Rotates the build, with block state fixes | covered | `rotation` 0, 90, 180, 270 with block state rotation |
+| Mirroring | Not mentioned | covered | `mirror` `x` or `z`, before rotation |
+| Build order | Bottom up in groups of `layers:N`. Within a group: air, base blocks, furniture, redstone, liquids and falling blocks, then decorations. `groupall` groups the whole build | covered | Planner order per group: air (top down), solid, falling, attached and dependent blocks, then water and lava; `layers` and `groupall` |
+| Layer pattern | `spiral` (default), `reversespiral`, `linear`, `reverselinear` | covered | `pattern` option |
+| Skip matching blocks | Blocks that already match are skipped. Repair mode replaces changed blocks and removes added ones | partial | Matching blocks are skipped; repair mode is not built |
+| Ignore air and liquids | `ignoreair`, `ignoreliquid`; Constructor places air only with both ignore air and excavate | covered | `ignoreair`, `ignoreliquids` |
+| Excavate | Clears the site top down before building | covered | `excavate`; removed blocks go into the undo record |
+| Walking to blocks | NPC walks next to each block, then places it. Teleports after a timeout (default 2 seconds) or when stuck. Walks back at the end | covered | Walks to a standing spot within `reach`, moves next to the block after `timeout`; no walk back at the end |
+| Build speed | Walking speed plus the timeout; no ticks-per-block setting | covered | `speed`, `interval` per build; `placementsPerTick` in TOML |
+| Place effects | Swing arm, hold the block (or a pickaxe for air), block sound and particles | covered | Arm swing, held block or pickaxe, place sound; no particles |
+| Containers and signs | Constructor keeps chest, furnace, shulker, sign and banner contents. Builder 0.7.1 does not | missing | Blocks are placed empty; counted and reported by `inspect` |
 | Entities in schematics | Not placed | missing (not needed) | |
-| Physics | Builder places without physics updates | missing | Place without updates, then update each finished group; falling and attached blocks go last |
-| Materials from players | Supply mode: the build waits until players donate the needed items by right click; Builder maps blocks to items with `supply.txt` | missing | `materials.mode: donate` with a needed list as runtime state; click to see the list and donate |
-| Materials list | Constructor has a needed materials screen; Builder shows a chat list | missing | GUI list, shared with the shop screen framework |
+| Physics | Builder places without physics updates | covered | Placed without neighbour updates; falling and attached blocks go after solid blocks |
+| Materials from players | Supply mode: the build waits until players donate the needed items by right click; Builder maps blocks to items with `supply.txt` | covered | `materials=donate`: the build waits with a status message; `/animus build <build> donate` hands over the held stack; the server maps blocks to items |
+| Materials list | Constructor has a needed materials screen; Builder shows a chat list | partial | Chat list from `survey`; no screen |
 | Excavated items | Constructor stores removed blocks and returns them through `/constructor excavated` | missing | Store removed items as NPC state; GUI to collect |
-| Chest or economy sourcing | Not present in either | missing (not needed) | Optional later |
+| Chest or economy sourcing | Not present in either | covered (chest) | `materials=container` takes items from one linked container; no economy |
 | Mark area | Builder places markers at the four corners and restores them later | missing | Packet-only outline, no world change |
 | Preview (Constructor) | Glowing ghost blocks for N seconds, limit 3000 entities | missing | Packet-only block displays per viewer; `previewSeconds`, `maxPreviewBlocks` |
-| Undo (Constructor) | Reverts every placed block, including contents, across sessions | missing | Undo journal stored per build, with the original block and its contents |
-| Teams (Constructor 4) | A leader with workers sharing one build by distance; members persist | missing | `team` list on the leader; the planner hands out blocks by nearest worker |
-| Survey and info | Survey lists needed materials; info shows total, remaining and percent | missing | `/animus build <npc> survey|info` |
-| Pause, cancel, resume after restart | Cancel stops. After restart the build continues, skipping blocks already placed | missing | Build state saved with the NPC; resume rebuilds the queue and skips matching blocks |
-| Start, complete and cancel hooks | Messages, Denizen tasks (Builder `onstart`, `oncomplete`, `oncancel`), Denizen triggers in Constructor | missing | Behavior triggers `build-start`, `build-complete`, `build-cancel` |
-| Protection | Builder never checks. Constructor checks WorldGuard build and break flags and sends test place and break events for other claim plugins, with a bypass permission | missing | Protection adapter that asks before each block; deny skips and reports. Bypass only through settings |
-| Chunk loading | Builder loads chunks as it places | missing | Place only in loaded chunks; wait when a chunk is not loaded, matching the no-terrain-loading rule |
+| Undo (Constructor) | Reverts every placed block, including contents, across sessions | covered | Saved, bounded undo record; blocks changed since are kept; contents are not restored |
+| Teams (Constructor 4) | A leader with workers sharing one build by distance; members persist | covered | `team add|remove`; members take the next block of the current step in order, not by distance |
+| Survey and info | Survey lists needed materials; info shows total, remaining and percent | covered | `survey`; `status` shows steps, percent, counters and an estimate of the time left |
+| Pause, cancel, resume after restart | Cancel stops. After restart the build continues, skipping blocks already placed | covered | `pause`, `resume`, `cancel`; JSON state under `state/builds/` resumes after restart |
+| Start, complete and cancel hooks | Messages, Denizen tasks (Builder `onstart`, `oncomplete`, `oncancel`), Denizen triggers in Constructor | partial | Triggers `build_finished` and `build_paused`, the `animus:build` action, and messages to the player who started the build |
+| Protection | Builder never checks. Constructor checks WorldGuard build and break flags and sends test place and break events for other claim plugins, with a bypass permission | partial | Asks before each block, fails closed; deny skips and counts. WorldGuard only; mod servers have none. No bypass |
+| Chunk loading | Builder loads chunks as it places | covered | Places only in loaded chunks and waits otherwise |
 | GUIs (Constructor) | NPC list, schematic list, parameters, team and preview buttons | missing | Phase 2 GUI; Phase 1 commands |
 | Dynmap refresh | Re-render the area when done | missing (not needed) | |
 
@@ -246,7 +246,7 @@ Builder: `/builder (id) <help|reload|list|load <name>|origin [clear|schematic|me
 
 Constructor: `/constructor load|build [-ignoreAir] [-ignoreLiquid] [-ignoreProtection] [-excavate]|cancel|undo|preview [seconds]|team add|remove|clear|list|npc|list|excavated|info|survey|reload|timeout|supply`. Permissions `constructor.<command>`; `info`, `survey` and `donate` are given to all players by default. Source: [listing](https://api.spiget.org/v2/resources/79683).
 
-Animus equivalents: `/animus build <npc> load|start|cancel|undo|preview|survey|info|team ...` under `animus.admin`, with donating open to any player when the build allows it.
+Animus equivalents, as built: `/animus build start <npc-id> [schematic] [at=...] [option=value...]` and `/animus build <build> status|pause|resume|cancel|undo|survey|donate|team add|remove <npc-id>`, plus `list`, `schematics` and `inspect`, under `animus.admin`. `donate` needs only `animus.build.donate`, given to everyone by default. There is no `preview` or `mark`. See [building](building.md#commands).
 
 ### Import mapping
 
@@ -271,20 +271,24 @@ Builder, trait path `npc.<id>.traits.builder` ([BuilderTrait.java](https://githu
 
 `groupall` and queue position are not saved by Builder, so a resumed build always groups by layer.
 
-Constructor, trait path `npc.<id>.traits.constructor`: key names are not confirmed. The importer should keep the whole trait for review and map Builder-style keys only when it finds them. Team membership is stored in this trait, according to the change log.
+The importer does this mapping into an `animus:builder` section with `reviewAccepted: false`, keeps the whole trait under `animus:builder.imported` and in `citizens:review`, and reports every key it does not convert. The schematic name becomes `<name>.schem`, because Builder's `.schematic` files must be saved again in the Sponge format. `State`, `NeededMaterials`, `ContinueLoc` and the Denizen task names are kept, not run.
 
-Files: Builder schematics are in `plugins/Builder/schematics/` (setting `SchematicsFolder`); Constructor's are in `plugins/Constructor/schematics/`. Import copies them into an Animus schematics folder. Builder `config.yml` texts (`DefaultTexts.*` with `<NPC>`, `<SCHEMATIC>`, `<AMOUNT>`, `<PLAYER>`, `<ITEM>`) map to Animus message templates, and `supply.txt` maps to a materials table.
+Constructor, trait path `npc.<id>.traits.constructor`: key names are not confirmed. The importer keeps the whole trait in `citizens:review`, converts nothing, and reports its keys in the import's migration warnings. Team membership is stored in this trait, according to the change log.
+
+Files: Builder schematics are in `plugins/Builder/schematics/` (setting `SchematicsFolder`); Constructor's are in `plugins/Constructor/schematics/`. The importer does not copy them; copy `.schem` and `.nbt` files into the Animus `schematics` folder by hand. Builder `config.yml` texts (`DefaultTexts.*` with `<NPC>`, `<SCHEMATIC>`, `<AMOUNT>`, `<PLAYER>`, `<ITEM>`) map to Animus message templates, and `supply.txt` maps to a materials table.
 
 ### Implementation order
 
-1. Schematic reader for `.schem` and `.nbt`, and the build planner with phase order, layers, patterns, skip-matching and ignore options.
-2. Block placer with per-tick limits, loaded chunks only, a protection check per block, and block entity contents.
-3. `animus:builder` module, `/animus build` commands, and walking to each block with timeout teleport.
-4. Saved build state, resume after restart, and the Builder trait importer with schematic copy.
-5. Excavation, the undo journal and repair mode.
-6. Donated materials, survey, the materials list and excavated items, using the shared screen framework.
-7. Packet-only preview and mark, rotation, and start, complete and cancel triggers.
-8. Teams, multi-part builds and the Constructor importer once a sample save is available.
+Done: the schematic reader, the planner with phase order, layers, patterns, rotation, mirroring and ignore options, skip-matching, the block placer with per-tick limits, loaded chunks only and a protection check per block, `/animus build` commands, walking with the move timeout, saved state and resume, excavation, the undo record, donated and container materials, survey, teams, the `build_finished` and `build_paused` triggers, the `animus:build` action and the Builder trait importer. See [building](building.md).
+
+Still open:
+
+1. Block entity contents (chests, signs, banners).
+2. Repair mode.
+3. The materials screen and returning dug-out items, using the shared screen framework.
+4. Packet-only preview and mark.
+5. Multi-part builds, and the Constructor importer once a sample save is available.
+6. Folia support, once a build can be handed between regions.
 
 ## Shared work
 

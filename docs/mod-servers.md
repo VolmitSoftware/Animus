@@ -41,6 +41,7 @@ A permission mod can grant any node to anyone through the vanilla permission nam
 | Combat protection | No protection adapter is installed, because mod servers have no standard protection API. Every combat hit is allowed; `/animus combat status` shows `protection=none`. |
 | Combat pursuit regions (`pursuit.region`) | Not available, because no protection plugin provides regions. The NPC fights within its normal ranges, the log says so once per NPC, and `/animus combat status` counts it as `region-unavailable`. |
 | Combat permission and group rules | Read through the vanilla permission mapping above; a group is the permission `group.<name>`, so it needs a permission mod that grants it. |
+| Build protection | No protection adapter: every block a [build](building.md) changes is allowed; `/animus build` shows `protection=none`. |
 | Mob control (`/animus target <npc-id> <mob-uuid>`) | Not available; the command says so. Use `/animus combat <npc-id> target <uuid>` or `guard` from the combat module instead. |
 | Manual hit (`/animus attack <npc-id> <uuid> [damage]`) | Available, with the same reach, line of sight and protection checks. |
 | Plugin events (`VirtualNpcInteractionEvent`, `VirtualNpcDamageEvent` and the others) | Not fired. Trusted Java modules and behavior triggers receive the same facts on every platform. |

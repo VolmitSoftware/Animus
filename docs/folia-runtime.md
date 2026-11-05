@@ -15,6 +15,7 @@ On Folia 26.1.2, 26.2 and 26.3, saved NPC definitions run on the region that own
 | Riding an NPC (`animus:riding`) | No: the rider and the NPC have separate owners and a ride has no region handoff yet |
 | Mounted NPCs (`animus:mount`) | No: a vehicle and its passengers have separate owners and seat coupling has no region handoff yet. The NPC stands at its own position and `/animus inspect` shows `mount=unavailable on Folia` |
 | Combat module, `/animus attack`, `/animus target` | No: combat damages and retargets real players and mobs that other regions own |
+| Builds (`/animus build`, `animus:build`) | No: a build site, its NPC team and its material container can belong to different regions, and a build has no region handoff yet. Both answer that building is unavailable on Folia |
 | Ender dragon wing phases | Not sent: dragons always show the hovering pose |
 
 Damage and death triggers need combat, so they do not fire on Folia.

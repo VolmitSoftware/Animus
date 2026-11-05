@@ -10,7 +10,12 @@ import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.AnimusSplash;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.RuntimeEnvironment;
+import art.arcane.animus.bukkit.building.BukkitBuildPlatform;
+import art.arcane.animus.bukkit.building.WorldGuardBuildProtection;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
+import art.arcane.animus.core.building.BuildCommands;
+import art.arcane.animus.core.building.BuildProtection;
+import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.behavior.builtin.DialogueChoice;
 import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
@@ -30,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
@@ -49,6 +55,8 @@ public final class AnimusPlugin extends JavaPlugin {
     private FoliaStationaryProofService foliaProof;
     private NpcRuntime<Player, ItemStack> living;
     private RuntimeCombatService combat;
+    private BuildService<Player, ItemStack> builds;
+    private String buildsUnavailable;
     private ExtensionRuntime extensions;
     private volatile BehaviorCommands behaviors;
     private BuiltinCapabilities builtins;
@@ -91,7 +99,8 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(proof.status(null));
             Platform modulePlatform = modulePlatform();
             Function<Runnable, AutoCloseable> ownerTicks = regions != null ? regions::globalTicks : tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel;
-            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, ownerTicks),
+            startBuilds(mainThread);
+            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, () -> buildsUnavailable, ownerTicks),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new ExtensionRuntime(runtime.documents().resolve("modules"),
@@ -111,6 +120,7 @@ public final class AnimusPlugin extends JavaPlugin {
             Map<String, AnimusCommands.Extra> extras = new HashMap<>();
             extras.put("proof", new ProofCommand());
             if (foliaProof != null) extras.put("foliaproof", new FoliaProofCommand());
+            extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsUnavailable)));
             animusCommands = new AnimusCommands(new AnimusCommands.Services(runtime, commands, living, () -> behaviors, extensions, builtins,
                     combat::execute, extras, () -> stopping));
             extensions.start();
@@ -128,6 +138,7 @@ public final class AnimusPlugin extends JavaPlugin {
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
         if (extensions != null) extensions.close();
+        if (builds != null) builds.close();
         if (combat != null) combat.close();
         if (living != null) living.close();
         if (foliaProof != null) foliaProof.close();
@@ -150,6 +161,33 @@ public final class AnimusPlugin extends JavaPlugin {
         AnimusCommands active = animusCommands;
         if (active == null) return List.of();
         return active.complete(new BukkitActor(sender, replies), arguments);
+    }
+
+    /** Builds run on the main thread only; Folia gives every NPC its own region owner, so they are unavailable there. */
+    private void startBuilds(PersistedNpcService<Player, ItemStack> mainThread) {
+        if (mainThread == null) {
+            buildsUnavailable = "unavailable on Folia: a build site, its NPC team and its material container have no shared region owner, and no handoff for a build exists yet";
+            getLogger().info("Builds " + buildsUnavailable);
+            return;
+        }
+        BuildProtection protection = BuildProtection.NONE;
+        String name = "none installed";
+        if (getServer().getPluginManager().isPluginEnabled("WorldGuard")) {
+            try {
+                protection = WorldGuardBuildProtection.create(getServer());
+                name = "WorldGuard region flags";
+            } catch (RuntimeException | LinkageError failure) {
+                String reason = "WorldGuard is installed but its API could not be used (" + failure.getClass().getSimpleName() + "); every block change is denied";
+                protection = request -> { throw new IllegalStateException(reason); };
+                name = reason;
+            }
+        }
+        builds = new BuildService<>(runtime, mainThread, commands, new BukkitBuildPlatform(getServer()), protection, name,
+                tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel,
+                () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); },
+                (String message) -> getLogger().info(message), null);
+        buildsUnavailable = builds.unavailable().orElse(null);
+        getLogger().info(builds.status());
     }
 
     private void publishChoice(DialogueChoice choice) {

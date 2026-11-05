@@ -15,7 +15,7 @@ import java.util.List;
 
 /** Plugin-wide settings are TOML. NPC definitions, behaviors, state and generated data remain JSON. */
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
-                             FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat) {
+                             FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -37,6 +37,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("modules", new Gson().toJsonTree(ModuleSettings.DEFAULT));
             document.add("behaviors", new Gson().toJsonTree(BehaviorSettings.DEFAULT));
             document.add("combat", new Gson().toJsonTree(CombatBudgets.DEFAULT));
+            document.add("builds", new Gson().toJsonTree(BuildSettings.DEFAULT));
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -101,7 +102,26 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         CombatBudgets combatBudgets;
         try { combatBudgets = combat(table(data.getAsJsonObject(), "combat")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": combat: " + e.getMessage(), e); }
-        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets);
+        BuildSettings buildSettings;
+        try { buildSettings = builds(table(data.getAsJsonObject(), "builds")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": builds: " + e.getMessage(), e); }
+        return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings);
+    }
+
+    private static BuildSettings builds(JsonObject document) {
+        BuildSettings defaults = BuildSettings.DEFAULT;
+        return new BuildSettings(bool(document, "enabled", defaults.enabled()),
+                integer(document, "maximumBuilds", defaults.maximumBuilds()),
+                integer(document, "maximumTeam", defaults.maximumTeam()),
+                integer(document, "placementsPerTick", defaults.placementsPerTick()),
+                integer(document, "checksPerTick", defaults.checksPerTick()),
+                integer(document, "undoPerTick", defaults.undoPerTick()),
+                integer(document, "maximumVolume", defaults.maximumVolume()),
+                integer(document, "maximumPalette", defaults.maximumPalette()),
+                integer(document, "maximumSide", defaults.maximumSide()),
+                integer(document, "maximumFileBytes", defaults.maximumFileBytes()),
+                integer(document, "maximumUndoEntries", defaults.maximumUndoEntries()),
+                integer(document, "saveSeconds", defaults.saveSeconds()));
     }
 
     private static CombatBudgets combat(JsonObject document) {
