@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:commands-24",
+  "entry": "right",
+  "routines": {
+    "right": {
+      "type": "action",
+      "capability": "animus:command",
+      "arguments": {
+        "command": "say Hear ye",
+        "as": "console"
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "right",
+      "event": "interaction",
+      "action": "interact",
+      "routine": "right"
+    }
+  ]
+}

@@ -85,6 +85,11 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         Component buttons = ModText.parts(DialogueFormat.buttons(BuildIdentity.ID, token, List.copyOf(options)));
         return living.players().deliver(player, (ServerPlayer online) -> { online.sendSystemMessage(message); online.sendSystemMessage(buttons); }) ? 1 : 0;
     }
+    /** Online players only; an offline player's name is not known here. */
+    @Override public Optional<String> playerName(UUID player) {
+        ServerPlayer online = server.getPlayerList().getPlayer(player);
+        return online == null ? Optional.empty() : Optional.of(online.getGameProfile().name());
+    }
     @Override public void runCommand(CommandSource source, Optional<UUID> player, String command) {
         CommandSourceStack stack;
         if (source == CommandSource.CONSOLE) stack = server.createCommandSourceStack();

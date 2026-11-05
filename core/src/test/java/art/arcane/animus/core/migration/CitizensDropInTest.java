@@ -92,7 +92,7 @@ class CitizensDropInTest {
             assertTrue(staged.contains("3 NPCs, 3 valid"), staged);
             assertTrue(staged.contains("npcs/world-r0_-1/ 1") && staged.contains("npcs/world-r0_0/ 1") && staged.contains("npcs/world_nether-r0_0/ 1"), staged);
             assertTrue(staged.contains("1 shops"), staged);
-            assertTrue(staged.contains("Off until accepted: spawn 2, combat 1, riding 1, shops 1, builder 0"), staged);
+            assertTrue(staged.contains("Off until accepted: spawn 2, patrols 0, combat 1, riding 1, shops 1, builder 0"), staged);
             assertTrue(staged.contains("Kept, not run: denizen 1, waypoints 1"), staged);
             assertTrue(staged.contains("1 .schem/.nbt files") && staged.contains("1 old .schematic"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
@@ -167,6 +167,71 @@ class CitizensDropInTest {
             assertThrows(IOException.class, () -> flow.execute(new String[]{"accept", "everything"}));
             assertThrows(IOException.class, () -> flow.execute(new String[]{"bogus"}));
             assertTrue(JsonDocuments.object(store.read(CitizensDropIn.STATE)).get("state").getAsString().equals("applied"));
+        }
+    }
+
+    private static final String PATROLS = """
+            npc:
+              '5':
+                uuid: 00000000-0000-0000-0000-000000000005
+                name: Watchman
+                traits:
+                  type: PLAYER
+                  spawned: true
+                  location: {world: world, x: 0.5, y: 64, z: 0.5}
+                  lookclose: {enabled: true, range: 6.0}
+                  waypoints:
+                    provider: linear
+                    linear:
+                      points:
+                      - location: {world: world, x: 4, y: 64, z: 0}
+                        triggers: [{type: delay, delay: 40}]
+                      - location: {world: world, x: 4, y: 64, z: 8}
+                  text: {text: ['Evening.'], talk-close: true}
+                  commandtrait:
+                    commands:
+                      '0': {command: 'give <p> minecraft:torch 1', hand: RIGHT}
+            """;
+
+    @Test void patrolsWaitForTheirReviewAndGeneratedBehaviorsInstallAndRollBack() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Animus/imports"));
+        Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), PATROLS);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            String staged = joined(flow.execute(new String[0]));
+            assertTrue(staged.contains("Converted: 1 patrol routes (2 points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
+            assertTrue(staged.contains("Off until accepted: spawn 1, patrols 1, combat 0"), staged);
+            assertTrue(staged.contains("Kept, not run: nothing"), staged);
+            assertTrue(staged.contains("Commands: 1 behaviors stay denied until listed in config.toml [behaviors.actions] commandBehaviors (for example citizens:commands-5)"), staged);
+
+            String applied = joined(flow.execute(new String[]{"apply"}));
+            assertTrue(applied.contains("/animus behaviors reload"), applied);
+            assertNotNull(store.read("behaviors/citizens/text-5.json"));
+            assertNotNull(store.read("behaviors/citizens/commands-5.json"));
+            NpcDefinition watchman = npcs.find("citizens-5").orElseThrow();
+            assertEquals(List.of("citizens:text-5", "citizens:commands-5"), List.of(watchman.json().getAsJsonArray("behaviors").get(0).getAsString(), watchman.json().getAsJsonArray("behaviors").get(1).getAsString()));
+            JsonObject modules = watchman.json().getAsJsonObject("modules");
+            assertFalse(modules.getAsJsonObject("animus:navigation").get("enabled").getAsBoolean());
+            assertTrue(modules.getAsJsonObject("animus:look-close").get("enabled").getAsBoolean(), "look-close needs no review of its own");
+
+            String review = joined(flow.execute(new String[]{"review"}));
+            assertTrue(review.contains("patrols: 1 waiting"), review);
+            assertTrue(review.contains("Commands: 1 behaviors stay denied"), review);
+
+            String spawn = joined(flow.execute(new String[]{"accept", "spawn"}));
+            assertTrue(spawn.contains("spawn 1"), spawn);
+            assertFalse(npcs.find("citizens-5").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:navigation").get("enabled").getAsBoolean(),
+                    "spawning leaves the patrol off");
+            String patrols = joined(flow.execute(new String[]{"accept", "patrols"}));
+            assertTrue(patrols.contains("patrols 1"), patrols);
+            JsonObject navigation = npcs.find("citizens-5").orElseThrow().json().getAsJsonObject("modules").getAsJsonObject("animus:navigation");
+            assertTrue(navigation.get("enabled").getAsBoolean() && navigation.get("reviewAccepted").getAsBoolean());
+
+            flow.execute(new String[]{"rollback"});
+            assertTrue(npcs.all().isEmpty());
+            assertNull(store.read("behaviors/citizens/text-5.json"));
+            assertNull(store.read("behaviors/citizens/commands-5.json"));
         }
     }
 }

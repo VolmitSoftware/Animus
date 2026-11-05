@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000303",
+  "id": "citizens-3",
+  "group": "town-r0_0",
+  "name": "Scribe",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "5d097b7bfff0b0e64d7c1ee6fbcddb4b26539d03c2e7b482cb14c1f031197c5a",
+    "citizensId": 3,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "town",
+    "x": 5.0,
+    "y": 64.0,
+    "z": 5.0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "behaviors": [
+    "citizens:text-3",
+    "citizens:commands-3"
+  ],
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "town",
+        "x": 5.0,
+        "y": 64.0,
+        "z": 5.0
+      },
+      "text": {
+        "text": [
+          "Welcome.",
+          "Quiet, please."
+        ]
+      },
+      "commandtrait": {
+        "executionMode": "CYCLE",
+        "commands": {
+          "0": {
+            "command": "/give <p> minecraft:paper 1",
+            "hand": "RIGHT",
+            "cooldown": 10,
+            "permissions": {
+              "0": "town.scribe"
+            }
+          },
+          "1": {
+            "command": "say <npc> stamps a letter",
+            "hand": "BOTH",
+            "player": true,
+            "delay": 20
+          },
+          "2": {
+            "command": "spawn",
+            "hand": "SHIFT_RIGHT",
+            "player": true
+          },
+          "3": {
+            "command": "eco give <p> 5",
+            "hand": "LEFT",
+            "cost": 10.0
+          },
+          "4": {
+            "command": "heal <p>",
+            "hand": "LEFT",
+            "player": true,
+            "op": true
+          }
+        }
+      }
+    }
+  }
+}

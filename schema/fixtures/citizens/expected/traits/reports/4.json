@@ -3,6 +3,7 @@
   "presentationWarnings": [
     "/traits/sneak: sitting is shown instead of sneaking"
   ],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",

@@ -6,6 +6,7 @@
     "/traits/hologramtrait/lines/1: line has no text; kept for review",
     "/traits/hologramtrait: line margins, line height, view ranges and renderer settings are kept for review; lines use uniform spacing"
   ],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",

@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:text-2",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-quest-state",
+          "arguments": {
+            "name": "text-2",
+            "scope": "npc",
+            "random": 2
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "text-2",
+            "scope": "npc",
+            "equals": 0
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "&eHear ye, {player_name}!"
+            }
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "text-2",
+            "scope": "npc",
+            "equals": 1
+          },
+          "then": {
+            "type": "sequence",
+            "steps": [
+              {
+                "type": "action",
+                "capability": "animus:say",
+                "arguments": {
+                  "text": "Market opens at dawn."
+                }
+              },
+              {
+                "type": "action",
+                "capability": "animus:say",
+                "arguments": {
+                  "text": "Bring coin."
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 6.0,
+      "cooldownTicks": 200
+    }
+  ]
+}
