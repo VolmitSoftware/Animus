@@ -153,6 +153,41 @@ class CitizensDropInTest {
         }
     }
 
+    @Test void reviewAndAcceptSayWhenMoreGuardsAreAcceptedThanMayFightAtOnce() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Animus/imports"));
+        Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), """
+                npc:
+                  '1':
+                    uuid: 00000000-0000-0000-0000-000000000011
+                    name: North
+                    traits:
+                      type: PLAYER
+                      spawned: true
+                      location: {world: world, x: 1, y: 64, z: 1}
+                      sentinel: {health: 20, targets: [MONSTERS]}
+                  '2':
+                    uuid: 00000000-0000-0000-0000-000000000012
+                    name: South
+                    traits:
+                      type: PLAYER
+                      spawned: true
+                      location: {world: world, x: 9, y: 64, z: 9}
+                      sentinel: {health: 20, targets: [MONSTERS]}
+                """);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs).combatLimit(1);
+            flow.execute(new String[0]);
+            flow.execute(new String[]{"apply"});
+            String review = joined(flow.execute(new String[]{"review"}));
+            assertTrue(review.contains("Combat capacity: 2 guards; at most 1 fight or scan at once ([combat] maximumNpcs)"), review);
+            String accepted = joined(flow.execute(new String[]{"accept", "combat"}));
+            assertTrue(accepted.contains("Combat: 2 guards accepted; at most 1 fight or scan at once ([combat] maximumNpcs)"), accepted);
+            String roomy = joined(dropIn(store, npcs).combatLimit(256).execute(new String[]{"review"}));
+            assertFalse(roomy.contains("fight or scan at once"), roomy);
+        }
+    }
+
     @Test void worldMappingsAndModesPassThroughToTheReviewedPlan() throws Exception {
         Files.createDirectories(root.resolve("plugins/Animus/imports"));
         Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), SAVES);

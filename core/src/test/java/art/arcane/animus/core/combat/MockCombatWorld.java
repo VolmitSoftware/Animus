@@ -34,7 +34,8 @@ class MockCombatWorld implements CombatWorld {
     final Map<UUID, RangedWeapon> launched = new HashMap<>();
     final Set<String> permissions = new HashSet<>();
     int experience, realScans, npcScans, helperLaunches, stops, teleports, lineChecks;
-    boolean blocked, unavailableTerrain, walkInstantly, refuseHelpers;
+    boolean blocked, unavailableTerrain, walkInstantly, refuseHelpers, playersAway;
+    int playerChecks;
     MoveStatus moveStatus = MoveStatus.ACCEPTED;
     DamageStatus realStatus = DamageStatus.APPLIED;
     double yaw;
@@ -90,6 +91,7 @@ class MockCombatWorld implements CombatWorld {
         }
         return found;
     }
+    @Override public boolean playersNear(WorldPosition center, double radius) { playerChecks++; return !playersAway; }
     @Override public SpatialNpcIndex.Scan nearbyNpcs(WorldPosition center, double radius, SpatialNpcIndex.Cursor cursor, SpatialNpcIndex.Budget budget) {
         npcScans++;
         return index.scan(new SpatialNpcIndex.Query(center, radius), cursor, budget, chunk -> true);

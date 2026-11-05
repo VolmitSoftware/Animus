@@ -39,6 +39,7 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
 
     @Override public Optional<VirtualNpcState.Snapshot> npc(UUID npc) { return living.combatant(npc).map(NpcRuntime.ActiveNpc::state); }
     @Override public String npcName(UUID npc) { return living.combatant(npc).map(NpcRuntime.ActiveNpc::name).orElse(""); }
+    @Override public boolean playersNear(WorldPosition center, double radius) { return !living.players().ownedNear(center, radius, 1).isEmpty(); }
     @Override public SpatialNpcIndex.Scan nearbyNpcs(WorldPosition center, double radius, SpatialNpcIndex.Cursor cursor, SpatialNpcIndex.Budget budget) {
         return living.scanNpcs(center, radius, cursor, budget);
     }

@@ -49,6 +49,11 @@ final class CombatBrain {
     private long progressAt;
     private long lastGuarded = Long.MIN_VALUE / 2;
     private boolean stallReported;
+    /** Whether the NPC holds one of the engine's active slots, waits for one, or neither. */
+    enum Slot { NONE, WAITING, ACTIVE }
+    /** Extra blocks beyond the scan radius in which a player keeps the NPC awake, about one sleep of running. */
+    private static final double WAKE_MARGIN = 16;
+    private Slot slot = Slot.NONE;
     private CombatState state = CombatState.IDLE;
     private TargetRef target;
     private TargetRef threat;
@@ -111,6 +116,8 @@ final class CombatBrain {
     SpatialNpcIndex.Cursor npcCursor() { return npcCursor; }
     void npcCursor(SpatialNpcIndex.Cursor cursor) { npcCursor = cursor; }
     void retire() { retired = true; }
+    Slot slot() { return slot; }
+    void slot(Slot slot) { this.slot = slot; }
     boolean awaitsTarget() { return target == null && !disengaged && state != CombatState.DEAD; }
     double meleeDamage() { return meleeDamage; }
     double rangedDamage() { return rangedDamage; }
@@ -135,9 +142,27 @@ final class CombatBrain {
         long idle = engine.budgets().idleSleepTicks();
         if (current.isEmpty()) return idle;
         VirtualNpcState.Snapshot self = current.get();
-        if (self.health() == 0) return updateDead(now, self);
-        if (!self.active()) return idle;
+        if (self.health() == 0) { engine.vacate(this); return updateDead(now, self); }
+        if (!self.active()) { engine.vacate(this); return idle; }
         heal(now, self);
+        boolean engaged = engaged();
+        if (!engaged && (disengaged || !engine.playersNear(self.position(), searchRadius() + WAKE_MARGIN))) {
+            // Nothing to fight and nobody to see it: sleep without scanning and without a slot.
+            engine.vacate(this);
+            if (!disengaged) return idle;
+        } else if (!engine.claim(this)) return idle;
+        long next = turn(now, self);
+        if (!engaged()) engine.yieldTurn(this);
+        return next;
+    }
+
+    private boolean engaged() { return target != null || threat != null || state == CombatState.RETURNING; }
+    private double searchRadius() {
+        double radius = Math.max(scanRange(), settings.avoids().empty() ? 0 : settings.avoidance().range());
+        return settings.greetings().enabled() ? Math.max(radius, settings.greetings().range() + 1) : radius;
+    }
+
+    private long turn(long now, VirtualNpcState.Snapshot self) {
         if (alertPending && target != null) {
             alertPending = false;
             engine.alertSquad(this, self, target);
@@ -156,9 +181,7 @@ final class CombatBrain {
         long interval = settings.targeting().scanIntervalTicks();
         if (!disengaged && now >= nextScan) {
             if (!engine.takeScan()) return 1;
-            double radius = Math.max(scanRange(), settings.avoids().empty() ? 0 : settings.avoidance().range());
-            if (settings.greetings().enabled()) radius = Math.max(radius, settings.greetings().range() + 1);
-            lastSeen = engine.scan(this, self.position(), radius);
+            lastSeen = engine.scan(this, self.position(), searchRadius());
             if (lastSeen.isEmpty()) backoff = Math.min(Math.max(interval, backoff * 2), Math.max(interval, engine.budgets().idleSleepTicks()));
             else backoff = 0;
             nextScan = now + (backoff > 0 ? backoff : interval);

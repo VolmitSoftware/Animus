@@ -49,7 +49,13 @@ public final class CitizensDropIn {
     private final NpcRepository npcs;
     private final Host host;
 
+    /** {@code [combat] maximumNpcs}, so review and accept can say when more guards are accepted than may fight at once; 0 when unknown. */
+    private int combatLimit;
+
     public CitizensDropIn(DocumentStore store, NpcRepository npcs, Host host) { this.store = store; this.npcs = npcs; this.host = host; }
+
+    /** Names the server's combat limit for review and accept. */
+    public CitizensDropIn combatLimit(int limit) { combatLimit = limit; return this; }
 
     /** The Citizens save first found among imports/saves.yml, imports/inbox/saves.yml and a left-over plugins/Citizens/saves.yml. */
     public Sources find() throws IOException {
@@ -322,6 +328,9 @@ public final class CitizensDropIn {
                 case "shops" -> " (dtlTraders and Shopkeepers shops in animus:shop)";
                 default -> " (Builder sections in animus:builder; builds still start with /animus build start)";
             });
+        int guards = guards(imported(state), false);
+        if (combatLimit > 0 && guards > combatLimit)
+            lines.add("Combat capacity: " + guards + " guards; at most " + combatLimit + " fight or scan at once ([combat] maximumNpcs). The others take turns, and guards with no player near sleep");
         Map<String, Integer> preserved = preserved(state);
         lines.add("Kept but not run: " + (preserved.isEmpty() ? "nothing" : counts(preserved)));
         commandLine(imported(state).stream().map(NpcDefinition::json).toList()).ifPresent(lines::add);
@@ -373,6 +382,10 @@ public final class CitizensDropIn {
             lines.add("Accepted " + String.join(", ", accepted.entrySet().stream().map((Map.Entry<String, Integer> entry) -> entry.getKey() + " " + entry.getValue()).toList())
                     + " on " + changed.size() + " NPCs; transaction " + transaction);
             if (!errors.isEmpty()) lines.add("Definition problems after reload: " + String.join("; ", errors));
+            int guards = guards(imported(state), true);
+            if (accepted.getOrDefault("combat", 0) > 0 && combatLimit > 0 && guards > combatLimit)
+                lines.add("Combat: " + guards + " guards accepted; at most " + combatLimit + " fight or scan at once ([combat] maximumNpcs). "
+                        + "The others wait their turn and guards with no player near sleep; see /animus combat status");
         }
         problems.stream().limit(10).forEach((String problem) -> lines.add("Not accepted: " + problem));
         if (problems.size() > 10) lines.add((problems.size() - 10) + " more not accepted");
@@ -433,6 +446,17 @@ public final class CitizensDropIn {
         if (state.has("transactions")) state.getAsJsonArray("transactions").forEach(transactions::add);
         status.add("transactions", transactions);
         return status;
+    }
+
+    /** Imported NPCs with converted combat; with {@code accepted}, only those whose combat review is accepted. */
+    private static int guards(List<NpcDefinition> definitions, boolean accepted) {
+        int count = 0;
+        for (NpcDefinition definition : definitions) {
+            JsonObject modules = definition.json().has("modules") && definition.json().get("modules").isJsonObject() ? definition.json().getAsJsonObject("modules") : null;
+            if (modules == null || !modules.has("animus:combat") || !modules.get("animus:combat").isJsonObject()) continue;
+            if (!accepted || !unreviewed(modules, "animus:combat")) count++;
+        }
+        return count;
     }
 
     /** True when the category's setting on this imported definition is still off and would be turned on by accepting it. */

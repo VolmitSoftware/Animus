@@ -646,12 +646,70 @@ class CombatEngineTest {
         engine().tick();
         assertEquals(1, world.moves.size());
     }
-    @Test void registrationIsBoundedAndReplacesSettingsInPlace() {
+    @Test void registrationIsNotLimitedByTheActiveLimitAndReplacesSettingsInPlace() {
         budgets = new CombatBudgets(true, 1, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
         UUID npc = combatant(0, 0, HUNT_MONSTERS);
         assertTrue(engine().register(npc, "same", settings("{}"), CombatLoadout.NONE), "Replacing an existing NPC does not need capacity");
-        assertFalse(engine().register(world.npc(1, 1, 20), "other", settings("{}"), CombatLoadout.NONE));
-        assertEquals(1, engine().size());
+        assertTrue(engine().register(world.npc(1, 1, 20), "other", settings("{}"), CombatLoadout.NONE), "Every guard registers; the limit only bounds active ones");
+        assertTrue(engine().register(world.npc(2, 2, 20), "third", settings("{}"), CombatLoadout.NONE));
+        assertEquals(3, engine().size());
+    }
+    @Test void guardsWithNoPlayerNearSleepWithoutScanningOrHoldingASlot() {
+        budgets = new CombatBudgets(true, 1, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
+        world.playersAway = true;
+        UUID first = combatant(0, 0, HUNT_MONSTERS);
+        UUID second = combatant(100, 0, HUNT_MONSTERS);
+        world.monster("minecraft:zombie", 2, 0);
+        world.monster("minecraft:zombie", 102, 0);
+        run(5);
+        assertEquals(0, world.realScans, "A guard with no player near does not scan");
+        assertEquals(0, engine().activeCount());
+        assertEquals(0, engine().waitingCount());
+        assertTrue(status(first).target().isEmpty());
+        assertTrue(status(second).target().isEmpty());
+        world.playersAway = false;
+        run(45);
+        assertTrue(status(first).target().isPresent() || status(second).target().isPresent(), "A player arriving wakes the guards");
+    }
+    @Test void guardsBeyondTheActiveLimitWaitTheirTurnFairlyAndPressureIsLoggedOnce() {
+        budgets = new CombatBudgets(true, 1, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
+        UUID first = combatant(0, 0, HUNT_MONSTERS);
+        UUID second = combatant(100, 0, HUNT_MONSTERS);
+        UUID third = combatant(200, 0, HUNT_MONSTERS);
+        UUID zombie = world.monster("minecraft:zombie", 2, 0);
+        world.monster("minecraft:zombie", 102, 0);
+        world.monster("minecraft:zombie", 202, 0);
+        run(3);
+        assertTrue(status(first).target().isPresent());
+        assertTrue(status(second).target().isEmpty());
+        assertTrue(status(third).target().isEmpty());
+        assertEquals(1, engine().activeCount());
+        assertEquals(2, engine().waitingCount());
+        assertEquals(1, diagnostics.stream().filter((String line) -> line.contains("Combat capacity reached")).count());
+        assertEquals("fighting-or-scanning=1/1 | waiting=2 | sleeping=0 | peak-waiting=2", engine().capacity());
+        world.real.remove(zombie);
+        run(200);
+        assertTrue(status(second).target().isPresent(), "The first guard waiting gets the freed slot");
+        assertTrue(status(third).target().isEmpty(), "The later guard keeps waiting");
+        assertEquals(1, diagnostics.stream().filter((String line) -> line.contains("Combat capacity reached")).count(), "Pressure is logged once while it lasts");
+        engine().unregister(second);
+        run(3);
+        assertTrue(status(third).target().isPresent());
+        engine().unregister(third);
+        engine().unregister(first);
+        run(3);
+        assertEquals(0, engine().activeCount());
+        assertEquals(1, diagnostics.stream().filter((String line) -> line.contains("Combat capacity free")).count());
+    }
+    @Test void idleScanningGuardsTakeTurnsWhenOthersWait() {
+        budgets = new CombatBudgets(true, 1, 16, 4, 32, 32, 8, 2, 64, 4, 32, 100, 40, 8, 100, 8);
+        combatant(0, 0, HUNT_MONSTERS);
+        combatant(100, 0, HUNT_MONSTERS);
+        UUID late = combatant(200, 0, HUNT_MONSTERS);
+        run(3);
+        world.monster("minecraft:zombie", 202, 0);
+        run(200);
+        assertTrue(status(late).target().isPresent(), "A guard that only scans gives its slot to the next waiting guard");
     }
     @Test void targetsMustBeInTheSameWorld() {
         UUID npc = combatant(0, 0, HUNT_MONSTERS);
