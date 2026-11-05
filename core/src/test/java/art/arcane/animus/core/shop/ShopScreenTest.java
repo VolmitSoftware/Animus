@@ -2,7 +2,7 @@ package art.arcane.animus.core.shop;
 
 import art.arcane.animus.core.config.ShopSettings;
 import art.arcane.animus.core.gui.GuiModel.Click;
-import art.arcane.animus.core.gui.GuiText;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.gui.MockScreenHost;
 import art.arcane.animus.core.gui.MockScreenHost.Player;
 import art.arcane.animus.core.gui.ScreenManager;
@@ -49,9 +49,9 @@ class ShopScreenTest {
 
     @Test void theFirstPageShowsItsEntriesAndControls() {
         assertTrue(open(parse(BAKERY)));
-        assertEquals("Bakery (1/2)", GuiText.plain(alex.frame.title()), "the staff page is hidden without its permission");
-        assertEquals("Fresh bread", GuiText.plain(alex.frame.items().get(10).name().orElseThrow()));
-        assertTrue(alex.frame.items().get(10).lore().stream().map(GuiText::plain).anyMatch((String line) -> line.equals("Price: 12")));
+        assertEquals("Bakery (1/2)", RichText.plain(alex.frame.title()), "the staff page is hidden without its permission");
+        assertEquals("Fresh bread", RichText.plain(alex.frame.items().get(10).name().orElseThrow()));
+        assertTrue(alex.frame.items().get(10).lore().stream().map(RichText::plain).anyMatch((String line) -> line.equals("Price: 12")));
         assertEquals("minecraft:barrier", alex.frame.items().get(22).item().id());
         assertEquals("minecraft:arrow", alex.frame.items().get(24).item().id());
         assertNull(alex.frame.items().get(20), "no previous page on the first page");
@@ -83,16 +83,16 @@ class ShopScreenTest {
         assertEquals("minecraft:wheat", alex.frame.items().get(10).item().id());
         click(26, Click.LEFT);
         click(24, Click.LEFT);
-        assertEquals("Bakery (2/2)", GuiText.plain(alex.frame.title()));
+        assertEquals("Bakery (2/2)", RichText.plain(alex.frame.title()));
         assertEquals("minecraft:cake", alex.frame.items().get(0).item().id());
         click(20, Click.LEFT);
-        assertEquals("Bakery (1/2)", GuiText.plain(alex.frame.title()));
+        assertEquals("Bakery (1/2)", RichText.plain(alex.frame.title()));
     }
 
     @Test void pagePermissionsRevealPages() {
         alex.permissions.add("town.staff");
         open(parse(BAKERY));
-        assertEquals("Bakery (1/3)", GuiText.plain(alex.frame.title()));
+        assertEquals("Bakery (1/3)", RichText.plain(alex.frame.title()));
     }
 
     @Test void shopPermissionsAreCheckedBeforeOpening() {
@@ -112,9 +112,9 @@ class ShopScreenTest {
         open(parse(BAKERY.replace("\"modes\"", "\"confirm\": true, \"modes\"")));
         click(10, Click.LEFT);
         assertEquals(0, alex.inventory.total("minecraft:bread"));
-        assertEquals("Confirm purchase", GuiText.plain(alex.frame.title()));
+        assertEquals("Confirm purchase", RichText.plain(alex.frame.title()));
         click(15, Click.LEFT);
-        assertEquals("Bakery (1/2)", GuiText.plain(alex.frame.title()));
+        assertEquals("Bakery (1/2)", RichText.plain(alex.frame.title()));
         click(10, Click.LEFT);
         click(11, Click.LEFT);
         assertEquals(4, alex.inventory.total("minecraft:bread"));
@@ -150,7 +150,7 @@ class ShopScreenTest {
         String limited = BAKERY.replace("\"price\": 12,", "\"price\": 12, \"limit\": {\"perPlayer\": 8, \"resetSeconds\": 86400},");
         open(parse(limited));
         click(10, Click.LEFT);
-        List<String> lore = alex.frame.items().get(10).lore().stream().map(GuiText::plain).toList();
+        List<String> lore = alex.frame.items().get(10).lore().stream().map(RichText::plain).toList();
         assertTrue(lore.contains("Limit: 4/8"), lore.toString());
         assertTrue(lore.contains("Resets every 1d"), lore.toString());
     }

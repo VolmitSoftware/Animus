@@ -1724,11 +1724,11 @@ async function packs() {
     await owner.tp(-7.5, 64, 3);
     const wave = await owner.wait(e => e.event === 'particle' && e.particle === 'minecraft:happy_villager', from, 6000);
     const clickAt = await click(owner, greeter);
-    await owner.chat('Welcome, traveller. The market is to the north.', clickAt);
+    await owner.chat('Welcome, traveller! The market is to the north.', clickAt);
     await owner.wait(e => e.event === 'sound' && e.sound === 'minecraft:entity.villager.ambient', clickAt, 3000);
     await delay(2200);
     const again = await click(owner, greeter);
-    await owner.chat('Good to see you again.', again);
+    await owner.chat('Good to see you again, traveller!', again);
     return `wave particles=${wave.count}`;
   });
   const innkeeper = uuidOf('innkeeper');
@@ -1736,7 +1736,7 @@ async function packs() {
     await owner.tp(-7.5, 64, 11);
     let from = await click(owner, innkeeper);
     const first = await choose(owner, from, 'rumours');
-    assert.equal(first.prompt.clicks.length, 3, JSON.stringify(first.prompt.clicks));
+    assert.equal(new Set(first.prompt.clicks).size, 3, JSON.stringify(first.prompt.clicks));
     await owner.chat('Lights in the old mine, three nights running.', first.after);
     const more = await choose(owner, first.after, 'yes');
     await owner.chat('The miners left in a hurry.', more.after);
@@ -1744,10 +1744,10 @@ async function packs() {
     from = await click(owner, innkeeper);
     const asked = await owner.chat('Back again?', from);
     const back = await owner.wait(e => e.event === 'chat' && e.sequence > asked.sequence && e.clicks?.length, from);
-    assert.equal(back.clicks.length, 2, JSON.stringify(back.clicks));
+    assert.equal(new Set(back.clicks).size, 2, JSON.stringify(back.clicks));
     const room = await choose(owner, from, 'room');
     await owner.chat('Upstairs, second door.', room.after);
-    return `first prompt options=${first.prompt.clicks.length}, after rumour=${back.clicks.length}`;
+    return `first prompt options=${new Set(first.prompt.clicks).size}, after rumour=${new Set(back.clicks).size}`;
   });
   const giver = uuidOf('quest-giver'), master = uuidOf('harbour-master');
   await check('quest accepted, stage kept across restart', async () => {
@@ -1788,7 +1788,7 @@ async function packs() {
     const file = path.join(data, 'packs/greeter/behaviors/greeter/greeter.json');
     const document = JSON.parse(readFileSync(file, 'utf8'));
     document.revision += 1;
-    writeFileSync(file, JSON.stringify(document, null, 2).replace('Good to see you again.', 'Back so soon?') + '\n');
+    writeFileSync(file, JSON.stringify(document, null, 2).replace('Good to see you again, &etraveller&f!', 'Back so soon?') + '\n');
     const reload = await server.reload();
     await owner.chat('All quiet.', from, 90_000);
     const seconds = ((Date.now() - started) / 1000).toFixed(0);
@@ -1849,20 +1849,29 @@ async function packs() {
     return `${greeting.slice(0, 40)}; ${fought.s}; back at ${home.n.match(/position=[^;]*/)?.[0]}`;
   });
   const bodyguard = uuidOf('bodyguard');
-  await check('bodyguard hired, follows, defends, then dismissed', async () => {
+  await check('bodyguard hired for emeralds, follows, defends, then dismissed', async () => {
     await gamemode('survival');
+    await server.cmd(`clear ${OWNER.name} minecraft:emerald`, /Removed|No items/);
+    await server.cmd(`give ${OWNER.name} minecraft:emerald 5`, /Gave/);
     await owner.tp(-15.5, 64, 11.5);
     let from = await click(owner, bodyguard);
-    const hired = await choose(owner, from, 'hire');
-    await owner.chat('Then I will stand ready. Lead the way.', hired.after);
+    let window = await windowOpened(owner, from);
+    assert.equal(window.items.find(i => i.slot === 20)?.item, 'minecraft:lime_concrete', JSON.stringify(window.items));
+    from = await clickSlot(owner, window.container, 20);
+    await owner.chat(/Hired Bodyguard for 30 minutes/, from, 8000);
+    assert.equal(await itemCount(OWNER.name, 'minecraft:emerald'), 0, 'the hire took the five emeralds');
+    // Walk off: the guard replans as the charge moves and teleports beside it past catchUpDistance.
+    await owner.walk(-15.5, 4);
     await owner.tp(14, 64, 14);
     const followed = await until(async () => { const n = await inspect('bodyguard'); return { ok: Math.hypot(n.x - 14, n.z - 14) < 6, n: n.line.slice(0, 160) }; }, 30000, 'bodyguard did not follow');
     const attacker = await summon(22, 'minecraft:zombie', 18, 64, 14, sturdy(20, true));
     const defended = await until(async () => ({ ok: await entityCount('@e[type=zombie,nbt={UUID:[I;22,0,0,1]}]') === 0 }), 40000, 'bodyguard did not kill the attacker');
     await delay(2200);
     from = await click(owner, bodyguard);
-    const dismissed = await choose(owner, from, 'dismiss');
-    await owner.chat('Stay safe out there.', dismissed.after);
+    window = await windowOpened(owner, from);
+    assert.equal(window.items.find(i => i.slot === 22)?.item, 'minecraft:red_concrete', JSON.stringify(window.items));
+    from = await clickSlot(owner, window.container, 22);
+    await owner.chat(/is dismissed/, from, 8000);
     const status = await combatOf('bodyguard');
     // Sampled after dismissal: a follow step that was already under way may land before it.
     const near = await inspect('bodyguard');

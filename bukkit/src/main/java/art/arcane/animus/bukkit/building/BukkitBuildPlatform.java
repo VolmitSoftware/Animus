@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.building;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.bukkit.navigation.BukkitTerrain;
 import art.arcane.animus.core.building.BlockState;
 import art.arcane.animus.core.building.BuildService;
@@ -109,7 +110,7 @@ public final class BukkitBuildPlatform implements BuildService.Platform<Player, 
         else stack.setAmount(left);
     }
 
-    @Override public void tell(Player player, String message) { player.sendMessage(message); }
+    @Override public void tell(Player player, String message) { player.sendMessage(RichText.colorize(message)); }
 
     private Block loaded(String world, BlockPos at) {
         World loaded = terrain.world(world);

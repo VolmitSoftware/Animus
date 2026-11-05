@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.inventory.Economy;
 import art.arcane.animus.core.inventory.ItemOps;
 import art.arcane.animus.core.inventory.MockInventory;
@@ -55,19 +56,19 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
         if (window != null && window == player.window) { player.window = null; player.frame = null; player.closed++; }
     }
 
-    @Override public void message(Player player, String text) { player.messages.add(GuiText.plain(text)); }
-    @Override public void actionBar(Player player, String text) { player.messages.add("bar:" + GuiText.plain(text)); }
-    @Override public void title(Player player, String title, String subtitle, int fadeIn, int stay, int fadeOut) { player.messages.add("title:" + GuiText.plain(title)); }
+    @Override public void message(Player player, String text) { player.messages.add(RichText.plain(text)); }
+    @Override public void actionBar(Player player, String text) { player.messages.add("bar:" + RichText.plain(text)); }
+    @Override public void title(Player player, String title, String subtitle, int fadeIn, int stay, int fadeOut) { player.messages.add("title:" + RichText.plain(title)); }
     @Override public void sound(Player player, String sound, String source, float volume, float pitch) { player.messages.add("sound:" + sound); }
     @Override public void command(Optional<Player> player, String command) {
         if (player.isPresent()) player.get().commands.add(command); else console.add(command);
     }
-    @Override public void broadcast(String text) { broadcasts.add(GuiText.plain(text)); }
+    @Override public void broadcast(String text) { broadcasts.add(RichText.plain(text)); }
     @Override public TradeInventory<Stack> inventory(Player player) { return player.inventory; }
     @Override public ItemOps<Stack> items() { return MockInventory.OPS; }
     @Override public Optional<Stack> stack(NpcItem item, Optional<String> name, List<String> lore, List<String> errors) {
         if (item.id().equals("minecraft:missing")) { errors.add("unknown item"); return Optional.empty(); }
-        return Optional.of(new Stack(item.id(), item.count(), name.map(GuiText::plain).orElse(""), item.components().orElse("")));
+        return Optional.of(new Stack(item.id(), item.count(), name.map(RichText::plain).orElse(""), item.components().orElse("")));
     }
     @Override public void drop(Player player, Stack stack) { player.dropped.add(stack); }
     @Override public Economy economy() { return economy; }
@@ -75,7 +76,7 @@ public final class MockScreenHost implements ScreenHost<MockScreenHost.Player, S
     /** The slot of the first item whose plain name contains the text. */
     public static int slot(Player player, String name) {
         for (Map.Entry<Integer, ScreenFrame.Item> item : player.frame.items().entrySet())
-            if (item.getValue().name().map(GuiText::plain).orElse("").contains(name)) return item.getKey();
+            if (item.getValue().name().map(RichText::plain).orElse("").contains(name)) return item.getKey();
         throw new AssertionError("no item named " + name + " in " + player.frame.items());
     }
 }

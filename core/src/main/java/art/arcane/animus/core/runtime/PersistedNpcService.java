@@ -312,12 +312,15 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             if (body != null && body.value == value && body.bound && !body.retired) packets.swing(viewer.player, body.body);
         }
     }
-    /** Moves an active NPC at once onto clear, supported, loaded ground in its own world; false leaves it in place. */
+    /**
+     * Moves an active NPC at once onto clear, supported, loaded ground, in its own world or another loaded one; false
+     * leaves it in place. An NPC that carries a rider or rides another body stays where it is.
+     */
     public boolean relocate(String id, WorldPosition destination) {
         Optional<CombatBinding> binding = combat(id);
-        if (binding.isEmpty() || !binding.get().state().snapshot().active()) return false;
-        WorldPosition from = binding.get().state().snapshot().position();
-        if (!from.world().equals(destination.world()) || !host.worldLoaded(destination.world())) return false;
+        if (binding.isEmpty() || !binding.get().state().snapshot().active() || !host.worldLoaded(destination.world())) return false;
+        UUID uuid = binding.get().state().snapshot().npcId();
+        if (mountRuntime.vehicleOf(id) != null || riders.riderOf(uuid) != null || mountRuntime.carries(id)) return false;
         int chunkX = Math.floorDiv((int) Math.floor(destination.point().x()), 16), chunkZ = Math.floorDiv((int) Math.floor(destination.point().z()), 16);
         if (!host.chunkLoaded(destination.world(), chunkX, chunkZ)) return false;
         Hitbox box = binding.get().state().snapshot().bounds();

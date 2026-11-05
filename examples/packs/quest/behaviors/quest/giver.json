@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 2,
   "id": "quest:giver",
   "entry": "main",
   "routines": {
@@ -26,15 +26,18 @@
             "capability": "animus:choices",
             "arguments": {
               "id": "offer",
-              "prompt": "Could you carry this letter to the harbour master?",
+              "prompt": "Could you carry this &eletter&f to the &bharbour master&f?",
               "options": [
                 {
                   "id": "accept",
-                  "text": "I will take it"
+                  "text": "I will take it",
+                  "color": "green",
+                  "hover": "&7Accept the delivery quest\n&8Reward: the giver's thanks"
                 },
                 {
                   "id": "decline",
-                  "text": "Not today"
+                  "text": "Not today",
+                  "hover": "&7Maybe some other day"
                 }
               ]
             }
@@ -50,7 +53,7 @@
               "type": "action",
               "capability": "animus:say",
               "arguments": {
-                "text": "The harbour master is still waiting for that letter."
+                "text": "The &bharbour master&f is still waiting for that &eletter&f."
               }
             },
             "else": {
@@ -67,7 +70,7 @@
                     "type": "action",
                     "capability": "animus:say",
                     "arguments": {
-                      "text": "Delivered! Thank you. Come back any time."
+                      "text": "&a✔ Delivered!&f Thank you. Come back any time."
                     }
                   },
                   {
@@ -91,7 +94,7 @@
                 "type": "action",
                 "capability": "animus:say",
                 "arguments": {
-                  "text": "You have done enough for me, friend."
+                  "text": "You have done enough for me, &efriend&f."
                 }
               }
             }
@@ -114,7 +117,7 @@
           "type": "action",
           "capability": "animus:say",
           "arguments": {
-            "text": "Thank you. The harbour master is by the docks."
+            "text": "Thank you. The &bharbour master&f is by the &3docks&f."
           }
         }
       ]
@@ -123,7 +126,7 @@
       "type": "action",
       "capability": "animus:say",
       "arguments": {
-        "text": "Another time, then."
+        "text": "&7Another time, then."
       }
     }
   },

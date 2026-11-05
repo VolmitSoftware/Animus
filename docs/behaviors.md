@@ -233,8 +233,8 @@ This greeter faces the player who started it, asks a question, and records that 
 
 | Capability | Arguments | Result |
 | --- | --- | --- |
-| `animus:say` | `text` (up to 1,024 characters), optional `audience`, `radius` | Sends `Name: text`. |
-| `animus:choices` | `id`, `prompt`, `options` (1-8 of `id` and `text`), optional `lifetimeSeconds` (1-600) | Shows clickable options to the triggering player. Completes when shown and does not wait for the answer. |
+| `animus:say` | `text` (up to 1,024 characters), optional `audience`, `radius` | Sends `Name » text`. Text is [formatted](#text-formatting). |
+| `animus:choices` | `id`, `prompt`, `options` (1-8 of `id` and `text`, each with optional `color`, `hover`, `style`), optional `lifetimeSeconds` (1-600) | Shows the prompt and a row of coloured answer buttons to the triggering player. Completes when shown and does not wait for the answer. |
 | `animus:command` | `command` (no leading slash), optional `as`: `console` (default) or `player` | Runs the command. Each `{player}` becomes the triggering player's UUID, which vanilla selectors accept, such as `clear {player} minecraft:emerald 1`. Requires the allow-list below. |
 | `animus:navigate` | Either `x`, `y`, `z` with optional `mode` (`walk`, `swim`, `fly`) and `speed` (1-5), or `route`. Optional `wait`, and with it `timeoutTicks` (20-12,000, default 1,200). | Starts a route or follows `routes/<route>.json`. Completes when requested unless `wait` is true; see [walking a patrol](#walking-a-patrol). The limits in [the runtime guide](runtime.md) apply. |
 | `animus:stop-navigation` | None | Stops any route. Reports `stopped`. |
@@ -299,7 +299,17 @@ These are reported differently, so a problem with the file is not confused with 
 
 On Folia, actions run on the region that owns the NPC; an NPC waiting for its chunk to load refuses them as unavailable. Messages, sounds, particles, choices and commands for a player another region owns are handed to that player's scheduler and not awaited, so a rejected player command is not reported there. `nearby` audiences include only players on the NPC's region, and `animus:has-permission` and looking at a player fail with `player-in-other-region` for a player on another region. `animus:combat` is unavailable. See [persisted NPCs on Folia](folia-runtime.md).
 
+### Text formatting
+
+Everything an NPC says, every prompt and answer, combat greetings and warnings, build and shop messages, hologram lines and names use one formatter on every platform. It reads `&` colour and style codes (`&a`, `&l`), `&#RRGGBB` and `&x&R&R&G&G&B&B` hex colours, section codes (`§a`), backslash-u escapes such as `\u2764`, and the MiniMessage tags the [chest GUI](gui.md) reads: colour names (`<green>`), `<#RRGGBB>`, `<color:...>`, `<bold>`, `<italic>`, `<underlined>`, `<strikethrough>`, `<obfuscated>`, `<reset>` and their closing tags. Unicode symbols such as `❤`, `⚔` and `✔` show as written. A speaker without its own colour is shown in gold and spoken text in white.
+
 ### Dialogue choices
+
+Each answer is a bracketed button, `[ Yes ]`, with hover text. An option may set `color` (a name such as `green`, a code such as `a`, or `#RRGGBB`), `hover` (up to 256 characters; `\n` starts a new line) and `style` (`bold`, `italic`, `underlined` or `plain`). Without them, answers take green, aqua, yellow and so on in order, an answer whose id is `no`, `pass`, `cancel`, `decline`, `leave`, `later`, `goodbye` or a similar word is red, and the hover names the answer with "Click to choose this answer".
+
+```json
+{"id": "rumours", "text": "Heard any rumours?", "color": "gold", "hover": "&7Ask what the regulars whisper about", "style": "bold"}
+```
 
 Each prompt has a random single-use token. A click runs `/animus choice <token> <option>`, which any player may send and which does nothing without a matching prompt. A click is rejected unless the token is live, it comes from the player who was asked, the option exists, the NPC is still spawned and the player is within 64 blocks. Every rejection shows the same message and publishes nothing. A rejected click from the wrong player, on an unknown option or from too far away leaves the prompt open for its rightful answer. A new prompt from the same NPC to the same player replaces the earlier one.
 

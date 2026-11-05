@@ -43,6 +43,12 @@ final class RiderService<P, I> implements AutoCloseable {
         void claim();
         /** Publishes one accepted step before any packet is sent. */
         void commit(Vec3 position, float yaw);
+        /**
+         * The ride ended and its detach is written. A saddled body is steered by the rider's own client, which ignores
+         * server positions while it rides, so every viewer needs the authoritative position again; otherwise the
+         * rider's client keeps the body where it predicted it and later clicks miss the real one.
+         */
+        void released();
     }
     /** The presentation side, kept with viewer state. */
     interface Presentation<P> {
@@ -220,6 +226,7 @@ final class RiderService<P, I> implements AutoCloseable {
         ride.input.close();
         try { presentation.detach(ride.player, ride.vehicle); }
         catch (RuntimeException failure) { host.warn("Rider detach failed: " + failure.getMessage()); }
+        ride.vehicle.released();
         if (exit == Exit.RESTORE_POSITION && host.online(ride.player) && !host.dead(ride.player)) restore(ride);
         if (host.online(ride.player) && !"shift".equals(reason) && !"shutdown".equals(reason) && !"death".equals(reason) && !"offline".equals(reason))
             host.tell(ride.player, "Dismounted: " + reason);

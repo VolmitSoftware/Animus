@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.text.RichText;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -79,10 +80,10 @@ class GuiExpressionTest {
     }
 
     @Test void colourCodesAndMiniMessageBecomeSectionCodes() {
-        assertEquals("§aGreen", GuiText.colorize("&aGreen"));
-        assertEquals("§x§f§f§0§0§0§0Red", GuiText.colorize("&#FF0000Red"));
-        assertEquals("§cRed§rPlain", GuiText.colorize("<red>Red</red>Plain"));
-        assertEquals("<notatag> stays", GuiText.colorize("<notatag> stays"));
-        assertEquals("Red", GuiText.plain("<red>&lRed"));
+        assertEquals("§aGreen", RichText.colorize("&aGreen"));
+        assertEquals("§x§f§f§0§0§0§0Red", RichText.colorize("&#FF0000Red"));
+        assertEquals("§cRed§rPlain", RichText.colorize("<red>Red</red>Plain"));
+        assertEquals("<notatag> stays", RichText.colorize("<notatag> stays"));
+        assertEquals("Red", RichText.plain("<red>&lRed"));
     }
 }
