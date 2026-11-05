@@ -1,6 +1,13 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.behavior.builtin.DialogueFormat;
+import art.arcane.animus.core.runtime.PersistedNpcService;
+import art.arcane.animus.core.text.RichText;
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
+import org.bukkit.inventory.meta.BookMeta;
+import org.bukkit.inventory.meta.ItemMeta;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.ViewerPreviews;
 import art.arcane.animus.api.NpcHandle;
@@ -42,7 +49,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  * the NPC's region on Folia. Players another region owns are reached through their own scheduler, never read here.
  */
 final class BukkitBehaviorPlatform implements BehaviorPlatform {
-    private static final int MAXIMUM_AUDIENCE = 256;
+    private static final int MAXIMUM_AUDIENCE = 256, MAXIMUM_GIFT = 6400, MAXIMUM_TITLE_TICKS = 72000, MAXIMUM_BOOK_TITLE = 32, MAXIMUM_BOOK_PAGES = 100;
     private final Server server;
     private final NpcRuntime<Player, ItemStack> living;
     private final RuntimeCombatService combat;
@@ -50,9 +57,13 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
     private final Supplier<String> buildsUnavailable;
     private final Function<Runnable, AutoCloseable> ticks;
     private final Supplier<HoloService<Player, ItemStack>> guis;
+    private final BukkitOwners owners;
+    private final PersistedNpcService<Player, ItemStack> relocator;
 
+    /** {@code relocator} is the main-thread runtime that can move NPCs; null on Folia. */
     BukkitBehaviorPlatform(JavaPlugin plugin, NpcRuntime<Player, ItemStack> living, RuntimeCombatService combat, BuildService<Player, ItemStack> builds,
-                           Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<HoloService<Player, ItemStack>> guis) {
+                           Supplier<String> buildsUnavailable, Function<Runnable, AutoCloseable> ticks, Supplier<HoloService<Player, ItemStack>> guis,
+                           BukkitOwners owners, PersistedNpcService<Player, ItemStack> relocator) {
         this.guis = guis;
         server = plugin.getServer();
         this.living = living;
@@ -60,12 +71,16 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         this.builds = builds;
         this.buildsUnavailable = buildsUnavailable;
         this.ticks = ticks;
+        this.owners = owners;
+        this.relocator = relocator;
     }
 
 
     @Override public Optional<String> unavailable() { return PlatformRefusals.unavailability(living::available, living::status); }
     @Override public AutoCloseable ownerTicks(Runnable tick) { return ticks.apply(tick); }
     @Override public boolean onNpcOwner(NpcHandle npc, Runnable work, Consumer<String> refused) { return living.onOwner(npc.uuid(), work, refused); }
+    @Override public boolean onPlayerOwner(UUID player, Runnable work, Consumer<String> refused) { return owners.player(player, work, refused); }
+    @Override public boolean onGlobalOwner(Runnable work, Consumer<String> refused) { return owners.global(work, refused); }
 
     /** An offline player holds nothing; one another region owns cannot be read from here. */
     @Override public boolean hasPermission(UUID player, String node) {
@@ -296,6 +311,254 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         GuiBinding.Kind target = HoloService.kind(kind);
         java.util.Optional<CapabilityRefusal> refused = service.refusal(target);
         if (refused.isPresent()) throw refused.get();
-        return living.players().deliver(player, (Player viewer) -> service.open(viewer, target, id, java.util.Map.of(), Optional.of(npc.uuid())));
+        Optional<UUID> opener = ServerNpc.is(npc) ? Optional.empty() : Optional.of(npc.uuid());
+        return living.players().deliver(player, (Player viewer) -> service.open(viewer, target, id, java.util.Map.of(), opener));
+    }
+
+    /** Chat and console text is thread-safe to send; WORLD reads the NPC's world on its owner, or the player's in a server run. */
+    @Override public int message(NpcHandle npc, Optional<UUID> player, MessageTarget to, String text) {
+        String line = RichText.colorize(text);
+        switch (to) {
+            case CONSOLE -> { server.getConsoleSender().sendMessage(line); return 1; }
+            case ALL -> {
+                int reached = 0;
+                for (Player online : server.getOnlinePlayers()) { online.sendMessage(line); reached++; }
+                return reached;
+            }
+            case PLAYER -> {
+                Optional<Player> online = player.isEmpty() ? Optional.empty() : here(player.get());
+                online.ifPresent((Player target) -> target.sendMessage(line));
+                return online.isPresent() ? 1 : 0;
+            }
+            case WORLD -> {
+                World world;
+                if (!ServerNpc.is(npc)) world = location(requireVoice(npc)).getWorld();
+                else {
+                    Optional<Player> online = player.isEmpty() ? Optional.empty() : here(player.get());
+                    if (online.isEmpty()) return 0;
+                    world = online.get().getWorld();
+                }
+                int reached = 0;
+                for (Player viewer : world.getPlayers()) { viewer.sendMessage(line); reached++; }
+                return reached;
+            }
+            default -> throw new IllegalArgumentException("Unknown message target " + to);
+        }
+    }
+
+    @Override public int title(UUID player, Title title) {
+        Optional<Player> online = here(player);
+        online.ifPresent((Player target) -> target.sendTitle(title.title().map(RichText::colorize).orElse(""), title.subtitle().map(RichText::colorize).orElse(""),
+                ticks(title.fadeIn()), ticks(title.stay()), ticks(title.fadeOut())));
+        return online.isPresent() ? 1 : 0;
+    }
+
+    @Override public int actionbar(UUID player, String text) {
+        Optional<Player> online = here(player);
+        online.ifPresent((Player target) -> target.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(RichText.colorize(text))));
+        return online.isPresent() ? 1 : 0;
+    }
+
+    @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) {
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return 0;
+        Location at = online.get().getLocation();
+        return atPlayer(online.get(), audience, at, (Player viewer) -> viewer.playSound(at, sound.sound(), sound.volume(), sound.pitch()));
+    }
+
+    @Override public int spawnParticleAtPlayer(UUID player, Audience audience, ParticleEffect effect) {
+        Particle particle = particle(effect.particle());
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return 0;
+        Location at = online.get().getLocation().add(0, 1, 0);
+        return atPlayer(online.get(), audience, at,
+                (Player viewer) -> viewer.spawnParticle(particle, at, effect.count(), effect.spread(), effect.spread(), effect.spread()));
+    }
+
+    /** The addressed viewer wherever its owner is, or the players near the source player this owner may read. */
+    private int atPlayer(Player source, Audience audience, Location at, Consumer<Player> action) {
+        String world = at.getWorld().getUID().toString();
+        if (audience.player().isPresent()) {
+            UUID target = audience.player().get();
+            if (target.equals(source.getUniqueId())) { action.accept(source); return 1; }
+            AtomicBoolean skipped = new AtomicBoolean();
+            boolean handed = living.players().deliver(target, (Player viewer) -> {
+                if (viewer.getWorld().getUID().toString().equals(world)) action.accept(viewer);
+                else skipped.set(true);
+            });
+            return handed && !skipped.get() ? 1 : 0;
+        }
+        List<Player> nearby = living.players().ownedNear(position(at), audience.radius(), MAXIMUM_AUDIENCE);
+        for (Player viewer : nearby) action.accept(viewer);
+        return nearby.size();
+    }
+
+    /** On the player's owner. Folia teleports asynchronously, across worlds too. */
+    @Override public boolean teleportPlayer(UUID player, NpcHandle npc, Destination to) {
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return false;
+        Player target = online.get();
+        Location from = target.getLocation();
+        Location destination = switch (to) {
+            case Point point -> new Location(point.world().map(this::world).orElse(from.getWorld()), point.position().x(), point.position().y(), point.position().z(),
+                    (float) point.yaw().orElse(from.getYaw()), (float) point.pitch().orElse(from.getPitch()));
+            case ToNpc ignored -> {
+                if (ServerNpc.is(npc)) throw noNpc();
+                Location at = location(require(npc));
+                at.setYaw(from.getYaw()); at.setPitch(from.getPitch());
+                yield at;
+            }
+            case ToPlayer other -> {
+                if (!living.players().online(other.player())) throw destinationOffline();
+                Location at = living.players().owned(other.player()).orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "destination-in-other-region",
+                        "The destination player is owned by another region; teleport to a point instead")).getLocation();
+                at.setYaw(from.getYaw()); at.setPitch(from.getPitch());
+                yield at;
+            }
+        };
+        if (!owners.teleport(target, destination)) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "teleport-refused", "The server refused the teleport");
+        return true;
+    }
+
+    /** On the NPC's owner, through the main-thread runtime's relocation onto clear, supported, loaded ground. */
+    @Override public void teleportNpc(NpcHandle npc, Destination to) {
+        if (ServerNpc.is(npc)) throw noNpc();
+        if (to instanceof ToNpc) throw new CapabilityRefusal(Outcome.Status.INVALID, "teleport-to-self", "An NPC cannot be teleported to itself");
+        if (relocator == null) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "npc-teleport-unavailable",
+                "Teleporting NPCs is not available on Folia: moving an NPC between regions needs an ownership handoff that does not exist yet");
+        NpcRuntime.ActiveNpc active = require(npc);
+        WorldPosition current = active.state().position();
+        WorldPosition destination;
+        java.util.OptionalDouble yaw = java.util.OptionalDouble.empty(), pitch = java.util.OptionalDouble.empty();
+        switch (to) {
+            case Point point -> {
+                String world = point.world().map((String name) -> world(name).getUID().toString()).orElse(current.world());
+                destination = new WorldPosition(world, point.position());
+                yaw = point.yaw(); pitch = point.pitch();
+            }
+            case ToPlayer other -> {
+                if (!living.players().online(other.player())) throw destinationOffline();
+                Location at = living.players().owned(other.player()).orElseThrow(BukkitBehaviorPlatform::elsewhere).getLocation();
+                destination = position(at);
+            }
+            default -> throw new IllegalArgumentException("Unknown destination " + to);
+        }
+        if (!relocator.relocate(active.id(), destination)) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "teleport-blocked",
+                "The destination is not clear, supported, loaded ground, or the NPC is riding or carrying a rider");
+        if (yaw.isPresent() || pitch.isPresent()) {
+            double turn = Math.toRadians(yaw.orElse(0)), tilt = Math.toRadians(pitch.orElse(0));
+            Vec3 facing = new Vec3(-Math.sin(turn) * Math.cos(tilt), -Math.sin(tilt), Math.cos(turn) * Math.cos(tilt));
+            WorldPosition target = new WorldPosition(destination.world(), destination.point().add(facing));
+            PlatformRefusals.mapped(() -> { living.lookAt(active.id(), target); return true; });
+        }
+    }
+
+    @Override public int giveItem(UUID player, ItemGift gift) {
+        Material material = material(gift.item());
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return 0;
+        ItemStack template = new ItemStack(material);
+        if (gift.name().isPresent() || !gift.lore().isEmpty()) {
+            ItemMeta meta = template.getItemMeta();
+            if (meta != null) {
+                gift.name().ifPresent((String name) -> meta.setDisplayName(RichText.colorize(name)));
+                if (!gift.lore().isEmpty()) meta.setLore(gift.lore().stream().map(RichText::colorize).toList());
+                template.setItemMeta(meta);
+            }
+        }
+        int amount = Math.clamp(gift.amount(), 1, MAXIMUM_GIFT);
+        for (int count : stacks(amount, template.getMaxStackSize())) {
+            ItemStack stack = template.clone();
+            stack.setAmount(count);
+            hand(online.get(), stack);
+        }
+        return amount;
+    }
+
+    @Override public int takeItem(UUID player, String item, int amount) {
+        Material material = material(item);
+        Optional<Player> online = here(player);
+        if (online.isEmpty() || amount <= 0) return 0;
+        ItemStack[] slots = online.get().getInventory().getStorageContents();
+        int[] counts = new int[slots.length];
+        for (int slot = 0; slot < slots.length; slot++) counts[slot] = slots[slot] != null && slots[slot].getType() == material ? slots[slot].getAmount() : 0;
+        int taken = take(counts, amount);
+        if (taken == 0) return 0;
+        for (int slot = 0; slot < slots.length; slot++) {
+            if (slots[slot] == null || slots[slot].getType() != material || counts[slot] == slots[slot].getAmount()) continue;
+            if (counts[slot] == 0) slots[slot] = null;
+            else slots[slot].setAmount(counts[slot]);
+        }
+        online.get().getInventory().setStorageContents(slots);
+        return taken;
+    }
+
+    @Override public int giveBook(UUID player, Book book) {
+        Optional<Player> online = here(player);
+        if (online.isEmpty()) return 0;
+        ItemStack stack = new ItemStack(Material.WRITTEN_BOOK);
+        BookMeta meta = (BookMeta) stack.getItemMeta();
+        if (meta != null) {
+            meta.setTitle(bounded(RichText.colorize(book.title()), MAXIMUM_BOOK_TITLE));
+            meta.setAuthor(RichText.colorize(book.author()));
+            meta.setPages(book.pages().stream().limit(MAXIMUM_BOOK_PAGES).map(RichText::colorize).toList());
+            stack.setItemMeta(meta);
+        }
+        hand(online.get(), stack);
+        return 1;
+    }
+
+    /** Into the inventory, with whatever does not fit dropped at the player's feet. */
+    private static void hand(Player player, ItemStack stack) {
+        for (ItemStack rest : player.getInventory().addItem(stack).values()) player.getWorld().dropItem(player.getLocation(), rest);
+    }
+
+    /** {@code amount} split into stacks of at most {@code maximum}. */
+    static int[] stacks(int amount, int maximum) {
+        int size = Math.max(1, maximum), count = Math.max(0, amount);
+        int[] stacks = new int[(count + size - 1) / size];
+        for (int index = 0; index < stacks.length; index++) stacks[index] = Math.min(size, count - index * size);
+        return stacks;
+    }
+
+    /** Takes up to {@code amount} from the slot counts in order, lowering them in place. Returns the amount taken. */
+    static int take(int[] counts, int amount) {
+        int remaining = Math.max(0, amount);
+        for (int slot = 0; slot < counts.length && remaining > 0; slot++) {
+            int removed = Math.min(Math.max(0, counts[slot]), remaining);
+            counts[slot] -= removed;
+            remaining -= removed;
+        }
+        return Math.max(0, amount) - remaining;
+    }
+
+    /** Title fades and stay, held to 0..72000 ticks. */
+    static int ticks(int ticks) { return Math.clamp(ticks, 0, MAXIMUM_TITLE_TICKS); }
+
+    private static String bounded(String text, int maximum) { return text.length() <= maximum ? text : text.substring(0, maximum); }
+
+    /** The player on this owner; empty when offline. A player another owner holds is a routing fault. */
+    private Optional<Player> here(UUID player) {
+        Optional<Player> online = living.players().owned(player);
+        if (online.isPresent() || !living.players().online(player)) return online;
+        throw elsewhere();
+    }
+
+    /** A world by name, or by UUID. */
+    private World world(String name) {
+        World world = server.getWorld(name);
+        if (world == null) {
+            try { world = server.getWorld(UUID.fromString(name)); }
+            catch (IllegalArgumentException notUuid) { world = null; }
+        }
+        if (world == null) throw new CapabilityRefusal(Outcome.Status.INVALID, "unknown-world", "Unknown or unloaded world: " + name);
+        return world;
+    }
+
+    private static CapabilityRefusal noNpc() {
+        return new CapabilityRefusal(Outcome.Status.INVALID, "no-npc", "A server behavior has no NPC for this capability");
+    }
+    private static CapabilityRefusal destinationOffline() {
+        return new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "destination-offline", "The destination player is not online");
     }
 }
