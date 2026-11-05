@@ -54,6 +54,17 @@ Generated state commits use this same journal without a receipt, and always inli
 
 The converter's `validate` operation opens a read-only store: it does not create lock files, activate NPCs, write checkpoints or recover pending transactions. Pending recovery is reported as an error with files unchanged. An existing server lock prevents concurrent CLI validation; a never-opened export has no lock, so its validation describes the files observed rather than an atomic snapshot against an external editor.
 
+## Schema versions and migrations
+
+NPC definitions (`npcs/`), behaviors (`behaviors/` and `packs/<pack>/behaviors/`) and shops (`shops/`) carry a `schemaVersion`. Every kind is at version 1 today. At startup, before any of these load, `SchemaMigrations` checks each document. A document at the current version is not rewritten. An older document is upgraded step by step, and all upgraded documents are written in one journaled transaction with a rollback receipt, so `/animus rollback <transaction>` restores the original bytes. The log names the transaction. A document with a newer version than this build reads, or one whose upgrade step fails, is logged, left byte-for-byte in place, and then reported by the normal loader. A missing or malformed `schemaVersion` is left for the loader to report.
+
+### Adding a schema migration
+
+1. Write a `SchemaMigrations.Step` that turns a version N document into version N+1. It receives a copy, returns the new document and throws `IOException` with a clear message when it cannot convert the document. It must not drop data silently: keep unknown fields, or fail. The framework sets `schemaVersion` after the step.
+2. Append it to the kind's chain in `SchemaMigrations.STANDARD` with `.step(kind, step)` after the existing steps. Never reorder or remove a released step.
+3. Raise the accepted version in the kind's parser (`NpcDefinition`, `BehaviorCompiler`, `ShopDocument`), its generated JSON schema, and the writers that create new documents.
+4. Add tests with a real document of the old version that check the upgraded result, a second run that changes nothing, and a failing input that stays unchanged. `SchemaMigrationsTest` shows the pattern with a version 2 step that exists only in test code.
+
 ## Bounds and current limits
 
 Documents and encoded journals are limited to16MiB. Transactions contain at most10,000 entries, including generated checkpoints/receipts, and256MiB of logical before/after payload. Recovery and rollback enforce this budget incrementally before retaining excessive decoded content, even if many entries reference one object. JSON nesting is limited to64 levels. A definition/checkpoint tree permits at most100,000 JSON documents,250,000 total entries and8 relative directory levels; traversal stops before collecting or sorting excess entries. Symlinks and non-directory document roots are rejected.
