@@ -23,7 +23,8 @@
   },
   "movement": {
     "speed": 1.72,
-    "pathRange": 60.0
+    "pathRange": 60.0,
+    "avoidWater": false
   },
   "modules": {
     "animus:navigation": {

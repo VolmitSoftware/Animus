@@ -283,6 +283,11 @@ class _Traits {
         any = true;
       }
     }
+    // Citizens' navigator swims by default, so a route whose save sets no avoidwater crosses water at the surface.
+    if (routed && !movement.has('avoidWater')) {
+      movement.addBool('avoidWater', false);
+      any = true;
+    }
     if (metadata != null && _bool(metadata.get('flyable')) == true) {
       movement.addBool('fly', true);
       any = true;
