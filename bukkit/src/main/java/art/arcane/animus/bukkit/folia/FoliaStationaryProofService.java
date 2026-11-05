@@ -20,6 +20,9 @@ import org.bukkit.util.Vector;
 
 /** Experimental viewer-private stationary proof. Does not enable the general Folia runtime. */
 public final class FoliaStationaryProofService implements Listener, AutoCloseable {
+    private volatile art.arcane.animus.core.runtime.NpcRuntime.InteractionObserver observer;
+    /** Accepted proof clicks reach module subscribers as preview notices. */
+    public void observeInteractions(art.arcane.animus.core.runtime.NpcRuntime.InteractionObserver observer) { this.observer = observer; }
     private static final int MAX_VIEWERS=8, MAX_ADMISSIONS=64;
     private static final long LIFETIME=120_000_000_000L;
     private final JavaPlugin plugin;
@@ -207,6 +210,8 @@ public final class FoliaStationaryProofService implements Listener, AutoCloseabl
         var hit=lease.state.snapshot().bounds().rayDistance(position(after),new Vec3(look.getX(),look.getY(),look.getZ()),4.5);
         if(hit.isEmpty() || !terrain.lineOfSight(lease.viewer,lease.world,position(after),position(after).add(new Vec3(look.getX(),look.getY(),look.getZ()).normalized().multiply(hit.getAsDouble())),hit.getAsDouble())) return;
         if(event.isCancelled()){lease.viewer.sendMessage("Folia proof interaction cancelled id="+lease.body.entityId());return;}
+        var observed=observer;
+        if(observed!=null)observed.accepted(lease.body.uuid(),lease.viewer.getUniqueId(),action==VirtualNpcInteractionEvent.Action.ATTACK,validated.distance(),true);
         lease.accepted++; lease.viewer.sendMessage("Folia proof accepted id="+lease.body.entityId()+" action="+action+" preview=true");
         // This proof changes no health, command state, real entity or persisted definition.
     }

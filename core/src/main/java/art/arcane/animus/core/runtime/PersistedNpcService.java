@@ -27,6 +27,7 @@ import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BodyTransport;
 import art.arcane.animus.core.config.NavigationSettings;
+import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.config.RigSettings;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.rig.AnimationDocument;
@@ -83,24 +84,32 @@ import java.util.function.Predicate;
  * @param <I> the platform's item stack
  */
 public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
-    public record Settings(boolean enabled, double viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick) {
-        public static final Settings DEFAULT = new Settings(true, 48, 64, 256, 16);
+    public record Settings(boolean enabled, double viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick,
+                           int packetsPerTick, int pendingSpawnsPerViewer, int lookUpdatesPerTick) {
+        public static final Settings DEFAULT = from(NpcRuntimeSettings.DEFAULT);
         public Settings {
             if (!Double.isFinite(viewDistance) || viewDistance < 8 || viewDistance > 256 || maximumVisible < 1 || maximumVisible > 128
-                    || maximumViewers < 1 || maximumViewers > 1024 || updatesPerTick < 1 || updatesPerTick > 64)
+                    || maximumViewers < 1 || maximumViewers > 1024 || updatesPerTick < 1 || updatesPerTick > 64
+                    || packetsPerTick < 1 || packetsPerTick > 1024 || pendingSpawnsPerViewer < 1 || pendingSpawnsPerViewer > 64
+                    || lookUpdatesPerTick < 1 || lookUpdatesPerTick > 1024)
                 throw new IllegalArgumentException("Invalid persisted NPC runtime budgets");
+        }
+        /** The {@code [npcs]} table of config.toml. */
+        public static Settings from(NpcRuntimeSettings config) {
+            return new Settings(config.enabled(), config.viewDistance(), config.maximumVisible(), config.maximumViewers(), config.updatesPerTick(),
+                    config.packetsPerTick(), config.pendingSpawnsPerViewer(), config.lookUpdatesPerTick());
         }
     }
     /** Internal trusted integration lease; replacement/deletion revokes it. Access only on the owning scheduler. */
     public record CombatBinding(VirtualNpcState state, BooleanSupplier current, Consumer<VirtualNpcState.Snapshot> changed) {}
     private record Geometry(double width, double height, int ids, SeatGeometry seat) {}
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
-    private static final int RECONCILE_WORK = 64, PACKET_WORK = 32, MAX_PENDING_PER_VIEWER = 8, MAX_ISSUED_IDS = 8192;
+    private static final int RECONCILE_WORK = 64, MAX_ISSUED_IDS = 8192;
     /** Collision cells one step may check; a route waits for a later tick when fewer are left. */
     private static final int MOTION_CELLS = 256;
     /** A sleeping route looks for a nearby player again after this many ticks. */
     private static final int AWAKE_RECHECK_TICKS = 20;
-    private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096, LOOK_UPDATES = 32;
+    private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096;
     private static final double HULL_WIDTH_LIMIT = 4, HULL_HEIGHT_LIMIT = 8;
     /** Fastest route leg in blocks per second; combat pursuit is limited further by {@code [combat] maximumSpeed}. */
     public static final double MAXIMUM_SPEED = 10;
@@ -147,15 +156,20 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private AutoCloseable ticker;
     private TriggerBridge triggers;
     private volatile InteractionListener<P> interactions;
+    private volatile InteractionObserver observer;
     private volatile String unavailable;
     private final RuntimeFailures failures;
     private volatile boolean closed;
     private long accepted, rejected;
     long tickNumber;
+    /** Online players by chunk, rebuilt on the owner at most once per runtime tick, before the first lookup that needs it. */
+    private final NearbyPlayers<P> nearby;
+    private long nearbyTick = Long.MIN_VALUE;
+    private final PresentationPressure pressure = new PresentationPressure();
     private final PlayerAccess<P> players = new PlayerAccess<P>() {
         @Override public boolean online(UUID player) { owner(); return host.player(player).isPresent(); }
         @Override public Optional<P> owned(UUID player) { owner(); return host.player(player); }
-        @Override public List<P> ownedNear(WorldPosition at, double radius, int limit) { owner(); return host.playersNear(at, radius, limit); }
+        @Override public List<P> ownedNear(WorldPosition at, double radius, int limit) { owner(); return playersNear(at, radius, limit); }
         @Override public boolean deliver(UUID player, Consumer<P> action) {
             owner(); Optional<P> online = host.player(player);
             if (online.isEmpty()) return false;
@@ -169,8 +183,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         this.host = Objects.requireNonNull(host); this.runtime = Objects.requireNonNull(runtime);
         this.io = Objects.requireNonNull(io); this.settings = Objects.requireNonNull(settings);
         failures = new RuntimeFailures(host::warn);
+        nearby = new NearbyPlayers<>((P player) -> host.online(player) ? host.position(player) : null);
         previews = new ViewerPreviews(io, runtime.documents());
-        completions = new ArrayBlockingQueue<>(settings.maximumViewers() * (MAX_PENDING_PER_VIEWER + 2));
+        completions = new ArrayBlockingQueue<>(settings.maximumViewers() * (settings.pendingSpawnsPerViewer() + 2));
         rigSettings = runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT;
         navigationSettings = runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT;
         routeOrder = new RouteScheduler<>(navigationSettings.routesPerTick(), navigationSettings.wakeChecksPerTick(), (Route route) -> route.nextAttempt);
@@ -198,6 +213,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     @Override public boolean available() { return !closed && packets != null; }
     /** Connect during startup, before the first runtime tick can activate an NPC. */
     @Override public void interactions(InteractionListener<P> listener) { interactions = listener; }
+    @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { owner(); dispatcher.hide(previews); triggers = new TriggerBridge(dispatcher, index); }
     @Override public String status() {
         if (!available()) return "NPC runtime " + (closed ? "closed" : unavailable);
@@ -206,10 +222,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         return "NPC runtime ready | active=" + index.size() + " | viewers=" + viewers.size() + " | visible=" + visible
                 + " | skin-reads=" + skinTasks.size() + " | accepted=" + accepted + " | rejected=" + rejected
                 + " | routes=" + routeOrder.size() + " | routes-sleeping=" + routeOrder.sleeping() + " | routes-waiting=" + routeOrder.waiting()
-                + " | navigation-pressure=" + navigationPressure.describe() + " | path-jobs=" + navigation.outstandingJobs() + " | route-reads=" + routeReads.size()
+                + " | presentation=" + pressure.describe(tickNumber) + " | navigation-pressure=" + navigationPressure.describe() + " | path-jobs=" + navigation.outstandingJobs() + " | route-reads=" + routeReads.size()
                 + " | mounted=" + mountRuntime.mountedCount() + " | mount-problems=" + mountRuntime.problemCount() + " | riders=" + riders.count()
                 + " | chunks=" + host.chunkDelivery() + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
+    @Override public boolean cosmeticAllowed() { return !available() || !pressure.strained(tickNumber); }
     @Override public String inspect(String id) {
         if (!available()) return "Runtime " + id + ": " + (closed ? "closed" : unavailable);
         owner();
@@ -277,6 +294,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         catch (RuntimeException rejectedWork) { return false; }
     }
     @Override public PlayerAccess<P> players() { return players; }
+    /** Owner only. A runtime that stopped ticking rebuilds for every lookup instead of answering from a stale tick. */
+    private List<P> playersNear(WorldPosition at, double radius, int limit) {
+        if (nearbyTick != tickNumber || !available()) { nearby.rebuild(host.onlinePlayers()); nearbyTick = tickNumber; }
+        return nearby.near(at, radius, limit);
+    }
     @Override public ViewerPreviews previews() { return previews; }
     @Override public WorldPosition navigationOrigin(String id) { return navigable(id).state.snapshot().position(); }
     @Override public UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond) {
@@ -315,7 +337,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     }
     /** Turns NPCs with animus:look-close toward the nearest player in range: a bounded slice per tick, each NPC at most every few ticks. */
     private void tickLooks() {
-        for (int i = 0, count = Math.min(LOOK_UPDATES, lookOrder.size()); i < count && available(); i++) {
+        if (lookOrder.isEmpty() || !pressure.allows(PresentationPressure.Tier.COSMETIC, tickNumber)) return;
+        for (int i = 0, count = Math.min(settings.lookUpdatesPerTick(), lookOrder.size()); i < count && available(); i++) {
             Value value = lookOrder.removeFirst(); lookOrder.addLast(value);
             if (tickNumber < value.nextLook) continue;
             value.nextLook = tickNumber + LookClose.INTERVAL_TICKS;
@@ -524,6 +547,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             for (RigPlayback.Finished done : value.rig.tick(tickNumber, walking(value)))
                 if (triggers != null) triggers.animationFinished(value.spec.definition().uuid(), done.animation(), done.layer());
         }
+        // Sampling new segments is cosmetic; clip endings above still fire their triggers under load.
+        if (!pressure.allows(PresentationPressure.Tier.COSMETIC, tickNumber)) return;
         long nanos = System.nanoTime();
         int plans = 0;
         for (int i = 0, count = rigOrder.size(); i < count && plans < rigSettings.plansPerTick(); i++) {
@@ -534,6 +559,30 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             plans++;
         }
     }
+    /** The body shows bones of a rig the NPC no longer has: it is respawned, which is authoritative work. */
+    private boolean rigReplaced(Presented body) {
+        if (body.rigIdentity == 0) return false;
+        NpcRig<I> rig = body.value.rig;
+        NpcRig.Snapshot<I> shown = rig == null ? null : rig.snapshot();
+        return shown == null || shown.identity() != body.rigIdentity;
+    }
+    /**
+     * Cosmetic work for one viewer after every viewer's authoritative work: rig bones, taking turns so a viewer's rig
+     * budget reaches every body over a few ticks. Returns NPC packet budget used.
+     */
+    private int presentCosmetics(Viewer viewer, int packetBudget) {
+        if (!viewer.ready || !viewer.retirements.isEmpty()) return 0;
+        int sent = 0;
+        int[] rigBudget = {rigSettings.updatesPerTick()};
+        for (int i = 0, count = viewer.rigOrder.size(); i < count && (sent < packetBudget || rigBudget[0] > 0); i++) {
+            Presented body = viewer.rigOrder.removeFirst();
+            if (body.retired) continue;
+            viewer.rigOrder.addLast(body);
+            sent += presentRig(viewer, body, packetBudget - sent, rigBudget);
+            if (!current(viewer)) return sent;
+        }
+        return sent;
+    }
     /**
      * Shows the body's bones once it is spawned, then sends changed bone transforms within the viewer's rig budget.
      * Returns NPC packet budget used: only showing bones costs it, because transforms have their own budget.
@@ -541,8 +590,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private int presentRig(Viewer viewer, Presented body, int packetBudget, int[] rigBudget) {
         NpcRig<I> rig = body.value.rig;
         NpcRig.Snapshot<I> shown = rig == null ? null : rig.snapshot();
-        if (body.rigIdentity != 0 && (shown == null || shown.identity() != body.rigIdentity)) { retire(viewer, body); return 0; }
-        if (shown == null || shown.frame() == null || !body.spawnFinished || body.retired || body.rigFailed) return 0;
+        if (rigReplaced(body) || shown == null || shown.frame() == null || !body.spawnFinished || body.retired || body.rigFailed) return 0;
         RigFrame frame = shown.frame();
         if (body.bones == null) {
             if (packetBudget <= 0 || viewer.bones + shown.displays().size() > rigSettings.maximumBones()) return 0;
@@ -743,7 +791,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         // A new route has never looked: awakeChecked starts unset, and subtracting from it must not overflow into "recent".
         if (route.awakeChecked != Long.MIN_VALUE && tickNumber - route.awakeChecked < AWAKE_RECHECK_TICKS) return route.awake;
         route.awakeChecked = tickNumber;
-        route.awake = !host.playersNear(route.value.state.snapshot().position(), settings.viewDistance(), 1).isEmpty();
+        route.awake = !playersNear(route.value.state.snapshot().position(), settings.viewDistance(), 1).isEmpty();
         return route.awake;
     }
     private RouteScheduler.Result workRoute(Route route) {
@@ -976,7 +1024,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         tickNumber++;
         try {
             // Completion work is bounded independently of connection count and packet acknowledgments.
-            for (int i = 0; i < PACKET_WORK * 2; i++) { Runnable completion = completions.poll(); if (completion == null) break; completion.run(); }
+            for (int i = 0; i < settings.packetsPerTick() * 2; i++) { Runnable completion = completions.poll(); if (completion == null) break; completion.run(); }
             for (int i = 0; i < MAX_SKIN_READS; i++) {
                 SkinCompletion completion = skinCompletions.poll(); if (completion == null) break;
                 finishSkin(completion);
@@ -1014,7 +1062,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             mountRuntime.tickDragons();
             admit();
             if (triggers != null) triggers.proximity(viewers.keySet(), this::viewerPosition);
-            FairViewerWork.run(viewerOrder, settings.updatesPerTick(), PACKET_WORK, this::current, (Viewer viewer, int remaining) -> {
+            List<Viewer> updated = new ArrayList<>();
+            int used = FairViewerWork.run(viewerOrder, settings.updatesPerTick(), settings.packetsPerTick(), this::current, (Viewer viewer, int remaining) -> {
                 if (viewer.failed) { fail(viewer, "packet callbacks", null, "Packet callback queue full"); return 0; }
                 if (!host.online(viewer.player)) { disconnect(viewer.player); return 0; }
                 if (host.dead(viewer.player)) { disconnect(viewer.player); return 0; }
@@ -1022,8 +1071,16 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 if (viewer.guard.issuedCount() >= MAX_ISSUED_IDS - settings.maximumVisible()) {
                     disconnect(viewer.player); admissions = host.onlinePlayers().iterator(); return 0;
                 }
+                updated.add(viewer);
                 return update(viewer, remaining);
             });
+            if (used >= settings.packetsPerTick()) pressure.shortOfBudget(tickNumber);
+            // Cosmetic work spends only what every viewer's despawns, moves and spawns left over.
+            if (pressure.allows(PresentationPressure.Tier.COSMETIC, tickNumber))
+                for (Viewer viewer : updated) {
+                    if (!current(viewer)) continue;
+                    used += presentCosmetics(viewer, settings.packetsPerTick() - used);
+                }
         } catch (RuntimeException failure) {
             failures.record("tick", "", failure);
             mountRuntime.close();
@@ -1152,23 +1209,21 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 if (failure != null) fail(viewer, "despawn", body.value, failure); else releaseRetired(viewer, body);
             }));
         }
+        // Despawns still waiting: moves and spawns wait behind them, so this viewer is short of budget.
+        if (!viewer.retirements.isEmpty()) { pressure.shortOfBudget(tickNumber); return sent; }
         // One outstanding move per body; rotating the body queue prevents a busy subset starving other updates.
-        int[] rigBudget = {rigSettings.updatesPerTick()};
-        if (viewer.ready && viewer.retirements.isEmpty()) {
+        if (viewer.ready) {
             for (int i = 0, count = viewer.presentationOrder.size(); i < count && sent < packetBudget; i++) {
                 Presented body = viewer.presentationOrder.removeFirst();
                 if (body.retired) continue;
                 viewer.presentationOrder.addLast(body);
+                if (rigReplaced(body)) { retire(viewer, body); continue; }
                 if (body.spawnFinished && !body.moving && body.deliveredPoseRevision != body.value.poseRevision) {
                     move(viewer, body); sent++;
                     if (!current(viewer)) return sent;
                 }
                 if (body.spawnFinished && !body.equipping && sent < packetBudget && body.deliveredEquipmentRevision != body.value.equipmentRevision) {
                     equip(viewer, body); sent++;
-                    if (!current(viewer)) return sent;
-                }
-                if (body.value.rig != null || body.rigIdentity != 0) {
-                    sent += presentRig(viewer, body, packetBudget - sent, rigBudget);
                     if (!current(viewer)) return sent;
                 }
             }
@@ -1178,9 +1233,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             sent += viewer.preview.update(viewer.player, packets, at, settings.viewDistance(), visibleChunk,
                     (NpcDefinition definition) -> DefinitionSpec.parse(definition, geometries.keySet(), this::world, host::item),
                     (Runnable completion) -> enqueue(viewer, () -> { if (current(viewer)) completion.run(); }), viewer.nativeIds, packetBudget - sent);
-        if (!viewer.ready || !viewer.retirements.isEmpty() || sent >= packetBudget || viewer.pendingSpawns >= MAX_PENDING_PER_VIEWER
+        if (!viewer.ready || !viewer.retirements.isEmpty() || sent >= packetBudget || viewer.pendingSpawns >= settings.pendingSpawnsPerViewer()
                 || viewer.visible.size() >= settings.maximumVisible()) return sent;
-        int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(settings.maximumVisible() - viewer.visible.size(), MAX_PENDING_PER_VIEWER - viewer.pendingSpawns));
+        int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(settings.maximumVisible() - viewer.visible.size(), settings.pendingSpawnsPerViewer() - viewer.pendingSpawns));
         SpatialNpcIndex.Scan scan = index.scan(new SpatialNpcIndex.Query(at, settings.viewDistance()), viewer.cursor, new SpatialNpcIndex.Budget(32, Math.max(1, capacity * 2)), visibleChunk);
         viewer.cursor = scan.next().orElse(null);
         for (VirtualNpcState.Snapshot snapshot : scan.candidates()) {
@@ -1205,7 +1260,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         try {
             BodyTransport.Body body = NpcPresentation.body(packets, value.spec, value.displayName, value.displaySkin);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented);
-            viewer.presentationOrder.addLast(presented);
+            viewer.presentationOrder.addLast(presented); viewer.rigOrder.addLast(presented);
             viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
             presented.deliveredPoseRevision = value.poseRevision;
             BodyPose pose = pose(value);
@@ -1269,7 +1324,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         body.retired = true; viewer.visible.remove(body.body.uuid(), body); viewer.guard.unbind(body.body.entityId());
         if (body.bones != null) { viewer.bones -= body.bones.count(); body.bones = null; }
         viewer.rosterDirty = true;
-        viewer.presentationOrder.remove(body);
+        viewer.presentationOrder.remove(body); viewer.rigOrder.remove(body);
         viewer.retiring.put(body.body.uuid(), body); viewer.retirements.addLast(body);
     }
     private void releaseRetired(Viewer viewer, Presented body) {
@@ -1305,6 +1360,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         accepted++;
         if (triggers != null) triggers.interaction(body.body.uuid(), host.id(viewer.player),
                 action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, false);
+        InteractionObserver observed = observer;
+        if (observed != null) observed.accepted(body.body.uuid(), host.id(viewer.player), action == RuntimeHost.Interaction.ATTACK, validated.distance(), false);
         InteractionListener<P> listener = interactions;
         if (listener != null && listener.interacted(viewer.player, body.body.uuid(), action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
@@ -1363,7 +1420,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private void disconnect(P player) {
         if (riders != null) riders.viewerLost(player);
         Viewer old = viewers.remove(host.id(player));
-        if (old != null) { old.guard.close(); viewerOrder.remove(old); old.visible.clear(); old.retiring.clear(); old.retirements.clear(); old.presentationOrder.clear(); }
+        if (old != null) { old.guard.close(); viewerOrder.remove(old); old.visible.clear(); old.retiring.clear(); old.retirements.clear(); old.presentationOrder.clear(); old.rigOrder.clear(); }
         if (packets != null) packets.forget(player);
     }
     private String world(String reference) { return host.resolveWorld(reference).orElse(null); }
@@ -1487,6 +1544,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         final Map<UUID, Presented> visible = new HashMap<>(), retiring = new HashMap<>();
         final Deque<Presented> retirements = new ArrayDeque<>();
         final Deque<Presented> presentationOrder = new ArrayDeque<>();
+        /** The same bodies in their own rotation for cosmetic rig work, which runs after every viewer's authoritative work. */
+        final Deque<Presented> rigOrder = new ArrayDeque<>();
         SpatialNpcIndex.Cursor cursor;
         int nativeIds, pendingSpawns, bones;
         boolean ready, rosterDirty; volatile boolean failed;

@@ -5214,6 +5214,16 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "pattern": "^[a-z0-9_-]+:[a-z0-9_/-]+$"
       }
     },
+    "tags": {
+      "type": "array",
+      "description": "Labels for finding and grouping NPCs in the editor; at most 32.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+      },
+      "maxItems": 32,
+      "uniqueItems": true
+    },
     "rig": {
       "type": "object",
       "description": "The rig under rigs/ this NPC's body shows.",

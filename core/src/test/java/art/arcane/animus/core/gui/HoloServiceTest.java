@@ -33,11 +33,12 @@ class HoloServiceTest {
     private final List<String> log = new ArrayList<>();
     private ShopService<Player, Stack> shops;
     private HoloService<Player, Stack> holograms;
+    private FakeNpcRuntime<Player> living;
 
     @BeforeEach void start() throws IOException {
         runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.2", directory));
         runtime.start();
-        FakeNpcRuntime<Player> living = new FakeNpcRuntime<>((java.util.UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty());
+        living = new FakeNpcRuntime<>((java.util.UUID id) -> id.equals(alex.id) ? Optional.of(alex) : Optional.empty());
         shops = new ShopService<>(runtime, host, living, Runnable::run, (String name) -> Optional.empty(), log::add);
         holograms = new HoloService<>(runtime, shops, displays, living, Runnable::run, GlossBridge.absent("Gloss is not installed"), log::add);
         alex.pose = new ScreenHost.Pose(Set.of("world", "minecraft:overworld"), 0, 64, 0, 65.62, 0, 0, false);
@@ -95,6 +96,24 @@ class HoloServiceTest {
         move(0, 64, 100);
         tick(10);
         assertTrue(displays.of(alex).isEmpty());
+    }
+
+    @Test void timedTextRefreshWaitsWhileNpcPacketsAreShortOfBudget() throws IOException {
+        write("gui/holograms", "town:score", """
+                {"schemaVersion": 3, "revision": 1, "anchor": {"world": "world", "position": [0, 64, 5]},
+                 "lines": ["Score {{ viewer.score }}"], "viewDistance": 16, "refreshTicks": 1}
+                """);
+        reload();
+        alex.facts.put("score", 1);
+        tick(1);
+        assertEquals(List.of("Score 1"), displays.texts(alex));
+        living.cosmetic = false;
+        alex.facts.put("score", 2);
+        tick(5);
+        assertEquals(List.of("Score 1"), displays.texts(alex), "a timed refresh is cosmetic and waits");
+        living.cosmetic = true;
+        tick(1);
+        assertEquals(List.of("Score 2"), displays.texts(alex), "the refresh runs once the budget keeps up");
     }
 
     @Test void aHologramNeedsItsAnimationAndCommandsNeedTheAllowList() throws IOException {

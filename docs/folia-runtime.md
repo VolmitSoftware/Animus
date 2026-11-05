@@ -1,6 +1,6 @@
 # Persisted NPCs on Folia
 
-On Folia 26.1.2, 26.2 and 26.3, saved NPC definitions run on the region that owns each NPC's chunk. The commands, definitions, limits and events are the same as in the [persisted runtime](runtime.md). This page describes what differs. The source compiles against all three exact APIs and passes its unit tests. On Folia 26.3 the native protocol client has exercised it live, including riding, mounted groups, a guard fighting a mob, NPC-versus-NPC hits and dragon wing phases; [implementation evidence](implementation.md) does not yet list a captured artifact for it.
+On Folia 26.1.2, 26.2 and 26.3, saved NPC definitions run on the region that owns each NPC's chunk. The commands, definitions, limits and events are the same as in the [persisted runtime](runtime.md). This page describes what differs. Live checks pass on all three Folia builds: activation, triggers, behavior actions, a patrol crossing chunk owners, and a clean disable. On Folia 26.3 riding across chunk owners, mounted groups crossing chunk owners, a guard killing a mob, a player hitting a combat NPC, NPC-versus-NPC hits and dragon wing phases also pass live. Two truly separate regions could not be observed with a real client, because Folia merges adjacent loaded chunks into one region.
 
 ## What runs
 
@@ -86,7 +86,8 @@ The per-tick limits of the persisted runtime apply to each region tick rather th
 | New path plans | `[navigation] planningStartsPerTick` (16) |
 | Terrain capture units | `[navigation] captureReadsPerTick` (2048) |
 | Viewer updates | `updatesPerTick`; with more viewers, they take turns |
-| Packet operations | 32, shared equally by the viewers updating |
+| Packet operations | `[npcs] packetsPerTick` (32), shared equally by the viewers updating |
+| Look-close turns | `[npcs] lookUpdatesPerTick` (32) |
 | NPC starts | 16 |
 | Combat brains, target scans, path requests, squad alerts and helper updates | the `[combat]` limits of the same names |
 

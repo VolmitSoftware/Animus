@@ -187,7 +187,7 @@ Detailed provenance is under `animus-evidence/build-runtime-3/`; the current agg
 The six combined scenarios use ordinary real cows/zombies for the initial combat adapter. They do not establish full combat-module or PvP/protection parity, graphical rendering or measured performance.
 
 
-## Verified runtime-6 build — 2026-11-04
+## Historical runtime-6 build — 2026-11-04
 
 Build `run-1793803535545514-80447` executed201 core and43 Bukkit tests plus all three exact API compilations. Artifact SHA-256: `c89adc35796afe5c33d85cf3e0f853ae2cd0f68123e3c1c16a4e77abd93f9576`. Canonical local distribution matches. All six Paper/Spigot targets passed80 native assertions each; Folia26.1.2 stable8,26.2 beta7 and26.3 alpha6 each passed27 storage/recovery/capability-limit checks. Folia gameplay remains a separate unverified milestone.
 
@@ -200,7 +200,7 @@ The explicit `--reviewed-harness` input for this audit is `animus-evidence/runti
 The native test client now follows stationary position reminders and normal respawn after a saved dead-player login. Isolated arenas suppress incidental natural spawning before restoring the configured combat difficulty. Failed investigation attempts remain visible. This validates headless protocol and server authority, not graphical rendering or performance.
 
 
-## Verified runtime-8 Folia stationary preview
+## Historical runtime-8 Folia stationary preview
 
 Build `run-1793807521311830-32660`, SHA-256 `5bd4a77deef1dc7ce6fa6b0de1809305fe080775aa516a3da6ea37594ceab2cf`, passed the separate Folia suite on26.1.2 stable8,26.2 beta7 and26.3 alpha6. Each target ran34 main,11 bounds and5 shutdown checks (150 total). It uses `qa/multiplexor/folia-proof.py` and the isolated fixture/client under `qa/folia-proof/`; see that directory's README for reproduction and exact reports.
 

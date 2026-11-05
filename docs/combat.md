@@ -138,7 +138,7 @@ With WorldGuard installed, Animus reads its region flags. NPCs have no WorldGuar
 | An NPC hurting an animal | `damage-animals` where the animal stands |
 | A mob hurting or being controlled against an NPC | `mob-damage` where the NPC stands |
 
-Hits on monsters are not limited by WorldGuard. If WorldGuard is installed but its API cannot be used, every hit is denied. Region membership, region priorities and other plugins' protection are not consulted except through these flags.
+Hits on monsters are not limited by WorldGuard. If WorldGuard is installed but disabled (at startup or later) or its API cannot be used, every hit is denied. Region membership, region priorities and other plugins' protection are not consulted except through these flags.
 
 `pursuit.region` is a WorldGuard region in the NPC's world. Where no protection plugin provides regions (servers without WorldGuard, and every mod server), or the region does not exist, the region leash cannot be checked: the NPC fights within its normal ranges, the server log says so once per NPC, and `/animus combat status` counts it as `region-unavailable`.
 

@@ -218,7 +218,9 @@ public final class HoloService<P, S> implements AutoCloseable {
             at = moved.get();
         }
         boolean movedAnchor = at[0] != view.x || at[1] != view.y || at[2] != view.z;
-        boolean due = view.renderedAt == Long.MIN_VALUE || viewer.tick - view.renderedAt >= document.contentTicks() || movedAnchor;
+        // A timed refresh (text animation, changing values) is cosmetic: it waits while NPC moves and despawns wait for packet budget.
+        boolean refresh = viewer.tick - view.renderedAt >= document.contentTicks() && living.cosmeticAllowed();
+        boolean due = view.renderedAt == Long.MIN_VALUE || refresh || movedAnchor;
         boolean check = view.checkedAt == Long.MIN_VALUE || viewer.tick - view.checkedAt >= document.visibilityTicks();
         if (!due && !check) return;
         GuiExpression.Scope base = hologramScope(viewer, view);

@@ -54,6 +54,7 @@ These definition fields are optional. Every viewer sees the same result, and it 
 | `armorStand` | Armor stand bodies only: `small`, `arms`, `basePlate` (default `true`), `invisible`, and `head`, `body`, `leftArm`, `rightArm`, `leftLeg`, `rightLeg` as `[x, y, z]` degrees within ±360. Parts without angles keep the client's default pose. |
 | `inventory` | `size` is a multiple of 9 from 9 to 72; `slots` maps slot numbers below `size` to items. |
 | `owner` | The owning player's UUID. |
+| `tags` | At most 32 distinct labels of 1–32 lowercase letters, digits, `_` or `-`, starting with a letter or digit. The web editor uses them to find and group NPCs. The server stores them and does not act on them. `NpcDefinition.tags()` returns them. |
 
 A wrong value names its exact field, for example `$.equipment.head.count: expected integer 1..99`. `/animus spawn` also checks every equipment item against the running server, so an unknown item or bad component text is refused as `$.equipment.<slot>.id` or `.components`.
 
@@ -77,11 +78,24 @@ Plugin settings are TOML; definitions, skins and generated data remain JSON. `[n
 | `viewDistance` |48|8–256 blocks|
 | `maximumVisible` |64|1–128 per viewer|
 | `maximumViewers` |256|1–1024|
-| `updatesPerTick` |16|1–64|
+| `updatesPerTick` |16|1–64 viewers updated per tick|
+| `packetsPerTick` |32|1–1024 NPC packets per tick, shared by the viewers updated (per region on Folia)|
+| `pendingSpawnsPerViewer` |8|1–64 spawns a viewer may have unanswered|
+| `lookUpdatesPerTick` |32|1–1024 look-close NPCs that may turn per tick (per region on Folia)|
+
+When a tick has less packet budget than work, updates give way in a fixed order:
+
+1. Despawns go first. Nothing else is sent to a viewer while one of its despawns waits.
+2. Moves, equipment, mounts and new spawns come next.
+3. Cosmetic updates come last: look-close turns, rig segment sampling and bone updates, and timed hologram text refreshes such as text animations. They spend only the budget that every viewer's despawns, moves and spawns left over.
+
+After a tick where despawns or moves had to wait, cosmetic updates pause for 20 ticks, and the pause starts again if the budget runs short again. Clip endings still fire `animation_finished`, and a hologram still redraws at once when it first shows or its NPC moves. `/animus status` shows `presentation=normal` or `presentation=strained` with a count of deferred cosmetic updates. On Folia each region keeps its own pause.
+
+Lookups for players near a point (route sleep checks, look-close, combat, behavior audiences) use online players grouped by chunk, rebuilt at most once per tick on the owner thread or per Folia region tick, and visit only the chunks around the point.
 
 The runtime bounds definition reconciliation, active bodies, packet operations, pending work and skin reads. Delivered-chunk checks use Paper's sent-chunk API or the exact Spigot native tracking/sender state. A loaded server chunk alone does not authorize presentation. The renderer never force-loads terrain. Dormant definitions do not create vanilla ticking bodies. This architecture is not a measured performance claim.
 
-Viewer subscriptions account for world, actual chunk delivery, distance and session lifecycle. Re-entry obtains new native IDs; stale or foreign IDs cannot gain authority. Spawn/despawn acknowledgement ordering prevents reusing an NPC presentation while its old delivery is retiring. Use/attack interception validates ownership, reach, line of sight, rate and current virtual state, then emits cancellable `VirtualNpcInteractionEvent` with `preview=false`. Player attacks do not yet implement the full combat module.
+Viewer subscriptions account for world, actual chunk delivery, distance and session lifecycle. Re-entry obtains new native IDs; stale or foreign IDs cannot gain authority. Spawn/despawn acknowledgement ordering prevents reusing an NPC presentation while its old delivery is retiring. Use/attack interception validates ownership, reach, line of sight, rate and current virtual state, then emits cancellable `VirtualNpcInteractionEvent` with `preview=false`. An NPC with the [combat module](combat.md) takes player hits as combat damage.
 
 ## Initial movement and routes
 

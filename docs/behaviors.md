@@ -1,6 +1,6 @@
 # JSON behaviors
 
-The core compiler, interpreter, typed argument binding, file catalog and module-schema checks are integrated. Manual commands, automatic triggers and lifecycle wiring are integrated; their final shutdown review and new managed server acceptance run are pending. Runtime10's published server results cover the earlier artifact. Scoped variables, durable state, last-valid checkpoints and [built-in capabilities](#built-in-capabilities) are covered by local tests and have not run on a live server.
+The core compiler, interpreter, typed argument binding, file catalog and module-schema checks are integrated. Manual commands, automatic triggers and lifecycle wiring are integrated. Behaviors pass live checks on all nine Paper, Spigot and Folia targets; on Paper 26.3 the live run also covers triggers, durable state across a graceful restart and a forced stop, last-valid behavior edits, the command allow-list and all seven example packs.
 
 Behavior documents are JSON. Plugin-wide budgets are TOML. A behavior named `reference:module-sequence` lives at `plugins/Animus/behaviors/reference/module-sequence.json`:
 

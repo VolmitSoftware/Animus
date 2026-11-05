@@ -35,8 +35,8 @@ final class ImportProjection {
         for(NpcDefinition npc:imported) {
             JsonObject data=npc.json(), migration=object(data,"migration");
             if(!string(migration,"importId").equals(importId))throw new IOException("NPC import identity mismatch: "+npc.id());
-            int legacy=integer(migration,"citizensId");
-            if(legacy<0 || !npc.id().equals("citizens-"+legacy) || !npc.path().matches(CitizensImporter.NPC_PATH))throw new IOException("Unexpected source import path: "+npc.path());
+            int legacy=ModuleImports.sourceNumber(migration);
+            if(legacy<0 || !npc.id().equals(ModuleImports.sourcePrefix(migration)+"-"+legacy) || !npc.path().matches(CitizensImporter.NPC_PATH))throw new IOException("Unexpected source import path: "+npc.path());
             dormant(data);
             UUID uuid=mode==Mode.DUPLICATE?UUID.nameUUIDFromBytes(("animus:import-copy:v1:"+importId+":"+label+":"+npc.uuid()).getBytes(StandardCharsets.UTF_8)):npc.uuid();
             String id=mode==Mode.DUPLICATE?npc.id()+"-"+label:npc.id();
@@ -61,7 +61,7 @@ final class ImportProjection {
                 if(mode!=Mode.REPLACE)throw new IOException("NPC collision: "+candidate.path());
                 if(!prior.uuid().equals(candidate.uuid()) || !prior.id().equals(candidate.id()))throw new IOException("Replacement must retain the existing UUID and ID: "+candidate.path());
                 JsonObject provenance=object(prior.json(),"migration");
-                if(integer(provenance,"citizensId")!=integer(data.getAsJsonObject("migration"),"citizensId"))throw new IOException("Replacement source numeric identity changed: "+candidate.path());
+                if(ModuleImports.sourceNumber(provenance)!=ModuleImports.sourceNumber(data.getAsJsonObject("migration")))throw new IOException("Replacement source numeric identity changed: "+candidate.path());
                 if(prior.revision()==Long.MAX_VALUE)throw new IOException("Revision exhausted: "+candidate.path());
                 data.addProperty("revision",prior.revision()+1);candidate=NpcDefinition.parse(JsonDocuments.write(data));
                 replaced.add(prior.path());

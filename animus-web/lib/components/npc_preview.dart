@@ -3,25 +3,34 @@
 /// what the stage cannot show.
 library;
 
+import 'dart:convert';
+
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../logic/gui/gui_json.dart';
+import '../logic/npc/route_model.dart';
 import '../mc/npc/npc_look.dart';
 import '../mc/npc/npc_scene.dart';
 import '../mc/npc/npc_skin.dart';
+import '../mc/npc/route_overlay.dart';
 import '../model/animus_document.dart';
 import '../services/skin_images.dart';
 import 'mc/mc_stage.dart';
 
 class NpcPreview extends StatefulWidget {
-  const NpcPreview({required this.document, this.skinDocument, super.key});
+  const NpcPreview({required this.document, this.skinDocument, this.route, super.key});
 
   final AnimusDocument document;
 
   /// The `skins/<hash>.json` document the definition names, when the
   /// workspace has it.
   final AnimusDocument? skinDocument;
+
+  /// The route the NPC follows (its inline navigation fields, or the route
+  /// document it names), drawn around the body when shown.
+  final JsonMap? route;
 
   @override
   State<NpcPreview> createState() => _NpcPreviewState();
@@ -34,6 +43,7 @@ class _NpcPreviewState extends State<NpcPreview> {
   bool _loading = false;
   String? _shown;
   NpcScene? _scene;
+  bool _showRoute = true;
 
   NpcLook get _look {
     final Object? json = component.document.json;
@@ -69,10 +79,15 @@ class _NpcPreviewState extends State<NpcPreview> {
   void _sync({bool frame = false}) {
     final NpcLook look = _look;
     final NpcSkinChoice skin = _skinFor(look);
-    final String signature = '${component.document.source}|${skin.textureId}|${skin.slim}';
+    final JsonMap? route = _showRoute ? component.route : null;
+    final String signature = '${component.document.source}|${skin.textureId}|${skin.slim}|${route == null ? '' : jsonEncode(route)}';
     if (signature == _shown && !frame) return;
     _shown = signature;
-    final NpcScene scene = _scene = npcScene(look, skin: skin);
+    final NpcScene body = npcScene(look, skin: skin);
+    final JsonMap position = asMap(asMap(component.document.json)['position']);
+    final NpcScene scene = _scene = route == null
+        ? body
+        : withRoute(body, RouteSpec(route), (asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0));
     _stage.show(scene.scene, scene.texts, yawDeg: look.yawDeg, frame: frame);
   }
 
@@ -102,6 +117,17 @@ class _NpcPreviewState extends State<NpcPreview> {
     return dom.section(classes: 'animus-panel animus-npc-preview', <Widget>[
       dom.div(classes: 'animus-npc-preview-bar', <Widget>[
         Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
+        if (component.route != null)
+          Button(
+            label: 'Route',
+            size: ButtonSize.small,
+            variant: _showRoute ? ButtonVariant.primary : ButtonVariant.ghost,
+            attributes: <String, String>{'aria-pressed': '$_showRoute'},
+            onPressed: () {
+              setState(() => _showRoute = !_showRoute);
+              _sync(frame: true);
+            },
+          ),
         if (player) ...<Widget>[
           Button.secondary(
             label: 'Load skin PNG',

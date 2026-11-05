@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.gui;
 
+import art.arcane.animus.bukkit.protection.RegionContainerAccess;
+import art.arcane.animus.bukkit.protection.RegionFlags;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.ScreenFrame;
 import art.arcane.animus.core.gui.ScreenHost;
@@ -100,15 +102,9 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
             execute = Class.forName("io.papermc.paper.threadedregions.scheduler.EntityScheduler").getMethod("execute", org.bukkit.plugin.Plugin.class, Runnable.class, Runnable.class, long.class);
         } catch (ReflectiveOperationException notFolia) { scheduler = null; execute = null; }
         teleportAsync = async; entityScheduler = scheduler; entityExecute = execute;
-        java.util.function.BiPredicate<UUID, Location> ownerMayOpen = (UUID owner, Location at) -> true;
-        if (server.getPluginManager().isPluginEnabled("WorldGuard")) {
-            try { ownerMayOpen = WorldGuardContainerAccess.create(server); }
-            catch (RuntimeException | LinkageError failure) {
-                logger.warning("WorldGuard is installed but its API could not be used (" + failure.getClass().getSimpleName() + "); container shops stay closed");
-                ownerMayOpen = (UUID owner, Location at) -> false;
-            }
-        }
-        stocks = new BukkitShopStock(server, ownerMayOpen);
+        RegionFlags.Binding regions = RegionFlags.bind(server);
+        if (regions != null && regions.failure().isPresent()) logger.warning(regions.describe("container shops stay closed"));
+        stocks = new BukkitShopStock(server, regions == null ? (UUID owner, Location at) -> true : new RegionContainerAccess(regions.flags()));
     }
 
     /** Vault when its plugin is installed; nothing from Vault is loaded otherwise. */

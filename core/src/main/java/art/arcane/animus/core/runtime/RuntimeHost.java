@@ -53,8 +53,6 @@ public interface RuntimeHost<P, I> extends TerrainReader {
     float pitch(P player);
     boolean permitted(P player, String node);
     void tell(P player, String message);
-    /** At most {@code limit} online players within the radius of the point, in its world. */
-    List<P> playersNear(WorldPosition at, double radius, int limit);
     /** An ordinary plugin teleport; false when it was refused. */
     boolean teleport(P player, WorldPosition destination, float yaw, float pitch);
 

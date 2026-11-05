@@ -1,6 +1,16 @@
 # Implementation evidence and continuation
 
-Updated 2026-11-04. The complete user plan and live progress record are on the development machine's Desktop as `Animus-Implementation-Plan.md` and `Animus-Implementation-Handoff.md`. No milestone acceptance gate has passed yet.
+Updated 2026-11-05. The complete user plan and live progress record are on the development machine's Desktop as `Animus-Implementation-Plan.md` and `Animus-Implementation-Handoff.md`.
+
+## Current status
+
+- Milestones 1 to 4 (lifecycle, storage, visibility, presentation, behaviors, combat, imports, modules) pass on merged master on all nine Paper, Spigot and Folia targets (26.1.2, 26.2 and 26.3), run with `qa/multiplexor/gate.py`: Paper and Spigot run 113 live gameplay checks each (117 on 26.3), plus native, module, import and behavior suites; Folia runs its live checks plus the stationary preview, module, import and behavior suites.
+- Live gameplay on Paper 26.3 (`qa/multiplexor/live-features.mjs`) covers triggers, durable state across restarts and kill -9, behavior edits, the command allow-list, mounts, riding, dragon flight phase, combat (melee, arrows, fireballs, death and respawn) and all seven example packs. Folia 26.3 runs activation, triggers, actions, a patrol crossing chunk owners, riding and a mounted group across chunk owners, a guard killing a mob, player and NPC-versus-NPC hits, and dragon wing phases.
+- Fabric, NeoForge and Forge share the same runtime; see [mod servers](mod-servers.md#live-checks).
+- A full migration of the private 495-record Citizens save on Paper 26.3 (2026-11-05) installed every NPC, 409 skins and 107 shops; 484 of 484 expected NPCs were active, 103 of 103 imported guards were combat-capable, and restart, rollback and re-apply were clean.
+- The web editor is deployed at https://animus-editor.web.app; see [deployment](deployment.md).
+
+Open: graphical checks on a real client (poses, text displays, equipment, dragon wings, riding feel), riding, mounts, combat and dragon phases on Folia 26.1.2 and 26.2, a live WorldGuard check, performance measurement ([benchmark preparation](benchmark.md)), and translating Denizen scripts, which needs the external scripts. The sections below the source list are earlier checkpoints, kept as a record; their artifacts and the separate `.qa` workspace they name were retired.
 
 Implemented source:
 
@@ -13,7 +23,7 @@ Implemented source:
 - `core/navigation`: immutable voxel snapshots, bounded/cancellable path searches, kinematic route execution and live clearance/support validation contracts.
 - `bukkit/packet`: native semantic packet adapter with unique IDs, no native entity bodies, bounded queues, presentation leases, signed skins, passengers, head rotation and inbound interception.
 - `bukkit/runtime`: persisted activation, delivered-chunk visibility, fair bounded viewer reconciliation, shared virtual health, selection and production interaction events. On Folia, `RegionNpcRuntime` gives each NPC to its chunk's region through `RegionOwner`; a mounted group has one owner, a ride runs on the NPC's owner, and each combat NPC runs its own engine there (`ActorCombat`, routed by `RegionCombat`).
-- `core/combat`, `bukkit/combat`, `bukkit/RuntimeCombatService`: the [combat module](combat.md) (target rules, state machine, squads, guards, melee and tracked arrows, defense, death and respawn, fail-closed protection with a WorldGuard adapter, bounded work) plus the manual hit and ordinary-zombie adapter. `core/migration/SentinelMapping` converts imported settings.
+- `core/combat`, `bukkit/combat`, `bukkit/RuntimeCombatService`: the [combat module](combat.md) (target rules, state machine, squads, guards, melee and tracked arrows, defense, death and respawn, fail-closed protection, bounded work) plus the manual hit and ordinary-zombie adapter. `bukkit/protection` maps WorldGuard flags to combat, build and container-shop decisions behind one `RegionFlags` seam, and fails closed when WorldGuard is disabled or unusable. `core/migration/SentinelMapping` converts imported settings.
 - `bukkit/PacketProofService`: opt-in viewer-isolated proof, lifecycle teardown, virtual health and cancellable third-party preview events.
 - `bukkit/navigation`, `bukkit/runtime`: bounded owner-thread capture of loaded terrain, one planner worker, live movement checks, manual routes, inline/reusable JSON waypoints and cancellation. Partial-block physics and Folia ownership remain open.
 - `core/control`, packet/proof adapters: bounded semantic input, native heartbeat leases, unmounted preview control and authoritative real-player rider sessions.
@@ -23,13 +33,13 @@ Implemented source:
 
 ## Automated verification
 
-`JAVA_HOME=<JDK25> ./gradlew build :converter:installDist` passes. The current runtime-6 source passes201 core and43 Bukkit tests, compilation against Spigot26.1.2/26.2/26.3, shaded artifact checks, and distribution manifest checks. Waypoint settings validation moved into the core so files, commands and the converter apply the same native schema.
+`JAVA_HOME=<JDK25> ./gradlew build :converter:installDist` runs every core, Bukkit and converter test (add `-PincludeModDistributions=true` for the mod jars). At the runtime-6 checkpoint it passed 201 core and 43 Bukkit tests, compilation against Spigot26.1.2/26.2/26.3, shaded artifact checks, and distribution manifest checks. Waypoint settings validation moved into the core so files, commands and the converter apply the same native schema.
 
 Meaningful cases cover malformed/ambiguous JSON, YAML duplicate keys, unsafe tags, aliases, nesting and size limits; unsupported traits; missing/invalid locations; same-source repeated previews; changed staged documents; UUID/ID collisions; import rollback/reapply; independent skin references; command edit/clone/delete and restart; unknown-module preservation; file locking; path traversal/symlinks; rollback conflicts; partial journal recovery; malformed journals; recovery conflicts with no partial overwrite; invalid reload retention; stale drafts.
 
 The private 8.1 MiB fixture produced 495 valid definitions, 409 distinct skin documents, a complete 29-trait inventory, and 29 Sentinel field counts. Local explicit apply installed 495 dormant definitions; validation returned 495; rollback completed successfully. An independent archive audit verified all 236,939 classified leaf fields, all 904 bundle hashes, exact source bytes, and preservation of every original trait. Version 2 additionally remapped 30,598 known nested locations and resolved both mount references with zero unresolved fixture references. Apply/repeat/rollback passed independently; version 1 archives remain supported. This validates storage and conversion only.
 
-## Historical direct live smoke evidence
+## Historical direct live checks on Leaf
 
 A dedicated local Leaf 26.3-17 (commit af63114) server, Java 25.0.5 on macOS ARM64, passed startup, console status/create/edit/inspect/clone/delete/validate/reload/rollback, invalid-edit last-valid retention, two clean shutdowns, and definition persistence after restart. Existing JSON plugin settings migrated to TOML; the restarted server used TOML. No production server or private NPC collection was used. The scenario uses synthetic dormant definitions and is reproducible with:
 
@@ -111,30 +121,25 @@ Strict independent audit `animus-evidence/audits/imports-runtime-9-final-1793809
 
 The [application commands](import-applications.md) now support explicit replacement and duplication. Compact journal payloads and accepted-definition checkpoints preserve restart rollback within documented limits. This does not establish imported behavior parity, automatic schema migration, or actual power-loss resilience.
 
-## Accepted runtime10 modules and regression scopes
+## Runtime10 modules and regression scopes (earlier checkpoint)
 
 Multiplexor build `run-1793811646388580-96533` produced plugin SHA `a6b3a8632f37595e55959c4f0cc0bac2a39ea73a7d57cbb863c5e5a7e886a601` and standalone API SHA `7d047849886f384283626ac98175a8d246634623e2f07fd22640f2f153c54911`. It executed306 core and61 Bukkit tests and all three exact API compile tasks. Its source capture contains288 Animus files, digest `2b5b7ddaa60a0395005850b02e78efdd3384df607ccf6ceef11c17c78d33806d`.
 
 Independent acceptance covers27 managed suites and864 grouped checks:108 trusted Java module/data checks on nine targets,480 native Paper/Spigot checks on six targets,150 limited Folia stationary-preview checks on three targets, and126 import/data checks on nine targets. Immutable aggregate the retired QA workspace's `animus-evidence/runtime-10-final.json` has SHA `55c428f15716969fd0f5b053c5e0b0e809b1dd0f0df1e9abd17df09bc2a1132f`. Final current-instance cleanup verifies all27 stopped and ports closed; broader cleanup checks45 instances/46 ports. Failed attempts remain preserved. Folia's accepted QA supplement fixes explicit release of its own held file work and caches its diagnostic method before actual disable; no production workaround or exception whitelist was introduced.
 
-The versioned JDK-only API, startup module loader, bounded capability host, shared file mutation lane and asynchronous shutdown are part of this accepted artifact. See [module contracts](modules.md) and the [reference module](../examples/modules/reference/README.md). Trusted Java extensions are not sandboxed. API replacement definitions are dormant; activation uses ordinary platform-validated administration. Public event subscriptions, import-converter extension hooks and remote API publication remain unfinished.
+The versioned JDK-only API, startup module loader, bounded capability host, shared file mutation lane and asynchronous shutdown are part of this accepted artifact. See [module contracts](modules.md) and the [reference module](../examples/modules/reference/README.md). Trusted Java extensions are not sandboxed. API replacement definitions are dormant; activation uses ordinary platform-validated administration. API 1.1 adds interaction notices, module import converters and protection/economy hooks, all with unit tests and no server run yet. The API has local Maven and JitPack publishing configuration; releasing it is a manual step.
 
-## Current manual behavior integration — managed verification pending
+## Manual behavior integration (earlier checkpoint)
 
 The active source now includes the bounded JSON compiler/interpreter, typed argument bindings, compiled module argument-schema checks, revision/hash-aware file catalog, read-only candidate validation, TOML budgets and manual `behaviors` commands. Its owner uses immutable definition/program leases and revokes changed source authority before queued handlers start. Terminal observation preserves lease cleanup even when retained history is smaller than the number of completing runs. Actual unfinished module calls remain counted after cancellation.
 
 The local full build passes476 core and69 Bukkit tests. A final startup/shutdown review fixed late coordinator construction: enabled behavior service now owns its coordinator synchronously before asynchronous file loading, so disable always closes that same instance. Local command lifecycle tests and57 isolated coordinator/host/cold-classloader checks cover the change. Canonical/custom-group packaged API verification passed18 grouped checks at `.qa/module-packaging/1793815322952198000-59707/result.json`, SHA `5ef8df4d1f71720d26d39e6c4acbc05e4422c1bd5d92abc2cec32a761bd26b67`.
 
-Runtime11 Multiplexor capture/build and the new26-gate manual behavior suite on each exact target are pending. Runtime10 results do not certify this newer source. The new suite covers definition/module data only; it grants no world/region ownership and does not enable general Folia simulation. Automatic triggers, durable NPC/player/relationship/global state, platform actions, generated editor schemas and release example packs remain open. [Behavior commands, syntax and limitations](behaviors.md) describe the current contract.
+Runtime11 then built this source and passed the 26-check behavior suite on all nine targets. Automatic triggers, durable state and platform actions followed and pass the same suite and the live checks above.
 
-## Remaining executable work
+## Remaining work
 
-1. Run mounts, real riders and dragon presentation on live exact targets and a graphical client, then continue graphical validation and actual benchmark runs. The exact Paper/Spigot persisted-runtime and initial combat matrix now passes; full combat workflows remain incomplete.
-2. Run the [Folia runtime](folia-runtime.md) live on all three exact Folia builds: separate-region viewers, chunk-crossing patrols, unload during movement, viewer lifecycle and shutdown. Riding, mounted groups, combat and dragon phases run on region owners; see the Folia runtime page.
-3. Freeze and build the integrated manual behavior implementation through Multiplexor, run the new nine-target behavior gate and affected module/native/Folia/import regressions, and independently audit source/artifact/receipt/cleanup bindings. Continue automatic triggers, durable scopes, platform actions and schema generation after this gate. Automatic definition schema migration and behavior translation remain open.
-4. Continue navigation, versioned public API/modules, bounded JSON behaviors and examples, combat/protection, benchmark evidence, additional platforms, and then the arcane_jaspr/Firebase editor.
-
-Keep platform compilation separate from live runtime results. Keep preservation separate from behavior translation. Do not check entire plan items when only part is implemented.
+See [current status](#current-status). Keep platform compilation separate from live runtime results. Keep preservation separate from behavior translation. Do not check entire plan items when only part is implemented.
 
 ## Known storage limits
 
