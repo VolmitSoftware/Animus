@@ -102,6 +102,7 @@
 - `/animus debug` with `network`, `performance`, `npc` and `watch` on every platform (permission `animus.debug`), backed by always-on packet, byte, click and per-subsystem time counters; byte figures are estimates and per-NPC time is sampled.
 - Animus publishes 24 metrics to React as source `animus` when React is installed, with no dependency on React (`docs/react.md`).
 - `/animus import citizens` converts Denizen scripts into `denizen:` behaviors and imports Denizen flag values as behavior state, with a `denizen` review category; `converter denizen-preview` and a browser Denizen converter with the same output.
+- Route legs of any length: long legs are planned in bounded terrain segments that climb, swim, fly and detour along cliffs and shores; guided routes reach destinations no guide links to.
 
 ### Changed
 
@@ -153,6 +154,8 @@
 - Shop messages, price format, economy and the command allow-lists apply without a restart; shops, chest GUIs, menus, holograms and text animations that fail to reload keep their last valid version.
 - Citizens converter version 10; per-NPC reports give a reason for every field that is not converted, and migration warnings are only actionable ones.
 - Mod-server command replies render colours through the shared text formatter.
+- `movement.pathRange` limits how far each plan reaches instead of making longer legs unreachable; a step blocked by new terrain replans; a leg terrain blocks is logged once per NPC.
+- Removed the Citizens import warnings for long legs and unlinked guided destinations.
 
 ### Fixed
 
