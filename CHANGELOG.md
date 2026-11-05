@@ -92,6 +92,8 @@
 - Editor: import a Citizens saves.yml, Shopkeepers save.yml and config.yml, and dtlTraders files on a paired server through `/v1/imports`, then review, apply, accept categories and roll back; hologram and menu previews play `|animation.id|` text animations; `preview-response` lists the live NPCs a preview hides.
 - NPC definitions accept an optional `tags` list (at most 32 unique lowercase labels).
 - Editor: NPC browser with search, folders, tags and bulk edits as one undoable change set, plus spawn and despawn on a paired server; typed editors for equipment, skin, route (top-down grid and 3D stage), combat, shop and schema-described modules; a conversation tree for dialogue behaviors.
+- `[npcs] packetsPerTick`, `pendingSpawnsPerViewer` and `lookUpdatesPerTick` in `config.toml`.
+- NPC definitions, behaviors and shops upgrade to the current `schemaVersion` at startup in one journaled transaction with a rollback receipt; documents from a newer Animus are logged and left unchanged.
 
 ### Changed
 
@@ -134,9 +136,13 @@
 - The Citizens converter is version 8, so every import ID changes.
 - The editor uses the server's `namespace:path` ids for holograms and text animations, including Gloss bundles; saved workspaces are moved on load.
 - Holographic menus use the server's `namespace:path` ids in the editor and editor API (workspaces migrate to version 3); Gloss bundle ids for chest GUIs and menus match `/animus gui import|export gloss`; behavior JSON completes `animus:open-gui` and `animus:open-shop` ids.
+- Under packet budget pressure despawns go first, then moves and spawns; look-close turns, rig bones and timed hologram refreshes wait; `/animus status` shows `presentation=`.
+- Finding players near a point uses a chunk index instead of scanning every player.
+- Docs give the real editor, relay and `relayUrl` deployment steps.
 
 ### Fixed
 
+- The editor explains why the server closed its event stream, and a change set still being written at reconnect completes when the server reports it.
 - Citizens NPCs with a non-player body and a skin import without the skin and spawn; the skin is kept for review, preview counts only definitions the server can spawn as valid, and a definition that cannot activate is logged once at WARN with its field (converter version 9).
 - Patrols are no longer capped at 32: routes take turns under `[navigation]` per-tick budgets, patrols with no player near sleep, a walking patrol standing in the air falls before its first leg, and navigation pressure is reported in `/animus status` and the console.
 - Every accepted combat guard fights: `[combat] maximumNpcs` (default 256) limits only guards fighting or scanning, idle guards sleep, and waiting guards are reported.
