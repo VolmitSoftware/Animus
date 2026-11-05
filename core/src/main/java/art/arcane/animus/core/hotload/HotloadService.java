@@ -218,16 +218,16 @@ public final class HotloadService implements AutoCloseable {
     }
 
     /**
-     * An NPC reload keeps the whole last valid set when any definition is invalid, so a refusal there refuses every NPC,
-     * skin and route edit of the batch. A rig refusal names its file.
+     * An NPC reload applies each definition file on its own, so only a problem that names this file refuses it; another
+     * file's error never refuses a valid edit of the same batch. A rig refusal names its file too.
      */
     private static Item reloadRefusal(Item item, List<String> problems) {
         if (!item.verdict().valid() || problems.isEmpty() || item.verdict().kind().isEmpty()) return item;
         DocumentKind kind = item.verdict().kind().get();
         String path = item.target().path();
-        Optional<String> own = problems.stream().filter((String problem) -> problem.startsWith(path) || problem.contains(" " + path)).findFirst();
-        if (NPC_GROUP.contains(kind)) return item.refused(own.orElse("the NPC reload kept the last valid set: " + problems.getFirst()));
-        if ((kind == DocumentKind.RIG || kind == DocumentKind.ANIMATION) && own.isPresent()) return item.refused(own.get());
+        Optional<String> own = problems.stream().filter((String problem) -> problem.startsWith(path) || problem.contains(" " + path)).findFirst()
+                .map((String problem) -> problem.startsWith(path + ": ") ? problem.substring(path.length() + 2) : problem);
+        if (own.isPresent() && (NPC_GROUP.contains(kind) || kind == DocumentKind.RIG || kind == DocumentKind.ANIMATION)) return item.refused(own.get());
         return item;
     }
 

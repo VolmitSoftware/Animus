@@ -115,6 +115,31 @@ class HotloadServiceTest {
         assertEquals(List.of("[Animus]: Animus Hotloaded: [npcs/town/guard.json] [name] [\"Guard\" -> \"Captain Guard\"]"), shown());
     }
 
+    @Test void aValidNpcEditAppliesWhileAnotherNpcFileIsInvalid() throws Exception {
+        Path guard = root.resolve("npcs/town/guard.json");
+        Files.createDirectories(guard.getParent());
+        Files.writeString(guard, NPC);
+        settle();
+        Files.writeString(guard, NPC.replace("\"y\":64", "\"y\":\"high\""));
+        settle();
+        lines.clear();
+
+        Path baker = root.resolve("npcs/town/baker.json");
+        Files.writeString(baker, NPC.replace("12345678-1234-1234-1234-123456789abc", "22345678-1234-1234-1234-123456789abc")
+                .replace("\"id\":\"guard\"", "\"id\":\"baker\"").replace("\"Guard\"", "\"Baker\""));
+        settle();
+        assertEquals("Baker", runtime.npcs().find("baker").orElseThrow().name());
+        assertEquals("Guard", runtime.npcs().find("guard").orElseThrow().name());
+        assertEquals(List.of("[Animus]: Animus Hotloaded: [npcs/town/baker.json] [name] [<missing> -> \"Baker\"]"), shown().stream().filter((String line) -> line.contains("[name]")).toList());
+        assertTrue(shown().stream().noneMatch((String line) -> line.contains("refused")), shown().toString());
+
+        lines.clear();
+        Files.writeString(baker, Files.readString(baker).replace("\"Baker\"", "\"Head Baker\""));
+        settle();
+        assertEquals("Head Baker", runtime.npcs().find("baker").orElseThrow().name());
+        assertEquals(List.of("[Animus]: Animus Hotloaded: [npcs/town/baker.json] [name] [\"Baker\" -> \"Head Baker\"]"), shown());
+    }
+
     @Test void animusOwnWritesProduceNoHotloadMessage() throws Exception {
         runtime.documents().commit(List.of(new DocumentStore.Change("npcs/town/guard.json", JsonDocuments.hash(null), NPC)));
         runtime.npcs().reload();
