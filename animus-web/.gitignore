@@ -1,0 +1,20 @@
+# Dart / Jaspr
+.dart_tool/
+build/
+.deps/
+
+# Firebase tooling
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+
+# Local credentials
+service-account*.json
+.env
+.env.*
+gha-creds-*.json
+
+# Browser test dependencies and output
+node_modules/
+playwright-report/
+test-results/

@@ -1,0 +1,2746 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Animus behavior document",
+  "description": "A JSON behavior under behaviors/<namespace>/<path>.json or packs/<pack>/behaviors/<namespace>/<path>.json. The plugin's compiler is authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "revision",
+    "id",
+    "entry",
+    "routines"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Always 1."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9223372036854775807,
+      "description": "Raise this whenever the file changes. Changed bytes need a revision above the last accepted one."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$",
+      "description": "namespace:path, matching this file's location.",
+      "maxLength": 256,
+      "not": {
+        "type": "string",
+        "pattern": "^animus:(flags|quests)(/|$)"
+      }
+    },
+    "entry": {
+      "$ref": "#/$defs/identifier",
+      "description": "The routine a run starts with unless a trigger names another."
+    },
+    "variables": {
+      "type": "object",
+      "description": "Typed variables, at most 32.",
+      "maxProperties": 32,
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/variable"
+      }
+    },
+    "routines": {
+      "type": "object",
+      "description": "Named routines, 1 to 32.",
+      "minProperties": 1,
+      "maxProperties": 32,
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "description": "Automatic starts, at most 32.",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/trigger"
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+      "description": "1-64 lowercase letters, digits, _ or -, starting with a letter or digit."
+    },
+    "module-capability": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}$",
+      "description": "A capability of a Java module. Its arguments are checked when that module is installed.",
+      "not": {
+        "type": "string",
+        "pattern": "^animus:"
+      }
+    },
+    "actions": {
+      "anyOf": [
+        {
+          "const": "animus:advance-quest-state",
+          "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum."
+        },
+        {
+          "const": "animus:build",
+          "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+        },
+        {
+          "const": "animus:choices",
+          "description": "Presents clickable options to the triggering player and publishes the validated click."
+        },
+        {
+          "const": "animus:combat-control",
+          "description": "Engages or disengages the NPC's combat, attacks or releases a target, or guards a participant (no target stops guarding; player is the triggering player). Needs enabled combat settings; protection still applies."
+        },
+        {
+          "const": "animus:command",
+          "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+        },
+        {
+          "const": "animus:look",
+          "description": "Turns the NPC toward a position or the triggering player."
+        },
+        {
+          "const": "animus:navigate",
+          "description": "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait."
+        },
+        {
+          "const": "animus:open-gui",
+          "description": "Opens a chest GUI for the triggering player."
+        },
+        {
+          "const": "animus:open-shop",
+          "description": "Opens a shop for the triggering player."
+        },
+        {
+          "const": "animus:play-sound",
+          "description": "Plays a sound at the NPC for the triggering player or nearby players."
+        },
+        {
+          "const": "animus:say",
+          "description": "Sends dialogue text to the triggering player or to nearby players."
+        },
+        {
+          "const": "animus:set-appearance",
+          "description": "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes."
+        },
+        {
+          "const": "animus:set-equipment",
+          "description": "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes."
+        },
+        {
+          "const": "animus:set-flag",
+          "description": "Sets a flag, true unless value says otherwise."
+        },
+        {
+          "const": "animus:set-quest-state",
+          "description": "Sets a quest stage."
+        },
+        {
+          "const": "animus:spawn-particle",
+          "description": "Shows a particle effect at the NPC to the triggering player or nearby players."
+        },
+        {
+          "const": "animus:stop-navigation",
+          "description": "Stops the NPC's current route and any route it is following."
+        }
+      ]
+    },
+    "conditions": {
+      "anyOf": [
+        {
+          "const": "animus:flag-state",
+          "description": "Compares a flag. An unset flag is false."
+        },
+        {
+          "const": "animus:has-permission",
+          "description": "True when the triggering player holds a permission. False when there is no triggering player."
+        },
+        {
+          "const": "animus:npc-state",
+          "description": "Compares the NPC's spawned state and current health."
+        },
+        {
+          "const": "animus:player-in-range",
+          "description": "True when the triggering player, or any player with anyPlayer, is within the radius."
+        },
+        {
+          "const": "animus:quest-state",
+          "description": "Compares a quest stage. An unset quest is stage zero."
+        }
+      ]
+    },
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "initial"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "boolean",
+            "integer",
+            "decimal",
+            "string"
+          ],
+          "description": "The value type. There is no coercion."
+        },
+        "initial": {
+          "description": "The value until something writes it, of the declared type."
+        },
+        "scope": {
+          "enum": [
+            "execution",
+            "npc",
+            "player",
+            "relationship",
+            "global"
+          ],
+          "description": "Who shares the value: one run (execution, the default), one NPC, one player, one NPC and player pair, or everyone."
+        },
+        "lifetime": {
+          "enum": [
+            "transient",
+            "persistent"
+          ],
+          "description": "Required for every scope except execution: transient values last until the server stops, persistent values are stored."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "boolean"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "initial": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "integer"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "initial": {
+                "type": "integer",
+                "minimum": -9223372036854775808,
+                "maximum": 9223372036854775807
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "decimal"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "initial": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "string"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "initial": {
+                "type": "string",
+                "maxLength": 4096
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "const": "execution"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "lifetime"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "lifetime"
+            ]
+          }
+        }
+      ]
+    },
+    "bindings": {
+      "type": "object",
+      "description": "Fills null placeholders in arguments from declared variables, keyed by JSON Pointer.",
+      "maxProperties": 32,
+      "propertyNames": {
+        "type": "string",
+        "maxLength": 4096
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "variable"
+        ],
+        "properties": {
+          "variable": {
+            "type": "string",
+            "pattern": "\\S"
+          }
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "description": "One step of a routine.",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "sequence",
+            "action",
+            "condition",
+            "wait",
+            "repeat",
+            "parallel",
+            "call",
+            "set"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sequence"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-sequence"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "action"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-action"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "condition"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-condition"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "wait"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-wait"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "repeat"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-repeat"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "parallel"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-parallel"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "call"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-call"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "set"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/node-set"
+          }
+        }
+      ]
+    },
+    "node-sequence": {
+      "type": "object",
+      "description": "Runs its steps in order.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "sequence"
+        },
+        "steps": {
+          "type": "array",
+          "description": "Steps run in order.",
+          "minItems": 0,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "steps"
+      ]
+    },
+    "node-action": {
+      "type": "object",
+      "description": "Runs a capability and waits for its result.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "action"
+        },
+        "capability": {
+          "description": "An action capability, namespace:name.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/actions"
+            },
+            {
+              "$ref": "#/$defs/module-capability"
+            }
+          ]
+        },
+        "arguments": {
+          "type": "object",
+          "description": "The capability's arguments."
+        },
+        "bindings": {
+          "$ref": "#/$defs/bindings"
+        }
+      },
+      "required": [
+        "type",
+        "capability"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:advance-quest-state"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "scope": {
+                      "enum": [
+                        "global",
+                        "npc",
+                        "player",
+                        "relationship"
+                      ]
+                    },
+                    "by": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 1000000
+                    },
+                    "maximum": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:build"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "operation": {
+                      "enum": [
+                        "start",
+                        "pause",
+                        "resume",
+                        "cancel",
+                        "undo"
+                      ]
+                    },
+                    "schematic": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 132
+                    },
+                    "x": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "z": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "rotation": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 270
+                    },
+                    "mirror": {
+                      "enum": [
+                        "none",
+                        "x",
+                        "z"
+                      ]
+                    },
+                    "anchor": {
+                      "enum": [
+                        "center",
+                        "corner",
+                        "schematic"
+                      ]
+                    },
+                    "pattern": {
+                      "enum": [
+                        "spiral",
+                        "reversespiral",
+                        "linear",
+                        "reverselinear"
+                      ]
+                    },
+                    "materials": {
+                      "enum": [
+                        "creative",
+                        "donate"
+                      ]
+                    },
+                    "excavate": {
+                      "type": "boolean"
+                    },
+                    "ignoreAir": {
+                      "type": "boolean"
+                    },
+                    "ignoreLiquids": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ],
+                  "description": "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:choices"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "prompt": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "lifetimeSeconds": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 600
+                    },
+                    "options": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 8,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 32
+                          },
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "text"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "prompt",
+                    "options"
+                  ],
+                  "description": "Presents clickable options to the triggering player and publishes the validated click."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:combat-control"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "operation": {
+                      "enum": [
+                        "enable",
+                        "disable",
+                        "target",
+                        "release",
+                        "guard"
+                      ]
+                    },
+                    "target": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 36
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ],
+                  "description": "Engages or disengages the NPC's combat, attacks or releases a target, or guards a participant (no target stops guarding; player is the triggering player). Needs enabled combat settings; protection still applies."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:command"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "command": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "as": {
+                      "enum": [
+                        "console",
+                        "player"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "command"
+                  ],
+                  "description": "Runs a console or player command; {player} becomes the triggering player's UUID. Allowed only for behaviors on the TOML allow-list, and never in a preview."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:look"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "z": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "target": {
+                      "const": "player"
+                    }
+                  },
+                  "oneOf": [
+                    {
+                      "required": [
+                        "target"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "x",
+                        "y",
+                        "z"
+                      ]
+                    }
+                  ],
+                  "description": "Turns the NPC toward a position or the triggering player."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:navigate"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "route": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "x": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "y": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "z": {
+                      "type": "number",
+                      "minimum": -3.0E+7,
+                      "maximum": 3.0E+7
+                    },
+                    "mode": {
+                      "enum": [
+                        "walk",
+                        "swim",
+                        "fly"
+                      ]
+                    },
+                    "speed": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 5.0
+                    },
+                    "wait": {
+                      "type": "boolean"
+                    },
+                    "timeoutTicks": {
+                      "type": "integer",
+                      "minimum": 20,
+                      "maximum": 12000
+                    }
+                  },
+                  "oneOf": [
+                    {
+                      "required": [
+                        "route"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "x",
+                        "y",
+                        "z"
+                      ]
+                    }
+                  ],
+                  "description": "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:open-gui"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "gui": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  },
+                  "required": [
+                    "gui"
+                  ],
+                  "description": "Opens a chest GUI for the triggering player."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:open-shop"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "shop": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  },
+                  "required": [
+                    "shop"
+                  ],
+                  "description": "Opens a shop for the triggering player."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:play-sound"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "sound": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "volume": {
+                      "type": "number",
+                      "minimum": 0.0,
+                      "maximum": 4.0
+                    },
+                    "pitch": {
+                      "type": "number",
+                      "minimum": 0.5,
+                      "maximum": 2.0
+                    },
+                    "audience": {
+                      "enum": [
+                        "trigger",
+                        "nearby"
+                      ]
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 64.0
+                    }
+                  },
+                  "required": [
+                    "sound"
+                  ],
+                  "description": "Plays a sound at the NPC for the triggering player or nearby players."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:say"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "audience": {
+                      "enum": [
+                        "trigger",
+                        "nearby"
+                      ]
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 64.0
+                    }
+                  },
+                  "required": [
+                    "text"
+                  ],
+                  "description": "Sends dialogue text to the triggering player or to nearby players."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:set-appearance"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 16
+                    },
+                    "skin": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "reset": {
+                      "type": "boolean"
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "name"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "skin"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "reset"
+                      ]
+                    }
+                  ],
+                  "description": "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:set-equipment"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "slot": {
+                      "enum": [
+                        "main_hand",
+                        "off_hand",
+                        "head",
+                        "chest",
+                        "legs",
+                        "feet",
+                        "body"
+                      ]
+                    },
+                    "item": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "required": [
+                    "slot"
+                  ],
+                  "description": "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:set-flag"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "scope": {
+                      "enum": [
+                        "global",
+                        "npc",
+                        "player",
+                        "relationship"
+                      ]
+                    },
+                    "value": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "description": "Sets a flag, true unless value says otherwise."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:set-quest-state"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "scope": {
+                      "enum": [
+                        "global",
+                        "npc",
+                        "player",
+                        "relationship"
+                      ]
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "value"
+                  ],
+                  "description": "Sets a quest stage."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:spawn-particle"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "particle": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 64
+                    },
+                    "spread": {
+                      "type": "number",
+                      "minimum": 0.0,
+                      "maximum": 8.0
+                    },
+                    "audience": {
+                      "enum": [
+                        "trigger",
+                        "nearby"
+                      ]
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 64.0
+                    }
+                  },
+                  "required": [
+                    "particle"
+                  ],
+                  "description": "Shows a particle effect at the NPC to the triggering player or nearby players."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:stop-navigation"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {},
+                  "description": "Stops the NPC's current route and any route it is following."
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "node-condition": {
+      "type": "object",
+      "description": "Tests a capability, then runs then or else.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "condition"
+        },
+        "capability": {
+          "description": "A condition capability, namespace:name.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/conditions"
+            },
+            {
+              "$ref": "#/$defs/module-capability"
+            }
+          ]
+        },
+        "arguments": {
+          "type": "object",
+          "description": "The capability's arguments."
+        },
+        "bindings": {
+          "$ref": "#/$defs/bindings"
+        },
+        "then": {
+          "$ref": "#/$defs/node",
+          "description": "Runs when the condition is true."
+        },
+        "else": {
+          "$ref": "#/$defs/node",
+          "description": "Runs when the condition is false."
+        }
+      },
+      "required": [
+        "type",
+        "capability",
+        "then"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:flag-state"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "scope": {
+                      "enum": [
+                        "global",
+                        "npc",
+                        "player",
+                        "relationship"
+                      ]
+                    },
+                    "value": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "description": "Compares a flag. An unset flag is false."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:has-permission"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "permission": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    }
+                  },
+                  "required": [
+                    "permission"
+                  ],
+                  "description": "True when the triggering player holds a permission. False when there is no triggering player."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:npc-state"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "spawned": {
+                      "type": "boolean"
+                    },
+                    "minimumHealth": {
+                      "type": "number",
+                      "minimum": 0.0,
+                      "maximum": 1000000.0
+                    },
+                    "maximumHealth": {
+                      "type": "number",
+                      "minimum": 0.0,
+                      "maximum": 1000000.0
+                    }
+                  },
+                  "anyOf": [
+                    {
+                      "required": [
+                        "spawned"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "minimumHealth"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "maximumHealth"
+                      ]
+                    }
+                  ],
+                  "description": "Compares the NPC's spawned state and current health."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:player-in-range"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "radius": {
+                      "type": "number",
+                      "minimum": 1.0,
+                      "maximum": 64.0
+                    },
+                    "anyPlayer": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "radius"
+                  ],
+                  "description": "True when the triggering player, or any player with anyPlayer, is within the radius."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:quest-state"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "scope": {
+                      "enum": [
+                        "global",
+                        "npc",
+                        "player",
+                        "relationship"
+                      ]
+                    },
+                    "equals": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    },
+                    "atLeast": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    },
+                    "atMost": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000000000
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "anyOf": [
+                    {
+                      "required": [
+                        "equals"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "atLeast"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "atMost"
+                      ]
+                    }
+                  ],
+                  "description": "Compares a quest stage. An unset quest is stage zero."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "node-wait": {
+      "type": "object",
+      "description": "Waits a number of behavior ticks.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "wait"
+        },
+        "ticks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 72000,
+          "description": "Behavior ticks, about 50 ms each."
+        }
+      },
+      "required": [
+        "type",
+        "ticks"
+      ]
+    },
+    "node-repeat": {
+      "type": "object",
+      "description": "Runs its body a fixed number of times.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "repeat"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 128,
+          "description": "How many times the body runs."
+        },
+        "body": {
+          "$ref": "#/$defs/node",
+          "description": "The repeated step."
+        }
+      },
+      "required": [
+        "type",
+        "count",
+        "body"
+      ]
+    },
+    "node-parallel": {
+      "type": "object",
+      "description": "Runs independent branches, then joins them.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "parallel"
+        },
+        "branches": {
+          "type": "array",
+          "description": "Branches run together and join.",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "branches"
+      ]
+    },
+    "node-call": {
+      "type": "object",
+      "description": "Runs another routine of this document.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "call"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "A routine of this document."
+        }
+      },
+      "required": [
+        "type",
+        "routine"
+      ]
+    },
+    "node-set": {
+      "type": "object",
+      "description": "Writes a declared variable.",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "set"
+        },
+        "variable": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "A declared variable."
+        },
+        "value": {
+          "description": "A literal of the variable's type, or {\"variable\": \"name\"} of the same type.",
+          "anyOf": [
+            {
+              "type": [
+                "boolean",
+                "number",
+                "string"
+              ]
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "variable"
+              ],
+              "properties": {
+                "variable": {
+                  "type": "string",
+                  "pattern": "\\S"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "variable",
+        "value"
+      ]
+    },
+    "trigger": {
+      "type": "object",
+      "description": "An automatic start for NPCs that list this behavior.",
+      "required": [
+        "id",
+        "event"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "enum": [
+            "interaction",
+            "proximity",
+            "spawn",
+            "despawn",
+            "damage",
+            "death",
+            "waypoint",
+            "timer",
+            "dialogue_choice",
+            "module",
+            "build_finished",
+            "build_paused"
+          ],
+          "description": "What starts the run."
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "interaction"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-interaction"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "proximity"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-proximity"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "spawn"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-spawn"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "despawn"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-despawn"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "damage"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-damage"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "death"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-death"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "waypoint"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-waypoint"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "timer"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-timer"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "dialogue_choice"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-dialogue_choice"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "module"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-module"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "build_finished"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-build_finished"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "build_paused"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-build_paused"
+          }
+        }
+      ]
+    },
+    "trigger-interaction": {
+      "type": "object",
+      "description": "A viewer's validated hit on the NPC.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "interaction"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "action": {
+          "enum": [
+            "interact",
+            "attack",
+            "any"
+          ],
+          "description": "Which hit fires it; interact by default."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-proximity": {
+      "type": "object",
+      "description": "A viewer crosses a radius around the NPC.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "proximity"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "phase": {
+          "enum": [
+            "enter",
+            "leave"
+          ],
+          "description": "Entering or leaving the radius."
+        },
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 64.0,
+          "description": "Blocks, above 0."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "phase",
+        "radius"
+      ]
+    },
+    "trigger-spawn": {
+      "type": "object",
+      "description": "The runtime first presents the NPC.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "spawn"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-despawn": {
+      "type": "object",
+      "description": "A spawned NPC is despawned.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "despawn"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-damage": {
+      "type": "object",
+      "description": "Authoritative NPC health falls.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "damage"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-death": {
+      "type": "object",
+      "description": "Authoritative NPC health reaches zero.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "death"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-waypoint": {
+      "type": "object",
+      "description": "The NPC arrives at a route point.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "waypoint"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "waypoint": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 4095,
+          "description": "A route point index; -1 is a manually requested destination. Omit for any arrival."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-timer": {
+      "type": "object",
+      "description": "An interval passes while the NPC is active.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "timer"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "intervalTicks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 72000,
+          "description": "Ticks between firings while the NPC is active."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "intervalTicks"
+      ]
+    },
+    "trigger-dialogue_choice": {
+      "type": "object",
+      "description": "A viewer clicks an option of an animus:choices prompt from this NPC.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "dialogue_choice"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "dialogue": {
+          "$ref": "#/$defs/identifier",
+          "description": "The id of an animus:choices prompt."
+        },
+        "choice": {
+          "$ref": "#/$defs/identifier",
+          "description": "An option id of that prompt. Omit for any option."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "dialogue"
+      ]
+    },
+    "trigger-module": {
+      "type": "object",
+      "description": "The owning module publishes a trigger.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "module"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}$",
+          "description": "A trigger a module registered, namespace:name."
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "key"
+      ]
+    },
+    "trigger-build_finished": {
+      "type": "object",
+      "description": "A build this NPC works on places its last block.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "build_finished"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-build_paused": {
+      "type": "object",
+      "description": "A build this NPC works on is paused by command or starts waiting for terrain, materials or builders.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "build_paused"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    }
+  },
+  "examples": [
+    {
+      "schemaVersion": 1,
+      "revision": 1,
+      "id": "town:greeter",
+      "entry": "main",
+      "routines": {
+        "main": {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Welcome to town."
+          }
+        }
+      },
+      "triggers": [
+        {
+          "id": "click",
+          "event": "interaction"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "valid": false,
+  "documents": [
+    {
+      "kind": "inventory",
+      "id": "shop:counter",
+      "diagnostics": [
+        {
+          "severity": "error",
+          "path": "$.keys.X.actions[0].type",
+          "message": "action 'camera' is not available in Animus",
+          "code": "action-unavailable"
+        }
+      ]
+    }
+  ]
+}

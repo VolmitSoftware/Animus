@@ -1,0 +1,9 @@
+{
+  "type": "response",
+  "id": 7,
+  "status": 200,
+  "body": {
+    "valid": true,
+    "documents": []
+  }
+}
