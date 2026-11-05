@@ -37,7 +37,7 @@ const defaultScenarios = project === 'folia' ? 'folia' : MOD ? (version === '26.
 const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
-assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug)-${project}-${dashed}$`).test(name), 'Instance name must bind the requested platform/version');
+assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal)-${project}-${dashed}$`).test(name), 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
 const pluginInstances = path.join(workspace, 'consumers/plugin-consumers/instances');
@@ -114,7 +114,7 @@ class Server {
     writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|mod)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|mod)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -1314,21 +1314,174 @@ async function folia() {
     assert.equal(after, before, status);
     return `accepted stays ${after}, ${status.match(/rejected=\d+/)[0]}; no interaction trigger`;
   });
-  await check('riding, mounts and combat report unavailable', async () => {
-    await server.npc('fride', 'minecraft:horse', ...at(-4, 4), 'Steed', { modules: { 'animus:riding': { enabled: true }, 'animus:mount': { vehicle: 'fnpc' } } });
-    const runtime = await inspect('fride');
-    const ride = plain(await server.capture('animus ride status', /./, 300));
-    const combat = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/Combat \w+[^\n]*/)[0];
-    await server.cmd('animus delete fride', /Deleted/);
-    assert(/mount=mounted NPCs are unavailable on Folia/.test(runtime.line), runtime.line.slice(0, 300));
-    assert(/ride=riding is unavailable on Folia/.test(runtime.line), runtime.line.slice(0, 300));
-    assert(/unavailable/i.test(ride), ride.slice(0, 200));
-    assert(/Combat unavailable/.test(combat), combat);
-    return `${combat.slice(0, 90)}; ride status: ${ride.split('\n').find(line => /unavailable/i.test(line))?.replace(/^.*?\]: /, '').slice(0, 80)}`;
-  });
+  await foliaMounts(owner, at);
+  await foliaRiding(owner, at);
+  await foliaGuard(owner, at);
+  await foliaDragon(owner, at);
   await owner.close();
   await server.cmd('animus delete fnpc', /Deleted/);
   await foliaBuildsRefused();
+}
+
+// ---- Folia: mounted groups, riding, combat and dragon phases on region owners ----
+async function foliaMounts(owner, at) {
+  await owner.tp(...at(-8, -8));
+  const horse = await server.npc('fhorse', 'minecraft:horse', ...at(-8, -4), 'Charger');
+  const knight = await server.npc('fknight', 'minecraft:player', ...at(-12, -4), 'Knight', { modules: { 'animus:mount': { vehicle: 'fhorse' } } });
+  await check('Folia: an NPC boards its vehicle and clients get the passenger list', async () => {
+    const vehicle = await owner.body(horse), passenger = await owner.body(knight);
+    await owner.wait(e => e.event === 'passengers' && e.vehicle === vehicle.id && e.ids.includes(passenger.id), 0, 15000);
+    const runtime = await inspect('fknight');
+    assert(/mounted-on=fhorse/.test(runtime.line) && !/not seated/.test(runtime.line) && !/mount-problem=/.test(runtime.line), runtime.line.slice(0, 400));
+    return runtime.line.match(/mounted-on=[^;]*/)[0];
+  });
+  await check('Folia: the mounted group crosses chunk owners as one', async () => {
+    const before = await inspect('fhorse');
+    const goal = [before.x + 24, before.y, before.z];
+    await owner.tp(before.x + 12, before.y, before.z - 4);
+    await server.cmd(`animus navigate fhorse ${goal[0].toFixed(1)} ${goal[1]} ${goal[2].toFixed(1)} walk 4`, /Navigation|navigation|route/i);
+    const end = await until(async () => { const h = await inspect('fhorse'); return { ok: Math.abs(h.x - goal[0]) < .7, x: h.x, line: h.line.slice(0, 200) }; }, 30000, 'horse did not arrive');
+    const rider = await inspect('fknight');
+    const chunks = Math.floor(goal[0] / 16) - Math.floor(before.x / 16);
+    assert(chunks >= 1, `crossed ${chunks} chunk borders`);
+    assert(Math.hypot(rider.x - end.x, rider.z - before.z) < 1.5, `knight left behind: ${rider.line.slice(0, 200)}`);
+    assert(/mounted-on=fhorse/.test(rider.line) && !/not seated/.test(rider.line), rider.line.slice(0, 300));
+    return `group crossed ${chunks} chunk border(s); horse x=${end.x.toFixed(2)}, knight x=${rider.x.toFixed(2)} y=${rider.y.toFixed(2)}`;
+  });
+  await check('Folia: ending the relation returns the passenger to its own place', async () => {
+    await server.cmd('animus edit fknight {"modules":{}}', /Saved/);
+    const back = await until(async () => { const r = await inspect('fknight'); return { ok: !/mounted-on=/.test(r.line) && Math.abs(r.x - at(-12, -4)[0]) < .01, line: r.line.slice(0, 200) }; }, 10000, 'knight did not return');
+    return back.line.match(/position=[^;]*/)?.[0];
+  });
+  await server.cmd('animus delete fknight', /Deleted/);
+  await server.cmd('animus delete fhorse', /Deleted/);
+}
+async function foliaRiding(owner, at) {
+  // The steed starts 4 blocks before a chunk border, so steering east crosses into the next chunk's owner.
+  const [startX, ground, startZ] = at(-8, -17), borderX = Math.ceil(startX / 16) * 16 - 4.5;
+  await owner.tp(borderX, ground, startZ - 3);
+  const steed = await server.npc('fsteed', 'minecraft:horse', borderX, ground, startZ, 'Steed', { modules: { 'animus:riding': { enabled: true, speed: 4, leash: 64, lifetimeSeconds: 600 } } });
+  let body = await owner.body(steed);
+  const clean = (label, offset) => { const bad = logText().slice(offset).split('\n').filter(line => FORBIDDEN.test(line)); assert.deepEqual(bad, [], label); };
+  await check('Folia: right-click mounts the NPC on its region', async () => {
+    await mount(owner, body);
+    const status = await rideStatus();
+    assert(/AnimusProofQA on fsteed/.test(status), status.slice(0, 300));
+    return plain(status).match(/AnimusProofQA on[^\n]*/)[0].slice(0, 160);
+  });
+  await check('Folia: steering moves the NPC across chunk owners with the rider', async () => {
+    const offset = logText().length, from = owner.events.length;
+    await owner.look(body.x + 40, body.y + 1, body.z);
+    await owner.keys({ forward: true });
+    await delay(5000);
+    await owner.keys({});
+    await delay(400);
+    const moves = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id);
+    assert(moves.length > 5, `only ${moves.length} move packets`);
+    const last = moves.at(-1), distance = Math.hypot(last.x - body.x, last.z - body.z);
+    const chunks = Math.floor(last.x / 16) - Math.floor(body.x / 16);
+    assert(distance > 8, `moved ${distance}`);
+    assert(chunks >= 1, `crossed ${chunks} chunk borders`);
+    const status = await rideStatus();
+    assert(/AnimusProofQA on fsteed/.test(status), `ride ended while crossing: ${status.slice(0, 200)}`);
+    assert(!owner.fatal, owner.fatal?.message);
+    clean('Folia steering', offset);
+    return `moved ${distance.toFixed(2)} blocks over ${chunks} chunk border(s); ${status.match(/steps=\d+/)?.[0]}`;
+  });
+  await check('Folia: sneak dismounts beside the NPC', async () => {
+    const offset = logText().length, from = owner.events.length;
+    await owner.keys({ shift: true });
+    await dismounted(owner, body.id, from);
+    const position = await owner.wait(e => e.event === 'position', from, 5000);
+    await owner.keys({});
+    await delay(1500);
+    assert(!/AnimusProofQA on/.test(await rideStatus()));
+    assert(!owner.fatal);
+    clean('Folia sneak', offset);
+    return `placed at ${position.x.toFixed(2)},${position.y.toFixed(2)},${position.z.toFixed(2)}`;
+  });
+  await check('Folia: teleport while riding ends the ride on the NPC owner', async () => {
+    body = await owner.body(steed);
+    const npc = owner.events.filter(e => e.event === 'move' && e.id === body.id).at(-1) ?? body;
+    await owner.tp(npc.x + 1.5, npc.y, npc.z);
+    body = await owner.body(steed);
+    await mount(owner, owner.events.filter(e => e.event === 'move' && e.id === body.id).at(-1) ?? body);
+    const from = owner.events.length;
+    const away = at(-30, -20);
+    await server.cmd(`tp ${OWNER.name} ${away[0]} ${away[1]} ${away[2]}`, /Teleported/);
+    await until(async () => ({ ok: !/AnimusProofQA on/.test(await rideStatus()) }), 8000, 'ride survived the teleport');
+    assert(!owner.fatal);
+    return owner.events.slice(from).filter(e => e.event === 'chat').map(e => e.text).join('|').slice(0, 120) || 'ended';
+  });
+  await server.cmd('animus delete fsteed', /Deleted/);
+}
+async function foliaGuard(owner, at) {
+  await server.cmd('gamerule minecraft:spawn_mobs false', /spawn_mobs/).catch(() => {});
+  await owner.tp(...at(14, 8));
+  const guardAt = at(14, 12), mobAt = at(17, 16);
+  await server.npc('fguard', 'minecraft:player', ...guardAt, 'Warden', combatNpc({
+    guard: { player: OWNER.uuid, followDistance: 7 }, targets: { categories: ['monsters'] },
+    targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' }, melee: { damage: 6, reach: 3, cooldownTicks: 10 }, pursuit: { speed: 4 },
+  }));
+  await check('Folia: combat runs on the NPC region', async () => {
+    // The NPC opens its engine on its first owner turn after it activates.
+    const global = await until(async () => {
+      const line = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/Combat \w+[^\n]*/)[0];
+      return { ok: /Combat ready on Folia regions \| module npcs=1/.test(line), line };
+    }, 10000, 'combat never ran on the NPC region');
+    return global.line.slice(0, 200);
+  });
+  await check('Folia: a guard finds and kills a mob its region owns', async () => {
+    const from = owner.events.length;
+    const zombie = await summon(21, 'minecraft:zombie', mobAt[0], mobAt[1], mobAt[2], 'NoAI:1b,Health:10f');
+    const seen = await owner.wait(e => e.event === 'spawn' && e.uuid === zombie, from, 10000).catch(() => null);
+    const fight = await until(async () => { const s = await combatOf('fguard'); return { ok: /target=MOB:/.test(s), s }; }, 15000, 'guard never targeted the zombie');
+    if (seen) await owner.wait(e => e.event === 'remove' && e.ids.includes(seen.id), from, 20000);
+    const after = await until(async () => { const s = await combatOf('fguard'); return { ok: !/target=MOB:/.test(s), s }; }, 20000, 'guard kept its target');
+    return `${fight.s.slice(0, 120)} -> ${after.s.slice(0, 80)}${seen ? '; zombie removed for the client' : ''}`;
+  });
+  await check('Folia: a player hit damages a combat NPC on its region', async () => {
+    const target = await server.npc('fdummy', 'minecraft:player', ...at(10, 10), 'Dummy', combatNpc({ targeting: { fightBack: false }, defense: { maximumHealth: 20, healRateTicks: 0, invulnerableTicks: 0 } }));
+    await owner.tp(...at(10, 8));
+    await owner.body(target);
+    const before = await inspect('fdummy');
+    let after = before;
+    for (let i = 0; i < 4 && after.health >= before.health; i++) { await click(owner, target, 'attack'); await delay(700); after = await inspect('fdummy'); }
+    await server.cmd('animus delete fdummy', /Deleted/);
+    assert(after.health < before.health, `health ${before.health} -> ${after.health}`);
+    return `health ${before.health} -> ${after.health}`;
+  });
+  await check('Folia: NPC versus NPC hits go to the defender\'s owner', async () => {
+    await server.npc('fprey', 'minecraft:player', ...at(20, 14), 'Prey', combatNpc({ targeting: { fightBack: false }, defense: { maximumHealth: 40, armor: 0.5, healRateTicks: 0, invulnerableTicks: 0 } }));
+    await server.npc('fhunter', 'minecraft:player', ...at(22, 14), 'Hunter', combatNpc({
+      targets: { npcs: ['fprey'] }, targeting: { scanRange: 16, scanIntervalTicks: 5, lineOfSight: 'ignored' }, melee: { damage: 8, reach: 3, cooldownTicks: 10 }, pursuit: { speed: 4 },
+    }));
+    const hurt = await until(async () => { const prey = await inspect('fprey'); return { ok: prey.health < 40, health: prey.health }; }, 15000, 'prey never hurt');
+    const hunter = await combatOf('fhunter');
+    const status = plain(await server.capture('animus combat status', /Combat \w+[^\n]*/)).match(/Combat \w+[^\n]*/)[0];
+    await server.cmd('animus delete fhunter', /Deleted/);
+    await server.cmd('animus delete fprey', /Deleted/);
+    assert.equal((40 - hurt.health) % 4, 0, `armor did not halve the hits: health ${hurt.health}`);
+    assert(/owner-messages=[1-9]/.test(status), status);
+    return `prey health ${hurt.health} (armor halves 8 to 4); ${hunter.slice(0, 100)}; ${status.match(/owner-messages=\d+/)[0]}`;
+  });
+  await server.cmd('animus delete fguard', /Deleted/);
+}
+async function foliaDragon(owner, at) {
+  await owner.tp(...at(-20, 24));
+  const uuid = await server.npc('fdrake', 'minecraft:ender_dragon', ...at(-20, 36), 'Drake');
+  await check('Folia: dragon wing phases follow rest and motion', async () => {
+    const body = await owner.body(uuid);
+    const from = 0;
+    await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 6), from, 8000);
+    const moved = owner.events.length;
+    const goal = at(-20, 46);
+    await server.cmd(`animus navigate fdrake ${goal[0]} ${goal[1]} ${goal[2]} walk 2`, /Navigation|navigation|route/i);
+    await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 0), moved, 10000);
+    await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 6), moved, 20000);
+    return owner.events.filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ').slice(0, 200);
+  });
+  await server.cmd('animus delete fdrake', /Deleted/);
 }
 
 async function appearance() {

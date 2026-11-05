@@ -1,6 +1,8 @@
 package art.arcane.animus.bukkit;
 
 import art.arcane.animus.core.hire.CombatGuarding;
+import art.arcane.animus.core.hire.HireDesk;
+import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
 import org.bukkit.inventory.ItemStack;
 import art.arcane.animus.core.runtime.CombatModule;
 import art.arcane.animus.core.runtime.PersistedNpcService;
@@ -67,15 +69,21 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private final Map<UUID, Registration> registrations = new HashMap<>();
     private final Map<UUID, BukkitCombatBridge.MobLease> leases = new HashMap<>();
     private BukkitTask task;
+    /** Folia: combat runs on each NPC's region owner; null elsewhere. */
+    private final RegionNpcRuntime regions;
+    /** Why region combat cannot run, or null while it runs. */
+    private final String regionUnavailable;
 
-    /** {@code living} is the main-thread runtime, and null on Folia, where combat stays unavailable. */
-    RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService<Player, ItemStack> living, String version, boolean folia) {
+    /** {@code living} is the main-thread runtime and null on Folia, where {@code regions} runs combat on each NPC's owner. */
+    RuntimeCombatService(JavaPlugin plugin, AnimusRuntime runtime, PersistedNpcService<Player, ItemStack> living, String version, boolean folia, RegionNpcRuntime regions) {
         this.plugin = plugin; this.runtime = runtime; this.living = living;
-        RegionFlags.Binding regions = RegionFlags.bind(plugin.getServer());
-        ProtectionAdapter adapter = regions == null ? ProtectionAdapter.NONE : new RegionCombatProtection(regions.flags());
-        protectionName = regions == null ? "none installed" : regions.describe("all combat damage is denied");
+        RegionFlags.Binding flags = RegionFlags.bind(plugin.getServer());
+        ProtectionAdapter adapter = runtime.moduleHooks().protection(flags == null ? ProtectionAdapter.NONE : new RegionCombatProtection(flags.flags()));
+        protectionName = flags == null ? "none installed" : flags.describe("all combat damage is denied");
+        this.regions = folia ? regions : null;
+        regionUnavailable = this.regions == null ? null : this.regions.enableCombat(adapter, protectionName);
         world = folia ? null : new BukkitCombatWorld(plugin, living);
-        module = new CombatModule(runtime, living, world, runtime.moduleHooks().protection(adapter), folia ? BukkitCombatBridge.FOLIA_UNAVAILABLE : null,
+        module = new CombatModule(runtime, living, world, adapter, folia ? (regionUnavailable == null ? "runs on each NPC's region on Folia" : regionUnavailable) : null,
                 (String message) -> plugin.getLogger().warning(message), (UUID id) -> plugin.getServer().getPlayer(id) != null);
         bridge = new BukkitCombatBridge(plugin, version, folia, CombatLimits.DEFAULT, this::bridgeAllows,
                 module.active() ? new EngineDefense() : BukkitCombatBridge.Defense.NONE);
@@ -86,6 +94,10 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     }
 
     String status() {
+        if (regions != null) {
+            if (regionUnavailable != null) return "Combat unavailable: " + regionUnavailable + " | protection=" + protectionName;
+            return regions.combatStatus() + " | manual attack and mob control " + BukkitCombatBridge.FOLIA_UNAVAILABLE;
+        }
         String modulePart = module.status() + " | protection=" + protectionName;
         BukkitCombatBridge.Capabilities capability = bridge.capabilities();
         if (!bridge.available()) return "Combat unavailable: " + capability.unavailableReason() + modulePart;
@@ -98,8 +110,13 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     String execute(String[] args) {
         if (args.length > 0 && args[0].equals("combat")) {
             if (args.length == 1 || args.length == 2 && args[1].equals("status")) return status();
+            if (regions != null) {
+                if (regionUnavailable != null) throw new IllegalStateException("Combat module " + regionUnavailable);
+                return regions.combatCommand(args);
+            }
             return module.execute(args);
         }
+        if (regions != null) throw new IllegalStateException("Manual attack and mob control are " + BukkitCombatBridge.FOLIA_UNAVAILABLE);
         if (!bridge.available()) throw new IllegalStateException(status());
         prune();
         if (args.length == 3 && args[0].equals("target") && args[2].equals("stop")) {
@@ -132,9 +149,12 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     }
 
     /** Behavior operations. A refusal carries the reason back to the behavior. Owner thread only. */
-    String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) { return module.operate(npc, operation, target); }
+    String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) {
+        if (regions != null && regionUnavailable == null) return regions.combatOperate(npc, operation, target);
+        return module.operate(npc, operation, target);
+    }
     /** Hiring a bodyguard through this module. Owner thread only. */
-    CombatGuarding hireGuarding() { return new CombatGuarding(module); }
+    HireDesk.Guarding hireGuarding() { return regions != null && regionUnavailable == null ? regions.combatGuarding() : new CombatGuarding(module); }
 
     private TargetRef reference(Entity entity) {
         if (entity instanceof Player) return new TargetRef(TargetKind.PLAYER, entity.getUniqueId());

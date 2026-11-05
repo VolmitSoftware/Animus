@@ -41,6 +41,7 @@ import art.arcane.animus.core.rig.RigView;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.virtual.ChunkPosition;
 import art.arcane.animus.core.virtual.DragonBody;
+import art.arcane.animus.core.virtual.DragonMotion;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.virtual.Vec3;
@@ -1501,7 +1502,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
         final LookClose lookClose; long nextLook;
-        Vec3 restingPoint; long lastMotionTick; int dragonPhase = DragonBody.PHASE_HOVERING;
+        final DragonMotion dragonMotion = new DragonMotion(); int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; AppearanceTask appearanceTask;
         final Map<EquipmentSlot, I> equipment = new EnumMap<>(EquipmentSlot.class);

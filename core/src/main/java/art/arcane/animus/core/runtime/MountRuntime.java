@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 
 /** Persisted passenger relations, real riders and dragon phases of one runtime. Owner thread only. */
 final class MountRuntime<P, I> implements AutoCloseable {
-    private static final int DRAGON_REST_TICKS = 20, ROSTER_RESEND_TICKS = 20, MOUNT_LOG_LIMIT = 20;
+    private static final int ROSTER_RESEND_TICKS = 20, MOUNT_LOG_LIMIT = 20;
     private final PersistedNpcService<P, I> host;
     private final RiderService<P, I> riders;
     private final Set<PersistedNpcService<P, I>.Value> dragons = new HashSet<>();
@@ -135,13 +135,8 @@ final class MountRuntime<P, I> implements AutoCloseable {
         }
     }
     void tickDragons() {
-        for (PersistedNpcService<P, I>.Value dragon : dragons) {
-            Vec3 point = dragon.state.snapshot().position().point();
-            if (dragon.restingPoint == null) dragon.restingPoint = point;
-            else if (!point.equals(dragon.restingPoint)) { dragon.restingPoint = point; dragon.lastMotionTick = host.tickNumber; }
-            boolean moving = dragon.lastMotionTick != 0 && host.tickNumber - dragon.lastMotionTick < DRAGON_REST_TICKS;
-            dragon.dragonPhase = DragonBody.phase(moving, grounded(dragon));
-        }
+        for (PersistedNpcService<P, I>.Value dragon : dragons)
+            dragon.dragonPhase = dragon.dragonMotion.observe(host.tickNumber, dragon.state.snapshot().position().point(), grounded(dragon));
     }
     private boolean grounded(PersistedNpcService<P, I>.Value value) {
         WorldPosition position = value.state.snapshot().position();

@@ -11,7 +11,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * and a token from an earlier epoch can never act again. Holds no Bukkit objects.
  */
 final class NpcOwnership {
-    enum Phase { DORMANT, ACTIVE, TRANSFERRING, SUSPENDING, RETIRED }
+    /** {@code CARRIED}: a passenger whose vehicle's owner holds it; it has no task of its own. */
+    enum Phase { DORMANT, ACTIVE, TRANSFERRING, SUSPENDING, RETIRED, CARRIED }
     /** The writer's authority. The anchor chunk addresses the owner's scheduler; it is not a region identity. */
     record Token(UUID npc, long epoch, ChunkPosition anchor) {}
     record State(Phase phase, Token token) {}
@@ -24,6 +25,7 @@ final class NpcOwnership {
 
     State state() { return state.get(); }
     boolean current(Token token) { State now = state.get(); return now.phase == Phase.ACTIVE && now.token == token; }
+    boolean carried(Token token) { State now = state.get(); return now.phase == Phase.CARRIED && now.token == token; }
     boolean transferring(Token token) { State now = state.get(); return now.phase == Phase.TRANSFERRING && now.token == token; }
 
     /** Dormant to active at the anchor; null when the NPC is not dormant. */
@@ -43,6 +45,18 @@ final class NpcOwnership {
         State now = state.get();
         return now.phase == Phase.TRANSFERRING && now.token == transfer && state.compareAndSet(now, new State(Phase.ACTIVE, transfer));
     }
+    /** An active NPC joins its vehicle's group: its own token is revoked and a carried one issued. Null when stale. */
+    Token board(Token from, ChunkPosition anchor) { return next(Phase.ACTIVE, from, Phase.CARRIED, anchor); }
+    /** A carried passenger leaves its group and becomes its own owner again with a new epoch. Null when stale. */
+    Token alight(Token carried, ChunkPosition anchor) { return next(Phase.CARRIED, carried, Phase.ACTIVE, anchor); }
+    /** The group's owner ends without a successor: the carried passenger tears down with it, then {@link #settle}s. */
+    boolean suspendCarried(Token carried) { return move(Phase.CARRIED, carried, new State(Phase.SUSPENDING, carried)); }
+    private Token next(Phase phase, Token from, Phase to, ChunkPosition anchor) {
+        State now = state.get();
+        if (now.phase != phase || now.token != from) return null;
+        Token next = new Token(npc, epochs.incrementAndGet(), Objects.requireNonNull(anchor));
+        return state.compareAndSet(now, new State(to, next)) ? next : null;
+    }
     /** Active authority ends without a successor; the winner tears down, then {@link #settle}s. */
     boolean suspend(Token token) { return move(Phase.ACTIVE, token, new State(Phase.SUSPENDING, token)); }
     /** A handoff that no destination adopted ends. Never ends an adopted, active token. */
@@ -55,10 +69,10 @@ final class NpcOwnership {
         State now = state.get();
         return now.phase == phase && now.token == token && state.compareAndSet(now, next);
     }
-    /** The owner ends the NPC permanently. */
+    /** The owner, or the group owner of a carried passenger, ends the NPC permanently. */
     boolean retire(Token token) {
         State now = state.get();
-        return now.phase == Phase.ACTIVE && now.token == token && state.compareAndSet(now, RETIRED);
+        return (now.phase == Phase.ACTIVE || now.phase == Phase.CARRIED) && now.token == token && state.compareAndSet(now, RETIRED);
     }
     /** Ends a dormant or transferring NPC, which has no running owner to ask. */
     boolean retireUnowned() {
