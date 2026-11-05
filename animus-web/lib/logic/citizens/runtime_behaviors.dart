@@ -239,15 +239,8 @@ class _Runtime {
     if (order == 'random') {
       module.add('guides', helpers);
       module.addDouble('linkDistance', link!);
-      final int isolated = _isolated(route, helpers, link);
-      if (isolated > 0) {
-        warnings.add('$at: $isolated of ${route.length} destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them; add guide points between them in the route editor');
-      }
     } else if (order == 'wander') {
       module.add('wander', wander);
-    } else {
-      final int far = _longLegs(route, order == 'sequence' && route.length > 1);
-      if (far > 0) warnings.add('$at: $far legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one; add points between them in the route editor');
     }
     return module;
   }
@@ -688,39 +681,6 @@ JObject _sequence(List<JObject> steps) {
 }
 
 JObject _arguments(String field, String value) => JObject()..addString(field, value);
-
-bool _fits(JObject from, JObject to) =>
-    (from.get('x')!.asPrimitive.asDouble - to.get('x')!.asPrimitive.asDouble).abs() <= _legHorizontal &&
-    (from.get('z')!.asPrimitive.asDouble - to.get('z')!.asPrimitive.asDouble).abs() <= _legHorizontal &&
-    (from.get('y')!.asPrimitive.asDouble - to.get('y')!.asPrimitive.asDouble).abs() <= _legVertical;
-
-int _longLegs(JArray route, bool loop) {
-  int count = 0;
-  for (int index = 1; index < route.length; index++) {
-    if (!_fits(route[index - 1] as JObject, route[index] as JObject)) count++;
-  }
-  if (loop && !_fits(route[route.length - 1] as JObject, route[0] as JObject)) count++;
-  return count;
-}
-
-int _isolated(JArray destinations, JArray helpers, double link) {
-  final List<JObject> nodes = <JObject>[for (final JElement node in destinations.elements) node as JObject, for (final JElement node in helpers.elements) node as JObject];
-  int count = 0;
-  for (int index = 0; index < destinations.length; index++) {
-    final JObject from = nodes[index];
-    bool linked = false;
-    for (int other = 0; other < nodes.length && !linked; other++) {
-      if (other == index) continue;
-      final JObject to = nodes[other];
-      final double dx = from.get('x')!.asPrimitive.asDouble - to.get('x')!.asPrimitive.asDouble;
-      final double dy = from.get('y')!.asPrimitive.asDouble - to.get('y')!.asPrimitive.asDouble;
-      final double dz = from.get('z')!.asPrimitive.asDouble - to.get('z')!.asPrimitive.asDouble;
-      linked = math.sqrt(dx * dx + dy * dy + dz * dz) <= link && _fits(from, to);
-    }
-    if (!linked) count++;
-  }
-  return count;
-}
 
 /// `CitizensBehaviors.entries`: items of a YAML sequence, or of a mapping with integer keys in numeric order.
 List<MapEntry<String, JElement>> listEntries(JElement? value) {

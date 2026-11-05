@@ -12,7 +12,9 @@ import art.arcane.animus.core.runtime.RouteDocuments;
 import art.arcane.animus.core.runtime.SkinDocuments;
 import art.arcane.animus.core.runtime.WaypointProgress;
 
+import art.arcane.animus.core.navigation.CaptureBounds;
 import art.arcane.animus.core.navigation.CaptureProvenance;
+import art.arcane.animus.core.navigation.LongLeg;
 import art.arcane.animus.core.navigation.ChunkOwnership;
 import art.arcane.animus.core.navigation.IdleFall;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
@@ -36,6 +38,8 @@ import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.combat.CombatWorld;
 import art.arcane.animus.core.navigation.BodyTerrain;
 import art.arcane.animus.core.virtual.DragonBody;
+import art.arcane.animus.core.metrics.AnimusMetrics;
+import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.virtual.DragonMotion;
 import art.arcane.animus.core.virtual.Hitbox;
 import art.arcane.animus.core.virtual.Vec3;
@@ -106,6 +110,8 @@ final class RegionActor implements RegionOwner.Body {
     volatile boolean routeSleeping;
     /** Ticks in a row this route wanted a turn and was refused; longest waiting goes first. */
     private int routeWaited;
+    /** The log already said terrain blocks one of this NPC's legs. */
+    private boolean blockedWarned;
 
     private Desired applied;
     DefinitionSpec<ItemStack> spec;
@@ -297,19 +303,33 @@ final class RegionActor implements RegionOwner.Body {
             if (wanted.spec() == null) { owner.retire(); return anchor(); }
             reconfigure(wanted);
         }
+        // Sections are timed only on sampled ticks, so an idle region pays for a counter check per NPC.
+        AnimusMetrics metrics = host.metrics;
+        boolean sampled = metrics.sampling();
+        long began = sampled ? metrics.start() : 0, mark = began;
         mounts();
         riding.tick();
+        if (sampled) mark = metrics.sampledLap(Subsystem.NAVIGATION, mark);
         tickCombat();
+        if (sampled) mark = metrics.sampledLap(Subsystem.COMBAT, mark);
         if (reread) { reread = false; routeReadWanted |= routeSource != null; }
         if (routeReadWanted) requestRouteRead();
         if (route != null && !seated) { navigate(); supportWanted = false; fallSpeed = 0; }
         else if (!seated && (supportWanted || fallSpeed > 0)) support();
+        if (sampled) mark = metrics.sampledLap(Subsystem.NAVIGATION, mark);
         tickRig();
+        if (sampled) mark = metrics.sampledLap(Subsystem.RIGS, mark);
         look();
         if (spec.type().equals(DragonBody.TYPE)) dragonPhase = dragonMotion.observe(turns, state.snapshot().position().point(), grounded());
         ChunkPosition now = anchor();
         if (!now.equals(anchored)) { host.anchor(this, anchored, now); anchored = now; }
         publish(true);
+        if (sampled) {
+            long end = metrics.sampledLap(Subsystem.PRESENTATION, mark);
+            metrics.npcCost(metrics.npc(uuid), end - began);
+            RegionScheduler.Tick tick = host.regions.tick();
+            if (tick != null) metrics.regionCost(tick.region(), end - began);
+        }
         return now;
     }
 
@@ -548,7 +568,7 @@ final class RegionActor implements RegionOwner.Body {
         stopRoute("cancelled: replaced by manual route");
         cancelRouteRead();
         waypoints = null;
-        route = new Route(destination, mode, speed, null);
+        route = route(destination, mode, speed, null);
         navigationStatus = "queued; route=" + route.id;
         publish(true);
         return route.id;
@@ -695,13 +715,16 @@ final class RegionActor implements RegionOwner.Body {
             if (current.execution == null) {
                 if (current.plan == null) {
                     BlockPos feet = BlockPos.containing(state.snapshot().position().point()), goal = BlockPos.containing(current.goal.point());
+                    LongLeg.Request request = current.longLeg.request(state.snapshot().position().point());
                     if (!loaded(new ChunkPosition(current.goal.world(), Math.floorDiv(feet.x(), 16), Math.floorDiv(feet.z(), 16)))
-                            || !loaded(new ChunkPosition(current.goal.world(), Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16)))) {
+                            || (request.direct() && !loaded(new ChunkPosition(current.goal.world(), Math.floorDiv(goal.x(), 16), Math.floorDiv(goal.z(), 16))))) {
                         suspendRoute("unavailable terrain; no chunk loading requested"); return;
                     }
                     if (fallBeforeLeg(current, world, owned)) return;
-                    var bounds = PersistedNpcService.captureBounds(state.snapshot().position(), current.goal, hullWidth(), hullHeight());
-                    if (!host.regions.owns(current.goal.world(), Math.floorDiv(bounds.minX(), 16), Math.floorDiv(bounds.minZ(), 16),
+                    CaptureBounds bounds = request.bounds();
+                    // A long leg's segment reads only the chunks this region owns; the rest is unavailable, so it walks to
+                    // the region's edge and the handoff moves it on. A whole leg must lie in this region.
+                    if (request.direct() && !host.regions.owns(current.goal.world(), Math.floorDiv(bounds.minX(), 16), Math.floorDiv(bounds.minZ(), 16),
                             Math.floorDiv(bounds.minX() + bounds.sizeX() - 1, 16), Math.floorDiv(bounds.minZ() + bounds.sizeZ() - 1, 16))) {
                         suspendRoute("route terrain belongs to another region; retrying"); return;
                     }
@@ -709,7 +732,7 @@ final class RegionActor implements RegionOwner.Body {
                         host.budget.routeRefused(waited); routeWaited = waited + 1;
                         routeStatus(current, "queued", "waiting for a planning turn"); return;
                     }
-                    current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, goal, profile(current.mode), new PathPlanner.Limits(4096, 4096, 256));
+                    current.plan = host.navigation.plan(world.getUID().toString(), bounds, feet, request.aim(), profile(current.mode), request.limits());
                     current.result = current.plan.future().toCompletableFuture();
                     routeStatus(current, "planning", "");
                 }
@@ -722,10 +745,16 @@ final class RegionActor implements RegionOwner.Body {
                     current.capture = current.plan.capture().orElse(null); current.plan = null; current.result = null;
                     if (planned.status() == PathPlanner.Status.UNAVAILABLE_TERRAIN) suspendRoute("unavailable captured terrain");
                     else if (planned.status() == PathPlanner.Status.CANCELLED) { /* released for a handoff; the new owner plans again */ }
-                    else if (planned.status() != PathPlanner.Status.FOUND) failLeg(current, "failed: " + planned.status());
                     else {
-                        current.execution = new PathExecution(state.snapshot().position().point(), planned.path(), current.goal.point(), profile(current.mode));
-                        routeStatus(current, "moving", "kinematic; live collision revalidation; region owner");
+                        LongLeg.Next next = current.longLeg.planned(planned);
+                        if (next == LongLeg.Next.BLOCKED) blockLeg(current, "failed: " + planned.status());
+                        else if (next == LongLeg.Next.RETRY) routeStatus(current, "replanning", "attempt " + current.longLeg.attempts() + " after " + planned.status());
+                        else {
+                            current.segment = next == LongLeg.Next.SEGMENT;
+                            Vec3 end = current.segment ? planned.path().getLast().point() : current.goal.point();
+                            current.execution = new PathExecution(state.snapshot().position().point(), planned.path(), end, profile(current.mode));
+                            routeStatus(current, "moving", PersistedNpcService.moving(current.segment) + "; region owner");
+                        }
                     }
                 }
             }
@@ -736,7 +765,7 @@ final class RegionActor implements RegionOwner.Body {
     /** One kinematic step. False when the region had too few collision cells left this tick, so the route waits. */
     private boolean step(Route current, World world, ChunkOwnership owned) {
         if (!current.execution.position().equals(state.snapshot().position().point())) { stopRoute("cancelled: authoritative position changed"); return true; }
-        if (current.execution.finished()) { arrive(current); return true; }
+        if (current.execution.finished()) { executed(current); return true; }
         PathExecution.Proposal step = current.execution.next(current.speed / 20).orElseThrow();
         int sweep = PersistedNpcService.motionCells(hullWidth(), hullHeight(), step.from().distance(step.to()));
         int settle = PersistedNpcService.motionCells(hullWidth(), hullHeight(), 0);
@@ -753,7 +782,7 @@ final class RegionActor implements RegionOwner.Body {
         }
         host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted - used);
         if (validation.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) suspendRoute(validation.detail());
-        else if (!validation.clear()) failLeg(current, "blocked: " + validation.status() + "; " + validation.detail());
+        else if (!validation.clear()) blockedStep(current, "blocked: " + validation.status() + "; " + validation.detail());
         else {
             current.execution.commit(step);
             Vec3 delta = step.to().subtract(step.from());
@@ -762,10 +791,31 @@ final class RegionActor implements RegionOwner.Body {
             host.index.upsert(state.snapshot());
             pose++; setPose(facing, 0, step.onGround());
             current.progressTurn = turns;
-            routeStatus(current, "moving", "kinematic; live collision revalidation; region owner");
-            if (current.execution.finished() || movement.arrived(step.to(), current.goal.point())) arrive(current);
+            routeStatus(current, "moving", PersistedNpcService.moving(current.segment) + "; region owner");
+            if (movement.arrived(step.to(), current.goal.point())) arrive(current);
+            else if (current.execution.finished()) executed(current);
         }
         return true;
+    }
+    /** Same long leg rules as {@link PersistedNpcService}: a walked segment plans the next one, the last one arrives. */
+    private void executed(Route current) {
+        if (!current.segment) { arrive(current); return; }
+        current.execution = null; current.segment = false;
+        routeStatus(current, "queued", "next long leg segment");
+    }
+    private void blockedStep(Route current, String reason) {
+        if (current.longLeg.blocked() == LongLeg.Next.BLOCKED) { blockLeg(current, reason); return; }
+        current.execution = null; current.segment = false;
+        routeStatus(current, "replanning", reason);
+    }
+    /** Terrain blocks the leg for good: logged once per NPC with the leg, then the route fails as any failed leg does. */
+    private void blockLeg(Route current, String reason) {
+        if (!blockedWarned) {
+            blockedWarned = true;
+            host.plugin.getLogger().warning(PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
+                    current.leg != null && movement.teleportsWhenStuck()));
+        }
+        failLeg(current, reason);
     }
     /** Owner only: a solid block, in a chunk this region holds, lies under the feet. */
     private boolean grounded() {
@@ -844,15 +894,6 @@ final class RegionActor implements RegionOwner.Body {
         WorldPosition at = state.snapshot().position();
         WorldPosition goal = leg.pause() ? at : new WorldPosition(at.world(), leg.goal());
         double speed = movement.routeSpeed(routeSpeedDeclared, settings.speed());
-        if (!leg.pause() && movement.outOfRange(at.point(), goal.point())) {
-            route = new Route(goal, settings.mode(), speed, leg);
-            if (teleportStuck(route)) return;
-            route = null;
-            navigationStatus = "waypoint " + leg.arrival() + " is beyond the NPC's path range"; failWatch(navigationStatus);
-            Optional<WaypointProgress.Leg> retry = progress.failed(leg);
-            if (retry.isPresent()) beginLeg(retry);
-            return;
-        }
         if (!leg.pause()) {
             try { PersistedNpcService.validateLeg(at, goal, settings.mode(), speed, hullWidth(), hullHeight()); }
             catch (IllegalArgumentException invalid) {
@@ -862,7 +903,7 @@ final class RegionActor implements RegionOwner.Body {
                 return;
             }
         }
-        route = new Route(goal, settings.mode(), speed, leg);
+        route = route(goal, settings.mode(), speed, leg);
         route.nextAttempt = turns + Math.max(1, leg.waitTicks());
         route.progressTurn = turns;
         routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
@@ -1036,10 +1077,19 @@ final class RegionActor implements RegionOwner.Body {
 
     private static final class Route {
         final UUID id = UUID.randomUUID(); final WorldPosition goal; final MovementProfile.Mode mode; final double speed; final int waypoint; final WaypointProgress.Leg leg;
+        final Vec3 origin; final LongLeg longLeg;
         NavigationPlan plan; CompletableFuture<PathPlanner.Result> result; PathExecution execution; CaptureProvenance capture;
         long nextAttempt, progressTurn;
-        Route(WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) {
+        /** The path being walked ends part way along a long leg. */
+        boolean segment;
+        Route(WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, Vec3 origin, LongLeg longLeg) {
             this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
+            this.origin = origin; this.longLeg = longLeg;
         }
+    }
+    /** A route from where the body stands, planned with this NPC's hull and path range. */
+    private Route route(WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) {
+        Vec3 origin = state.snapshot().position().point();
+        return new Route(goal, mode, speed, leg, origin, new LongLeg(origin, goal.point(), hullWidth(), hullHeight(), movement.pathRange()));
     }
 }

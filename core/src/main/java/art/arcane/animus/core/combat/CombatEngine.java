@@ -103,6 +103,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     public int size() { return brains.size(); }
     /** NPCs holding one of the {@code maximumNpcs} slots: fighting, fleeing, returning or scanning near a player. */
     public int activeCount() { return active; }
+    /** The {@code maximumNpcs} slot limit. */
+    public int slotLimit() { return budgets.maximumNpcs(); }
     /** NPCs that want a slot and wait their turn. */
     public int waitingCount() { return waiting.size(); }
     /** The most NPCs that waited at once since the engine started. */

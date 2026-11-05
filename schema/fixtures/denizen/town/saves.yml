@@ -1,0 +1,41 @@
+# Synthetic Citizens save for the Denizen town fixture. Not taken from any server.
+npc:
+  0:
+    name: Guard
+    uuid: 00000000-0000-4000-8000-000000000001
+    traits:
+      type: VILLAGER
+      spawned: true
+      location: {world: world, x: 4.5, y: 64.0, z: 8.5, yaw: 90.0, pitch: 0.0}
+      assignment:
+        assignment: guard_assignment
+      triggers:
+        enabled:
+          CLICK: true
+          CHAT: true
+          PROXIMITY: true
+          DAMAGE: false
+        duration:
+          CLICK: 2.0
+        radius:
+          PROXIMITY: 6
+      denizen_flags:
+        full_flag_data:
+          guard_post: true
+          motto: Keep the gate
+  1:
+    name: Baker
+    uuid: 00000000-0000-4000-8000-000000000002
+    traits:
+      type: VILLAGER
+      spawned: false
+      location: {world: world, x: 10.5, y: 64.0, z: -3.5, yaw: 0.0, pitch: 0.0}
+  2:
+    name: Stranger
+    uuid: 00000000-0000-4000-8000-000000000003
+    traits:
+      type: VILLAGER
+      spawned: false
+      location: {world: world, x: -6.5, y: 64.0, z: 2.5, yaw: 180.0, pitch: 0.0}
+      assignment:
+        assignment: missing_assignment

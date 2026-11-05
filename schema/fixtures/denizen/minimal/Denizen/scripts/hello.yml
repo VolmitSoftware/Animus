@@ -1,0 +1,6 @@
+hello_task:
+  type: task
+  script:
+  - narrate "Hello <player.name>"
+  - wait 1s
+  - execute as_player "spawn"

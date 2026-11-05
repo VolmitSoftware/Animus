@@ -33,15 +33,15 @@ import java.util.function.BooleanSupplier;
  * Call it from the serial file lane.
  */
 public final class CitizensDropIn {
-    /** What the platform knows: its plugins folder, if it has one, and whether Citizens and Shopkeepers are running. */
-    public record Host(Optional<Path> pluginsDirectory, BooleanSupplier citizensEnabled, BooleanSupplier shopkeepersEnabled) {
-        public static final Host NONE = new Host(Optional.empty(), () -> false, () -> false);
+    /** What the platform knows: its plugins folder, if it has one, and whether Citizens, Shopkeepers and Denizen are running. */
+    public record Host(Optional<Path> pluginsDirectory, BooleanSupplier citizensEnabled, BooleanSupplier shopkeepersEnabled, BooleanSupplier denizenEnabled) {
+        public static final Host NONE = new Host(Optional.empty(), () -> false, () -> false, () -> false);
     }
     /** A file or folder the flow found. {@code label} is how it is shown to the operator. */
     public record Found(Path path, String label) {}
     public record Sources(Optional<Found> saves, Optional<Found> traders, List<Found> schematics) {}
     /** The categories {@code /animus import citizens accept} turns on, in the order they are listed. */
-    public static final List<String> CATEGORIES = List.of("spawn", "patrols", "combat", "riding", "shops", "builder");
+    public static final List<String> CATEGORIES = List.of("spawn", "patrols", "combat", "riding", "shops", "builder", "denizen");
     public static final String STATE = "imports/citizens/state.json";
     static final String CITIZENS_RUNNING = "Citizens is still enabled. Animus will not apply, accept or run imported Citizens NPCs while it is, so no NPC runs twice. Stop the server, remove Citizens from plugins/, start it again and rerun this command.";
     private static final Set<String> DENIZEN = Set.of("assignment", "triggers", "constants", "denizen_flags", "denizenflags");
@@ -86,6 +86,7 @@ public final class CitizensDropIn {
         JsonObject state = state();
         boolean citizens = host.citizensEnabled().getAsBoolean();
         if (citizens && (sources.saves().isPresent() || applied(state))) return Optional.of("Citizens migration: " + CITIZENS_RUNNING);
+        if (DenizenDropIn.staged(state) && host.denizenEnabled().getAsBoolean()) return Optional.of("Denizen migration: " + DenizenDropIn.RUNNING);
         Optional<ShopkeepersDropIn.Found> shopkeepers = ShopkeepersDropIn.find(store, host.pluginsDirectory());
         if (shopkeepers.isPresent() && !ShopkeepersDropIn.applied(state)) {
             if (host.shopkeepersEnabled().getAsBoolean()) return Optional.of("Shopkeepers migration: " + ShopkeepersDropIn.RUNNING);
@@ -102,6 +103,7 @@ public final class CitizensDropIn {
         if (!ShopkeepersDropIn.applied(state)) shopkeepers.ifPresent((ShopkeepersDropIn.Found save) -> found.add(save.save().label()));
         sources.traders().ifPresent((Found traders) -> found.add(traders.label()));
         sources.schematics().forEach((Found folder) -> found.add(folder.label()));
+        DenizenDropIn.find(store, host.pluginsDirectory()).ifPresent((Found denizen) -> found.add(denizen.label() + "/scripts"));
         String source = JsonDocuments.hash(Files.readString(sources.saves().get().path()));
         if (state.has("sourceSha256") && state.get("sourceSha256").getAsString().equals(source) && state.has("applicationId"))
             return Optional.of("Citizens migration: " + listed(found) + (found.size() == 1 ? " is" : " are") + " staged and not applied. Review " + state.get("report").getAsString() + ", then run /animus import citizens apply");
@@ -242,9 +244,12 @@ public final class CitizensDropIn {
             state.add("transactions", previous.get("transactions").deepCopy());
             lines.add("Shopkeepers shops are already installed; their Citizens shopkeepers bind when this import is applied.");
         } else if (shopkeepers.isPresent()) lines.addAll(ShopkeepersDropIn.stage(store, shopkeepers.get(), Optional.of(save.path()), state));
+        Optional<Found> denizen = DenizenDropIn.find(store, host.pluginsDirectory());
+        if (denizen.isPresent()) lines.addAll(DenizenDropIn.stage(store, denizen.get(), save.path(), state));
         lines.add("Nothing installed. Full report: " + preview.directory().resolve("report.json"));
         if (host.citizensEnabled().getAsBoolean()) lines.add(CITIZENS_RUNNING);
         else if (ShopkeepersDropIn.staged(state) && host.shopkeepersEnabled().getAsBoolean()) lines.add(ShopkeepersDropIn.RUNNING);
+        else if (DenizenDropIn.staged(state) && host.denizenEnabled().getAsBoolean()) lines.add(DenizenDropIn.RUNNING);
         else lines.add("Next: /animus import citizens apply");
         writeState(state);
         return lines;
@@ -254,12 +259,14 @@ public final class CitizensDropIn {
         JsonObject state = state();
         boolean citizensPending = state.has("applicationId") && !applied(state);
         boolean shopkeepersPending = ShopkeepersDropIn.staged(state);
-        if (!citizensPending && !shopkeepersPending) {
+        boolean denizenPending = DenizenDropIn.staged(state) && (citizensPending || applied(state));
+        if (!citizensPending && !shopkeepersPending && !denizenPending) {
             if (applied(state) || ShopkeepersDropIn.applied(state)) throw new IOException("Already applied. Use /animus import citizens review, accept or rollback.");
             throw new IOException("Nothing staged. Run /animus import citizens first.");
         }
         if (citizensPending) refuseWhileCitizensRuns();
         if (shopkeepersPending && host.shopkeepersEnabled().getAsBoolean()) throw new IOException(ShopkeepersDropIn.RUNNING);
+        if (denizenPending && host.denizenEnabled().getAsBoolean()) throw new IOException(DenizenDropIn.RUNNING);
         List<String> lines = citizensPending ? applyCitizens(state) : new ArrayList<>();
         JsonArray transactions = state.has("transactions") ? state.getAsJsonArray("transactions") : new JsonArray();
         try {
@@ -269,6 +276,16 @@ public final class CitizensDropIn {
             if (!citizensPending) throw failure;
             lines.add("Shopkeepers import failed and nothing of it was installed: " + failure.getMessage() + ". The Citizens import stays applied; fix the cause and run /animus import citizens apply again.");
             return lines;
+        }
+        if (denizenPending) {
+            try { lines.addAll(DenizenDropIn.apply(store, state, npcs.all(), transactions)); }
+            catch (IOException | RuntimeException failure) {
+                state.add("transactions", transactions);
+                writeState(state);
+                if (!citizensPending && !shopkeepersPending) throw failure;
+                lines.add("Denizen import failed and nothing of it was installed: " + failure.getMessage() + ". The other imports stay applied; fix the cause and run /animus import citizens apply again.");
+                return lines;
+            }
         }
         state.add("transactions", transactions);
         writeState(state);
@@ -337,6 +354,7 @@ public final class CitizensDropIn {
             lines.add("Rolled back " + transaction + "; inverse " + inverse);
         }
         ShopkeepersDropIn.rolledBack(state);
+        DenizenDropIn.rolledBack(state);
         int kept = 0;
         for (JsonElement value : state.has("copiedSchematics") ? state.getAsJsonArray("copiedSchematics") : new JsonArray()) {
             Path file = store.resolve(value.getAsJsonObject().get("path").getAsString());
@@ -368,6 +386,7 @@ public final class CitizensDropIn {
             lines.add(converted(imported(state).stream().map(NpcDefinition::json).toList()));
         }
         ShopkeepersDropIn.reviewLine(state).ifPresent(lines::add);
+        DenizenDropIn.reviewLine(state).ifPresent(lines::add);
         for (String category : CATEGORIES)
             lines.add(category + ": " + pending.get(category) + " waiting" + switch (category) {
                 case "spawn" -> " (NPCs Citizens had spawned; others stay despawned. Look-close and text start with them)";
@@ -375,6 +394,7 @@ public final class CitizensDropIn {
                 case "combat" -> " (Sentinel settings in animus:combat)";
                 case "riding" -> " (controllable NPCs in animus:riding)";
                 case "shops" -> " (dtlTraders and Shopkeepers shops in animus:shop)";
+                case "denizen" -> " (Denizen behaviors in denizen:review; accepting lists them on the NPC)";
                 default -> " (Builder sections in animus:builder; builds still start with /animus build start)";
             });
         int guards = guards(imported(state), false);
@@ -399,6 +419,7 @@ public final class CitizensDropIn {
             else if (CATEGORIES.contains(lowered)) categories.add(lowered);
             else throw new IOException("Unknown review category: " + category + "; expected " + String.join(", ", CATEGORIES) + " or all");
         }
+        if (categories.contains("denizen") && host.denizenEnabled().getAsBoolean()) throw new IOException(DenizenDropIn.RUNNING);
         List<NpcDefinition> changed = new ArrayList<>();
         Map<String, String> expected = new LinkedHashMap<>();
         Map<String, Integer> accepted = new LinkedHashMap<>();
@@ -481,6 +502,7 @@ public final class CitizensDropIn {
             shopkeepers.addProperty("waiting", part.has("pending") ? part.getAsJsonArray("pending").size() : 0);
             status.add("shopkeepers", shopkeepers);
         }
+        DenizenDropIn.status(state).ifPresent((JsonObject denizen) -> status.add("denizen", denizen));
         if (phase.equals("applied")) {
             List<JsonObject> definitions = imported(state).stream().map(NpcDefinition::json).toList();
             JsonObject pending = new JsonObject();
@@ -523,12 +545,14 @@ public final class CitizensDropIn {
             case "riding" -> unreviewed(modules, "animus:riding");
             case "shops" -> unreviewed(modules, "animus:shop");
             case "builder" -> unreviewed(modules, "animus:builder");
+            case "denizen" -> unreviewed(modules, DenizenImporter.MODULE);
             default -> false;
         };
     }
 
     private static void acceptCategory(JsonObject json, String category) {
         if (category.equals("spawn")) { json.addProperty("spawned", true); return; }
+        if (category.equals("denizen")) { DenizenImporter.accept(json); return; }
         String module = switch (category) {
             case "patrols" -> "animus:navigation";
             case "combat" -> "animus:combat";

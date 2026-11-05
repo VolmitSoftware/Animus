@@ -117,6 +117,10 @@ public final class VoxelSnapshot {
     /** Distinct cells in this capture, including the unavailable marker. */
     public int paletteSize() { return palette.length; }
     public Set<ChunkPosition> availableChunks() { return availableChunks; }
+    /** True when every chunk this capture covers was loaded while it was read. */
+    public boolean everyChunkAvailable() {
+        return availableMask.cardinality() == chunkWidth * (Math.floorDiv(minZ + sizeZ - 1, 16) - minChunkZ + 1);
+    }
     public boolean contains(int x, int y, int z) {
         return x >= minX && y >= minY && z >= minZ && (long) x < (long) minX + sizeX
                 && (long) y < (long) minY + sizeY && (long) z < (long) minZ + sizeZ;

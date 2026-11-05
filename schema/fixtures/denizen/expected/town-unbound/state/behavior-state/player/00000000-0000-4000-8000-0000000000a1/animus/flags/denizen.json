@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "behavior": "animus:flags/denizen",
+  "scope": "player",
+  "player": "00000000-0000-4000-8000-0000000000a1",
+  "values": {
+    "met_guard": {
+      "type": "boolean",
+      "value": true
+    }
+  }
+}

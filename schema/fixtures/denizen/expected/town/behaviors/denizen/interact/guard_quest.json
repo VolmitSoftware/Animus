@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:interact/guard_quest",
+  "entry": "click",
+  "routines": {
+    "click": {
+      "type": "condition",
+      "capability": "animus:quest-state",
+      "arguments": {
+        "name": "interact-guard_quest",
+        "scope": "relationship",
+        "equals": 0
+      },
+      "then": {
+        "type": "call",
+        "routine": "s0-click"
+      },
+      "else": {
+        "type": "condition",
+        "capability": "animus:quest-state",
+        "arguments": {
+          "name": "interact-guard_quest",
+          "scope": "relationship",
+          "equals": 1
+        },
+        "then": {
+          "type": "call",
+          "routine": "s1-click"
+        },
+        "else": {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "interact-guard_quest",
+            "scope": "relationship",
+            "equals": 2
+          },
+          "then": {
+            "type": "call",
+            "routine": "s2-click"
+          }
+        }
+      }
+    },
+    "enter": {
+      "type": "condition",
+      "capability": "animus:quest-state",
+      "arguments": {
+        "name": "interact-guard_quest",
+        "scope": "relationship",
+        "equals": 1
+      },
+      "then": {
+        "type": "call",
+        "routine": "s1-enter"
+      }
+    },
+    "s0-chat-1": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Thank you."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-quest-state",
+          "arguments": {
+            "name": "interact-guard_quest",
+            "scope": "relationship",
+            "value": 1
+          }
+        }
+      ]
+    },
+    "s0-click": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Bring me something else."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:choices",
+          "arguments": {
+            "id": "guard_quest-s0",
+            "prompt": "Choose a reply",
+            "options": [
+              {
+                "id": "c1",
+                "text": "Yes I will help"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "s1-enter": {
+      "type": "action",
+      "capability": "animus:say",
+      "arguments": {
+        "text": "Still gathering?"
+      }
+    },
+    "s1-click": {
+      "type": "condition",
+      "capability": "animus:quest-state",
+      "arguments": {
+        "name": "visits",
+        "scope": "player",
+        "atLeast": 3
+      },
+      "then": {
+        "type": "condition",
+        "capability": "animus:has-permission",
+        "arguments": {
+          "permission": "town.quest"
+        },
+        "then": {
+          "type": "sequence",
+          "steps": [
+            {
+              "type": "action",
+              "capability": "animus:command",
+              "arguments": {
+                "command": "give {player_name} minecraft:emerald 1"
+              }
+            },
+            {
+              "type": "action",
+              "capability": "animus:set-quest-state",
+              "arguments": {
+                "name": "interact-guard_quest",
+                "scope": "relationship",
+                "value": 2
+              }
+            }
+          ]
+        },
+        "else": {
+          "type": "condition",
+          "capability": "animus:npc-state",
+          "arguments": {
+            "spawned": true
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Come back later."
+            }
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "How odd."
+            }
+          }
+        }
+      },
+      "else": {
+        "type": "condition",
+        "capability": "animus:npc-state",
+        "arguments": {
+          "spawned": true
+        },
+        "then": {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "Come back later."
+          }
+        },
+        "else": {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "How odd."
+          }
+        }
+      }
+    },
+    "s2-click": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:say",
+          "arguments": {
+            "text": "&#ffaa00You did it❤"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "give {player} minecraft:diamond 2"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "clear {player} minecraft:dirt 3"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "click",
+      "event": "interaction",
+      "routine": "click",
+      "cooldownTicks": 40
+    },
+    {
+      "id": "enter",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 6,
+      "routine": "enter"
+    },
+    {
+      "id": "s0-c1",
+      "event": "dialogue_choice",
+      "dialogue": "guard_quest-s0",
+      "choice": "c1",
+      "routine": "s0-chat-1"
+    }
+  ]
+}

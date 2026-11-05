@@ -1,0 +1,6 @@
+met_guard:true
+visits:2
+nickname:Bob
+\exboost:map@[__value=true;__expiration=time@2030/01/01_00:00:00:0000_+00:00]
+__interact_step:map@[__value=map@[GUARD_QUEST=map@[__value=GATHERING]]]
+quest:map@[__value=map@[stage=map@[__value=2]]]
