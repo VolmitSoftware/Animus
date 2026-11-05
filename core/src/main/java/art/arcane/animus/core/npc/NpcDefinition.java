@@ -11,9 +11,11 @@ import java.util.*;
 
 /** Immutable persisted definition. Unknown extension data is deliberately retained. */
 public final class NpcDefinition {
+    /** The most labels one NPC may carry. */
+    public static final int MAX_TAGS = 32;
     private final JsonObject data;
     private final boolean spawned, imported;
-    private final List<String> behaviors;
+    private final List<String> behaviors, tags;
     private NpcDefinition(JsonObject data) {
         this.data = data.deepCopy();
         spawned = data.get("spawned").getAsBoolean();
@@ -21,6 +23,9 @@ public final class NpcDefinition {
         List<String> references = new ArrayList<>();
         if (data.has("behaviors")) for (JsonElement reference : data.getAsJsonArray("behaviors")) references.add(reference.getAsString());
         behaviors = List.copyOf(references);
+        List<String> labels = new ArrayList<>();
+        if (data.has("tags")) for (JsonElement tag : data.getAsJsonArray("tags")) labels.add(tag.getAsString());
+        tags = List.copyOf(labels);
     }
 
     public static NpcDefinition parse(String json) throws IOException {
@@ -67,6 +72,20 @@ public final class NpcDefinition {
             else for (JsonElement ref : object.getAsJsonArray("behaviors")) {
                 if (!ref.isJsonPrimitive() || !ref.getAsJsonPrimitive().isString() || !ref.getAsString().matches("[a-z0-9_-]+:[a-z0-9_/-]+"))
                     errors.add("$.behaviors: expected namespace:id references");
+            }
+        }
+        if (object.has("tags")) {
+            if (!object.get("tags").isJsonArray()) errors.add("$.tags: expected array");
+            else if (object.getAsJsonArray("tags").size() > MAX_TAGS) errors.add("$.tags: expected at most " + MAX_TAGS + " tags");
+            else {
+                Set<String> seen = new HashSet<>();
+                JsonArray tags = object.getAsJsonArray("tags");
+                for (int i = 0; i < tags.size(); i++) {
+                    JsonElement tag = tags.get(i);
+                    if (!tag.isJsonPrimitive() || !tag.getAsJsonPrimitive().isString() || !tag.getAsString().matches("[a-z0-9][a-z0-9_-]{0,31}"))
+                        errors.add("$.tags[" + i + "]: expected 1–32 lowercase letters, digits, _ or -");
+                    else if (!seen.add(tag.getAsString())) errors.add("$.tags[" + i + "]: duplicate tag");
+                }
             }
         }
         if (object.has("owner")) {
@@ -131,6 +150,8 @@ public final class NpcDefinition {
     public boolean imported() { return imported; }
     /** Behavior references attached to this NPC. Their trigger bindings run once the NPC is active. */
     public List<String> behaviors() { return behaviors; }
+    /** Labels the editor uses to find and group NPCs; empty when none are declared. */
+    public List<String> tags() { return tags; }
     public JsonObject json() { return data.deepCopy(); }
     public String serialize() { return JsonDocuments.write(data); }
 }
