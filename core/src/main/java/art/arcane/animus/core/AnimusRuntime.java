@@ -11,6 +11,7 @@ import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.extension.RepositoryDefinitions;
 import art.arcane.animus.core.storage.DocumentStore;
+import art.arcane.animus.core.storage.SchemaMigrations;
 import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.rig.RigCheckpoints;
 import art.arcane.animus.core.rig.RigLibrary;
@@ -60,6 +61,7 @@ public final class AnimusRuntime implements AutoCloseable {
         DocumentStore opened = new DocumentStore(environment.dataDirectory());
         try {
             PluginSettings loaded = PluginSettings.load(opened);
+            migrateSchemas(opened);
             NpcRepository repository = new NpcRepository(opened);
             repository.loadForStartup();
             BehaviorStateStore state = BehaviorStateStore.open(opened, loaded.behaviors().state());
@@ -80,6 +82,15 @@ public final class AnimusRuntime implements AutoCloseable {
             closing = false;
             settings = loaded;
         } catch (IOException | RuntimeException e) { opened.close(); throw e; }
+    }
+
+    /** Upgrades stale definitions, behaviors and shops before anything reads them; refusals are logged and the files kept. */
+    private static void migrateSchemas(DocumentStore store) throws IOException {
+        SchemaMigrations.Report report = SchemaMigrations.standard().apply(store);
+        System.Logger log = System.getLogger("Animus");
+        if (!report.migrated().isEmpty())
+            log.log(System.Logger.Level.INFO, "Migrated " + report.migrated().size() + " documents to the current schema; rollback " + report.transaction());
+        for (String problem : report.problems()) log.log(System.Logger.Level.WARNING, "Schema migration: " + problem);
     }
 
     /** Initiate shutdown without blocking a platform owner. A running durable operation is not interrupted. */
