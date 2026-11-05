@@ -25,7 +25,7 @@ import 'trader_builder.dart';
 export 'snake_yaml.dart' show CitizensImportException;
 
 /// Must equal `CitizensImporter.CONVERTER_VERSION`; the shared golden fixtures fail when they drift.
-const int citizensConverterVersion = 10;
+const int citizensConverterVersion = 11;
 
 const String _notice =
     'Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.';
@@ -263,6 +263,10 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
       if (trader.module != null) modules.add('animus:shop', trader.module);
       if (trader.warning != null) migrationWarnings.addString('citizens-$key: ${trader.warning}');
     }
+    if (citizensTargetable(reviewed)) {
+      if (!modules.has('animus:combat')) modules.add('animus:combat', targetableCombat(record));
+      (modules.get('animus:combat')! as JObject).addBool('targetableByMobs', true);
+    }
     final JObject? riding = _riding(traits.get('controllable'));
     if (riding != null) modules.add('animus:riding', riding);
     if (traits.has(builderTrait)) {
@@ -298,7 +302,12 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     for (final String warning in runtime.warnings) {
       migrationWarnings.addString('citizens-$key: $warning');
     }
-    final TraitsResult state = mapTraits(definition.get('type')!.asPrimitive.asString, record, reviewed, modules.has('animus:combat'), references);
+    if (!modules.has('animus:navigation') && world.isNotEmpty && citizensWanders(definition.get('type')!.asPrimitive.asString, record)) {
+      modules.add('animus:navigation', vanillaWander(record));
+      _increment(conversions, 'routes');
+    }
+    final TraitsResult state = mapTraits(definition.get('type')!.asPrimitive.asString, record, reviewed, modules.has('animus:combat'),
+        modules.has('animus:navigation'), references);
     for (final MapEntry<String, JElement> field in state.fields.entries) {
       definition.add(field.key, field.value);
     }

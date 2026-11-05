@@ -4,6 +4,7 @@ library;
 import 'field_notes.dart';
 import 'java_json.dart';
 import 'java_lang.dart';
+import 'presentation.dart' show roundHalfUp;
 import 'runtime_behaviors.dart';
 
 /// `BodyTraits.TEAM_COLORS`.
@@ -14,6 +15,14 @@ const List<String> teamColors = <String>[
 const String citizensTag = 'CITIZENS_NPC';
 const int maxTags = 32;
 const double maxStep = 1.5;
+
+/// `CitizensTraits.WANDER_RADIUS`, `WANDER_HEIGHT` and `WANDER_WAIT`: vanilla random strolling.
+const int wanderRadius = 10;
+const int wanderHeight = 7;
+const int wanderWait = 120;
+
+/// `NamedPoses.MAXIMUM_POSES`.
+const int maxPoses = 64;
 
 /// `BodyRules.canBeBaby`.
 const Set<String> _babyTypes = <String>{
@@ -39,8 +48,8 @@ class TraitsResult {
   final List<String> warnings;
 }
 
-TraitsResult mapTraits(String type, JObject record, JObject traits, bool combat, JArray references) {
-  final _Traits mapping = _Traits(type, record, traits, combat, references);
+TraitsResult mapTraits(String type, JObject record, JObject traits, bool combat, bool routed, JArray references) {
+  final _Traits mapping = _Traits(type, record, traits, combat, routed, references);
   mapping
     ..metadata()
     ..movement()
@@ -73,13 +82,73 @@ bool? _bool(JElement? value) {
 bool _number(JElement? value) => value is JNumber && value.asDouble.isFinite;
 bool _positive(JElement? value) => _number(value) && value!.asPrimitive.asDouble > 0;
 
+/// `CitizensTraits.targetable`: whether hostile mobs may target the NPC in Citizens.
+bool citizensTargetable(JObject traits) {
+  final JObject? targetable = _object(traits.get('targetable'));
+  return targetable != null && _bool(targetable.get('targetable')) == true;
+}
+
+/// `CitizensTraits.targetableCombat`: a combat module that never attacks or fights back.
+JObject targetableCombat(JObject record) {
+  final JObject? metadata = _object(record.get('metadata'));
+  final JObject module = JObject();
+  module.addBool('enabled', false);
+  module.addBool('reviewAccepted', false);
+  final JObject targeting = JObject();
+  targeting.addBool('fightBack', false);
+  module.add('targeting', targeting);
+  final JObject defense = JObject();
+  defense.addBool('invincible', (metadata == null ? null : _bool(metadata.get('protected'))) != false);
+  module.add('defense', defense);
+  return module;
+}
+
+/// `CitizensTraits.wanders`: Citizens ran vanilla AI on a body that has some.
+bool citizensWanders(String type, JObject record) {
+  final JObject? metadata = _object(record.get('metadata'));
+  return type != 'minecraft:player' && metadata != null && _bool(metadata.get('minecraft-ai')) == true;
+}
+
+/// `CitizensTraits.vanillaWander`: the wander route standing in for vanilla random strolling.
+JObject vanillaWander(JObject record) {
+  final JObject? navigator = _object(record.get('navigator'));
+  final JElement? modifier = navigator?.get('speedmodifier');
+  final JObject module = JObject();
+  module.addBool('enabled', false);
+  module.addBool('reviewAccepted', false);
+  module.addString('mode', 'walk');
+  module.addDouble('speed', citizensSpeed(_positive(modifier) ? modifier!.asPrimitive.asDouble : 1));
+  module.addString('order', 'wander');
+  module.addInt('waitTicks', wanderWait);
+  module.add('points', JArray());
+  final JObject wander = JObject();
+  wander.addInt('radius', wanderRadius);
+  wander.addInt('height', wanderHeight);
+  module.add('wander', wander);
+  return module;
+}
+
+/// `BigDecimal.valueOf(value).setScale(3, HALF_UP).doubleValue()`.
+double _round3(double value) => double.parse(roundHalfUp(JavaDecimal.parse(javaDoubleToString(value))!, 3));
+
+/// `Double.parseDouble` of a pose part, or null when it is not a finite number.
+double? _decimal(String text) {
+  try {
+    final double value = javaParseDouble(text);
+    return value.isFinite ? value : null;
+  } on FormatException {
+    return null;
+  }
+}
+
 class _Traits {
-  _Traits(this.type, this.record, this.traits, this.combat, this.references);
+  _Traits(this.type, this.record, this.traits, this.combat, this.routed, this.references);
 
   final String type;
   final JObject record;
   final JObject traits;
   final bool combat;
+  final bool routed;
   final JArray references;
   final JObject fields = JObject();
   final JObject migration = JObject();
@@ -114,10 +183,13 @@ class _Traits {
           if (flag) fields.addBool('glowing', true);
           converted.add(path);
         case 'minecraft-ai':
-          if (flag == false) {
+          if (flag == false || flag == true && type == 'minecraft:player') {
             converted.add(path);
+          } else if (flag == true && routed) {
+            note(path, statusConverted,
+                "vanilla AI becomes walking around within $wanderRadius blocks, or the NPC's own route; vanilla attacking and fleeing do not run");
           } else if (flag == true) {
-            kept(path, 'Animus bodies have no vanilla mob AI; use routes, look-close or combat instead');
+            kept(path, 'the NPC has no world to wander in');
           }
         case 'protected':
           if (flag == true || flag == false && combat) {
@@ -136,11 +208,7 @@ class _Traits {
         case 'flyable':
           if (flag != null) converted.add(path);
         case 'pathfinder-open-doors':
-          if (flag == false) {
-            converted.add(path);
-          } else if (flag == true) {
-            review(path, "Animus routes do not open doors; leave the doors on this NPC's route open or add points around them");
-          }
+          if (flag != null) converted.add(path);
         case 'disable-default-stuck-action':
           if (flag != null) converted.add(path);
       }
@@ -217,6 +285,10 @@ class _Traits {
     }
     if (metadata != null && _bool(metadata.get('flyable')) == true) {
       movement.addBool('fly', true);
+      any = true;
+    }
+    if (metadata != null && _bool(metadata.get('pathfinder-open-doors')) == true) {
+      movement.addBool('openDoors', true);
       any = true;
     }
     final JObject? trait = _object(traits.get('attributetrait'));
@@ -334,10 +406,10 @@ class _Traits {
     final JObject? targetable = _object(traits.get('targetable'));
     if (targetable == null) return;
     final bool? value = _bool(targetable.get('targetable'));
-    if (value == false) {
+    if (value == false || value == true && combat) {
       converted.add('/traits/targetable/targetable');
     } else if (value == true) {
-      kept('/traits/targetable/targetable', 'Animus bodies are packet-only, so hostile mobs never target them');
+      kept('/traits/targetable/targetable', 'hostile mobs target only NPCs with an animus:combat module');
     }
   }
 
@@ -367,7 +439,37 @@ class _Traits {
   void poses() {
     final JObject? poses = _object(traits.get('poses'));
     if (poses == null || !poses.has('list')) return;
-    kept('/traits/poses/list', 'named poses are used by Citizens pose commands; Animus has no named poses, only the default facing');
+    final JObject named = JObject();
+    for (final MapEntry<String, JElement> entry in listEntries(poses.get('list'))) {
+      final String path = '/traits/poses/list/${entry.key}';
+      final List<String> parts = entry.value is JPrimitive ? javaSplit(entry.value.asPrimitive.asString, ';') : const <String>[];
+      final double? yaw = parts.length >= 3 ? _decimal(parts[1]) : null;
+      final double? pitch = parts.length >= 3 ? _decimal(parts[2]) : null;
+      if (yaw == null || pitch == null) {
+        kept(path, 'not a name;yaw;pitch pose');
+        continue;
+      }
+      String name = javaLower(parts[0]).replaceAll(RegExp(r'[^a-z0-9_-]+'), '-').replaceFirst(RegExp(r'^[^a-z0-9]+'), '');
+      if (name.length > 32) name = name.substring(0, 32);
+      if (name.isEmpty) {
+        kept(path, 'the pose name has no letters or digits to keep');
+        continue;
+      }
+      if (named.has(name)) {
+        kept(path, 'another pose already uses the name $name');
+        continue;
+      }
+      if (named.length == maxPoses) {
+        kept(path, 'an NPC keeps at most 64 poses');
+        continue;
+      }
+      final JObject facing = JObject();
+      facing.addDouble('yaw', _round3(yaw.remainder(360)));
+      facing.addDouble('pitch', _round3(pitch > 90 ? 90 : (pitch < -90 ? -90 : pitch)));
+      named.add(name, facing);
+      converted.add(path);
+    }
+    if (named.isNotEmpty) fields.add('poses', named);
   }
 
   void horse() {
