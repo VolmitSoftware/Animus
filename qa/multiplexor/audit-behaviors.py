@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import sys
 import zipfile
+import multiplexor_workspace as mw
 
 spec = importlib.util.spec_from_file_location('behavior_import_audit', Path(__file__).with_name('audit-import-applications.py'))
 imports = importlib.util.module_from_spec(spec); spec.loader.exec_module(imports)
@@ -87,7 +88,7 @@ def latest_attempt(directory):
 
 
 def target_name(project, version):
-    return base.target_name(project, version).replace('animus-', 'animus-behaviors-', 1)
+    return base.target_name(project, version).replace('animus-baseline-', 'animus-behaviors-', 1)
 
 
 def diagnostic_status(value):
@@ -501,7 +502,7 @@ class BehaviorAuditor(imports.ImportAuditor):
         require(report['pluginSha256'] == self.artifact_hash, 'Behavior attempt uses another artifact')
         instance = self.deployed(report, project, version, name); data = instance / 'plugins/Animus'
         require(report['deployedPlugins'] == report['plugins'] and report['finalServerSha256'] == report['serverSha256'], 'Actual deployment changed')
-        pinned_path = self.workspace / 'animus-evidence' / base.target_name(project, version) / 'runtime.json'
+        pinned_path = mw.evidence_root(self.workspace) / base.target_name(project, version) / 'runtime.json'
         self.file(pinned_path, kind='pinned-server-reference'); pinned = read(pinned_path)
         require((report['serverBuild'], report['serverChannel'], report['serverSha256']) == (pinned['build'], pinned['channel'], pinned['serverSha256']), 'Official exact server binding differs')
         self.sources(folder, report); modules = self.fixtures(folder, data, report)
@@ -520,7 +521,7 @@ class BehaviorAuditor(imports.ImportAuditor):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--workspace', type=Path, default=Path('.qa/multiplexor-workspace'))
+    parser.add_argument('--workspace', type=Path, default=mw.default_workspace())
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[2])
     for name in ('build-status', 'source-snapshot', 'output'): parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--artifact-sha256', required=True)
@@ -541,7 +542,7 @@ def main(argv=None):
         result['sourceSnapshot'] = audit.bind_sources(args.source_snapshot.resolve(), args.build_status.resolve()); result['apiArtifact'] = audit.api
         for project in ('paper', 'spigot', 'folia'):
             for version in base.VERSIONS:
-                directory = audit.workspace / 'animus-evidence' / target_name(project, version)
+                directory = mw.evidence_root(audit.workspace) / target_name(project, version)
                 attempts, selected = latest_attempt(directory)
                 for attempt in attempts:
                     path = attempt / 'result.json'; item = {'report': str(path), 'status': 'pending'}

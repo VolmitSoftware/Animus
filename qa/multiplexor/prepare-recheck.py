@@ -2,18 +2,20 @@
 """Provision a fresh named regression instance through Multiplexor; never starts it."""
 import argparse,hashlib,json,re,runpy,shutil,socket,time
 from pathlib import Path
+import multiplexor_workspace as mw
 
 p=argparse.ArgumentParser(description=__doc__)
-for key in ['binary','workspace','build-home']:p.add_argument('--'+key,type=Path,required=True)
+p.add_argument('--binary',type=Path,default=mw.default_binary());p.add_argument('--workspace',type=Path,default=mw.default_workspace())
+p.add_argument('--build-home',type=Path,help='Only when the build used a MULTIPLEXOR_BUILD_HOME override')
 p.add_argument('--round',required=True,help='Positive round number, or gate for the milestone gate')
 p.add_argument('--project',choices=['paper','spigot','folia'],required=True)
 p.add_argument('--version',choices=['26.1.2','26.2','26.3'],required=True)
-a=p.parse_args();assert re.fullmatch(r'[1-9][0-9]*|gate',a.round);a.binary=a.binary.resolve();a.workspace=a.workspace.resolve();a.transcript=[];assert '.qa' in a.workspace.parts
+a=p.parse_args();assert re.fullmatch(r'[1-9][0-9]*|gate',a.round);a.binary=a.binary.resolve();a.workspace=a.workspace.resolve();a.transcript=[]
 helpers=runpy.run_path(str(Path(__file__).with_name('managed-runtime.py')));run=helpers['run'];sha=lambda f:hashlib.sha256(f.read_bytes()).hexdigest()
-version=a.version.replace('.','-');source_name=f'animus-{a.project}-{version}';name=f'animus-{"gate" if a.round=="gate" else "r"+a.round}-{a.project}-{version}'
+version=a.version.replace('.','-');source_name=mw.baseline_name(a.project,a.version);name=f'animus-{"gate" if a.round=="gate" else "r"+a.round}-{a.project}-{version}'
 base=a.workspace/'consumers/plugin-consumers/instances'/source_name;instance=a.workspace/'consumers/plugin-consumers/instances'/name
-source_file=a.workspace/'animus-evidence'/source_name/'runtime.json';source=json.loads(source_file.read_text());assert sha(base/'server.jar')==source['serverSha256']
-evidence=a.workspace/'animus-evidence'/name;evidence.mkdir(parents=True,exist_ok=True)
+source_file=mw.evidence_root(a.workspace)/source_name/'runtime.json';source=json.loads(source_file.read_text());assert sha(base/'server.jar')==source['serverSha256']
+evidence=mw.evidence_root(a.workspace)/name;evidence.mkdir(parents=True,exist_ok=True)
 assert not instance.exists(),'Recheck preparation only creates a fresh instance; inspect existing evidence instead of resetting it'
 run(a,'server','create',name,'--jar',str(base/'server.jar'),'--type',a.project,'--mc',a.version,'--isolated')
 assert run(a,'instance','isolated',name).strip()=='true' and sha(instance/'server.jar')==source['serverSha256']

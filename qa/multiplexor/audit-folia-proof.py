@@ -19,6 +19,7 @@ import sys
 import zipfile
 
 from folia_acceptance import GATES, OUTSIDE_SCOPE, SCOPE, assess_gates
+import multiplexor_workspace as mw
 
 # Reuse the frozen runtime auditor's file, native artifact, build, deployed hash,
 # loopback-port and log checks without changing or invoking its matrix policy.
@@ -291,7 +292,7 @@ class FoliaAuditor(runtime.Auditor):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--workspace', type=Path, default=Path('.qa/multiplexor-workspace'))
+    parser.add_argument('--workspace', type=Path, default=mw.default_workspace())
     parser.add_argument('--repo', type=Path, default=Path(__file__).resolve().parents[2])
     parser.add_argument('--native-root', type=Path, default=Path.home() / '.gradle/caches/fabric-loom')
     parser.add_argument('--build-status', type=Path, required=True)
@@ -319,7 +320,7 @@ def main(argv=None):
             require(args.source_snapshot is not None, 'QA update requires --source-snapshot')
             result['reviewedSourceUpdate'] = audit.configure_source_update(args.reviewed_source_update.resolve(), args.source_snapshot.resolve())
         for version in TARGETS:
-            target = audit.workspace / 'animus-evidence' / runtime.target_name('folia', version, args.round)
+            target = mw.evidence_root(audit.workspace) / runtime.target_name('folia', version, args.round)
             attempts = sorted((p for p in target.glob('folia-proof-*') if p.is_dir() and p.name.removeprefix('folia-proof-').isdigit()),
                               key=lambda p: int(p.name.removeprefix('folia-proof-')))
             for folder in attempts:

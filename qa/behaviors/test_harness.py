@@ -3,10 +3,13 @@ import copy
 import json
 from pathlib import Path
 import runpy
+import sys
 import tempfile
 import unittest
 
-WRAPPER=runpy.run_path(str(Path(__file__).resolve().parents[1]/'multiplexor/behaviors.py'))
+MULTIPLEXOR=Path(__file__).resolve().parents[1]/'multiplexor'
+sys.path.insert(0,str(MULTIPLEXOR))
+WRAPPER=runpy.run_path(str(MULTIPLEXOR/'behaviors.py'))
 Scenario=WRAPPER['Scenario']
 
 class HarnessTests(unittest.TestCase):

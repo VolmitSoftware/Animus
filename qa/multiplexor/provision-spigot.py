@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Provision exact Spigot releases through Multiplexor's official BuildTools provider.
 
-Every release gets a dedicated ignored workspace and Maven repository. This script
-does not start servers. The generated source-evidence.json feeds managed-runtime.py.
+Builds run in the shared Multiplexor workspace with its default build cache; each release
+keeps only its evidence and Maven repository under ignored .qa output. This script does not start servers. The generated source-evidence.json feeds managed-runtime.py.
 """
 import argparse
 import concurrent.futures
@@ -17,6 +17,8 @@ import subprocess
 import time
 import urllib.request
 import zipfile
+
+import multiplexor_workspace as mw
 
 
 VERSIONS = ('26.1.2', '26.2', '26.3')
@@ -77,11 +79,8 @@ def inspect_jar(path, expected):
 
 def provision(args, version, tools):
     version_root = args.output / version
-    workspace = version_root / 'workspace'
-    workspace.mkdir(parents=True, exist_ok=True)
-    app_link = workspace / 'MultiplexorApp'
-    if not app_link.exists():
-        app_link.symlink_to(args.binary.parent / 'MultiplexorApp', target_is_directory=True)
+    workspace = args.workspace
+    version_root.mkdir(parents=True, exist_ok=True)
     attempt = version_root / 'attempts' / str(time.time_ns())
     attempt.mkdir(parents=True)
     report = {'project': 'spigot', 'minecraftVersion': version, 'status': 'running',
@@ -120,8 +119,6 @@ def provision(args, version, tools):
         assert 69 in upstream['javaVersions'], 'Official manifest does not permit Java 25'
         report.update(build=int(upstream['name']), upstreamManifestUrl=manifest_url, upstreamManifest=upstream)
         write_json(attempt / 'upstream-before.json', upstream)
-        command('storage', 'keep-downloads', 'on')
-        command('runtime', 'settings', 'set-java', str(args.java_home / 'bin/java'))
         build_output = command('build', 'spigot', '--mc', version, timeout=args.timeout)
         report['providerCacheHit'] = 'already the newest' in build_output
         cached = command('build', 'cache-info', 'spigot', '--mc', version)
@@ -133,7 +130,7 @@ def provision(args, version, tools):
                 if not jar.is_absolute():
                     jar = workspace / 'consumers/plugin-consumers/builds/spigot' / jar
                 jar = jar.resolve()
-                assert workspace in jar.parents, 'Provider returned an artifact outside its dedicated workspace'
+                assert workspace in jar.parents, 'Provider returned an artifact outside the shared workspace'
                 if jar.is_file(): candidates.append(jar)
         assert len(candidates) == 1, 'Expected exactly one exact-version cached Spigot artifact'
         built = candidates[0]
@@ -146,9 +143,9 @@ def provision(args, version, tools):
                       jarMetadata=inspect_jar(server, version), upstreamUnchanged=True)
         report['upstreamSpigotHashMatches'] = report['serverSha256'] == upstream.get('hashes', {}).get('Spigot')
         assert report['upstreamSpigotHashMatches'], 'Built executable differs from the official Spigot manifest hash'
-        tool_jars = list(workspace.rglob('BuildTools.jar'))
+        tool_jars = list((workspace / 'consumers/plugin-consumers/builds').rglob('BuildTools.jar'))
         report['buildToolsCopies'] = [{'path': str(path), 'sha256': digest(path)} for path in tool_jars]
-        report['buildLogs'] = [str(path) for path in workspace.rglob('spigot-*.log') if 'build-logs' in path.parts]
+        report['buildLogs'] = [str(path) for path in (workspace / 'consumers/plugin-consumers/state/build-logs').rglob('spigot-*.log')]
         assert report['buildToolsCopies'], 'Managed BuildTools binary was not retained for provenance'
         assert report['buildLogs'], 'Managed BuildTools log was not retained'
     except Exception as error:
@@ -163,14 +160,15 @@ def provision(args, version, tools):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--binary', type=Path, required=True)
+    parser.add_argument('--binary', type=Path, default=mw.default_binary())
+    parser.add_argument('--workspace', type=Path, default=mw.default_workspace())
     parser.add_argument('--java-home', type=Path, required=True)
     parser.add_argument('--output', type=Path, default=Path('.qa/spigot-builds'))
     parser.add_argument('--versions', nargs='+', choices=VERSIONS, default=VERSIONS)
-    parser.add_argument('--jobs', type=int, choices=[1, 2, 3], default=3)
+    parser.add_argument('--jobs', type=int, choices=[1, 2, 3], default=1, help='The shared workspace serializes project operations')
     parser.add_argument('--timeout', type=int, default=3600)
     args = parser.parse_args()
-    args.binary = args.binary.resolve(); args.java_home = args.java_home.resolve(); args.output = args.output.resolve()
+    args.binary = args.binary.resolve(); args.workspace = args.workspace.resolve(); args.java_home = args.java_home.resolve(); args.output = args.output.resolve()
     assert '.qa' in args.output.parts, 'Use dedicated ignored QA output'
     assert args.binary.is_file() and (args.java_home / 'bin/java').is_file()
     java = subprocess.run([str(args.java_home / 'bin/java'), '-version'], capture_output=True, text=True, check=True)

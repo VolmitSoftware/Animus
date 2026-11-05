@@ -1,66 +1,76 @@
 # Animus checks through ServerMultiplexor
 
-Animus declares real Multiplexor build targets in `gradle/multiplexor.gradle`. Server checks use a dedicated isolated Multiplexor workspace, its artifact deployment, and its runtime start/console/stop operations. `qa/multiplexor/definitions.mjs` runs through the standard `gameplay run` scenario runner. `qa/packet-client.mjs` is an external exact-codec client attached to a managed server; it is not a Mineflayer scenario.
+Animus declares real Multiplexor build targets in `gradle/multiplexor.gradle`. Server checks use the one shared Multiplexor workspace, its artifact deployment, and its runtime start/console/stop operations. `qa/multiplexor/definitions.mjs` runs through the standard `gameplay run` scenario runner. `qa/packet-client.mjs` is an external exact-codec client attached to a managed server; it is not a Mineflayer scenario.
+
+## Workspace
+
+Follow the test-server rule in `VolmitSoftware/AGENTS.md` (`../AGENTS.md` from the Animus root): use only the main workspace at `ServerMultiplexor` with its default root and build cache, never a second workspace, root or build cache in this repository, and `--isolated` instances named `<project>-<purpose>-<platform>-<version>`. Every helper here defaults to that workspace: `--workspace` defaults to the nearest `ServerMultiplexor` checkout next to the Animus repository (also found from a nested worktree), `--binary` to its `multiplexor`, and no `MULTIPLEXOR_BUILD_HOME` is set. `--workspace`, `--binary` and `--build-home` remain available as overrides; a build made with a `MULTIPLEXOR_BUILD_HOME` override needs the same `--build-home` for every later delivery.
+
+Animus instances are:
+
+| Instance | Purpose |
+| --- | --- |
+| `animus-baseline-<platform>-<version>` | Pinned server created by `managed-runtime.py`; other helpers copy its jar and libraries |
+| `animus-r<N>-<platform>-<version>`, `animus-r<N>-import-<platform>-<version>` | One explicit evidence round |
+| `animus-live-<platform>-<version>`, `animus-mod-<loader>-<version>` | `live-features.mjs` |
+| `animus-modules-…`, `animus-import-…`, `animus-behaviors-…` | Module, import and behavior suites |
+| `animus-gate-[set-]<platform>-<version>` | `gate.py` milestone gate |
+
+Evidence goes to `consumers/plugin-consumers/state/animus-evidence/` inside the workspace, which Multiplexor ignores. Delete only instances you created.
 
 The native client is necessary because the installed Multiplexor Mineflayer harness supports 26.1.2 but reports missing usable protocol data for 26.2 and 26.3. Keep those doctor failures in the evidence. Do not substitute a different protocol version. Native client adapters compile against and verify the exact Minecraft jar version.
 
 ## Build a captured source revision
 
-Use a sibling ServerMultiplexor checkout and Java 25. The capture helper copies Git-visible Animus and VolmLib sources into a new directory, including uncommitted changes, and records every copied file hash. Ignored QA output and service-account files are excluded. VolmLib stays fixed while other agents work in its development checkout. Multiplexor then makes its own per-target build snapshots from that pinned input.
+Use Java 25 and the shared workspace. The capture helper copies Git-visible Animus and VolmLib sources into a new directory, including uncommitted changes, and records every copied file hash. Ignored QA output and service-account files are excluded. VolmLib stays fixed while other agents work in its development checkout. Multiplexor then makes its own per-target build snapshots from that pinned input.
 
 From the Animus root:
 
 ```sh
 export JAVA_HOME=/opt/homebrew/opt/openjdk@25/libexec/openjdk.jdk/Contents/Home
-export MULTIPLEXOR_BUILD_HOME="$PWD/.qa/multiplexor-build-cache"
-mkdir -p .qa/multiplexor-workspace
-ln -s "$PWD/../ServerMultiplexor/MultiplexorApp" .qa/multiplexor-workspace/MultiplexorApp
+MUX=../ServerMultiplexor/multiplexor
 python3 qa/multiplexor/capture-sources.py \
-  --output .qa/multiplexor-sources \
-  --manifest .qa/multiplexor-workspace/source-snapshot.json
-../ServerMultiplexor/multiplexor --root "$PWD/.qa/multiplexor-workspace" storage keep-downloads on
-../ServerMultiplexor/multiplexor --root "$PWD/.qa/multiplexor-workspace" projects scan "$PWD/.qa/multiplexor-sources" --json
-../ServerMultiplexor/multiplexor --root "$PWD/.qa/multiplexor-workspace" projects build animus \
+  --output .qa/multiplexor-sources-NAME \
+  --manifest .qa/multiplexor-captures/source-snapshot-NAME.json
+"$MUX" projects scan "$PWD/.qa/multiplexor-sources-NAME" --json
+"$MUX" projects build animus \
   --target bukkit,converter --jobs 2 --memory 8192 --workers 4 --packaging local --wait --json
-../ServerMultiplexor/multiplexor --root "$PWD/.qa/multiplexor-workspace" projects status --json
+"$MUX" projects status --json
 ```
 
-Save the emitted run ID and preserve each source capture. Multiplexor's current catalog rejects duplicate project IDs when scanning a new source root into an existing workspace; it has no supported unregister command. Prefer a fresh QA workspace for a fresh capture. The development runtime-1/runtime-2 runs reused existing instances through a backed-up internal catalog edit that removed only the previous Animus/VolmLib project registrations before rescanning. Those backups are retained in the local workspace; this is an internal workaround, not a supported CLI operation, and should not be applied to a shared workspace.
+Save the emitted run ID and preserve each source capture. The workspace catalog is shared by every project. It rejects a duplicate project ID when another source root already registers `animus` or `volmlib`, and Multiplexor has no supported unregister command. Never edit the shared catalog by hand, and never create a second workspace to get around it. If `projects scan` reports a duplicate, run `"$MUX" projects status --json`; build the project from the root that is already registered, or ask the workspace owner to change the registration.
 
 Source capture and build output are distinct evidence: only a successful Multiplexor run proves the build executed. The `bukkit` build runs the exact Spigot API compilation matrix and packet tests; its required `core` target builds the standalone API and runs core tests. The core target records the API JAR with artifact role `api`; only runtime-role artifacts are deployed as plugins. Provenance collection distinguishes those artifact types and includes API sources in test-input lineage. `converter` builds the local CLI. The individually selectable `bukkit-api-26.1.2`, `bukkit-api-26.2`, and `bukkit-api-26.3` targets provide narrower compile checks.
 
-Use the same `MULTIPLEXOR_BUILD_HOME` for later artifact delivery. Omitting it after overriding it during the build makes Multiplexor correctly reject an artifact outside the expected run directory.
+Builds use the workspace's default build cache. Do not set `MULTIPLEXOR_BUILD_HOME`; Multiplexor rejects delivery of an artifact outside the expected run directory, so a build and its later deliveries must use the same build cache.
 
 ## Managed server lifecycle
 
-`qa/platform-smoke.py` downloads exact official Paper/Folia jars and verifies their published SHA-256. Its own standalone test results are separate from Multiplexor results. `qa/multiplexor/managed-runtime.py` consumes those verified downloads, creates fresh isolated managed instances, deploys the successful Multiplexor artifact, starts each server, sends actual console commands through Multiplexor's tmux console, and stops it. It does not launch Java directly.
+`qa/platform-smoke.py` downloads exact official Paper/Folia jars and verifies their published SHA-256. Its own standalone test results are separate from Multiplexor results. `qa/multiplexor/managed-runtime.py` consumes those verified downloads, creates fresh isolated `animus-baseline-<platform>-<version>` instances, deploys the successful Multiplexor artifact, starts each server, sends actual console commands through Multiplexor's tmux console, and stops it. It does not launch Java directly.
 
 Provision the requested exact versions with `platform-smoke.py` first. Stable is its default. Folia 26.2 build 7 requires explicit `--channel BETA --build 7`; Folia 26.3 build 6 requires `--channel ALPHA --build 6`. Keep these channel labels in reports. Reuse an existing accepted QA EULA file; the helper does not ask the user to accept a new agreement implicitly.
 
 ```sh
 python3 qa/multiplexor/managed-runtime.py \
-  --binary ../ServerMultiplexor/multiplexor \
-  --workspace .qa/multiplexor-workspace \
-  --build-home .qa/multiplexor-build-cache \
   --build-run RUN_ID \
   --java-home "$JAVA_HOME" \
   --accepted-eula /path/to/already-accepted/eula.txt
 ```
 
-Each target validates exact-version startup and explicit packet capability, creates a synthetic dormant definition, validates it, restarts, checks the same UUID persisted, deletes it, and stops. Logs, deployed jar hashes, console commands and results live under `.qa/multiplexor-workspace/animus-evidence/`. Fresh readiness must come from the current server start; a previous `latest.log` cannot satisfy readiness. Failed attempts remain as `prior-runtime-*.json` and preserved logs when repeated.
+Each target validates exact-version startup and explicit packet capability, creates a synthetic dormant definition, validates it, restarts, checks the same UUID persisted, deletes it, and stops. Logs, deployed jar hashes, console commands and results live under the workspace's `consumers/plugin-consumers/state/animus-evidence/`. Fresh readiness must come from the current server start; a previous `latest.log` cannot satisfy readiness. Failed attempts remain as `prior-runtime-*.json` and preserved logs when repeated.
 
 ## Multiplexor player scenario
 
 Install the pinned gameplay harness through `gameplay setup`, then retain exact-version `gameplay doctor --version VERSION --json` results. Only 26.1.2 currently passes its protocol capability check.
 
 ```sh
-../ServerMultiplexor/multiplexor --root "$PWD/.qa/multiplexor-workspace" gameplay setup
-../ServerMultiplexor/multiplexor --root "$PWD/.qa/multiplexor-workspace" gameplay doctor --version 26.1.2 --json
-../ServerMultiplexor/multiplexor --root "$PWD/.qa/multiplexor-workspace" gameplay run \
-  "$PWD/qa/multiplexor/definitions.mjs" animus-paper-26-1-2 \
+"$MUX" gameplay setup
+"$MUX" gameplay doctor --version 26.1.2 --json
+"$MUX" gameplay run \
+  "$PWD/qa/multiplexor/definitions.mjs" animus-baseline-paper-26-1-2 \
   --version 26.1.2 --start --stop-after --no-viewer --username AnimusCommandsQA --command prepare --json
-../ServerMultiplexor/multiplexor --root "$PWD/.qa/multiplexor-workspace" gameplay run \
-  "$PWD/qa/multiplexor/definitions.mjs" animus-paper-26-1-2 \
+"$MUX" gameplay run \
+  "$PWD/qa/multiplexor/definitions.mjs" animus-baseline-paper-26-1-2 \
   --version 26.1.2 --start --stop-after --no-viewer --username AnimusCommandsQA --command verify --json
 ```
 
@@ -70,7 +80,7 @@ Generate the standard Multiplexor feature matrix with the Animus manifest:
 
 ```sh
 node ../ServerMultiplexor/MultiplexorApp/tool/mineflayer/src/coverage.mjs \
-  .qa/multiplexor-workspace/consumers/plugin-consumers/state/gameplay-tests \
+  ../ServerMultiplexor/consumers/plugin-consumers/state/gameplay-tests \
   qa/multiplexor/coverage.json
 ```
 
@@ -82,9 +92,6 @@ After the managed lifecycle suite has created and deployed the Paper instances, 
 
 ```sh
 python3 qa/multiplexor/packet-proof.py \
-  --binary ../ServerMultiplexor/multiplexor \
-  --workspace .qa/multiplexor-workspace \
-  --build-home .qa/multiplexor-build-cache \
   --version 26.3 \
   --skin-file /private/qa/skins/HASH.json \
   --fixture .qa/event-fixture/AnimusProofFixture.jar \
@@ -97,18 +104,21 @@ The navigation flag requires a build containing the proof path diagnostic. It ve
 
 The native client loads synchronized registry entries and tags before binding play codecs. Its regression fixture summons one tagged cow and verifies actual metadata decoding, then removes that cow. Cleanup targets only the synthetic tag. Native metadata decoding failures remain fatal.
 
-After runs finish, refresh the currently selected build with `python3 qa/multiplexor/report.py`. It reads that selection from the existing index, verifies the recorded runtime artifact hash, partitions results by artifact hash, and retains failed attempts and separate audit provenance. To select a new build, use `python3 qa/multiplexor/report.py --build-status .qa/multiplexor-workspace/build-status-NAME.json --source-snapshot .qa/multiplexor-workspace/source-snapshot-NAME.json`, replacing `NAME` with the matching capture; the status file must record one successful `projects status RUN_ID --json` result. A fresh workspace requires this explicit selection. The reporter writes `index.json` atomically and leaves immutable reports such as `runtime-3-final.json` untouched; it never defaults to an older baseline. Mineflayer protocol limitations remain distinct from runtime results.
+After runs finish, refresh the currently selected build with `python3 qa/multiplexor/report.py`. It reads that selection from the existing index, verifies the recorded runtime artifact hash, partitions results by artifact hash, and retains failed attempts and separate audit provenance. To select a new build, use `python3 qa/multiplexor/report.py --build-status .qa/multiplexor-captures/build-status-NAME.json --source-snapshot .qa/multiplexor-captures/source-snapshot-NAME.json`, replacing `NAME` with the matching capture; the status file must record one successful `projects status RUN_ID --json` result. An empty evidence directory requires this explicit selection. The reporter writes `index.json` atomically and leaves immutable reports such as `runtime-3-final.json` untouched; it never defaults to an older baseline. Mineflayer protocol limitations remain distinct from runtime results.
 
 The [Folia runtime](folia-runtime.md) for persisted NPCs is newer than these results and has no Multiplexor evidence yet. The historical lifecycle checks here establish startup/file commands; the separate runtime8 stationary-preview suite below has its own gameplay evidence. Exact Spigot servers now have separate managed lifecycle and native proof evidence; see [Spigot provisioning](spigot-verification.md). Fabric, NeoForge and Forge servers have their own live run; see [mod servers](#mod-servers) below. Protocol assertions do not establish graphical fidelity, performance, controllable mounts or combat parity. The persisted-runtime suite below establishes its own narrower activation and lifecycle behavior.
 
+## Live features
+
+`qa/multiplexor/live-features.mjs --project paper|spigot|folia|leaf --version <version>` runs triggers, state, actions, mounts, riding, dragons and the other Paper scenarios on a fresh isolated `animus-live-<platform>-<version>` instance whose `server.jar` comes from `animus-baseline-<platform>-<version>`. `--project leaf` is supported and runs the full Paper set unchanged. `managed-runtime.py` provisions only Paper, Spigot and Folia baselines, so first create `animus-baseline-leaf-<version>` as an isolated Leaf instance with Multiplexor. NPC speech arrives as `Name » text`.
+
 ## Mod servers
 
-`qa/multiplexor/live-features.mjs --project fabric|neoforge|forge` runs the same native-client scenarios against a Fabric, NeoForge or Forge server. It creates `animus-mod-<loader>-<version>` in that loader's consumer profile with `server create --type <loader> --mc <version> --loader <version> --auto-build --isolated`, taking the loader versions from `gradle/targets.json`, and puts the given mod jar in `mods/`. Data lives in `config/animus/`. The native client borrows the vanilla libraries of the matching `animus-paper-<version>` instance, which must exist. There is no Bukkit QA fixture, so `--fixture` is refused and the `animusqa` cell probes and `qa/combat-client.mjs` are skipped.
+`qa/multiplexor/live-features.mjs --project fabric|neoforge|forge` runs the same native-client scenarios against a Fabric, NeoForge or Forge server. It creates `animus-mod-<loader>-<version>` in that loader's consumer profile with `server create --type <loader> --mc <version> --loader <version> --auto-build --isolated`, taking the loader versions from `gradle/targets.json`, and puts the given mod jar in `mods/`. Data lives in `config/animus/`. The native client borrows the vanilla libraries of the matching `animus-baseline-paper-<version>` instance, which must exist. There is no Bukkit QA fixture, so `--fixture` is refused and the `animusqa` cell probes and `qa/combat-client.mjs` are skipped.
 
 ```sh
 node qa/multiplexor/live-features.mjs --project fabric --version 26.3 \
-  --workspace .qa/multiplexor-workspace --binary ../ServerMultiplexor/multiplexor \
-  --build-home .qa/multiplexor-build-cache --skin-file /private/qa/skins/HASH.json \
+  --skin-file /private/qa/skins/HASH.json \
   --plugin "build/distributions/Animus v0.1.0 [Fabric] 26.3+0.19.5.jar" --results /path/to/new/results
 ```
 
@@ -122,9 +132,6 @@ Build `qa/build-fixture.py` with `--plugin` pointing to that exact Multiplexor a
 
 ```sh
 python3 qa/multiplexor/runtime-npcs.py \
-  --binary ../ServerMultiplexor/multiplexor \
-  --workspace .qa/multiplexor-workspace \
-  --build-home .qa/multiplexor-build-cache \
   --build-run RECORDED_BUILD_RUN --project paper --version 26.3 \
   --fixture .qa/event-fixture/AnimusProofFixture.jar \
   --skin-file /private/qa/skins/HASH.json --combat
@@ -140,7 +147,7 @@ For the movement/recovery suite, add `--control --movement --inline-recovery` to
 
 ## Historical proof verification — 2026-11-04
 
-Multiplexor build `run-1793776425697665-40479` passed `animus:core`, `animus:bukkit` and `animus:converter`. Its plugin SHA-256 is `ea0ef82d32cfa16594fad2fb96f615462fdab32be161cdcb415d636a19ae0a6f`, matching the local artifact at that historical checkpoint. Both source snapshots and the pinned VolmLib source hash are retained in the QA workspace.
+Multiplexor build `run-1793776425697665-40479` passed `animus:core`, `animus:bukkit` and `animus:converter`. Its plugin SHA-256 is `ea0ef82d32cfa16594fad2fb96f615462fdab32be161cdcb415d636a19ae0a6f`, matching the local artifact at that historical checkpoint. Both source snapshots and the pinned VolmLib source hash were retained in the retired separate QA workspace.
 
 | Platform | Exact Minecraft | Build/channel | Managed lifecycle | Native packet suite |
 | --- | --- | --- | --- | --- |
@@ -153,7 +160,7 @@ Multiplexor build `run-1793776425697665-40479` passed `animus:core`, `animus:buk
 
 The standard Multiplexor player scenario also passed both `prepare` and `verify` phases on Paper 26.1.2 with that artifact. All owned servers were stopped and their ports checked closed. The final native server logs contain no errors, exceptions or movement warnings.
 
-The local evidence index is `.qa/multiplexor-workspace/animus-evidence/index.json`; it links exact server/plugin hashes, build records, per-target logs and every native result. It preserves the earlier 26.3 cow-registry decoding failure and the later passing deterministic regression. The historical `spigot-cache-inventory.json` found only API jars; later official server provisioning and live results are documented in [Spigot verification](spigot-verification.md).
+The evidence index was `animus-evidence/index.json` in the retired separate QA workspace; it linked exact server/plugin hashes, build records, per-target logs and every native result. It preserves the earlier 26.3 cow-registry decoding failure and the later passing deterministic regression. The historical `spigot-cache-inventory.json` found only API jars; later official server provisioning and live results are documented in [Spigot verification](spigot-verification.md).
 
 ## Historical runtime-3 build — 2026-11-04
 

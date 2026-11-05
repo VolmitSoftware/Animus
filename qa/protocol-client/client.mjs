@@ -9,6 +9,14 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 import assert from 'node:assert/strict';
 
+// QA may edit only ignored .qa output and Animus-owned instances or evidence in the shared Multiplexor workspace.
+export function ownedQaPath(file) {
+  const parts = path.resolve(file).split(path.sep);
+  if (parts.includes('.qa') || parts.includes('animus-evidence')) return true;
+  const at = parts.indexOf('instances');
+  return at > 0 && parts[at - 1].endsWith('-consumers') && (parts[at + 1] ?? '').startsWith('animus-');
+}
+
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export function parseArgs(argv = process.argv.slice(2)) {

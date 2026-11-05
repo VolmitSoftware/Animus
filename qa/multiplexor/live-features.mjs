@@ -13,8 +13,15 @@ const args = parseArgs();
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const project = args.get('project') ?? 'paper', version = args.get('version') ?? '26.3';
 const results = path.resolve(args.get('results') ?? path.join(root, '.qa', 'live-features'));
-const workspace = path.resolve(args.get('workspace') ?? path.join(root, '.qa', 'multiplexor-workspace'));
-const binary = path.resolve(args.get('binary'));
+// The one shared Multiplexor workspace (VolmitSoftware/AGENTS.md): the nearest ServerMultiplexor sibling, also from a nested worktree.
+function mainWorkspace() {
+  for (let parent = path.dirname(root); ; parent = path.dirname(parent)) {
+    if (existsSync(path.join(parent, 'ServerMultiplexor', 'multiplexor'))) return path.join(parent, 'ServerMultiplexor');
+    if (parent === path.dirname(parent)) return path.join(path.dirname(root), 'ServerMultiplexor');
+  }
+}
+const workspace = path.resolve(args.get('workspace') ?? mainWorkspace());
+const binary = path.resolve(args.get('binary') ?? path.join(mainWorkspace(), 'multiplexor'));
 const buildHome = args.get('build-home') ? path.resolve(args.get('build-home')) : null;
 const plugin = path.resolve(args.get('plugin'));
 const fixture = args.get('fixture') ? path.resolve(args.get('fixture')) : null;
@@ -34,7 +41,7 @@ const pluginInstances = path.join(workspace, 'consumers/plugin-consumers/instanc
 const instance = path.join(instances, name), data = path.join(instance, MOD ? 'config/animus' : 'plugins/Animus'), logFile = path.join(instance, 'logs/latest.log');
 const session = `mc-${consumer}-${name}`;
 // The native client needs vanilla's libraries; a mod server keeps them inside its loader, so borrow the exact Paper template's.
-const serverLibraries = MOD ? path.join(pluginInstances, `animus-paper-${dashed}`, 'libraries') : path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
+const serverLibraries = MOD ? path.join(pluginInstances, `animus-baseline-paper-${dashed}`, 'libraries') : path.join(instance, project === 'spigot' ? 'bundler/libraries' : 'libraries');
 const LOADERS = JSON.parse(readFileSync(path.join(root, 'gradle/targets.json'), 'utf8'))[version];
 const loaderVersion = { fabric: LOADERS.fabricLoader, neoforge: LOADERS.neoforge, forge: LOADERS.forge?.replace(`${version}-`, '') }[project];
 const OWNER = { uuid: 'b2b7d4ea-c517-3a19-8a16-ee03e26cbe9f', name: 'AnimusProofQA' };
@@ -91,7 +98,7 @@ class Server {
   // Terrain a scenario keeps across restarts; start() clears the test area and then rebuilds this.
   floor = null;
   provision() {
-    const template = path.join(pluginInstances, `animus-${MOD ? 'paper' : project}-${dashed}`);
+    const template = path.join(pluginInstances, `animus-baseline-${MOD ? 'paper' : project}-${dashed}`);
     if (!existsSync(instance)) {
       if (MOD) mux('server', 'create', name, '--type', project, '--mc', version, '--loader', loaderVersion, '--auto-build', '--isolated');
       else mux('server', 'create', name, '--jar', realpathSync(path.join(template, 'server.jar')), '--type', project, '--mc', version, '--isolated');
@@ -343,26 +350,26 @@ async function triggers() {
   const start = owner.events.length;
   const uuid = await server.npc('trig', 'minecraft:player', 0, 61, 10, 'Trigger', { behaviors: ['live:triggers'] });
   const body = await owner.body(uuid);
-  await check('trigger spawn', async () => (await owner.chat('Trigger: spawn-fired', start)).text);
-  await check('trigger timer', async () => { await owner.chat('Trigger: timer-fired', start, 10_000); const from = owner.events.length; return (await owner.chat('Trigger: timer-fired', from, 10_000)).text; });
-  await check('trigger proximity enter', async () => { const from = owner.events.length; await owner.walk(0, 6); return (await owner.chat('Trigger: near-fired', from)).text; });
-  await check('trigger proximity leave', async () => { const from = owner.events.length; await owner.walk(0, 2); return (await owner.chat('Trigger: away-fired', from)).text; });
+  await check('trigger spawn', async () => (await owner.chat('Trigger » spawn-fired', start)).text);
+  await check('trigger timer', async () => { await owner.chat('Trigger » timer-fired', start, 10_000); const from = owner.events.length; return (await owner.chat('Trigger » timer-fired', from, 10_000)).text; });
+  await check('trigger proximity enter', async () => { const from = owner.events.length; await owner.walk(0, 6); return (await owner.chat('Trigger » near-fired', from)).text; });
+  await check('trigger proximity leave', async () => { const from = owner.events.length; await owner.walk(0, 2); return (await owner.chat('Trigger » away-fired', from)).text; });
   await owner.walk(0, 7);
   await check('trigger interaction', async () => {
     await owner.look(body.x, body.y + 0.9, body.z);
     const from = owner.events.length; owner.send('use', { id: body.id });
-    const fired = await owner.chat('Trigger: click-fired', from);
+    const fired = await owner.chat('Trigger » click-fired', from);
     await owner.noChat('Trigger: hit-fired', from, 400);
     return fired.text;
   });
   await check('trigger attack action', async () => {
     const from = owner.events.length; owner.send('attack', { id: body.id });
-    return (await owner.chat('Trigger: hit-fired', from)).text;
+    return (await owner.chat('Trigger » hit-fired', from)).text;
   });
   await check('trigger waypoint arrival', async () => {
     const from = owner.events.length;
     await server.cmd('animus navigate trig 4 61 10 walk 3', /./);
-    return (await owner.chat('Trigger: waypoint-fired', from, 15_000)).text;
+    return (await owner.chat('Trigger » waypoint-fired', from, 15_000)).text;
   });
   await check('behaviors triggers output', async () => {
     const text = await server.capture('animus behaviors triggers', /Behavior triggers: AVAILABLE[^\n]*/);
@@ -567,11 +574,11 @@ async function actions() {
     const ownerFrom = owner.events.length, peerFrom = peer.events.length;
     const result = await runDoc(owner, 'say', action('animus:say', { text: 'hello' }));
     assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
-    await owner.chat('Actor: hello', ownerFrom);
+    await owner.chat('Actor » hello', ownerFrom);
     await peer.noChat('Actor: hello', peerFrom);
     const nearbyFrom = peer.events.length;
     await runDoc(owner, 'say', action('animus:say', { text: 'all', audience: 'nearby', radius: 16 }));
-    await peer.chat('Actor: all', nearbyFrom);
+    await peer.chat('Actor » all', nearbyFrom);
     await peer.tp(0, 61, 30);
     const farFrom = peer.events.length;
     await runDoc(owner, 'say', action('animus:say', { text: 'far', audience: 'nearby', radius: 4 }));
@@ -676,7 +683,7 @@ async function actions() {
     const from = owner.events.length;
     const result = await runDoc(owner, 'nav', seq(action('animus:navigate', { x: 5, y: 61, z: 3, speed: 3, wait: true }), sayTo('arrived')));
     assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
-    await owner.chat('Actor: arrived', from);
+    await owner.chat('Actor » arrived', from);
     const moved = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).at(-1);
     assert(moved && Math.abs(moved.x - 5) < .6, JSON.stringify(moved));
     return `final x=${moved.x}`;
@@ -787,14 +794,14 @@ async function actions() {
       { type: 'condition', capability: 'animus:flag-state', arguments: { name: 'met', scope: 'relationship' }, then: sayTo('flag-set'), else: sayTo('flag-unset') },
     ));
     assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
-    await owner.chat('Actor: quest-three', from); await owner.chat('Actor: flag-set', from);
+    await owner.chat('Actor » quest-three', from); await owner.chat('Actor » flag-set', from);
     const shared = await runDoc(owner, 'other/quest', { type: 'condition', capability: 'animus:quest-state', arguments: { name: 'main', atLeast: 3 }, then: sayTo('shared-in-namespace'), else: sayTo('not-shared') });
     assert.equal(shared.state, 'COMPLETED');
-    await owner.chat('Actor: shared-in-namespace', from);
+    await owner.chat('Actor » shared-in-namespace', from);
     server.behavior('harbor:quest', { routines: { main: { type: 'condition', capability: 'animus:quest-state', arguments: { name: 'main', atLeast: 1 }, then: sayTo('leaked-namespace'), else: sayTo('own-namespace') } } });
     await server.reload();
     await owner.run('act', 'harbor:quest');
-    await owner.chat('Actor: own-namespace', from);
+    await owner.chat('Actor » own-namespace', from);
     await delay(5500);
     const file = path.join(data, 'state/behavior-state/player', OWNER.uuid, 'animus/quests/live.json');
     assert(existsSync(file), `${file} missing`);
@@ -1242,13 +1249,13 @@ async function folia() {
     return `${status.slice(0, 160)}; body entity ${body.id}`;
   });
   await check('triggers: spawn, interaction, proximity and timer', async () => {
-    await owner.chat('Folia: f-spawn', from);
+    await owner.chat('Folia » f-spawn', from);
     let clickAt = await click(owner, uuid);
-    await owner.chat('Folia: f-click', clickAt);
+    await owner.chat('Folia » f-click', clickAt);
     await owner.tp(...at(0, 24));
     from = owner.events.length;
     await owner.tp(...at(0, 1));
-    await owner.chat('Folia: f-near', from);
+    await owner.chat('Folia » f-near', from);
     assert(await flagStored('global', 'live', 'folia'), 'timer never stored its flag');
     return 'spawn, interaction, proximity enter and timer all fired';
   });
@@ -1258,7 +1265,7 @@ async function folia() {
     const result = await runDoc(owner, 'factions', seq(sayTo('f-said'), action('animus:look', { target: 'player' }),
       action('animus:set-equipment', { slot: 'main_hand', item: 'minecraft:iron_sword' }), action('animus:play-sound', { sound: 'minecraft:entity.villager.yes' })), {}, 'fnpc');
     assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
-    await owner.chat('Folia: f-said', from);
+    await owner.chat('Folia » f-said', from);
     await owner.wait(e => e.event === 'equipment' && e.id === body.id && e.slots.mainhand === 'minecraft:iron_sword', from, 5000);
     await owner.wait(e => e.event === 'sound' && e.sound === 'minecraft:entity.villager.yes', from, 5000);
     await owner.wait(e => e.event === 'head' && e.id === body.id, from, 5000);
@@ -2141,12 +2148,12 @@ async function smoke() {
     await owner.walk(0, 3);
     await owner.look(body.x, body.y + .9, body.z);
     const from = owner.events.length; owner.send('use', { id: body.id });
-    return (await owner.chat('Smoke: smoke-click', from)).text;
+    return (await owner.chat('Smoke » smoke-click', from)).text;
   });
   await check('smoke navigation arrives', async () => {
     const from = owner.events.length;
     await server.cmd('animus navigate smoke 4 61 6 walk 3', /./);
-    await owner.chat('Smoke: smoke-arrived', from, 15_000);
+    await owner.chat('Smoke » smoke-arrived', from, 15_000);
     const moved = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).at(-1);
     assert(moved && Math.abs(moved.x - 4.5) < 1, JSON.stringify(moved));
     return `walked to ${moved.x.toFixed(2)},${moved.z.toFixed(2)}`;

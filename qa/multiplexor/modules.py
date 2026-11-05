@@ -2,6 +2,7 @@
 """Managed trusted module/data acceptance on an explicitly pinned Animus artifact."""
 import argparse,hashlib,json,os,re,runpy,shutil,socket,time
 from pathlib import Path
+import multiplexor_workspace as mw
 
 ROOT=Path(__file__).resolve().parents[2]
 HELPERS=runpy.run_path(str(Path(__file__).with_name('managed-runtime.py')))
@@ -11,22 +12,24 @@ read=lambda p:json.loads(p.read_text())
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    for name in ['binary','workspace','build-home','module-fixtures','reference','observer']:p.add_argument('--'+name,type=Path,required=True)
+    p.add_argument('--binary',type=Path,default=mw.default_binary());p.add_argument('--workspace',type=Path,default=mw.default_workspace())
+    p.add_argument('--build-home',type=Path,help='Only when the build used a MULTIPLEXOR_BUILD_HOME override')
+    for name in ['module-fixtures','reference','observer']:p.add_argument('--'+name,type=Path,required=True)
     p.add_argument('--build-run',required=True);p.add_argument('--artifact-sha256',required=True)
     p.add_argument('--project',choices=['paper','spigot','folia'],required=True);p.add_argument('--instance-name',help='Explicit animus-gate-modules-<project>-<version> isolated QA instance');p.add_argument('--version',choices=['26.1.2','26.2','26.3'],required=True)
     a=p.parse_args();a.binary=a.binary.resolve();a.workspace=a.workspace.resolve();a.transcript=[]
-    assert '.qa' in a.workspace.parts and re.fullmatch(r'[a-f0-9]{64}',a.artifact_sha256)
+    assert re.fullmatch(r'[a-f0-9]{64}',a.artifact_sha256)
     fixtures=read(a.module_fixtures/'build.json');reference=read(a.reference.parent/'build.json');observer=read(a.observer.parent/'build.json')
     assert fixtures['status']=='built' and reference['sha256']==sha(a.reference)
     assert observer['fixtureSha256']==sha(a.observer) and observer['pluginSha256']==a.artifact_sha256
     assert fixtures['apiSha256']==reference['apiSha256']
-    source_name='animus-'+a.project+'-'+a.version.replace('.','-');name='animus-modules-'+a.project+'-'+a.version.replace('.','-')
+    source_name=mw.baseline_name(a.project,a.version);name='animus-modules-'+a.project+'-'+a.version.replace('.','-')
     if a.instance_name:
         assert re.fullmatch(r'animus-gate-modules-'+a.project+'-'+re.escape(a.version.replace('.','-')),a.instance_name),'Instance name must bind requested platform/version'
         name=a.instance_name
     baseline=a.workspace/'consumers/plugin-consumers/instances'/source_name;instance=a.workspace/'consumers/plugin-consumers/instances'/name
-    pinned=read(a.workspace/'animus-evidence'/source_name/'runtime.json');assert sha(baseline/'server.jar')==pinned['serverSha256']
-    token=f'{time.time_ns()}-{os.getpid()}';npc_id='module-qa-'+str(time.time_ns());evidence=a.workspace/'animus-evidence'/name/f'modules-{token}';evidence.mkdir(parents=True)
+    pinned=read(mw.evidence_root(a.workspace)/source_name/'runtime.json');assert sha(baseline/'server.jar')==pinned['serverSha256']
+    token=f'{time.time_ns()}-{os.getpid()}';npc_id='module-qa-'+str(time.time_ns());evidence=mw.evidence_root(a.workspace)/name/f'modules-{token}';evidence.mkdir(parents=True)
     data=instance/'plugins/Animus';npc=data/'npcs/qa'/f'{npc_id}.json';checkpoint=data/'state/npc-definitions/last-valid/npcs/qa'/f'{npc_id}.json'
     report={'schemaVersion':1,'runner':'ServerMultiplexor','scope':'trusted startup Java modules and dormant definition API; no gameplay or behavior interpreter','project':a.project,'minecraftVersion':a.version,'serverBuild':pinned['build'],'serverChannel':pinned['channel'],'serverSha256':pinned['serverSha256'],'buildRun':a.build_run,'pluginSha256':a.artifact_sha256,'apiSha256':fixtures['apiSha256'],'status':'preparing','npcId':npc_id,'checks':[],'commands':[],'phases':[],'stops':[]}
     sources=[Path(__file__).resolve(),Path(__file__).with_name('managed-runtime.py').resolve(),ROOT/'qa/modules/build-fixtures.py',ROOT/'qa/modules/fixtures/src/example/animus/qa/ApiModule.java',ROOT/'examples/modules/reference/build.py',ROOT/'examples/modules/reference/src/example/animus/reference/ReferenceModule.java']

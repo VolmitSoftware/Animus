@@ -14,6 +14,7 @@ import runpy
 import shutil
 import socket
 import time
+import multiplexor_workspace as mw
 
 ROOT=Path(__file__).resolve().parents[2]
 helpers=runpy.run_path(str(Path(__file__).with_name('managed-runtime.py')))
@@ -23,25 +24,26 @@ sha,read,snapshot,assert_snapshot,definitions,checkpoint,application,installed,d
 
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    for key in ['binary','workspace','build-home']:p.add_argument('--'+key,type=Path,required=True)
+    p.add_argument('--binary',type=Path,default=mw.default_binary());p.add_argument('--workspace',type=Path,default=mw.default_workspace())
+    p.add_argument('--build-home',type=Path,help='Only when the build used a MULTIPLEXOR_BUILD_HOME override')
     p.add_argument('--build-run',required=True)
     p.add_argument('--artifact-sha256',required=True)
     p.add_argument('--project',choices=['paper','spigot','folia'],required=True)
     p.add_argument('--version',choices=['26.1.2','26.2','26.3'],required=True)
     p.add_argument('--instance-name',help='Explicit fresh animus-r<N>-import-<project>-<version> isolated QA instance')
     a=p.parse_args();a.binary=a.binary.resolve();a.workspace=a.workspace.resolve();a.transcript=[]
-    assert '.qa' in a.workspace.parts and re.fullmatch(r'[a-f0-9]{64}',a.artifact_sha256)
-    reference_name=f'animus-{a.project}-{a.version.replace(".","-")}'
+    assert re.fullmatch(r'[a-f0-9]{64}',a.artifact_sha256)
+    reference_name=mw.baseline_name(a.project,a.version)
     name=f'animus-import-{a.project}-{a.version.replace(".","-")}'
     if a.instance_name:
         assert re.fullmatch(r'animus-(?:r[1-9][0-9]*|gate)-import-'+a.project+'-'+re.escape(a.version.replace('.','-')),a.instance_name),'Instance name must bind requested platform/version'
         name=a.instance_name
     reference=a.workspace/'consumers/plugin-consumers/instances'/reference_name
     instance=a.workspace/'consumers/plugin-consumers/instances'/name
-    source=read(a.workspace/'animus-evidence'/reference_name/'runtime.json')
+    source=read(mw.evidence_root(a.workspace)/reference_name/'runtime.json')
     assert sha(reference/'server.jar')==source['serverSha256'],'Pinned reference server changed'
     token=f'{time.time_ns()}-{os.getpid()}'
-    evidence=a.workspace/'animus-evidence'/name/f'application-{token}'
+    evidence=mw.evidence_root(a.workspace)/name/f'application-{token}'
     evidence.mkdir(parents=True)
     report={'schemaVersion':1,'runner':'ServerMultiplexor','scope':'synthetic import application commands, persistence, checkpoints and rollback; no rendering or private fixture','project':a.project,'minecraftVersion':a.version,'serverBuild':source['build'],'serverChannel':source['channel'],'serverSha256':source['serverSha256'],'buildRun':a.build_run,'pluginSha256':a.artifact_sha256,'status':'preparing','checks':[],'commands':[],'restarts':[],'phases':[]}
     state={}
