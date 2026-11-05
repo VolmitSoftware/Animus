@@ -216,7 +216,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
         return host.packets.passengers(viewer.player, vehicle.body, bodies, rider, authoritative).whenComplete((Void nothing, Throwable failure) -> {
             if (failure != null) host.enqueue(viewer, () -> {
                 if (!host.current(viewer) || vehicle.retired) return;
-                vehicle.sentRoster = List.of(art.arcane.animus.core.presentation.BodyRules.NO_REAL_RIDER); viewer.rosterDirty = true; host.noteFailure(failure);
+                vehicle.sentRoster = List.of(art.arcane.animus.core.presentation.BodyRules.NO_REAL_RIDER); viewer.rosterDirty = true; host.cosmeticFailed(viewer, "passengers", vehicle.value, failure);
             });
         });
     }

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
@@ -34,6 +35,14 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     }
 
     record Interaction(Body body, Action action, String hand, boolean secondaryAction, long receivedAtNanos) {}
+
+    /**
+     * The viewer has no current watch: its connection closed, a newer watch replaced it, it was forgotten, or it was
+     * never installed. Work for that viewer is dropped, never sent; this is a lifecycle event, not a runtime error.
+     */
+    final class ViewerUnwatched extends CancellationException {
+        public ViewerUnwatched(String message) { super(message); }
+    }
 
     /** Latest steering input of one rider. Poll on the owner. */
     interface ControlSubscription extends AutoCloseable {
