@@ -103,6 +103,9 @@
 
 ### Fixed
 
+- Swimming NPCs no longer suspend in deep water while searching for a bottom past the captured terrain.
+- Packet proof bodies stay visible after the shared runtime move.
+- A navigation job releases its slot before publishing its result.
 - Idle NPCs fall when the blocks under them are removed by players, explosions, pistons, builds or build undo, instead of floating.
 - Imported Sentinel NPCs with `respawnTime` 0 stay dead; a negative value deletes the NPC on death, undoable with `/animus rollback`; imported guards never target their owner.
 - A player who logs out while riding is saved at the NPC's feet instead of beside it.
