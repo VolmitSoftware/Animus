@@ -59,6 +59,30 @@ public record ShopCatalog(Map<String, GuiDocument> guis, Map<String, ShopDocumen
         return new ShopCatalog(guis, shops, problems);
     }
 
+    /**
+     * This catalog plus each document of {@code previous} that no longer loads while its file is still there, so a
+     * broken edit keeps the last valid version. Deleted files drop their documents; command refusals are never kept.
+     */
+    public ShopCatalog retaining(ShopCatalog previous, Path data, Predicate<String> commandsAllowed) {
+        Map<String, GuiDocument> keptGuis = new TreeMap<>(guis);
+        for (Map.Entry<String, GuiDocument> entry : previous.guis.entrySet())
+            if (!keptGuis.containsKey(entry.getKey()) && present(data, GUI_FOLDER, entry.getKey()) && (!entry.getValue().hasCommands() || commandsAllowed.test(entry.getKey())))
+                keptGuis.put(entry.getKey(), entry.getValue());
+        Map<String, ShopDocument> keptShops = new TreeMap<>(shops);
+        for (Map.Entry<String, ShopDocument> entry : previous.shops.entrySet())
+            if (!keptShops.containsKey(entry.getKey()) && present(data, SHOP_FOLDER, entry.getKey()) && (!entry.getValue().hasCommands() || commandsAllowed.test(entry.getKey())))
+                keptShops.put(entry.getKey(), entry.getValue());
+        return new ShopCatalog(keptGuis, keptShops, problems);
+    }
+
+    /** The {@code namespace:path} document's file exists under {@code folder}. */
+    public static boolean present(Path data, String folder, String id) {
+        int colon = id.indexOf(':');
+        if (colon < 1) return false;
+        return java.nio.file.Files.isRegularFile(data.resolve(folder).resolve(id.substring(0, colon)).resolve(id.substring(colon + 1) + ".json"),
+                java.nio.file.LinkOption.NOFOLLOW_LINKS);
+    }
+
     private static String read(Path file, List<String> problems) {
         try { return JsonDocuments.read(file); }
         catch (IOException unreadable) { problems.add(file + ": " + unreadable.getMessage()); return "{}"; }

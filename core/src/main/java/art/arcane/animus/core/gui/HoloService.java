@@ -140,6 +140,7 @@ public final class HoloService<P, S> implements AutoCloseable {
                     log.accept("Hologram and menu catalog could not be read: " + failure.getMessage());
                     next = new HoloCatalog(catalog.holograms(), catalog.menus(), catalog.animations(), List.of("catalog: " + failure.getMessage()));
                 }
+                next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
                 catalog = next;
                 next.problems().stream().limit(40).forEach((String problem) -> log.accept("Hologram or menu refused: " + problem));
                 done.accept(next);
