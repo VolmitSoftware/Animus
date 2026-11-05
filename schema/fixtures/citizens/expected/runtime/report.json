@@ -51,11 +51,9 @@
   "migrationWarnings": [
     "lookclose/enabled: Citizens writes it only when it differs from the server default and this save writes only false, so an unset value means true",
     "citizens-0: /traits/waypoints/linear: 1 points in another world or without usable coordinates were left out",
-    "citizens-0: /traits/waypoints/linear: 2 legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one until points are added between them",
     "citizens-0: /traits/waypoints/linear: chat waypoint triggers are not supported; kept in citizens:review",
     "citizens-2: /traits/lookclose/range: look ranges above 64 blocks became 64",
     "citizens-2: /traits/lookclose/targetnpcs: not supported; the NPC looks at the nearest player",
-    "citizens-2: /traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them",
     "citizens-3: /traits/commandtrait/commands/0/cooldown: the per-player cooldown is one cooldown for the NPC",
     "citizens-3: /traits/commandtrait/commands/2/hand: SHIFT_RIGHT needs a sneaking click, which Animus does not tell apart; not converted",
     "citizens-3: /traits/commandtrait/commands/3: the command costs money, experience or items, which Animus cannot charge; not converted",

@@ -3,8 +3,7 @@
   "presentationWarnings": [],
   "runtimeWarnings": [
     "/traits/lookclose/range: look ranges above 64 blocks became 64",
-    "/traits/lookclose/targetnpcs: not supported; the NPC looks at the nearest player",
-    "/traits/waypoints/guided: 1 of 3 destinations have no guide or destination within the link distance and the 32-block leg limit, so the NPC never walks to them"
+    "/traits/lookclose/targetnpcs: not supported; the NPC looks at the nearest player"
   ],
   "fieldPathFormat": "json-pointer",
   "fields": {

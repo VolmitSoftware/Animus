@@ -96,7 +96,7 @@ Waypoints become a route in the NPC's `modules["animus:navigation"]`, with world
 | `delay` trigger | The point's `waitTicks`; several delays on one point add up |
 | Speed modifier | `speed` of 4.3 blocks per second times the modifier, within 1 to 5 |
 
-Points move to the centre of their block. Points in another world are left out. Other providers and the `animation`, `chat`, `command`, `speed` and `teleport` triggers are kept in `citizens:review` and reported for each NPC, as are legs longer than the 32-block leg limit and destinations no guide reaches. The route rules are in [the runtime guide](runtime.md#initial-movement-and-routes).
+Points move to the centre of their block. Points in another world are left out. Other providers and the `animation`, `chat`, `command`, `speed` and `teleport` triggers are kept in `citizens:review` and reported for each NPC. Long legs and destinations no guide reaches need no extra points: the NPC walks them as long legs. The route rules are in [the runtime guide](runtime.md#initial-movement-and-routes).
 
 ### Look-close
 
