@@ -4,7 +4,12 @@ import art.arcane.animus.api.Platform;
 import art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.folia.FoliaStationaryProofService;
+import art.arcane.animus.bukkit.gui.BukkitGlossBridge;
+import art.arcane.animus.bukkit.gui.BukkitHoloEvents;
 import art.arcane.animus.bukkit.gui.BukkitScreens;
+import art.arcane.animus.bukkit.packet.NativeDisplayAdapter;
+import art.arcane.animus.core.gui.HoloService;
+import art.arcane.animus.core.presentation.DisplayTransport;
 import art.arcane.animus.bukkit.runtime.BukkitRuntimeHost;
 import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
 import art.arcane.animus.core.AnimusRuntime;
@@ -68,6 +73,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private volatile AnimusCommands animusCommands;
     private BukkitScreens screens;
     private volatile ShopService<Player, ItemStack> shops;
+    private volatile HoloService<Player, ItemStack> guis;
     private AutoCloseable screenTicks;
     private final DialogueTriggers dialogueTriggers = new DialogueTriggers(() -> {
         BehaviorCommands current = behaviors;
@@ -113,16 +119,24 @@ public final class AnimusPlugin extends JavaPlugin {
             shops = new ShopService<>(runtime, screens, living, commands,
                     (String name) -> Optional.ofNullable(getServer().getPlayerExact(name)).map(Player::getUniqueId), message -> getLogger().info(message));
             screens.bind(shops.screens());
-            living.interactions(shops::interacted);
-            NpcRuntime<Player, ItemStack> owners = living;
+            DisplayTransport<Player> displays = NativeDisplayAdapter.create(this, environment.minecraftVersion(), (Player player, Runnable task) -> replies.reply(player, task));
+            guis = new HoloService<>(runtime, shops, displays, living, commands, BukkitGlossBridge.load(this), message -> getLogger().info(message));
+            getServer().getPluginManager().registerEvents(new BukkitHoloEvents(guis), this);
             ShopService<Player, ItemStack> screenService = shops;
+            HoloService<Player, ItemStack> holoService = guis;
+            living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) ->
+                    screenService.interacted(player, npc, attack, sneaking) || holoService.interacted(player, npc, attack, sneaking));
+            NpcRuntime<Player, ItemStack> owners = living;
             screenTicks = ownerTicks.apply(() -> {
                 for (UUID viewer : screenService.screens().viewing()) owners.players().deliver(viewer, screenService.screens()::tick);
+                for (Player online : getServer().getOnlinePlayers()) owners.players().deliver(online.getUniqueId(), holoService::tick);
             });
             shops.reload(catalog -> {});
+            guis.reload(catalog -> {});
             getLogger().info(shops.status());
+            getLogger().info(guis.status());
             startBuilds(mainThread);
-            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, () -> buildsUnavailable, ownerTicks, () -> shops),
+            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, () -> buildsUnavailable, ownerTicks, () -> guis),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
             extensions = new ExtensionRuntime(runtime.documents().resolve("modules"),
@@ -142,7 +156,7 @@ public final class AnimusPlugin extends JavaPlugin {
             Map<String, AnimusCommands.Extra> extras = new HashMap<>();
             extras.put("proof", new ProofCommand());
             extras.put("shop", shops.shopCommand());
-            extras.put("gui", shops.guiCommand());
+            extras.put("gui", guis.command());
             if (foliaProof != null) extras.put("foliaproof", new FoliaProofCommand());
             extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsUnavailable)));
             animusCommands = new AnimusCommands(new AnimusCommands.Services(runtime, commands, living, () -> behaviors, extensions, builtins,
@@ -166,6 +180,7 @@ public final class AnimusPlugin extends JavaPlugin {
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }
         }
         if (screens != null) screens.closeAll();
+        if (guis != null) guis.close();
         if (shops != null) shops.close();
         if (extensions != null) extensions.close();
         if (builds != null) builds.close();

@@ -14,11 +14,22 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.lang.reflect.Method;
 import java.util.function.BiPredicate;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Particle;
+import org.bukkit.World;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.Server;
@@ -66,6 +77,8 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     private final BiPredicate<Player, Runnable> later;
     private final Supplier<Economy> economy;
     private volatile ScreenManager<Player, ItemStack> manager;
+    private final Map<UUID, Map<String, Lane>> bars = new ConcurrentHashMap<>();
+    private final Method teleportAsync, entityScheduler, entityExecute;
 
     /**
      * @param later runs work on the player's owner on a later tick; false when it cannot be scheduled
@@ -77,6 +90,15 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         this.logger = plugin.getLogger();
         this.later = Objects.requireNonNull(later);
         this.economy = Objects.requireNonNull(economy);
+        Method async = null, scheduler = null, execute = null;
+        try { async = org.bukkit.entity.Entity.class.getMethod("teleportAsync", Location.class); }
+        catch (NoSuchMethodException spigot) { /* Spigot teleports on the calling thread. */ }
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            scheduler = org.bukkit.entity.Entity.class.getMethod("getScheduler");
+            execute = Class.forName("io.papermc.paper.threadedregions.scheduler.EntityScheduler").getMethod("execute", org.bukkit.plugin.Plugin.class, Runnable.class, Runnable.class, long.class);
+        } catch (ReflectiveOperationException notFolia) { scheduler = null; execute = null; }
+        teleportAsync = async; entityScheduler = scheduler; entityExecute = execute;
     }
 
     /** Vault when its plugin is installed; nothing from Vault is loaded otherwise. */
@@ -149,7 +171,10 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         inventory.setContents(contents);
     }
 
-    private ItemStack display(ScreenFrame.Item item) {
+    private ItemStack display(ScreenFrame.Item item) { return displayStack(server, item); }
+
+    /** The stack a display item shows; an invalid item shows a barrier, and a head shows an online player's skin. */
+    public static ItemStack displayStack(Server server, ScreenFrame.Item item) {
         List<String> errors = new ArrayList<>();
         ItemStack stack = BukkitItems.stack(item.item(), item.name(), item.lore(), errors)
                 .orElseGet(() -> BukkitItems.stack(new NpcItem("minecraft:barrier", 1, Optional.empty(), Optional.empty()), item.name(), item.lore(), new ArrayList<>()).orElseThrow());
@@ -186,6 +211,90 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         later.test(null, () -> server.dispatchCommand(server.getConsoleSender(), command));
     }
     @Override public void broadcast(String text) { for (Player online : server.getOnlinePlayers()) later.test(online, () -> online.sendMessage(text)); }
+    @Override public Optional<Pose> pose(Player player) {
+        Location at = player.getLocation();
+        World world = player.getWorld();
+        return Optional.of(new Pose(Set.of(world.getName(), world.getKey().toString(), world.getUID().toString()), at.getX(), at.getY(), at.getZ(),
+                player.getEyeLocation().getY(), at.getYaw(), at.getPitch(), player.isSneaking()));
+    }
+
+    /** Folia and Paper teleport asynchronously; true means the move was accepted, not that it finished. */
+    @Override public boolean teleport(Player player, String world, double x, double y, double z, float yaw, float pitch) {
+        World target = world(world);
+        if (target == null || !Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) return false;
+        Location destination = new Location(target, x, y, z, yaw, pitch);
+        if (teleportAsync != null) {
+            try { teleportAsync.invoke(player, destination); return true; }
+            catch (ReflectiveOperationException | RuntimeException failure) { logger.warning("Teleport failed for " + player.getName() + ": " + failure.getClass().getSimpleName()); return false; }
+        }
+        return player.teleport(destination);
+    }
+
+    private World world(String reference) {
+        World named = server.getWorld(reference);
+        if (named != null) return named;
+        NamespacedKey key = NamespacedKey.fromString(reference);
+        if (key == null) return null;
+        for (World world : server.getWorlds()) if (world.getKey().equals(key)) return world;
+        return null;
+    }
+
+    @Override public void bossBar(Player player, String lane, String title, float progress, String color, String style, int ticks) {
+        Map<String, Lane> lanes = bars.computeIfAbsent(player.getUniqueId(), (UUID ignored) -> new ConcurrentHashMap<>());
+        Lane previous = lanes.remove(lane);
+        if (previous != null) previous.bar().removePlayer(player);
+        if (ticks <= 0) return;
+        BarColor barColor;
+        BarStyle barStyle;
+        try { barColor = BarColor.valueOf(color.toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException unknown) { barColor = BarColor.WHITE; }
+        try { barStyle = BarStyle.valueOf(style.toUpperCase(Locale.ROOT)); } catch (IllegalArgumentException unknown) { barStyle = BarStyle.SOLID; }
+        BossBar bar = server.createBossBar(title, barColor, barStyle);
+        bar.setProgress(Math.clamp(progress, 0f, 1f));
+        bar.addPlayer(player);
+        Lane shown = new Lane(bar);
+        lanes.put(lane, shown);
+        delayed(player, ticks, () -> { if (lanes.remove(lane, shown)) bar.removePlayer(player); });
+    }
+    private record Lane(BossBar bar) {}
+
+    /** Runs on the player's owner after the delay; a Folia entity task is dropped with the player. */
+    private void delayed(Player player, int ticks, Runnable work) {
+        if (!plugin.isEnabled()) return;
+        try {
+            if (entityExecute != null) entityExecute.invoke(entityScheduler.invoke(player), plugin, work, (Runnable) () -> {}, (long) Math.max(1, ticks));
+            else server.getScheduler().runTaskLater(plugin, work, Math.max(1, ticks));
+        } catch (ReflectiveOperationException | RuntimeException failure) { logger.warning("Could not schedule a boss bar expiry: " + failure.getClass().getSimpleName()); }
+    }
+
+    @Override public boolean effect(Player player, String effect, int ticks, int amplifier) {
+        NamespacedKey key = NamespacedKey.fromString(effect.contains(":") ? effect : "minecraft:" + effect);
+        PotionEffectType type = key == null ? null : Registry.EFFECT.get(key);
+        if (type == null) return false;
+        return player.addPotionEffect(new PotionEffect(type, ticks, amplifier));
+    }
+
+    @Override public boolean particle(Player player, String particle, int count, double spread, double x, double y, double z) {
+        NamespacedKey key = NamespacedKey.fromString(particle.contains(":") ? particle : "minecraft:" + particle);
+        Particle type = key == null ? null : Registry.PARTICLE_TYPE.get(key);
+        if (type == null || type.getDataType() != Void.class) return false;
+        player.spawnParticle(type, x, y, z, count, spread, spread, spread, 0);
+        return true;
+    }
+
+    @Override public void broadcast(Player source, String text, String scope, double radius, Optional<String> permission) {
+        World world = source.getWorld();
+        Location center = source.getLocation();
+        for (Player online : server.getOnlinePlayers()) {
+            later.test(online, () -> {
+                if (!online.isOnline()) return;
+                if (!scope.equals("server") && online.getWorld() != world) return;
+                if (scope.equals("radius") && online.getLocation().distanceSquared(center) > radius * radius) return;
+                if (permission.isPresent() && !online.hasPermission(permission.get())) return;
+                online.sendMessage(text);
+            });
+        }
+    }
+
     @Override public TradeInventory<ItemStack> inventory(Player player) { return BukkitItems.storage(player); }
     @Override public ItemOps<ItemStack> items() { return BukkitItems.INSTANCE; }
     @Override public Optional<ItemStack> stack(NpcItem item, Optional<String> name, List<String> lore, List<String> errors) { return BukkitItems.stack(item, name, lore, errors); }
@@ -230,7 +339,12 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
-    public void quit(PlayerQuitEvent event) { ScreenManager<Player, ItemStack> current = manager; if (current != null) current.quit(event.getPlayer()); }
+    public void quit(PlayerQuitEvent event) {
+        Map<String, Lane> lanes = bars.remove(event.getPlayer().getUniqueId());
+        if (lanes != null) for (Lane lane : lanes.values()) lane.bar().removeAll();
+        ScreenManager<Player, ItemStack> current = manager;
+        if (current != null) current.quit(event.getPlayer());
+    }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void died(PlayerDeathEvent event) { ScreenManager<Player, ItemStack> current = manager; if (current != null) current.died(event.getEntity()); }

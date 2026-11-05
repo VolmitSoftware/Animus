@@ -81,6 +81,8 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     }
 
     public ScreenManager<P, S> screens() { return screens; }
+    /** An online player's UUID by exact name, on any thread. */
+    public Optional<UUID> playerNamed(String name) { return playerNamed.apply(name); }
     public ShopCatalog catalog() { return catalog; }
     public boolean enabled() { return settings.enabled() && !closed; }
     public String status() {
@@ -188,18 +190,6 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         };
     }
 
-    /** {@code /animus gui ...}. */
-    public AnimusCommands.Extra guiCommand() {
-        return new AnimusCommands.Extra() {
-            @Override public void execute(CommandActor actor, String[] arguments) { guiCommand(actor, arguments); }
-            @Override public List<String> complete(CommandActor actor, String[] arguments) {
-                if (arguments.length == 2) return matching(List.of("list", "open", "reload", "problems"), arguments[1]);
-                if (arguments.length == 3 && arguments[1].equalsIgnoreCase("open")) return matching(List.copyOf(catalog.guis().keySet()), arguments[2]);
-                return List.of();
-            }
-        };
-    }
-
     private void shopCommand(CommandActor actor, String[] arguments) {
         String operation = arguments.length < 2 ? "status" : arguments[1].toLowerCase(Locale.ROOT);
         switch (operation) {
@@ -226,23 +216,6 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
             }
             case "import" -> importShops(actor, arguments);
             default -> actor.tell("shop status | list | open <shop> [player] | reload | reset <shop> [player] | problems | import preview <folder> [saves.yml] | import apply <import-id>");
-        }
-    }
-
-    private void guiCommand(CommandActor actor, String[] arguments) {
-        String operation = arguments.length < 2 ? "list" : arguments[1].toLowerCase(Locale.ROOT);
-        switch (operation) {
-            case "list" -> {
-                actor.tell("Chest GUIs: " + catalog.guis().size());
-                catalog.guis().values().stream().limit(50).forEach((GuiDocument gui) -> actor.tell(gui.id() + " | " + gui.resolution() + " | revision " + gui.revision()));
-            }
-            case "problems" -> problems(actor);
-            case "reload" -> reload((ShopCatalog next) -> answer(actor, "Reloaded " + next.guis().size() + " GUIs and " + next.shops().size() + " shops; " + next.problems().size() + " problems"));
-            case "open" -> {
-                if (arguments.length < 3 || arguments.length > 4) { actor.tell("gui open <gui> [player]"); return; }
-                deliver(actor, arguments.length == 4 ? Optional.of(arguments[3]) : Optional.empty(), (P player) -> openGui(player, arguments[2], Map.of(), Optional.empty()));
-            }
-            default -> actor.tell("gui list | open <gui> [player] | reload | problems");
         }
     }
 
