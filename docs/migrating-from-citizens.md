@@ -7,7 +7,7 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
 ## Steps
 
 1. Back up the server. Stop it.
-2. Remove the Citizens jar (and Sentinel, dtlTraders and Builder) from `plugins/`. Keep their data folders. Animus refuses to apply, accept or run imported NPCs while Citizens is enabled, so the same NPC never runs twice.
+2. Remove the Citizens jar (and Sentinel, dtlTraders, Builder and Denizen) from `plugins/`. Keep their data folders. Animus refuses to apply, accept or run imported NPCs while Citizens is enabled, so the same NPC never runs twice.
 3. Leave `plugins/Citizens/saves.yml` where it is, or copy it to `plugins/Animus/imports/saves.yml`. Animus also looks in `imports/inbox/saves.yml`.
 4. Optional: copy the dtlTraders data folder to `plugins/Animus/imports/dtltraders/` (a folder left at `plugins/dtlTraders/` also works). Builder and Constructor schematics are found in `plugins/Builder/schematics/`, `plugins/Constructor/schematics/` or `plugins/Animus/imports/schematics/`.
 5. Start the server. The console lists every save and folder it found (Citizens, Shopkeepers, dtlTraders and Builder schematics) and the next command.
@@ -44,6 +44,7 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
    | `riding` | Turns on riding for NPCs that had the `controllable` trait. |
    | `shops` | Lets dtlTraders NPCs open their shop on right click. |
    | `builder` | Lets Builder sections run with `/animus build start <npc-id>`. Builds never start on their own. |
+   | `denizen` | Lists the behaviors converted from Denizen scripts on the NPCs that had the assignment. See [Denizen](#denizen). |
 
 ## Shopkeepers
 
@@ -71,6 +72,49 @@ The order does not matter. With both saves present, both stage together. If the 
 Items are written exactly: Shopkeepers saves each item component as the text the give command reads, and that text becomes the item's `components`. An offer with item data that cannot be written exactly (old Bukkit item meta, components over 4096 characters) shows in the shop, trades nothing, and keeps the data in `imported`; the report lists it. A player shop without an owner or a container also only shows its offers. Owners, members, hire settings and expiry are kept in the shop's `imported` section and not used.
 
 The offline converter does the same: `converter shopkeepers-preview <save.yml> <data-dir> [config=<config.yml>] [citizens=<saves.yml>]` prints only counts and the output hash, and `converter shopkeepers-apply <data-dir> <import-id>` installs it. Owned shops are described in [shops](shops.md#container-shops).
+
+## Denizen
+
+`/animus import citizens` also converts Denizen scripts and flags, so Denizen can be removed after the migration. There is no separate command: the Denizen part joins the same preview, apply, review, accept and rollback, and it needs the Citizens save beside it.
+
+1. Remove the Denizen jar from `plugins/` and keep `plugins/Denizen/`. Animus refuses to apply or accept the converted scripts while Denizen is enabled, so no script runs twice.
+2. Leave `plugins/Denizen/` where it is, or copy its `scripts/` folder, `server_flags.dat` and `player_flags/` to `plugins/Animus/imports/denizen/` (`imports/inbox/denizen/` also works). Animus reads every `.dsc` and `.yml` file under `scripts/`.
+3. Run `/animus import citizens`. The preview counts the scripts, the behaviors made and the NPCs they belong to, the flag values imported and kept, and the items kept with a reason. The report is `imports/denizen/<import-id>/report.json`. It lists every script, command, tag and event as converted or kept, and every kept item with its file, line and reason.
+4. `/animus import citizens apply` installs the behaviors in `behaviors/denizen/` and the flag values as behavior state. Restart once so the imported flag values load. The behaviors run on no NPC yet.
+5. `review`, then `/animus import citizens accept denizen`, lists the behaviors on the NPCs that had the assignment.
+
+Rollback removes the behaviors, the imported state and the NPC bindings with the rest of the import. The converter does the same offline: `converter denizen-preview <Denizen-folder> <data-dir> [citizens=<saves.yml>]` prints counts and the output hash.
+
+### What converts
+
+| Denizen | Becomes |
+| --- | --- |
+| `assignment` script | `denizen:assignment/<name>`: `on click` becomes an `interaction` trigger, `on damage` an `interaction` trigger with `action: attack`, `on enter proximity` and `on exit proximity` `proximity` triggers, and `on spawn`, `on despawn` and `on death` the triggers of the same names. `on assignment` runs once in Denizen; its trigger settings come from the NPC's saved triggers |
+| `interact` script | `denizen:interact/<name>`. The step is a relationship quest stage, `interact-<name>`, 0 for the default step (marked `*`, or the first) and 1 onwards for the others in file order. Click and proximity triggers call the routine of the current step |
+| Chat trigger | An `animus:choices` button after the step's click, with a `dialogue_choice` trigger. A phrase with a regex, `*` or a tag is kept |
+| `task` script | A routine in each behavior that runs it, and the behavior `denizen:task/<name>` to run by hand. Other lists in the task become routines for `run <task> path:<key>` |
+| Trigger on or off, cooldown, radius | Read from the NPC's saved `triggers` (`CLICK`, `PROXIMITY` and so on). A trigger that is off on every NPC with the script is kept |
+| `narrate`, `chat` | `animus:say`; `chat` speaks to nearby players. Colour tags become `&` codes, `<&color[#hex]>` becomes `&#hex`, escapes such as `<&co>` and `<&chr[2764]>` become their characters, `<player.name>` becomes `{player_name}`, `<npc.name>` the NPC's name when every NPC with the script shares one, and `<script.data_key[...]>` its literal value |
+| `if`, `else if`, `else`, `choose` | `condition` nodes. `has_flag`, `flag` comparisons with whole numbers, `has_permission` and `npc.is_spawned` convert, joined by `&&` or by `\|\|`. A branch ending in `stop` takes the rest of the script into the other branches |
+| `flag player`, `flag npc`, `flag server` | `animus:set-flag` for true/false flags; `animus:set-quest-state` and `animus:advance-quest-state` for whole numbers (`:5`, `:++`, `:+:2`, `:!`). Scopes are `player`, `npc` and `global`; dots in names become dashes |
+| `zap` | `animus:set-quest-state` on the step stage |
+| `wait`, `repeat <n>` | `wait` and `repeat` nodes |
+| `run`, `inject` | `call` of the task's routine |
+| `execute`, `give`, `take`, `title`, `actionbar` | `animus:command` (`give {player} ...`, `clear {player} ...`, `title {player} ...`), denied until allow-listed. `as_player` runs as the player |
+| `look`, `walk`, `equip` | `animus:look` at the player or a literal location, `animus:navigate` to a literal location, `animus:set-equipment` with plain materials |
+| `playsound`, `playeffect` | `animus:play-sound` and `animus:spawn-particle` at the NPC. Bukkit sound names become keys (`ENTITY_VILLAGER_YES` is `minecraft:entity.villager.yes`); the report's `sounds` lists every name read. Old particle names are renamed; particle speed and visibility are not carried |
+| Flag values | `true`/`false` values become `denizen` flags and whole numbers from 0 to 10^12 become `denizen` quest stages, for each player (`player_flags/`), NPC (`denizen_flags` in the Citizens save) and the server (`server_flags.dat`). A player's interact steps become the relationship stage with every NPC that has the script |
+
+Generated behaviors that use `animus:command` stay denied until listed, for example `commandNamespaces = ["denizen"]` under `[behaviors.actions]`; `review` names them. Read each command first.
+
+### Kept with a reason
+
+Each line below stays out of the behaviors and is listed in the report; a behavior missing some of its lines is marked `partial` in `behaviorStatus`.
+
+- `define`, definitions (`<[name]>`), `foreach`, `while`, `repeat` with a computed count, and any tag Animus has no placeholder for, such as `<player.location>` in text or `<util.random...>`. Behaviors have no expressions.
+- `world` scripts. Their events are server-wide (`on player joins`, `on delta time`, `on server start`), and Animus triggers belong to NPCs.
+- `procedure`, `command`, `data`, `book`, `inventory` and `item` scripts. Literal data values that converted text reads are copied into it.
+- Damage triggers in interact scripts (Animus damage triggers carry no player), proximity `move`, expiring flags, flags holding text, lists, maps or numbers that do not fit a quest stage, `teleport`, `adjust`, `animate`, `bossbar` and other commands with no Animus action.
 
 ## Where the files go
 
@@ -117,7 +161,7 @@ Commands stay denied until you list the behavior in `config.toml`, for example `
 These are kept in each definition under `modules["citizens:review"]` and in the original archive, and are listed by `review`:
 
 - Waypoints, look-close, text and commands that did not convert, with the reason in the NPC's report.
-- Denizen assignments, triggers, flags and constants. Denizen scripts are not translated; they need to be rewritten as behaviors.
+- Denizen assignments, triggers, flags and constants as Citizens saved them. The scripts themselves convert with the [Denizen](#denizen) part of the import.
 - Every trait Animus does not know.
 
 ## Rolling back

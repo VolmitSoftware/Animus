@@ -21,7 +21,8 @@ This is a development inventory, not a release-parity claim. To run a migration,
 | Shopkeepers save (separate `save.yml`; private 107-shopkeeper reference, 2026-11-05) | Every shopkeeper becomes `shopkeepers:shop-<id>`; the reference has 107 admin shops on Citizens NPCs and 1037 offers, all converted to trade entries, 2096 items of which 235 carry components, none preserved only. All 107 Citizens links resolve against the reference Citizens save. The browser converter gives the same output hash. See [migrating from Citizens](migrating-from-citizens.md#shopkeepers) | The Citizens import accepts the bound shops with `accept shops`. Player shops run as [container shops](shops.md#container-shops); mob shopkeepers become despawned NPCs; book offers, mob settings and hire data are kept, not run |
 | Sentinel (103) | Settings converted to `animus:combat`; unsupported settings and statistics kept separately; disabled pending review | [Combat module](combat.md) runs once the review is accepted. In a live migration of the reference save on Paper 26.3 (2026-11-05), 103 of 103 imported guards were combat-capable |
 | Builder and Constructor (none in the reference) | Builder's `builder` trait converts to an `animus:builder` section, disabled pending review; Constructor's `constructor` trait is kept for review and its keys are reported | [Building](building.md) runs a reviewed section with `/animus build start <npc-id>`. Builder `.schematic` files must be saved again as `.schem` |
-| Denizen flags (24), assignment/trigger records (8 each) | Preserved; requires integration | External scripts required to translate behaviors |
+| Denizen flags (24), assignment/trigger records (8 each) | The records stay in `citizens:review`. With the Denizen folder beside the save, the import converts the scripts into `denizen:` behaviors bound to the assigned NPCs, and flag values into behavior state. See [migrating from Citizens](migrating-from-citizens.md#denizen) | Behaviors run once `accept denizen` lists them. On the private reference (2026-11-05): 157 scripts, 56 behaviors for 6 NPCs, 222 of 2,195 command lines converted, 137 flag values imported and 65 kept, all 56 behaviors valid offline; the browser converter gives the same output hash |
+| Denizen scripts (separate `plugins/Denizen/scripts`) | Assignment, interact and task scripts convert; world, procedure, command and data scripts are kept with reasons | Lines using definitions, loops over computed values or tags with no placeholder are kept and listed per file and line |
 | Mounts (2) | Preserved; UUID references resolved | Resolved references apply from definitions on exact Paper/Spigot: passengers for every viewer, across restart. Unresolved ones stay preserved and reported. See [mounted NPCs](runtime.md#mounted-npcs) |
 | Controllable (1) | Converter version 7 and later: an enabled trait becomes `animus:riding` with `enabled` and `reviewAccepted` false; the trait stays in `citizens:review` | `/animus import citizens accept riding` turns it on. See [riding](runtime.md#riding-an-npc) |
 | Dragons (3 bodies) | Preserved; type converted | Packet body with correct facing, phase and part-based hits; no AI. See [presentation](runtime.md#ender-dragon-presentation) |
@@ -35,10 +36,10 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 |---|---:|---|
 | age | 2 | Unsupported, preserved |
 | armorstandtrait | 3 | Converted to `armorStand`; marker and gravity preserved |
-| assignment | 8 | Requires integration |
+| assignment | 8 | Requires integration; converted from the Denizen scripts when they are present |
 | attributetrait | 13 | Unsupported, preserved |
 | controllable | 1 | Requires review |
-| denizen_flags | 24 | Requires integration |
+| denizen_flags | 24 | Requires integration; true/false and whole-number values import as NPC behavior state |
 | equipment | 123 | Converted to `equipment`; extra item data preserved |
 | gravity | 4 | Unsupported, preserved |
 | hologramtrait | 91 | Lines converted to `hologram`; layout settings preserved |
