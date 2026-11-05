@@ -1,6 +1,6 @@
 # Migrating from Citizens
 
-Animus reads the Citizens `saves.yml` and turns every NPC into its own definition file. Nothing runs until you apply the import, and combat, riding, shops and builds stay off until you accept them. You can undo the whole migration with one command.
+Animus reads the Citizens `saves.yml` and turns every NPC into its own definition file. Nothing runs until you apply the import, and patrols, combat, riding, shops and builds stay off until you accept them. You can undo the whole migration with one command.
 
 The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and mod servers. On mod servers the data folder is `config/animus/` instead of `plugins/Animus/`.
 
@@ -17,7 +17,7 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
    /animus import citizens
    ```
 
-   This converts the save, stages a reviewed plan and prints the counts: NPCs, valid definitions, skins, folders, what stays off and what is kept but not run. Nothing is installed. The full report is `imports/<import-id>/report.json`, with one report per NPC under `reports/`.
+   This converts the save, stages a reviewed plan and prints the counts: NPCs, valid definitions, skins, folders, the patrols, look-close and behaviors it made, what stays off and what is kept but not run. Nothing is installed. The full report is `imports/<import-id>/report.json`, with one report per NPC under `reports/`.
 
    Options: world mappings such as `world_old=world` when a world has a new name, and a mode for NPCs that already exist in Animus: `reject` (the default, refuse any collision), `replace` (update definitions from an earlier import) or `duplicate <label>` (install a second copy under `npcs/copy-<label>/`). For example `/animus import citizens replace world_old=world`.
 7. Apply:
@@ -26,7 +26,7 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
    /animus import citizens apply
    ```
 
-   Every NPC is installed at its Citizens position, despawned. dtlTraders shops are installed in the same step, and `.schem` and `.nbt` schematics are copied into `schematics/`.
+   Every NPC is installed at its Citizens position, despawned. dtlTraders shops are installed in the same step, and `.schem` and `.nbt` schematics are copied into `schematics/`. Text and command behaviors made from the save are installed in `behaviors/citizens/`; run `/animus behaviors reload` to load them, or restart.
 8. Review, then accept:
 
    ```text
@@ -38,7 +38,8 @@ The commands need `animus.admin`. They work the same on Paper, Spigot, Folia and
 
    | Category | What accepting it does |
    | --- | --- |
-   | `spawn` | Spawns every NPC Citizens had spawned. NPCs that were despawned in Citizens stay despawned. |
+   | `spawn` | Spawns every NPC Citizens had spawned. NPCs that were despawned in Citizens stay despawned. Look-close and text start with the NPC. |
+   | `patrols` | Turns on the routes made from Citizens waypoints. |
    | `combat` | Turns on the Sentinel settings converted to `animus:combat`. See [combat](combat.md). |
    | `riding` | Turns on riding for NPCs that had the `controllable` trait. |
    | `shops` | Lets dtlTraders NPCs open their shop on right click. |
@@ -50,14 +51,41 @@ Each NPC becomes `npcs/<world>-r<x>_<z>/citizens-<id>.json`. The folder is the N
 
 ## What converts
 
-Name, type, position and facing, skin, equipment, inventory, hologram lines, poses, sneaking and sitting, armor stand settings, owner, mounts, Sentinel settings, dtlTraders shop links and Builder settings. [Compatibility](compatibility.md) lists every trait and field.
+Name, type, position and facing, skin, equipment, inventory, hologram lines, poses, sneaking and sitting, armor stand settings, owner, mounts, Sentinel settings, dtlTraders shop links, Builder settings, waypoints, look-close, text and commands. [Compatibility](compatibility.md) lists every trait and field.
+
+### Patrols
+
+Waypoints become a route in the NPC's `modules["animus:navigation"]`, with world mappings applied. It stays off until you accept `patrols`.
+
+| Citizens | Animus route |
+| --- | --- |
+| `linear` | `order: sequence` that loops, or `pingpong` when `cycle` is on |
+| `guided` | `order: random`: destinations become `points` and guide waypoints `guides`; the NPC walks to a random destination through the guides. `distance` (or the NPC's pathfinding range) becomes `linkDistance` |
+| `wander` | `order: wander` around the region centres, or around the NPC's position. `xrange` and `yrange` become `wander.radius` and `height` (at most 32 and 8); a `delay` of -1 becomes 60 ticks |
+| `delay` trigger | The point's `waitTicks`; several delays on one point add up |
+| Speed modifier | `speed` of 4.3 blocks per second times the modifier, within 1 to 5 |
+
+Points move to the centre of their block. Points in another world are left out. Other providers and the `animation`, `chat`, `command`, `speed` and `teleport` triggers are kept in `citizens:review` and reported for each NPC, as are legs longer than the 32-block leg limit and destinations no guide reaches. The route rules are in [the runtime guide](runtime.md#initial-movement-and-routes).
+
+### Look-close
+
+An enabled look-close trait becomes `modules["animus:look-close"]` with its `range`, `lineOfSight` (Citizens' realistic looking) and `whileNavigating` (the opposite of disable-while-navigating). It needs no review: the NPC turns to the nearest player once it is spawned. Citizens writes a look-close setting only when it differs from the server's default, so when a save only ever writes `enabled: false`, an unset value means on; the report says when the import assumed this. Random looking, head-only, per-player, NPC targets and filters are reported and not run.
+
+### Text
+
+Citizens text becomes the behavior `citizens:text-<id>` in `behaviors/citizens/`, listed in the NPC's `behaviors`. Talk-close NPCs speak when a player comes within the talk range (at most 32 blocks); others speak when right-clicked. The delay is the trigger cooldown (100 ticks when Citizens chose a random delay). A random talker picks a random line; otherwise the lines take turns. `<br>` starts a new message, `<p>` and `<player>` become the player's name, and colour codes are kept. The cooldown is one per NPC, not one per player.
+
+### Commands
+
+Citizens commands become the behavior `citizens:commands-<id>`. Right-click and left-click commands get their own interaction triggers, permissions become permission checks, delays become waits, and the longest cooldown becomes the trigger cooldown, one per NPC. Player commands run as the player and others from the console; an operator command runs from the console. `random`, `cycle` and `sequential` execution modes take turns per NPC, or per player for `sequential`. Sneak clicks, commands run as the NPC, use limits and commands that cost money, experience or items are not converted and are reported.
+
+Commands stay denied until you list the behavior in `config.toml`, for example `commandBehaviors = ["citizens:commands-12"]` under `[behaviors.actions]`, or `commandNamespaces = ["citizens"]` for all of them, and restart. `review` lists how many wait. Read each command in `behaviors/citizens/` first: anyone who can edit an allowed behavior can run console commands.
 
 ## Kept but not run
 
 These are kept in each definition under `modules["citizens:review"]` and in the original archive, and are listed by `review`:
 
-- Waypoints and look-close settings.
-- Citizens commands (`commandtrait`) and text. Write them as a [behavior](behaviors.md) with `animus:command` or `animus:say`.
+- Waypoints, look-close, text and commands that did not convert, with the reason in the NPC's report.
 - Denizen assignments, triggers, flags and constants. Denizen scripts are not translated; they need to be rewritten as behaviors.
 - Every trait Animus does not know.
 
@@ -67,7 +95,7 @@ These are kept in each definition under `modules["citizens:review"]` and in the 
 /animus import citizens rollback
 ```
 
-This undoes every acceptance, the shops and the NPC definitions, newest first, and deletes the copied schematics that have not changed. If you edited an imported NPC after accepting, rollback refuses rather than overwrite the edit; undo the edit first with `/animus rollback <transaction-id>`. The staged preview stays, so `/animus import citizens apply` installs it again. Reinstall Citizens only after a rollback.
+This undoes every acceptance, the shops, the generated behaviors and the NPC definitions, newest first, and deletes the copied schematics that have not changed. If you edited an imported NPC after accepting, rollback refuses rather than overwrite the edit; undo the edit first with `/animus rollback <transaction-id>`. The staged preview stays, so `/animus import citizens apply` installs it again. Reinstall Citizens only after a rollback.
 
 ## Converting in the browser
 

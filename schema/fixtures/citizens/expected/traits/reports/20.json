@@ -1,6 +1,7 @@
 {
   "citizensId": 20,
   "presentationWarnings": [],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",
