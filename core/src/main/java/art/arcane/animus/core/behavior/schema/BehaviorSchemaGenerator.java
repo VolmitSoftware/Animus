@@ -3,7 +3,9 @@ package art.arcane.animus.core.behavior.schema;
 import art.arcane.animus.api.Capabilities;
 import art.arcane.animus.core.behavior.BehaviorCompiler;
 import art.arcane.animus.core.behavior.BehaviorNodeType;
+import art.arcane.animus.core.behavior.BehaviorExpression;
 import art.arcane.animus.core.behavior.BehaviorProgram;
+import art.arcane.animus.core.behavior.BehaviorValues;
 import art.arcane.animus.core.behavior.catalog.PackManifest;
 import art.arcane.animus.core.behavior.trigger.TriggerBinding;
 import art.arcane.animus.core.behavior.trigger.TriggerCompiler;
@@ -113,6 +115,8 @@ public final class BehaviorSchemaGenerator {
         definitions.add("conditions", capabilityList(capabilities, Capabilities.Kind.CONDITION));
         definitions.add("variable", variable());
         definitions.add("bindings", bindings());
+        definitions.add("operand", operand());
+        definitions.add("value", value());
         definitions.add("node", node());
         for (BehaviorNodeType node : BehaviorNodeType.values()) definitions.add("node-" + node.jsonName(), node(node, capabilities));
         definitions.add("trigger", trigger());
@@ -169,8 +173,8 @@ public final class BehaviorSchemaGenerator {
         JsonObject properties = new JsonObject();
         List<String> types = new ArrayList<>();
         for (BehaviorProgram.Type type : BehaviorProgram.Type.values()) types.add(type.name().toLowerCase(Locale.ROOT));
-        properties.add("type", described(choices(types), "The value type. There is no coercion."));
-        properties.add("initial", described(new JsonObject(), "The value until something writes it, of the declared type."));
+        properties.add("type", described(choices(types), "The value type. any accepts every value; expressions and templates are converted to the declared type when written."));
+        properties.add("initial", described(new JsonObject(), "The value until something writes it, of the declared type: a JSON array for list, an object for map, any JSON but null for any."));
         properties.add("scope", described(choices(scopes()), "Who shares the value: one run (execution, the default), one NPC, one player, one NPC and player pair, or everyone."));
         properties.add("lifetime", described(choices(lifetimes()), "Required for every scope except execution: transient values last until the server stops, persistent values are stored."));
         variable.add("properties", properties);
@@ -181,6 +185,9 @@ public final class BehaviorSchemaGenerator {
                 case INTEGER -> range("integer", Long.MIN_VALUE, Long.MAX_VALUE);
                 case DECIMAL -> type("number");
                 case STRING -> { JsonObject text = type("string"); text.addProperty("maxLength", BehaviorCompiler.MAX_STRING_BYTES); yield text; }
+                case LIST -> { JsonObject list = type("array"); list.addProperty("maxItems", BehaviorValues.MAX_ITEMS); yield list; }
+                case MAP -> { JsonObject map = type("object"); map.addProperty("maxProperties", BehaviorValues.MAX_ITEMS); yield map; }
+                case ANY -> { JsonObject any = new JsonObject(); any.add("not", type("null")); yield any; }
             };
             rules.add(when("type", type.name().toLowerCase(Locale.ROOT), property("initial", initial)));
         }
@@ -244,6 +251,30 @@ public final class BehaviorSchemaGenerator {
         if (type == BehaviorNodeType.ACTION || type == BehaviorNodeType.CONDITION) {
             Capabilities.Kind kind = type == BehaviorNodeType.ACTION ? Capabilities.Kind.ACTION : Capabilities.Kind.CONDITION;
             JsonArray rules = new JsonArray();
+            if (type == BehaviorNodeType.CONDITION) {
+                JsonArray either = new JsonArray();
+                JsonObject expression = new JsonObject();
+                expression.add("required", strings("expression"));
+                JsonObject capabilityOnly = new JsonObject();
+                capabilityOnly.add("not", expression.deepCopy());
+                capabilityOnly.add("required", strings("capability"));
+                JsonObject expressionOnly = new JsonObject();
+                JsonObject anyCapabilityField = new JsonObject();
+                JsonArray capabilityFields = new JsonArray();
+                for (String field : List.of("capability", "arguments", "bindings", "expressions", "templates")) {
+                    JsonObject present = new JsonObject();
+                    present.add("required", strings(field));
+                    capabilityFields.add(present);
+                }
+                anyCapabilityField.add("anyOf", capabilityFields);
+                expressionOnly.add("not", anyCapabilityField);
+                expressionOnly.add("required", strings("expression"));
+                either.add(capabilityOnly);
+                either.add(expressionOnly);
+                JsonObject rule = new JsonObject();
+                rule.add("oneOf", either);
+                rules.add(rule);
+            }
             for (Capabilities.Availability capability : capabilities)
                 if (capability.descriptor().kind() == kind) rules.add(argumentRule(capability.descriptor()));
             if (!rules.isEmpty()) node.add("allOf", rules);
@@ -255,28 +286,85 @@ public final class BehaviorSchemaGenerator {
         return switch (name) {
             case "steps" -> new Field(list(reference("node"), 0, BehaviorCompiler.MAX_STEPS, "Steps run in order."), "nodes", true);
             case "branches" -> new Field(list(reference("node"), 1, BehaviorCompiler.MAX_BRANCHES, "Branches run together and join."), "nodes", true);
-            case "capability" -> new Field(capabilityField(type), "capability", true);
-            case "arguments" -> new Field(described(type("object"), "The capability's arguments."), "arguments", false);
+            case "capability" -> new Field(capabilityField(type), "capability", type == BehaviorNodeType.ACTION);
+            case "arguments" -> type == BehaviorNodeType.CALL
+                    ? new Field(callArguments(), "arguments", false)
+                    : new Field(described(type("object"), "The capability's arguments."), "arguments", false);
             case "bindings" -> new Field(reference("bindings"), "bindings", false);
+            case "expressions" -> new Field(pointerMap("Fills null placeholders in arguments with expression results, keyed by JSON Pointer."), "expressions", false);
+            case "templates" -> new Field(pointerMap("Fills null placeholders in arguments with template text, keyed by JSON Pointer."), "templates", false);
+            case "expression" -> new Field(described(expressionText(), type == BehaviorNodeType.WHILE ? "Checked before every pass; must be true or false." : "Tested instead of a capability; must be true or false."), "expression", type == BehaviorNodeType.WHILE);
             case "then" -> new Field(described(reference("node"), "Runs when the condition is true."), "node", true);
             case "else" -> new Field(described(reference("node"), "Runs when the condition is false."), "node", false);
             case "body" -> new Field(described(reference("node"), "The repeated step."), "node", true);
             case "ticks" -> new Field(described(range("integer", 1, BehaviorCompiler.MAX_WAIT_TICKS), "Behavior ticks, about 50 ms each."), "integer", true);
-            case "count" -> new Field(described(range("integer", 0, BehaviorCompiler.MAX_REPEAT), "How many times the body runs."), "integer", true);
+            case "count" -> {
+                JsonArray options = new JsonArray();
+                options.add(range("integer", 0, BehaviorCompiler.MAX_REPEAT));
+                options.add(reference("operand"));
+                JsonObject count = described(new JsonObject(), "How many times the body runs: 0 to " + BehaviorCompiler.MAX_REPEAT + ", or an operand computed when the loop starts.");
+                count.add("anyOf", options);
+                yield new Field(count, "integer", true);
+            }
+            case "maximum" -> new Field(described(range("integer", 1, BehaviorCompiler.MAX_LOOP), "The most passes before the run fails; " + BehaviorCompiler.MAX_REPEAT + " by default."), "integer", false);
+            case "index" -> new Field(described(reference("identifier"), "An execution variable that receives the 0-based pass number."), "variable", false);
+            case "list" -> new Field(described(reference("operand"), "An operand that evaluates to a list or map."), "value", true);
+            case "as" -> new Field(described(reference("identifier"), "An execution variable that receives each item."), "variable", true);
+            case "key" -> new Field(described(reference("identifier"), "An execution variable that receives each map key."), "variable", false);
+            case "result" -> new Field(described(reference("identifier"), "A declared variable that receives the routine's return value."), "variable", false);
             case "routine" -> new Field(described(reference("identifier"), "A routine of this document."), "routine", true);
             case "variable" -> new Field(described(pattern(NONBLANK), "A declared variable."), "variable", true);
-            case "value" -> {
-                JsonObject literal = new JsonObject();
-                literal.add("type", strings("boolean", "number", "string"));
-                JsonArray options = new JsonArray();
-                options.add(literal);
-                options.add(variableReference());
-                JsonObject value = described(new JsonObject(), "A literal of the variable's type, or {\"variable\": \"name\"} of the same type.");
-                value.add("anyOf", options);
-                yield new Field(value, "value", true);
-            }
+            case "value" -> new Field(described(reference("value"), type == BehaviorNodeType.RETURN
+                    ? "The value the routine returns to its call's result."
+                    : "A literal of the variable's type, or an operand converted to it."), "value", type == BehaviorNodeType.SET);
             default -> throw new IllegalStateException("No schema for node field " + type.jsonName() + "." + name);
         };
+    }
+    private static JsonObject expressionText() {
+        JsonObject text = pattern(NONBLANK);
+        text.addProperty("maxLength", BehaviorExpression.MAX_LENGTH);
+        return text;
+    }
+    private static JsonObject pointerMap(String description) {
+        JsonObject map = described(type("object"), description);
+        map.addProperty("maxProperties", 32);
+        JsonObject name = type("string");
+        name.addProperty("maxLength", 4096);
+        map.add("propertyNames", name);
+        map.add("additionalProperties", expressionText());
+        return map;
+    }
+    private static JsonObject callArguments() {
+        JsonObject arguments = described(type("object"), "Declared variables assigned before the routine runs, each from a literal or operand.");
+        arguments.addProperty("maxProperties", BehaviorCompiler.MAX_VARIABLES);
+        arguments.add("propertyNames", reference("identifier"));
+        arguments.add("additionalProperties", reference("value"));
+        return arguments;
+    }
+    /** {"variable": name}, {"expression": text} or {"template": text}. */
+    private static JsonObject operand() {
+        JsonArray options = new JsonArray();
+        options.add(variableReference());
+        for (String key : List.of("expression", "template")) {
+            JsonObject option = type("object");
+            option.addProperty("additionalProperties", false);
+            option.add("required", strings(key));
+            option.add("properties", property(key, expressionText()).getAsJsonObject("properties"));
+            options.add(option);
+        }
+        JsonObject operand = described(new JsonObject(), "A declared variable, an expression, or a template with {{ expression }} holes.");
+        operand.add("oneOf", options);
+        return operand;
+    }
+    private static JsonObject value() {
+        JsonArray options = new JsonArray();
+        options.add(reference("operand"));
+        JsonObject literal = new JsonObject();
+        literal.add("not", type("null"));
+        options.add(literal);
+        JsonObject value = described(new JsonObject(), "A literal JSON value, or an operand. An object whose only key is variable, expression or template is an operand.");
+        value.add("anyOf", options);
+        return value;
     }
     private static JsonObject capabilityField(BehaviorNodeType type) {
         JsonObject field = described(new JsonObject(), type == BehaviorNodeType.ACTION ? "An action capability, namespace:name." : "A condition capability, namespace:name.");
@@ -292,11 +380,17 @@ public final class BehaviorSchemaGenerator {
         JsonObject arguments = argumentSchema(descriptor);
         JsonObject checked = property("arguments", arguments);
         if (!CapabilitySchema.compile(descriptor.configurationSchemaJson()).validate("{}").isEmpty()) checked.add("required", strings("arguments"));
+        JsonArray filled = new JsonArray();
+        for (String field : List.of("bindings", "expressions", "templates")) {
+            JsonObject slots = new JsonObject();
+            slots.add("required", strings(field));
+            JsonObject nonEmpty = new JsonObject();
+            nonEmpty.addProperty("minProperties", 1);
+            slots.add("properties", property(field, nonEmpty).getAsJsonObject("properties"));
+            filled.add(slots);
+        }
         JsonObject bound = new JsonObject();
-        bound.add("required", strings("bindings"));
-        JsonObject nonEmpty = new JsonObject();
-        nonEmpty.addProperty("minProperties", 1);
-        bound.add("properties", property("bindings", nonEmpty).getAsJsonObject("properties"));
+        bound.add("anyOf", filled);
         JsonObject literal = new JsonObject();
         literal.add("if", bound);
         literal.add("else", checked);

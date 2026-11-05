@@ -4,6 +4,7 @@ import art.arcane.animus.core.text.RichText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -16,6 +17,8 @@ public final class GuiExpression {
     public static final int MAXIMUM_LENGTH = 512, MAXIMUM_DEPTH = 256;
     /** Answers variables during evaluation; returns null for a name it does not know. */
     @FunctionalInterface public interface Scope { Object variable(String name); }
+    /** A caller-supplied function. It receives evaluated arguments and the scope of the current evaluation. */
+    @FunctionalInterface public interface Function { Object call(List<Object> arguments, Scope scope); }
     /** A problem in an expression, with the character position when the parser knows it. */
     public static final class Invalid extends RuntimeException {
         public Invalid(String message) { super(message); }
@@ -36,15 +39,20 @@ public final class GuiExpression {
     private final String source;
     private final Node root;
     private final Set<String> roots;
+    private final Map<String, Function> functions;
 
-    private GuiExpression(String source, Node root, Set<String> roots) { this.source = source; this.root = root; this.roots = Set.copyOf(roots); }
+    private GuiExpression(String source, Node root, Set<String> roots, Map<String, Function> functions) { this.source = source; this.root = root; this.roots = Set.copyOf(roots); this.functions = functions; }
 
     /** Parses and checks that every variable starts with one of the allowed roots. */
-    public static GuiExpression parse(String source, Set<String> allowedRoots) {
+    public static GuiExpression parse(String source, Set<String> allowedRoots) { return parse(source, allowedRoots, MAXIMUM_LENGTH, Map.of()); }
+
+    /** Parses with another length cap and extra functions, which take precedence over built-in ones of the same name. */
+    public static GuiExpression parse(String source, Set<String> allowedRoots, int maximumLength, Map<String, Function> extraFunctions) {
         Objects.requireNonNull(source);
-        if (source.length() > MAXIMUM_LENGTH) throw new Invalid("exceeds " + MAXIMUM_LENGTH + " characters");
+        Map<String, Function> functions = Map.copyOf(extraFunctions);
+        if (source.length() > maximumLength) throw new Invalid("exceeds " + maximumLength + " characters");
         if (source.isBlank()) throw new Invalid("must be a non-blank expression");
-        Parser parser = new Parser(source);
+        Parser parser = new Parser(source, functions.keySet());
         Node root = parser.ternary();
         parser.skip();
         if (parser.index < source.length()) throw new Invalid("unexpected '" + source.charAt(parser.index) + "' at position " + parser.index);
@@ -54,13 +62,23 @@ public final class GuiExpression {
             String head = name.contains(".") ? name.substring(0, name.indexOf('.')) : name;
             if (!allowedRoots.contains(head)) throw new Invalid("unknown variable '" + name + "'");
         }
-        return new GuiExpression(source, root, allowedRoots);
+        return new GuiExpression(source, root, allowedRoots, functions);
     }
 
     public String source() { return source; }
     public Set<String> roots() { return roots; }
+    /** Every variable name the expression reads, dotted names whole, in source order. */
+    public List<String> variables() { List<String> found = new ArrayList<>(); collect(root, found); return List.copyOf(found); }
 
-    public Object evaluate(Scope scope) { return eval(root, scope); }
+    public Object evaluate(Scope scope) { return eval(root, new Run(scope, Integer.MAX_VALUE, Integer.MAX_VALUE)); }
+
+    /** Evaluates with at most {@code maximumVisits} node visits and {@code maximumText} characters per intermediate string. */
+    public Object evaluate(Scope scope, int maximumVisits, int maximumText) { return eval(root, new Run(scope, maximumVisits, maximumText)); }
+
+    private static final class Run {
+        final Scope scope; final int maximumVisits, maximumText; int visits;
+        Run(Scope scope, int maximumVisits, int maximumText) { this.scope = scope; this.maximumVisits = maximumVisits; this.maximumText = maximumText; }
+    }
 
     public boolean test(Scope scope) {
         Object value = evaluate(scope);
@@ -94,6 +112,11 @@ public final class GuiExpression {
             for (Object item : items) parts.add(text(item));
             return "[" + String.join(", ", parts) + "]";
         }
+        if (value instanceof Map<?, ?> entries) {
+            List<String> parts = new ArrayList<>();
+            for (Map.Entry<?, ?> entry : entries.entrySet()) parts.add(entry.getKey() + ": " + text(entry.getValue()));
+            return "{" + String.join(", ", parts) + "}";
+        }
         return String.valueOf(value);
     }
 
@@ -109,43 +132,51 @@ public final class GuiExpression {
         }
     }
 
-    private static Object eval(Node node, Scope scope) {
-        return switch (node) {
+    private Object eval(Node node, Run run) {
+        if (++run.visits > run.maximumVisits) throw new Invalid("exceeds " + run.maximumVisits + " evaluation steps");
+        Object result = switch (node) {
             case Literal literal -> literal.value();
             case Variable variable -> {
-                Object value = scope.variable(variable.name());
+                Object value = run.scope.variable(variable.name());
                 if (value == null) throw new Invalid("unknown variable '" + variable.name() + "' at position " + variable.position());
                 yield normalize(value);
             }
             case ArrayLiteral array -> {
                 List<Object> values = new ArrayList<>();
-                for (Node item : array.items()) values.add(eval(item, scope));
+                for (Node item : array.items()) values.add(eval(item, run));
                 yield List.copyOf(values);
             }
-            case Call call -> call(call, scope);
+            case Call call -> call(call, run);
             case Unary unary -> {
-                Object value = eval(unary.operand(), scope);
+                Object value = eval(unary.operand(), run);
                 if (unary.operator() == '!') yield !bool(value);
                 yield -num(value);
             }
-            case Binary binary -> binary(binary, scope);
-            case Ternary ternary -> bool(eval(ternary.condition(), scope)) ? eval(ternary.then(), scope) : eval(ternary.otherwise(), scope);
+            case Binary binary -> binary(binary, run);
+            case Ternary ternary -> bool(eval(ternary.condition(), run)) ? eval(ternary.then(), run) : eval(ternary.otherwise(), run);
         };
+        if (result instanceof String text && text.length() > run.maximumText) throw new Invalid("text exceeds " + run.maximumText + " characters");
+        return result;
     }
 
     private static Object normalize(Object value) {
         if (value instanceof Number number) return number.doubleValue();
-        if (value instanceof Boolean || value instanceof String || value instanceof List<?>) return value;
+        if (value instanceof Boolean || value instanceof String || value instanceof List<?> || value instanceof Map<?, ?>) return value;
         return value.toString();
     }
 
-    private static Object binary(Binary binary, Scope scope) {
+    private Object binary(Binary binary, Run run) {
         String operator = binary.operator();
-        if (operator.equals("&&")) return bool(eval(binary.left(), scope)) && bool(eval(binary.right(), scope));
-        if (operator.equals("||")) return bool(eval(binary.left(), scope)) || bool(eval(binary.right(), scope));
-        Object left = eval(binary.left(), scope), right = eval(binary.right(), scope);
+        if (operator.equals("&&")) return bool(eval(binary.left(), run)) && bool(eval(binary.right(), run));
+        if (operator.equals("||")) return bool(eval(binary.left(), run)) || bool(eval(binary.right(), run));
+        Object left = eval(binary.left(), run), right = eval(binary.right(), run);
         return switch (operator) {
-            case "+" -> left instanceof String || right instanceof String ? text(left) + text(right) : num(left) + num(right);
+            case "+" -> {
+                if (!(left instanceof String) && !(right instanceof String)) yield num(left) + num(right);
+                String first = text(left), second = text(right);
+                if ((long) first.length() + second.length() > run.maximumText) throw new Invalid("text exceeds " + run.maximumText + " characters");
+                yield first + second;
+            }
             case "-" -> num(left) - num(right);
             case "*" -> num(left) * num(right);
             case "/" -> {
@@ -175,10 +206,12 @@ public final class GuiExpression {
         throw new Invalid("== compares two numbers, two strings or two booleans, got " + typeName(left) + " and " + typeName(right));
     }
 
-    private static Object call(Call call, Scope scope) {
+    private Object call(Call call, Run run) {
         List<Object> values = new ArrayList<>();
-        for (Node argument : call.arguments()) values.add(eval(argument, scope));
+        for (Node argument : call.arguments()) values.add(eval(argument, run));
         String name = call.name();
+        Function extra = functions.get(name);
+        if (extra != null) return extra.call(List.copyOf(values), run.scope);
         return switch (name) {
             case "clamp" -> { arity(call, values, 3); yield Math.clamp(num(values.get(0)), num(values.get(1)), Math.max(num(values.get(1)), num(values.get(2)))); }
             case "lerp" -> { arity(call, values, 3); double a = num(values.get(0)); yield a + (num(values.get(1)) - a) * num(values.get(2)); }
@@ -236,6 +269,7 @@ public final class GuiExpression {
                 double maximum = num(values.get(1));
                 int width = (int) Math.clamp(num(values.get(2)), 0, 256);
                 int filled = maximum <= 0 ? 0 : (int) Math.round(Math.clamp(num(values.get(0)) / maximum, 0, 1) * width);
+                if ((long) filled * text(values.get(3)).length() + (long) (width - filled) * text(values.get(4)).length() > run.maximumText) throw new Invalid("text exceeds " + run.maximumText + " characters");
                 yield text(values.get(3)).repeat(filled) + text(values.get(4)).repeat(width - filled);
             }
             case "hex" -> { arity(call, values, 1); yield String.format(Locale.ROOT, "[%06X]", ((long) num(values.get(0))) & 0xFFFFFFL); }
@@ -317,6 +351,7 @@ public final class GuiExpression {
             case String ignored -> "string";
             case Boolean ignored -> "boolean";
             case List<?> ignored -> "list";
+            case Map<?, ?> ignored -> "map";
             case null -> "nothing";
             default -> value.getClass().getSimpleName();
         };
@@ -325,7 +360,8 @@ public final class GuiExpression {
     private static final class Parser {
         private final String text;
         private int index, depth;
-        Parser(String text) { this.text = text; }
+        private final Set<String> extra;
+        Parser(String text, Set<String> extra) { this.text = text; this.extra = extra; }
 
         void skip() { while (index < text.length() && Character.isWhitespace(text.charAt(index))) index++; }
         boolean take(String token) {
@@ -424,7 +460,7 @@ public final class GuiExpression {
                 if (name.equals("true")) return new Literal(true);
                 if (name.equals("false")) return new Literal(false);
                 if (take("(")) {
-                    if (!FUNCTIONS.contains(name) && !GuiTextFunctions.NAMES.contains(name)) throw new Invalid("unknown function '" + name + "' at position " + start);
+                    if (!FUNCTIONS.contains(name) && !GuiTextFunctions.NAMES.contains(name) && !extra.contains(name)) throw new Invalid("unknown function '" + name + "' at position " + start);
                     List<Node> arguments = new ArrayList<>();
                     if (!take(")")) {
                         do arguments.add(ternary()); while (take(","));

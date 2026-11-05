@@ -63,7 +63,7 @@ class ScopedVariableCompilerTest {
                 new Case("{\"a\":{\"type\":\"integer\",\"initial\":0,\"lifetime\":\"persistent\"}}", "$.variables.a.lifetime", "execution variables"),
                 new Case("{\"a\":{\"type\":\"integer\",\"initial\":0,\"scope\":\"execution\",\"lifetime\":\"transient\"}}", "$.variables.a.lifetime", "execution variables"),
                 new Case("{\"a\":{\"type\":\"integer\",\"initial\":\"0\",\"scope\":\"npc\",\"lifetime\":\"persistent\"}}", "$.variables.a.initial", "integer"),
-                new Case("{\"a\":{\"type\":\"list\",\"initial\":0,\"scope\":\"npc\",\"lifetime\":\"persistent\"}}", "$.variables.a.type", "boolean, integer, decimal or string"),
+                new Case("{\"a\":{\"type\":\"tuple\",\"initial\":0,\"scope\":\"npc\",\"lifetime\":\"persistent\"}}", "$.variables.a.type", "boolean, integer, decimal, string, list, map or any"),
                 new Case("{\"a\":{\"type\":\"integer\",\"initial\":0,\"scope\":\"npc\",\"lifetime\":\"persistent\",\"extra\":1}}", "$.variables.a.extra", "unsupported"));
         for (Case item : cases) {
             Diagnostic diagnostic = rejected(item.variable());
