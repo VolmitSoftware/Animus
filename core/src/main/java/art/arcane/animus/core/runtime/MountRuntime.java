@@ -83,6 +83,11 @@ final class MountRuntime<P, I> implements AutoCloseable {
         NpcDefinition known = host.runtime.npcs().snapshot().get(id);
         return known == null ? null : known.uuid();
     }
+    /** Active, but its definition is already gone, replaced or despawned, so the runtime is about to remove it. */
+    private boolean retiring(MountRelations.Node node) {
+        NpcDefinition current = host.runtime.npcs().snapshot().get(node.id());
+        return !DefinitionSpec.spawned(current) || !current.uuid().equals(node.uuid());
+    }
     private MountRelations.Node node(PersistedNpcService<P, I>.Value value) {
         return new MountRelations.Node(value.spec.definition().id(), value.spec.definition().uuid(), value.mountReference);
     }
@@ -93,7 +98,7 @@ final class MountRuntime<P, I> implements AutoCloseable {
         dirty = false;
         List<MountRelations.Node> nodes = new ArrayList<>(host.entries.size());
         for (PersistedNpcService<P, I>.Entry entry : host.entries.values()) if (entry.value != null) nodes.add(node(entry.value));
-        MountRelations.Resolution next = MountRelations.resolve(nodes, this::knownUuid);
+        MountRelations.Resolution next = MountRelations.resolve(nodes, this::knownUuid, this::retiring);
         for (String id : mounts.vehicleOf().keySet()) {
             if (next.vehicleOf().containsKey(id)) continue;
             PersistedNpcService<P, I>.Entry entry = host.entries.get(id);
