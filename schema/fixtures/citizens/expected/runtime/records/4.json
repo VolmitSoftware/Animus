@@ -1,0 +1,19 @@
+{
+  "name": "Mystery Walker",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000304",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_town",
+      "x": 8.0,
+      "y": 64.0,
+      "z": 8.0
+    },
+    "waypoints": {
+      "provider": "spiral",
+      "spiral": {
+        "turns": 3
+      }
+    }
+  }
+}

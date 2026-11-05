@@ -1,0 +1,74 @@
+{
+  "citizensId": 0,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/waypoints/linear: 1 points in another world or without usable coordinates were left out",
+    "/traits/waypoints/linear: 2 legs are longer than 32 blocks across or 8 up or down; the NPC stops before the first one until points are added between them",
+    "/traits/waypoints/linear: chat waypoint triggers are not supported; kept in citizens:review"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/navigator/speedmodifier": "CONVERTED",
+    "/navigator/pathfindingrange": "UNSUPPORTED_PRESERVED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/lookclose/range": "CONVERTED",
+    "/traits/lookclose/randomPitchRange/0": "REQUIRES_REVIEW",
+    "/traits/lookclose/randomPitchRange/1": "REQUIRES_REVIEW",
+    "/traits/lookclose/randomYawRange/0": "REQUIRES_REVIEW",
+    "/traits/lookclose/randomYawRange/1": "REQUIRES_REVIEW",
+    "/traits/waypoints/provider": "CONVERTED",
+    "/traits/waypoints/linear/points/0/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/0/location/worldid": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/0/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/0/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/0/location/z": "CONVERTED",
+    "/traits/waypoints/linear/points/1/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/1/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/1/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/1/location/z": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/0/type": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/0/delay": "CONVERTED",
+    "/traits/waypoints/linear/points/1/triggers/1/type": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/1/triggers/1/lines/0": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/1/triggers/1/radius": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/2/location/world": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/2/location/x": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/2/location/y": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/2/location/z": "REQUIRES_REVIEW",
+    "/traits/waypoints/linear/points/3/location/world": "CONVERTED",
+    "/traits/waypoints/linear/points/3/location/x": "CONVERTED",
+    "/traits/waypoints/linear/points/3/location/y": "CONVERTED",
+    "/traits/waypoints/linear/points/3/location/z": "CONVERTED"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_town",
+      "to": "town"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/0/location",
+      "from": "old_town",
+      "to": "town",
+      "removedWorldId": "11111111-2222-3333-4444-555555555555"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/1/location",
+      "from": "old_town",
+      "to": "town"
+    },
+    {
+      "source": "/traits/waypoints/linear/points/3/location",
+      "from": "old_town",
+      "to": "town"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

@@ -4,6 +4,7 @@
     "/traits/armorstandtrait/rightArm: angle not readable; kept for review",
     "/traits/armorstandtrait: marker and gravity are kept for review"
   ],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",

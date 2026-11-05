@@ -1,0 +1,28 @@
+{
+  "citizensId": 4,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/waypoints/provider: waypoint provider spiral is not supported; kept in citizens:review"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/waypoints/provider": "CONVERTED",
+    "/traits/waypoints/spiral/turns": "REQUIRES_REVIEW"
+  },
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_town",
+      "to": "town"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

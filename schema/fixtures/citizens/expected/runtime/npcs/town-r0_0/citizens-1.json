@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000301",
+  "id": "citizens-1",
+  "group": "town-r0_0",
+  "name": "Market Wanderer",
+  "type": "minecraft:villager",
+  "spawned": false,
+  "migration": {
+    "importId": "5d097b7bfff0b0e64d7c1ee6fbcddb4b26539d03c2e7b482cb14c1f031197c5a",
+    "citizensId": 1,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "town",
+    "x": 100.0,
+    "y": 70.0,
+    "z": 100.0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:navigation": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "mode": "walk",
+      "speed": 4.3,
+      "order": "wander",
+      "waitTicks": 60,
+      "points": [],
+      "wander": {
+        "radius": 12,
+        "height": 2
+      }
+    },
+    "citizens:review": {
+      "type": "VILLAGER",
+      "location": {
+        "world": "town",
+        "x": 100.0,
+        "y": 70.0,
+        "z": 100.0
+      },
+      "lookclose": {
+        "enabled": false
+      },
+      "waypoints": {
+        "provider": "wander",
+        "wander": {
+          "delay": -1,
+          "pathfind": true,
+          "xrange": 12,
+          "yrange": 2
+        }
+      }
+    }
+  }
+}

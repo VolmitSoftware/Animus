@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "citizens:text-1",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "text-1",
+            "scope": "npc",
+            "equals": 0
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Welcome!"
+            }
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "text-1",
+            "scope": "npc",
+            "equals": 1
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:say",
+            "arguments": {
+              "text": "Mind the gate."
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:advance-quest-state",
+          "arguments": {
+            "name": "text-1",
+            "scope": "npc",
+            "maximum": 2
+          }
+        },
+        {
+          "type": "condition",
+          "capability": "animus:quest-state",
+          "arguments": {
+            "name": "text-1",
+            "scope": "npc",
+            "atLeast": 2
+          },
+          "then": {
+            "type": "action",
+            "capability": "animus:set-quest-state",
+            "arguments": {
+              "name": "text-1",
+              "scope": "npc",
+              "value": 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "near",
+      "event": "proximity",
+      "phase": "enter",
+      "radius": 5.0,
+      "cooldownTicks": 100
+    }
+  ]
+}

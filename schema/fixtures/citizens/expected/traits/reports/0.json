@@ -9,6 +9,7 @@
     "/traits/inventory/99: slot outside 0..71; kept for review",
     "/traits/inventory/abc: not a slot number; kept for review"
   ],
+  "runtimeWarnings": [],
   "fieldPathFormat": "json-pointer",
   "fields": {
     "/name": "CONVERTED",
@@ -23,9 +24,9 @@
     "/traits/location/yaw": "CONVERTED",
     "/traits/location/pitch": "CONVERTED",
     "/traits/location/bodyYaw": "REQUIRES_REVIEW",
-    "/traits/lookclose/enabled": "REQUIRES_REVIEW",
-    "/traits/lookclose/range": "REQUIRES_REVIEW",
-    "/traits/lookclose/realisticlooking": "REQUIRES_REVIEW",
+    "/traits/lookclose/enabled": "CONVERTED",
+    "/traits/lookclose/range": "CONVERTED",
+    "/traits/lookclose/realisticlooking": "CONVERTED",
     "/traits/scoreboardtrait/color": "UNSUPPORTED_PRESERVED",
     "/traits/scoreboardtrait/tags": "UNSUPPORTED_PRESERVED",
     "/traits/owner/uuid": "CONVERTED",

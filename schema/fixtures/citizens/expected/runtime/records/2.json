@@ -1,0 +1,80 @@
+{
+  "name": "Town Crier",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000302",
+  "navigator": {
+    "speedmodifier": 1.0
+  },
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_town",
+      "x": -30.0,
+      "y": 65.0,
+      "z": 10.0
+    },
+    "lookclose": {
+      "range": 100.0,
+      "realisticlooking": true,
+      "disablewhilenavigating": false,
+      "targetnpcs": true
+    },
+    "waypoints": {
+      "provider": "guided",
+      "guided": {
+        "distance": 20.0,
+        "destinations": {
+          "0": {
+            "location": {
+              "world": "old_town",
+              "x": -30.0,
+              "y": 65.0,
+              "z": 10.0
+            },
+            "triggers": {
+              "0": {
+                "type": "delay",
+                "delay": 100
+              }
+            }
+          },
+          "1": {
+            "location": {
+              "world": "old_town",
+              "x": 0.0,
+              "y": 65.0,
+              "z": 10.0
+            }
+          },
+          "2": {
+            "location": {
+              "world": "old_town",
+              "x": 300.0,
+              "y": 65.0,
+              "z": 10.0
+            }
+          }
+        },
+        "guides": {
+          "0": {
+            "location": {
+              "world": "old_town",
+              "x": -15.0,
+              "y": 65.0,
+              "z": 10.0
+            }
+          }
+        }
+      }
+    },
+    "text": {
+      "text": [
+        "&eHear ye, <player>!",
+        "Market opens at dawn.<br>Bring coin."
+      ],
+      "talk-close": true,
+      "random-talker": true,
+      "range": 6.0,
+      "delay": 200
+    }
+  }
+}

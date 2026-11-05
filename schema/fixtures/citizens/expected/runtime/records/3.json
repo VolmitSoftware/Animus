@@ -1,0 +1,54 @@
+{
+  "name": "Scribe",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000303",
+  "traits": {
+    "type": "PLAYER",
+    "location": {
+      "world": "old_town",
+      "x": 5.0,
+      "y": 64.0,
+      "z": 5.0
+    },
+    "text": {
+      "text": [
+        "Welcome.",
+        "Quiet, please."
+      ]
+    },
+    "commandtrait": {
+      "executionMode": "CYCLE",
+      "commands": {
+        "0": {
+          "command": "/give <p> minecraft:paper 1",
+          "hand": "RIGHT",
+          "cooldown": 10,
+          "permissions": {
+            "0": "town.scribe"
+          }
+        },
+        "1": {
+          "command": "say <npc> stamps a letter",
+          "hand": "BOTH",
+          "player": true,
+          "delay": 20
+        },
+        "2": {
+          "command": "spawn",
+          "hand": "SHIFT_RIGHT",
+          "player": true
+        },
+        "3": {
+          "command": "eco give <p> 5",
+          "hand": "LEFT",
+          "cost": 10.0
+        },
+        "4": {
+          "command": "heal <p>",
+          "hand": "LEFT",
+          "player": true,
+          "op": true
+        }
+      }
+    }
+  }
+}

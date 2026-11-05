@@ -244,6 +244,10 @@ class _CitizensScreenState extends State<CitizensScreen> {
             _stat('${review.resolvedReferences}', 'references resolved'),
             _stat('${review.unresolvedReferences}', 'references unresolved'),
             _stat('${review.remappedLocations}', 'locations remapped'),
+            _stat('${review.conversions['routes']}', 'patrol routes'),
+            _stat('${review.conversions['lookClose']}', 'look-close'),
+            _stat('${review.conversions['textBehaviors']}', 'text behaviors'),
+            _stat('${review.conversions['commandBehaviors']}', 'command behaviors'),
           ]),
           dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
             const Component.text('Import '),
