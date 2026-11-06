@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/guard_orders",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "target",
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "release"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "release"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "guard",
+            "target": "player"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "guard"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "disable"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:combat-control",
+          "arguments": {
+            "operation": "enable"
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:command",
+          "arguments": {
+            "command": "say The guard is ready"
+          }
+        }
+      ]
+    }
+  }
+}
