@@ -26,7 +26,29 @@ const double mcFramedTextGap = 1.0;
 
 /// Text the client draws in world space, as the server lays it out.
 final class NpcText {
-  const NpcText({required this.anchor, required this.lines, required this.nameplate, this.styled});
+  const NpcText({
+    required this.anchor,
+    required this.lines,
+    required this.nameplate,
+    this.styled,
+    this.dim = false,
+    this.lineWidth = 200,
+    this.background,
+    this.shadow = false,
+  });
+
+  /// A sneaking player's nameplate: the client draws it faded and hides it
+  /// behind blocks.
+  final bool dim;
+
+  /// The text display's wrap width in font pixels.
+  final int lineWidth;
+
+  /// A text display's `#AARRGGBB` background, or null for the default.
+  final String? background;
+
+  /// A text display's drop shadow.
+  final bool shadow;
 
   /// Bottom centre, world blocks: text grows upward from here.
   final McVec3 anchor;
@@ -105,6 +127,9 @@ McArmorPiece? mcArmorPiece(NpcItem item) {
   return McArmorPiece(slot: slot, material: mcArmorMaterials[match.group(1)]!);
 }
 
+/// Mob heads and skulls, which the client draws with `SkullBlockRenderer`.
+bool mcSkullItem(NpcItem item) => item.key.endsWith('_head') || item.key.endsWith('_skull');
+
 /// `minecraft:iron_horse_armor` to its `horse_body` material.
 String? mcHorseArmorMaterial(NpcItem item) {
   final RegExpMatch? match = RegExp(r'^(leather|iron|golden|diamond|netherite|copper)_horse_armor$').firstMatch(item.key);
@@ -129,7 +154,10 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
     return NpcScene(
       scene: McScene.empty,
       texts: const <NpcText>[],
-      notes: <String>['${look.type.isEmpty ? 'This definition' : look.type} is not a body type Animus presents.'],
+      notes: <String>[
+        '${look.type.isEmpty ? 'This definition names no body type' : '${look.type} is not a body type Animus presents'}. '
+            'Use one of ${mcBodyTypes.join(', ')}.',
+      ],
       presentable: false,
     );
   }
@@ -186,8 +214,20 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
         nodes.addAll(_armorLayers(look, armor, item, body.rig, root, small: small));
         continue;
       }
+      if (slot == NpcSlot.head && mcSkullItem(item)) {
+        notes.add('$where is worn on the head in game; the preview does not draw heads and skulls, so the head shows bare.');
+        continue;
+      }
       if (slot == NpcSlot.head) {
         nodes.add(_headItem(parts, model, item));
+        continue;
+      }
+      if (slot == NpcSlot.chest && item.key == 'elytra') {
+        notes.add('$where is worn on the back in game; the preview does not draw elytra.');
+        continue;
+      }
+      if (slot == NpcSlot.body) {
+        notes.add('$where is not drawn: ${look.isPlayer ? 'players' : 'armor stands'} do not show the body slot. It holds horse armor and llama carpets.');
         continue;
       }
       notes.add('$where is not drawn: the client shows only ${armor == null ? 'armour' : '${armor.slot.key} armour'} in this slot.');
@@ -237,7 +277,13 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
   final double feet = look.isPlayer && look.pose == NpcPose.sitting ? -mcPlayerVehicleAttachment : 0;
   final double top = feet + body.heightBlocks;
   final List<NpcText> texts = <NpcText>[
-    if (look.nativeName) NpcText(anchor: McVec3(0, top + 0.25, 0), lines: <String>[look.name], nameplate: true),
+    if (look.nativeName)
+      NpcText(
+        anchor: McVec3(0, top + 0.25, 0),
+        lines: <String>[look.name],
+        nameplate: true,
+        dim: look.isPlayer && look.pose == NpcPose.sneaking,
+      ),
     if (look.textLines.isNotEmpty)
       NpcText(anchor: McVec3(0, top + (look.nativeName ? 0.55 : 0.3), 0), lines: look.textLines, nameplate: false),
   ];

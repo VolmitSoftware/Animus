@@ -21,6 +21,7 @@ import '../mc/npc/npc_look.dart';
 import '../mc/npc/npc_playground.dart';
 import '../mc/npc/npc_scene.dart';
 import '../mc/npc/npc_skin.dart';
+import '../mc/npc/npc_skin_failure.dart';
 import '../mc/npc/route_overlay.dart';
 import '../model/animus_document.dart';
 import '../services/skin_images.dart';
@@ -76,6 +77,8 @@ class _NpcPreviewState extends State<NpcPreview> {
   double _tick = 0;
   bool _playing = false;
   double? _lastFrame;
+  bool _backToIdle = false;
+  String? _skinProblem;
 
   NpcLook get _look {
     final Object? json = component.document.json;
@@ -98,6 +101,14 @@ class _NpcPreviewState extends State<NpcPreview> {
     final LoadedSkin? loaded = _loaded(look);
     if (loaded != null) return NpcSkinChoice(textureId: loaded.textureId, slim: slim);
     return slim ? NpcSkinChoice.alex : NpcSkinChoice.steve;
+  }
+
+  /// The rig's idle animation id, when the workspace has it.
+  String? get _idleId {
+    final Object? rig = component.rig?.json;
+    final Object? names = rig is Map<String, Object?> ? rig['animations'] : null;
+    final Object? idle = names is Map<String, Object?> ? names['idle'] : null;
+    return idle is String && component.animations.any((AnimusDocument animation) => animation.id == idle) ? idle : null;
   }
 
   Clip? get _clip {
@@ -216,7 +227,13 @@ class _NpcPreviewState extends State<NpcPreview> {
         }
         if (last != null) {
           _tick += (time - last) / 50;
-          if ((clip.loop == LoopMode.once || clip.loop == LoopMode.hold) && _tick >= clip.durationTicks) {
+          final String? idle = _idleId;
+          if (clip.loop == LoopMode.once && _tick >= clip.durationTicks && idle != null && idle != _animation) {
+            // The server ends a once clip and goes back to the rig's idle.
+            _animation = idle;
+            _tick = 0;
+            _backToIdle = true;
+          } else if ((clip.loop == LoopMode.once || clip.loop == LoopMode.hold) && _tick >= clip.durationTicks) {
             _tick = clip.durationTicks;
             _playing = false;
           }
@@ -232,9 +249,13 @@ class _NpcPreviewState extends State<NpcPreview> {
     setState(() => _loading = true);
     try {
       final LoadedSkin? skin = await load(_skinKey(_look));
-      if (skin != null) ArcaneSonner.success('Skin loaded from ${skin.source}.');
+      if (skin != null) {
+        _skinProblem = null;
+        ArcaneSonner.success('Skin loaded from ${skin.source}.');
+      }
     } on Object catch (failure) {
-      ArcaneSonner.error('Could not load the skin: $failure');
+      _skinProblem = skinFailureText(failure);
+      ArcaneSonner.error(_skinProblem!);
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -281,6 +302,7 @@ class _NpcPreviewState extends State<NpcPreview> {
               onChanged: (String value) {
                 setState(() {
                   _animation = value.isEmpty ? null : value;
+                  _backToIdle = false;
                   _tick = 0;
                   _playing = false;
                 });
@@ -345,7 +367,7 @@ class _NpcPreviewState extends State<NpcPreview> {
       dom.dl(classes: 'animus-npc-facts', <Widget>[
         ..._fact('Body', scene.presentable ? look.type : '${look.type} (not presented)'),
         if (component.rig != null)
-          ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}'}'),
+          ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}${_backToIdle ? ' (back to idle after a once clip, as the server does)' : ''}'}'),
         if (player) ..._fact('Pose', look.pose.name),
         if (player) ...<Widget>[
           const dom.dt(<Widget>[Component.text('Skin')]),
@@ -364,8 +386,9 @@ class _NpcPreviewState extends State<NpcPreview> {
         ),
         ..._fact('Text', look.textLines.isEmpty ? (look.nativeName ? 'nameplate only' : 'none') : '${look.textLines.length} line${look.textLines.length == 1 ? '' : 's'}'),
       ]),
-      if (scene.notes.isNotEmpty)
+      if (scene.notes.isNotEmpty || _skinProblem != null)
         dom.ul(classes: 'animus-npc-notes', <Widget>[
+          if (_skinProblem != null) dom.li(<Widget>[Component.text(_skinProblem!)]),
           for (final String note in scene.notes) dom.li(<Widget>[Component.text(note)]),
         ]),
     ]);

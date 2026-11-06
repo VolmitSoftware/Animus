@@ -12,20 +12,11 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../logic/rig_gizmo_edit.dart';
 import '../../logic/rig_sampler.dart';
 import '../../mc/rig/rig_scene.dart';
 import '../../mc/scene/mc_camera.dart';
 import '../../mc/scene/mc_math.dart';
-
-enum GizmoMode {
-  move('Move'),
-  rotate('Rotate'),
-  scale('Scale');
-
-  const GizmoMode(this.label);
-
-  final String label;
-}
 
 /// Gizmo arms are this long in blocks.
 const double gizmoArmBlocks = 0.45;
@@ -78,6 +69,7 @@ class GizmoOverlay {
     required this.mode,
     required this.onSelect,
     required this.onGrab,
+    required this.onNudge,
   });
 
   /// Bone ids in document order.
@@ -88,6 +80,10 @@ class GizmoOverlay {
   final GizmoMode mode;
   final void Function(String bone) onSelect;
   final void Function(GizmoGrab grab, web.PointerEvent event) onGrab;
+
+  /// An arrow key on a focused handle: [axis], +1 or -1, and whether Shift
+  /// asked for a finer step.
+  final void Function(int axis, int direction, bool fine) onNudge;
 
   static const List<String> _axisNames = <String>['x', 'y', 'z'];
 
@@ -120,7 +116,8 @@ class GizmoOverlay {
         cy: _px(point.y),
         r: bone == selected ? '7' : '5',
         classes: 'animus-rig-bone-dot${bone == selected ? ' is-selected' : ''}',
-        attributes: <String, String>{'data-gizmo': 'bone', 'data-bone': bone, 'aria-label': 'Bone $bone', 'role': 'button'},
+        // Pointer shortcut only: the bone tree is the keyboard route.
+        attributes: <String, String>{'data-gizmo': 'bone', 'data-bone': bone, 'aria-hidden': 'true'},
         events: <String, void Function(web.Event)>{
           'pointerdown': (web.Event event) {
             event.preventDefault();
@@ -159,10 +156,24 @@ class GizmoOverlay {
           attributes: <String, String>{
             'data-gizmo': 'handle',
             'data-axis': name,
-            'aria-label': '${mode.label} ${name.toUpperCase()}',
+            'aria-label': '${mode.label} ${name.toUpperCase()}: drag, or press the arrow keys (Shift for finer steps)',
             'role': 'button',
+            'tabindex': '0',
+            'focusable': 'true',
           },
           events: <String, void Function(web.Event)>{
+            'keydown': (web.Event event) {
+              final web.KeyboardEvent key = event as web.KeyboardEvent;
+              final int direction = switch (key.key) {
+                'ArrowRight' || 'ArrowUp' => 1,
+                'ArrowLeft' || 'ArrowDown' => -1,
+                _ => 0,
+              };
+              if (direction == 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onNudge(axis, direction, key.shiftKey);
+            },
             'pointerdown': (web.Event event) {
               event.preventDefault();
               final web.PointerEvent pointer = event as web.PointerEvent;
