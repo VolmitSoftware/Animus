@@ -111,7 +111,7 @@ final class NativePresentation {
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(dataValue.invoke(null, sharedFlags, flags));
-        if (look.traits().usingItem()) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(true)));
+        if (look.usingItem()) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(true)));
         Optional<BodyRules.BabyFlag> baby = look.traits().baby() ? BodyRules.babyFlag(typeKey) : Optional.empty();
         if (baby.isPresent() && babies.containsKey(baby.get())) values.add(dataValue.invoke(null, babies.get(baby.get()), Boolean.TRUE));
         if ((look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING) || (look.motion() & BodyLook.GLIDING) != 0)
@@ -143,11 +143,12 @@ final class NativePresentation {
         return dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible));
     }
 
-    /** The shared flags and pose of a body whose pose changed in place; both are always sent, so standing again clears a crouch. */
+    /** The shared flags, pose and item use of a body whose look changed in place; all are always sent, so standing again clears a crouch. */
     List<Object> lookValues(BodyLook look) throws ReflectiveOperationException {
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         return List.of(dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible)),
-                dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.pose() == NpcPose.SITTING ? "STANDING" : look.nativePose())));
+                dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.pose() == NpcPose.SITTING ? "STANDING" : look.nativePose())),
+                dataValue.invoke(null, livingFlags, BodyLook.livingFlags(look.usingItem())));
     }
 
     /** Formatted text as a styled vanilla component, so hex colours render; a plain literal would show them as codes. */

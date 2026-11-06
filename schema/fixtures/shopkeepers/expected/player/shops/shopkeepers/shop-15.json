@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-15",
   "title": "Hired Hand",
+  "style": "native",
   "modes": [
     "trade"
   ],

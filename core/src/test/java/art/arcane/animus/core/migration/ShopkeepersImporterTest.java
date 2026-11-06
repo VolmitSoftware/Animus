@@ -77,7 +77,10 @@ class ShopkeepersImporterTest {
         assertEquals(-7.5, farmer.json().getAsJsonObject("position").get("x").getAsDouble());
         assertTrue(ShopBinding.of(farmer).isEmpty(), "an imported binding opens nothing until reviewed");
         assertEquals("shopkeepers:shop-3", farmer.json().getAsJsonObject("modules").getAsJsonObject("animus:shop").get("shop").getAsString());
-        assertEquals("minecraft:farmer", farmer.json().getAsJsonObject("modules").getAsJsonObject("shopkeepers:review").get("profession").getAsString());
+        JsonObject module = farmer.json().getAsJsonObject("modules").getAsJsonObject("animus:shop");
+        assertEquals("minecraft:farmer", module.getAsJsonObject("villager").get("profession").getAsString(), "the profession shows in the trading screen title");
+        assertEquals(2, module.getAsJsonObject("villager").get("level").getAsInt());
+        assertFalse(farmer.json().getAsJsonObject("modules").getAsJsonObject("shopkeepers:review").has("profession"));
         assertTrue(CitizensDropIn.waiting(farmer.json(), "spawn"));
         assertTrue(CitizensDropIn.waiting(farmer.json(), "shops"));
         NpcDefinition wanderer = NpcDefinition.parse(ShopkeepersImporter.convert(fixture("minimal.yml"), Optional.empty(), Optional.empty()).files().get("npcs/shopkeepers/shopkeeper-1.json"));

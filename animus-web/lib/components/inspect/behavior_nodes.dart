@@ -201,7 +201,7 @@ class BehaviorNodeView extends StatelessWidget {
           events: <String, void Function(web.Event)>{'keydown': _onKey},
           <Widget>[
             dom.span(classes: 'animus-node-caption', <Widget>[Component.text(label)]),
-            dom.span(classes: 'animus-node-type', <Widget>[Component.text(type ?? '?')]),
+            dom.span(classes: 'animus-node-type', <Widget>[withTip(Component.text(type ?? '?'), spec?.description, docs: Docs.behaviorNodes)]),
             dom.span(classes: 'animus-node-line', <Widget>[Component.text(nodeSummary(value, variables: context.variables))]),
             if (failing) const dom.span(classes: 'animus-node-flag is-error', <Widget>[Component.text('problem')]),
             if (strayJump) const dom.span(classes: 'animus-node-flag is-warning', <Widget>[Component.text('outside a loop')]),
@@ -220,9 +220,7 @@ class BehaviorNodeView extends StatelessWidget {
                 }
               },
             ),
-            if (spec != null && spec.description.isNotEmpty)
-              InfoTip(text: spec.description, topic: type ?? 'Step', docs: Docs.behaviorNodes)
-            else if (spec == null)
+            if (spec == null)
               dom.span(classes: 'animus-node-help', <Widget>[Component.text(type == null ? 'Pick a type' : 'Unknown type, kept as written')]),
             if (onUp != null) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move $label up', onPressed: onUp!),
             if (onDown != null) GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move $label down', onPressed: onDown!),

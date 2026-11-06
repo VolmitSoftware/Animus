@@ -16,7 +16,7 @@
     "pitch": 0
   },
   "migration": {
-    "importId": "6e128e439c7602e903a1f0041fea7a2fceec1c55d4b5cb382e2e68b108be3b85",
+    "importId": "daa89ba44bf8453e4b4bf1d56b8811121080293b909ad80ca597117b6ca21044",
     "source": "Shopkeepers",
     "shopkeeper": 3,
     "originalSpawned": true
@@ -25,6 +25,10 @@
     "animus:shop": {
       "shop": "shopkeepers:shop-3",
       "openOn": "right",
+      "villager": {
+        "profession": "minecraft:farmer",
+        "level": 2
+      },
       "reviewAccepted": false,
       "imported": {
         "source": "Shopkeepers",
@@ -32,9 +36,7 @@
       }
     },
     "shopkeepers:review": {
-      "profession": "minecraft:farmer",
       "villagerType": "minecraft:plains",
-      "villagerLevel": 2,
       "equipment": {
         "mainhand": {
           "DataVersion": 4189,

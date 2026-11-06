@@ -38,7 +38,7 @@ class InspectRow extends StatelessWidget {
   /// Shown under the control when short; long help moves into the info tip.
   final String? help;
 
-  /// Info tip text beside the label; with it, [help] always stays inline.
+  /// Tip text on the label; with it, [help] always stays inline.
   final String? tip;
   final List<Diagnostic> problems;
 
@@ -46,7 +46,7 @@ class InspectRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ({String? hint, String? tip}) split = tip == null ? splitHelp(help) : (hint: help == null || help!.isEmpty ? null : help, tip: tip);
     return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      labelWithTip(dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': labelFor}, <Widget>[Component.text(label)]), split.tip, label),
+      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': labelFor}, <Widget>[withTip(Component.text(label), split.tip)]),
       dom.div(classes: 'animus-gui-control', <Widget>[
         child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),

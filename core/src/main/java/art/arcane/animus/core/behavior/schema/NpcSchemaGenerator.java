@@ -286,6 +286,13 @@ public final class NpcSchemaGenerator {
         JsonObject fields = new JsonObject();
         fields.add("shop", described(pattern("^" + ShopDocument.ID + "$"), "A shop id such as town:baker."));
         fields.add("openOn", described(choices(List.of("right", "left", "both")), "Which click opens it. right by default."));
+        fields.add("style", described(choices(List.of("native", "chest")), "The window for this NPC: native (villager trading screen) or chest. The shop's own style by default."));
+        JsonObject villager = described(closed(), "A villager body's profession and level, shown in the trading screen title. Other bodies ignore it.");
+        JsonObject villagerFields = new JsonObject();
+        villagerFields.add("profession", described(pattern("^[a-z0-9_.-]+:[a-z0-9_/.-]+$"), "Such as minecraft:farmer. minecraft:none by default."));
+        villagerFields.add("level", described(range("integer", 1, 5), "1 (novice) to 5 (master). 1 by default."));
+        villager.add("properties", villagerFields);
+        fields.add("villager", villager);
         fields.add("imported", described(new JsonObject(), "Kept from an import."));
         fields.add("reviewAccepted", described(type("boolean"), "An imported binding opens nothing until this is true."));
         shop.add("properties", fields);

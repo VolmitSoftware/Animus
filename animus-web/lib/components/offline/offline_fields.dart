@@ -27,9 +27,8 @@ class FieldRow extends StatelessWidget {
     return dom.div(classes: 'animus-field${error == null ? '' : ' has-error'}', <Widget>[
         // Only the label text names the control; help and problems sit
         // outside the label so they do not join its accessible name.
-        if (split.tip != null) dom.span(classes: 'animus-field-tip', <Widget>[InfoTip(text: split.tip!, topic: label)]),
         dom.label(classes: 'animus-field-control', <Widget>[
-          dom.span(classes: 'animus-field-label', <Widget>[Component.text(label)]),
+          dom.span(classes: 'animus-field-label', <Widget>[withTip(Component.text(label), split.tip)]),
           child,
         ]),
         if (split.hint != null) dom.span(classes: 'animus-field-help', <Widget>[Component.text(split.hint!)]),

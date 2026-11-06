@@ -847,8 +847,8 @@ class _NpcInspectorState extends State<NpcInspector> {
       attributes: <String, String>{'data-module': key},
       <Widget>[
         dom.div(classes: 'animus-gui-action-head', <Widget>[
-          dom.code(<Widget>[Component.text(key)]),
-          if (field?.description case final String about when about.isNotEmpty) InfoTip(text: about, topic: key) else const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('Kept as written.')]),
+          dom.code(<Widget>[withTip(Component.text(key), field?.description)]),
+          if (field?.description?.isNotEmpty != true) const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('Kept as written.')]),
           if (field != null && field.schema.isNotEmpty && value is Map<String, Object?>)
             Button.ghost(
               label: typed ? 'Edit as JSON' : 'Edit as fields',

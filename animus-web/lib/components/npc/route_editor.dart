@@ -385,8 +385,11 @@ class _RouteEditorState extends State<RouteEditor> {
           if (spec.order == 'random') _toolButton(RouteTool.guide, 'Add guides'),
           _toolButton(RouteTool.select, 'Pick and drag'),
           dom.span(classes: 'animus-gui-help', <Widget>[
-            Component.text(_tool == RouteTool.select ? 'Drag to move. ' : 'Click to add, drag to move. '),
-            const InfoTip(text: 'Tab to a point: arrows move it, Shift moves a whole block, Delete removes it.', topic: 'Route grid keys', docs: Docs.routes),
+            InfoTip(
+              tip: 'Tab to a point: arrows move it, Shift moves a whole block, Delete removes it.',
+              docs: Docs.routes,
+              child: Component.text(_tool == RouteTool.select ? 'Drag to move.' : 'Click to add, drag to move.'),
+            ),
           ]),
         ]),
       _grid(spec, picked),

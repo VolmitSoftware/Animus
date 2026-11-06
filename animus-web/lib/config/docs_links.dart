@@ -1,4 +1,4 @@
-/// Wiki pages the editor's info controls link to. Paths and anchors follow
+/// Wiki pages the editor's help tips link to. Paths and anchors follow
 /// the wiki at docs.volmitsoftware.com/animus (Wiki.js heading slugs).
 library;
 

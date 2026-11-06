@@ -17,6 +17,7 @@ import art.arcane.animus.core.runtime.NpcRuntime;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +51,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     private volatile ShopScreen.Context<S> context;
     private final AutoCloseable settingsListener;
     private volatile ShopCatalog catalog = ShopCatalog.EMPTY;
+    private volatile List<String> notes = List.of();
     private volatile Map<String, NpcDefinition> bindingsSource;
     private volatile Map<UUID, ShopBinding> bindings = Map.of();
     private volatile boolean closed;
@@ -111,7 +113,7 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         ShopCatalog current = catalog;
         Optional<String> money = context.transactions().economy().unavailable();
         return "Shops " + (settings.enabled() ? "enabled" : "disabled") + " | shops=" + current.shops().size() + " | guis=" + current.guis().size()
-                + " | problems=" + current.problems().size() + " | open=" + screens.viewing().size()
+                + " | problems=" + current.problems().size() + " | notes=" + notes.size() + " | open=" + screens.viewing().size()
                 + " | economy=" + money.map((String reason) -> "unavailable (" + reason + ")").orElse("ready");
     }
 
@@ -130,12 +132,22 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
                     }
                     next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
                     catalog = next;
+                    notes = notes(next, settings.defaultStyle());
                     next.problems().stream().limit(40).forEach((String problem) -> log.accept("Shop or GUI refused: " + problem));
+                    notes.stream().limit(40).forEach((String note) -> log.accept("Shop note: " + note));
                     done.accept(next);
                 } finally { published.complete(null); }
             });
         } catch (RejectedExecutionException full) { log.accept("Shop catalog reload refused: the file queue is full"); published.complete(null); }
         return published;
+    }
+
+    /** Every shop's {@link ShopNotes}, in its own style or the server default, prefixed with the shop id. */
+    static List<String> notes(ShopCatalog catalog, ShopDocument.Style fallback) {
+        List<String> notes = new ArrayList<>();
+        for (ShopDocument shop : catalog.shops().values())
+            for (String note : ShopNotes.of(shop, shop.style().orElse(fallback), catalog::gui)) notes.add(shop.id() + " " + note);
+        return List.copyOf(notes);
     }
 
     /**
@@ -147,14 +159,17 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         ShopBinding binding = binding(npc);
         if (binding == null || !binding.opensOn(attack)) return false;
         if (sneaking && host.permitted(player, "animus.admin")) return false;
-        openShop(player, binding.shop(), Optional.of(npc));
+        openShop(player, binding.shop(), Optional.of(npc), Optional.empty());
         return true;
     }
 
-    /** On the player's owner. */
-    public boolean openShop(P player, String id, Optional<UUID> npc) {
+    /** On the player's owner, in the style the shop and its NPC choose. */
+    public boolean openShop(P player, String id, Optional<UUID> npc) { return openShop(player, id, npc, Optional.empty()); }
+
+    /** On the player's owner. {@code style} replaces the style the shop and its NPC would choose. */
+    public boolean openShop(P player, String id, Optional<UUID> npc, Optional<ShopDocument.Style> style) {
         if (!enabled()) return false;
-        return screens.open(player, npc, (ScreenManager<P, S>.Viewer viewer) -> shop(viewer, id));
+        return screens.open(player, npc, (ScreenManager<P, S>.Viewer viewer) -> shop(viewer, id, style));
     }
 
     /** On the player's owner. */
@@ -171,10 +186,20 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         return Optional.of(screen);
     }
 
-    @Override public Optional<Screen> shop(ScreenManager<P, S>.Viewer viewer, String id) {
-        Optional<ShopDocument> shop = catalog.shop(id);
+    @Override public Optional<Screen> shop(ScreenManager<P, S>.Viewer viewer, String id) { return shop(viewer, id, Optional.empty()); }
+
+    /**
+     * The style is the first of {@code override}, the opening NPC's {@code animus:shop} style, the shop's style and
+     * {@code [shops] style}. The NPC's villager look applies only when its binding names this shop.
+     */
+    private Optional<Screen> shop(ScreenManager<P, S>.Viewer viewer, String id, Optional<ShopDocument.Style> override) {
+        ShopCatalog current = catalog;
+        Optional<ShopDocument> shop = current.shop(id);
         if (shop.isEmpty()) { host.message(viewer.player(), RichText.colorize(settings.message("shopMissing").replace("{shop}", id))); return Optional.empty(); }
-        return ShopScreen.open(shop.get(), viewer, context);
+        Optional<ShopBinding> bound = viewer.npc().map(this::binding).filter((ShopBinding binding) -> binding.shop().equals(id));
+        ShopDocument.Style style = override.or(() -> bound.flatMap(ShopBinding::style)).or(() -> shop.get().style()).orElse(settings.defaultStyle());
+        ShopScreen.View<P, S> view = new ShopScreen.View<>(style, bound.flatMap(ShopBinding::villager), shop.get().layout().flatMap(current::gui), Optional.of(this));
+        return ShopScreen.open(shop.get(), viewer, context, view);
     }
 
     @Override public Object npc(ScreenManager<P, S>.Viewer viewer, String property) {
@@ -217,8 +242,10 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     }
 
     /** Opens a shop for the actor, or for the named player. */
-    public void open(CommandActor actor, String shop, Optional<String> player) {
-        deliver(actor, player, (P viewer) -> openShop(viewer, shop, Optional.empty()));
+    public void open(CommandActor actor, String shop, Optional<String> player, Optional<String> style) {
+        Optional<ShopDocument.Style> chosen = style.flatMap(ShopDocument.Style::of);
+        if (style.isPresent() && chosen.isEmpty()) { actor.tell("style= is native or chest"); return; }
+        deliver(actor, player, (P viewer) -> openShop(viewer, shop, Optional.empty(), chosen));
     }
 
     /** Clears the limits and stock counters of a shop, for everyone or one player by name or UUID. */
@@ -270,6 +297,10 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         List<String> problems = catalog.problems();
         actor.tell("Shop and GUI problems: " + problems.size());
         problems.stream().limit(30).forEach(actor::tell);
+        List<String> current = notes;
+        if (current.isEmpty()) return;
+        actor.tell("Shop notes: " + current.size());
+        current.stream().limit(30).forEach(actor::tell);
     }
 
     private void deliver(CommandActor actor, Optional<String> named, Consumer<P> work) {
