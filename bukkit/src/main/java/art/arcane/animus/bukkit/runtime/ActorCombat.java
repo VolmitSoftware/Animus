@@ -191,6 +191,9 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     /** A patrol resumes only once no route runs, so the chase path ends first or the NPC walks it out. */
     @Override public void release(UUID npc) { if (npc.equals(actor.uuid)) { actor.stopNavigation(); actor.resumePatrol(); } }
     @Override public boolean teleport(UUID npc, WorldPosition destination) { return npc.equals(actor.uuid) && actor.combatTeleport(destination); }
+    @Override public Optional<WorldPosition> post(UUID npc) { return npc.equals(actor.uuid) ? actor.post() : Optional.empty(); }
+    @Override public boolean step(UUID npc, WorldPosition to) { return npc.equals(actor.uuid) && actor.combatStep(to); }
+    @Override public void restorePose(UUID npc) { if (npc.equals(actor.uuid)) actor.restorePose(); }
     @Override public void face(UUID npc, Vec3 point) {
         if (!npc.equals(actor.uuid)) return;
         try { actor.lookAt(new WorldPosition(actor.state.snapshot().position().world(), point)); }

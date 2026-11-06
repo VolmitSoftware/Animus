@@ -596,6 +596,22 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (triggers != null) triggers.activated(npc);
         return true;
     }
+    /**
+     * Where a stationary NPC stands guard: its definition's position, which no fight or route changes. Empty for an NPC
+     * that patrols waypoints or a reusable route, or that is not active.
+     */
+    public Optional<WorldPosition> post(String id) {
+        if (!available()) return Optional.empty();
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        if (value == null || !value.state.snapshot().active() || value.routeSource != null || WaypointSettings.parse(value.spec.definition()).isPresent())
+            return Optional.empty();
+        return Optional.of(value.spec.position());
+    }
+    /** Turns the NPC back to its definition's facing, standing. */
+    public void restorePose(String id) {
+        Value value = navigable(id);
+        setPose(value, value.spec.yaw(), value.spec.pitch(), true);
+    }
     /** Restarts the definition's own waypoint patrol from its first point, if it declares one and nothing else moves the NPC. */
     public void resumePatrol(String id) {
         Value value = navigable(id);

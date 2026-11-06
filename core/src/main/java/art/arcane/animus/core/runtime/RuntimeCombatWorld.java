@@ -102,6 +102,22 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         }
         return false;
     }
+    @Override public Optional<WorldPosition> post(UUID npc) { return living.combatant(npc).flatMap((NpcRuntime.ActiveNpc active) -> living.post(active.id())); }
+    /** A short step onto the post's footing, swept for collisions like knockback; anything else leaves the NPC in place. */
+    @Override public boolean step(UUID npc, WorldPosition to) {
+        Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
+        if (active.isEmpty() || !host.worldLoaded(to.world())) return false;
+        Hitbox bounds = active.get().state().bounds();
+        double width = PersistedNpcService.hullWidth(bounds.max().x() - bounds.min().x()), height = PersistedNpcService.hullHeight(bounds.max().y() - bounds.min().y());
+        WorldPosition settled = settle(host.collision(to.world()), width, height, to).orElse(to);
+        return relocate(npc, settled);
+    }
+    @Override public void restorePose(UUID npc) {
+        living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> {
+            try { living.restorePose(active.id()); }
+            catch (IllegalStateException inactive) { /* facing is cosmetic */ }
+        });
+    }
     /**
      * The surface a body would stand on in the block named by the spot: a path, farmland, slab or full block top inside
      * {@code [y, y + 1)}. Empty when nothing there holds it or the terrain cannot be read.
