@@ -13,6 +13,7 @@ import '../../model/document_kind.dart';
 import '../data_folder.dart';
 import '../gui/gui_json.dart';
 import '../gui/gui_templates.dart';
+import '../npc/npc_paths.dart';
 import '../rig_edit.dart' show bonesOf, newAnimation, setKeyframe;
 import '../rig_sampler.dart' show TrackTarget;
 
@@ -145,18 +146,25 @@ class NpcSeed {
   final double yaw;
   final List<String> behaviors;
 
-  String get documentId => '${slug(group, fallback: 'local')}/${id ?? slug(name)}';
+  String get documentId => npcIdIn(npcFolderSlug(group), id ?? slug(name));
 }
 
+/// [folder] as typed, made into an NPC folder: each segment a slug, at most
+/// [npcMaxFolders] deep; empty for `npcs/` itself.
+String npcFolderSlug(String folder) => <String>[
+      for (final String segment in normalizeNpcFolder(folder).split('/'))
+        if (segment.trim().isNotEmpty) slug(segment, fallback: 'folder'),
+    ].take(npcMaxFolders).join('/');
+
 JsonMap newNpc(NpcSeed seed, {required String uuid}) {
-  final List<String> parts = seed.documentId.split('/');
+  final String id = npcLocalIdOf(seed.documentId);
   return <String, Object?>{
     'schemaVersion': 1,
     'revision': 1,
     'uuid': uuid,
-    'id': parts[1],
-    'group': parts[0],
-    'name': seed.name.trim().isEmpty ? parts[1] : seed.name.trim(),
+    'id': id,
+    'group': npcFolderOf(seed.documentId),
+    'name': seed.name.trim().isEmpty ? id : seed.name.trim(),
     'type': seed.type,
     'spawned': true,
     'position': <String, Object?>{
@@ -584,9 +592,8 @@ Object? rewriteIdentity(DocumentKind kind, Object? json, String id, {required bo
   final JsonMap out = <String, Object?>{...json};
   switch (kind) {
     case DocumentKind.npc:
-      final List<String> parts = id.split('/');
-      out['group'] = parts.first;
-      out['id'] = parts.last;
+      out['group'] = npcFolderOf(id);
+      out['id'] = npcLocalIdOf(id);
       if (fresh) out['uuid'] = newUuid(random);
     case DocumentKind.behavior:
     case DocumentKind.shop:

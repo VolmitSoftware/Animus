@@ -7,6 +7,7 @@ import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
 import '../gui/gui_json.dart';
 import 'npc_catalog.dart';
+import 'npc_paths.dart';
 
 /// What a bulk operation would write.
 class NpcBulkResult {
@@ -70,23 +71,35 @@ NpcBulkResult removeTag(List<NpcEntry> entries, String tag) => _each(entries, (N
   return next;
 });
 
-/// Moves NPCs to `npcs/<folder>/`: the definition's `group` and its file
-/// follow, the id stays. [taken] holds every NPC key in the workspace.
+/// The two document changes that move [entry] to [folder]: the old file
+/// goes, the new one keeps the definition (and its uuid) with `group` set to
+/// the folder. On a server workspace the next apply sends them as one move.
+List<DocumentChange> _moveChanges(NpcEntry entry, String folder) {
+  final String key = npcIdIn(folder, entry.localId);
+  final JsonMap next = _copy(entry)..['group'] = folder;
+  return <DocumentChange>[
+    DocumentChange(DocumentKind.npc, entry.key, null),
+    DocumentChange(DocumentKind.npc, key, prettyJson(next), path: documentPath(DocumentKind.npc, key)),
+  ];
+}
+
+/// Moves NPCs to `npcs/<folder>/` (the empty folder is `npcs/` itself): the
+/// definition's `group` and its file follow, the id stays. [taken] holds
+/// every NPC key in the workspace.
 NpcBulkResult moveToFolder(List<NpcEntry> entries, String folder, Set<String> taken) {
-  if (!npcFolderPattern.hasMatch(folder)) {
-    return NpcBulkResult(const <DocumentChange>[], <String, String>{
-      for (final NpcEntry entry in entries) entry.key: 'Folders use 1-64 of a-z, 0-9, _ and -, up to 8 deep joined by /.',
-    }, 0);
+  final String? problem = npcFolderProblem(folder);
+  if (problem != null) {
+    return NpcBulkResult(const <DocumentChange>[], <String, String>{for (final NpcEntry entry in entries) entry.key: problem}, 0);
   }
   final List<DocumentChange> changes = <DocumentChange>[];
   final Map<String, String> skipped = <String, String>{};
   final Set<String> claimed = <String>{...taken};
   for (final NpcEntry entry in entries) {
     if (entry.folder == folder) {
-      skipped[entry.key] = 'Already in $folder.';
+      skipped[entry.key] = 'Already in npcs/${folder.isEmpty ? '' : '$folder/'}.';
       continue;
     }
-    final String key = '$folder/${entry.localId}';
+    final String key = npcIdIn(folder, entry.localId);
     if (claimed.contains(key)) {
       skipped[entry.key] = '$key already exists.';
       continue;
@@ -94,13 +107,59 @@ NpcBulkResult moveToFolder(List<NpcEntry> entries, String folder, Set<String> ta
     claimed
       ..remove(entry.key)
       ..add(key);
-    final JsonMap next = _copy(entry)..['group'] = folder;
-    changes
-      ..add(DocumentChange(DocumentKind.npc, entry.key, null))
-      ..add(DocumentChange(DocumentKind.npc, key, prettyJson(next), path: documentPath(DocumentKind.npc, key)));
+    changes.addAll(_moveChanges(entry, folder));
   }
   return NpcBulkResult(changes, skipped, changes.length ~/ 2);
 }
+
+/// What a folder rename or move would write, or why it cannot.
+class NpcFolderEdit {
+  const NpcFolderEdit(this.changes, this.moved, {this.problem});
+
+  final List<DocumentChange> changes;
+
+  /// How many NPCs move.
+  final int moved;
+
+  /// Why nothing is written, in the server's words where the server has
+  /// some; null when the edit can go ahead.
+  final String? problem;
+
+  static NpcFolderEdit refused(String problem) => NpcFolderEdit(const <DocumentChange>[], 0, problem: problem);
+}
+
+/// Renames folder [from] to [to]: every NPC in [from] and the folders below
+/// it moves along, so `town/market/baker` becomes `<to>/market/baker` for a
+/// rename of `town`. All of them move or none. [entries] is every NPC of the
+/// workspace.
+NpcFolderEdit renameNpcFolder(List<NpcEntry> entries, String from, String to) {
+  if (from.isEmpty) return NpcFolderEdit.refused('npcs/ itself cannot be renamed or moved.');
+  if (to == from) return NpcFolderEdit.refused('npcs/$from/ already has that name.');
+  if (to.isEmpty) return NpcFolderEdit.refused('Give the folder a name.');
+  final String? problem = npcFolderProblem(to);
+  if (problem != null) return NpcFolderEdit.refused(problem);
+  if (npcFolderWithin(to, from)) return NpcFolderEdit.refused('npcs/$from/ cannot move into itself.');
+  final Set<String> keys = <String>{for (final NpcEntry entry in entries) entry.key};
+  final List<NpcEntry> inside = <NpcEntry>[
+    for (final NpcEntry entry in entries)
+      if (npcFolderWithin(entry.folder, from)) entry,
+  ];
+  final List<DocumentChange> changes = <DocumentChange>[];
+  for (final NpcEntry entry in inside) {
+    final String folder = '$to${entry.folder.substring(from.length)}';
+    final String? deeper = npcFolderProblem(folder);
+    if (deeper != null) return NpcFolderEdit.refused('${entry.key} would land in $deeper');
+    final String key = npcIdIn(folder, entry.localId);
+    if (keys.contains(key)) return NpcFolderEdit.refused('$key already exists.');
+    changes.addAll(_moveChanges(entry, folder));
+  }
+  return NpcFolderEdit(changes, inside.length);
+}
+
+/// Moves folder [from] (with its subtree) into [parent]; the empty parent
+/// is `npcs/` itself.
+NpcFolderEdit moveNpcFolder(List<NpcEntry> entries, String from, String parent) =>
+    renameNpcFolder(entries, from, npcIdIn(parent, npcFolderName(from)));
 
 /// Switches a module on or off. A module the NPC lacks is added only when
 /// `{"enabled": true}` is a whole valid setting ([creatableModules]).

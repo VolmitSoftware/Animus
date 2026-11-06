@@ -11,6 +11,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
+import '../../logic/npc/npc_paths.dart';
 import '../../logic/offline/new_documents.dart';
 import '../../mc/rigs/mc_rigs.dart';
 import '../../model/animus_document.dart';
@@ -38,11 +39,15 @@ const Map<String, String> bodyLabels = <String, String>{
 enum _SkinSource { none, file, url, existing }
 
 class NewDocumentPage extends StatefulWidget {
-  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, super.key});
+  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, super.key});
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
   final DocumentKind? kind;
+
+  /// The NPC folder the form starts with, such as `town/market`; empty for
+  /// `npcs/` itself, null for the default.
+  final String? folder;
   final void Function(EditorRoute route) onNavigate;
 
   @override
@@ -60,7 +65,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   // NPC.
   String _type = 'minecraft:player';
-  String _group = 'local';
+  late String _group = component.folder ?? 'local';
   String _world = 'world';
   num _x = 0.5, _y = 64, _z = 0.5, _yaw = 0;
   String _behavior = '';
@@ -123,7 +128,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       _ => kind.wireName,
     });
     final String candidate = switch (kind) {
-      DocumentKind.npc => '${slug(_group, fallback: 'local')}/$base',
+      DocumentKind.npc => npcIdIn(npcFolderSlug(_group), base),
       DocumentKind.route || DocumentKind.pack => base,
       DocumentKind.animation => '${_rig ?? '$_namespace:rig'}/$base',
       _ => '$_namespace:$base',
@@ -317,12 +322,11 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     } else if (_behavior.isNotEmpty) {
       behaviors.add(_behavior);
     }
-    final List<String> parts = id.split('/');
     final NpcSeed seed = NpcSeed(
-      name: _name.trim().isEmpty ? parts.last : _name.trim(),
+      name: _name.trim().isEmpty ? npcLocalIdOf(id) : _name.trim(),
       type: _type,
-      group: parts.first,
-      id: parts.last,
+      group: npcFolderOf(id),
+      id: npcLocalIdOf(id),
       skin: skin,
       world: _world,
       x: _x.toDouble(),

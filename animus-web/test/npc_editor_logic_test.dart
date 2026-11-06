@@ -69,19 +69,35 @@ void main() {
     });
   });
 
-  group('treeMove', () {
-    test('should step through items and stop at the ends', () {
-      expect(treeMove('ArrowDown', 0, 4), 1);
-      expect(treeMove('ArrowDown', 3, 4), 3);
-      expect(treeMove('ArrowUp', 0, 4), 0);
-      expect(treeMove('Home', 2, 4), 0);
-      expect(treeMove('End', 0, 4), 3);
+  group('treeKey', () {
+    // npcs/ (open) > town (open) > market (closed), and harbor, a leaf.
+    const List<TreeRow> rows = <TreeRow>[
+      TreeRow(parent: null, expandable: true, expanded: true),
+      TreeRow(parent: 0, expandable: true, expanded: true),
+      TreeRow(parent: 1, expandable: true),
+      TreeRow(parent: 0),
+    ];
+
+    test('should step through visible items and stop at the ends', () {
+      expect(treeKey('ArrowDown', 0, rows), (TreeStep.focus, 1));
+      expect(treeKey('ArrowDown', 3, rows), (TreeStep.focus, 3));
+      expect(treeKey('ArrowUp', 0, rows), (TreeStep.focus, 0));
+      expect(treeKey('Home', 2, rows), (TreeStep.focus, 0));
+      expect(treeKey('End', 0, rows), (TreeStep.focus, 3));
     });
 
-    test('should send Left to the root and ignore other keys', () {
-      expect(treeMove('ArrowLeft', 3, 4), 0);
-      expect(treeMove('ArrowRight', 0, 4), 1);
-      expect(treeMove('a', 1, 4), isNull);
+    test('should expand with Right, then enter the first child', () {
+      expect(treeKey('ArrowRight', 2, rows), (TreeStep.expand, 2));
+      expect(treeKey('ArrowRight', 1, rows), (TreeStep.focus, 2));
+      expect(treeKey('ArrowRight', 3, rows), isNull);
+    });
+
+    test('should collapse with Left, then return to the parent', () {
+      expect(treeKey('ArrowLeft', 1, rows), (TreeStep.collapse, 1));
+      expect(treeKey('ArrowLeft', 2, rows), (TreeStep.focus, 1));
+      expect(treeKey('ArrowLeft', 3, rows), (TreeStep.focus, 0));
+      expect(treeKey('a', 1, rows), isNull);
+      expect(treeKey('ArrowDown', 0, const <TreeRow>[]), isNull);
     });
   });
 
