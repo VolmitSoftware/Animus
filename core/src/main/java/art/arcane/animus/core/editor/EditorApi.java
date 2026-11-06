@@ -405,7 +405,7 @@ public final class EditorApi implements EditorRequestHandler {
             JsonArray diagnostics;
             try {
                 source = JsonDocuments.object(stored.content());
-                diagnostics = EditorDocuments.validate(kind, id, source);
+                diagnostics = parts.documents().validate(kind, id, source);
             } catch (IOException unreadable) {
                 source = new JsonObject();
                 diagnostics = new JsonArray();
@@ -439,7 +439,7 @@ public final class EditorApi implements EditorRequestHandler {
                     JsonObject source = change.source().orElseThrow().deepCopy();
                     EditorDocuments.Stored current = parts.documents().read(parts.documents().locate(change.kind(), change.id()));
                     if (EditorDocuments.REVISIONED.contains(change.kind())) source.addProperty("revision", current.revision() + 1);
-                    diagnostics = EditorDocuments.validate(change.kind(), change.id(), source);
+                    diagnostics = parts.documents().validate(change.kind(), change.id(), source);
                     if (change.kind() == DocumentKind.NPC && source.has("behaviors") && source.get("behaviors").isJsonArray()) {
                         int index = 0;
                         for (JsonElement reference : source.getAsJsonArray("behaviors")) {
@@ -471,7 +471,7 @@ public final class EditorApi implements EditorRequestHandler {
         UUID viewer = token.admin().orElseThrow(() -> new EditorError(EditorError.Code.PLAYER_OFFLINE, "This token was paired from the console; previews show to the pairing player."));
         if (!parts.host().online(viewer)) throw new EditorError(EditorError.Code.PLAYER_OFFLINE, "The pairing player is not online.");
         List<NpcDefinition> npcs;
-        try { npcs = EditorPreviews.candidates(changes, parts.settings().npcsPerPreview()); }
+        try { npcs = EditorPreviews.candidates(changes, parts.settings().npcsPerPreview(), parts.documents().recordingBytes()); }
         catch (EditorError refused) {
             audit("preview", Optional.of(token.id()), token.admin(), request, names(changes), refused.code().wireName());
             throw refused;

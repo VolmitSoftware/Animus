@@ -105,6 +105,48 @@ class PluginSettingsTest {
             assertTrue(error.getMessage().contains("navigation: planningJobs must be within 1..256"), error.getMessage());
         }
     }
+    @Test void recordingSettingsAreReadFromTomlAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(RecordingSettings.DEFAULT, PluginSettings.load(store).recordings());
+            assertEquals(new RecordingSettings(true, 2, 12000, 1048576, 4, true, 100, 100, true, "aqua", 8), RecordingSettings.DEFAULT);
+            assertTrue(Files.readString(root.resolve("config.toml")).contains("[recordings]"));
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[recordings]\nenabled = false\nmaximumTicks = 72000\nghostColor = 'gold'\n");
+            RecordingSettings recordings = PluginSettings.load(store).recordings();
+            assertFalse(recordings.enabled());
+            assertEquals(72000, recordings.maximumTicks());
+            assertEquals("gold", recordings.ghostColor());
+            assertEquals(RecordingSettings.DEFAULT.sampleTicks(), recordings.sampleTicks());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[recordings]\nmaximumTicks = 72001\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("recordings: maximumTicks must be within 200..72000"), error.getMessage());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[recordings]\nghostColor = 'pink'\n");
+            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("recordings: ghostColor must be one of the sixteen chat colours"), error.getMessage());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[recordings]\nghostOpacity = 3\n");
+            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("ghostOpacity is not a recording setting"), error.getMessage());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[recordings]\nghostGlow = 1\n");
+            error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("recordings: ghostGlow must be a boolean"), error.getMessage());
+        }
+    }
+    @ParameterizedTest
+    @ValueSource(strings = {"sampleTicks = 0", "sampleTicks = 21", "maximumTicks = 199", "maximumFileBytes = 65535", "maximumFileBytes = 4194305",
+            "maximumSessions = 0", "maximumSessions = 17", "ghostIntervalTicks = 39", "ghostIntervalTicks = 1201", "ghostStretchTicks = 19",
+            "ghostStretchTicks = 601", "maximumPreviews = 0", "maximumPreviews = 33"})
+    void recordingRangesMatchTheDesign(String line) {
+        IOException error = assertThrows(IOException.class, () -> PluginSettings.parse("statusMessage = 'x'\n[recordings]\n" + line + "\n", Path.of("config.toml")));
+        assertTrue(error.getMessage().startsWith("config.toml: recordings: " + line.substring(0, line.indexOf(' ')) + " must be within "), error.getMessage());
+    }
+    @Test void recordingRangeEdgesAreAccepted() throws IOException {
+        RecordingSettings low = PluginSettings.parse("statusMessage = 'x'\n[recordings]\nsampleTicks = 1\nmaximumTicks = 200\nmaximumFileBytes = 65536\n"
+                + "maximumSessions = 1\nghostIntervalTicks = 40\nghostStretchTicks = 20\nmaximumPreviews = 1\n", Path.of("config.toml")).recordings();
+        assertEquals(new RecordingSettings(true, 1, 200, 65536, 1, true, 40, 20, true, "aqua", 1), low);
+        RecordingSettings high = PluginSettings.parse("statusMessage = 'x'\n[recordings]\nsampleTicks = 20\nmaximumTicks = 72000\nmaximumFileBytes = 4194304\n"
+                + "maximumSessions = 16\nghostIntervalTicks = 1200\nghostStretchTicks = 600\nmaximumPreviews = 32\nghostEnabled = false\nghostGlow = false\n"
+                + "ghostColor = 'dark_purple'\n", Path.of("config.toml")).recordings();
+        assertEquals(new RecordingSettings(true, 20, 72000, 4194304, 16, false, 1200, 600, false, "dark_purple", 32), high);
+    }
     @Test void buildLimitsAreReadFromTomlAndBounded() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             assertEquals(BuildSettings.DEFAULT, PluginSettings.load(store).builds());
