@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-10",
   "title": "Alex's shop",
+  "style": "native",
   "modes": [
     "trade"
   ],

@@ -1026,6 +1026,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "description": "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes."
         },
         {
+          "const": "animus:set-attribute",
+          "description": "Sets one vanilla attribute of the NPC, such as scale or movement_speed, or with reset returns it to the definition's value. Lasts until the runtime restarts or the definition changes."
+        },
+        {
           "const": "animus:set-equipment",
           "description": "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes."
         },
@@ -3472,6 +3476,94 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     }
                   ],
                   "description": "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:set-attribute"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "attribute": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "value": {
+                      "type": "number"
+                    },
+                    "reset": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "attribute"
+                  ],
+                  "anyOf": [
+                    {
+                      "required": [
+                        "value"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "reset"
+                      ]
+                    }
+                  ],
+                  "description": "Sets one vanilla attribute of the NPC, such as scale or movement_speed, or with reset returns it to the definition's value. Lasts until the runtime restarts or the definition changes."
                 }
               },
               "required": [
@@ -8075,6 +8167,39 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       ]
     },
     {
+      "id": "animus:set-attribute",
+      "kind": "action",
+      "description": "Sets one vanilla attribute of the NPC, such as scale or movement_speed, or with reset returns it to the definition's value. Lasts until the runtime restarts or the definition changes.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
+      "arguments": {
+        "attribute": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "value": {
+          "type": "number",
+          "required": false
+        },
+        "reset": {
+          "type": "boolean",
+          "required": false
+        }
+      },
+      "oneOfRequired": [
+        [
+          "value"
+        ],
+        [
+          "reset"
+        ]
+      ]
+    },
+    {
       "id": "animus:set-equipment",
       "kind": "action",
       "description": "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes.",
@@ -10803,7 +10928,574 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "gravity": {
       "type": "boolean",
-      "description": "False keeps the body where it is placed. True by default."
+      "description": "False keeps the body where it is placed, whatever the gravity attribute says. True by default."
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Vanilla entity attributes by id, such as scale or minecraft:scale, mapped to base values. Every one is sent to viewers; the description of each says what Animus itself does with it.",
+      "properties": {
+        "air_drag_modifier": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 1.0
+        },
+        "minecraft:air_drag_modifier": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 1.0
+        },
+        "armor": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 30.0,
+          "description": "Vanilla default 0. Combat armor points with vanilla damage reduction, unless the combat module sets defense.armor or defense.armorFromEquipment.",
+          "default": 0.0
+        },
+        "minecraft:armor": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 30.0,
+          "description": "Vanilla default 0. Combat armor points with vanilla damage reduction, unless the combat module sets defense.armor or defense.armorFromEquipment.",
+          "default": 0.0
+        },
+        "armor_toughness": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 20.0,
+          "description": "Vanilla default 0. Combat armor toughness, used with armor.",
+          "default": 0.0
+        },
+        "minecraft:armor_toughness": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 20.0,
+          "description": "Vanilla default 0. Combat armor toughness, used with armor.",
+          "default": 0.0
+        },
+        "attack_damage": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 2. Melee damage unless the combat module sets melee.damage or melee.fromEquipment.",
+          "default": 2.0
+        },
+        "minecraft:attack_damage": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 2. Melee damage unless the combat module sets melee.damage or melee.fromEquipment.",
+          "default": 2.0
+        },
+        "attack_knockback": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 5.0,
+          "description": "Vanilla default 0. Adds half its value to the 0.4 base melee knockback unless the combat module sets melee.knockback.",
+          "default": 0.0
+        },
+        "minecraft:attack_knockback": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 5.0,
+          "description": "Vanilla default 0. Adds half its value to the 0.4 base melee knockback unless the combat module sets melee.knockback.",
+          "default": 0.0
+        },
+        "attack_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 4. Melee hits per second unless the combat module sets melee.cooldownTicks.",
+          "default": 4.0
+        },
+        "minecraft:attack_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 4. Melee hits per second unless the combat module sets melee.cooldownTicks.",
+          "default": 4.0
+        },
+        "below_name_distance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 512.0,
+          "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 10.0
+        },
+        "minecraft:below_name_distance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 512.0,
+          "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 10.0
+        },
+        "block_break_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 1.0
+        },
+        "minecraft:block_break_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 1.0
+        },
+        "block_interaction_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 64.0,
+          "description": "Vanilla default 4.5. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 4.5
+        },
+        "minecraft:block_interaction_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 64.0,
+          "description": "Vanilla default 4.5. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 4.5
+        },
+        "bounciness": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 0.0
+        },
+        "minecraft:bounciness": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 0.0
+        },
+        "burning_time": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 1.0
+        },
+        "minecraft:burning_time": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 1.0
+        },
+        "camera_distance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 32.0,
+          "description": "Vanilla default 4. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 4.0
+        },
+        "minecraft:camera_distance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 32.0,
+          "description": "Vanilla default 4. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 4.0
+        },
+        "entity_interaction_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 64.0,
+          "description": "Vanilla default 3. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 3.0
+        },
+        "minecraft:entity_interaction_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 64.0,
+          "description": "Vanilla default 3. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 3.0
+        },
+        "explosion_knockback_resistance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:explosion_knockback_resistance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "fall_damage_multiplier": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 100.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 1.0
+        },
+        "minecraft:fall_damage_multiplier": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 100.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 1.0
+        },
+        "flying_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0.4. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.4
+        },
+        "minecraft:flying_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0.4. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.4
+        },
+        "follow_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 32. Combat scan range, at most 256, unless the combat module sets targeting.scanRange.",
+          "default": 32.0
+        },
+        "minecraft:follow_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 32. Combat scan range, at most 256, unless the combat module sets targeting.scanRange.",
+          "default": 32.0
+        },
+        "friction_modifier": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 1.0
+        },
+        "minecraft:friction_modifier": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 1. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 1.0
+        },
+        "gravity": {
+          "type": "number",
+          "minimum": -1.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0.08. Fall acceleration in blocks per tick squared; 0 or less hovers. The gravity field set to false hovers whatever this says.",
+          "default": 0.08
+        },
+        "minecraft:gravity": {
+          "type": "number",
+          "minimum": -1.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0.08. Fall acceleration in blocks per tick squared; 0 or less hovers. The gravity field set to false hovers whatever this says.",
+          "default": 0.08
+        },
+        "jump_strength": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 32.0,
+          "description": "Vanilla default 0.41999998688697815. Jump height on paths, worked out with gravity, at most 3 blocks.",
+          "default": 0.41999998688697815
+        },
+        "minecraft:jump_strength": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 32.0,
+          "description": "Vanilla default 0.41999998688697815. Jump height on paths, worked out with gravity, at most 3 blocks.",
+          "default": 0.41999998688697815
+        },
+        "knockback_resistance": {
+          "type": "number",
+          "minimum": -2.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. The share of combat knockback the NPC ignores; below 0 it takes more.",
+          "default": 0.0
+        },
+        "minecraft:knockback_resistance": {
+          "type": "number",
+          "minimum": -2.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. The share of combat knockback the NPC ignores; below 0 it takes more.",
+          "default": 0.0
+        },
+        "luck": {
+          "type": "number",
+          "minimum": -1024.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:luck": {
+          "type": "number",
+          "minimum": -1024.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "max_absorption": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:max_absorption": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "max_health": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 20. Combat maximum health unless the combat module sets defense.maximumHealth.",
+          "default": 20.0
+        },
+        "minecraft:max_health": {
+          "type": "number",
+          "minimum": 1.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 20. Combat maximum health unless the combat module sets defense.maximumHealth.",
+          "default": 20.0
+        },
+        "mining_efficiency": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:mining_efficiency": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "movement_efficiency": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:movement_efficiency": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "movement_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0.7. Walking speed when neither the route nor movement.speed sets one: a player body walks 43.17 times this in blocks per second, other bodies 44.05 times its square, kept within 1..10.",
+          "default": 0.7
+        },
+        "minecraft:movement_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0.7. Walking speed when neither the route nor movement.speed sets one: a player body walks 43.17 times this in blocks per second, other bodies 44.05 times its square, kept within 1..10.",
+          "default": 0.7
+        },
+        "name_tag_distance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 512.0,
+          "description": "Vanilla default 64. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 64.0
+        },
+        "minecraft:name_tag_distance": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 512.0,
+          "description": "Vanilla default 64. Sent to viewers; no effect on an NPC's own simulation. Minecraft 26.2 and later.",
+          "default": 64.0
+        },
+        "oxygen_bonus": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:oxygen_bonus": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "safe_fall_distance": {
+          "type": "number",
+          "minimum": -1024.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 3. Blocks a path may drop, 0..16, unless movement.maximumFall is set.",
+          "default": 3.0
+        },
+        "minecraft:safe_fall_distance": {
+          "type": "number",
+          "minimum": -1024.0,
+          "maximum": 1024.0,
+          "description": "Vanilla default 3. Blocks a path may drop, 0..16, unless movement.maximumFall is set.",
+          "default": 3.0
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 0.0625,
+          "maximum": 16.0,
+          "description": "Vanilla default 1. Body size: hitbox, click reach, path clearance, rig bones and text height grow with it.",
+          "default": 1.0
+        },
+        "minecraft:scale": {
+          "type": "number",
+          "minimum": 0.0625,
+          "maximum": 16.0,
+          "description": "Vanilla default 1. Body size: hitbox, click reach, path clearance, rig bones and text height grow with it.",
+          "default": 1.0
+        },
+        "sneaking_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0.3. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.3
+        },
+        "minecraft:sneaking_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0.3. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.3
+        },
+        "spawn_reinforcements": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:spawn_reinforcements": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "step_height": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10.0,
+          "description": "Vanilla default 0.6. Blocks climbed without a jump, at most 1.5, unless movement.stepHeight is set.",
+          "default": 0.6
+        },
+        "minecraft:step_height": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 10.0,
+          "description": "Vanilla default 0.6. Blocks climbed without a jump, at most 1.5, unless movement.stepHeight is set.",
+          "default": 0.6
+        },
+        "submerged_mining_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 20.0,
+          "description": "Vanilla default 0.2. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.2
+        },
+        "minecraft:submerged_mining_speed": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 20.0,
+          "description": "Vanilla default 0.2. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.2
+        },
+        "sweeping_damage_ratio": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:sweeping_damage_ratio": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "tempt_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 10.0
+        },
+        "minecraft:tempt_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2048.0,
+          "description": "Vanilla default 10. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 10.0
+        },
+        "water_movement_efficiency": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:water_movement_efficiency": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "waypoint_receive_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 6.0E7,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:waypoint_receive_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 6.0E7,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "waypoint_transmit_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 6.0E7,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        },
+        "minecraft:waypoint_transmit_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 6.0E7,
+          "description": "Vanilla default 0. Sent to viewers; no effect on an NPC's own simulation.",
+          "default": 0.0
+        }
+      }
     },
     "inventory": {
       "type": "object",
@@ -12350,6 +13042,31 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "both"
               ],
               "description": "Which click opens it. right by default."
+            },
+            "style": {
+              "enum": [
+                "native",
+                "chest"
+              ],
+              "description": "The window for this NPC: native (villager trading screen) or chest. The shop's own style by default."
+            },
+            "villager": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "A villager body's profession and level, shown in the trading screen title. Other bodies ignore it.",
+              "properties": {
+                "profession": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_.-]+:[a-z0-9_/.-]+$",
+                  "description": "Such as minecraft:farmer. minecraft:none by default."
+                },
+                "level": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 5,
+                  "description": "1 (novice) to 5 (master). 1 by default."
+                }
+              }
             },
             "imported": {
               "description": "Kept from an import."
@@ -19125,6 +19842,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "usingItem": {"type": "boolean"},
         "listed": {"type": "boolean"},
         "gravity": {"type": "boolean"},
+        "attributes": {"type": "object", "description": "Vanilla attribute ids mapped to base values; merged attribute by attribute with the NPC's, minecraft: ids counting as bare ones."},
         "skin": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "skins": {
           "type": "array",
@@ -20640,6 +21358,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "id": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$", "description": "namespace:path, matching this file's location."},
     "title": {"type": "string", "description": "Window title; & codes and MiniMessage. Defaults to the id."},
     "permission": {"$ref": "#/$defs/permission"},
+    "style": {"enum": ["native", "chest"], "description": "native opens the villager trading screen; chest opens the chest window. Defaults to [shops] style in config.toml. An NPC's animus:shop module can override it."},
+    "layout": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$", "description": "A chest GUI id whose list area shows the offers, in pages. Chest style only; without it the shop's own pages are shown."},
     "modes": {
       "type": "array",
       "minItems": 1,

@@ -15,11 +15,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A viewer's outgoing packet queue stays bounded, a full queue holds work back instead of dropping the viewer, and
- * cosmetic updates such as arm swings go after every move and are coalesced.
+ * cosmetic updates such as arm swings go after every move and are coalesced. Attack swings go with moves.
  */
 class PresentationQueueTest {
     @TempDir Path directory;
@@ -67,6 +68,62 @@ class PresentationQueueTest {
         for (int i = 0; i < 3; i++) harness.service.swing("crowd-1");
         harness.tick(1);
         assertEquals(before + 1, harness.transport.swings.get(), "three swings in one tick are sent as one");
+    }
+
+    @Test
+    void attackSwingsGoWithMovesWhileCosmeticWorkPauses() throws IOException {
+        ViewerWatchRaceTest.Harness harness = harness(new PersistedNpcService.Settings(true, 48, 64, 256, 16, 2, 8, 32, 512, 24, 4));
+        for (int i = 0; i < 3; i++) write(harness, "crowd-" + i, 2.5 + i);
+        reload(harness);
+        tickUntilSpawned(harness, 3);
+        harness.tick(PresentationPressure.RECOVERY_TICKS + 2);
+
+        turnAll(harness, 3, 40);
+        harness.tick(1);
+        assertTrue(harness.service.status().contains("presentation=strained"), harness.service.status());
+        int before = harness.transport.swings.get();
+        harness.service.attackSwing("crowd-0");
+        harness.tick(1);
+        assertEquals(before + 1, harness.transport.swings.get(), "an attack is shown on the next turn, not after the cosmetic pause");
+        harness.tick(PresentationPressure.RECOVERY_TICKS + 2);
+        assertEquals(before + 1, harness.transport.swings.get(), "one attack, one swing");
+    }
+
+    @Test
+    void anAttackSwingHeldByAFullQueueIsSentOnceItDrains() throws IOException {
+        ViewerWatchRaceTest.Harness harness = harness(new PersistedNpcService.Settings(true, 48, 64, 256, 16, 64, 8, 32, 512, 8, 4));
+        for (int i = 0; i < 12; i++) write(harness, "crowd-" + i, 2.5 + i);
+        reload(harness);
+        tickUntilSpawned(harness, 12);
+
+        harness.transport.holdMoves = true;
+        turnAll(harness, 12, 40);
+        harness.tick(1);
+        int before = harness.transport.swings.get();
+        harness.service.attackSwing("crowd-11");
+        harness.tick(15);
+        assertEquals(before, harness.transport.swings.get(), "the queue is full");
+        harness.transport.holdMoves = false;
+        for (CompletableFuture<Void> waiting : harness.transport.held) waiting.complete(null);
+        harness.tick(3);
+        assertEquals(before + 1, harness.transport.swings.get(), "a held attack is not dropped as stale");
+    }
+
+    @Test
+    void aDrawnBowShowsAsTheLivingUseFlagAndIsLoweredAgain() throws IOException {
+        ViewerWatchRaceTest.Harness harness = harness(new PersistedNpcService.Settings(true, 48, 64, 256, 16, 64, 8, 32, 512, 24, 4));
+        harness.transport.presentation = true;
+        write(harness, "archer", 2.5);
+        reload(harness);
+        tickUntilSpawned(harness, 1);
+
+        harness.service.drawing("archer", true);
+        harness.tick(2);
+        assertTrue(harness.transport.looks.getLast().usingItem(), "drawn");
+        assertEquals(0, harness.transport.looks.getLast().sharedFlags(false), "drawing sets no shared flag");
+        harness.service.drawing("archer", false);
+        harness.tick(2);
+        assertFalse(harness.transport.looks.getLast().usingItem(), "lowered");
     }
 
     private ViewerWatchRaceTest.Harness harness(PersistedNpcService.Settings settings) throws IOException {

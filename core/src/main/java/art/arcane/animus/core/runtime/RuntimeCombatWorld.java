@@ -135,6 +135,8 @@ public abstract class RuntimeCombatWorld<P, I> implements CombatWorld {
         });
     }
     @Override public double yaw(UUID npc) { return living.yaw(npc); }
+    @Override public void swing(UUID npc) { living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.attackSwing(active.id())); }
+    @Override public void drawing(UUID npc, boolean drawing) { living.combatant(npc).ifPresent((NpcRuntime.ActiveNpc active) -> living.drawing(active.id(), drawing)); }
     @Override public void knockback(UUID npc, Vec3 direction, double strength) {
         Optional<NpcRuntime.ActiveNpc> active = living.combatant(npc);
         double horizontal = Math.hypot(direction.x(), direction.z());

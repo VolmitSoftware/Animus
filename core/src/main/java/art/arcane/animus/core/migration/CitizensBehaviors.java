@@ -259,6 +259,12 @@ final class CitizensBehaviors {
         String base = "/traits/lookclose";
         JsonObject values = defaults.getAsJsonObject("lookclose");
         boolean enabled = flag(look, "enabled", values.get("enabled").getAsBoolean(), base);
+        // A posed stand that turns to players breaks the scene it was posed for; only a save that turns it on explicitly does.
+        if (enabled && armorStand() && !look.has("enabled")) {
+            enabled = false;
+            warnings.add(base + "/enabled: an armor stand keeps its own facing and pose, so the server's look-close default is not applied; "
+                    + "set enabled in animus:look-close to turn it toward players");
+        }
         boolean realistic = flag(look, "realisticlooking", values.get("realisticlooking").getAsBoolean(), base);
         boolean disabled = flag(look, "disablewhilenavigating", values.get("disablewhilenavigating").getAsBoolean(), base);
         double range = 10;
@@ -323,6 +329,14 @@ final class CitizensBehaviors {
         JsonElement value = object.get(field);
         if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()) { converted.add(base + "/" + field); return value.getAsBoolean(); }
         return fallback;
+    }
+
+    /** The NPC is an armor stand: Citizens' {@code type} trait, with or without its namespace. */
+    private boolean armorStand() {
+        JsonElement type = traits.get("type");
+        if (type == null || !type.isJsonPrimitive()) return false;
+        String key = type.getAsString().toLowerCase(Locale.ROOT);
+        return key.equals("armor_stand") || key.equals("minecraft:armor_stand");
     }
 
     // ---- Text ----

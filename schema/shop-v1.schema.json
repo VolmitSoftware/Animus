@@ -12,6 +12,8 @@
     "id": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$", "description": "namespace:path, matching this file's location."},
     "title": {"type": "string", "description": "Window title; & codes and MiniMessage. Defaults to the id."},
     "permission": {"$ref": "#/$defs/permission"},
+    "style": {"enum": ["native", "chest"], "description": "native opens the villager trading screen; chest opens the chest window. Defaults to [shops] style in config.toml. An NPC's animus:shop module can override it."},
+    "layout": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$", "description": "A chest GUI id whose list area shows the offers, in pages. Chest style only; without it the shop's own pages are shown."},
     "modes": {
       "type": "array",
       "minItems": 1,

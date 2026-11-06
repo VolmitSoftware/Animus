@@ -23,14 +23,13 @@
     "/traits/rotationtrait/properties/immediate": "UNSUPPORTED_PRESERVED",
     "/traits/rotationtrait/properties/maxPitchPerTick": "UNSUPPORTED_PRESERVED",
     "/traits/targetable/targetable": "CONVERTED",
-    "/traits/attributetrait/attributes/generic_scale": "UNSUPPORTED_PRESERVED"
+    "/traits/attributetrait/attributes/generic_scale": "CONVERTED"
   },
   "reasons": {
     "/traits/sneak/sneaking": "the NPC sits, which is shown instead of sneaking",
     "/traits/rotationtrait/properties/headOnly": "trait rotationtrait has no Animus equivalent; kept in citizens:review",
     "/traits/rotationtrait/properties/immediate": "trait rotationtrait has no Animus equivalent; kept in citizens:review",
-    "/traits/rotationtrait/properties/maxPitchPerTick": "trait rotationtrait has no Animus equivalent; kept in citizens:review",
-    "/traits/attributetrait/attributes/generic_scale": "attribute generic_scale has no Animus setting"
+    "/traits/rotationtrait/properties/maxPitchPerTick": "trait rotationtrait has no Animus equivalent; kept in citizens:review"
   },
   "worldRemaps": [
     {

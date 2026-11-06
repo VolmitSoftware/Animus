@@ -66,7 +66,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  * Animus windows as Bukkit inventories. Every click and drag while one is the top inventory is cancelled, so no
  * item moves into or out of it; the four bound clicks on its own slots are handed to the screen on the next tick,
  * outside the inventory event. Number keys, the offhand key, drops, double clicks and shift clicks from the player's
- * inventory all stay cancelled.
+ * inventory all stay cancelled. Frames with offers open the villager trading screen through {@link BukkitMerchants}.
  */
 public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Listener {
     /** Identifies one Animus window. A window replaced by a new one no longer reports its close. */
@@ -75,6 +75,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         private String resolution;
         private boolean replaced;
         @Override public Inventory getInventory() { return inventory; }
+        void replace() { replaced = true; }
     }
 
     private final JavaPlugin plugin;
@@ -86,6 +87,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     private final Map<UUID, Map<String, Lane>> bars = new ConcurrentHashMap<>();
     private final Method teleportAsync, entityScheduler, entityExecute;
     private final BukkitShopStock stocks;
+    private final BukkitMerchants merchants;
 
     /**
      * @param later runs work on the player's owner on a later tick; false when it cannot be scheduled
@@ -108,6 +110,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         teleportAsync = async; entityScheduler = scheduler; entityExecute = execute;
         RegionFlags.Binding regions = RegionFlags.bind(server);
         if (regions != null && regions.failure().isPresent()) logger.warning(regions.describe("container shops stay closed"));
+        merchants = new BukkitMerchants(server, later, () -> manager);
         stocks = new BukkitShopStock(server, regions == null ? (UUID owner, Location at) -> true : new RegionContainerAccess(regions.flags()));
     }
 
@@ -120,6 +123,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     public void bind(ScreenManager<Player, ItemStack> manager) {
         this.manager = Objects.requireNonNull(manager);
         server.getPluginManager().registerEvents(this, plugin);
+        server.getPluginManager().registerEvents(merchants, plugin);
     }
 
     @Override public UUID id(Player player) { return player.getUniqueId(); }
@@ -146,6 +150,8 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     @Override public boolean permitted(Player player, String node) { return player.hasPermission(node); }
 
     @Override public Optional<Object> show(Player player, ScreenFrame frame, Object window) {
+        if (frame.merchant().isPresent()) return merchants.show(player, frame, window);
+        if (window instanceof BukkitMerchants.Window merchant) merchant.replace();
         InventoryView view = player.getOpenInventory();
         if (window instanceof Window open && view.getTopInventory().getHolder() == open && open.resolution.equals(frame.resolution())) {
             fill(open.inventory, frame);
@@ -199,6 +205,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     }
 
     @Override public void close(Player player, Object window) {
+        if (merchants.close(player, window)) return;
         if (window instanceof Window open && player.getOpenInventory().getTopInventory().getHolder() == open) {
             open.replaced = true;
             player.closeInventory();
@@ -349,6 +356,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
     public void quit(PlayerQuitEvent event) {
         Map<String, Lane> lanes = bars.remove(event.getPlayer().getUniqueId());
         if (lanes != null) for (Lane lane : lanes.values()) lane.bar().removeAll();
+        merchants.forget(event.getPlayer().getUniqueId());
         ScreenManager<Player, ItemStack> current = manager;
         if (current != null) current.quit(event.getPlayer());
     }
@@ -368,7 +376,7 @@ public final class BukkitScreens implements ScreenHost<Player, ItemStack>, Liste
         if (current == null) return;
         for (UUID id : current.clear()) {
             Player player = server.getPlayer(id);
-            if (player == null || window(player.getOpenInventory()).isEmpty()) continue;
+            if (player == null || (window(player.getOpenInventory()).isEmpty() && !merchants.showing(player))) continue;
             try { player.closeInventory(); }
             catch (RuntimeException failure) { logger.warning("Could not close an Animus window for " + player.getName() + ": " + failure.getMessage()); }
         }

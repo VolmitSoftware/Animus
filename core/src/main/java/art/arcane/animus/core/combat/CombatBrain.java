@@ -81,6 +81,8 @@ final class CombatBrain {
     private boolean alertPending;
     private boolean deathHandled;
     private boolean regionReported;
+    /** Whether viewers see the bow drawn, and whether this turn's fight wants it drawn. */
+    private boolean drawn, drawThisTurn;
     /** Where this fight's leash runs from and where it returns: the post, or where a patrolling NPC left its route. */
     private WorldPosition anchor;
     /** Where the returning NPC last moved and when, to tell a walk that ended from one still under way. */
@@ -165,8 +167,9 @@ final class CombatBrain {
         long idle = engine.budgets().idleSleepTicks();
         if (current.isEmpty()) return idle;
         VirtualNpcState.Snapshot self = current.get();
-        if (self.health() == 0) { engine.vacate(this); return updateDead(now, self); }
-        if (!self.active()) { engine.vacate(this); return idle; }
+        drawThisTurn = false;
+        if (self.health() == 0) { showDraw(); engine.vacate(this); return updateDead(now, self); }
+        if (!self.active()) { showDraw(); engine.vacate(this); return idle; }
         heal(now, self);
         boolean engaged = engaged();
         if (!engaged && (disengaged || !engine.playersNear(self.position(), searchRadius() + WAKE_MARGIN))) {
@@ -175,8 +178,16 @@ final class CombatBrain {
             if (!disengaged) return idle;
         } else if (!engine.claim(this)) return idle;
         long next = turn(now, self);
+        showDraw();
         if (!engaged()) engine.yieldTurn(this);
         return next;
+    }
+
+    /** Raises or lowers the bow when this turn's fight changed whether it is drawn. */
+    private void showDraw() {
+        if (drawn == drawThisTurn) return;
+        drawn = drawThisTurn;
+        world.drawing(npc, drawn);
     }
 
     private boolean engaged() { return target != null || threat != null || state == CombatState.RETURNING; }
@@ -409,6 +420,7 @@ final class CombatBrain {
                 CombatWorld.DamageOutcome outcome;
                 try {
                     world.face(npc, CombatGeometry.center(foe.bounds()));
+                    world.swing(npc);
                     outcome = engine.melee(this, self, foe);
                 } finally {
                     meleeWindow.release();
@@ -418,10 +430,14 @@ final class CombatBrain {
             }
             state = CombatState.ATTACKING;
         } else if (rangedUsable) {
+            drawThisTurn = ranged.weapon().drawn();
             if (ready && engine.helperCapacity(npc) && clearShot(self, foe) && rangedWindow.reserve(now, ranged.cooldownTicks())) {
                 try {
                     world.face(npc, CombatGeometry.center(foe.bounds()));
-                    if (engine.shoot(this, new WorldPosition(self.position().world(), eye(self)), foe) && ammunition > 0) ammunition--;
+                    if (engine.shoot(this, new WorldPosition(self.position().world(), eye(self)), foe)) {
+                        if (!ranged.weapon().drawn()) world.swing(npc);
+                        if (ammunition > 0) ammunition--;
+                    }
                 } finally {
                     rangedWindow.release();
                 }
@@ -805,7 +821,7 @@ final class CombatBrain {
         if (defense.protectFromRange() > 0 && (!from.world().equals(self.get().position().world())
                 || from.point().distance(self.get().position().point()) > defense.protectFromRange())) return 0;
         if (defense.protectedFromIgnored() && attackerView.isPresent() && settings.ignores().matches(attackerView.get(), context)) return 0;
-        double reduced = amount * (1 - armor);
+        double reduced = defense.armorPoints() > 0 ? CombatAttributes.armored(amount, defense.armorPoints(), defense.armorToughness()) : amount * (1 - armor);
         if (reduced <= 0) return 0;
         invulnerableUntil = now + defense.invulnerableTicks();
         return reduced;

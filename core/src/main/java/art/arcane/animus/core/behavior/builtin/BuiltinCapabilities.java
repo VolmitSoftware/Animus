@@ -34,6 +34,7 @@ import art.arcane.animus.core.config.BuiltinActionSettings;
 import art.arcane.animus.core.extension.BuiltinPolicy;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.storage.JsonDocuments;
@@ -87,7 +88,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final long MAXIMUM_EXPIRY_SECONDS = 31_536_000L;
     private static final int MAXIMUM_ITEMS = 6400;
     /** Capabilities that need an NPC body or NPC presence; a server behavior's run refuses them as no-npc. */
-    private static final Set<String> NPC_ONLY = Set.of("say", "look", "navigate", "stop-navigation", "play-recording", "resume-patrol", "set-appearance", "set-equipment", "combat-control",
+    private static final Set<String> NPC_ONLY = Set.of("say", "look", "navigate", "stop-navigation", "play-recording", "resume-patrol", "set-appearance", "set-equipment", "set-attribute", "combat-control",
             "build", "play-animation", "stop-animation", "npc-state", "player-in-range", "choices");
     /** Whether a capability needs an NPC body or NPC presence, so a server behavior cannot run it. */
     public static boolean npcOnly(Key key) { return key.namespace().equals(NAMESPACE) && NPC_ONLY.contains(key.name()); }
@@ -415,6 +416,16 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     EquipmentSlot slot = EquipmentSlot.valueOf(text(call.arguments, "slot").orElseThrow().toUpperCase(Locale.ROOT));
                     Optional<String> item = text(call.arguments, "item");
                     return onOwner(call, () -> { platform.setEquipment(call.npc(), slot, item); return "{}"; });
+                });
+        action("set-attribute", Effect.WORLD, "Sets one vanilla attribute of the NPC, such as scale or movement_speed, or with reset returns it to the definition's value."
+                        + " Lasts until the runtime restarts or the definition changes.",
+                schema(string("attribute", 64) + "," + "\"value\":{\"type\":\"number\"}," + bool("reset"),
+                        required("attribute"), "\"anyOf\":[{" + required("value") + "},{" + required("reset") + "}]"),
+                BuiltinCapabilities::checkAttribute,
+                call -> {
+                    String attribute = NpcAttributes.id(text(call.arguments, "attribute").orElseThrow()).orElseThrow();
+                    OptionalDouble value = flag(call.arguments, "reset", false) ? OptionalDouble.empty() : decimal(call.arguments, "value");
+                    return onOwner(call, () -> { platform.setAttribute(call.npc(), attribute, value); return "{}"; });
                 });
         action("play-sound", Effect.PRESENTATION, "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player.",
                 schema(string("sound", 128) + "," + number("volume", 0, 4) + "," + number("pitch", 0.5, 2) + "," + AUDIENCE + "," + choice("at", "npc", "player") + "," + PLAYER, required("sound")),
@@ -841,6 +852,18 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         if (arguments.has("skin")) matches(arguments, "skin", "[a-f0-9]{64}", problems);
         if (arguments.has("reset") && (!arguments.get("reset").getAsBoolean() || arguments.has("name") || arguments.has("skin")))
             problems.add(problem("$.reset", "appearance-reset", "reset must be true and cannot be combined with name or skin"));
+    }
+
+    private static void checkAttribute(JsonObject arguments, List<Diagnostic> problems) {
+        String attribute = arguments.get("attribute").getAsString();
+        if (NpcAttributes.id(attribute).isEmpty()) {
+            problems.add(problem("$.attribute", "attribute-unknown", NpcAttributes.problem(attribute, 0)));
+            return;
+        }
+        if (arguments.has("reset") && (!arguments.get("reset").getAsBoolean() || arguments.has("value")))
+            problems.add(problem("$.reset", "attribute-reset", "reset must be true and cannot be combined with value"));
+        if (arguments.has("value") && NpcAttributes.problem(attribute, arguments.get("value").getAsDouble()) != null)
+            problems.add(problem("$.value", "attribute-range", NpcAttributes.problem(attribute, arguments.get("value").getAsDouble())));
     }
 
     private static void checkBuild(JsonObject arguments, List<Diagnostic> problems) {

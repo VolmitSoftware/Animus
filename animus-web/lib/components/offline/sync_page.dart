@@ -175,12 +175,13 @@ class _SyncPageState extends State<SyncPage> {
         classes: 'animus-panel',
         attributes: const <String, String>{'aria-labelledby': 'animus-sync-title'},
         <Widget>[
-          labelWithTip(
-            const dom.h2(id: 'animus-sync-title', <Widget>[Component.text('Send to a server')]),
-            'A push is checked by the server and applied as one change set. A pull copies server documents in as one undo step.',
-            'Sending',
-            docs: Docs.sending,
-          ),
+          const dom.h2(id: 'animus-sync-title', <Widget>[
+            InfoTip(
+              tip: 'A push is checked by the server and applied as one change set. A pull copies server documents in as one undo step.',
+              docs: Docs.sending,
+              child: Component.text('Send to a server'),
+            ),
+          ]),
           if (server == null)
             dom.div(
               classes: 'animus-sync-empty',
