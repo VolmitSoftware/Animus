@@ -31,6 +31,8 @@ List<Diagnostic> validateGui(DocumentKind kind, Object? json, {String? id}) {
       checker.hologram(json);
     case DocumentKind.shop:
       checker.shop(json);
+    case DocumentKind.textAnimation:
+      checker.textAnimation(json);
     default:
       break;
   }
@@ -394,6 +396,29 @@ final class _Checker {
         template(line['text'], childPath(linePath, 'text'), names);
         icon(line['item'], childPath(linePath, 'item'), names, chest: false);
       }
+    }
+  }
+
+  // ---- text animations ----
+
+  /// What core's TextAnimation refuses beyond the schema.
+  void textAnimation(JsonMap json) {
+    final Object? version = json['schemaVersion'];
+    if (version is num && version != 1) error(r'$.schemaVersion', 'text animation schemaVersion $version is not supported; Animus reads version 1');
+    if (json.containsKey('preset') && json['preset'] != null) error(r'$.preset', presetRefusal);
+    const List<String> modes = <String>['ascend', 'ascend_descend', 'descend', 'random'];
+    if (!modes.contains(json['mode'])) error(r'$.mode', 'expected one of [${modes.join(', ')}]', code: layoutCode);
+    final Object? interval = json['frameIntervalMs'];
+    if (interval is! num || interval != interval.roundToDouble() || interval < 1 || interval > 60000) {
+      error(r'$.frameIntervalMs', 'expected integer 1..60000', code: layoutCode);
+    }
+    final JsonList frames = asList(json['frames']);
+    if (frames.isEmpty) error(r'$.frames', 'expected a non-empty array of strings', code: layoutCode);
+    if (frames.length > 1024) error(r'$.frames', 'at most 1024 frames', code: layoutCode);
+    condition(json['show'], r'$.show', ExpressionNames.standard);
+    for (int index = 0; index < frames.length; index++) {
+      final Object? frame = frames[index];
+      if (frame is String && frame.contains('|animation.')) error(indexPath(r'$.frames', index), 'a frame cannot show another animation', code: layoutCode);
     }
   }
 

@@ -160,11 +160,11 @@ class _GuiStagePreviewState extends State<GuiStagePreview> {
           'height': '${(bottom - top).toStringAsFixed(1)}px',
         }),
         events: <String, void Function(web.Event)>{
-          if (pick != null)
-            'pointerdown': (web.Event event) {
-              event.preventDefault();
-              pick(target.key);
-            },
+          'pointerdown': (web.Event event) {
+            if (pick == null) return;
+            event.preventDefault();
+            pick(target.key);
+          },
         },
         const <Widget>[],
       ));

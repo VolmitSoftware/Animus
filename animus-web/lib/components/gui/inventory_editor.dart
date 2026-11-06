@@ -94,19 +94,29 @@ class _InventoryEditorState extends State<InventoryEditor> {
     ];
   }
 
+  /// The mask a brush stroke has written, until the document shows it: a
+  /// fast drag paints again before the last write comes back.
+  List<String>? _stroke;
+
   void _paint(int slot, ChestLayout layout) {
     final String brush = _brush!;
-    final List<String> mask = _mask(layout.width, layout.rows);
+    final List<String> mask = <String>[...(_stroke ?? _mask(layout.width, layout.rows))];
     final int row = slot ~/ layout.width, column = slot % layout.width;
     final String line = mask[row];
     mask[row] = line.replaceRange(column, column + 1, brush);
     final List<JsonStep> owner = chestFieldOwner(_doc, _variant, 'mask');
+    _stroke = mask;
     _write(<JsonStep>[...owner, 'mask'], mask, coalesce: 'mask-paint');
   }
 
   @override
   Widget build(BuildContext context) {
     final JsonMap doc = _doc;
+    final List<String>? stroke = _stroke;
+    if (stroke != null) {
+      final List<String> shown = stringList(readIn(doc, <JsonStep>[...chestFieldOwner(doc, _variant, 'mask'), 'mask']));
+      if (shown.join('\n') == stroke.join('\n')) _stroke = null;
+    }
     final ChestLayout layout = layoutChest(doc, variant: _variant);
     final JsonList variants = asList(doc['variants']);
     final JsonMap keys = asMap(readIn(doc, <JsonStep>[...chestFieldOwner(doc, _variant, 'keys'), 'keys']));
@@ -120,7 +130,10 @@ class _InventoryEditorState extends State<InventoryEditor> {
             hiddenLabel: 'Presentation shown',
             options: <String>[for (int i = 0; i < variants.length; i++) '$i'],
             labels: <String, String>{for (int i = 0; i < variants.length; i++) '$i': 'Variant ${asString(asMap(variants[i])['id']) ?? i}'},
-            onChanged: (String? value) => setState(() => _variant = value == null ? null : int.parse(value)),
+            onChanged: (String? value) => setState(() {
+              _variant = value == null ? null : int.parse(value);
+              _stroke = null;
+            }),
           ),
           GuiSelect(
             value: _brush,
@@ -129,7 +142,10 @@ class _InventoryEditorState extends State<InventoryEditor> {
             hiddenLabel: 'Mask brush',
             options: <String>[...keys.keys, ' '],
             labels: <String, String>{for (final String key in keys.keys) key: 'Paint key $key', ' ': 'Paint empty'},
-            onChanged: (String? value) => setState(() => _brush = value),
+            onChanged: (String? value) => setState(() {
+              _brush = value;
+              _stroke = null;
+            }),
           ),
         ]),
         ChestWindow(
@@ -138,6 +154,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
           showMask: true,
           label: 'Chest window ${component.document.id}',
           onPaint: _brush == null ? null : (int slot) => _paint(slot, layout),
+          onPaintEnd: () => _stroke = null,
           onSlot: (int slot) {
             if (_brush != null) {
               _paint(slot, layout);

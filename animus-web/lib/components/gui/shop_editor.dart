@@ -425,7 +425,10 @@ class _ShopEditorState extends State<ShopEditor> {
             id: id,
             value: type,
             options: shopTypesFor(mode, container: container),
-            labels: _typeLabels,
+            labels: <String, String>{
+              ..._typeLabels,
+              if (!shopTypesFor(mode, container: container).contains(type)) type: '${_typeLabels[type] ?? type}, not allowed here',
+            },
             onChanged: (String? v) {
               if (v == null || v == type) return;
               _write(steps, withShopEntryType(entry, v, container: container));
