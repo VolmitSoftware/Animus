@@ -263,6 +263,25 @@
   border: 1px solid var(--animus-border);
   min-width: 0;
   overflow: hidden;
+  container-type: inline-size;
+}
+
+/* The list's own width decides its columns: beside the folder tree and the
+   sidebar it is narrower than the window suggests. */
+@container (max-width: 40rem) {
+  .animus-npc-row {
+    grid-template-columns: 1.75rem minmax(0, 1fr);
+  }
+
+  .animus-npc-row > .animus-npc-col-type,
+  .animus-npc-row > .animus-npc-col-world,
+  .animus-npc-row.is-head > span:last-child {
+    display: none;
+  }
+
+  .animus-npc-row > .animus-npc-badges {
+    grid-column: 2;
+  }
 }
 
 .animus-npc-row {
@@ -1074,20 +1093,6 @@ html.light .animus-route-dot {
 @media (max-width: 760px) {
   .animus-npc-browser-body {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .animus-npc-row {
-    grid-template-columns: 1.75rem minmax(0, 1fr);
-  }
-
-  .animus-npc-row > .animus-npc-col-type,
-  .animus-npc-row > .animus-npc-col-world,
-  .animus-npc-row.is-head > span:last-child {
-    display: none;
-  }
-
-  .animus-npc-row > .animus-npc-badges {
-    grid-column: 2;
   }
 
   .animus-dialogue-say,

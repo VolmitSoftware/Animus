@@ -14,6 +14,16 @@
   min-width: 0;
 }
 
+/* A nested object reads as a group: its name on its own line, its fields
+   below at full width, so nested label columns never squeeze the controls. */
+.animus-gui-row:has(> .animus-gui-control > .animus-inspect-object) > .animus-gui-control {
+  flex-basis: 100%;
+}
+
+.animus-gui-control > .animus-inspect-object {
+  padding-inline-start: 0.75rem;
+}
+
 .animus-inspect-const {
   padding-top: 0.375rem;
   font-size: 0.8125rem;
@@ -368,8 +378,8 @@
     padding-inline-start: calc(0.75rem - 1px);
   }
 
-  .animus-behavior-editor .animus-gui-row {
-    grid-template-columns: minmax(0, 1fr);
+  .animus-behavior-editor .animus-gui-row > :first-child {
+    flex-basis: 100%;
   }
 
   .animus-operand,

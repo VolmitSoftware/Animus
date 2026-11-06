@@ -78,6 +78,15 @@ class FieldSpec {
     return parts.join(', ');
   }
 
+  /// Characters of the widest value the range allows, with room for three
+  /// decimals on a non-integer field, or null when the range is open.
+  int? get digits {
+    final num? low = minimum, high = maximum;
+    if (low == null || high == null || low.abs() >= 1e15 || high.abs() >= 1e15) return null;
+    final int widest = _number(low).length > _number(high).length ? _number(low).length : _number(high).length;
+    return widest + (kind == FieldKind.number ? 3 : 0);
+  }
+
   /// The bounds as a short hint ("1 to 72000"), or null.
   String? get boundsHint => bounds.isEmpty ? null : '${bounds[0].toUpperCase()}${bounds.substring(1)}';
 
