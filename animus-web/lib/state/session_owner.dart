@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'editor_store.dart';
+
 /// Which tab of this browser runs live editing for one server.
 ///
 /// Two tabs on the same server workspace would both absorb server changes and
@@ -17,6 +19,42 @@ abstract class SessionOwner {
 
   /// Gives up ownership, so a waiting tab takes over.
   Future<void> release();
+}
+
+/// Ownership that follows the store's workspace lock: a server has one
+/// workspace, so the tab that owns it ([EditorStore.ownedByThisTab]) runs
+/// live editing, and a waiting tab takes over when the owner closes it or
+/// switches away. The store holds and releases the lock itself.
+class StoreOwner implements SessionOwner {
+  StoreOwner(this._store) : _last = _store.ownedByThisTab {
+    _store.addListener(_heard);
+  }
+
+  final EditorStore _store;
+  final StreamController<bool> _changes = StreamController<bool>.broadcast(sync: true);
+  bool _last;
+
+  void _heard() {
+    final bool now = _store.ownedByThisTab;
+    if (now == _last) return;
+    _last = now;
+    if (!_changes.isClosed) _changes.add(now);
+  }
+
+  @override
+  bool get owned => _store.ownedByThisTab;
+
+  @override
+  bool get waiting => _store.heldByAnotherTab;
+
+  @override
+  Stream<bool> get changes => _changes.stream;
+
+  @override
+  Future<void> release() async {
+    _store.removeListener(_heard);
+    await _changes.close();
+  }
 }
 
 /// Ownership without contention: tests, and browsers with no Web Locks.

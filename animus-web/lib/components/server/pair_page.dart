@@ -11,7 +11,7 @@ import '../../state/server_hub.dart';
 import '../../state/workspace_route.dart';
 import 'connection_pill.dart';
 import 'live_confirm.dart';
-import 'server_mark.dart';
+import '../brand_mark.dart';
 
 /// `#/pair/<code>`: shows the server the code names and exchanges its
 /// one-time secret for a token. One column: the mark, the server's name, its
@@ -84,7 +84,7 @@ class _PairPageState extends State<PairPage> {
     final bool expired = payload != null && !payload.expiresAt.isAfter(_now);
     return dom.main_(classes: 'animus-home', <Widget>[
       dom.section(classes: 'animus-panel animus-pair', attributes: const <String, String>{'aria-labelledby': 'animus-pair-title'}, <Widget>[
-        serverMark(),
+        const BrandMark(size: 48, classes: 'animus-server-mark'),
         if (payload == null || _invalid != null) ...<Widget>[
           const dom.h1(id: 'animus-pair-title', <Widget>[Component.text('This pairing link cannot be used')]),
           dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[

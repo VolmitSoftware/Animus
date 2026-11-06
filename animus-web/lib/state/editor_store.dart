@@ -113,6 +113,7 @@ class EditorStore {
   bool _unsaved = false;
   bool _gone = false;
   bool _owned = false;
+  bool _heldElsewhere = false;
   String? _lock;
 
   WorkspaceSnapshot? get workspace => _workspace;
@@ -143,6 +144,10 @@ class EditorStore {
   /// reload); another tab with the same workspace open waits and takes over
   /// when the owner closes.
   bool get ownedByThisTab => _owned;
+
+  /// True while another tab holds the open workspace's lock and this one
+  /// waits for it (not merely before the first answer).
+  bool get heldByAnotherTab => _heldElsewhere;
 
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
@@ -586,13 +591,15 @@ class EditorStore {
     _release();
     _lock = name;
     _owned = await locks.tryHold(name);
-    if (_owned) return;
+    if (_owned || _lock != name) return;
+    _heldElsewhere = true;
     unawaited(locks.hold(name).then((void _) {
       if (_lock != name) {
         locks.release(name);
         return;
       }
       _owned = true;
+      _heldElsewhere = false;
       _changed();
     }));
   }
@@ -601,6 +608,7 @@ class EditorStore {
     final String? lock = _lock;
     _lock = null;
     _owned = false;
+    _heldElsewhere = false;
     if (lock != null) locks.release(lock);
   }
 

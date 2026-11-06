@@ -12,6 +12,7 @@ import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
 import '../logic/inspect/server_behaviors.dart';
+import '../logic/npc/npc_catalog.dart';
 import '../logic/npc/route_model.dart';
 import '../logic/offline/document_fixes.dart';
 import '../model/animus_document.dart';
@@ -482,8 +483,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     final InspectSchemas schemas = _schemas;
     final ValueHints? hints = switch (document.kind) {
       DocumentKind.behavior => behaviorHints(guiIds: <DocumentKind, List<String>>{for (final DocumentKind kind in <DocumentKind>[DocumentKind.inventory, DocumentKind.menu, DocumentKind.shop]) kind: _ids(kind)}),
-      // TODO(L3 integration): pass npcBehaviorIds(component.workspaceDocuments) from npc_catalog.dart so server behaviors drop out.
-      DocumentKind.npc => npcHints(behaviorIds: _ids(DocumentKind.behavior), skinIds: _ids(DocumentKind.skin)),
+      DocumentKind.npc => npcHints(behaviorIds: npcBehaviorIds(component.workspaceDocuments), skinIds: _ids(DocumentKind.skin)),
       _ => null,
     };
     return dom.section(classes: 'animus-panel animus-code', <Widget>[

@@ -50,7 +50,7 @@ function watch(page) {
   page.on('pageerror', (error) => errors.push(String(error)));
   page.on('console', (message) => {
     // The brand lane ships the pairing page's mark asset; until then its 404 is expected.
-    if (message.type() === 'error' && !message.location().url.includes('animus-mark')) errors.push(message.text());
+    if (message.type() === 'error') errors.push(message.text());
   });
   return errors;
 }
