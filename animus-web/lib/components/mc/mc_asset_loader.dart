@@ -12,6 +12,7 @@ import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 
+import '../../logic/npc/placeholder_skins.dart';
 import '../../mc/assets/mc_model_resolver.dart';
 import '../../mc/assets/mc_model_store.dart';
 import '../../mc/assets/mc_pack_manifest.dart';
@@ -166,7 +167,11 @@ final class McAssetLoader {
   }
   static final List<void Function()> _listeners = <void Function()>[];
 
-  static final Map<String, String> _runtime = <String, String>{};
+  /// Runtime images by id; the placeholder skins are known from the start
+  /// and decode on first use like the others.
+  static final Map<String, String> _runtime = <String, String>{
+    for (final PlaceholderSkin skin in placeholderSkins) skin.textureId: skin.url,
+  };
 
   static McAssetPackData? get loaded => _loaded;
 

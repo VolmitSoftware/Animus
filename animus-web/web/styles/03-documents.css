@@ -48,7 +48,6 @@
   gap: 0.25rem;
   padding: 0.25rem;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   max-width: 100%;
   box-sizing: border-box;
 }
@@ -61,7 +60,6 @@
   color: var(--animus-muted);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: calc(var(--animus-radius) - 0.125rem);
   cursor: pointer;
 }
 
@@ -87,7 +85,6 @@
 .animus-draft-error {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--animus-error);
-  border-radius: var(--animus-radius);
 }
 
 .animus-diagnostics {
@@ -95,7 +92,6 @@
   margin: 0;
   padding: 0.75rem;
   border: 1px solid var(--animus-error);
-  border-radius: var(--animus-radius);
   display: grid;
   gap: 0.25rem;
   overflow-wrap: anywhere;

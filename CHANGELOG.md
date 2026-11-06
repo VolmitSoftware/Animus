@@ -178,6 +178,10 @@
 - `/animus attack` and `/animus target` on Folia; checks run on the NPC's and the target's own regions, with results in the server log.
 - Builds on Folia, including scaffolding, doors and beds; each build takes turns on the region that owns its work.
 - `/animus build status` shows `region-turns`, `out` and `lost` on Folia.
+- Web editor: eight built-in placeholder skins (guard, merchant, villager, noble, miner, traveler, smith, scholar), each in classic and slim arms, under `web/assets/skins/placeholder/` with an `index.json`.
+- Web editor: a Placeholder skins picker in the NPC Appearance section; the choice lasts for the page session and is not saved to the definition.
+- Web editor: `tool/generate_placeholder_skins.dart` draws the placeholder PNGs and their index.
+- Web editor: `test/shape_browser.cjs` walks every page at both widths and themes and fails on a corner radius, an inset or offset shadow, a one-sided accent border or an accent gradient, including hover, focus and active states.
 
 ### Changed
 
@@ -256,6 +260,13 @@
 - Web editor: a stale `group` in an NPC file is a warning, since the server takes the group from the folder.
 - On Folia, build commands and `animus:build` answer a moment later through your own region; `animus:build` answers `queued`.
 - A donation takes the held stack and returns what the build does not need.
+- Web editor: every control is square-cornered, from one `--animus-radius` token set to 0; per-component radii are gone.
+- Web editor: one button system (primary, secondary, ghost, destructive, icon-only; small 28 px and default 36 px, 44 px on phones) for arcane_jaspr and native buttons, with fields and selects at the same height.
+- Web editor: a selected tab, segment or palette row is a raised grey with a full pink border instead of a pink underline or edge stripe.
+- Web editor: menus, the command palette, completions and toasts sit on a full border instead of a drop shadow.
+- Web editor: the stage loading indicator is a straight pink line instead of a spinning partial ring.
+- Web editor: checkboxes, radios and range thumbs are square; rig keyframes, events and gizmo handles take a 44 px target on phones.
+- Web editor: the NPC preview wears a placeholder skin instead of the default one when no skin texture is loaded, offline or online, and its skin line names it.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

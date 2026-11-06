@@ -2,7 +2,7 @@
 // boot splash and the home page, the icon set, the pink accent on grey
 // surfaces in both themes, the system theme when none is stored, AA
 // contrast on the primary button, a neutral disabled button, Geist on
-// controls, a quiet selected view tab, a pink focus ring, the theme toggle,
+// controls, a quiet selected view tab (raised grey, full pink border), a pink focus ring, the theme toggle,
 // theme-color and no sideways scrolling, at desktop and phone widths.
 // ANIMUS_SCREENSHOTS (optional, outside the repository) receives home,
 // document and focus shots per theme and width.
@@ -143,7 +143,7 @@ async function run(browser, viewport, label) {
     const applyFill = await apply.evaluate(el => getComputedStyle(el).backgroundColor);
     assert.notEqual(applyFill, theme.primary, `${name} disabled primary is not pink`);
     assert.ok(contrast(applyFill, await apply.evaluate(el => getComputedStyle(el).color)) >= 4.5, `${name} disabled text stays readable`);
-    // The selected view tab is a raised grey with a pink underline, not a pink fill.
+    // The selected view tab is a raised grey with a full pink border, not a pink fill or an underline.
     await page.mouse.move(1, viewport.height - 1);
     const tab = page.getByRole('tab', {name: 'Code'});
     assert.equal(await tab.getAttribute('aria-selected'), 'true');
@@ -151,8 +151,11 @@ async function run(browser, viewport, label) {
       const started = performance.now();
       const poll = () => {
         const style = getComputedStyle(el);
-        if (style.backgroundColor === expected.raised && style.boxShadow.includes(expected.primary)) return resolve();
-        if (performance.now() - started > 3000) return reject(new Error(`selected view tab is ${style.backgroundColor} ${style.boxShadow}`));
+        const sides = [style.borderTopColor, style.borderRightColor, style.borderBottomColor, style.borderLeftColor];
+        const widths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth];
+        if (style.backgroundColor === expected.raised && sides.every(colour => colour === expected.primary)
+            && widths.every(width => width === widths[0] && width !== '0px') && style.boxShadow === 'none' && style.borderTopLeftRadius === '0px') return resolve();
+        if (performance.now() - started > 3000) return reject(new Error(`selected view tab is ${style.backgroundColor} ${sides.join(' ')} ${widths.join(' ')} ${style.boxShadow}`));
         setTimeout(poll, 10);
       };
       poll();
