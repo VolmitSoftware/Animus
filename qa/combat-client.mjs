@@ -26,7 +26,7 @@ async function observe(entity) { return (await command(`animusqa observe ${entit
 async function npcHealth() {
   const from = owner.events.length;
   await command(`animus inspect ${id}`);
-  return number((await owner.wait(e => e.event === 'chat' && e.text.startsWith(`Runtime ${id}:`) && e.text.includes('health='), from)).text, 'health');
+  return number((await owner.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith(`Runtime ${id}:`) && e.text.includes('health='), from)).text, 'health');
 }
 async function spawn(type, x, y, z) {
   const receipt = await command(`animusqa spawn ${type} ${x} ${y} ${z}`, `QA spawned type=${type}`);
@@ -40,11 +40,11 @@ try {
   await command('execute in minecraft:overworld run tp @s 0.0 61.0 0.0 0 0');
   await owner.wait(e => e.event === 'position' && e.x === 0 && e.y === 61 && e.z === 0, origin);
   await command('animus combat status', 'Combat ready');
-  await command(`animus create ${id} minecraft:player world 0 61 3 combatqa Town Guard`, `Created dormant ${id}`);
+  await command(`animus create ${id} minecraft:player world 0 61 3 combatqa "Town Guard"`, `Created dormant ${id}`);
   created = true;
   const from = owner.events.length;
   await command(`animus inspect ${id}`);
-  const document = JSON.parse((await owner.wait(e => e.event === 'chat' && e.text.startsWith('{') && e.text.includes(`"id":"${id}"`), from)).text);
+  const document = JSON.parse((await owner.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith('{') && e.text.includes(`"id":"${id}"`), from)).text.replace(/^\[Animus\]: /, ''));
   const shown = owner.events.length;
   await command(`animus spawn ${id}`, `Spawn requested for ${id}`);
   await owner.wait(e => e.event === 'spawn' && e.uuid === document.uuid, shown, 20_000);
@@ -54,7 +54,7 @@ try {
   const cow = await spawn('cow', 0, 61, 5);
   const before = number(await observe(cow), 'health');
   const attackStart = owner.events.length;
-  const attack = await command(`animus attack ${id} ${cow} 2`, `Attack ${id}: APPLIED`);
+  const attack = await command(`animus attack ${id} ${cow} damage=2`, `Attack ${id}: APPLIED`);
   assert.equal(number(attack.text, 'applied'), 2);
   const receipt = await owner.wait(e => e.event === 'chat' && e.text.includes(`QA real damage entity=${cow}`), attackStart);
   assert(receipt.text.includes('null-attacker=true') && receipt.text.includes('cancelled=false'));
@@ -64,24 +64,24 @@ try {
   passed('virtual attacker applies real Bukkit damage without a fabricated entity');
 
   await command(`animusqa combatcancel ${cow}`, 'QA armed mode=combatcancel');
-  await command(`animus attack ${id} ${cow} 2`, `Attack ${id}: CANCELLED`);
+  await command(`animus attack ${id} ${cow} damage=2`, `Attack ${id}: CANCELLED`);
   assert.equal(number(await observe(cow), 'health'), before - 2);
   passed('Animus damage event cancellation preserves real health');
 
   await command(`animusqa realcancel ${cow}`, 'QA armed mode=realcancel');
-  await command(`animus attack ${id} ${cow} 2`, `Attack ${id}: NO_CHANGE`);
+  await command(`animus attack ${id} ${cow} damage=2`, `Attack ${id}: NO_CHANGE`);
   assert.equal(number(await observe(cow), 'health'), before - 2);
   passed('Bukkit damage event cancellation preserves real health');
 
   await command(`animusqa combatteleport ${cow}`, 'QA armed mode=combatteleport');
-  await command(`animus attack ${id} ${cow} 2`, `Attack ${id}: OUT_OF_REACH`);
+  await command(`animus attack ${id} ${cow} damage=2`, `Attack ${id}: OUT_OF_REACH`);
   assert.equal(number(await observe(cow), 'health'), before - 2);
   passed('reentrant target teleport invalidates reach before damage');
 
   // Keep its entire hitbox beyond the wall while its nearest face remains inside 2.5-block reach.
   await command(`animusqa move ${cow} 0 61 5.8`, 'QA moved');
   await command('fill -1 61 4 1 64 4 stone', /Successfully filled|No blocks were filled/);
-  await command(`animus attack ${id} ${cow} 2`, `Attack ${id}: OBSTRUCTED`);
+  await command(`animus attack ${id} ${cow} damage=2`, `Attack ${id}: OBSTRUCTED`);
   assert.equal(number(await observe(cow), 'health'), before - 2);
   await command('fill -1 61 4 1 64 4 air', /Successfully filled|No blocks were filled/);
   passed('solid obstruction blocks real damage');
@@ -120,9 +120,9 @@ try {
   // Restored vanilla goals may kill the original cow; policy checks need their own living target.
   const policyTarget = await spawn('cow', 0, 61, 5.8);
   await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":false,"reviewAccepted":false}}}`, 'Saved; transaction');
-  await command(`animus attack ${id} ${policyTarget} 2`, 'combat is disabled or its migration review has not been accepted');
+  await command(`animus attack ${id} ${policyTarget} damage=2`, 'combat is disabled or its migration review has not been accepted');
   await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":"true","reviewAccepted":true}}}`, 'Saved; transaction');
-  await command(`animus attack ${id} ${policyTarget} 2`, 'combat is disabled or its migration review has not been accepted');
+  await command(`animus attack ${id} ${policyTarget} damage=2`, 'combat is disabled or its migration review has not been accepted');
   passed('unreviewed combat and string booleans cannot bypass the import gate');
 
   await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":true,"reviewAccepted":true}}}`, 'Saved; transaction');

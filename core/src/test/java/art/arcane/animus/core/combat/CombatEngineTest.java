@@ -182,10 +182,12 @@ class CombatEngineTest {
         run(5);
         assertEquals(new Vec3(0, 64, 0), world.moves.getLast().point(), "Returns to where the engagement began");
         assertFalse(world.released.contains(npc), "The patrol stays held until the NPC is back");
+        // A walk that ends half a block short finishes with a final step onto the point.
         world.moveNpc(npc, 0.5, 0);
         world.real.remove(zombie);
-        run(8);
+        run(15);
         assertEquals(CombatState.IDLE, status(npc).state());
+        assertEquals(new Vec3(0, 64, 0), world.npc(npc).orElseThrow().position().point());
         assertTrue(world.released.contains(npc));
     }
     @Test void withoutReturnToPostThePatrolResumesWhereTheFightEnded() {
