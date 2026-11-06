@@ -94,7 +94,7 @@ public final class AnimusCommandTree extends CommandGroup {
             case "player" -> services.players().get();
             case "viewer" -> services.debug().viewers();
             case "enabled" -> List.of("on", "off", "toggle");
-            case "categories" -> { List<String> categories = new ArrayList<>(CitizensDropIn.CATEGORIES); categories.add("all"); yield categories; }
+            case "categories" -> { List<String> categories = new ArrayList<>(CitizensDropIn.CATEGORIES); categories.add("all"); categories.add(CitizensDropIn.COMMANDS); yield categories; }
             default -> List.of();
         };
     }
@@ -212,7 +212,7 @@ public final class AnimusCommandTree extends CommandGroup {
                 .orElse("No NPC selected. Use /animus select <npc> or interact with a visible NPC."));
     }
 
-    @Director(description = "Walk, swim or fly an NPC to a point")
+    @Director(description = "Walk, swim or fly an NPC to a point; whole-number x and z mean the block centre")
     void navigate(@Param(name = "npc", description = "The NPC id, or @selected") String npc,
                   @Param(name = "x", description = "Target X") double x,
                   @Param(name = "y", description = "Target Y") double y,
@@ -221,10 +221,16 @@ public final class AnimusCommandTree extends CommandGroup {
                   @Param(name = "speed", defaultValue = "2.0", description = "Blocks per second") double speed) {
         CommandActor actor = actor();
         npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Animus navigation", () -> {
-            WorldPosition destination = new WorldPosition(living().navigationOrigin(id).world(), new Vec3(x, y, z));
+            WorldPosition destination = new WorldPosition(living().navigationOrigin(id).world(), new Vec3(blockCenter(x), y, blockCenter(z)));
             return "Navigation requested for " + id + "; route=" + living().navigate(id, destination, mode, speed);
         }));
     }
+
+    /**
+     * A whole-number x or z names a block, so the goal is its centre; a goal on the block corner makes the body clip the
+     * next block. A fractional value is an exact point and stays.
+     */
+    static double blockCenter(double coordinate) { return coordinate == Math.floor(coordinate) ? coordinate + 0.5 : coordinate; }
 
     @Director(description = "Turn an NPC to look at a point")
     void look(@Param(name = "npc", description = "The NPC id, or @selected") String npc,

@@ -11,6 +11,7 @@ import art.arcane.animus.core.mount.MountReference;
 import art.arcane.animus.core.mount.SeatGeometry;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyMobility;
+import art.arcane.animus.core.navigation.BodyTerrain;
 import art.arcane.animus.core.navigation.CaptureProvenance;
 import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.IdleFall;
@@ -121,7 +122,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private static final int MAX_DEFINITIONS = 100_000, MAX_ACTIVE = 10_000, MAX_SKIN_READS = 8, MAX_ROUTE_READS = 8;
     private static final int RECONCILE_WORK = 64, MAX_ISSUED_IDS = 8192;
     /** Collision cells one step may check; a route waits for a later tick when fewer are left. */
-    private static final int MOTION_CELLS = 256;
+    private static final int MOTION_CELLS = 256, STUCK_CELLS = 1024;
     /** A sleeping route looks for a nearby player again after this many ticks. */
     private static final int AWAKE_RECHECK_TICKS = 20;
     private static final int SUPPORT_UPDATES = 16, SUPPORT_CELLS = 4096;
@@ -950,10 +951,23 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (route.execution != null) route.execution.cancel();
         route.plan = null; route.result = null; route.execution = null;
         routeOrder.remove(route);
-        value.state.move(route.goal); index.upsert(value.state.snapshot());
+        value.state.move(stuckTarget(route.goal, route.mode, moveWidth(value), moveHeight(value), host.collision(route.goal.world())));
+        index.upsert(value.state.snapshot());
         value.poseRevision++; setPose(value, value.yaw, 0, true);
         arrive(route);
         return true;
+    }
+    /**
+     * Where a stuck leg's teleport puts the body; shared by every runtime. A walking or swimming body stands on the footing
+     * of its waypoint's block, on top of it when the waypoint names the ground under the feet. A flyer, or terrain that
+     * cannot be read, keeps the waypoint itself.
+     */
+    public static WorldPosition stuckTarget(WorldPosition goal, MovementProfile.Mode mode, double hullWidth, double hullHeight, MotionValidator.Sampler terrain) {
+        if (mode == MovementProfile.Mode.FLY) return goal;
+        Vec3 point = goal.point();
+        BodyTerrain.Rest rest = new BodyTerrain(hullWidth, hullHeight, mode == MovementProfile.Mode.SWIM, STUCK_CELLS, terrain)
+                .footing(point.x(), point.z(), (int) Math.floor(point.y()));
+        return rest.usable() ? new WorldPosition(goal.world(), new Vec3(point.x(), rest.feet(), point.z())) : goal;
     }
     private void routeStatus(Route route, String state, String detail) {
         route.value.navigationStatus = state + "; route=" + route.id + "; waypoint=" + route.waypoint + "; goal=" + route.goal.point()
@@ -1047,7 +1061,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                         else if (next == LongLeg.Next.RETRY) routeStatus(route, "replanning", "attempt " + route.longLeg.attempts() + " after " + planned.status());
                         else {
                             route.segment = next == LongLeg.Next.SEGMENT;
-                            Vec3 end = route.segment ? planned.path().getLast().point() : route.goal.point();
+                            Vec3 end = next == LongLeg.Next.FINAL ? route.goal.point() : planned.path().getLast().point();
                             route.execution = new PathExecution(value.state.snapshot().position().point(), planned.path(), end, profile(value, route.mode));
                             routeStatus(route, "moving", moving(route.segment));
                         }

@@ -3,7 +3,8 @@
   "cases": [
     {"name": "town", "folder": "town/Denizen", "citizens": "town/saves.yml"},
     {"name": "town-unbound", "folder": "town/Denizen"},
-    {"name": "minimal", "folder": "minimal/Denizen"}
+    {"name": "minimal", "folder": "minimal/Denizen"},
+    {"name": "sentinel", "folder": "sentinel/Denizen"}
   ],
   "invalid": "invalid"
 }

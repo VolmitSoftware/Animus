@@ -410,6 +410,7 @@ final class DenizenCommands {
             case "look" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : look(command);
             case "walk" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : walk(command);
             case "equip" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : equip(command);
+            case "trait" -> scope.server ? Converted.kept(DenizenConverter.NO_NPC) : trait(command);
             case "playsound" -> sound(command, scope);
             case "playeffect" -> particle(command, scope);
             case "actionbar" -> actionbar(command, scope, pending);
@@ -770,6 +771,8 @@ final class DenizenCommands {
         if (as == null) return Converted.kept("execute needs as_server, as_op or as_player");
         String line = String.join(" ", words).trim();
         if (line.startsWith("/")) line = line.substring(1);
+        String[] split = line.split("\\s+");
+        if (split[0].equalsIgnoreCase("sentinel")) return sentinel(List.of(split).subList(1, split.length), scope);
         Result<Text> text = text(line, scope, pending, true, 1024);
         if (text.failed()) return Converted.kept(text.reason());
         if (!text.value().dynamic() && text.value().literal().isBlank()) return Converted.kept("command is empty");
@@ -777,6 +780,70 @@ final class DenizenCommands {
         action.text("command", text.value());
         if (as.equals("player")) action.put("as", "player");
         return Converted.of(action.node("animus:command"));
+    }
+
+    /**
+     * A {@code /sentinel} command. Sentinel is replaced by animus:combat, so the forms that act on the NPC now become
+     * combat-control on the behavior's own NPC: attacking, forgiving and guarding the triggering player. Target types and
+     * Sentinel settings are animus:combat settings, so those lines are kept with the reason.
+     */
+    private Converted sentinel(List<String> words, Scope scope) {
+        if (scope.server) return Converted.kept("sentinel acts on an NPC, and " + DenizenConverter.NO_NPC);
+        List<String> rest = new ArrayList<>();
+        for (int i = 0; i < words.size(); i++) {
+            String word = words.get(i);
+            String id = word.equalsIgnoreCase("--id") && i + 1 < words.size() ? words.get(++i)
+                    : word.toLowerCase(Locale.ROOT).startsWith("--id=") ? word.substring(5) : null;
+            if (id == null) { rest.add(word); continue; }
+            if (!id.equalsIgnoreCase("<npc.id>") && !id.equalsIgnoreCase("<npc>")) return Converted.kept("sentinel names another NPC with --id; animus:combat acts on the behavior's own NPC");
+        }
+        String operation = rest.isEmpty() ? "" : rest.getFirst().toLowerCase(Locale.ROOT);
+        List<String> arguments = rest.isEmpty() ? List.of() : rest.subList(1, rest.size());
+        boolean player = arguments.size() == 1 && triggeringPlayer(arguments.getFirst());
+        Action action = new Action();
+        switch (operation) {
+            case "addtarget", "removetarget" -> {
+                if (!player) return Converted.kept("sentinel " + String.join(" ", rest) + ": target types are animus:combat settings; set them in the NPC's animus:combat targets");
+                // Taking the player off the target list stops the attack on them; combat-control releases the current target.
+                action.put("operation", operation.equals("addtarget") ? "target" : "release");
+                if (operation.equals("addtarget")) action.put("target", "player");
+            }
+            case "forgive", "forgiveall" -> {
+                if (!arguments.isEmpty()) return Converted.kept("sentinel " + operation + " with arguments has no combat action");
+                action.put("operation", "release");
+            }
+            case "guard" -> {
+                if (!arguments.isEmpty() && !player) return Converted.kept("sentinel guard guards only the triggering player in Animus");
+                action.put("operation", "guard");
+                if (player) action.put("target", "player");
+            }
+            case "" -> { return Converted.kept("sentinel without a subcommand"); }
+            default -> { return Converted.kept("sentinel " + operation + " has no combat action; set it in the NPC's animus:combat settings"); }
+        }
+        return Converted.of(action.node("animus:combat-control"));
+    }
+
+    /** The player who triggered the behavior, as Sentinel's target syntax names them. */
+    private static boolean triggeringPlayer(String value) {
+        String lowered = value.toLowerCase(Locale.ROOT);
+        if (lowered.startsWith("player:")) lowered = lowered.substring(7);
+        return lowered.equals("<player>") || lowered.equals("<player.name>") || lowered.equals("<player.uuid>");
+    }
+
+    /** {@code trait state:true|false sentinel}: Sentinel on or off becomes the NPC's combat on or off. */
+    private Converted trait(Command command) {
+        String state = "toggle", name = null;
+        for (Arg arg : command.args()) {
+            if (arg.prefix().equals("state")) state = arg.value().toLowerCase(Locale.ROOT);
+            else if (arg.prefix().equals("to") && npcTarget(arg.value())) continue;
+            else if (arg.prefix().isEmpty() && name == null) name = arg.value().toLowerCase(Locale.ROOT);
+            else return Converted.kept("trait argument " + raw(arg) + " has no Animus equivalent");
+        }
+        if (!"sentinel".equals(name)) return Converted.kept("no Animus equivalent for the " + (name == null ? "unnamed" : name) + " trait");
+        if (!state.equals("true") && !state.equals("false")) return Converted.kept("trait toggles Sentinel without saying on or off; use state:true or state:false");
+        Action action = new Action();
+        action.put("operation", state.equals("true") ? "enable" : "disable");
+        return Converted.of(action.node("animus:combat-control"));
     }
 
     Optional<String> material(String value) {

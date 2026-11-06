@@ -105,6 +105,11 @@ public final class Administration {
         try { lines = new ArrayList<>(step.run(dropIn)); }
         catch (IOException | RuntimeException failure) { catalogs(dropIn.committed(), dropIn.rolledBack()); throw failure; }
         lines.addAll(catalogs(dropIn.committed(), dropIn.rolledBack()));
+        if (dropIn.settingsChanged()) {
+            // accept commands and rollback edit config.toml; apply it now instead of waiting for a hotload.
+            try { runtime.applySettings(art.arcane.animus.core.config.PluginSettings.load(runtime.documents())); }
+            catch (IOException | RuntimeException failure) { lines.add("config.toml changed but was not applied (" + failure.getMessage() + "); it applies at the next hotload or restart"); }
+        }
         return lines;
     }
     @FunctionalInterface public interface CitizensStep { List<String> run(CitizensDropIn dropIn) throws IOException; }

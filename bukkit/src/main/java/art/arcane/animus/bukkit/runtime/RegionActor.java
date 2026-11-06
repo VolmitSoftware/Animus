@@ -765,7 +765,7 @@ final class RegionActor implements RegionOwner.Body {
                         else if (next == LongLeg.Next.RETRY) routeStatus(current, "replanning", "attempt " + current.longLeg.attempts() + " after " + planned.status());
                         else {
                             current.segment = next == LongLeg.Next.SEGMENT;
-                            Vec3 end = current.segment ? planned.path().getLast().point() : current.goal.point();
+                            Vec3 end = next == LongLeg.Next.FINAL ? current.goal.point() : planned.path().getLast().point();
                             current.execution = new PathExecution(state.snapshot().position().point(), planned.path(), end, profile(current.mode));
                             routeStatus(current, "moving", PersistedNpcService.moving(current.segment) + "; region owner");
                         }
@@ -954,7 +954,10 @@ final class RegionActor implements RegionOwner.Body {
         if (current.plan != null) current.plan.cancel();
         if (current.execution != null) current.execution.cancel();
         current.plan = null; current.result = null; current.execution = null;
-        state.move(current.goal);
+        World world = host.world(current.goal.world());
+        // Only terrain this region owns is read; a waypoint elsewhere is used as it is.
+        state.move(world == null ? current.goal : PersistedNpcService.stuckTarget(current.goal, current.mode, hullWidth(), hullHeight(),
+                LiveMovementProbe.owned(world, (int x, int z) -> host.regions.owns(world, x, z, x, z))));
         host.index.upsert(state.snapshot());
         pose++; setPose(yaw, 0, true);
         arrive(current);
