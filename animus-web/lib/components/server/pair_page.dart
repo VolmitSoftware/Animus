@@ -240,7 +240,7 @@ class _ServersPanelState extends State<ServersPanel> {
                   detail: 'Its token and its live workspace, with any drafts not applied, leave this browser. The server keeps everything already applied.',
                   confirmLabel: 'Forget server',
                   destructive: true,
-                  returnFocus: 'animus-servers-title',
+                  returnFocus: _forgetId(server.id),
                   onConfirm: () => _forget(server),
                   onCancel: () => setState(() => _forgetting = null),
                 )

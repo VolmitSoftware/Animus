@@ -146,7 +146,7 @@ class _ServerOverviewState extends State<ServerOverview> {
       dom.h2(<Widget>[
         Component.text(session.catalogLoaded ? '${session.catalog.length} document${session.catalog.length == 1 ? '' : 's'} on the server' : 'Server catalog'),
       ]),
-      if (!session.owned)
+      if (session.waiting)
         const dom.p(classes: 'animus-muted', <Widget>[Component.text(LiveSession.otherTab)])
       else if (problem != null)
         dom.div(classes: 'animus-row', attributes: const <String, String>{'role': 'alert', 'data-testid': 'catalog-problem'}, <Widget>[

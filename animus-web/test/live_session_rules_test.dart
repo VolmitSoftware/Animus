@@ -151,6 +151,19 @@ void main() {
     expect(store.workspace!.server!.pending, isEmpty);
   });
 
+  test('should ask by the key when a resent apply comes back as a replayed counter', () async {
+    await rename('Captain');
+    override = (ApiRequest request) {
+      if (request.method != 'POST' || request.path != '/v1/changes') return null;
+      // The first copy applied; the browser's resend under the same counter is refused.
+      server.handle(request);
+      return const ApiResponse(409, <String, Object?>{'error': <String, Object?>{'code': 'counter-replayed', 'message': 'replayed'}});
+    };
+    expect(await session.apply(), isTrue);
+    expect(store.workspace!.server!.pending, isEmpty);
+    expect(log().last, startsWith('Applied 1 document'));
+  });
+
   test('should explain a refused validation that names no error', () {
     expect(validationLine(false, 2, 0), contains('named no error'));
     expect(validationLine(false, 2, 3), startsWith('The server found 3 errors.'));

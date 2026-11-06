@@ -71,6 +71,10 @@
 .animus-pair-paste { margin-top: 0.75rem; }
 .animus-pair-paste > :first-child { flex: 1 1 16rem; }
 .animus-server-mark { display: block; }
+
+/* The home page's converter button names four plugins, so it wraps on
+   phones; the button component sets nowrap inline, hence the !important. */
+#animus-open-converter { white-space: normal !important; height: auto !important; min-height: 2.75rem; max-width: 100%; text-align: start; }
 .animus-sync-empty { display: grid; gap: 0.5rem; justify-items: start; }
 
 .animus-server-list li { align-items: center; }
@@ -104,7 +108,8 @@
   overflow-wrap: anywhere;
 }
 
-.animus-live-confirm { border-color: var(--animus-warning); }
+.animus-live-confirm { flex: 1 1 100%; min-width: 0; border-color: var(--animus-warning); }
+.animus-live-confirm > span { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
 
 .animus-live-count { font-size: 0.875rem; }
 .animus-live-preview { margin: 0; font-size: 0.875rem; }

@@ -56,7 +56,7 @@ Future<Map<String, String>?> _pickTextFolder() {
     ..multiple = true;
   input.setAttribute('webkitdirectory', '');
   input.style.display = 'none';
-  input.addEventListener('change', ((web.Event _) async {
+  Future<void> read() async {
     final web.FileList? list = input.files;
     final Map<String, String> files = <String, String>{};
     for (int index = 0; index < (list?.length ?? 0); index++) {
@@ -67,7 +67,9 @@ Future<Map<String, String>?> _pickTextFolder() {
     }
     input.remove();
     if (!completer.isCompleted) completer.complete(files);
-  }).toJS);
+  }
+
+  input.addEventListener('change', ((web.Event _) => unawaited(read())).toJS);
   input.addEventListener('cancel', ((web.Event _) {
     input.remove();
     if (!completer.isCompleted) completer.complete(null);

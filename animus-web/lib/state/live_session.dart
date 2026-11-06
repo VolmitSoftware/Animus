@@ -172,13 +172,21 @@ class LiveSession {
   /// The tab may edit live: it owns the session for this server.
   bool get owned => owner.owned;
 
+  /// Another tab of this browser holds the session, so this one waits.
+  bool get waiting => owner.waiting;
+
   static const String otherTab = 'Live editing for this server runs in another tab of this browser. Use that tab, or close it to edit here.';
+
+  bool _waited = false;
 
   void _ownership(bool owned) {
     if (owned) {
-      _notice(NoticeLevel.info, 'This tab now runs live editing for this server.');
+      // Said only after waiting on another tab, not on every first start.
+      if (_waited) _notice(NoticeLevel.info, 'This tab now runs live editing for this server.');
+      _waited = false;
       if (connection.status.online) unawaited(_online());
     } else {
+      _waited = _waited || owner.waiting;
       _changed();
     }
   }
@@ -269,7 +277,7 @@ class LiveSession {
 
   Future<T?> _run<T>(String label, Future<T?> Function() task) async {
     if (!owned) {
-      _notice(NoticeLevel.warning, otherTab);
+      _notice(NoticeLevel.warning, waiting ? otherTab : 'Live editing is still starting in this tab. Try again in a moment.');
       return null;
     }
     busy = label;
@@ -482,7 +490,7 @@ class LiveSession {
         // The preview event may have ended it (and said so) already.
         final bool announced = !(preview?.running ?? false);
         preview = PreviewState(running.id, 'ended', running.expiresAt, running.npcs, running.hidden);
-        if (!announced) _notice(NoticeLevel.info, 'Preview ended.');
+        if (!announced) _notice(NoticeLevel.info, 'The preview ended.');
       });
 
   /// Sends every changed draft as one change set. Nothing is written unless
@@ -586,6 +594,11 @@ class LiveSession {
         await _dropPending(pending.idempotencyKey);
         serverDiagnostics.addAll(invalid.diagnostics);
         _notice(NoticeLevel.error, 'The server refused the change set because $documents have errors, so nothing was written. Fix the marked fields, then apply again.');
+      case null when response.errorCode == 'counter-replayed':
+        // A browser resends a request whose connection closed before the
+        // answer, under the same counter. The first copy may have applied:
+        // ask by the key rather than report a refusal.
+        return await _check(pending) ?? false;
       case null:
         if (response.status >= 500 || response.errorCode == 'busy' || response.errorCode == 'rate-limited') {
           _notice(NoticeLevel.warning, '${response.problem.cause} The change set is kept; the editor asks what became of it on the next connect.');
@@ -692,26 +705,33 @@ class LiveSession {
     if (server == null || !owned) return;
     pendingProblem = null;
     for (final PendingChange pending in List<PendingChange>.of(server.pending)) {
-      final ApiResponse? response = await _call(ApiRequest('GET', '/v1/changes/${Uri.encodeComponent(pending.idempotencyKey)}'), 'check a change set');
-      if (response == null) return;
-      final Object? body = response.body;
-      if (!response.ok || body is! Map<String, Object?>) {
-        pendingProblem = response.problem;
-        _notice(NoticeLevel.warning, 'Could not check a change set sent earlier. ${response.problem.cause} Press Check again, or Stop waiting to drop it.');
-        continue;
-      }
-      // A change event may have settled it while the status was on its way.
-      if (_pendingOf(pending.idempotencyKey) == null) continue;
-      switch (body['status']) {
-        case 'applied' || 'conflict' || 'invalid':
-          await _outcome(ApiResponse(200, body['result']), pending, null);
-        case 'unknown':
-          await _dropPending(pending.idempotencyKey);
-          _notice(NoticeLevel.warning, 'A change set sent before the connection dropped never reached the server. Your drafts are unchanged; apply again.');
-        default:
-          _notice(NoticeLevel.info, 'A change set is still being written on the server; it settles when the server reports it.');
-      }
+      if (await _check(pending) == null) return;
     }
+  }
+
+  /// Asks the server about one unanswered change set and settles it. True
+  /// when it applied; null when the connection failed on the way.
+  Future<bool?> _check(PendingChange pending) async {
+    final ApiResponse? response = await _call(ApiRequest('GET', '/v1/changes/${Uri.encodeComponent(pending.idempotencyKey)}'), 'check a change set');
+    if (response == null) return null;
+    final Object? body = response.body;
+    if (!response.ok || body is! Map<String, Object?>) {
+      pendingProblem = response.problem;
+      _notice(NoticeLevel.warning, 'Could not check a change set sent earlier. ${response.problem.cause} Press Check again, or Stop waiting to drop it.');
+      return false;
+    }
+    // A change event may have settled it while the status was on its way.
+    if (_pendingOf(pending.idempotencyKey) == null) return false;
+    switch (body['status']) {
+      case 'applied' || 'conflict' || 'invalid':
+        return _outcome(ApiResponse(200, body['result']), pending, null);
+      case 'unknown':
+        await _dropPending(pending.idempotencyKey);
+        _notice(NoticeLevel.warning, 'A change set sent before the connection dropped never reached the server. Your drafts are unchanged; apply again.');
+      default:
+        _notice(NoticeLevel.info, 'A change set is still being written on the server; it settles when the server reports it.');
+    }
+    return false;
   }
 
   /// Asks again about every unanswered change set, from the live bar.

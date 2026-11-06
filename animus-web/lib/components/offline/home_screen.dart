@@ -128,6 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: busy, onPressed: component.onOpenZip),
           Button.ghost(
             label: 'Convert Citizens, Shopkeepers, dtlTraders or Denizen',
+            id: 'animus-open-converter',
             icon: ArcaneIcon.arrowRightLeft(),
             disabled: busy,
             onPressed: () => component.onNavigate(const CitizensRoute()),

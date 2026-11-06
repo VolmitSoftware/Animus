@@ -351,6 +351,8 @@ class _RelaySubscription implements EventSubscription {
   void finish(Object? error) {
     if (_finished) return;
     _finished = true;
+    // The relay's own reason (capacity, replaced, ...) explains the close.
+    if (error is TransportFailure) _reason ??= error.code;
     if (error != null) _controller.addError(error);
     _controller.close();
   }
