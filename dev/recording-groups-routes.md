@@ -29,6 +29,7 @@ Conventions carried over from the code: every document kind has a folder, a sche
 }
 ```
 
+- `world` is a portable reference: capture writes the Bukkit world name, never the UUID; mod servers would write the dimension key. Playback and previews resolve it through `RuntimeHost.resolveWorld` (name, dimension key or UUID), compare it with the NPC's or player's world like `same_world`, and report an unloaded or different world in `route-error`.
 - `frames[i]` is `[tick, dx, dy, dz, yaw, pitch, flags]`: tick since start (strictly increasing, first 0, last `durationTicks`), position relative to `origin` rounded to 0.01 blocks, yaw and pitch rounded to 0.5 degrees, and `flags` a bitmask: 1 onGround, 2 sneaking, 4 sprinting, 8 swimming, 16 gliding, 32 jumping. Frames are the compressed form: arrays, no keys.
 - `events` are objects sorted by `tick` then `type`. Types: `swing`, `equipment` (slot and item in the definition's item shape, or `"item": null` for an emptied slot), `use` (a door, fence gate or trapdoor the recorder opened or closed; nothing else is recorded).
 - Limits: `durationTicks` at most `[recordings] maximumTicks`; at most `durationTicks / sampleTicks + 1` frames; at most 4096 events; serialized UTF-8 at most `maximumFileBytes`; the file is refused above `maximumFileBytes` and never read into memory beyond that bound (same pattern as `RouteDocuments.read`).

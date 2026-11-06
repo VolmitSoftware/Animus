@@ -23,6 +23,7 @@ import art.arcane.animus.core.recording.RecordingEvent;
 import art.arcane.animus.core.recording.RecordingPose;
 import art.arcane.animus.core.recording.RecordingRun;
 import art.arcane.animus.core.recording.RecordingSource;
+import art.arcane.animus.core.recording.RecordingWorlds;
 import art.arcane.animus.core.runtime.SkinDocuments;
 import art.arcane.animus.core.runtime.WaypointProgress;
 
@@ -1262,6 +1263,8 @@ final class RegionActor implements RegionOwner.Body {
     private void finishRecordingRead(RouteRead read, RecordingDocument document, String failure) {
         RecordingRun current = performance.run != null ? performance.run : performance.held;
         String error = failure == null && !host.recordings().enabled() ? RECORDINGS_DISABLED : failure;
+        if (error == null)
+            error = RecordingWorlds.refusal(document, state.snapshot().position().world(), (String reference) -> Optional.ofNullable(host.worldKey(reference))).orElse(null);
         if (error != null) {
             routeError = error + "; last-valid-recording-retained=" + (current != null);
             failWatch("unavailable: " + error);

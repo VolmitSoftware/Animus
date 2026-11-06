@@ -19690,7 +19690,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "revision": {"type": "integer", "minimum": 1},
     "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "Matches the file name."},
     "recordedBy": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "UUID of the player who recorded it."},
-    "world": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "The world the recording was made in."},
+    "world": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "The world the recording was made in, as a portable reference: the Bukkit world name or a dimension key such as minecraft:the_nether. The playing server resolves it, or a world UUID, to one of its loaded worlds; a recording whose world is not loaded, or is not the NPC's world, does not play."},
     "origin": {
       "type": "object",
       "additionalProperties": false,

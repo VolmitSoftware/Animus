@@ -123,6 +123,8 @@ class ViewerWatchRaceTest {
         final List<Runnable> ticks = new ArrayList<>();
         MotionValidator.Sampler terrain;
         volatile boolean playersAway;
+        /** What {@code resolveWorld} answers; every reference names itself by default. */
+        java.util.function.Function<String, Optional<String>> worlds = Optional::of;
         /** Chunks the host reports loaded; every chunk by default. */
         volatile java.util.function.BiPredicate<Integer, Integer> loaded = (Integer x, Integer z) -> true;
         art.arcane.animus.core.navigation.DoorPassage.Doors doors = art.arcane.animus.core.navigation.DoorPassage.NONE;
@@ -230,7 +232,7 @@ class ViewerWatchRaceTest {
         @Override public boolean permitted(Player player, String node) { return false; }
         @Override public void tell(Player player, String message) {}
         @Override public boolean teleport(Player player, WorldPosition destination, float yaw, float pitch) { return false; }
-        @Override public Optional<String> resolveWorld(String reference) { return Optional.of(reference); }
+        @Override public Optional<String> resolveWorld(String reference) { return harness.worlds.apply(reference); }
         @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return true; }
         @Override public boolean clearSight(Player player, Vec3 eye, Vec3 direction, double distance) { return true; }
         @Override public art.arcane.animus.core.navigation.DoorPassage.Doors doors() { return harness.doors; }

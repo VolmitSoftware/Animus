@@ -205,6 +205,7 @@
 - A stopped playback keeps its cursor and `resumePatrol` continues from it; a changed recording file hotloads and restarts; a paused cursor waits for unloaded terrain or sleeps with no player near.
 - Folia playback runs on the region budget and carries its cursor, mode and direction through region handoffs.
 - `animus:play-recording` and `animus:resume-patrol` behavior actions; `inspect` and status report the recording, mode, cursor and state.
+- A recording stores its world as the Bukkit world name or dimension key; playback and previews resolve it, or a world UUID, like other documents, and refuse in `route-error` a recording whose world is not loaded or is not the NPC's.
 
 ### Changed
 

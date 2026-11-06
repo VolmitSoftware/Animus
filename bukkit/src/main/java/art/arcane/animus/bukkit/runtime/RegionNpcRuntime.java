@@ -504,7 +504,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         }
     }
     /** The runtime key, the UUID, of the world a definition names by name, UUID or dimension key. */
-    private String worldKey(String name) {
+    String worldKey(String name) {
         World world = BukkitWorldLookup.find(plugin.getServer(), name);
         return world == null ? null : world.getUID().toString();
     }
