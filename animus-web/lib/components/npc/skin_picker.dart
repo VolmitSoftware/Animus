@@ -56,12 +56,19 @@ class _SkinPickerState extends State<SkinPicker> {
     final bool known = value == null || component.skins.any((AnimusDocument skin) => skin.id == value);
     return dom.div(classes: 'animus-skin-picker', attributes: const <String, String>{'role': 'group', 'aria-label': 'Skin'}, <Widget>[
       dom.div(classes: 'animus-skin-grid', attributes: const <String, String>{'role': 'radiogroup', 'aria-label': 'Workspace skins'}, <Widget>[
-        _card(null, 'Default', 'Steve or Alex', null),
-        for (final AnimusDocument skin in component.skins) _card(skin.id, skin.id.substring(0, 12), _model(skin), SkinImages.forKey(skin.id)),
-        if (!known) _card(value, value.substring(0, value.length.clamp(0, 12)), 'not in this workspace', SkinImages.forKey(value)),
+        _card(null, 'Default', 'Steve or Alex', null, 'Default skin, Steve or Alex'),
+        for (int index = 0; index < component.skins.length; index++)
+          _card(
+            component.skins[index].id,
+            component.skins[index].id.substring(0, 12),
+            _model(component.skins[index]),
+            SkinImages.forKey(component.skins[index].id),
+            'Skin ${index + 1} of ${component.skins.length}, ${_model(component.skins[index])}, ${component.skins[index].id.substring(0, 8)}',
+          ),
+        if (!known) _card(value, value.substring(0, value.length.clamp(0, 12)), 'not in this workspace', SkinImages.forKey(value), 'Skin ${value.substring(0, value.length.clamp(0, 8))}, not in this workspace'),
       ]),
       GuiRow(
-        label: 'skin',
+        label: 'Skin hash',
         help: 'SHA-256 of a skin document under skins/. The server supplies a signed texture once connected.',
         problems: <Diagnostic>[
           ...component.diagnostics.where((Diagnostic diagnostic) => diagnostic.path == r'$.skin'),
@@ -69,7 +76,7 @@ class _SkinPickerState extends State<SkinPicker> {
         ],
         child: GuiTextInput(
           value: value ?? '',
-          label: 'skin',
+          label: 'Skin hash',
           placeholder: '64 hex characters',
           onChanged: (String text) => component.onChanged(text.trim().isEmpty ? null : text.trim()),
         ),
@@ -96,11 +103,11 @@ class _SkinPickerState extends State<SkinPicker> {
     return '${info.slim ? 'slim' : 'classic'}${info.signed ? ', signed' : ''}';
   }
 
-  Widget _card(String? hash, String title, String detail, LoadedSkin? loaded) {
+  Widget _card(String? hash, String title, String detail, LoadedSkin? loaded, String name) {
     final bool selected = hash == component.value;
     return dom.button(
       classes: 'animus-skin-card${selected ? ' is-selected' : ''}',
-      attributes: <String, String>{'type': 'button', 'role': 'radio', 'aria-checked': '$selected', 'aria-label': hash == null ? 'Default skin' : 'Skin $hash'},
+      attributes: <String, String>{'type': 'button', 'role': 'radio', 'aria-checked': '$selected', 'aria-label': name, 'data-skin': hash ?? 'default'},
       events: <String, void Function(web.Event)>{'click': (web.Event _) => component.onChanged(hash)},
       <Widget>[
         if (loaded != null)

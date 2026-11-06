@@ -26,6 +26,8 @@ public final class GuiExpression {
     private static final Set<String> FUNCTIONS = Set.of("clamp", "lerp", "min", "max", "floor", "ceil", "round", "abs", "mod", "pow",
             "smoothstep", "sin", "cos", "rgb", "argb", "alpha", "mix", "palette", "select", "number", "bar", "hex", "str", "fixed",
             "plain", "readable", "align", "len", "contains", "lower", "upper");
+    /** Every built-in function name, text animations included, sorted. */
+    public static final List<String> STANDARD_FUNCTIONS = standardFunctions();
 
     private sealed interface Node permits Literal, Variable, ArrayLiteral, Call, Unary, Binary, Ternary {}
     private record Literal(Object value) implements Node {}
@@ -497,5 +499,11 @@ public final class GuiExpression {
                 default -> throw new Invalid("colour literal must be #RGB, #RRGGBB or #AARRGGBB at position " + start);
             };
         }
+    }
+
+    private static List<String> standardFunctions() {
+        java.util.TreeSet<String> names = new java.util.TreeSet<>(FUNCTIONS);
+        names.addAll(GuiTextFunctions.NAMES);
+        return List.copyOf(names);
     }
 }

@@ -3,14 +3,30 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../model/document_kind.dart';
+import '../../services/server/error_copy.dart';
 import '../../services/server/server_connection.dart';
 import '../../services/server/server_profiles.dart';
 import '../../state/live_session.dart';
 import '../../state/server_hub.dart';
-import 'pair_page.dart';
+import 'connection_pill.dart';
+
+/// What a token scope lets this browser do, in words.
+String scopeLabel(String scope) => switch (scope) {
+      'read' => 'Read documents',
+      'validate' => 'Validate',
+      'preview' => 'Preview',
+      'apply:npcs' => 'Apply NPCs',
+      'apply:behaviors' => 'Apply behaviors',
+      'apply:gui' => 'Apply GUIs',
+      'apply:rigs' => 'Apply rigs',
+      'import' => 'Import saves',
+      'spawn' => 'Spawn NPCs',
+      'admin' => 'Admin',
+      _ => scope,
+    };
 
 /// A server workspace's overview: the connection, what the server offers,
-/// and its catalog to open documents from.
+/// and its catalog to open documents from, grouped by kind.
 class ServerOverview extends StatefulWidget {
   const ServerOverview({required this.hub, required this.session, required this.onOpened, super.key});
 
@@ -30,7 +46,8 @@ class _ServerOverviewState extends State<ServerOverview> {
 
   Future<void> _open(List<CatalogEntry> entries) async {
     if (entries.isEmpty) return;
-    await component.session.openDocuments(entries);
+    final List<CatalogEntry> closed = <CatalogEntry>[for (final CatalogEntry entry in entries) if (component.session.store.document(entry.kind, entry.id) == null) entry];
+    if (closed.isNotEmpty) await component.session.openDocuments(closed);
     _selected.clear();
     if (mounted) setState(() {});
     final CatalogEntry first = entries.first;
@@ -40,56 +57,54 @@ class _ServerOverviewState extends State<ServerOverview> {
   @override
   Widget build(BuildContext context) {
     final LiveSession session = component.session;
-    final ServerHub hub = component.hub;
     final ServerConnection connection = session.connection;
     final ConnectionStatus status = connection.status;
     final ServerProfile profile = connection.profile;
-    final Map<String, Object?>? hello = connection.hello;
-    final String filter = _filter.trim().toLowerCase();
-    final List<CatalogEntry> shown = <CatalogEntry>[
-      for (final CatalogEntry entry in session.catalog)
-        if (filter.isEmpty || entry.id.contains(filter) || entry.kind.wireName.contains(filter)) entry,
-    ];
-    final Map<String, Object?> features = (connection.capabilities?['features'] as Map<String, Object?>?) ?? const <String, Object?>{};
     final ServerToken? token = connection.token;
+    final Map<String, Object?> features = (connection.capabilities?['features'] as Map<String, Object?>?) ?? const <String, Object?>{};
+    final String hint = phaseHint(status, hasToken: token != null);
     return dom.div(classes: 'animus-overview', <Widget>[
       dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Connection'}, <Widget>[
         dom.h2(<Widget>[Component.text(profile.name)]),
         dom.dl(classes: 'animus-facts', <Widget>[
           const dom.dt(<Widget>[Component.text('Status')]),
           dom.dd(attributes: const <String, String>{'data-testid': 'server-status'}, <Widget>[
-            Component.text(status.label),
-            if (phaseHint(status, hasToken: token != null).isNotEmpty)
-              dom.span(classes: 'animus-muted', <Widget>[Component.text(' - ${phaseHint(status, hasToken: token != null)}')]),
+            ConnectionPill(status: status, hasToken: token != null),
+            if (hint.isNotEmpty) dom.span(classes: 'animus-muted animus-status-hint', <Widget>[Component.text(hint)]),
           ]),
           const dom.dt(<Widget>[Component.text('Fingerprint')]),
           dom.dd(<Widget>[dom.code(<Widget>[Component.text(profile.fingerprint)])]),
           const dom.dt(<Widget>[Component.text('Paths')]),
           dom.dd(<Widget>[
-            Component.text(<String>[
-              if (profile.directUrl != null) 'direct ${profile.directUrl}',
-              if (profile.relayUrl != null) 'relay ${profile.relayUrl}',
-            ].join(', ')),
+            dom.ul(classes: 'animus-pair-paths', <Widget>[
+              if (profile.directUrl != null) dom.li(<Widget>[const Component.text('Direct '), dom.code(<Widget>[Component.text(profile.directUrl!)])]),
+              if (profile.relayUrl != null) dom.li(<Widget>[const Component.text('Relay '), dom.code(<Widget>[Component.text(profile.relayUrl!)])]),
+            ]),
           ]),
-          if (hello != null) ...<Widget>[
+          if (_serverLine(connection.hello) case final String line) ...<Widget>[
             const dom.dt(<Widget>[Component.text('Server')]),
-            dom.dd(<Widget>[Component.text('Animus ${hello['animus']} on ${hello['platform']} ${hello['minecraft']}')]),
+            dom.dd(<Widget>[Component.text(line)]),
           ],
           if (token != null) ...<Widget>[
-            const dom.dt(<Widget>[Component.text('Token')]),
+            const dom.dt(<Widget>[Component.text('This browser may')]),
+            dom.dd(classes: 'animus-scopes', <Widget>[
+              for (final String scope in token.scopes)
+                dom.span(classes: 'animus-tag', attributes: <String, String>{'title': scope}, <Widget>[Component.text(scopeLabel(scope))]),
+            ]),
+            const dom.dt(<Widget>[Component.text('Pairing')]),
             dom.dd(<Widget>[
-              Component.text('${token.tokenId}, ${token.scopes.join(' ')}, expires ${token.expiresAt.toLocal().toString().substring(0, 16)}'
-                  '${profile.remember ? ', remembered' : ', this tab only'}'),
+              Component.text('Expires ${token.expiresAt.toLocal().toString().substring(0, 16)}, '
+                  '${profile.remember ? 'remembered in this browser' : 'kept in this tab only'}'),
             ]),
           ],
         ]),
         dom.div(classes: 'animus-row', <Widget>[
           if (status.phase == ConnectionPhase.offline || status.phase == ConnectionPhase.refused)
-            Button.secondary(label: 'Connect', size: ButtonSize.small, disabled: token == null, onPressed: () => hub.connect(profile.id)),
+            Button.secondary(label: 'Connect', size: ButtonSize.small, disabled: token == null, onPressed: () => component.hub.connect(profile.id)),
           if (status.phase != ConnectionPhase.offline && status.phase != ConnectionPhase.needsPairing && status.phase != ConnectionPhase.refused)
-            Button.ghost(label: 'Disconnect', size: ButtonSize.small, onPressed: () => hub.disconnect(profile.id)),
+            Button.ghost(label: 'Disconnect', size: ButtonSize.small, onPressed: () => component.hub.disconnect(profile.id)),
           if (status.phase == ConnectionPhase.reconnecting) Button.ghost(label: 'Retry now', size: ButtonSize.small, onPressed: connection.retryNow),
-          if (status.online) Button.ghost(label: 'Reload catalog', size: ButtonSize.small, onPressed: session.loadCatalog),
+          if (status.online && session.owned) Button.ghost(label: 'Reload catalog', size: ButtonSize.small, onPressed: session.loadCatalog),
         ]),
         if (features.isNotEmpty)
           dom.details(<Widget>[
@@ -101,60 +116,112 @@ class _ServerOverviewState extends State<ServerOverview> {
                     dom.code(<Widget>[Component.text(feature.key)]),
                     Component.text((feature.value! as Map<String, Object?>)['available'] == true
                         ? ' available'
-                        : ' unavailable: ${(feature.value! as Map<String, Object?>)['reason']}'),
+                        : ' unavailable${(feature.value! as Map<String, Object?>)['reason'] is String ? ': ${(feature.value! as Map<String, Object?>)['reason']}' : ''}'),
                   ]),
             ]),
           ]),
       ]),
-      dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Server catalog'}, <Widget>[
-        dom.h2(<Widget>[Component.text(session.catalogLoaded ? '${session.catalog.length} documents on the server' : 'Server catalog')]),
-        if (!session.catalogLoaded)
-          dom.p(classes: 'animus-muted', <Widget>[
-            Component.text(status.online ? 'Loading...' : 'Connect to list the server\'s documents. Drafts here stay in this browser.'),
+      _catalog(session, status),
+    ]);
+  }
+
+  static String? _serverLine(Map<String, Object?>? hello) {
+    if (hello == null) return null;
+    final List<String> parts = <String>[
+      if (hello['animus'] is String) 'Animus ${hello['animus']}',
+      if (hello['platform'] is String) 'on ${hello['platform']}',
+      if (hello['minecraft'] is String) '${hello['minecraft']}',
+    ];
+    return parts.isEmpty ? null : parts.join(' ');
+  }
+
+  Widget _catalog(LiveSession session, ConnectionStatus status) {
+    final String filter = _filter.trim().toLowerCase();
+    final List<CatalogEntry> shown = <CatalogEntry>[
+      for (final CatalogEntry entry in session.catalog)
+        if (filter.isEmpty || entry.id.toLowerCase().contains(filter) || entry.kind.wireName.contains(filter) || entry.kind.label.toLowerCase().contains(filter)) entry,
+    ];
+    final ErrorCopy? problem = session.catalogProblem;
+    return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Server catalog'}, <Widget>[
+      dom.h2(<Widget>[
+        Component.text(session.catalogLoaded ? '${session.catalog.length} document${session.catalog.length == 1 ? '' : 's'} on the server' : 'Server catalog'),
+      ]),
+      if (session.waiting)
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text(LiveSession.otherTab)])
+      else if (problem != null)
+        dom.div(classes: 'animus-row', attributes: const <String, String>{'role': 'alert', 'data-testid': 'catalog-problem'}, <Widget>[
+          dom.span(classes: 'animus-error', <Widget>[Component.text('Could not load the catalog. ${problem.text}')]),
+          if (status.online) Button.secondary(label: 'Try again', size: ButtonSize.small, onPressed: session.loadCatalog),
+        ])
+      else if (!session.catalogLoaded)
+        dom.p(classes: 'animus-muted', attributes: const <String, String>{'role': 'status'}, <Widget>[
+          Component.text(status.online ? 'Loading the server catalog...' : 'Connect to list the server\'s documents. Drafts here stay in this browser.'),
+        ])
+      else if (session.catalog.isEmpty)
+        const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-testid': 'catalog-empty'}, <Widget>[
+          Component.text('The server has no documents yet. Make some in a local workspace, then send them from its Sync page.'),
+        ])
+      else ...<Widget>[
+        dom.div(classes: 'animus-row', <Widget>[
+          TextInput(
+            placeholder: 'Filter by id or kind',
+            value: _filter,
+            size: ComponentSize.sm,
+            attributes: const <String, String>{'aria-label': 'Filter the catalog'},
+            onChanged: (String value) => setState(() => _filter = value),
+          ),
+          Button.primary(
+            label: _selected.isEmpty ? 'Open selected' : 'Open ${_selected.length}',
+            size: ButtonSize.small,
+            disabled: _selected.isEmpty || !status.online,
+            onPressed: () => _open(<CatalogEntry>[for (final CatalogEntry entry in session.catalog) if (_selected.contains(entry.key)) entry]),
+          ),
+          Button.secondary(
+            label: 'Open all shown',
+            size: ButtonSize.small,
+            disabled: shown.isEmpty || !status.online,
+            onPressed: () => _open(shown),
+          ),
+        ]),
+        if (shown.isEmpty)
+          dom.div(classes: 'animus-row', attributes: const <String, String>{'data-testid': 'catalog-no-match'}, <Widget>[
+            dom.span(classes: 'animus-muted', <Widget>[Component.text('No document matches "${_filter.trim()}".')]),
+            Button.ghost(label: 'Clear the filter', size: ButtonSize.small, onPressed: () => setState(() => _filter = '')),
           ])
-        else ...<Widget>[
-          dom.div(classes: 'animus-row', <Widget>[
-            TextInput(
-              placeholder: 'Filter',
-              value: _filter,
-              size: ComponentSize.sm,
-              attributes: const <String, String>{'aria-label': 'Filter the catalog'},
-              onChanged: (String value) => setState(() => _filter = value),
-            ),
-            Button.primary(
-              label: _selected.isEmpty ? 'Open selected' : 'Open ${_selected.length}',
-              size: ButtonSize.small,
-              disabled: _selected.isEmpty || !status.online,
-              onPressed: () => _open(<CatalogEntry>[for (final CatalogEntry entry in session.catalog) if (_selected.contains(entry.key)) entry]),
-            ),
-            Button.secondary(
-              label: 'Open all shown',
-              size: ButtonSize.small,
-              disabled: shown.isEmpty || !status.online,
-              onPressed: () => _open(shown),
-            ),
+        else
+          dom.div(classes: 'animus-catalog', <Widget>[
+            for (final DocumentKind kind in DocumentKind.values)
+              if (shown.any((CatalogEntry entry) => entry.kind == kind))
+                dom.section(classes: 'animus-catalog-group', attributes: <String, String>{'aria-label': kind.label}, <Widget>[
+                  dom.h3(<Widget>[Component.text('${kind.label} (${shown.where((CatalogEntry entry) => entry.kind == kind).length})')]),
+                  dom.ul(<Widget>[
+                    for (final CatalogEntry entry in shown)
+                      if (entry.kind == kind) _row(session, entry),
+                  ]),
+                ]),
           ]),
-          dom.ul(classes: 'animus-catalog', <Widget>[
-            for (final CatalogEntry entry in shown)
-              dom.li(<Widget>[
-                if (session.store.document(entry.kind, entry.id) != null)
-                  Button.ghost(
-                    label: '${entry.kind.wireName} ${entry.id}',
-                    size: ButtonSize.small,
-                    attributes: const <String, String>{'data-open': 'true'},
-                    onPressed: () => component.onOpened(entry.kind, entry.id),
-                  )
-                else
-                  ArcaneCheckbox(
-                    checked: _selected.contains(entry.key),
-                    label: '${entry.kind.wireName} ${entry.id}',
-                    size: ComponentSize.sm,
-                    onChanged: (bool on) => setState(() => on ? _selected.add(entry.key) : _selected.remove(entry.key)),
-                  ),
-                dom.span(classes: 'animus-muted', <Widget>[Component.text('r${entry.revision}')]),
-              ]),
-          ]),
-        ],
+      ],
+    ]);
+  }
+
+  Widget _row(LiveSession session, CatalogEntry entry) {
+    final bool open = session.store.document(entry.kind, entry.id) != null;
+    return dom.li(<Widget>[
+      ArcaneCheckbox(
+        checked: _selected.contains(entry.key),
+        label: entry.id,
+        size: ComponentSize.sm,
+        onChanged: (bool on) => setState(() => on ? _selected.add(entry.key) : _selected.remove(entry.key)),
+      ),
+      dom.span(classes: 'animus-catalog-meta', <Widget>[
+        dom.span(classes: 'animus-muted', <Widget>[Component.text('revision ${entry.revision}')]),
+        if (open)
+          Button.ghost(
+            label: 'Show',
+            size: ButtonSize.small,
+            attributes: <String, String>{'data-open': 'true', 'aria-label': 'Show ${entry.kind.label.toLowerCase()} ${entry.id}, already open here'},
+            onPressed: () => component.onOpened(entry.kind, entry.id),
+          ),
       ]),
     ]);
   }

@@ -52,6 +52,20 @@ final class McTextRun {
   String toString() => 'McTextRun($text, #${color.toRadixString(16)}${bold ? ' bold' : ''}${italic ? ' italic' : ''})';
 }
 
+const String _obfuscatedGlyphs = 'abcdefghkmnopqrsuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%&?@';
+
+/// `§k` text as the client shows one frame of it: every glyph but spaces
+/// swapped for another. The client redraws it every frame; the preview keeps
+/// one fixed frame so nothing on the stage moves on its own.
+String mcObfuscate(String text) {
+  final StringBuffer out = StringBuffer();
+  for (int i = 0; i < text.length; i++) {
+    final int unit = text.codeUnitAt(i);
+    out.write(text[i] == ' ' ? ' ' : _obfuscatedGlyphs[(unit * 31 + i * 17) % _obfuscatedGlyphs.length]);
+  }
+  return out.toString();
+}
+
 List<McTextRun> mcLegacyRuns(String text) {
   final List<McTextRun> runs = <McTextRun>[];
   final StringBuffer buffer = StringBuffer();

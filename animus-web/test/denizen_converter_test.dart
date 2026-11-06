@@ -8,6 +8,9 @@ import 'package:animus_editor/logic/denizen/denizen_args.dart';
 import 'package:animus_editor/logic/denizen/denizen_converter.dart';
 import 'package:animus_editor/logic/denizen/denizen_flags.dart';
 import 'package:animus_editor/logic/denizen/denizen_scripts.dart';
+import 'package:animus_editor/logic/shared_schemas.dart';
+import 'package:animus_editor/model/animus_document.dart';
+import 'package:animus_editor/model/document_kind.dart';
 import 'package:archive/archive.dart';
 import 'package:test/test.dart';
 
@@ -81,6 +84,40 @@ void main() {
         expect(() => convertDenizen(DenizenInput(scripts: input.scripts, citizens: file.readAsStringSync())), throwsA(isA<DenizenImportException>()));
       });
     }
+  });
+
+  group('converted behaviors against the shared schema', () {
+    for (final Object? entry in _index()['cases']! as List<Object?>) {
+      final String name = (entry! as Map<String, Object?>)['name']! as String;
+      test('$name behaviors validate against behavior.schema.json', () {
+        final Map<String, Uint8List> expected = fixtureFiles('$_root/expected/$name');
+        int checked = 0;
+        for (final MapEntry<String, Uint8List> file in expected.entries) {
+          if (!file.key.startsWith('behaviors/')) continue;
+          final List<Diagnostic> errors = <Diagnostic>[
+            for (final Diagnostic found in SharedSchemas.embedded.validate(DocumentKind.behavior, jsonDecode(utf8.decode(file.value))))
+              if (found.severity == DiagnosticSeverity.error) found,
+          ];
+          expect(errors, isEmpty, reason: '$name: ${file.key}');
+          checked++;
+        }
+        expect(checked, greaterThan(0));
+      });
+    }
+
+    test('accepting a review appends its server behaviors to server-behaviors.json once', () {
+      final DenizenPreview preview = convertDenizen(_folder('town/Denizen', citizens: 'town/saves.yml'));
+      expect(preview.files.keys, isNot(contains('server-behaviors.json')), reason: 'the staged tree matches the server byte for byte');
+      final String created = preview.serverBehaviorsAfterAccept(null)!;
+      final Map<String, Object?> list = jsonDecode(created) as Map<String, Object?>;
+      expect(list['behaviors'], <String>['denizen:book/notice_board', 'denizen:book/town_guide', 'denizen:command/reset_command', 'denizen:world/lantern_world']);
+      expect(SharedSchemas.embedded.validate(DocumentKind.serverBehaviors, list), isEmpty);
+      final String merged = preview.serverBehaviorsAfterAccept('{"schemaVersion":1,"behaviors":["town:welcome","denizen:world/lantern_world"]}')!;
+      expect((jsonDecode(merged) as Map<String, Object?>)['behaviors'], <String>['town:welcome', 'denizen:world/lantern_world', 'denizen:book/notice_board', 'denizen:book/town_guide', 'denizen:command/reset_command']);
+      expect(preview.serverBehaviorsAfterAccept(created), created, reason: 'nothing new, nothing written');
+      final DenizenPreview minimal = convertDenizen(_folder('minimal/Denizen'));
+      expect(minimal.serverBehaviorsAfterAccept(null), isNull);
+    });
   });
 
   group('bundle', () {

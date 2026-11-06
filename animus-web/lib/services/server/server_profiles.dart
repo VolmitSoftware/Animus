@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'pairing.dart';
@@ -8,22 +9,49 @@ import 'transport.dart';
 abstract class KeyValueStore {
   String? read(String key);
 
-  void write(String key, String value);
+  /// Stores [value]. False when the browser refused it, so it lasts only as
+  /// long as this page.
+  bool write(String key, String value);
 
   void remove(String key);
+
+  /// Keys another tab changed (null: everything may have changed).
+  Stream<String?> get changes;
 }
 
 class MemoryKeyValueStore implements KeyValueStore {
+  MemoryKeyValueStore({this.refuseWrites = false});
+
   final Map<String, String> values = <String, String>{};
+
+  /// Acts like a private window that refuses storage.
+  final bool refuseWrites;
+  final StreamController<String?> _changes = StreamController<String?>.broadcast(sync: true);
 
   @override
   String? read(String key) => values[key];
 
   @override
-  void write(String key, String value) => values[key] = value;
+  bool write(String key, String value) {
+    values[key] = value;
+    return !refuseWrites;
+  }
 
   @override
   void remove(String key) => values.remove(key);
+
+  @override
+  Stream<String?> get changes => _changes.stream;
+
+  /// What another tab sharing this storage does: write [key] and say so.
+  void writeFromOtherTab(String key, String? value) {
+    if (value == null) {
+      values.remove(key);
+    } else {
+      values[key] = value;
+    }
+    _changes.add(key);
+  }
 }
 
 /// A token from `POST /v1/pair`.
@@ -162,8 +190,12 @@ class ServerProfileStore {
     }
   }
 
-  void save(List<ServerProfile> profiles) =>
+  /// False when the browser refused to store the list.
+  bool save(List<ServerProfile> profiles) =>
       local.write(profilesKey, jsonEncode(<Map<String, Object?>>[for (final ServerProfile profile in profiles) profile.toJson()]));
+
+  /// Another tab changed the saved servers.
+  Stream<void> get changes => local.changes.where((String? key) => key == null || key == profilesKey);
 
   ServerToken? token(ServerProfile profile) {
     final String? text = session.read(tokenKey(profile.id)) ?? (profile.remember ? local.read(tokenKey(profile.id)) : null);
@@ -175,14 +207,14 @@ class ServerProfileStore {
     }
   }
 
-  void saveToken(ServerProfile profile, ServerToken token) {
+  /// False when the browser refused to keep the token, so it lasts only
+  /// until this page closes.
+  bool saveToken(ServerProfile profile, ServerToken token) {
     final String text = jsonEncode(token.toJson());
-    session.write(tokenKey(profile.id), text);
-    if (profile.remember) {
-      local.write(tokenKey(profile.id), text);
-    } else {
-      local.remove(tokenKey(profile.id));
-    }
+    final bool kept = session.write(tokenKey(profile.id), text);
+    if (profile.remember) return local.write(tokenKey(profile.id), text) && kept;
+    local.remove(tokenKey(profile.id));
+    return kept;
   }
 
   void forgetToken(ServerProfile profile) {

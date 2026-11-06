@@ -1,11 +1,17 @@
 /// A chest or shop window painted like the in-game screen: the title in the
 /// Minecraft font, slots with item icons from the stage's item meshers,
-/// stack counts, and the name and lore tooltip on hover or focus.
+/// stack counts, and the name and lore tooltip on hover or focus, and on
+/// tap for the selected slot when [ChestWindow.pinSelected] is set. A paint
+/// handler turns a press and drag across slots into brush strokes.
 library;
+
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
+import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
@@ -26,8 +32,21 @@ class ChestWindow extends StatefulWidget {
     this.onSlot,
     this.showMask = false,
     this.label = 'Chest window',
+    this.onPaint,
+    this.onPaintEnd,
+    this.pinSelected = false,
     super.key,
   });
+
+  /// Called for each slot a press and drag crosses; set while a brush is
+  /// chosen. Clicks and Enter still go to [onSlot].
+  final void Function(int slot)? onPaint;
+
+  /// Called when the press that painted is released.
+  final void Function()? onPaintEnd;
+
+  /// Shows the selected slot's name and lore without hover, for touch.
+  final bool pinSelected;
 
   final ChestLayout layout;
   final int? selected;
@@ -44,16 +63,50 @@ class ChestWindow extends StatefulWidget {
 }
 
 class _ChestWindowState extends State<ChestWindow> {
+  int? _lastPainted;
+  JSFunction? _release;
+
   @override
   void initState() {
     super.initState();
     McItemIcons.addListener(_refresh);
+    _release = ((web.Event _) => _stopPaint()).toJS;
+    web.window.addEventListener('pointerup', _release);
+    web.window.addEventListener('pointercancel', _release);
   }
 
   @override
   void dispose() {
     McItemIcons.removeListener(_refresh);
+    web.window.removeEventListener('pointerup', _release);
+    web.window.removeEventListener('pointercancel', _release);
     super.dispose();
+  }
+
+  void _stopPaint() {
+    if (_lastPainted != null) component.onPaintEnd?.call();
+    _lastPainted = null;
+  }
+
+  void _paint(int slot) {
+    if (slot == _lastPainted) return;
+    _lastPainted = slot;
+    component.onPaint?.call(slot);
+  }
+
+  /// The slot under a pointer, for drags that leave the pressed button
+  /// (touch keeps the pointer captured on it).
+  int? _slotAt(web.Event event) {
+    final web.Element? hit = web.document.elementFromPoint(_number(event, 'clientX'), _number(event, 'clientY'));
+    final String? slot = hit?.closest('[data-slot]')?.getAttribute('data-slot');
+    return slot == null ? null : int.tryParse(slot);
+  }
+
+  /// A numeric event property, read the way the stage reads pointer
+  /// coordinates (typed getters can fail on fractional values).
+  static double _number(web.Event event, String property) {
+    final JSAny? value = (event as JSObject).getProperty<JSAny?>(property.toJS);
+    return value != null && value.isA<JSNumber>() ? (value as JSNumber).toDartDouble : 0;
   }
 
   void _refresh() {
@@ -66,8 +119,19 @@ class _ChestWindowState extends State<ChestWindow> {
     return dom.div(classes: 'animus-chest-screen', attributes: <String, String>{'role': 'group', 'aria-label': component.label}, <Widget>[
       dom.div(classes: 'animus-chest-title', <Widget>[GuiStyledText(layout.title, defaultColor: mcInventoryTitleColor)]),
       dom.div(
-        classes: 'animus-chest',
+        classes: 'animus-chest${component.onPaint != null ? ' is-painting' : ''}',
         styles: dom.Styles(raw: <String, String>{'grid-template-columns': 'repeat(${layout.width}, var(--animus-slot))'}),
+        // Always bound: an events map that only gains a key on a later build
+        // never gets that listener.
+        events: <String, void Function(web.Event)>{
+          'pointermove': (web.Event event) {
+            // The pressed button, not a flag: a repaint after each stroke may
+            // rebuild this window mid-drag.
+            if (component.onPaint == null || (_number(event, 'buttons').toInt() & 1) == 0) return;
+            final int? slot = _slotAt(event);
+            if (slot != null) _paint(slot);
+          },
+        },
         <Widget>[for (final ChestCell cell in layout.cells) _slot(cell)],
       ),
     ]);
@@ -82,9 +146,10 @@ class _ChestWindowState extends State<ChestWindow> {
     final int count = asInt(cell.icon['count']) ?? 1;
     final bool selected = component.selected == cell.slot;
     final String plain = guiPlainText(name).trim();
+    final List<String> plainLore = <String>[for (final String line in lore) guiPlainText(line).trim()]..removeWhere((String line) => line.isEmpty);
     final String described = cell.source == ChestCellSource.empty
         ? 'Slot ${cell.slot}, empty'
-        : 'Slot ${cell.slot}, ${plain.isEmpty ? (item ?? 'item') : plain}';
+        : 'Slot ${cell.slot}, ${plain.isEmpty ? (item ?? 'item') : plain}${count > 1 ? ', $count' : ''}${plainLore.isEmpty ? '' : '. ${plainLore.join('. ')}'}';
     final List<String> classes = <String>[
       'animus-chest-slot',
       'is-${cell.source.name}',
@@ -100,7 +165,7 @@ class _ChestWindowState extends State<ChestWindow> {
       if (component.showMask && cell.maskChar != null) dom.span(classes: 'animus-chest-key', <Widget>[Component.text(cell.maskChar!)]),
       if (cell.label != null && cell.source == ChestCellSource.list) dom.span(classes: 'animus-chest-key is-list', <Widget>[Component.text(cell.label!)]),
       if (cell.source != ChestCellSource.empty && (plain.isNotEmpty || lore.isNotEmpty))
-        dom.span(classes: 'animus-chest-tooltip', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
+        dom.span(classes: 'animus-chest-tooltip${selected && component.pinSelected ? ' is-pinned' : ''}', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
           dom.span(classes: 'animus-chest-tooltip-name', <Widget>[GuiStyledText(name)]),
           for (final String line in lore) dom.span(classes: 'animus-chest-tooltip-lore', <Widget>[GuiStyledText(line, defaultColor: mcLoreColor)]),
         ]),
@@ -111,7 +176,14 @@ class _ChestWindowState extends State<ChestWindow> {
     return dom.button(
       classes: classes.join(' '),
       attributes: <String, String>{'type': 'button', 'aria-label': described, 'aria-pressed': '$selected', 'data-slot': '${cell.slot}'},
-      onClick: () => component.onSlot!(cell.slot),
+      events: <String, void Function(web.Event)>{
+        'click': (web.Event _) => component.onSlot!(cell.slot),
+        'pointerdown': (web.Event event) {
+          if (component.onPaint == null || _number(event, 'button') != 0) return;
+          _lastPainted = null;
+          _paint(cell.slot);
+        },
+      },
       <Widget>[face],
     );
   }

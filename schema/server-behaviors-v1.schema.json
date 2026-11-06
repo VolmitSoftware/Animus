@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/server-behaviors-v1.schema.json",
+  "title": "Animus server behaviors",
+  "description": "server-behaviors.json at the data folder root. Only the server behaviors listed here run. Each id names a behavior with \"server\": true. The Java ServerBehaviorList parser is authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "behaviors"],
+  "properties": {
+    "schemaVersion": {"const": 1, "description": "Always 1."},
+    "behaviors": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "description": "Server behaviors to run, at most 256. A missing file runs none; an invalid file runs none until it is fixed.",
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$",
+        "description": "A behavior id, namespace:path, of a behavior with \"server\": true."
+      }
+    }
+  },
+  "examples": [{"schemaVersion": 1, "behaviors": ["town:welcome"]}]
+}

@@ -5,6 +5,7 @@
 library;
 
 import '../gui/gui_json.dart';
+import 'behavior_operands.dart';
 import 'completion_catalog.dart';
 import 'schema_fields.dart';
 
@@ -56,19 +57,46 @@ JsonMap defaultArguments(CapabilitySpec? spec) => <String, Object?>{
           if (argument.required) argument.key: defaultValue(argument),
     };
 
-CapabilitySpec? _firstCapability(String kind, CompletionCatalog catalog) {
-  final List<CapabilitySpec> all = catalog.capabilitiesFor(kind);
-  return all.where((CapabilitySpec spec) => spec.id == 'animus:say').firstOrNull ??
+CapabilitySpec? _firstCapability(String kind, CompletionCatalog catalog, {bool server = false}) {
+  final List<CapabilitySpec> all = catalog.capabilitiesFor(kind, server: server);
+  return all.where((CapabilitySpec spec) => spec.id == (server ? 'animus:message' : 'animus:say')).firstOrNull ??
       all.where((CapabilitySpec spec) => spec.available).firstOrNull ??
       all.firstOrNull;
 }
 
-/// A new node of [type] with its required fields filled. [routine] is the
-/// call target; [variables] the document's declared variables, for `set`.
-JsonMap defaultNode(String type, CompletionCatalog catalog, {String? routine, JsonMap variables = const <String, Object?>{}}) {
+/// The loop variable a new `foreach` uses: an execution variable of type
+/// any, or a free `item`, which [variablesForNewNode] declares.
+String _loopItem(JsonMap variables) => executionVariables(variables, types: const <String>['any']).firstOrNull ?? uniqueName('item', variables.keys);
+
+/// Variables a new node of [type] needs declared so it compiles as added:
+/// a `foreach` needs an execution variable for its items.
+JsonMap variablesForNewNode(String type, JsonMap variables) {
+  if (type != 'foreach' || variables.containsKey(_loopItem(variables))) return const <String, Object?>{};
+  return <String, Object?>{_loopItem(variables): <String, Object?>{'type': 'any', 'initial': ''}};
+}
+
+/// A new node of [type] with its required fields filled, valid as added.
+/// [routine] is the call target; [variables] the document's declared
+/// variables; [server] keeps NPC-only capabilities out.
+JsonMap defaultNode(String type, CompletionCatalog catalog, {String? routine, JsonMap variables = const <String, Object?>{}, bool server = false}) {
   switch (type) {
+    case 'while':
+      return <String, Object?>{'type': type, 'expression': 'false', 'body': defaultNode('sequence', catalog)};
+    case 'foreach':
+      final String? list = variables.entries
+          .where((MapEntry<String, Object?> entry) => const <String>{'list', 'map'}.contains(asString(asMap(entry.value)['type'])))
+          .map((MapEntry<String, Object?> entry) => entry.key)
+          .firstOrNull;
+      return <String, Object?>{
+        'type': type,
+        'list': list == null ? <Object?>[] : <String, Object?>{'variable': list},
+        'as': _loopItem(variables),
+        'body': defaultNode('sequence', catalog),
+      };
+    case 'repeat':
+      return <String, Object?>{'type': type, 'count': 1, 'body': defaultNode('sequence', catalog)};
     case 'action' || 'condition':
-      final CapabilitySpec? capability = _firstCapability(type, catalog);
+      final CapabilitySpec? capability = _firstCapability(type, catalog, server: server);
       return <String, Object?>{
         'type': type,
         'capability': capability?.id ?? '',
@@ -82,7 +110,7 @@ JsonMap defaultNode(String type, CompletionCatalog catalog, {String? routine, Js
       return <String, Object?>{
         'type': type,
         'variable': first?.key ?? '',
-        'value': asMap(first?.value)['initial'] ?? '',
+        'value': literalFor(asString(asMap(first?.value)['type'])),
       };
   }
   final JsonMap node = <String, Object?>{'type': type};
@@ -98,7 +126,7 @@ JsonMap defaultNode(String type, CompletionCatalog catalog, {String? routine, Js
 /// [node] changed to [type]. Fields of the old type that the new one lacks
 /// go; child nodes move across where they fit (a sequence's steps become a
 /// parallel's branches, or a repeat's body as a sequence); other keys stay.
-JsonMap changeNodeType(JsonMap node, String type, CompletionCatalog catalog, {String? routine, JsonMap variables = const <String, Object?>{}}) {
+JsonMap changeNodeType(JsonMap node, String type, CompletionCatalog catalog, {String? routine, JsonMap variables = const <String, Object?>{}, bool server = false}) {
   final String? old = asString(node['type']);
   if (old == type) return node;
   final Set<String> oldFields = <String>{for (final FieldSpec field in catalog.nodes[old]?.fields ?? const <FieldSpec>[]) field.key};
@@ -108,7 +136,7 @@ JsonMap changeNodeType(JsonMap node, String type, CompletionCatalog catalog, {St
     for (final String key in <String>{...nodeSlotFields(old, catalog), ..._singleFields.where(oldFields.contains)})
       if (node[key] is Map<String, Object?>) node[key],
   ];
-  final JsonMap fresh = defaultNode(type, catalog, routine: routine, variables: variables);
+  final JsonMap fresh = defaultNode(type, catalog, routine: routine, variables: variables, server: server);
   final JsonMap out = <String, Object?>{'type': type};
   for (final MapEntry<String, Object?> entry in node.entries) {
     if (entry.key == 'type') continue;
@@ -154,13 +182,43 @@ JsonMap changeCapability(JsonMap node, String id, CompletionCatalog catalog) {
 }
 
 /// A new trigger for [event] with an id not in [taken].
-JsonMap defaultTrigger(String event, CompletionCatalog catalog, Iterable<String> taken) {
-  final JsonMap trigger = <String, Object?>{'id': uniqueName(event.replaceAll('_', '-'), taken), 'event': event};
+JsonMap defaultTrigger(String event, CompletionCatalog catalog, Iterable<String> taken, {bool server = false}) {
+  final JsonMap trigger = <String, Object?>{'id': uniqueName(event, taken), 'event': event};
   for (final FieldSpec field in catalog.triggers[event]?.fields ?? const <FieldSpec>[]) {
     if (field.required && !trigger.containsKey(field.key)) trigger[field.key] = defaultValue(field);
   }
+  if (server && event == 'timer') trigger['intervalTicks'] = serverTimerMinimum;
   return trigger;
 }
+
+/// The shortest timer interval a server behavior may use, in ticks.
+const int serverTimerMinimum = 20;
+
+/// [document] with `server` set to [on]. Turning it on raises timer
+/// intervals to [serverTimerMinimum]; nothing else is removed, so NPC-only
+/// parts stay visible with their diagnostics until the user removes them.
+JsonMap setServerBehavior(JsonMap document, bool on) {
+  final JsonMap out = <String, Object?>{...document};
+  if (!on) {
+    out.remove('server');
+    return out;
+  }
+  out['server'] = true;
+  if (document.containsKey('triggers')) {
+    out['triggers'] = <Object?>[
+      for (final Object? raw in asList(document['triggers']))
+        if (raw is Map<String, Object?> && raw['event'] == 'timer' && (asInt(raw['intervalTicks']) ?? 0) < serverTimerMinimum)
+          <String, Object?>{...raw, 'intervalTicks': serverTimerMinimum}
+        else
+          raw,
+    ];
+  }
+  return out;
+}
+
+/// Variable scopes a behavior may declare: a server behavior has no NPC.
+List<String> scopesFor(List<String> scopes, {required bool server}) =>
+    <String>[for (final String scope in scopes) if (!server || (scope != 'npc' && scope != 'relationship')) scope];
 
 /// [trigger] firing on [event]: the old event's own fields go, shared ones
 /// (`id`, `routine`, `cooldownTicks`) and unknown keys stay.
@@ -181,12 +239,13 @@ JsonMap changeTriggerEvent(JsonMap trigger, String event, CompletionCatalog cata
   return out;
 }
 
-/// [base], or [base] with the lowest free number appended.
+/// [base], or [base] with the lowest free number appended after `_`, so
+/// the name stays readable in expressions (`flag_2`).
 String uniqueName(String base, Iterable<String> taken) {
   final Set<String> used = taken.toSet();
   if (!used.contains(base)) return base;
   for (int index = 2;; index++) {
-    final String name = '$base-$index';
+    final String name = '${base}_$index';
     if (!used.contains(name)) return name;
   }
 }
@@ -236,4 +295,99 @@ JsonMap renameRoutine(JsonMap document, String from, String to, CompletionCatalo
 List<String> unknownKeys(JsonMap value, Iterable<String> known) {
   final Set<String> covered = <String>{'type', ...known};
   return <String>[for (final String key in value.keys) if (!covered.contains(key)) key];
+}
+
+/// Variable and routine names: lowercase letters, digits, `_` and `-`,
+/// starting with a letter or digit, at most 64 characters.
+final RegExp behaviorIdentifier = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
+
+/// Names expressions reserve for their roots and literals.
+const Set<String> reservedVariableNames = <String>{'player', 'npc', 'server', 'context', 'true', 'false'};
+
+/// Why [name] cannot name a new variable, or null when it can.
+String? variableNameProblem(String name, Iterable<String> taken) {
+  if (name.isEmpty) return 'A variable needs a name.';
+  if (!behaviorIdentifier.hasMatch(name)) return 'Use lowercase letters, digits, _ and -, starting with a letter or digit, at most 64 characters.';
+  if (reservedVariableNames.contains(name)) return '$name is reserved for expressions; choose another name.';
+  if (taken.contains(name)) return 'Another variable is already called $name.';
+  return null;
+}
+
+/// A note when [name] is valid but expressions cannot read it.
+String? variableNameNote(String name) => RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(name)
+    ? null
+    : 'Expressions and templates cannot read $name; start with a letter and use only letters, digits and _ to read it there.';
+
+final RegExp _quoted = RegExp(r"""("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')""");
+
+/// [source] with the root name [from] read as [to], outside quoted text
+/// and after no dot.
+String renameInExpression(String source, String from, String to) {
+  final RegExp word = RegExp('(?<![A-Za-z0-9_.])${RegExp.escape(from)}(?![A-Za-z0-9_])');
+  final StringBuffer out = StringBuffer();
+  int at = 0;
+  for (final RegExpMatch quoted in _quoted.allMatches(source)) {
+    out
+      ..write(source.substring(at, quoted.start).replaceAll(word, to))
+      ..write(quoted.group(0));
+    at = quoted.end;
+  }
+  out.write(source.substring(at).replaceAll(word, to));
+  return out.toString();
+}
+
+String _renameInTemplate(String text, String from, String to) =>
+    text.replaceAllMapped(RegExp(r'\{\{([\s\S]*?)\}\}'), (Match hole) => '{{${renameInExpression(hole.group(1)!, from, to)}}}');
+
+/// [document] with variable [from] renamed [to] everywhere it is named:
+/// the declaration, `set`, loop fields, call arguments and results,
+/// bindings, variable operands and expression and template text.
+JsonMap renameVariable(JsonMap document, String from, String to, CompletionCatalog catalog) {
+  if (from == to) return document;
+  Object? operand(Object? value) {
+    if (value is! Map<String, Object?>) return value;
+    if (value['variable'] == from && value.length == 1) return <String, Object?>{'variable': to};
+    if (value['expression'] is String && value.length == 1) return <String, Object?>{'expression': renameInExpression(value['expression']! as String, from, to)};
+    if (value['template'] is String && value.length == 1) return <String, Object?>{'template': _renameInTemplate(value['template']! as String, from, to)};
+    return value;
+  }
+
+  JsonMap visit(JsonMap node) {
+    final JsonMap out = <String, Object?>{...node};
+    for (final String key in const <String>['variable', 'as', 'index', 'key', 'result']) {
+      if (out[key] == from) out[key] = to;
+    }
+    for (final String key in const <String>['value', 'list', 'count']) {
+      if (out.containsKey(key)) out[key] = operand(out[key]);
+    }
+    if (out['expression'] is String) out['expression'] = renameInExpression(out['expression']! as String, from, to);
+    if (out['type'] == 'call' && out['arguments'] is Map<String, Object?>) {
+      out['arguments'] = <String, Object?>{
+        for (final MapEntry<String, Object?> entry in asMap(out['arguments']).entries) entry.key == from ? to : entry.key: operand(entry.value),
+      };
+    }
+    if (out['bindings'] is Map<String, Object?>) {
+      out['bindings'] = <String, Object?>{
+        for (final MapEntry<String, Object?> entry in asMap(out['bindings']).entries) entry.key: operand(entry.value),
+      };
+    }
+    for (final String field in const <String>['expressions', 'templates']) {
+      if (out[field] is! Map<String, Object?>) continue;
+      out[field] = <String, Object?>{
+        for (final MapEntry<String, Object?> entry in asMap(out[field]).entries)
+          entry.key: entry.value is String
+              ? (field == 'expressions' ? renameInExpression(entry.value! as String, from, to) : _renameInTemplate(entry.value! as String, from, to))
+              : entry.value,
+      };
+    }
+    return out;
+  }
+
+  return <String, Object?>{
+    ...document,
+    'variables': renameKey(asMap(document['variables']), from, to),
+    'routines': <String, Object?>{
+      for (final MapEntry<String, Object?> entry in asMap(document['routines']).entries) entry.key: mapNodes(entry.value, visit, catalog),
+    },
+  };
 }

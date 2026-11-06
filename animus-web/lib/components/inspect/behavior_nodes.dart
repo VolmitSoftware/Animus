@@ -1,23 +1,41 @@
-/// One behavior node and its children as a card tree: type picker, moves,
-/// removal, the capability picker with typed arguments for actions and
-/// conditions, and fields for every other node type.
+/// One behavior node and its children as a collapsible tree row: the
+/// summary line shows the node's type and what it does in plain words; the
+/// body holds its tools, its fields and its children on a thin rail per
+/// level. Keyboard: Up and Down move between rows, Right opens, Left
+/// closes, Enter toggles, Delete asks before removing.
 library;
+
+import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
+import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_edit.dart';
+import '../../logic/inspect/behavior_language.dart';
+import '../../logic/inspect/behavior_operands.dart';
+import '../../logic/inspect/behavior_summary.dart';
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
+import 'behavior_capability.dart';
+import 'behavior_inputs.dart';
+import 'behavior_operand.dart';
 import 'inspect_fields.dart';
 
-/// What every node card needs: the catalog, the document and a writer.
+/// What every node row needs: the catalog, the document and its writers.
 class BehaviorContext {
-  const BehaviorContext({required this.catalog, required this.schema, required this.document, required this.diagnostics, required this.write});
+  const BehaviorContext({
+    required this.catalog,
+    required this.schema,
+    required this.document,
+    required this.diagnostics,
+    required this.write,
+    required this.writeDocument,
+  });
 
   final CompletionCatalog catalog;
   final SchemaView schema;
@@ -27,13 +45,43 @@ class BehaviorContext {
   /// Writes [value] at [steps] of the document; null removes it.
   final void Function(List<JsonStep> steps, Object? value) write;
 
+  /// Writes a whole new document, for edits that touch several parts.
+  final void Function(JsonMap document) writeDocument;
+
   List<String> get routines => asMap(document['routines']).keys.toList();
   JsonMap get variables => asMap(document['variables']);
   List<String> get nodeTypes => catalog.nodes.keys.toList();
+  bool get server => document['server'] == true;
 
   String? get entry => asString(document['entry']);
 
-  JsonMap newNode(String type) => defaultNode(type, catalog, routine: entry ?? routines.firstOrNull, variables: variables);
+  /// The names expressions in this document can read.
+  ExpressionScope get scope => ExpressionScope(
+        language: catalog.expressions,
+        variables: <String, String>{
+          for (final MapEntry<String, Object?> entry in variables.entries) entry.key: asString(asMap(entry.value)['type']) ?? 'any',
+        },
+        contextKeys: <String>{
+          for (final Object? trigger in asList(document['triggers'])) ...catalog.triggers[asString(asMap(trigger)['event'])]?.context ?? const <String>[],
+        }.toList(),
+        server: server,
+      );
+
+  JsonMap newNode(String type) => defaultNode(type, catalog, routine: entry ?? routines.firstOrNull, variables: variables, server: server);
+
+  /// Adds a new node of [type] with [place], declaring what it needs first.
+  void add(String type, JsonMap Function(JsonMap document, JsonMap node) place) {
+    final JsonMap node = newNode(type);
+    final JsonMap needed = variablesForNewNode(type, variables);
+    final JsonMap base = needed.isEmpty ? document : <String, Object?>{...document, 'variables': <String, Object?>{...variables, ...needed}};
+    writeDocument(place(base, node));
+  }
+
+  /// Adds a node of [type] at [steps] (a list when [append]).
+  void addAt(List<JsonStep> steps, String type, {bool append = false}) => add(type, (JsonMap base, JsonMap node) {
+        final Object value = append ? <Object?>[...asList(readIn(base, steps)), node] : node;
+        return asMap(writeIn(base, steps, value));
+      });
 }
 
 /// A picker that adds a node of the chosen type.
@@ -42,17 +90,35 @@ class AddNodeSelect extends StatelessWidget {
 
   final BehaviorContext context;
   final String label;
-  final void Function(JsonMap node) onAdd;
+  final void Function(String type) onAdd;
 
   @override
-  Widget build(BuildContext build) => GuiSelect(
-        value: null,
-        options: context.nodeTypes,
-        noneLabel: label,
-        onChanged: (String? type) {
-          if (type != null) onAdd(context.newNode(type));
-        },
-      );
+  Widget build(BuildContext build) => dom.div(classes: 'animus-add-node', <Widget>[
+        GuiSelect(
+          value: null,
+          options: context.nodeTypes,
+          labels: <String, String>{for (final String type in context.nodeTypes) type: '$type: ${context.catalog.nodes[type]?.description ?? ''}'},
+          noneLabel: label,
+          label: label,
+          onChanged: (String? type) {
+            if (type != null) onAdd(type);
+          },
+        ),
+      ]);
+}
+
+/// Moves focus between visible node rows of the same tree.
+void _moveFocus(web.Element from, int by) {
+  final web.Element? tree = from.closest('.animus-behavior-tree');
+  if (tree == null) return;
+  final web.NodeList all = tree.querySelectorAll('.animus-node-summary');
+  final List<web.HTMLElement> visible = <web.HTMLElement>[
+    for (int index = 0; index < all.length; index++)
+      if ((all.item(index)! as web.HTMLElement).offsetParent != null) all.item(index)! as web.HTMLElement,
+  ];
+  final int at = visible.indexWhere((web.HTMLElement element) => element == from);
+  final int next = at + by;
+  if (at >= 0 && next >= 0 && next < visible.length) visible[next].focus();
 }
 
 class BehaviorNodeView extends StatelessWidget {
@@ -64,6 +130,7 @@ class BehaviorNodeView extends StatelessWidget {
     this.onUp,
     this.onDown,
     this.caption,
+    this.inLoop = false,
     super.key,
   });
 
@@ -77,9 +144,40 @@ class BehaviorNodeView extends StatelessWidget {
   /// Where the node sits: `then`, `step 2`, ...
   final String? caption;
 
+  /// Whether a loop of this routine encloses the node, outside parallel
+  /// branches: `break` and `continue` need one.
+  final bool inLoop;
+
   String get _path => formatPath(steps);
 
   void _put(JsonMap next) => context.write(steps, next);
+
+  void _onKey(web.Event event) {
+    if (!event.isA<web.KeyboardEvent>()) return;
+    final web.KeyboardEvent key = event as web.KeyboardEvent;
+    final web.Element? summary = key.currentTarget as web.Element?;
+    if (summary == null) return;
+    final web.Element? details = summary.parentElement;
+    switch (key.key) {
+      case 'ArrowDown':
+        key.preventDefault();
+        _moveFocus(summary, 1);
+      case 'ArrowUp':
+        key.preventDefault();
+        _moveFocus(summary, -1);
+      case 'ArrowRight':
+        key.preventDefault();
+        details?.setAttribute('open', '');
+      case 'ArrowLeft':
+        key.preventDefault();
+        details?.removeAttribute('open');
+      case 'Delete':
+        final void Function()? remove = onRemove;
+        if (remove == null) return;
+        key.preventDefault();
+        if (web.window.confirm('Remove ${caption ?? 'this step'} (${nodeSummary(node, variables: context.variables)}) and everything inside it?')) remove();
+    }
+  }
 
   @override
   Widget build(BuildContext build) {
@@ -87,113 +185,280 @@ class BehaviorNodeView extends StatelessWidget {
     final String? type = asString(value['type']);
     final NodeSpec? spec = context.catalog.nodes[type];
     final List<Diagnostic> own = diagnosticsAt(context.diagnostics, _path);
-    final bool failing = diagnosticsAt(context.diagnostics, _path, nested: true).any((Diagnostic d) => d.severity == DiagnosticSeverity.error);
+    final List<Diagnostic> nested = diagnosticsAt(context.diagnostics, _path, nested: true);
+    final bool failing = nested.any((Diagnostic d) => d.severity == DiagnosticSeverity.error);
+    final bool strayJump = (type == 'break' || type == 'continue') && !inLoop;
     final List<String> kept = unknownKeys(value, spec?.fields.map((FieldSpec field) => field.key) ?? const <String>[]);
-    return dom.div(
+    final String label = caption ?? 'step';
+    return dom.details(
       classes: 'animus-node${failing ? ' has-error' : ''}',
-      attributes: <String, String>{'data-node-path': _path, 'role': 'group', 'aria-label': '${caption ?? 'node'} ${type ?? ''}'.trim()},
+      attributes: <String, String>{'open': '', 'data-node-path': _path, 'data-node-type': type ?? ''},
       <Widget>[
-        dom.div(classes: 'animus-node-head', <Widget>[
-          if (caption != null) dom.span(classes: 'animus-node-caption', <Widget>[Component.text(caption!)]),
-          GuiSelect(
-            value: type,
-            options: context.nodeTypes,
-            noneLabel: 'choose a type',
-            onChanged: (String? next) {
-              if (next != null) {
-                _put(changeNodeType(value, next, context.catalog, routine: context.entry, variables: context.variables));
-              }
-            },
-          ),
-          dom.span(classes: 'animus-node-help', <Widget>[Component.text(spec?.description ?? (type == null ? 'A node needs a type.' : 'Unknown node type; kept as written.'))]),
-          if (onUp != null) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move ${caption ?? 'node'} up', onPressed: onUp!),
-          if (onDown != null) GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move ${caption ?? 'node'} down', onPressed: onDown!),
-          if (onRemove != null) GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove ${caption ?? 'node'}', onPressed: onRemove!),
-        ]),
-        for (final Diagnostic problem in own)
-          dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text(problem.message)]),
+        dom.summary(
+          classes: 'animus-node-summary',
+          attributes: <String, String>{'aria-label': '$label, ${type ?? 'no type'}: ${nodeSummary(value, variables: context.variables)}${failing ? ', has problems' : ''}'},
+          events: <String, void Function(web.Event)>{'keydown': _onKey},
+          <Widget>[
+            dom.span(classes: 'animus-node-caption', <Widget>[Component.text(label)]),
+            dom.span(classes: 'animus-node-type', <Widget>[Component.text(type ?? '?')]),
+            dom.span(classes: 'animus-node-line', <Widget>[Component.text(nodeSummary(value, variables: context.variables))]),
+            if (failing) const dom.span(classes: 'animus-node-flag is-error', <Widget>[Component.text('problem')]),
+            if (strayJump) const dom.span(classes: 'animus-node-flag is-warning', <Widget>[Component.text('outside a loop')]),
+          ],
+        ),
         dom.div(classes: 'animus-node-body', <Widget>[
-          if (type == 'action' || type == 'condition') ..._capability(value, type!),
-          if (spec != null)
-            for (final FieldSpec field in spec.fields) ..._field(value, field),
-          if (kept.isNotEmpty)
-            dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Kept as written: ${kept.join(', ')}')]),
+          dom.div(classes: 'animus-node-tools', <Widget>[
+            GuiSelect(
+              value: type,
+              options: context.nodeTypes,
+              noneLabel: 'Pick a step type',
+              label: 'Type of $label',
+              onChanged: (String? next) {
+                if (next != null) {
+                  _put(changeNodeType(value, next, context.catalog, routine: context.entry, variables: context.variables, server: context.server));
+                }
+              },
+            ),
+            dom.span(classes: 'animus-node-help', <Widget>[Component.text(spec?.description ?? (type == null ? 'A step needs a type.' : 'Unknown step type; kept as written.'))]),
+            if (onUp != null) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move $label up', onPressed: onUp!),
+            if (onDown != null) GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move $label down', onPressed: onDown!),
+            if (onRemove != null) GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove $label', onPressed: onRemove!),
+          ]),
+          for (final Diagnostic problem in own)
+            dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text(problem.message)]),
+          if (strayJump)
+            dom.span(classes: 'animus-gui-problem is-warning', attributes: const <String, String>{'role': 'note'}, <Widget>[
+              Component.text('$type only works inside a repeat, foreach or while body of this routine, outside parallel branches; the server refuses it here.'),
+            ]),
+          ..._fields(value, type, spec),
+          if (kept.isNotEmpty) dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Kept as written; the server reads it: ${kept.join(', ')}')]),
         ]),
       ],
     );
   }
 
-  /// Fields the node card lays out by kind; capability ones come first.
-  List<Widget> _field(JsonMap value, FieldSpec field) {
-    final String kind = fieldType(field);
-    final List<JsonStep> at = <JsonStep>[...steps, field.key];
-    if (const <String>{'capability', 'arguments', 'bindings'}.contains(field.key) && (value['type'] == 'action' || value['type'] == 'condition')) {
-      return const <Widget>[];
+  List<Diagnostic> _problems(String key, {bool nested = true}) => diagnosticsAt(context.diagnostics, formatPath(<JsonStep>[...steps, key]), nested: nested);
+
+  FieldSpec _field(NodeSpec? spec, String key) => spec?.field(key) ?? FieldSpec(key: key, kind: FieldKind.any);
+
+  List<Widget> _fields(JsonMap value, String? type, NodeSpec? spec) {
+    final bool loop = const <String>{'repeat', 'foreach', 'while'}.contains(type);
+    final bool childLoop = loop || (type != 'parallel' && inLoop);
+    final List<Widget> out = <Widget>[];
+    switch (type) {
+      case 'action':
+        out.add(CapabilityFields(context: context, node: value, steps: steps, kind: 'action'));
+      case 'condition':
+        out.add(_conditionMode(value));
+        if (value.containsKey('expression')) {
+          out.add(_expressionRow(value, _field(spec, 'expression')));
+        } else {
+          out.add(CapabilityFields(context: context, node: value, steps: steps, kind: 'condition'));
+        }
+      case 'while':
+        out.add(_expressionRow(value, _field(spec, 'expression')));
+      case 'repeat':
+        out.add(_countRow(value, _field(spec, 'count')));
+        out.add(_loopVariable(value, _field(spec, 'index'), const <String>['integer', 'decimal', 'any']));
+      case 'foreach':
+        out.add(_operandRow(value, _field(spec, 'list'), null, label: 'List or map'));
+        out.add(_loopVariable(value, _field(spec, 'as'), const <String>[]));
+        out.add(_loopVariable(value, _field(spec, 'index'), const <String>['integer', 'decimal', 'any']));
+        out.add(_loopVariable(value, _field(spec, 'key'), const <String>['string', 'any']));
+      case 'set':
+        out.add(_variablePicker(value, _field(spec, 'variable'), context.variables.keys.toList()));
+        out.add(_operandRow(value, _field(spec, 'value'), asString(asMap(context.variables[value['variable']])['type']) ?? 'any'));
+      case 'return':
+        out.add(_returnRow(value, _field(spec, 'value')));
+      case 'call':
+        out.add(_routineRow(value, _field(spec, 'routine')));
+        out.add(CallArguments(context: context, node: value, steps: steps));
+        out.add(_variablePicker(value, _field(spec, 'result'), context.variables.keys.toList(), optional: true));
     }
-    if (kind == nodeListType) return <Widget>[_list(value, field)];
-    if (kind == nodeType) {
-      final Object? child = value[field.key];
-      if (child == null) {
-        return <Widget>[
-          GuiRow(
-            label: fieldLabel(field),
-            help: field.help,
-            problems: diagnosticsAt(context.diagnostics, formatPath(at)),
-            child: AddNodeSelect(context: context, label: 'Add ${field.key}', onAdd: (JsonMap node) => context.write(at, node)),
-          ),
-        ];
+    const Set<String> custom = <String>{
+      'capability', 'arguments', 'bindings', 'expressions', 'templates', 'expression', 'count', 'index', 'list', 'as', 'key', 'variable', 'value', 'routine', 'result',
+    };
+    final bool customType = _customTypes.contains(type);
+    for (final FieldSpec field in spec?.fields ?? const <FieldSpec>[]) {
+      final String kind = fieldType(field);
+      if (kind == nodeListType) {
+        out.add(_list(value, field, childLoop));
+      } else if (kind == nodeType) {
+        out.add(_slot(value, field, childLoop));
+      } else if (!(customType && custom.contains(field.key))) {
+        out.add(InspectField(
+          key: ValueKey<String>(formatPath(<JsonStep>[...steps, field.key])),
+          field: field,
+          value: value[field.key],
+          path: formatPath(<JsonStep>[...steps, field.key]),
+          diagnostics: context.diagnostics,
+          onChanged: (Object? next) => context.write(<JsonStep>[...steps, field.key], next),
+        ));
       }
-      return <Widget>[
-        dom.div(classes: 'animus-node-slot', <Widget>[
-          BehaviorNodeView(
-            key: ValueKey<String>(formatPath(at)),
-            context: context,
-            node: child,
-            steps: at,
-            caption: field.key,
-            onRemove: field.required ? null : () => context.write(at, null),
-          ),
-        ]),
-      ];
     }
-    if (field.key == 'routine') {
-      return <Widget>[
-        GuiRow(
-          label: fieldLabel(field),
-          help: field.help,
-          problems: <Diagnostic>[
-            ...diagnosticsAt(context.diagnostics, formatPath(at)),
-            if (value[field.key] is String && !context.routines.contains(value[field.key]))
-              Diagnostic(DiagnosticSeverity.warning, formatPath(at), 'No routine ${value[field.key]} in this document.'),
-          ],
-          child: GuiSelect(
-            value: asString(value[field.key]),
-            options: context.routines,
-            allowNone: !field.required,
-            onChanged: (String? next) => context.write(at, next),
-          ),
-        ),
-      ];
-    }
-    if (field.key == 'variable' && value['type'] == 'set') return <Widget>[_setVariable(value, field)];
-    if (field.key == 'value' && value['type'] == 'set') return <Widget>[_setValue(value, field)];
-    return <Widget>[
-      InspectField(
-        key: ValueKey<String>(formatPath(at)),
-        field: field,
-        value: value[field.key],
-        path: formatPath(at),
-        diagnostics: context.diagnostics,
-        onChanged: (Object? next) => context.write(at, next),
-      ),
-    ];
+    return out;
   }
 
-  Widget _list(JsonMap value, FieldSpec field) {
+  static const Set<String> _customTypes = <String>{'action', 'condition', 'while', 'repeat', 'foreach', 'set', 'return', 'call'};
+
+  Widget _conditionMode(JsonMap value) {
+    final bool expression = value.containsKey('expression');
+    return GuiRow(
+      label: 'Test',
+      help: 'A capability asks the game (a flag, a permission); an expression computes true or false from variables and facts.',
+      child: GuiSelect(
+        value: expression ? 'expression' : 'capability',
+        options: const <String>['capability', 'expression'],
+        labels: const <String, String>{'capability': 'A capability', 'expression': 'An expression'},
+        label: 'Test of ${caption ?? 'step'}',
+        onChanged: (String? next) {
+          if (next == null || (next == 'expression') == expression) return;
+          final JsonMap out = <String, Object?>{...value};
+          for (final String key in const <String>['capability', 'arguments', 'bindings', 'expressions', 'templates', 'expression']) {
+            out.remove(key);
+          }
+          if (next == 'expression') {
+            out['expression'] = 'true';
+          } else {
+            final JsonMap fresh = defaultNode('condition', context.catalog, server: context.server);
+            out['capability'] = fresh['capability'];
+            out['arguments'] = fresh['arguments'];
+          }
+          _put(out);
+        },
+      ),
+    );
+  }
+
+  Widget _expressionRow(JsonMap value, FieldSpec field) => GuiRow(
+        label: fieldLabel(field, label: 'Expression'),
+        help: field.description,
+        problems: _problems('expression'),
+        child: BehaviorExpressionInput(
+          value: asString(value['expression']) ?? '',
+          scope: context.scope,
+          label: 'Expression of ${caption ?? 'step'}',
+          placeholder: 'count < 3',
+          onChanged: (String next) => context.write(<JsonStep>[...steps, 'expression'], next),
+        ),
+      );
+
+  Widget _operandRow(JsonMap value, FieldSpec field, String? type, {String? label, Widget? literal}) => GuiRow(
+        label: fieldLabel(field, label: label),
+        help: field.description,
+        problems: _problems(field.key),
+        child: OperandControl(
+          value: value[field.key],
+          type: type,
+          variables: context.variables,
+          scope: context.scope,
+          label: '${label ?? humanizeKey(field.key)} of ${caption ?? 'step'}',
+          literal: literal,
+          onChanged: (Object? next) => context.write(<JsonStep>[...steps, field.key], next),
+        ),
+      );
+
+  Widget _countRow(JsonMap value, FieldSpec field) {
+    final Object? count = value['count'];
+    return _operandRow(
+      value,
+      field,
+      'integer',
+      label: 'Count',
+      literal: GuiNumberInput(
+        value: count is num ? count : null,
+        label: 'Count of ${caption ?? 'step'}',
+        placeholder: '0 to 128',
+        onChanged: (num? next) => context.write(<JsonStep>[...steps, 'count'], (next ?? 0).round().clamp(0, 128)),
+      ),
+    );
+  }
+
+  Widget _returnRow(JsonMap value, FieldSpec field) {
+    final bool has = value.containsKey('value');
+    return GuiRow(
+      label: 'Value',
+      help: field.description,
+      problems: _problems('value'),
+      child: dom.div(classes: 'animus-control-stack', <Widget>[
+        GuiSwitch(
+          value: has,
+          label: 'Return a value',
+          onChanged: (bool on) => context.write(<JsonStep>[...steps, 'value'], on ? 0 : null),
+        ),
+        if (has)
+          OperandControl(
+            value: value['value'],
+            variables: context.variables,
+            scope: context.scope,
+            label: 'Returned value',
+            onChanged: (Object? next) => context.write(<JsonStep>[...steps, 'value'], next),
+          ),
+      ]),
+    );
+  }
+
+  Widget _routineRow(JsonMap value, FieldSpec field) => GuiRow(
+        label: fieldLabel(field),
+        help: field.help,
+        problems: <Diagnostic>[
+          ..._problems('routine'),
+          if (value['routine'] is String && !context.routines.contains(value['routine']))
+            Diagnostic(DiagnosticSeverity.warning, formatPath(<JsonStep>[...steps, 'routine']), 'No routine ${value['routine']} in this document.'),
+        ],
+        child: GuiSelect(
+          value: asString(value['routine']),
+          options: context.routines,
+          noneLabel: 'Pick a routine',
+          label: 'Routine ${caption ?? 'step'} calls',
+          onChanged: (String? next) => context.write(<JsonStep>[...steps, 'routine'], next),
+        ),
+      );
+
+  Widget _variablePicker(JsonMap value, FieldSpec field, List<String> options, {bool optional = false}) => GuiRow(
+        label: fieldLabel(field),
+        help: field.description,
+        problems: _problems(field.key, nested: false),
+        child: options.isEmpty
+            ? const dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Declare a variable under Variables first.')])
+            : GuiSelect(
+                value: asString(value[field.key]),
+                options: options,
+                labels: <String, String>{for (final String name in options) name: '$name (${asString(asMap(context.variables[name])['type']) ?? '?'})'},
+                allowNone: optional || !field.required,
+                noneLabel: optional || !field.required ? 'Not set' : 'Pick a variable',
+                label: '${humanizeKey(field.key)} of ${caption ?? 'step'}',
+                onChanged: (String? next) => context.write(<JsonStep>[...steps, field.key], next),
+              ),
+      );
+
+  /// A loop's `as`, `index` or `key`: execution variables of [types].
+  Widget _loopVariable(JsonMap value, FieldSpec field, List<String> types) {
+    final List<String> options = executionVariables(context.variables, types: types);
+    final Widget picker = _variablePicker(value, field, options);
+    if (options.isNotEmpty || !field.required) return picker;
+    return GuiRow(
+      label: fieldLabel(field),
+      help: field.description,
+      problems: _problems(field.key, nested: false),
+      child: Button.ghost(
+        label: 'Declare item and use it',
+        size: ButtonSize.small,
+        onPressed: () {
+          final String name = uniqueName('item', context.variables.keys);
+          final JsonMap base = <String, Object?>{...context.document, 'variables': <String, Object?>{...context.variables, name: <String, Object?>{'type': 'any', 'initial': ''}}};
+          context.writeDocument(asMap(writeIn(base, <JsonStep>[...steps, field.key], name)));
+        },
+      ),
+    );
+  }
+
+  Widget _list(JsonMap value, FieldSpec field, bool childLoop) {
     final List<JsonStep> at = <JsonStep>[...steps, field.key];
     final JsonList items = asList(value[field.key]);
     final String noun = field.key == 'branches' ? 'branch' : 'step';
-    return dom.div(classes: 'animus-node-list', <Widget>[
+    return dom.div(classes: 'animus-node-children', attributes: <String, String>{'role': 'group', 'aria-label': '${humanizeKey(field.key)} of ${caption ?? 'step'}'}, <Widget>[
+      if (items.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text(noun == 'step' ? 'No steps yet; this runs nothing. Add the first step below.' : 'A parallel needs at least one branch.')]),
       for (int index = 0; index < items.length; index++)
         BehaviorNodeView(
           key: ValueKey<String>(formatPath(<JsonStep>[...at, index])),
@@ -201,140 +466,38 @@ class BehaviorNodeView extends StatelessWidget {
           node: items[index],
           steps: <JsonStep>[...at, index],
           caption: '$noun ${index + 1}',
+          inLoop: childLoop,
           onUp: index == 0 ? null : () => context.write(at, moveItem(items, index, index - 1)),
           onDown: index == items.length - 1 ? null : () => context.write(at, moveItem(items, index, index + 1)),
           onRemove: () => context.write(at, removeItem(items, index)),
         ),
       for (final Diagnostic problem in diagnosticsAt(context.diagnostics, formatPath(at)))
         dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
-      dom.div(classes: 'animus-row', <Widget>[
-        AddNodeSelect(context: context, label: 'Add $noun', onAdd: (JsonMap node) => context.write(at, <Object?>[...items, node])),
-      ]),
+      AddNodeSelect(context: context, label: 'Add $noun', onAdd: (String type) => context.addAt(at, type, append: true)),
     ]);
   }
 
-  List<Widget> _capability(JsonMap value, String type) {
-    final String? id = asString(value['capability']);
-    final CapabilitySpec? spec = context.catalog.capability(id);
-    final List<CapabilitySpec> choices = context.catalog.capabilitiesFor(type);
-    final List<JsonStep> argumentsAt = <JsonStep>[...steps, 'arguments'];
-    final JsonMap arguments = asMap(value['arguments']);
-    final Set<String> declared = <String>{for (final FieldSpec field in spec?.arguments ?? const <FieldSpec>[]) field.key};
-    final String capabilityPath = formatPath(<JsonStep>[...steps, 'capability']);
-    return <Widget>[
-      GuiRow(
-        label: 'capability *',
-        help: spec == null
-            ? (id == null || id.isEmpty ? 'Choose what this $type runs.' : 'Not a built-in capability; a module checks it when installed.')
-            : <String>[spec.description, if (!spec.available) 'Unavailable here: ${spec.reason}.', if (spec.privileged) 'Privileged: allowed only for behaviors on the allow-list.'].join(' '),
-        problems: diagnosticsAt(context.diagnostics, capabilityPath),
-        child: dom.div(classes: 'animus-capability', <Widget>[
-          GuiSelect(
-            value: id,
-            options: <String>[for (final CapabilitySpec choice in choices) choice.id],
-            labels: <String, String>{
-              for (final CapabilitySpec choice in choices) choice.id: choice.note.isEmpty ? choice.id : '${choice.id} (${choice.available ? choice.note : 'unavailable'})',
-            },
-            noneLabel: 'choose',
-            onChanged: (String? next) {
-              if (next != null) _put(changeCapability(value, next, context.catalog));
-            },
-          ),
-          if (spec == null)
-            SuggestInput(
-              value: id ?? '',
-              label: 'Module capability',
-              onChanged: (String next) => context.write(<JsonStep>[...steps, 'capability'], next),
-            ),
-        ]),
-      ),
-      if (spec != null && spec.oneOfRequired.isNotEmpty)
-        dom.p(classes: 'animus-gui-help', <Widget>[
-          Component.text('Give one of: ${spec.oneOfRequired.map((List<String> group) => group.join(' + ')).join(', or ')}.'),
-        ]),
-      if (spec != null)
-        for (final FieldSpec argument in spec.arguments)
-          InspectField(
-            key: ValueKey<String>(formatPath(<JsonStep>[...argumentsAt, argument.key])),
-            field: argument,
-            value: arguments[argument.key],
-            path: formatPath(<JsonStep>[...argumentsAt, argument.key]),
-            diagnostics: context.diagnostics,
-            onChanged: (Object? next) => context.write(<JsonStep>[...argumentsAt, argument.key], next),
-          ),
-      for (final MapEntry<String, Object?> entry in arguments.entries)
-        if (!declared.contains(entry.key))
-          GuiRow(
-            key: ValueKey<String>('kept-argument:${entry.key}'),
-            label: entry.key,
-            help: spec == null ? 'Argument for the module.' : 'Not an argument of ${spec.id}; kept as written.',
-            problems: diagnosticsAt(context.diagnostics, formatPath(<JsonStep>[...argumentsAt, entry.key]), nested: true),
-            child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? next) => context.write(<JsonStep>[...argumentsAt, entry.key], next)),
-          ),
-      if (value.containsKey('bindings'))
-        GuiRow(
-          label: 'bindings',
-          help: 'Fills null placeholders in arguments from declared variables, keyed by JSON Pointer.',
-          problems: diagnosticsAt(context.diagnostics, formatPath(<JsonStep>[...steps, 'bindings']), nested: true),
-          child: KeptJsonEditor(value: value['bindings'], label: 'bindings', onChanged: (Object? next) => context.write(<JsonStep>[...steps, 'bindings'], next)),
-        ),
-    ];
-  }
-
-  Widget _setVariable(JsonMap value, FieldSpec field) {
+  Widget _slot(JsonMap value, FieldSpec field, bool childLoop) {
     final List<JsonStep> at = <JsonStep>[...steps, field.key];
-    return GuiRow(
-      label: fieldLabel(field),
-      help: field.help,
-      problems: diagnosticsAt(context.diagnostics, formatPath(at)),
-      child: GuiSelect(
-        value: asString(value[field.key]),
-        options: context.variables.keys.toList(),
-        noneLabel: context.variables.isEmpty ? 'declare a variable first' : 'choose',
-        onChanged: (String? next) => context.write(at, next),
+    final Object? child = value[field.key];
+    if (child == null) {
+      return GuiRow(
+        label: fieldLabel(field),
+        help: field.help,
+        problems: diagnosticsAt(context.diagnostics, formatPath(at)),
+        child: AddNodeSelect(context: context, label: 'Add ${field.key}', onAdd: (String type) => context.addAt(at, type)),
+      );
+    }
+    return dom.div(classes: 'animus-node-children', <Widget>[
+      BehaviorNodeView(
+        key: ValueKey<String>(formatPath(at)),
+        context: context,
+        node: child,
+        steps: at,
+        caption: field.key,
+        inLoop: childLoop,
+        onRemove: field.required ? null : () => context.write(at, null),
       ),
-    );
-  }
-
-  Widget _setValue(JsonMap value, FieldSpec field) {
-    final List<JsonStep> at = <JsonStep>[...steps, field.key];
-    final String? variable = asString(value['variable']);
-    final String type = asString(asMap(context.variables[variable])['type']) ?? '';
-    final Object? current = value[field.key];
-    final bool fromVariable = current is Map<String, Object?>;
-    final FieldSpec typed = FieldSpec(
-      key: 'value',
-      kind: switch (type) {
-        'boolean' => FieldKind.boolean,
-        'integer' => FieldKind.integer,
-        'decimal' => FieldKind.number,
-        'string' => FieldKind.string,
-        _ => FieldKind.any,
-      },
-      required: true,
-    );
-    return GuiRow(
-      label: fieldLabel(field),
-      help: field.help,
-      problems: diagnosticsAt(context.diagnostics, formatPath(at), nested: true),
-      child: dom.div(classes: 'animus-control-stack', <Widget>[
-        GuiSwitch(
-          value: fromVariable,
-          label: 'From another variable',
-          onChanged: (bool on) => context.write(
-            at,
-            on ? <String, Object?>{'variable': context.variables.keys.firstOrNull ?? ''} : asMap(context.variables[variable])['initial'] ?? '',
-          ),
-        ),
-        if (fromVariable)
-          GuiSelect(
-            value: asString(current['variable']),
-            options: context.variables.keys.toList(),
-            onChanged: (String? next) => context.write(<JsonStep>[...at, 'variable'], next),
-          )
-        else
-          InspectControl(field: typed, value: current, path: formatPath(at), onChanged: (Object? next) => context.write(at, next ?? '')),
-      ]),
-    );
+    ]);
   }
 }

@@ -18,9 +18,14 @@ public final class EditorMessages {
 
     private EditorMessages() {}
 
-    /** One entry of a change set. {@code baseRevision} empty means the document must not exist yet. */
-    public record Change(DocumentKind kind, String id, Optional<Long> baseRevision, Optional<String> baseHash, Optional<JsonObject> source) {
+    /**
+     * One entry of a change set. {@code baseRevision} empty means the document must not exist yet. A move names the id it
+     * leaves in {@code from}; its base is then the document at that id, and {@code id} must not exist yet.
+     */
+    public record Change(DocumentKind kind, String id, Optional<Long> baseRevision, Optional<String> baseHash, Optional<JsonObject> source, Optional<String> from) {
         public boolean delete() { return source.isEmpty(); }
+
+        public boolean move() { return from.isPresent(); }
 
         public String name() { return kind.wireName() + ":" + id; }
     }
@@ -55,7 +60,7 @@ public final class EditorMessages {
             String at = "$.documents[" + index++ + "]";
             if (!element.isJsonObject()) throw invalid(at + ": expected an object");
             JsonObject entry = element.getAsJsonObject();
-            fields(entry, at, Set.of("kind", "id", "baseRevision", "baseHash", "source", "delete"));
+            fields(entry, at, Set.of("kind", "id", "baseRevision", "baseHash", "source", "delete", "from"));
             String kindName = string(entry, "kind", "[a-z-]{1,32}", at + ".kind");
             DocumentKind kind = DocumentKind.parse(kindName).orElseThrow(() -> invalid(at + ".kind: unknown kind " + kindName));
             String id = string(entry, "id", DOCUMENT_ID, at + ".id");
@@ -85,8 +90,20 @@ public final class EditorMessages {
                 if (!entry.get("source").isJsonObject()) throw invalid(at + ".source: expected an object");
                 source = Optional.of(entry.getAsJsonObject("source"));
             }
+            Optional<String> from = Optional.empty();
+            if (entry.has("from")) {
+                if (!entry.get("from").isJsonObject()) throw invalid(at + ".from: expected an object with the id the document moves from");
+                JsonObject origin = entry.getAsJsonObject("from");
+                fields(origin, at + ".from", Set.of("id"));
+                String old = string(origin, "id", DOCUMENT_ID, at + ".from.id");
+                if (delete) throw invalid(at + ": a delete cannot move; give source with from");
+                if (revision.isEmpty()) throw invalid(at + ": a move needs the baseRevision and baseHash of the document at " + old);
+                if (old.equals(id)) throw invalid(at + ".from.id: the document already has id " + id);
+                from = Optional.of(old);
+            }
             if (!seen.add(kind.wireName() + "\n" + id)) throw invalid(at + ": " + kind.wireName() + " " + id + " appears twice");
-            changes.add(new Change(kind, id, revision, hash, source));
+            if (from.isPresent() && !seen.add(kind.wireName() + "\n" + from.get())) throw invalid(at + ": " + kind.wireName() + " " + from.get() + " appears twice");
+            changes.add(new Change(kind, id, revision, hash, source, from));
         }
         return changes;
     }

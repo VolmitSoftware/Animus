@@ -18,8 +18,43 @@ import '../gui/gui_fields.dart';
 
 int _nextListId = 0;
 
-/// A label with a required marker.
-String fieldLabel(FieldSpec field, {String? label}) => '${label ?? field.key}${field.required ? ' *' : ''}';
+/// A label with a required marker; keys read as words (`waitTicks` is "Wait ticks").
+String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
+
+/// An element id for the control at [path], so a row label can name it.
+String controlId(String path) => 'animus-field-${path.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}';
+
+/// A labelled row like [GuiRow] whose label is a `<label for>` of the control
+/// [labelFor], for selects and other controls without their own name.
+class InspectRow extends StatelessWidget {
+  const InspectRow({required this.label, required this.labelFor, required this.child, this.help, this.problems = const <Diagnostic>[], super.key});
+
+  final String label;
+  final String labelFor;
+  final Widget child;
+  final String? help;
+  final List<Diagnostic> problems;
+
+  @override
+  Widget build(BuildContext context) {
+    return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
+      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': labelFor}, <Widget>[Component.text(label)]),
+      dom.div(classes: 'animus-gui-control', <Widget>[
+        child,
+        if (help != null && help!.isNotEmpty) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(help!)]),
+        for (final Diagnostic problem in problems)
+          dom.span(
+            classes: 'animus-gui-problem is-${problem.severity.name}',
+            attributes: const <String, String>{'role': 'note'},
+            <Widget>[
+              dom.code(<Widget>[Component.text(problem.path)]),
+              Component.text(' ${problem.message}'),
+            ],
+          ),
+      ]),
+    ]);
+  }
+}
 
 /// Diagnostics for a field: the document's at [path] and the field's own
 /// bounds check of [value].
@@ -64,11 +99,20 @@ class InspectField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool nested = field.kind == FieldKind.object || field.kind == FieldKind.array || field.kind == FieldKind.any;
-    return GuiRow(
+    return InspectRow(
       label: fieldLabel(field, label: label),
+      labelFor: controlId(path),
       help: field.help,
       problems: fieldProblems(field, value, path, diagnostics, nested: nested),
-      child: InspectControl(field: field, value: value, path: path, onChanged: onChanged, diagnostics: diagnostics, suggestions: suggestions, schema: schema),
+      child: InspectControl(
+        field: field,
+        value: value,
+        path: path,
+        onChanged: onChanged,
+        diagnostics: diagnostics,
+        suggestions: suggestions,
+        schema: schema,
+      ),
     );
   }
 }
@@ -114,17 +158,18 @@ class InspectControl extends StatelessWidget {
           );
         }
         return GuiSelect(
+          id: controlId(path),
           value: current is String ? current : null,
           options: options,
           allowNone: !field.required,
-          noneLabel: field.required ? 'choose' : 'not set',
+          noneLabel: field.required ? 'Pick ${humanizeKey(field.key).toLowerCase()}' : 'Not set',
           labels: <String, String>{for (final FieldOption option in field.options) option.label: option.label},
           onChanged: onChanged,
         );
       case FieldKind.boolean:
         if (current is bool || current == null) {
           return dom.div(classes: 'animus-row', <Widget>[
-            GuiSwitch(value: current == true, label: field.key, onChanged: onChanged),
+            GuiSwitch(value: current == true, label: humanizeKey(field.key), onChanged: onChanged),
             if (current != null && !field.required)
               Button.ghost(label: 'Unset', size: ButtonSize.small, onPressed: () => onChanged(null)),
           ]);
@@ -145,7 +190,7 @@ class InspectControl extends StatelessWidget {
             value: current as String? ?? '',
             label: field.key,
             suggestions: suggestions,
-            placeholder: field.pattern,
+            placeholder: field.bounds.isEmpty ? null : field.bounds,
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
         }
@@ -202,6 +247,7 @@ class InspectObject extends StatelessWidget {
   /// Keys another part of the inspector shows.
   final Set<String> skip;
 
+
   @override
   Widget build(BuildContext context) {
     final List<FieldSpec> fields = schema.fields(node, value);
@@ -224,7 +270,7 @@ class InspectObject extends StatelessWidget {
           GuiRow(
             key: ValueKey<String>('kept:${entry.key}'),
             label: entry.key,
-            help: 'Not in the schema; kept as written.',
+            help: 'Kept as written; the server reads it.',
             problems: diagnosticsAt(diagnostics, childPath(path, entry.key), nested: true),
             child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? next) => put(entry.key, next)),
           ),
