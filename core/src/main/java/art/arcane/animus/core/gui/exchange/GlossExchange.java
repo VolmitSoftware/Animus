@@ -1,6 +1,7 @@
 package art.arcane.animus.core.gui.exchange;
 
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.gui.GlossBridge;
 import art.arcane.animus.core.gui.GuiKind;
 import art.arcane.animus.core.gui.GuiValidator;
@@ -38,6 +39,7 @@ public final class GlossExchange {
     private static final Set<String> REFERENCE_FIELDS = Set.of("id", "target", "gui", "shop");
     private static final Pattern ANIMATION = Pattern.compile("\\|animation\\.([^|]*)\\|");
     private static final String NAME = "[A-Za-z0-9_-]{1,64}";
+    private static final int DETAILS = 5;
     private final Path data;
     private final GuiValidator validator;
     private final Supplier<? extends GlossBridge<?>> bridge;
@@ -119,7 +121,7 @@ public final class GlossExchange {
             Path file = file(document.kind(), id);
             switch (GlossFolders.compare(file, text)) {
                 case SAME -> report.unchanged(label);
-                case DIFFERENT -> { if (replace) { accepted.put(file, text); labels.put(file, label); } else report.refused(label + ": a different file already exists; add replace=true to overwrite it"); }
+                case DIFFERENT -> { if (replace) { accepted.put(file, text); labels.put(file, label); } else report.refused(label + ": a different file exists; replace=true overwrites it"); }
                 case MISSING -> { accepted.put(file, text); labels.put(file, label); }
             }
         }
@@ -195,7 +197,7 @@ public final class GlossExchange {
 
     /** Imports a Gloss folder or {@code .json} bundle from {@code imports/inbox/}. */
     public void importFile(CommandActor actor, String name, String namespace, boolean replace, Runnable reload) {
-        if (!name.matches(NAME + "(\\.json)?")) { actor.tell("GUI import: name a folder or .json bundle directly under imports/inbox/"); return; }
+        if (!name.matches(NAME + "(\\.json)?")) { actor.tell(Palette.error("GUI import takes a folder or .json bundle directly under imports/inbox/")); return; }
         transfer(actor, true, false, Optional.empty(), Optional.empty(), name, namespace, replace, "folder", reload);
     }
 
@@ -206,9 +208,9 @@ public final class GlossExchange {
 
     /** Writes a folder or a {@code .json} bundle under {@code exports/gui/}; the format follows the name unless given. */
     public void exportFile(CommandActor actor, String name, Optional<String> format) {
-        if (!name.matches(NAME + "(\\.json)?")) { actor.tell("GUI export: name a folder or .json bundle directly under exports/gui/"); return; }
+        if (!name.matches(NAME + "(\\.json)?")) { actor.tell(Palette.error("GUI export takes a folder or .json bundle name for exports/gui/")); return; }
         String chosen = format.orElse(name.endsWith(".json") ? "bundle" : "folder").toLowerCase(Locale.ROOT);
-        if (!Set.of("folder", "bundle").contains(chosen)) { actor.tell("GUI export: format is folder or bundle"); return; }
+        if (!Set.of("folder", "bundle").contains(chosen)) { actor.tell(Palette.error("GUI export: format is folder or bundle")); return; }
         transfer(actor, false, false, Optional.empty(), Optional.empty(), name, GlossIds.DEFAULT_NAMESPACE, false, chosen, () -> {});
     }
 
@@ -216,7 +218,7 @@ public final class GlossExchange {
                           String namespace, boolean replace, String format, Runnable reload) {
         GlossBridge<?> gloss = bridge.get();
         if (live && gloss.unavailable() != null) { actor.tell(gloss.unavailable()); return; }
-        if (chosenId.isPresent() && chosenKind.isEmpty()) { actor.tell("Name a kind to pick one id"); return; }
+        if (chosenId.isPresent() && chosenKind.isEmpty()) { actor.tell(Palette.error("id= needs a kind other than all")); return; }
         try {
             files.execute(() -> {
                 try {
@@ -225,7 +227,7 @@ public final class GlossExchange {
                         GlossSources.Batch batch = live
                                 ? new GlossSources.Batch(GlossFolders.readLive(gloss.folder(), chosenKind, chosenId), List.of())
                                 : GlossSources.read(data.resolve("imports/inbox").resolve(name));
-                        if (batch.documents().isEmpty() && batch.skipped().isEmpty()) { answer(actor, "Nothing to import."); return; }
+                        if (batch.documents().isEmpty() && batch.skipped().isEmpty()) { answer(actor, "Nothing to import"); return; }
                         report = importDocuments(batch, namespace, replace);
                     } else {
                         List<Exported> exported = new ArrayList<>();
@@ -240,18 +242,21 @@ public final class GlossExchange {
                     }
                     tell(actor, (importing ? "GUI import: " : "GUI export: ") + report.summary(), report);
                     if (importing && !report.written().isEmpty()) reload.run();
-                } catch (IOException | RuntimeException failure) { answer(actor, (importing ? "GUI import: " : "GUI export: ") + failure.getMessage()); }
+                } catch (IOException | RuntimeException failure) { answer(actor, Palette.error((importing ? "GUI import: " : "GUI export: ") + failure.getMessage())); }
             });
-        } catch (RejectedExecutionException full) { actor.tell("Animus file queue is full; retry shortly."); }
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     private void tell(CommandActor actor, String summary, Report report) {
         List<String> lines = new ArrayList<>();
         lines.add(summary);
-        report.written().stream().limit(20).forEach((String line) -> lines.add("Wrote " + line));
-        report.refused().stream().limit(20).forEach((String line) -> lines.add("Refused " + line));
-        report.skipped().stream().limit(20).forEach((String line) -> lines.add("Skipped " + line));
-        report.notes().stream().limit(20).forEach((String line) -> lines.add("Note: " + line));
+        List<String> details = new ArrayList<>();
+        report.refused().forEach((String line) -> details.add("Refused " + line));
+        report.skipped().forEach((String line) -> details.add("Skipped " + line));
+        report.notes().forEach((String line) -> details.add("Note: " + line));
+        report.written().forEach((String line) -> details.add("Wrote " + line));
+        details.stream().limit(DETAILS).forEach(lines::add);
+        if (details.size() > DETAILS) lines.add("+" + (details.size() - DETAILS) + " more");
         if (!actor.reply(() -> lines.forEach(actor::tell))) lines.forEach(log);
     }
 

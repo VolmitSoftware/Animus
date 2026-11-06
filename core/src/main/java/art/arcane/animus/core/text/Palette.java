@@ -44,22 +44,22 @@ public enum Palette {
     }
 
     /**
-     * The Animus look of a plain command reply. A reply that starts with {@code Animus} or {@code Animus <area>:} gets that
-     * lead in pink and the rest in grey; any other plain reply gets {@link #PREFIX}. The reply's own text is left exactly
-     * as written, and a reply that already carries section codes is returned unchanged. Pass the result through
-     * {@link RichText#legacy} for a receiver without hex.
+     * The Animus look of a plain reply: {@link #PREFIX}, then the text exactly as written. An older {@code Animus <area>:}
+     * lead folds into the prefix as {@code <Area>:}. A reply that already carries section codes is returned unchanged.
+     * Pass the result through {@link RichText#legacy} for a receiver without hex.
      */
     public static String reply(String message) {
         if (message == null || message.indexOf(RichText.SECTION) >= 0) return message;
-        int lead = "Animus".length();
-        if (!message.startsWith("Animus") || message.length() > lead && Character.isLetterOrDigit(message.charAt(lead)))
-            return RichText.colorize(PREFIX) + message;
-        int colon = message.indexOf(':');
-        boolean area = colon > 0 && colon <= 40 && message.substring(lead, colon).chars().allMatch((int c) -> c == ' ' || Character.isLetter(c));
-        int end = area ? colon : lead;
-        String rest = message.substring(area ? colon + 1 : lead);
-        String head = RichText.colorize(PINK + message.substring(0, end) + (area ? DARK_GREY + ":" : "") + GREY);
-        return head + rest;
+        return RichText.colorize(PREFIX) + withoutLead(message);
+    }
+
+    private static String withoutLead(String message) {
+        int lead = "Animus".length(), colon = message.indexOf(':');
+        if (!message.startsWith("Animus") || colon < lead || colon > 40) return message;
+        String area = message.substring(lead, colon).strip();
+        if (!area.chars().allMatch((int c) -> c == ' ' || Character.isLetter(c))) return message;
+        String rest = message.substring(colon + 1).stripLeading();
+        return area.isEmpty() ? rest : Character.toUpperCase(area.charAt(0)) + area.substring(1) + ": " + rest;
     }
 
     /** A refusal: the prefix, then the reason in semantic red. */

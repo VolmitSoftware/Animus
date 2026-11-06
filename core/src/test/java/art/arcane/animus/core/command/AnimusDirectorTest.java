@@ -81,7 +81,7 @@ class AnimusDirectorTest {
     @Test void strayWordsAndUnknownKeysFailWithTheUsageLine() {
         Actor admin = new Actor(false, AnimusDirector.ADMIN);
         run(admin, "spawn", "guard", "3.5");
-        assertTrue(admin.text().contains("Unexpected argument \"3.5\"; optional values are written key=value"), admin.text());
+        assertTrue(admin.text().contains("Unexpected \"3.5\"; optional values are key=value"), admin.text());
         assertTrue(admin.text().contains("Usage: /probe spawn <npc> [speed=2.0] [loud=false]"), admin.text());
         admin.lines.clear();
         run(admin, "spawn", "guard", "colour=red");
@@ -106,7 +106,7 @@ class AnimusDirectorTest {
     @Test void permissionsGateExecutionHelpAndCompletion() {
         Actor visitor = new Actor(true, "probe.open");
         run(visitor, "spawn", "guard");
-        assertTrue(visitor.text().contains("You do not have permission"), visitor.text());
+        assertTrue(visitor.text().contains("No permission: animus."), visitor.text());
         run(visitor, "open");
         assertEquals(List.of("open"), probe.calls);
         run(visitor);
@@ -115,7 +115,7 @@ class AnimusDirectorTest {
         assertEquals(List.of(), director.complete(visitor, new String[]{"spawn", ""}));
         Actor nobody = new Actor(true);
         run(nobody, "group");
-        assertTrue(nobody.text().contains("You do not have permission"), nobody.text());
+        assertTrue(nobody.text().contains("No permission: animus."), nobody.text());
     }
 
     @Test void completionOffersBareValuesOnlyForTheNextRequiredParameter() {
@@ -168,13 +168,13 @@ class AnimusDirectorTest {
                     AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate");
             real.execute(everything, words.toArray(String[]::new));
             String text = everything.text();
-            assertFalse(text.contains("Unexpected argument") || text.contains("Unknown parameter") || text.contains("Missing argument")
+            assertFalse(text.contains("Unexpected \"") || text.contains("Unknown parameter") || text.contains("Missing argument")
                     || text.contains("Cannot convert") || text.contains("Cannot parse default") || text.contains("Usage:") && !text.contains("Failed to execute"),
                     command.path() + " " + words + " -> " + text);
             Actor stray = new Actor(true, AnimusDirector.ADMIN, "animus.status", "animus.debug", "animus.debug.mode", "animus.build.donate");
             words.add("stray-word");
             real.execute(stray, words.toArray(String[]::new));
-            if (!command.getDescriptor().isHidden()) assertTrue(stray.text().contains("Unexpected argument \"stray-word\"") && stray.text().contains("Usage: " + command.path()), command.path() + " -> " + stray.text());
+            if (!command.getDescriptor().isHidden()) assertTrue(stray.text().contains("Unexpected \"stray-word\"") && stray.text().contains("Usage: " + command.path()), command.path() + " -> " + stray.text());
         }
         art.arcane.animus.core.AnimusLog.shared().debug(false);
     }
@@ -191,7 +191,7 @@ class AnimusDirectorTest {
         real.execute(debugger, new String[]{"debug"});
         assertEquals(List.of("network", "npc", "performance", "summary", "watch"), debugger.entries(), "mode needs its own node");
         real.execute(debugger, new String[]{"list"});
-        assertTrue(debugger.text().contains("You do not have permission"));
+        assertTrue(debugger.text().contains("No permission: animus."));
     }
 
     @Test void debugModeTogglesTheSharedGateInMemory() {
@@ -202,16 +202,16 @@ class AnimusDirectorTest {
             log.debug(false);
             real.execute(operator, new String[]{"debug", "mode"});
             assertTrue(log.debug());
-            assertTrue(operator.text().contains("Debug mode enabled"), operator.text());
+            assertTrue(operator.text().contains("Debug mode on: every NPC's route, activation and packet diagnostics log until restart"), operator.text());
             real.execute(operator, new String[]{"debug", "mode", "enabled=off"});
             assertFalse(log.debug());
-            assertTrue(operator.text().contains("Debug mode disabled"), operator.text());
+            assertTrue(operator.text().contains("Debug mode off: per-NPC diagnostics summarize every"), operator.text());
             real.execute(operator, new String[]{"debug", "mode", "enabled=maybe"});
             assertTrue(operator.text().contains("Unknown state maybe"), operator.text());
             Actor reader = new Actor(true, "animus.debug");
             real.execute(reader, new String[]{"debug", "mode", "enabled=on"});
             assertFalse(log.debug(), "reading diagnostics does not allow switching debug mode");
-            assertTrue(reader.text().contains("You do not have permission"), reader.text());
+            assertTrue(reader.text().contains("No permission: animus."), reader.text());
         } finally { log.debug(false); }
     }
 

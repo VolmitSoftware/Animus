@@ -2,7 +2,9 @@ package art.arcane.animus.mod;
 
 import art.arcane.animus.core.command.AnimusDirector;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.text.ChatLine;
 import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import java.util.List;
 import java.util.Objects;
@@ -23,8 +25,13 @@ record ModActor(CommandSourceStack source, ModTicks ticks) implements CommandAct
     }
     @Override public boolean permitted(String node) { return VanillaRuntimeHost.permitted(source.permissions(), node); }
     /** Section codes, such as the debug command's colours and the brand lead {@link Palette#reply} adds, render as styled text. */
-    @Override public void tell(String message) { plain(Palette.reply(message)); }
+    @Override public void tell(String message) { rich(ChatLine.parse(RichText.colorize(Palette.reply(message)))); }
     @Override public void plain(String line) { source.sendSystemMessage(ModText.component(line)); }
+    /** Players get the click chips; the console gets the plain text with each link written out. */
+    @Override public void rich(ChatLine line) {
+        if (source.getPlayer() != null && line.interactive()) source.sendSystemMessage(ModText.adventure(line.component()));
+        else plain(line.console());
+    }
     @Override public Optional<UUID> player() {
         ServerPlayer player = source.getPlayer();
         return player == null ? Optional.empty() : Optional.of(player.getUUID());

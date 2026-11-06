@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
@@ -453,7 +454,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         Throwable cause = failure;
         while (cause.getCause() != null) cause = cause.getCause();
         session.viewer.sendMessage("Packet proof failed: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
-        plugin.getLogger().log(java.util.logging.Level.WARNING, "Packet proof operation failed", failure);
+        AnimusLog.shared().failure("Packet proof operation failed", failure, plugin.getLogger()::warning, (String line, Throwable trace) -> plugin.getLogger().log(java.util.logging.Level.WARNING, line, trace));
     }
     private void requireAvailable() { if (!live()) throw new IllegalStateException(status(null)); }
     private ProofSession session(Player viewer) {

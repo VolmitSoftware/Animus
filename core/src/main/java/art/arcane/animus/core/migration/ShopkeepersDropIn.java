@@ -19,7 +19,7 @@ import java.util.Optional;
  * both imports in order.
  */
 final class ShopkeepersDropIn {
-    static final String RUNNING = "Shopkeepers is still enabled. Animus will not apply imported Shopkeepers shops while it is, so no shop trades twice. Stop the server, remove Shopkeepers from plugins/, start it again and rerun this command.";
+    static final String RUNNING = "Shopkeepers is still enabled, so imported shops stay off to avoid trading twice; remove it from plugins/, restart and run this again";
 
     /** A found save and the {@code config.yml} that belongs to it, when there is one. */
     record Found(CitizensDropIn.Found save, Optional<Path> config) {}
@@ -84,7 +84,7 @@ final class ShopkeepersDropIn {
         part.addProperty("state", "applied");
         part.add("pending", applied.pending());
         List<String> lines = new ArrayList<>();
-        lines.add("Shopkeepers shops installed; transaction " + applied.transaction() + "; " + applied.bound() + " bound to Citizens NPCs, " + applied.pending().size() + " wait for their NPC");
+        lines.add("Shopkeepers shops installed; " + applied.bound() + " bound to Citizens NPCs, " + applied.pending().size() + " wait for their NPC; tx " + applied.transaction());
         applied.problems().stream().limit(10).forEach((String problem) -> lines.add("Not bound: " + problem));
         return lines;
     }
@@ -100,7 +100,7 @@ final class ShopkeepersDropIn {
         transactions.add(applied.get().transaction());
         part.add("pending", applied.get().pending());
         List<String> lines = new ArrayList<>();
-        lines.add("Bound " + applied.get().bound() + " Shopkeepers shops to their Citizens NPCs; transaction " + applied.get().transaction() + "; " + applied.get().pending().size() + " still wait");
+        lines.add("Bound " + applied.get().bound() + " Shopkeepers shops to their Citizens NPCs; " + applied.get().pending().size() + " still wait; tx " + applied.get().transaction());
         applied.get().problems().stream().limit(10).forEach((String problem) -> lines.add("Not bound: " + problem));
         return lines;
     }
@@ -109,8 +109,8 @@ final class ShopkeepersDropIn {
         if (!applied(state)) return Optional.empty();
         JsonObject part = state.getAsJsonObject("shopkeepers");
         int pending = part.has("pending") ? part.getAsJsonArray("pending").size() : 0;
-        return Optional.of("Shopkeepers import " + part.get("importId").getAsString().substring(0, 12) + ": shops under shops/shopkeepers/; " + pending
-                + " Citizens shopkeepers wait for their NPC; report " + part.get("report").getAsString());
+        return Optional.of("Shopkeepers import " + part.get("importId").getAsString().substring(0, 12) + ": shops in shops/shopkeepers/; " + pending
+                + " wait for their Citizens NPC; report " + part.get("report").getAsString());
     }
 
     static void rolledBack(JsonObject state) {

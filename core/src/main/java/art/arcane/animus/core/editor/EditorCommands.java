@@ -1,6 +1,8 @@
 package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.text.Palette;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,9 +29,12 @@ public final class EditorCommands {
         this.files = Objects.requireNonNull(files);
     }
 
+    /** A player gets the headline with the full status in a hover; the console gets the full status. */
     public void status(CommandActor actor) {
         EditorService editor = running(actor);
-        if (editor != null) editor.status().forEach(actor::tell);
+        if (editor == null) return;
+        if (actor.player().isEmpty()) editor.status().forEach(actor::tell);
+        else actor.rich(ChatLine.reply(editor.headline()).details("Details", editor.status()));
     }
 
     /** A single-use pairing link. Blank options take their defaults. */
@@ -38,13 +43,14 @@ public final class EditorCommands {
         if (editor == null) return;
         EditorTokens.Grant grant;
         try { grant = grant(actor, label, scopes, groups, expires, editor.settings().tokenDays()); }
-        catch (IllegalArgumentException invalid) { actor.tell("Animus editor: " + invalid.getMessage()); return; }
+        catch (IllegalArgumentException invalid) { actor.tell(Palette.error(invalid.getMessage())); return; }
         work(actor, () -> {
             EditorService.PairingLink link = editor.pair(grant);
-            return List.of("Open this link in a browser within 10 minutes to pair it (single use):", link.link(),
-                    "Token " + link.pairing().tokenId() + " | scopes " + String.join(" ", grant.scopes().stream().map(EditorScope::wireName).toList())
+            String token = link.pairing().tokenId();
+            return List.of(ChatLine.success("Pairing link ready; single use, open within " + EditorTokens.PAIRING_LIFETIME.toMinutes() + " minutes").link("Open editor", link.link()),
+                    ChatLine.reply("Token " + token + " | " + String.join(" ", grant.scopes().stream().map(EditorScope::wireName).toList())
                             + (grant.groups().isEmpty() ? "" : " | groups " + String.join(",", grant.groups()))
-                            + " | expires after " + describe(grant.lifetime()));
+                            + " | expires in " + describe(grant.lifetime())).suggest("Revoke", "/animus editor revoke " + token, "Revoke this token"));
         });
     }
 
@@ -53,7 +59,7 @@ public final class EditorCommands {
         EditorService editor = running(actor);
         if (editor == null) return Optional.empty();
         Optional<EditorApi> api = editor.api();
-        if (api.isEmpty()) { actor.tell("Animus editor: The editor is disabled."); return Optional.empty(); }
+        if (api.isEmpty()) { actor.tell(Palette.error("Editor disabled; set [editor] enabled = true in config.toml")); return Optional.empty(); }
         return Optional.of(api.get().parts().tokens().list().stream().map((EditorTokens.Token token) -> token.id()
                 + (token.label().isEmpty() ? "" : " \"" + token.label() + "\"")
                 + " | " + String.join(" ", token.scopes().stream().map(EditorScope::wireName).toList())
@@ -70,8 +76,8 @@ public final class EditorCommands {
         if (editor == null) return;
         work(actor, () -> {
             List<String> revoked = editor.revoke(target);
-            return List.of(revoked.isEmpty() ? "No token " + target + "." : "Revoked " + revoked.size() + " token" + (revoked.size() == 1 ? "" : "s")
-                    + "; their connections and previews were closed.");
+            return List.of(revoked.isEmpty() ? ChatLine.error("No token " + target) : ChatLine.success("Revoked " + revoked.size() + " token" + (revoked.size() == 1 ? "" : "s")
+                    + "; their connections and previews closed"));
         });
     }
 
@@ -85,22 +91,22 @@ public final class EditorCommands {
 
     private EditorService running(CommandActor actor) {
         EditorService editor = service.get();
-        if (editor == null) actor.tell("The editor is not running.");
+        if (editor == null) actor.tell(Palette.error("Editor not running"));
         return editor;
     }
 
-    @FunctionalInterface private interface Work { List<String> run() throws IOException; }
+    @FunctionalInterface private interface Work { List<ChatLine> run() throws IOException; }
 
     private void work(CommandActor actor, Work work) {
         try {
             files.execute(() -> {
-                List<String> lines;
+                List<ChatLine> lines;
                 try { lines = work.run(); }
-                catch (IOException | RuntimeException failure) { lines = List.of("Animus editor: " + failure.getMessage()); }
-                List<String> reply = lines;
-                actor.reply(() -> reply.forEach(actor::tell));
+                catch (IOException | RuntimeException failure) { lines = List.of(ChatLine.error("Editor: " + failure.getMessage())); }
+                List<ChatLine> reply = lines;
+                actor.reply(() -> reply.forEach(actor::rich));
             });
-        } catch (RejectedExecutionException full) { actor.tell("Animus file queue is full; retry shortly."); }
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     /** Reads the pairing options; a blank option keeps its default. */

@@ -75,9 +75,9 @@ public final class HireDesk<P, S> {
         P player = viewer.player();
         UUID id = host.id(player);
         Instant now = clock.get();
-        if (terms.permission().isPresent() && !host.permitted(player, terms.permission().get())) return "&cYou are not allowed to hire " + npcName + "&c.";
+        if (terms.permission().isPresent() && !host.permitted(player, terms.permission().get())) return "&cYou cannot hire " + npcName;
         Optional<HireContracts.Contract> current = contracts.of(npc).filter((HireContracts.Contract contract) -> contract.active(now));
-        if (current.isPresent() && !current.get().player().equals(id)) return "&c" + RichText.plain(npcName) + " already works for " + current.get().playerName() + ".";
+        if (current.isPresent() && !current.get().player().equals(id)) return "&c" + RichText.plain(npcName) + " already works for " + current.get().playerName();
         Economy economy = host.economy();
         boolean money = terms.price().signum() > 0;
         if (money && economy.unavailable().isPresent()) return "&cHiring for money is unavailable: " + economy.unavailable().get();
@@ -86,12 +86,12 @@ public final class HireDesk<P, S> {
             Optional<S> wanted = host.stack(new NpcItem(item.id(), 1, item.components(), Optional.empty()), Optional.empty(), List.of(), new ArrayList<>());
             if (wanted.isEmpty() || !payment.remove(wanted.get(), item.count(), MatchRule.STRICT)) {
                 payment.rollback();
-                return "&cYou need " + price(terms, economy) + "&c to hire " + RichText.plain(npcName) + ".";
+                return "&cYou need " + price(terms, economy) + "&c to hire " + RichText.plain(npcName);
             }
         }
         if (money && !economy.withdraw(id, terms.price())) {
             payment.rollback();
-            return "&cYou cannot afford " + economy.format(terms.price()) + ".";
+            return "&cYou cannot afford " + economy.format(terms.price());
         }
         boolean renewal = current.isPresent();
         if (!renewal) {
@@ -106,15 +106,15 @@ public final class HireDesk<P, S> {
         Instant from = renewal ? current.get().expires() : now;
         HireContracts.Contract contract = new HireContracts.Contract(npc, id, host.name(player), from.plus(terms.duration()));
         contracts.put(contract);
-        return (renewal ? "&aRenewed " : "&aHired ") + npcName + "&a for " + duration(terms.duration()) + ". &7Time left: &f" + duration(Duration.between(now, contract.expires())) + "&7.";
+        return (renewal ? "&aRenewed " : "&aHired ") + npcName + "&a for " + duration(terms.duration()) + "&7, &f" + duration(Duration.between(now, contract.expires())) + " &7left";
     }
 
     /** Dismisses for the viewer, who must be the hirer. Returns the message to show. */
     String dismiss(ScreenManager<P, S>.Viewer viewer, UUID npc, String npcName) {
         UUID id = viewer.host().id(viewer.player());
         Optional<HireContracts.Contract> current = contracts.of(npc).filter((HireContracts.Contract contract) -> contract.active(clock.get()));
-        if (current.isEmpty()) return "&7" + RichText.plain(npcName) + " is not hired.";
-        if (!current.get().player().equals(id)) return "&cOnly " + current.get().playerName() + " can dismiss " + RichText.plain(npcName) + ".";
+        if (current.isEmpty()) return "&7" + RichText.plain(npcName) + " is not hired";
+        if (!current.get().player().equals(id)) return "&cOnly " + current.get().playerName() + " can dismiss " + RichText.plain(npcName);
         expire(current.get());
         return Palette.PINK_LIGHT + RichText.plain(npcName) + " is dismissed. &7Stay safe out there.";
     }

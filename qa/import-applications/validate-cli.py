@@ -86,12 +86,12 @@ def main():
         return app, plan
 
     def apply(identity, app):
-        text = cli('apply-plan', data, identity, app, pattern=r'Import transaction: (?:[a-f0-9-]{36}|already-applied)\. Definitions installed dormant\.')
+        text = cli('apply-plan', data, identity, app, pattern=r'Installed dormant; tx (?:[a-f0-9-]{36}|already-applied)')
         API['installed'](data, identity, app)
-        return re.search(r'Import transaction: ([a-f0-9-]{36}|already-applied)', text)[1]
+        return re.search(r'Installed dormant; tx ([a-f0-9-]{36}|already-applied)', text)[1]
 
     def rollback(transaction):
-        cli('rollback', data, transaction, pattern=r'Rollback transaction: [a-f0-9-]{36}')
+        cli('rollback', data, transaction, pattern=r'Rolled back; tx [a-f0-9-]{36}')
 
     save()
     try:
@@ -206,8 +206,8 @@ def main():
         API['assert_snapshot'](data, base_snapshot)
         rollback(base_tx)
         assert not API['snapshot'](data)
-        legacy = cli('apply', data, baseline, pattern=r'Import transaction: [a-f0-9-]{36}')
-        legacy_tx = re.search(r'Import transaction: ([a-f0-9-]{36})', legacy)[1]
+        legacy = cli('apply', data, baseline, pattern=r'Installed dormant; tx [a-f0-9-]{36}')
+        legacy_tx = re.search(r'Installed dormant; tx ([a-f0-9-]{36})', legacy)[1]
         cli('apply', data, baseline, pattern='already-applied')
         rollback(legacy_tx)
         assert not API['snapshot'](data)

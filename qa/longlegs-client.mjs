@@ -95,7 +95,7 @@ try {
   const edit = `animus edit ${id} ${JSON.stringify({ modules: route })}`;
   assert(edit.length <= 256, `edit command is ${edit.length} characters`);
   await owner.command(edit, 'Saved;');
-  await owner.command(`animus spawn ${id}`, `Spawn requested for ${id}`);
+  await owner.command(`animus spawn ${id}`, `Spawning ${id}`);
   const spawned = await owner.wait(e => e.event === 'spawn' && Math.abs(e.x - start.x) < 1 && Math.abs(e.z - start.z) < 1, 0, 20_000);
   uuid = spawned.uuid;
 

@@ -24,7 +24,7 @@ import org.bukkit.entity.Player;
  */
 final class BukkitServerCommands implements ServerCommandSync.Host {
     static final String PREFIX = "animus";
-    static final String NO_PERMISSION = ChatColor.RED + "I'm sorry, but you do not have permission to perform this command. Please contact the server administrators if you believe that this is in error.";
+    static final String NO_PERMISSION = ChatColor.RED + "You do not have permission to use this command";
     private final CommandMap map;
     private final Map<String, Command> known;
     private final ServerTriggerDispatcher dispatcher;
