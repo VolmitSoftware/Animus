@@ -67,7 +67,7 @@ def main():
         assert match,'Missing transaction identity: '+reply
         return match[1]
     def stage(import_id,mode='reject',label=None):
-        reply=command(f'animus import stage {import_id} {mode}'+(' '+label if label else ''),r'.*Application [a-f0-9]{64}.*')
+        reply=command(f'animus import stage {import_id} mode={mode}'+(' copy='+label if label else ''),r'.*Application [a-f0-9]{64}.*')
         identity=re.search(r'Application ([a-f0-9]{64})',reply)[1]
         plan,candidates=application(data,import_id,identity)
         assert plan['mode']==mode.upper()
@@ -78,7 +78,7 @@ def main():
     def rollback(transaction):
         return tx(command('animus rollback '+transaction,r'.*Rolled back; inverse transaction .*'))
     def preview(filename,source_bytes):
-        receipt=command('animus import preview '+filename+' qa_legacy=world',r'.*Preview [a-f0-9]{64}.*')
+        receipt=command('animus import preview '+filename+' worlds=qa_legacy:world',r'.*Preview [a-f0-9]{64}.*')
         identity=re.search(r'Preview ([a-f0-9]{64})',receipt)[1]
         summary=original_archive(data,identity,source_bytes)
         assert summary['valid']==summary['records'] and summary['skins']==1

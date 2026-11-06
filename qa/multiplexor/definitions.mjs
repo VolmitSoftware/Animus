@@ -20,7 +20,7 @@ export default {
     })
     if (phase === 'prepare') {
       await step('Create, edit, clone, inspect and validate a dormant definition', async () => {
-        await command('/animus create multiplexor-proof minecraft:player world 0 64 0 qa Multiplexor Original', /Created dormant multiplexor-proof;/)
+        await command('/animus create multiplexor-proof minecraft:player world 0 64 0 qa "Multiplexor Original"', /Created dormant multiplexor-proof;/)
         await command('/animus edit multiplexor-proof {"name":"Multiplexor Edited"}', /Saved; transaction /)
         await command('/animus inspect multiplexor-proof', /"name":"Multiplexor Edited"/)
         await command('/animus clone multiplexor-proof multiplexor-clone', /Cloned; transaction /)

@@ -444,7 +444,7 @@ async function values(owner, npc = 'st') {
   const from = owner.events.length;
   const execution = await owner.run(npc, 'live:state');
   await owner.chat('report-end', from);
-  const lines = owner.events.slice(from).filter(e => e.event === 'chat' && e.text.startsWith('State: ')).map(e => e.text.slice(7));
+  const lines = owner.events.slice(from).filter(e => e.event === 'chat' && e.text.startsWith('State » ')).map(e => e.text.slice('State » '.length));
   return { lines: lines.filter(line => line !== 'report-end'), execution };
 }
 async function state() {
@@ -720,7 +720,7 @@ async function actions() {
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('look at coordinate and player', async () => {
-    await server.cmd('animus navigation act stop', /./);
+    await server.cmd('animus navigation stop act', /./);
     await delay(400);
     let from = owner.events.length;
     const result = await runDoc(owner, 'look', action('animus:look', { x: 20, y: 62, z: 3 }));
@@ -1210,7 +1210,7 @@ async function dragon() {
     await go(0, 61, -20);
     const from = owner.events.length;
     const reply = await server.capture('animus navigate drake 0 61 16 mode=walk speed=2', /Navigation[^\n]*|Animus navigation[^\n]*/, 2500);
-    const status = await server.capture('animus navigation drake status', /Navigation[^\n]*|Animus navigation[^\n]*/);
+    const status = await server.capture('animus navigation status drake', /Navigation[^\n]*|Animus navigation[^\n]*/);
     note(reply + status);
     const phases = () => owner.events.slice(from).filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ');
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 0), from, 8000).catch(error => { throw new Error(`${error.message}; phases=${phases()}; ${status.match(/Navigation[^\n]*/)?.[0]}`); });
@@ -1602,7 +1602,7 @@ async function terrain() {
     const from = owner.events.length;
     const result = await runDoc(owner, 'stairs', action('animus:navigate', { x: 8.5, y: 63, z: -19.5, speed: 3, wait: true, timeoutTicks: 400 }), {}, 'stairs');
     const heights = [...new Set(owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).map(e => e.y))];
-    note(`stairs navigation: ${plain(await server.capture('animus navigation stairs status', /Navigation[^\n]*/))}`);
+    note(`stairs navigation: ${plain(await server.capture('animus navigation status stairs', /Navigation[^\n]*/))}`);
     const end = await inspect('stairs');
     await server.cmd('animus delete stairs', /Deleted/);
     assert.equal(result.state, 'COMPLETED', `${diagnosticOf(result.text)} heights=${heights}`);
@@ -1709,7 +1709,7 @@ async function combat() {
     results.target = await combatCommand('cmelee', `target ${OWNER.uuid}`);
     results.guard = await combatCommand('cmelee', `guard ${OWNER.uuid}`);
     results.guardStop = await combatCommand('cmelee', 'guard stop');
-    results.unknown = plain(await server.capture('animus combat nobody status', /Unknown NPC[^\n]*|Combat[^\n]*/)).match(/Unknown NPC[^\n]*|Combat[^\n]*/)[0];
+    results.unknown = plain(await server.capture('animus combat status npc=nobody', /Unknown NPC[^\n]*|Combat[^\n]*/)).match(/Unknown NPC[^\n]*|Combat[^\n]*/)[0];
     for (const key of ['disengage', 'engage', 'release', 'target', 'guard', 'guardStop']) assert(/: APPLIED/.test(results[key]), `${key}: ${results[key]}`);
     assert(/Unknown NPC/.test(results.unknown), results.unknown);
     await combatCommand('cmelee', 'disengage');
@@ -1891,7 +1891,7 @@ async function packs() {
   await check('packs load and every pack NPC is active', async () => {
     // The list pages at 20 rows; earlier scenarios' documents come first.
     let list = '';
-    for (const page of [1, 2]) list += plain(await server.capture(`animus behaviors list ${page}`, /Behaviors: \d+ documents[^\n]*/, 600));
+    for (const page of [1, 2]) list += plain(await server.capture(`animus behaviors list page=${page}`, /Behaviors: \d+ documents[^\n]*/, 600));
     note(list);
     const rows = list.split('\n').filter(line => /Behavior \S+ \| path=packs\//.test(line));
     const problems = [];
@@ -2153,7 +2153,7 @@ async function building() {
       assert(listed.includes(BUILD.file), listed);
       const from = logText().length;
       const startPattern = new RegExp(`Started build ${BUILD.npc}[^\\n]*|Cannot start build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
-      const started = plain((await server.cmd(`animus build start ${BUILD.npc} ${BUILD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=1 timeout=5`, startPattern))[0]);
+      const started = plain((await server.cmd(`animus build start ${BUILD.npc} schematic=${BUILD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=1 timeout=5`, startPattern))[0]);
       assert.match(started, new RegExp(`^Started build ${BUILD.npc}: ${BUILD.file.replace('.', '\\.')} 18 steps from ${ox} ${oy} ${oz} to ${ox + 2} ${oy + 1} ${oz + 2}$`));
       // BuildService logs "Build <id> finished" when the last block is placed (the console starter gets no chat line).
       await server.waitLog(new RegExp(`Build ${BUILD.npc} finished`), from, 90_000);
@@ -2161,7 +2161,7 @@ async function building() {
       assert.match(status, /: finished 18\/18 \(100%\)/);
       assert.match(status, /placed=18 skipped=0 denied=0 no-item=0 refused=0/);
       assert.match(status, /materials=creative \| undo=18\b/);
-      const survey = plain(await server.capture(`animus build ${BUILD.npc} survey`, new RegExp(`Build ${BUILD.npc} [^\\n]*`)));
+      const survey = plain(await server.capture(`animus build survey ${BUILD.npc}`, new RegExp(`Build ${BUILD.npc} [^\\n]*`)));
       assert(survey.includes(`Build ${BUILD.npc} uses creative materials; nothing is needed`), survey);
       const wrong = [];
       for (const b of blocks) if (!await blockIs(b.x, b.y, b.z, b.id)) wrong.push(`${b.x},${b.y},${b.z}!=${b.id}`);
@@ -2174,7 +2174,7 @@ async function building() {
       for (const id of kinds) held.push(await itemCount(OWNER.name, id));
       assert.deepEqual(held, [5, 5, 5]);
       // Undo puts the air back; it does not walk and is limited by undoPerTick (32), so 18 cells take one tick.
-      const undo = plain((await server.cmd(`animus build ${BUILD.npc} undo`, new RegExp(`Undoing \\d+ changes of build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      const undo = plain((await server.cmd(`animus build undo ${BUILD.npc}`, new RegExp(`Undoing \\d+ changes of build ${BUILD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
       assert.equal(undo, `Undoing 18 changes of build ${BUILD.npc}`);
       const undone = await until(async () => { const s = await buildStatus(BUILD.npc); return { ok: /: undone /.test(s), s }; }, 20_000, 'undo did not finish');
       assert.match(undone.s, /restored=18 kept=0/);
@@ -2217,7 +2217,7 @@ async function scaffolding() {
       const body = await owner.body(uuid);
       const watched = owner.events.length, from = logText().length;
       const startPattern = new RegExp(`Started build ${SCAFFOLD.npc}[^\\n]*|Cannot start build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*|Builds unavailable: [^\\n]*`);
-      const started = plain((await server.cmd(`animus build start ${SCAFFOLD.npc} ${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`, startPattern))[0]);
+      const started = plain((await server.cmd(`animus build start ${SCAFFOLD.npc} schematic=${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`, startPattern))[0]);
       assert.match(started, new RegExp(`^Started build ${SCAFFOLD.npc}: live-scaffold\\.nbt 42 steps from ${ox} ${oy} ${oz} to ${ox + 4} ${oy + 13} ${oz + 4}`));
       let most = 0;
       await until(async () => {
@@ -2261,7 +2261,7 @@ async function scaffolding() {
       assert(top >= oy + 9, `the rigger only reached y=${top}`);
       let jump = 0;
       for (let i = 1; i < moves.length; i++) jump = Math.max(jump, Math.abs(moves[i].y - moves[i - 1].y));
-      const undo = plain((await server.cmd(`animus build ${SCAFFOLD.npc} undo`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
+      const undo = plain((await server.cmd(`animus build undo ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`)))[0]);
       assert.match(undo, new RegExp(`^Undoing \\d+ changes of build ${SCAFFOLD.npc}`));
       const undone = await until(async () => { const s = await buildStatus(SCAFFOLD.npc); return { ok: /: undone /.test(s), s }; }, 30_000, 'undo did not finish');
       assert.match(undone.s, /restored=\d+ kept=0/);
@@ -2305,7 +2305,8 @@ async function shops() {
       const listed = plain(await server.capture('animus shop list', /Shops: \d+/, 400));
       assert(new RegExp(`${SHOP.id} \\| [^|]*Swap \\| pages=1`).test(listed), listed);
       const problems = plain(await server.capture('animus shop problems', /Shop and GUI problems: \d+/, 400));
-      assert(!/live[:/]swap/.test(problems), problems);
+      // The hotload line for the new file can land in the same capture; only the problem rows count.
+      assert(!/live[:/]swap/.test(problems.split('\n').filter(line => !/Hotloaded/.test(line)).join('\n')), problems);
       const uuid = await server.npc(SHOP.npc, 'minecraft:player', ...SHOP.at, 'Swapper', { modules: { 'animus:shop': { shop: SHOP.id, openOn: 'right' } } });
       created = true;
       await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
@@ -2331,7 +2332,7 @@ async function shops() {
 
       // 2. Open again with the command and try once more without the price: nothing changes.
       from = owner.events.length;
-      await server.cmd(`animus shop open ${SHOP.id} ${OWNER.name}`);
+      await server.cmd(`animus shop open ${SHOP.id} player=${OWNER.name}`);
       open = await windowOpened(owner, from);
       from = await clickSlot(owner, open.container, SHOP.slot);
       const refused = await owner.chat('You do not have the items for that.', from, 8000);
