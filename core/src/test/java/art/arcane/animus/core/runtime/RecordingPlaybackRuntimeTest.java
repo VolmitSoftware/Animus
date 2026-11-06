@@ -273,6 +273,34 @@ class RecordingPlaybackRuntimeTest {
         assertEquals(2.5, x(harness), 1e-9);
     }
 
+    private static RecordingDocument madeIn(String world) {
+        RecordingDocument walk = line(200);
+        return new RecordingDocument(walk.revision(), walk.id(), walk.recordedBy(), world, walk.origin(), walk.sampleTicks(), walk.durationTicks(), walk.frames(), walk.events());
+    }
+
+    @Test void aRecordingNamingTheNpcWorldByDimensionKeyPlays() throws IOException {
+        ViewerWatchRaceTest.Harness harness = looping(madeIn("minecraft:overworld"));
+        harness.worlds = (String reference) -> reference.equals("minecraft:overworld") || reference.equals("world") ? Optional.of("world") : Optional.empty();
+        until(harness, 400, (ViewerWatchRaceTest.Harness h) -> shows(h, "state=playing"), "playing");
+    }
+
+    @Test void aRecordingMadeInAnotherWorldIsRefusedAndTheNpcStaysPut() throws IOException {
+        ViewerWatchRaceTest.Harness harness = looping(madeIn("world_nether"));
+        harness.tick(20);
+        String navigation = harness.service.navigationStatus(NPC);
+        assertTrue(navigation.contains("route-error=recording walk was made in world world_nether, not the NPC's world"), navigation);
+        assertEquals(2.5, x(harness), 1e-9);
+    }
+
+    @Test void aRecordingWhoseWorldIsNotLoadedIsRefused() throws IOException {
+        ViewerWatchRaceTest.Harness harness = looping(madeIn("skylands"));
+        harness.worlds = (String reference) -> reference.equals("skylands") ? Optional.empty() : Optional.of(reference);
+        harness.tick(20);
+        String navigation = harness.service.navigationStatus(NPC);
+        assertTrue(navigation.contains("route-error=recording walk names world skylands, which is not loaded"), navigation);
+        assertEquals(2.5, x(harness), 1e-9);
+    }
+
     @Test void noPlayerNearSleepsAndFreezesTheCursor() throws IOException {
         ViewerWatchRaceTest.Harness harness = looping(line(200));
         until(harness, 400, (ViewerWatchRaceTest.Harness h) -> shows(h, "state=playing"), "playing");

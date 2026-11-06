@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.recording;
 
+import art.arcane.animus.bukkit.BukkitWorldLookup;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.CatalogReloads;
@@ -23,6 +24,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Stream;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -316,8 +318,10 @@ public final class RecordingSessions implements Listener, AutoCloseable {
         RecordingSettings current = settings;
         if (closed || !player.isOnline() || player.isDead() || !player.hasPermission(ADMIN)) return;
         if (!current.enabled()) { actor.tell("Recordings are disabled; set [recordings] enabled = true in config.toml."); return; }
-        if (!player.getWorld().getName().equals(document.world())) {
-            actor.tell("Recording " + document.id() + " was made in " + document.world() + "; go there to preview it.");
+        World recorded = BukkitWorldLookup.find(plugin.getServer(), document.world());
+        if (recorded == null) { actor.tell("Recording " + document.id() + " names world " + document.world() + ", which is not loaded."); return; }
+        if (!recorded.getUID().equals(player.getWorld().getUID())) {
+            actor.tell("Recording " + document.id() + " was made in " + recorded.getName() + "; go there to preview it.");
             return;
         }
         previews.get(player.getUniqueId()).ifPresent((Preview running) -> endPreview(running, null));

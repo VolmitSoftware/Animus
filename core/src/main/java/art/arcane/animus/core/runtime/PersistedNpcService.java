@@ -51,6 +51,7 @@ import art.arcane.animus.core.recording.RecordingPlayback;
 import art.arcane.animus.core.recording.RecordingPose;
 import art.arcane.animus.core.recording.RecordingRun;
 import art.arcane.animus.core.recording.RecordingSource;
+import art.arcane.animus.core.recording.RecordingWorlds;
 import art.arcane.animus.core.rig.AnimationDocument;
 import art.arcane.animus.core.rig.DisplayTransform;
 import art.arcane.animus.core.rig.NpcRig;
@@ -1580,6 +1581,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         Value value = task.value;
         RecordingRun current = value.recording != null ? value.recording : value.heldRecording;
         String error = completion.error == null && !recordingSettings.enabled() ? RECORDINGS_DISABLED : completion.error;
+        if (error == null)
+            error = RecordingWorlds.refusal(completion.recording, value.state.snapshot().position().world(), host::resolveWorld).orElse(null);
         if (error != null) {
             value.routeError = error + "; last-valid-recording-retained=" + (current != null);
             failWatch(value, "unavailable: " + error);

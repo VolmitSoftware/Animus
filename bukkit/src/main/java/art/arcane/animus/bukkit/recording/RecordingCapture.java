@@ -34,7 +34,7 @@ public final class RecordingCapture {
         public String reason() { return reason; }
     }
 
-    /** What the owner read from the player at a sample tick. {@code equipment} holds the six player slots. */
+    /** What the owner read from the player at a sample tick. {@code world} is the world's name, never its UUID; {@code equipment} holds the six player slots. */
     public record Sample(String world, double x, double y, double z, double yaw, double pitch, boolean onGround, boolean sneaking, boolean sprinting,
                          boolean swimming, boolean gliding, Map<EquipmentSlot, Optional<NpcItem>> equipment) {
         public Sample {
