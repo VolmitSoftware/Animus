@@ -8311,10 +8311,45 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "description": "Order sequence only: start again from the first point."
             },
             "waitTicks": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 12000
+                },
+                {
+                  "type": "array",
+                  "description": "[min, max] in ticks, min not above max.",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12000
+                  }
+                }
+              ],
+              "description": "Wait before the first leg and after each arrival: ticks, or [min, max] drawn per arrival."
+            },
+            "seed": {
+              "enum": [
+                "npc",
+                "random"
+              ],
+              "description": "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."
+            },
+            "startOffset": {
+              "enum": [
+                "first",
+                "random"
+              ],
+              "description": "random: start at a random point after a random 0..waitTicks wait. first by default."
+            },
+            "jitter": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 12000,
-              "description": "Wait before the first leg and after each arrival."
+              "maximum": 8,
+              "description": "Leg goals move by a random whole-block x/z offset within this radius."
             },
             "points": {
               "type": "array",
@@ -8345,10 +8380,62 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "maximum": 29999984
                   },
                   "waitTicks": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12000
+                      },
+                      {
+                        "type": "array",
+                        "description": "[min, max] in ticks, min not above max.",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 12000
+                        }
+                      }
+                    ],
+                    "description": "Wait after arriving here, instead of the route's."
+                  },
+                  "jitter": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 12000,
-                    "description": "Wait after arriving here, instead of the route's."
+                    "maximum": 8,
+                    "description": "Jitter radius of this point, instead of the route's."
+                  },
+                  "weight": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "Order random only: how often this point is chosen."
+                  },
+                  "next": {
+                    "type": "array",
+                    "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "to"
+                      ],
+                      "properties": {
+                        "to": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        },
+                        "weight": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -8473,6 +8560,21 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         "required": [
                           "wander"
                         ]
+                      },
+                      {
+                        "required": [
+                          "seed"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "startOffset"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "jitter"
+                        ]
                       }
                     ]
                   }
@@ -8575,6 +8677,91 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "required": [
                   "order"
                 ]
+              }
+            },
+            {
+              "if": {
+                "not": {
+                  "properties": {
+                    "order": {
+                      "const": "random"
+                    }
+                  },
+                  "required": [
+                    "order"
+                  ]
+                }
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "weight"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "order"
+                ],
+                "not": {
+                  "properties": {
+                    "order": {
+                      "const": "sequence"
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "next"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "order": {
+                    "const": "wander"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "jitter"
+                      ]
+                    }
+                  ]
+                }
               }
             }
           ]
