@@ -291,6 +291,10 @@
           "description": "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes."
         },
         {
+          "const": "animus:set-attribute",
+          "description": "Sets one vanilla attribute of the NPC, such as scale or movement_speed, or with reset returns it to the definition's value. Lasts until the runtime restarts or the definition changes."
+        },
+        {
           "const": "animus:set-equipment",
           "description": "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes."
         },
@@ -2737,6 +2741,94 @@
                     }
                   ],
                   "description": "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:set-attribute"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bindings"
+                  ],
+                  "properties": {
+                    "bindings": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "expressions"
+                  ],
+                  "properties": {
+                    "expressions": {
+                      "minProperties": 1
+                    }
+                  }
+                },
+                {
+                  "required": [
+                    "templates"
+                  ],
+                  "properties": {
+                    "templates": {
+                      "minProperties": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "attribute": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "value": {
+                      "type": "number"
+                    },
+                    "reset": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "attribute"
+                  ],
+                  "anyOf": [
+                    {
+                      "required": [
+                        "value"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "reset"
+                      ]
+                    }
+                  ],
+                  "description": "Sets one vanilla attribute of the NPC, such as scale or movement_speed, or with reset returns it to the definition's value. Lasts until the runtime restarts or the definition changes."
                 }
               },
               "required": [

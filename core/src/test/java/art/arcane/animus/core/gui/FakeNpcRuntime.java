@@ -65,5 +65,6 @@ public class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
     @Override public boolean resumePatrol(String id) { return false; }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) {}
     @Override public void setEquipment(String id, EquipmentSlot slot, Object item) {}
+    @Override public void setAttribute(String id, String attribute, java.util.OptionalDouble value) {}
     @Override public void close() {}
 }

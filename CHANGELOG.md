@@ -238,6 +238,13 @@
 - `/animus shop problems` lists notes about offers a shop's window style cannot show exactly.
 - Web editor: Style and Layout fields in the shop editor, with a trading screen preview.
 - Combat NPCs with a bow, crossbow or trident hold it drawn while a target is in range and lower it after.
+- NPC definitions and trait groups take `attributes`: any vanilla attribute id, bare or `minecraft:`, with its vanilla range checked. Viewers get them with the body and on every runtime change on Paper, Spigot, Folia and mod servers.
+- `scale` resizes the body, hitbox, click reach, path clearance, rig bones and text height; movement, gravity, jump, fall, health, armor, knockback, melee and targeting attributes drive Animus's own simulation where the definition sets no field of its own.
+- `/animus npc attribute <npc> <attribute> [value=<number>|reset]` with attribute completion, and the behavior action `animus:set-attribute`.
+- The vanilla attribute table is generated from the server jars with `./gradlew :core:generateAttributeTable`.
+- Web editor: an Attributes section for NPCs and groups, with range hints, defaults and sources; the preview shows `scale`.
+- Web editor: a Conversation tab builds a behavior's lines, questions, conditions and actions as a tree by keyboard, writes the routines, `animus:choices` actions and `dialogue_choice` triggers with ids it keeps, opens matching hand-written behaviors, plays the conversation in the browser and attaches it to NPCs and groups in one undoable step.
+- Web editor: New conversation in the sidebar and the command palette, and a Conversation behavior template.
 
 ### Changed
 
@@ -336,6 +343,8 @@
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
 - Web editor: shorter copy on every screen; field explanations moved from inline paragraphs into tips on the label text.
 - Shopkeepers imports open in the trading screen (`"style": "native"`), and villager profession and level move from the review section to `animus:shop` `villager`; the importer version is 2.
+- `gravity: false` stays the hover switch and wins over the `gravity` attribute, which sets how fast a body falls.
+- Citizens converter version 13: the attribute trait converts to `attributes` instead of only `movement.stepHeight`, and an armor stand without gravity converts to `gravity: false`.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

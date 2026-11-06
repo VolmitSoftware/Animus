@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 12,
+  "converterVersion": 13,
   "fieldPathFormat": "json-pointer",
-  "importId": "8c17aa71272e5e65c1ba102be83b976a93eae88ac21618da606ed06331ba36aa",
+  "importId": "420312d6038ba88d015ae51f94daba65f5581aafd284ef2caf21d705282fa88c",
   "sourceSha256": "b0f736e8596bac6f209b6870af200dbf3b3c407aa3546d8b8488937f280c5ad8",
   "worldMap": {
     "old_town": "town"
@@ -75,14 +75,14 @@
     "5": "0a1b2c3d-0000-4000-8000-000000000305"
   },
   "documents": {
-    "npcs/town/citizens-0.json": "16519340d79171c825bbb9b22a82c2ef78541a8edddb5a4a96ffef2a1401b9ad",
-    "npcs/town/citizens-1.json": "f2567a29a266c89b011d0a9b680f1b6e8a108d70ab89b17018c989dc4b368b61",
+    "npcs/town/citizens-0.json": "747230240e961748ae3e8ee2322529176bcdf24450b28d52f8ae79e960cd7590",
+    "npcs/town/citizens-1.json": "7c96325f9b6dd996a2bbc912b775b9fcbbe79446ee0aee43fa9fbeb328d9a684",
     "behaviors/citizens/text-2.json": "fd86b6d89e566471ce36cb74f5c889cd2355336dd7330f02375f7421cafd5674",
-    "npcs/town/citizens-2.json": "0c5a939ddbe60b763fa9bd79e5f188e55d9b3bf98799c306e23e06f7d5c35e19",
+    "npcs/town/citizens-2.json": "266f5a65ec4def9ba1c703e812bcbc16d4457a8cde32945792e009248663455b",
     "behaviors/citizens/text-3.json": "2500899a3646cabd0c82cd0c2ddc83ee3a2be0f694052a1b2e4ae7049be79f75",
     "behaviors/citizens/commands-3.json": "56f79ffcffec46c36987f97bd074c2cf148401ff4bdff425837ed408ff96417d",
-    "npcs/town/citizens-3.json": "f0624fa5f840add9206652fd0a4510182da9b1030dbf4ce2640e0b7ef2fa2a30",
-    "npcs/town/citizens-4.json": "d68eb1bee8c1b2d24df89e2aede9ede0f5bc72ba59b8f728eb7bc151210acda4",
-    "npcs/town/citizens-5.json": "40602deff121e2ec797ff29cfb52672b2a4997a25ef8faacf3b668bbe38ffa93"
+    "npcs/town/citizens-3.json": "0dfae3a89159aa07f788529367bcec39c5a8a8d3841555e8f108bab65b17f821",
+    "npcs/town/citizens-4.json": "b47f85f724ff5b6fbfd1b4f4c6a7990cb99e99ec38a3e2d8f029cdc9b073b620",
+    "npcs/town/citizens-5.json": "c01e2e816f745fa47cea4b1cbe6a99b996e7f487232f9c531c89f74f5b6b0982"
   }
 }

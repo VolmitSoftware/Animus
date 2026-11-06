@@ -1,6 +1,8 @@
 /// Port of core's `CitizensTraits`: NPC metadata, navigator settings and the small state traits.
 library;
 
+import '../inspect/inspect_schemas.dart';
+import '../npc/npc_attributes.dart';
 import 'field_notes.dart';
 import 'java_json.dart';
 import 'java_lang.dart';
@@ -77,6 +79,18 @@ bool? _bool(JElement? value) {
   if (value is JBool) return value.value;
   final String text = value.asString;
   return text == 'true' ? true : (text == 'false' ? false : null);
+}
+
+/// A Citizens attribute key as a vanilla id: `minecraft:scale`, and the older
+/// `generic_scale`, `generic.scale` and `zombie_spawn_reinforcements` forms.
+String _attributeId(String key) {
+  String id = key.toLowerCase();
+  if (id.startsWith(attributeNamespace)) id = id.substring(attributeNamespace.length);
+  id = id.replaceAll('.', '_');
+  for (final String prefix in const <String>['generic_', 'player_', 'zombie_', 'horse_']) {
+    if (id.startsWith(prefix)) return id.substring(prefix.length);
+  }
+  return id;
 }
 
 bool _number(JElement? value) => value is JNumber && value.asDouble.isFinite;
@@ -296,20 +310,6 @@ class _Traits {
       movement.addBool('openDoors', true);
       any = true;
     }
-    final JObject? trait = _object(traits.get('attributetrait'));
-    final JObject? attributes = trait == null ? null : _object(trait.get('attributes'));
-    final JElement? step = attributes?.get('minecraft:step_height');
-    if (_number(step) && step!.asPrimitive.asDouble >= 0) {
-      final double value = step.asPrimitive.asDouble;
-      movement.addDouble('stepHeight', value < maxStep ? value : maxStep);
-      const String path = '/traits/attributetrait/attributes/minecraft:step_height';
-      if (value > maxStep) {
-        note(path, statusConverted, 'Animus steps up at most 1.5 blocks without a jump, so higher steps are jumped');
-      } else {
-        converted.add(path);
-      }
-      any = true;
-    }
     if (any) fields.add('movement', movement);
   }
 
@@ -386,10 +386,32 @@ class _Traits {
     final JObject? trait = _object(traits.get('attributetrait'));
     final JObject? attributes = trait == null ? null : _object(trait.get('attributes'));
     if (attributes == null) return;
-    for (final String key in attributes.keys) {
-      if (key == 'minecraft:step_height') continue;
-      kept('/traits/attributetrait/attributes/${pointer(key)}', 'attribute $key has no Animus setting');
+    final Map<String, AttributeSpec> table = attributeTable(InspectSchemas.embedded.npc);
+    final JObject values = JObject();
+    for (final MapEntry<String, JElement> entry in attributes.entries) {
+      final String path = '/traits/attributetrait/attributes/${pointer(entry.key)}';
+      final AttributeSpec? known = table[_attributeId(entry.key)];
+      if (known == null) {
+        kept(path, 'attribute ${entry.key} is not a vanilla attribute on any supported Minecraft version');
+        continue;
+      }
+      if (!_number(entry.value)) {
+        kept(path, 'the value is not a number');
+        continue;
+      }
+      final double value = entry.value.asPrimitive.asDouble;
+      final double clamped = value < known.minimum ? known.minimum : (value > known.maximum ? known.maximum : value);
+      if (clamped != value) {
+        warnings.add('$path: ${formatAttribute(value)} is outside ${known.range} for ${known.id} and became ${formatAttribute(clamped)}');
+      }
+      values.add(known.id, clamped == value ? entry.value : JDouble(clamped));
+      if (known.id == 'step_height' && clamped > maxStep) {
+        note(path, statusConverted, 'Animus steps up at most 1.5 blocks without a jump, so higher steps are jumped');
+      } else {
+        converted.add(path);
+      }
     }
+    if (values.isNotEmpty) fields.add(attributesField, values);
   }
 
   void rotation() {

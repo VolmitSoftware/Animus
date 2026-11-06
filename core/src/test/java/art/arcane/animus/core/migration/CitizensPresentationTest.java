@@ -99,7 +99,9 @@ class CitizensPresentationTest {
                 """);
         JsonObject look = stand.fields().getAsJsonObject("armorStand");
         assertEquals("{\"small\":true,\"arms\":false,\"basePlate\":true,\"invisible\":true,\"head\":[28.648,0.0,-14.324]}", look.toString());
-        assertEquals(List.of("/traits/armorstandtrait: marker and gravity are kept for review"), stand.warnings());
+        assertEquals(List.of("/traits/armorstandtrait: marker is kept for review"), stand.warnings());
+        assertFalse(stand.fields().get("gravity").getAsBoolean(), "a stand without gravity hovers");
+        assertTrue(stand.converted().contains("/traits/armorstandtrait/gravity"));
         CitizensPresentation.Result defaults = map("armor_stand", "{\"armorstandtrait\":{}}");
         assertEquals("{\"small\":false,\"arms\":true,\"basePlate\":true,\"invisible\":false}", defaults.fields().get("armorStand").toString());
     }
@@ -159,7 +161,7 @@ class CitizensPresentationTest {
         assertEquals("CONVERTED", fields.get("/traits/hologramtrait/lines/0").getAsString());
         assertEquals("CONVERTED", fields.get("/traits/sneak/sneaking").getAsString());
         assertEquals(CitizensImporter.CONVERTER_VERSION, preview.converterVersion());
-        assertEquals(12, CitizensImporter.CONVERTER_VERSION);
+        assertEquals(13, CitizensImporter.CONVERTER_VERSION);
     }
 
     @Test void hologramRendererSettingsMarginsAndListInventoriesMap() {

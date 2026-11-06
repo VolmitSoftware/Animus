@@ -41,7 +41,10 @@ const Map<String, String> bodyLabels = <String, String>{
 enum _SkinSource { none, file, url, existing }
 
 class NewDocumentPage extends StatefulWidget {
-  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, super.key});
+  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.conversation = false, super.key});
+
+  /// Starts a behavior with the Conversation template picked.
+  final bool conversation;
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
@@ -78,7 +81,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   LoadedSkin? _skin;
 
   // Behavior.
-  BehaviorTemplate _template = BehaviorTemplate.greeter;
+  late BehaviorTemplate _template = component.conversation ? BehaviorTemplate.conversation : BehaviorTemplate.greeter;
   String? _shop;
   String? _attachTo;
 
@@ -168,7 +171,12 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
               ? 'Created server-behaviors.json.'
               : 'Created ${_inSentence(kind)} ${guiPlainText(made.title)}.');
     }
-    component.onNavigate(DocumentRoute(component.workspace.id, kind, id));
+    component.onNavigate(DocumentRoute(
+      component.workspace.id,
+      kind,
+      id,
+      kind == DocumentKind.behavior && _template == BehaviorTemplate.conversation ? ViewMode.conversation : ViewMode.visual,
+    ));
     focusMainHeading();
   }
 
