@@ -10,38 +10,58 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
+import '../../logic/gui/gui_validation.dart';
 import '../../model/animus_document.dart';
+import '../../model/document_kind.dart';
 import 'actions_editor.dart';
 import 'chest_window.dart';
 import 'component_editor.dart';
 import 'gui_fields.dart';
+import 'presets_editor.dart';
 
 const List<String> chestResolutions = <String>['9x1', '9x2', '9x3', '9x4', '9x5', '9x6', '5x1', '3x3'];
 
-/// The Preview: the painted window for the chosen variant.
-class InventoryPreview extends StatelessWidget {
+/// The Preview: the painted window for the chosen variant. Tapping a slot
+/// shows its name and lore, for screens without hover.
+class InventoryPreview extends StatefulWidget {
   const InventoryPreview({required this.document, this.variant, super.key});
 
   final AnimusDocument document;
   final int? variant;
 
   @override
+  State<InventoryPreview> createState() => _InventoryPreviewState();
+}
+
+class _InventoryPreviewState extends State<InventoryPreview> {
+  int? _slot;
+
+  @override
   Widget build(BuildContext context) {
-    final ChestLayout layout = layoutChest(asMap(document.json), variant: variant);
+    final ChestLayout layout = layoutChest(asMap(component.document.json), variant: component.variant);
     return dom.section(classes: 'animus-panel animus-gui-preview', <Widget>[
-      ChestWindow(layout: layout, label: 'Chest window ${document.id}'),
+      ChestWindow(
+        layout: layout,
+        label: 'Chest window ${component.document.id}',
+        selected: _slot,
+        pinSelected: true,
+        onSlot: (int slot) => setState(() => _slot = _slot == slot ? null : slot),
+      ),
       const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Sample viewer: Steve at 12:00. Values only the server knows show as ?.'),
+        Component.text('Sample viewer: Steve at 12:00. Values only the server knows show as ?. Tap or focus a slot to read its name and lore.'),
       ]),
     ]);
   }
 }
 
 class InventoryEditor extends StatefulWidget {
-  const InventoryEditor({required this.document, required this.onJson, super.key});
+  const InventoryEditor({required this.document, required this.onJson, this.presets, super.key});
 
   final AnimusDocument document;
   final JsonEdit onJson;
+
+  /// The workspace's presets document, for the preset fix.
+  final JsonMap? presets;
 
   @override
   State<InventoryEditor> createState() => _InventoryEditorState();
@@ -97,6 +117,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
             value: _variant == null ? null : '$_variant',
             allowNone: true,
             noneLabel: 'Base presentation',
+            hiddenLabel: 'Presentation shown',
             options: <String>[for (int i = 0; i < variants.length; i++) '$i'],
             labels: <String, String>{for (int i = 0; i < variants.length; i++) '$i': 'Variant ${asString(asMap(variants[i])['id']) ?? i}'},
             onChanged: (String? value) => setState(() => _variant = value == null ? null : int.parse(value)),
@@ -105,6 +126,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
             value: _brush,
             allowNone: true,
             noneLabel: 'Select slots',
+            hiddenLabel: 'Mask brush',
             options: <String>[...keys.keys, ' '],
             labels: <String, String>{for (final String key in keys.keys) key: 'Paint key $key', ' ': 'Paint empty'},
             onChanged: (String? value) => setState(() => _brush = value),
@@ -115,6 +137,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
           selected: _slot,
           showMask: true,
           label: 'Chest window ${component.document.id}',
+          onPaint: _brush == null ? null : (int slot) => _paint(slot, layout),
           onSlot: (int slot) {
             if (_brush != null) {
               _paint(slot, layout);
@@ -127,15 +150,17 @@ class _InventoryEditorState extends State<InventoryEditor> {
         ),
         dom.p(classes: 'animus-muted', <Widget>[
           Component.text(_brush == null
-              ? 'Click a slot to edit it. Letters mark mask keys; numbers mark list cells.'
-              : 'Click slots to paint ${_brush == ' ' ? 'empty cells' : 'key $_brush'} into the mask.'),
+              ? 'Click a slot, or Tab to it and press Enter, to edit it. Letters mark mask keys; numbers mark list cells.'
+              : 'Press and drag across slots to paint ${_brush == ' ' ? 'empty cells' : 'key $_brush'} into the mask; Enter paints the focused slot.'),
         ]),
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
-        dom.div(classes: 'animus-segmented animus-gui-tabs', attributes: const <String, String>{'role': 'tablist'}, <Widget>[
-          for (final _Tab tab in _Tab.values)
-            Button(
-              label: switch (tab) {
+        PresetFix(document: component.document, presets: component.presets, kind: DocumentKind.inventory, onJson: component.onJson),
+        GuiTabs(
+          label: 'Chest GUI sections',
+          tabs: <String>[
+            for (final _Tab tab in _Tab.values)
+              switch (tab) {
                 _Tab.slot => _slot == null ? 'Slot' : 'Slot $_slot',
                 _Tab.window => 'Window',
                 _Tab.keys => 'Keys',
@@ -143,12 +168,10 @@ class _InventoryEditorState extends State<InventoryEditor> {
                 _Tab.variants => 'Variants',
                 _Tab.actions => 'Named actions',
               },
-              size: ButtonSize.small,
-              variant: tab == _tab ? ButtonVariant.primary : ButtonVariant.ghost,
-              attributes: <String, String>{'role': 'tab', 'aria-selected': '${tab == _tab}'},
-              onPressed: () => setState(() => _tab = tab),
-            ),
-        ]),
+          ],
+          selected: _tab.index,
+          onSelect: (int index) => setState(() => _tab = _Tab.values[index]),
+        ),
         switch (_tab) {
           _Tab.slot => _slotInspector(layout, keys),
           _Tab.window => _window(doc),
@@ -173,7 +196,9 @@ class _InventoryEditorState extends State<InventoryEditor> {
       ChestCellSource.mask => 'Drawn by mask key ${cell.maskChar}. Editing it changes every slot with that key.',
       ChestCellSource.slot => 'An explicit slot; it draws over the mask.',
       ChestCellSource.list => 'A list cell (entry ${cell.label}); edit the list template.',
-      _ => cell.maskChar == null ? 'Empty.' : 'Mask character ${cell.maskChar} has no key.',
+      _ => cell.maskChar == null
+          ? 'An empty slot. Give it its own component, or put a mask key here.'
+          : 'Mask character ${cell.maskChar} has no key, so it draws nothing. Add key ${cell.maskChar} under Keys, or give this slot its own component.',
     };
     final List<Widget> controls = <Widget>[
       dom.p(classes: 'animus-muted', <Widget>[Component.text(where)]),
@@ -199,7 +224,9 @@ class _InventoryEditorState extends State<InventoryEditor> {
         if (keys.isNotEmpty)
           GuiRow(
             label: 'Mask key',
+            forId: guiPathId('slot-$slot-key'),
             child: GuiSelect(
+              id: guiPathId('slot-$slot-key'),
               value: null,
               noneLabel: 'Put a key here...',
               options: keys.keys.toList(),
@@ -232,67 +259,92 @@ class _InventoryEditorState extends State<InventoryEditor> {
   Widget _window(JsonMap doc) {
     final List<JsonStep> titleOwner = chestFieldOwner(doc, _variant, 'title');
     final JsonMap refresh = asMap(doc['refresh']);
+    final JsonMap select = asMap(doc['select']);
+    final List<Diagnostic> d = _diagnostics;
+    void setRefresh(String key, Object? value) {
+      final JsonMap next = withField(refresh, key, value);
+      _write(<JsonStep>['refresh'], next.isEmpty ? null : next, coalesce: 'refresh.$key');
+    }
+
+    void setSelect(String key, Object? value) {
+      final JsonMap next = withField(select, key, value);
+      _write(<JsonStep>['select'], next.isEmpty ? null : next, coalesce: 'select.$key');
+    }
+
+    final String titlePath = formatPath(<JsonStep>[...titleOwner, 'title']);
+    final List<JsonStep> maskSteps = <JsonStep>[...chestFieldOwner(doc, _variant, 'mask'), 'mask'];
+    final (int _, int rows) = chestSize(asString(doc['resolution']));
+    final int maskRows = stringList(readIn(doc, maskSteps)).length;
     return dom.div(classes: 'animus-gui-fields', <Widget>[
-      GuiRow(
-        label: _variant == null ? 'Title' : 'Title (variant)',
-        problems: diagnosticsAt(_diagnostics, formatPath(<JsonStep>[...titleOwner, 'title'])),
-        child: GuiTextInput(
-          value: asString(readIn(doc, <JsonStep>[...titleOwner, 'title'])) ?? '',
-          mode: GuiTextMode.template,
-          label: 'Title',
-          onChanged: (String value) => _write(<JsonStep>[...titleOwner, 'title'], value.isEmpty ? null : value),
-        ),
-      ),
-      GuiRow(
-        label: 'Size',
-        help: '5x1 (hopper) and 3x3 (dropper) do not open on mod servers.',
-        problems: diagnosticsAt(_diagnostics, r'$.resolution'),
-        child: GuiSelect(value: asString(doc['resolution']) ?? '9x3', options: chestResolutions, onChanged: (String? value) => _write(<JsonStep>['resolution'], value)),
-      ),
+      guiFieldRow(_variant == null ? 'Title' : 'Title (variant)', titlePath, d, (String id) => GuiTextInput(
+            id: id,
+            value: asString(readIn(doc, <JsonStep>[...titleOwner, 'title'])) ?? '',
+            mode: GuiTextMode.template,
+            label: 'Title',
+            onChanged: (String value) => _write(<JsonStep>[...titleOwner, 'title'], value.isEmpty ? null : value),
+          )),
+      guiFieldRow('Size', r'$.resolution', d, help: '5x1 (hopper) and 3x3 (dropper) do not open on mod servers.',
+          (String id) => GuiSelect(id: id, value: asString(doc['resolution']) ?? '9x3', options: chestResolutions, onChanged: (String? value) => _write(<JsonStep>['resolution'], value))),
       GuiRow(
         label: 'Mask',
         help: 'One row per window row; each character draws the key with that name, a space is empty.',
-        problems: diagnosticsAt(_diagnostics, formatPath(<JsonStep>[...chestFieldOwner(doc, _variant, 'mask'), 'mask']), nested: true),
+        problems: diagnosticsAt(d, formatPath(maskSteps), nested: true),
         child: GuiLinesEditor(
-          lines: stringList(readIn(doc, <JsonStep>[...chestFieldOwner(doc, _variant, 'mask'), 'mask'])),
+          lines: stringList(readIn(doc, maskSteps)),
           mode: GuiTextMode.plain,
           addLabel: 'Add row',
-          onChanged: (List<String> rows) => _write(<JsonStep>[...chestFieldOwner(doc, _variant, 'mask'), 'mask'], rows),
+          onChanged: (List<String> next) => _write(maskSteps, next),
         ),
       ),
-      GuiRow(
-        label: 'Show when',
-        help: 'When false, the GUI does not open for that viewer.',
-        problems: diagnosticsAt(_diagnostics, r'$.show'),
-        child: GuiTextInput(
-          value: doc['show'] is String ? doc['show']! as String : '',
-          mode: GuiTextMode.expression,
-          label: 'Show when',
-          onChanged: (String value) => _write(<JsonStep>['show'], value.isEmpty ? null : value),
-        ),
-      ),
+      if (maskRows != rows && maskRows > 0)
+        dom.p(classes: 'animus-gui-problem is-warning', <Widget>[
+          Component.text('The mask has $maskRows rows and the window $rows; the server refuses a mask that does not match.'),
+        ]),
+      guiFieldRow('Show when', r'$.show', d, help: 'When false, the GUI does not open for that viewer.', (String id) => GuiTextInput(
+            id: id,
+            value: conditionText(doc['show']),
+            mode: GuiTextMode.expression,
+            label: 'Show when',
+            placeholder: 'always',
+            onChanged: (String value) => _write(<JsonStep>['show'], conditionValue(value)),
+          )),
       GuiRow(
         label: 'Teleport',
+        help: 'On by default.',
         child: GuiSwitch(
           value: doc['closeOnTeleport'] != false,
           label: 'Close on teleport',
-          onChanged: (bool on) => _write(<JsonStep>['closeOnTeleport'], on),
+          onChanged: (bool on) => _write(<JsonStep>['closeOnTeleport'], on ? null : false),
         ),
       ),
-      GuiRow(
-        label: 'Title refresh',
-        help: 'Ticks between title redraws; 0 turns it off.',
-        child: GuiNumberInput(value: asInt(refresh['titleTicks']), label: 'Title refresh ticks', onChanged: (num? v) => _write(<JsonStep>['refresh'], withField(refresh, 'titleTicks', v).isEmpty ? null : withField(refresh, 'titleTicks', v))),
-      ),
-      GuiRow(
-        label: 'Slot refresh',
-        child: GuiNumberInput(value: asInt(refresh['slotsTicks']), label: 'Slot refresh ticks', onChanged: (num? v) => _write(<JsonStep>['refresh'], withField(refresh, 'slotsTicks', v).isEmpty ? null : withField(refresh, 'slotsTicks', v))),
-      ),
-      GuiRow(
-        label: 'Revision',
-        problems: diagnosticsAt(_diagnostics, r'$.revision'),
-        child: GuiNumberInput(value: asInt(doc['revision']), label: 'Revision', onChanged: (num? v) => _write(<JsonStep>['revision'], v)),
-      ),
+      GuiSection(title: 'Refresh', open: refresh.isNotEmpty, children: <Widget>[
+        guiFieldRow('Mode', r'$.refresh.mode', d, help: 'dynamic redraws what changed; always redraws every slot.',
+            (String id) => GuiSelect(id: id, value: asString(refresh['mode']), options: const <String>['dynamic', 'always'], allowNone: true, noneLabel: 'dynamic', onChanged: (String? v) => setRefresh('mode', v))),
+        guiFieldRow('Title', r'$.refresh.titleTicks', d, help: '0 to 1200 ticks between title redraws; 20 by default, 0 turns it off.',
+            (String id) => GuiNumberInput(id: id, value: asInt(refresh['titleTicks']), label: 'Title refresh ticks', onChanged: (num? v) => setRefresh('titleTicks', v))),
+        guiFieldRow('Slots', r'$.refresh.slotsTicks', d, help: '0 to 1200 ticks between slot redraws; 20 by default.',
+            (String id) => GuiNumberInput(id: id, value: asInt(refresh['slotsTicks']), label: 'Slot refresh ticks', onChanged: (num? v) => setRefresh('slotsTicks', v))),
+        guiFieldRow('Conditions', r'$.refresh.conditionsTicks', d, help: '0 to 1200 ticks between show checks; slots redraw at least this often.',
+            (String id) => GuiNumberInput(id: id, value: asInt(refresh['conditionsTicks']), label: 'Condition refresh ticks', onChanged: (num? v) => setRefresh('conditionsTicks', v))),
+        guiFieldRow('List', r'$.refresh.listTicks', d, help: '0 to 1200. Read for Gloss; Animus uses the list\'s own refresh.',
+            (String id) => GuiNumberInput(id: id, value: asInt(refresh['listTicks']), label: 'List refresh ticks', onChanged: (num? v) => setRefresh('listTicks', v))),
+      ]),
+      GuiSection(title: 'Select', open: select.isNotEmpty, children: <Widget>[
+        const dom.p(classes: 'animus-muted', <Widget>[
+          Component.text('Gloss picks one GUI among several for the same opener with these. Animus checks when as an expression and ignores priority.'),
+        ]),
+        guiFieldRow('Priority', r'$.select.priority', d,
+            (String id) => GuiNumberInput(id: id, value: asInt(select['priority']), label: 'Select priority', onChanged: (num? v) => setSelect('priority', v))),
+        guiFieldRow('When', r'$.select.when', d, (String id) => GuiTextInput(
+              id: id,
+              value: conditionText(select['when']),
+              mode: GuiTextMode.expression,
+              label: 'Select when',
+              onChanged: (String v) => setSelect('when', conditionValue(v)),
+            )),
+      ]),
+      guiFieldRow('Revision', r'$.revision', d,
+          (String id) => GuiNumberInput(id: id, value: asInt(doc['revision']), label: 'Revision', onChanged: (num? v) => _write(<JsonStep>['revision'], v))),
     ]);
   }
 

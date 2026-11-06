@@ -213,7 +213,7 @@ final class _Checker {
     if (type != null && refused.contains(type)) {
       error(
         childPath(path, 'type'),
-        chest ? "icon '$type' has no meaning in a chest window and is not available in Animus" : "icon '$type' is not available in Animus",
+        refusedIconMessage(type, chest: chest),
       );
       return;
     }
@@ -235,7 +235,9 @@ final class _Checker {
     if (type != null && refused.contains(type)) {
       error(
         childPath(path, 'type'),
-        chest ? "component '$type' is a holographic menu component and is not available in a chest window" : "component '$type' is not available in Animus",
+        chest
+            ? "component '$type' is a holographic menu component and has no meaning in a chest window"
+            : (type == 'field' ? "component 'field' opens a sign, anvil or chat prompt, which is not available in Animus" : "component '$type' is not available in Animus"),
       );
       return;
     }
@@ -516,6 +518,14 @@ final class _Checker {
     if (type == 'static' && asList(entry['commands']).isNotEmpty) error(childPath(path, 'commands'), 'static entries cannot run commands', code: layoutCode);
     if (type == 'static' && entry.containsKey('limit')) error(childPath(path, 'limit'), 'static entries have no limits', code: layoutCode);
   }
+}
+
+/// Core's wording for an icon type the surface refuses.
+String refusedIconMessage(String type, {required bool chest}) {
+  if (type == 'customItem') return "icon 'customItem' is not available in Animus";
+  if (chest) return "icon '$type' is a holographic menu icon and cannot be drawn in a chest window";
+  if (type == 'textImage' || type == 'animatedTextImage') return "icon '$type' needs Gloss's image glyphs and is not available in Animus";
+  return "icon '$type' is not available in Animus";
 }
 
 /// Columns and rows of a chest `resolution` (default 9x3).

@@ -6,6 +6,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../logic/gui/gui_json.dart';
+import '../logic/gui/gui_presets.dart';
 import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
@@ -17,6 +18,7 @@ import '../state/workspace_route.dart';
 import 'gui/gui_fields.dart';
 import 'offline/dry_run_panel.dart';
 import 'offline/offline_fields.dart';
+import 'gui/gui_data_editors.dart';
 import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
@@ -276,12 +278,15 @@ class _DocumentPaneState extends State<DocumentPane> {
   Widget _visual(AnimusDocument document) {
     final Object? json = document.json;
     final JsonEdit? onJson = component.onJson;
+    // GUI lane: text animation and presets editors, and presets for the preset fix.
+    final Widget? guiData = json is Map<String, Object?> && onJson != null ? guiDataEditor(document, onJson, component.workspaceDocuments) : null;
+    if (guiData != null) return guiData;
     if (json is Map<String, Object?> && onJson != null && guiEditorKinds.contains(document.kind)) {
       return switch (document.kind) {
-        DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson),
+        DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson, presets: workspacePresets(component.workspaceDocuments)),
         DocumentKind.shop => ShopEditor(document: document, onJson: onJson),
         DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(component.workspaceDocuments)),
-        _ => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(component.workspaceDocuments)),
+        _ => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(component.workspaceDocuments), presets: workspacePresets(component.workspaceDocuments)),
       };
     }
     if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.npc) {

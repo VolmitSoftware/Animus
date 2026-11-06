@@ -128,8 +128,8 @@ void main() {
       };
       expect(<String>[for (final Diagnostic d in validateGui(DocumentKind.inventory, doc)) if (d.code == refusedCode) '${d.path}: ${d.message}'], <String>[
         r"$.preset: Gloss presets are not available in Animus; inline the preset's fields",
-        r"$.keys.a.type: component 'slider' is a holographic menu component and is not available in a chest window",
-        r"$.keys.b.icon.type: icon 'block' has no meaning in a chest window and is not available in Animus",
+        r"$.keys.a.type: component 'slider' is a holographic menu component and has no meaning in a chest window",
+        r"$.keys.b.icon.type: icon 'block' is a holographic menu icon and cannot be drawn in a chest window",
         r"$.keys.b.actions[0].steps[0].type: action 'glow' is not available in Animus",
         r"$.keys.b.actions[0].once: sequence field 'once' is not available in Animus",
       ]);
@@ -392,7 +392,7 @@ void main() {
   group('export and editing', () {
     test('should give every new document a path that locates back to it and passes validation', () {
       for (final DocumentKind kind in guiKinds) {
-        final String id = 'example:${kind.wireName}';
+        final String id = kind == DocumentKind.presets ? 'presets' : 'example:${kind.wireName}';
         final String path = documentPath(kind, id);
         expect(locateDocument(path), DocumentLocation(kind, id), reason: path);
         final AnimusDocument document = validateSource(DocumentLocation(kind, id), path, prettyJson(newDocument(kind, id)), schemas);

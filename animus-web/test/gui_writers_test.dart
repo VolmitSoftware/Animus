@@ -1,3 +1,4 @@
+import 'package:animus_editor/logic/gui/gui_catalog.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/gui/gui_presets.dart';
 import 'package:animus_editor/logic/gui/hologram_lines.dart';
@@ -6,6 +7,40 @@ import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
 void main() {
+  group('actions', () {
+    test('should keep nested lists the new type has and name the ones it drops', () {
+      final JsonMap action = <String, Object?>{
+        'type': 'if',
+        'when': 'viewer.level > 2',
+        'then': <Object?>[<String, Object?>{'type': 'close'}],
+        'else': <Object?>[<String, Object?>{'type': 'stop'}],
+        'trigger': 'left_click',
+        'atTicks': 4,
+      };
+      final (JsonMap chance, List<String> lost) = changeActionType(action, 'chance');
+      expect(lost, isEmpty);
+      expect(chance['then'], action['then']);
+      expect(chance['else'], action['else']);
+      expect(chance['trigger'], 'left_click');
+      expect(chance['atTicks'], 4);
+      final (JsonMap message, List<String> dropped) = changeActionType(action, 'message');
+      expect(dropped, <String>['then', 'else']);
+      expect(message.keys, isNot(contains('then')));
+      expect(changeActionType(<String, Object?>{'type': 'if', 'then': <Object?>[]}, 'message').$2, isEmpty);
+    });
+
+    test('should start give and take without forcing an item type', () {
+      expect(newAction('give')['item'], <String, Object?>{'item': 'minecraft:bread'});
+    });
+
+    test('should humanize JSON keys for labels', () {
+      expect(humanizeKey('cooldownTicks'), 'Cooldown ticks');
+      expect(humanizeKey('customModelValue'), 'Custom model value');
+      expect(humanizeKey('when'), 'When');
+      expect(humanizeKey('link_distance'), 'Link distance');
+    });
+  });
+
   group('hologram rows', () {
     test('should keep show and scale when a row value is edited', () {
       final JsonMap row = <String, Object?>{'text': '&fOld', 'show': 'viewer.level > 1', 'scale': 2};
