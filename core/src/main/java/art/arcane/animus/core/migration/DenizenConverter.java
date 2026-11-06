@@ -42,7 +42,7 @@ import java.util.UUID;
  * accepts them.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 4;
+    static final int CONVERTER_VERSION = 5;
     /** The author a converted book gets when its Denizen author is blank. */
     static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";

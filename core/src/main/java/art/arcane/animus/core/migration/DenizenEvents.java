@@ -212,6 +212,11 @@ final class DenizenEvents {
                         trigger.addProperty("entity", entity);
                     }
                     context.put("entity", "entity");
+                } else if (projectileForm(w)) {
+                    Form form = projectile(w, trigger, context);
+                    if (form.reason() != null) return Mapped.fail(form.reason());
+                    event = form.event();
+                    cancellable = true;
                 } else if (phrase.contains("npc")) return Mapped.fail("this event covers every NPC; Animus binds a behavior to each NPC instead");
                 else return Mapped.fail("no Animus server trigger for the event " + phrase);
             }
@@ -230,7 +235,7 @@ final class DenizenEvents {
             fields.addProperty("intervalTicks", ticks);
         }
         for (Map.Entry<String, com.google.gson.JsonElement> field : trigger.entrySet()) fields.add(field.getKey(), field.getValue());
-        boolean inventory = event.startsWith("player_inventory_");
+        boolean inventory = event.startsWith("player_inventory_"), projectile = event.startsWith("projectile_") || event.equals("entity_shoot_bow");
         List<Cond> guards = new ArrayList<>();
         for (String[] option : switches.values()) {
             String name = option[0], value = option[1];
@@ -248,6 +253,11 @@ final class DenizenEvents {
                     fields.addProperty(name, value);
                 }
                 case "with" -> {
+                    if (event.equals("entity_shoot_bow")) {
+                        if (!value.matches(NAME)) return Mapped.fail("switch with:" + value + " names a bow Animus cannot check");
+                        fields.addProperty("bow", value);
+                        continue;
+                    }
                     if (!event.equals("player_block_click") && !event.equals("interaction")) return Mapped.fail("switch with: has no Animus equivalent on this event");
                     if (!value.matches("[a-z0-9_]{1,64}")) return Mapped.fail("switch with:" + value + " names an item Animus cannot check");
                     guards.add(new Atom("same(player.item_in_hand, " + DenizenExpressions.quote(value.equals("air") ? "minecraft:air" : "minecraft:" + value) + ")"));
@@ -277,12 +287,74 @@ final class DenizenEvents {
                     if (!player) return Mapped.fail("switch in: needs a player; " + event + " has none");
                     if (!value.matches("[a-z0-9_-]{1,64}")) return Mapped.fail("switch in:" + value + " names an area Animus cannot check");
                     if (notes.containsKey(value)) return Mapped.fail("switch in:" + value + " names a noted area; Animus checks areas only as enter and exit events");
-                    guards.add(new Atom("same_world(player.world, " + DenizenExpressions.quote(value) + ")"));
+                    guards.add(new Atom("same_world(" + (projectile ? "context.world" : "player.world") + ", " + DenizenExpressions.quote(value) + ")"));
+                }
+                case "entity", "block", "shooter" -> {
+                    if (!event.equals("projectile_hit") && !(name.equals("shooter") && projectile)) return Mapped.fail("switch " + name + ": has no Animus equivalent on this event");
+                    if (value.equals("npc")) return Mapped.fail(NPC_TARGET);
+                    if (!value.matches(NAME)) return Mapped.fail("switch " + name + ":" + value + " names a type Animus cannot check");
+                    fields.addProperty(name, value);
                 }
                 default -> { return Mapped.fail("event switch " + name + ": has no Animus equivalent"); }
             }
         }
         return new Mapped(fields, guards, context, npc, cancellable || npc, null);
+    }
+
+    // ---- Projectiles ----
+
+    /** A projectile event's trigger name, or the reason it has none. */
+    record Form(String event, String reason) {}
+    private static final String NPC_SHOOTER = "Animus NPCs shoot combat helper projectiles, which fire no server triggers";
+    private static final String NPC_TARGET = "Animus NPCs are virtual bodies that real projectiles pass through";
+
+    /** {@code <projectile> launched}, {@code <projectile> hits [<target>]}, {@code <projectile> collides with <entity>} and {@code <entity> shoots <bow or block>}. */
+    static boolean projectileForm(String[] w) {
+        return w.length == 2 && (w[1].equals("launched") || w[1].equals("hits")) || w.length == 3 && (w[1].equals("hits") || w[1].equals("shoots"))
+                || w.length == 4 && w[1].equals("collides") && w[2].equals("with");
+    }
+
+    /**
+     * A projectile event as {@code projectile_launch}, {@code projectile_hit} or {@code entity_shoot_bow}. Denizen's older
+     * {@code <entity> shoots <block>} and {@code <projectile> hits <block>} are hits on a block; {@code *:*} filters for any hit entity or block.
+     */
+    static Form projectile(String[] w, JsonObject trigger, Map<String, String> context) {
+        if (w[0].equals("npc")) return new Form(null, NPC_SHOOTER);
+        String reason;
+        if (w[1].equals("shoots") && (w[2].equals("item") || w[2].endsWith("bow"))) {
+            if ((reason = filter(trigger, "shooter", w[0], "entity")) != null || (reason = filter(trigger, "bow", w[2], "item")) != null) return new Form(null, reason);
+            context.put("entity", "shooter");
+            for (String key : List.of("bow", "projectile", "force", "hand")) context.put(key, key);
+            return new Form("entity_shoot_bow", null);
+        }
+        reason = w[1].equals("shoots") ? filter(trigger, "shooter", w[0], "entity") : w[0].equals("entity") ? null : filter(trigger, "projectile", w[0], "projectile");
+        if (reason != null) return new Form(null, reason);
+        context.put("projectile", "projectile");
+        context.put("shooter", "shooter");
+        if (w[1].equals("launched")) {
+            context.put("entity", "projectile");
+            return new Form("projectile_launch", null);
+        }
+        if (w.length > 2) {
+            String target = w[w.length - 1];
+            boolean entity = w[1].equals("collides") || target.equals("entity") || target.equals("player");
+            if (target.equals("npc")) return new Form(null, NPC_TARGET);
+            if (!target.matches(NAME)) return new Form(null, (entity ? "entity " : "block ") + target + " has no Animus equivalent");
+            trigger.addProperty(entity ? "entity" : "block", target.equals("entity") || target.equals("block") ? "*:*" : target);
+            if (w[1].equals("collides")) context.put("entity", "entity");
+        }
+        context.put("hit_entity", "entity");
+        context.put("hit_block", "location");
+        context.put("location", "location");
+        return new Form("projectile_hit", null);
+    }
+
+    /** Adds the filter {@code field} unless {@code value} is the word for any. */
+    private static String filter(JsonObject trigger, String field, String value, String any) {
+        if (value.equals(any)) return null;
+        if (!value.matches(NAME)) return field + " " + value + " has no Animus equivalent";
+        trigger.addProperty(field, value);
+        return null;
     }
 
     /** The context keys of a command script's run. */

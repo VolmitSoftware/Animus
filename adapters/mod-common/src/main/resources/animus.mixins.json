@@ -23,8 +23,11 @@
     "PlayerInfoUpdateAccess",
     "PlayerListHooks",
     "ProjectileHooks",
+    "ProjectileWeaponHooks",
     "RecordingPacketHooks",
+    "ServerLevelHooks",
     "ServerPlayerHooks",
+    "SkeletonHooks",
     "TextDisplayDataAccess",
     "ZoglinDataAccess",
     "ZombieDataAccess"

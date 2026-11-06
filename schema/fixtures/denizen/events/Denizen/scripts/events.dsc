@@ -104,7 +104,37 @@ combat:
         - flag player zombie_kills:++
         on player dies:
         - narrate "Down again."
+
+archery:
+    type: world
+    debug: false
+    events:
+        on player shoots bow:
+        - if <context.force> >= 1:
+            - stop
+        - narrate "Draw the <context.bow.material.name> fully."
+        - determine cancelled
+        on pillager shoots item with:crossbow:
+        - narrate "A <context.entity.entity_type> fired a <context.projectile.entity_type> from its <context.hand>."
+        on snowball launched:
+        - narrate "Thrown by <context.shooter.entity_type>."
+        on ender_pearl launched in:world_nether:
+        - determine cancelled
         on projectile hits:
+        - narrate "Something landed at <context.location.x>."
+        on arrow hits block:
+        - narrate "Struck <context.hit_block.material.name> at <context.hit_block.y>."
+        on projectile hits entity:creeper shooter:player:
+        - if !<player.has_flag[pacifist]>:
+            - stop
+        - determine cancelled
+        on trident collides with zombie:
+        - flag player trident_hits:++
+        on player shoots target:
+        - narrate "Bullseye, <context.projectile.uuid>."
+        on npc shoots bow:
+        - narrate "never converts"
+        on arrow hits npc:
         - narrate "never converts"
 
 broadcasts:

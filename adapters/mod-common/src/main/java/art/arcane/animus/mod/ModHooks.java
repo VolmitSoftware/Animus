@@ -8,6 +8,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.server.MinecraftServer;
@@ -150,6 +151,27 @@ public final class ModHooks {
     public static void killed(LivingEntity victim, DamageSource source) {
         ModServerBehaviors behaviors = behaviors();
         if (behaviors != null) behaviors.killed(victim, source);
+    }
+    /** A bow or crossbow shot begins; {@code velocity} is the speed vanilla gives its projectiles. */
+    public static void aiming(LivingEntity shooter, InteractionHand hand, ItemStack weapon, float velocity) {
+        ModServerBehaviors behaviors = behaviors();
+        if (behaviors != null && !shooter.level().isClientSide()) behaviors.aiming(shooter, hand, weapon, velocity);
+    }
+    public static void aimed() {
+        ModServerBehaviors behaviors = behaviors();
+        if (behaviors != null) behaviors.aimed();
+    }
+    /** A projectile an NPC did not launch enters the world. */
+    public static boolean launching(ServerLevel level, Entity entity) {
+        if (!(entity instanceof Projectile projectile)) return false;
+        AnimusModRuntime active = runtime;
+        ModServerBehaviors behaviors = active == null ? null : active.serverBehaviors();
+        return behaviors != null && !active.helper(projectile) && behaviors.launching(projectile, level);
+    }
+    /** A real projectile hits; helpers resolve their own hits before this. */
+    public static boolean projectileHit(Projectile projectile, HitResult hit) {
+        ModServerBehaviors behaviors = projectile.level().isClientSide() ? null : behaviors();
+        return behaviors != null && behaviors.projectileHit(projectile, hit);
     }
     /** Undoes a client's predicted change to one block, block entity data included. */
     public static void resendBlock(ServerPlayer player, BlockPos pos) { ModServerBehaviors.resendBlock(player, pos); }

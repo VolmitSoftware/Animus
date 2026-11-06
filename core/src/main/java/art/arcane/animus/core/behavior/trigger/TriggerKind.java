@@ -39,7 +39,10 @@ public enum TriggerKind {
     PLAYER_BLOCK_BREAK("player_block_break", true, Reach.SERVER, "A player breaks a block. Runs read context.block and its location. cancel keeps the block.", "block", "cancel"),
     PLAYER_DAMAGED("player_damaged", true, Reach.SERVER, "A player takes damage. Runs read context.cause, context.damage and context.damager (an entity type, empty for none). cancel prevents the damage.", "cause", "damager", "cancel"),
     PLAYER_DAMAGE_ENTITY("player_damage_entity", true, Reach.SERVER, "A player hits a living entity that is not an NPC. Runs read context.entity, context.entity_uuid, context.cause and context.damage. cancel prevents the damage.", "entity", "cancel"),
-    PLAYER_KILL("player_kill", true, Reach.SERVER, "A player kills a living entity. Runs read context.entity and context.entity_uuid.", "entity");
+    PLAYER_KILL("player_kill", true, Reach.SERVER, "A player kills a living entity. Runs read context.entity and context.entity_uuid.", "entity"),
+    PROJECTILE_LAUNCH("projectile_launch", true, Reach.SERVER, "A projectile such as an arrow, snowball or trident is launched; the player is the shooter when a player shot it. Runs read context.projectile, context.shooter (an entity type, empty for none), their UUIDs and the launch location. cancel stops the launch.", "projectile", "shooter", "cancel"),
+    PROJECTILE_HIT("projectile_hit", true, Reach.SERVER, "A projectile hits an entity or a block; the player is the shooter when a player shot it. Runs read context.projectile, context.shooter, context.entity and context.block (each empty when absent), their UUIDs and the hit location. cancel lets the projectile pass as if nothing was hit.", "projectile", "shooter", "entity", "block", "cancel"),
+    ENTITY_SHOOT_BOW("entity_shoot_bow", true, Reach.SERVER, "A player or mob shoots a bow or crossbow; the player is the shooter when a player shot. Runs read context.shooter, context.bow, context.projectile, context.force (a player's bow draw from 0 to 1, otherwise 1), context.hand and the shooter's location. cancel stops the shot.", "shooter", "bow", "projectile", "cancel");
 
     /** Which documents may use an event: NPC behaviors, server behaviors ({@code "server": true}) or both. */
     public enum Reach { NPC, SERVER, BOTH }
@@ -77,7 +80,7 @@ public enum TriggerKind {
     }
     /** Trigger fields that filter on one context key of the event, with the context key each compares. */
     public static final java.util.Map<String, String> FILTERS = java.util.Map.of("inventory", "inventory_type", "click", "click", "item", "item",
-            "block", "block", "cause", "cause", "damager", "damager", "entity", "entity");
+            "block", "block", "cause", "cause", "damager", "damager", "entity", "entity", "projectile", "projectile", "shooter", "shooter", "bow", "bow");
     /** Whether a trigger of this event may name a {@code cancel} condition: the platform event can be cancelled. */
     public boolean cancellable() { return fields.contains("cancel"); }
     public static List<String> names() {

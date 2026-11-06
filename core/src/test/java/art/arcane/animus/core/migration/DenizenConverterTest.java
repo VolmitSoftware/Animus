@@ -7,6 +7,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
@@ -428,7 +429,7 @@ class DenizenConverterTest {
                     - announce "Five minutes."
                     on player changes world from world to world_nether:
                     - narrate "Hot."
-                    on projectile hits:
+                    on player fishes:
                     - narrate "No."
                     on player chats:
                     - determine cancelled
@@ -444,7 +445,7 @@ class DenizenConverterTest {
         assertEquals("has_flag('player', 'vip')", joins.get("expression").getAsString());
         assertEquals("animus:has-permission", joins.getAsJsonObject("then").get("capability").getAsString());
         assertEquals("You said {{ context.message }}", world.getAsJsonObject("routines").getAsJsonObject("on-player-chats").getAsJsonObject("templates").get("/text").getAsString());
-        assertEquals("no Animus server trigger for the event projectile hits", reasonAt(output, "a.dsc:12"));
+        assertEquals("no Animus server trigger for the event player fishes", reasonAt(output, "a.dsc:12"));
         assertEquals("return", world.getAsJsonObject("routines").getAsJsonObject("on-player-chats-2").get("type").getAsString());
         assertTrue(reasonAt(output, "a.dsc:15").startsWith("determine changes the event's outcome"));
     }
@@ -605,7 +606,7 @@ class DenizenConverterTest {
         assertEquals("a.dsc:4", kept.get("source").getAsString());
         assertEquals("tag player.money has no Animus expression", kept.get("reason").getAsString());
         assertEquals("partial", output.report().getAsJsonObject("behaviorStatus").get("denizen:task/t").getAsString());
-        assertEquals(4, output.report().get("converterVersion").getAsInt());
+        assertEquals(5, output.report().get("converterVersion").getAsInt());
     }
 
     @Test void limitsCountLoopBodiesAndMissingElses() {
@@ -737,6 +738,55 @@ class DenizenConverterTest {
         assertFalse(DenizenEvents.note("a", "ellipsoid@0,64,0,world,5,3,5").orElseThrow().cuboid());
         assertTrue(DenizenEvents.note("a", "<cuboid[world,0,0,0,1,1,1]>").isPresent());
         assertTrue(DenizenEvents.note("a", "cu@world,0,0,0,1,1,1,2,2,2,3,3,3").isEmpty(), "a cuboid of several boxes is kept");
+    }
+
+    private static String fields(String key) {
+        DenizenEvents.Mapped mapped = DenizenEvents.event(key, Map.of(), false);
+        return mapped.reason() != null ? mapped.reason() : mapped.trigger() + (mapped.cancellable() ? " cancellable" : "");
+    }
+
+    @Test void projectileAndBowEventsBecomeProjectileTriggers() {
+        assertEquals("{\"event\":\"projectile_hit\"} cancellable", fields("on projectile hits"));
+        assertEquals("{\"event\":\"projectile_hit\",\"projectile\":\"arrow\",\"block\":\"*:*\"} cancellable", fields("on arrow hits block"));
+        assertEquals("{\"event\":\"projectile_hit\",\"projectile\":\"snowball\",\"entity\":\"*:*\"} cancellable", fields("on snowball hits entity"));
+        assertEquals("{\"event\":\"projectile_hit\",\"projectile\":\"trident\",\"entity\":\"zombie\"} cancellable", fields("on trident collides with zombie"));
+        assertEquals("{\"event\":\"projectile_hit\",\"shooter\":\"player\",\"block\":\"target\"} cancellable", fields("on player shoots target"));
+        assertEquals("{\"event\":\"projectile_hit\",\"entity\":\"creeper\",\"shooter\":\"skeleton\"} cancellable", fields("on projectile hits entity:creeper shooter:skeleton"));
+        assertEquals("{\"event\":\"projectile_launch\",\"projectile\":\"ender_pearl\"} cancellable", fields("on ender_pearl launched"));
+        assertEquals("{\"event\":\"entity_shoot_bow\",\"shooter\":\"player\",\"bow\":\"bow\"} cancellable", fields("on player shoots bow"));
+        assertEquals("{\"event\":\"entity_shoot_bow\",\"shooter\":\"pillager\",\"bow\":\"crossbow\"} cancellable", fields("on pillager shoots item with:crossbow"));
+        assertEquals("{\"event\":\"entity_shoot_bow\",\"bow\":\"bow\"} cancellable",fields("on entity shoots bow"));
+        assertTrue(fields("on npc shoots bow").startsWith("Animus NPCs shoot combat helper projectiles"));
+        assertTrue(fields("on arrow hits npc").startsWith("Animus NPCs are virtual bodies"));
+        assertTrue(fields("on projectile hits entity:npc").startsWith("Animus NPCs are virtual bodies"));
+        assertEquals("switch with: has no Animus equivalent on this event", fields("on projectile hits with:bow"));
+        assertEquals("switch entity: has no Animus equivalent on this event", fields("on arrow launched entity:zombie"));
+        assertEquals(List.of(new DenizenExpressions.Atom("same_world(context.world, 'world_nether')")), DenizenEvents.event("on projectile hits in:world_nether", Map.of(), false).guards());
+    }
+
+    @Test void projectileEventsReadTheirContextAndCancel() throws IOException {
+        JsonObject behavior = behavior("""
+                w:
+                    type: world
+                    events:
+                        on player shoots bow:
+                        - if <context.force> >= 1:
+                            - stop
+                        - narrate "Weak <context.bow.material.name> shot from <context.entity.name>"
+                        - determine cancelled
+                        on arrow hits entity:
+                        - narrate "<context.projectile.uuid> hit <context.hit_entity.entity_type> shot by <context.shooter.entity_type>"
+                        on arrow hits block:
+                        - narrate "Struck <context.hit_block.material.name> at <context.hit_block.x>"
+                """, "denizen:world/w");
+        JsonArray triggers = behavior.getAsJsonArray("triggers");
+        assertEquals("!(context.force >= 1)",triggers.get(0).getAsJsonObject().get("cancel").getAsString());
+        String text = behavior.getAsJsonObject("routines").toString();
+        assertTrue(text.contains("replace(context.bow, 'minecraft:', '')"), text);
+        assertTrue(text.contains("replace(context.shooter, 'minecraft:', '')"), text);
+        assertTrue(text.contains("context.projectile_uuid"), text);
+        assertTrue(text.contains("replace(context.entity, 'minecraft:', '')"), text);
+        assertTrue(text.contains("replace(context.block, 'minecraft:', '')") && text.contains("context.x"), text);
     }
 
     @Test void playerListTargetsFanOutWithinOneHundredPlayers() throws IOException {
