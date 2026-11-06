@@ -81,7 +81,7 @@ class EditorHotloadTest {
         Files.writeString(data.resolve("config.toml"), text);
         runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.2", data));
         runtime.start();
-        service = new EditorService(runtime, harness.host, log::add);
+        service = new EditorService(runtime, harness.host, log::add, log::add);
         service.start();
     }
 

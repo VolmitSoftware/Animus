@@ -92,6 +92,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -230,16 +231,26 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private final AnimusMetrics metrics = AnimusMetrics.current();
     /** Budget use summed per tick since the last metrics roll, as percentages; owner only. */
     private long navigationUse, packetUse, loadTicks;
+    /** Online player ids for callers off the owner thread (the editor's timers and listener); the owner keeps it on join and quit. */
+    private final Set<UUID> onlineIds = ConcurrentHashMap.newKeySet();
     private final PlayerAccess<P> players = new PlayerAccess<P>() {
-        @Override public boolean online(UUID player) { owner(); return host.player(player).isPresent(); }
+        @Override public boolean online(UUID player) { return host.ownerThread() ? host.player(player).isPresent() : onlineIds.contains(player); }
         @Override public Optional<P> owned(UUID player) { owner(); return host.player(player); }
         @Override public List<P> ownedNear(WorldPosition at, double radius, int limit) { owner(); return playersNear(at, radius, limit); }
         @Override public boolean deliver(UUID player, Consumer<P> action) {
-            owner(); Optional<P> online = host.player(player);
+            if (!host.ownerThread()) return onlineIds.contains(player) && later(() -> host.player(player).ifPresent(action));
+            Optional<P> online = host.player(player);
             if (online.isEmpty()) return false;
             action.accept(online.get()); return true;
         }
-        @Override public boolean console(Runnable action) { owner(); action.run(); return true; }
+        @Override public boolean console(Runnable action) {
+            if (!host.ownerThread()) return later(action);
+            action.run(); return true;
+        }
+        private boolean later(Runnable work) {
+            try { return host.execute(work); }
+            catch (RuntimeException refused) { return false; }
+        }
     };
 
     /**
@@ -259,6 +270,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         navigationSettings = runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT;
         routeOrder = new RouteScheduler<>(navigationSettings.routesPerTick(), navigationSettings.wakeChecksPerTick(), (Route route) -> route.nextAttempt);
         owner();
+        for (P online : host.onlinePlayers()) onlineIds.add(host.id(online));
         settingsSubscription = runtime.onSettings(pendingSettings::set);
         if (settings.enabled()) bind(); else unavailable = DISABLED;
         try { ticker = host.everyTick(this::tick); }
@@ -2371,10 +2383,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     }
 
     /** A player joined. Call on the owner thread. */
-    public void joined(P player) { if (available()) admissions = host.onlinePlayers().iterator(); }
+    public void joined(P player) {
+        onlineIds.add(host.id(player));
+        if (available()) admissions = host.onlinePlayers().iterator();
+    }
     /** A player left the server. */
     public void quit(P player) {
         UUID id = host.id(player);
+        onlineIds.remove(id);
         previews.left(id);
         if (!available()) return;
         riders.playerLeaving(player, "offline");

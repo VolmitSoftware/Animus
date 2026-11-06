@@ -46,14 +46,18 @@ public final class EditorService implements AutoCloseable {
     private final AtomicReference<PluginSettings> pending = new AtomicReference<>();
     private final ExecutorService restarts = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("Animus-editor-settings").factory());
     private final AutoCloseable settingsListener;
+    private static final Duration TASK_FAILURE_REPEAT = Duration.ofMinutes(10);
+    private final EditorTaskFailures taskFailures;
 
-    public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log) { this(runtime, host, log, Clock.systemUTC()); }
+    /** {@code log} takes INFO lines; {@code warn} takes failures of the periodic editor tasks, rate limited. */
+    public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log, Consumer<String> warn) { this(runtime, host, log, warn, Clock.systemUTC()); }
 
-    public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log, Clock clock) {
+    public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log, Consumer<String> warn, Clock clock) {
         this.runtime = Objects.requireNonNull(runtime);
         this.host = Objects.requireNonNull(host);
         this.log = Objects.requireNonNull(log);
         this.clock = Objects.requireNonNull(clock);
+        taskFailures = new EditorTaskFailures(warn, clock, TASK_FAILURE_REPEAT);
         settingsListener = runtime.onSettings(this::hotloaded);
     }
 
@@ -216,7 +220,7 @@ public final class EditorService implements AutoCloseable {
     private Runnable guard(Runnable task) {
         return () -> {
             try { task.run(); }
-            catch (RuntimeException failure) { log.accept("Editor task failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage()); }
+            catch (RuntimeException failure) { taskFailures.failed(failure); }
         };
     }
 

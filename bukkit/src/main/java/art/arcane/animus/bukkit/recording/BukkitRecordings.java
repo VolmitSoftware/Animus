@@ -67,7 +67,7 @@ public final class BukkitRecordings implements RecordingHost<Player, ItemStack>,
     public void interacted(PlayerInteractEvent event) {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND) return;
         Block block = event.getClickedBlock();
-        if (RecorderLook.openable(block)) sessions.used(event.getPlayer(), block.getX(), block.getY(), block.getZ(), block.getType().getKeyOrThrow().toString());
+        if (RecorderLook.openable(block)) sessions.used(event.getPlayer(), block.getX(), block.getY(), block.getZ(), block.getType().getKey().toString());
     }
 
     @Override public UUID id(Player player) { return player.getUniqueId(); }

@@ -131,7 +131,19 @@ class ViewerWatchRaceTest {
         volatile java.util.function.BiPredicate<Integer, Integer> loaded = (Integer x, Integer z) -> true;
         art.arcane.animus.core.navigation.DoorPassage.Doors doors = art.arcane.animus.core.navigation.DoorPassage.NONE;
         PersistedNpcService<Player, Object> service;
+        /** Whether the calling thread counts as the owner; while false, {@code execute} queues work in {@link #scheduled}. */
+        volatile boolean ownerThread = true;
+        final List<Runnable> scheduled = new ArrayList<>();
         Harness(AnimusRuntime runtime, Path npcs) { this.runtime = runtime; this.npcs = npcs; }
+        /** Runs the work queued while off the owner thread, as the owner would on its next tick. */
+        void runScheduled() {
+            boolean was = ownerThread;
+            ownerThread = true;
+            List<Runnable> work = List.copyOf(scheduled);
+            scheduled.clear();
+            work.forEach(Runnable::run);
+            ownerThread = was;
+        }
         void tick(int count) { for (int i = 0; i < count; i++) for (Runnable tick : List.copyOf(ticks)) tick.run(); }
         void spawnNpc() {
             try {
@@ -218,8 +230,11 @@ class ViewerWatchRaceTest {
         @Override public boolean worldLoaded(String world) { return true; }
         @Override public boolean chunkLoaded(String world, int chunkX, int chunkZ) { return harness.loaded.test(chunkX, chunkZ); }
         @Override public MotionValidator.Sampler collision(String world) { return harness.terrain; }
-        @Override public boolean ownerThread() { return true; }
-        @Override public boolean execute(Runnable work) { work.run(); return true; }
+        @Override public boolean ownerThread() { return harness.ownerThread; }
+        @Override public boolean execute(Runnable work) {
+            if (harness.ownerThread) work.run(); else harness.scheduled.add(work);
+            return true;
+        }
         @Override public AutoCloseable everyTick(Runnable tick) { harness.ticks.add(tick); return () -> harness.ticks.remove(tick); }
         @Override public void warn(String message) { harness.warnings.add(message); }
         @Override public BodyTransport<Player, Object> openTransport() { return harness.transport; }

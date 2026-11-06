@@ -506,6 +506,10 @@
 - Attack swings go out with moves, so they are no longer delayed by cosmetic pauses or skipped as stale.
 - Controlled iron golems, ravagers, hoglins, zoglins and wardens show their own attack animation instead of a swing.
 - Imported armor stands no longer turn to players unless their Citizens save turns look-close on.
+- Right-clicking a door, chest or other usable block on Paper no longer throws `NoSuchMethodError` for `Material.getKeyOrThrow`; the build now checks every server method the plugin calls against the Spigot and Paper APIs of 26.1.2, 26.2 and 26.3.
+- After `/animus editor pair`, the editor's minute permission re-check no longer fails with "NPC runtime requires the owner thread" on Paper, Spigot and mod servers; it runs on the server thread. A repeating editor task failure is now one WARN line, repeated at most every 10 minutes with a count.
+- A route's `maximumFall` now counts levels as Citizens and the game do, so an NPC with a fall of 1 drops from a ledge onto a slab or path one level down instead of reporting the leg blocked and teleporting.
+- A walking NPC now moves at its configured speed; distance left over when a step reached a path node was dropped, which held a fast player body near 6 blocks a second.
 
 ### Notes
 
