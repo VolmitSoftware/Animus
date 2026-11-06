@@ -39,8 +39,11 @@ public final class HotloadValidation {
         public boolean valid() { return error.isEmpty(); }
     }
 
-    /** What validation reads from the running server: the data folder, for animation references, and the command allow-list. */
-    public record Context(Path data, Predicate<String> commandsAllowed) {}
+    /**
+     * What validation reads from the running server: the data folder, for animation references, the command allow-list
+     * and {@code [recordings] maximumFileBytes}.
+     */
+    public record Context(Path data, Predicate<String> commandsAllowed, int recordingBytes) {}
 
     private HotloadValidation() {}
 
@@ -96,7 +99,8 @@ public final class HotloadValidation {
             case HOLOGRAM -> gui.problems(GuiKind.HOLOGRAM, id.get(), snapshot.content());
             case TEXT_ANIMATION -> gui.problems(GuiKind.ANIMATION, id.get(), snapshot.content());
             case SHOP -> shop(id.get(), snapshot.content(), context.commandsAllowed());
-            default -> errors(EditorDocuments.validate(kind, id.get(), source));
+            case RECORDING -> recording(id.get(), snapshot.content(), source, context.recordingBytes());
+            default -> errors(EditorDocuments.validate(kind, id.get(), source, context.recordingBytes()));
         };
         if (!errors.isEmpty()) return Verdict.refused(errors.getFirst() + (errors.size() > 1 ? " (and " + (errors.size() - 1) + " more)" : ""));
         if (kind != DocumentKind.NPC) return Verdict.reload(kind);
@@ -111,6 +115,13 @@ public final class HotloadValidation {
         result.shop().filter((ShopDocument shop) -> shop.hasCommands() && !commandsAllowed.test(id)).ifPresent((ShopDocument shop) -> problems.add("$: runs commands, so add "
                 + id + " to commandBehaviors or its namespace to commandNamespaces under [behaviors.actions] in config.toml"));
         return problems;
+    }
+
+    /** The file's own bytes are bounded first, as the runtime reads it, then the document is checked like an editor apply. */
+    private static List<String> recording(String id, String text, JsonObject source, int maximumBytes) {
+        if (text.length() > maximumBytes || text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > maximumBytes)
+            return List.of("$: recording exceeds " + maximumBytes + " bytes");
+        return errors(EditorDocuments.validate(DocumentKind.RECORDING, id, source, maximumBytes));
     }
 
     private static List<String> errors(JsonArray diagnostics) {

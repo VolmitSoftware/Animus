@@ -3,6 +3,7 @@
 enum DocumentKind {
   npc('npc', 'NPCs', 'npcs'),
   route('route', 'Routes', 'routes'),
+  recording('recording', 'Recordings', 'recordings'),
   skin('skin', 'Skins', 'skins'),
   behavior('behavior', 'Behaviors', 'behaviors'),
   pack('pack', 'Packs', 'packs'),

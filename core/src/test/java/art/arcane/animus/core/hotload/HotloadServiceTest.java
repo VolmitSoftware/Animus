@@ -182,6 +182,31 @@ class HotloadServiceTest {
         assertTrue(refreshed.contains("shops") || shown.stream().noneMatch((String line) -> line.contains("Hotloaded: [shops")));
     }
 
+    @Test void recordingEditsReloadNpcsAndRefuseWithTheFieldOrTheConfiguredCap() throws Exception {
+        String golden = art.arcane.animus.core.editor.SharedFixtures.text(art.arcane.animus.core.editor.SharedFixtures.fixture("recordings/market-loop.json"));
+        Path recording = root.resolve("recordings/market-loop.json");
+        Files.createDirectories(recording.getParent());
+        Files.writeString(recording, golden);
+        settle();
+        assertTrue(shown().stream().anyMatch((String line) -> line.startsWith("[Animus]: Animus Hotloaded: [recordings/market-loop.json]")), shown().toString());
+        assertTrue(refreshed.contains("npcs"), refreshed.toString());
+        lines.clear();
+        Files.writeString(recording, golden.replace("\"sampleTicks\": 2", "\"sampleTicks\": 0"));
+        settle();
+        assertTrue(shown().stream().anyMatch((String line) -> line.startsWith("[Animus]: Animus Hotload refused: [recordings/market-loop.json] $.sampleTicks: expected integer 1..20")),
+                shown().toString());
+        lines.clear();
+        Path config = root.resolve("config.toml");
+        Files.writeString(config, Files.readString(config).replace("maximumFileBytes = 1048576", "maximumFileBytes = 65536"));
+        settle();
+        assertEquals(65536, runtime.recordingSettings().maximumFileBytes());
+        lines.clear();
+        Files.writeString(recording, golden + " ".repeat(65_536));
+        settle();
+        assertTrue(shown().stream().anyMatch((String line) -> line.startsWith("[Animus]: Animus Hotload refused: [recordings/market-loop.json] $: recording exceeds 65536 bytes")),
+                shown().toString());
+    }
+
     @Test void stateAndGeneratedFoldersAreNotWatched() throws Exception {
         Files.createDirectories(root.resolve("state/behavior-state"));
         Files.writeString(root.resolve("state/behavior-state/x.json"), "{}");
