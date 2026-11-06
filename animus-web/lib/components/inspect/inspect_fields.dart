@@ -27,12 +27,14 @@ String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(f
 String controlId(String path) => 'animus-field-${path.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}';
 
 /// A labelled row like [GuiRow] whose label is a `<label for>` of the control
-/// [labelFor], for selects and other controls without their own name.
+/// [labelFor], for selects and other controls without their own name. Without
+/// [labelFor] the label is plain text, for groups and controls that name
+/// themselves.
 class InspectRow extends StatelessWidget {
-  const InspectRow({required this.label, required this.labelFor, required this.child, this.help, this.tip, this.problems = const <Diagnostic>[], super.key});
+  const InspectRow({required this.label, required this.child, this.labelFor, this.help, this.tip, this.problems = const <Diagnostic>[], super.key});
 
   final String label;
-  final String labelFor;
+  final String? labelFor;
   final Widget child;
 
   /// Shown under the control when short; long help moves into the info tip.
@@ -46,7 +48,10 @@ class InspectRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ({String? hint, String? tip}) split = tip == null ? splitHelp(help) : (hint: help == null || help!.isEmpty ? null : help, tip: tip);
     return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': labelFor}, <Widget>[withTip(Component.text(label), split.tip)]),
+      if (labelFor case final String target)
+        dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': target}, <Widget>[withTip(Component.text(label), split.tip)])
+      else
+        dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(label), split.tip)]),
       dom.div(classes: 'animus-gui-control', <Widget>[
         child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
@@ -109,7 +114,7 @@ class InspectField extends StatelessWidget {
     final bool nested = field.kind == FieldKind.object || field.kind == FieldKind.array || field.kind == FieldKind.any;
     return InspectRow(
       label: fieldLabel(field, label: label),
-      labelFor: controlId(path),
+      labelFor: InspectControl.focusable(field, value) ? controlId(path) : null,
       help: field.boundsHint,
       tip: field.description ?? '',
       problems: fieldProblems(field, value, path, diagnostics, nested: nested),
@@ -146,6 +151,16 @@ class InspectControl extends StatelessWidget {
   final List<Diagnostic> diagnostics;
   final List<FieldOption> suggestions;
   final SchemaView? schema;
+
+  /// True when the control for [value] is one input or select carrying
+  /// [controlId], so a row label can focus it.
+  static bool focusable(FieldSpec field, Object? value) => switch (field.kind) {
+        FieldKind.choice => field.options.every((FieldOption option) => option.value is String) &&
+            !(field.options.length == 1 && (value == null || value == field.options.first.value)),
+        FieldKind.integer || FieldKind.number => value is num || value == null,
+        FieldKind.string => value is String || value == null,
+        _ => false,
+      };
 
   @override
   Widget build(BuildContext context) {

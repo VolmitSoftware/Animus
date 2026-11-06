@@ -81,7 +81,20 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-width: 0;
+}
+
+/* Between the phone bar and a full desktop the tools need the room, so the
+   brand keeps its mark and its name stays for screen readers only; the
+   workspace name gives way first. */
+@media (min-width: 761px) and (max-width: 960px) {
+  .animus-brand-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .animus-toolgroup {

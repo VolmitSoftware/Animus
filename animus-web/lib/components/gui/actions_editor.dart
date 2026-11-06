@@ -370,9 +370,9 @@ class ActionsEditor extends StatelessWidget {
           return out;
         }
 
-        Widget row(String key, String rowLabel, Widget Function(String id) child, {String? help}) {
+        Widget row(String key, String rowLabel, Widget Function(String id) child, {String? help, bool labelled = true}) {
           final String rowId = guiPathId(childPath(fieldPath, key));
-          return GuiRow(label: rowLabel, forId: rowId, help: help, problems: diagnosticsAt(diagnostics, childPath(fieldPath, key), nested: key == 'lore'), child: child(rowId));
+          return GuiRow(label: rowLabel, forId: labelled ? rowId : null, help: help, problems: diagnosticsAt(diagnostics, childPath(fieldPath, key), nested: key == 'lore'), child: child(rowId));
         }
 
         return GuiSection(title: name, children: <Widget>[
@@ -382,7 +382,7 @@ class ActionsEditor extends StatelessWidget {
           row('count', 'Count', (String rowId) => GuiNumberInput(id: rowId, value: asInt(icon['count']), label: 'Item count', onChanged: (num? v) => set(with_('count', v))),
               help: '1 to 99 per stack'),
           row('name', 'Name', (String rowId) => GuiTextInput(id: rowId, value: asString(icon['name']) ?? '', mode: GuiTextMode.template, names: names, label: 'Item name', onChanged: (String v) => set(with_('name', v)))),
-          row('lore', 'Lore', (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: names, onChanged: (List<String> lines) => set(with_('lore', lines)))),
+          row('lore', 'Lore', (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: names, onChanged: (List<String> lines) => set(with_('lore', lines))), labelled: false),
           row('customModelValue', 'Custom model', (String rowId) => GuiNumberInput(id: rowId, value: asInt(icon['customModelValue']), label: 'Custom model value', onChanged: (num? v) => set(with_('customModelValue', v)))),
         ]);
       case GuiFieldKind.object:
