@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:animus_editor/logic/data_folder.dart';
 import 'package:animus_editor/logic/gui/gui_json.dart';
-import 'package:animus_editor/logic/inspect/schema_fields.dart';
 import 'package:animus_editor/logic/npc/npc_appearance.dart';
 import 'package:animus_editor/logic/npc/npc_catalog.dart';
 import 'package:animus_editor/logic/npc/pack_model.dart';

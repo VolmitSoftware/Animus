@@ -148,6 +148,13 @@
 - The editor opens, creates, edits and exports `server-behaviors.json`, and the workspace overview counts the listed server behaviors.
 - The dry run runs loops, expressions, templates, call results and server events, and asks about facts only a server knows.
 - `completions.json` lists the expression language, which capabilities need an NPC, and each server event's context keys.
+- GUI editor: shop owner and up to eight stock containers, with container shops limited to trade and static entries.
+- GUI editor: text animation editor with a live preview that pauses, steps by frame and starts paused under reduced motion.
+- GUI editor: presets editor, and a fix that copies a named preset's fields into a chest GUI, hologram or text animation.
+- GUI editor: hologram row show and scale, item rows with count, name and lore, head and entity rows, style and refresh.
+- GUI editor: menu component motion, hover, click box, tooltip, icon styles, list flow, tab spacing and menu constants.
+- GUI editor: chest GUI select, refresh mode and condition ticks, icon count format and head refresh.
+- GUI editor: clicking a menu component on the stage selects it, with a pink ring on the selection.
 
 ### Changed
 
@@ -240,6 +247,11 @@
 - The behavior tree reads by indentation with one thin rail per level, and shows each step's type and a plain summary when collapsed.
 - Field labels read as words ("Cooldown ticks"), and format problems say what the value must look like instead of showing a pattern.
 - New variables are named `flag_2` rather than `flag-2`, so expressions can read them.
+- GUI editor: changing a shop entry's type removes the fields the new type refuses; stock shows only where it applies.
+- GUI editor: Gloss bundle exports carry the Animus id in the title, so a bundle imports back to the same ids.
+- GUI editor: tabs, fields and the selected slot use the grey and pink editor style; phone slots and fields are 44 px.
+- GUI editor: changing an action's type keeps nested lists the new type has and asks before dropping others.
+- GUI editor: refusal messages for presets, icons and components use the server's wording.
 
 ### Fixed
 
@@ -308,6 +320,12 @@
 - New while and foreach steps are valid as soon as they are added.
 - The editor keeps `server-behaviors.json` when a data folder is opened and exported.
 - The code view names a JSON syntax error by line and column in words.
+- GUI editor: editing a hologram row no longer drops its show, scale or other keys.
+- GUI editor: the mask brush paints every slot a drag crosses, including fast drags.
+- GUI editor: tab labels no longer rewrite tab ids; shop and hologram pages keep a neighbour selected when one is removed.
+- GUI editor: chest window slot names include lore, lore shows on tap in previews, and tooltips wrap on phones.
+- GUI editor: text fields no longer render as grey slabs, and warnings meet contrast in the light theme.
+- GUI editor: invalid inventory arguments show the JSON error at the field instead of being ignored.
 
 ### Notes
 

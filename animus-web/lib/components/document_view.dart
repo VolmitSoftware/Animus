@@ -7,6 +7,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_text.dart';
+import '../logic/gui/gui_presets.dart';
 import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
@@ -21,6 +22,7 @@ import 'gui/gui_fields.dart';
 import 'tab_strip.dart';
 import 'offline/dry_run_panel.dart';
 import 'offline/offline_fields.dart';
+import 'gui/gui_data_editors.dart';
 import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
@@ -339,59 +341,57 @@ class _DocumentPaneState extends State<DocumentPane> {
   Widget _visual(AnimusDocument document) {
     final Object? json = document.json;
     final JsonEdit? onJson = component.onJson;
-    if (json is Map<String, Object?> && onJson != null && guiEditorKinds.contains(document.kind)) {
-      return switch (document.kind) {
-        DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson),
-        DocumentKind.shop => ShopEditor(document: document, onJson: onJson),
-        DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(component.workspaceDocuments)),
-        _ => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(component.workspaceDocuments)),
-      };
-    }
-    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.npc) {
-      final Widget inspector = NpcInspector(
-        document: document,
-        onJson: onJson,
-        schemas: _schemas,
-        diagnostics: _allDiagnostics(document),
-        workspaceDocuments: component.workspaceDocuments,
-        onSkinLoaded: () => setState(() {}),
-        onOpen: component.onOpen,
-      );
-      return dom.div(classes: 'animus-npc-visual', <Widget>[inspector, _preview(document)]);
-    }
-    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.route) {
-      return dom.section(classes: 'animus-panel animus-inspector', attributes: const <String, String>{'aria-label': 'Route'}, <Widget>[
-        RouteEditor(
-          value: json,
-          path: r'$',
-          diagnostics: _allDiagnostics(document),
-          onChanged: (JsonMap value) => onJson(value, coalesce: 'route'),
-        ),
-      ]);
-    }
-    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.behavior) {
-      return BehaviorEditor(document: document, onJson: onJson, schemas: _schemas, diagnostics: _allDiagnostics(document));
-    }
-    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.pack) {
-      return PackEditor(document: document, schema: _schemas.pack, onJson: onJson, diagnostics: _allDiagnostics(document));
-    }
-    if (json is Map<String, Object?> && document.kind == DocumentKind.skin) {
-      return SkinSummary(document: document, workspaceDocuments: component.workspaceDocuments, onOpen: component.onOpen, onLoaded: () => setState(() {}));
-    }
-    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.serverBehaviors) {
-      return ServerBehaviorsEditor(
-        document: document,
-        onJson: onJson,
-        workspaceDocuments: component.workspaceDocuments,
-        onOpen: component.onOpen,
-        diagnostics: <Diagnostic>[..._allDiagnostics(document), ...serverBehaviorsDiagnostics(json, component.workspaceDocuments)],
-      );
-    }
     if (json is! Map<String, Object?>) {
       return const dom.section(classes: 'animus-panel', <Widget>[
         Component.text('This document is not a JSON object, so Visual has no fields to show. Open Code to fix the text; the problems are listed above.'),
       ]);
     }
+    if (document.kind == DocumentKind.skin) {
+      return SkinSummary(document: document, workspaceDocuments: component.workspaceDocuments, onOpen: component.onOpen, onLoaded: () => setState(() {}));
+    }
+    if (onJson == null) return _fields(json);
+    final List<AnimusDocument> workspace = component.workspaceDocuments;
+    return switch (document.kind) {
+      DocumentKind.npc => dom.div(classes: 'animus-npc-visual', <Widget>[
+          NpcInspector(
+            document: document,
+            onJson: onJson,
+            schemas: _schemas,
+            diagnostics: _allDiagnostics(document),
+            workspaceDocuments: workspace,
+            onSkinLoaded: () => setState(() {}),
+            onOpen: component.onOpen,
+          ),
+          _preview(document),
+        ]),
+      DocumentKind.behavior => BehaviorEditor(document: document, onJson: onJson, schemas: _schemas, diagnostics: _allDiagnostics(document)),
+      DocumentKind.route => dom.section(classes: 'animus-panel animus-inspector', attributes: const <String, String>{'aria-label': 'Route'}, <Widget>[
+          RouteEditor(
+            value: json,
+            path: r'$',
+            diagnostics: _allDiagnostics(document),
+            onChanged: (JsonMap value) => onJson(value, coalesce: 'route'),
+          ),
+        ]),
+      DocumentKind.pack => PackEditor(document: document, schema: _schemas.pack, onJson: onJson, diagnostics: _allDiagnostics(document)),
+      DocumentKind.serverBehaviors => ServerBehaviorsEditor(
+          document: document,
+          onJson: onJson,
+          workspaceDocuments: workspace,
+          onOpen: component.onOpen,
+          diagnostics: <Diagnostic>[..._allDiagnostics(document), ...serverBehaviorsDiagnostics(json, workspace)],
+        ),
+      DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson, presets: workspacePresets(workspace)),
+      DocumentKind.shop => ShopEditor(document: document, onJson: onJson),
+      DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace)),
+      DocumentKind.hologram => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace), presets: workspacePresets(workspace)),
+      DocumentKind.textAnimation || DocumentKind.presets => guiDataEditor(document, onJson, workspace) ?? _fields(json),
+      _ => _fields(json),
+    };
+  }
+
+  /// Every top-level field with a one-line summary, for kinds with no editor.
+  Widget _fields(JsonMap json) {
     return dom.section(classes: 'animus-panel animus-fields', <Widget>[
       dom.table(<Widget>[
         dom.tbody(<Widget>[
