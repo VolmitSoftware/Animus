@@ -45,6 +45,7 @@ DocumentLocation? locateDocument(String path) {
   if (parts.any((String part) => part.isEmpty)) return null;
   String namespaced(List<String> rest) => '${rest.first}:${rest.skip(1).join('/')}';
   bool valid(List<String> rest) => rest.every(_segment.hasMatch);
+  if (path == DocumentKind.serverBehaviorsPath) return const DocumentLocation(DocumentKind.serverBehaviors, DocumentKind.serverBehaviorsId);
   switch (parts.first) {
     case 'npcs':
       return parts.length == 3 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.npc, '${parts[1]}/${parts[2]}') : null;
