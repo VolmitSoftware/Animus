@@ -44,7 +44,7 @@ public final class CitizensImporter {
             JsonObject counts = summary.getAsJsonObject("conversions");
             return counts.get("routes").getAsInt() + " routes (" + counts.get("routePoints").getAsInt() + " points, " + counts.get("routeGuides").getAsInt() + " guides), look-close "
                     + counts.get("lookClose").getAsInt() + ", text behaviors " + counts.get("textBehaviors").getAsInt() + ", command behaviors " + counts.get("commandBehaviors").getAsInt()
-                    + (counts.has("skinsKept") && counts.get("skinsKept").getAsInt() > 0 ? ", skins kept for review " + counts.get("skinsKept").getAsInt() : "");
+                    + (counts.has("skinsKept") && counts.get("skinsKept").getAsInt() > 0 ? ", skins on non-player NPCs kept unused " + counts.get("skinsKept").getAsInt() : "");
         }
         public int converterVersion() { return summary.get("converterVersion").getAsInt(); }
         public int warningCount() { return summary.has("migrationWarnings") ? summary.getAsJsonArray("migrationWarnings").size() : 0; }
@@ -53,6 +53,12 @@ public final class CitizensImporter {
     private static final Set<String> REVIEW = Set.of("skintrait", "location", "owner", "equipment", "inventory", "waypoints", "text", "hologramtrait", "poses", "lookclose", "type", "spawned", "mounttrait", "controllable",
             BuilderMapping.BUILDER_TRAIT, BuilderMapping.CONSTRUCTOR_TRAIT);
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
+
+    /** Why a skin on a body that is not a player is kept: Citizens never drew it either. */
+    static String unusedSkin(String type) {
+        String body = type.substring(type.indexOf(':') + 1).replace('_', ' ');
+        return "Citizens draws skins only on player NPCs, so this " + body + " never showed it; kept for when the NPC becomes a player";
+    }
 
     public Preview preview(Path source, Path destination, Map<String, String> worldMap) throws IOException { return preview(source, destination, worldMap, false); }
 
@@ -261,7 +267,7 @@ public final class CitizensImporter {
                     notes.putAll(runtime.notes());
                     notes.putAll(state.notes());
                     if (traits.has("skintrait") && !skinApplied)
-                        notes.put("/traits/skintrait", new Note(Status.UNSUPPORTED_PRESERVED, "skins show only on player bodies; this one is kept for when the NPC becomes a player"));
+                        notes.put("/traits/skintrait", new Note(Status.UNSUPPORTED_PRESERVED, unusedSkin(definition.get("type").getAsString())));
                     JsonObject reasons = new JsonObject();
                     classify(record, "", fields, convertedFields, notes, reasons);
                     report.add("presentationWarnings", GSON.toJsonTree(presentationWarnings));

@@ -39,6 +39,7 @@ String kindPurpose(DocumentKind kind) => switch (kind) {
       DocumentKind.behavior => 'What an NPC does when clicked, approached, on a timer or after an answer.',
       DocumentKind.pack => 'A named bundle of behaviors, installed under packs/.',
       DocumentKind.route => 'Waypoints an NPC walks, reusable by several NPCs.',
+      DocumentKind.recording => 'A player\'s captured movement that NPCs play back; made in game with /animus record.',
       DocumentKind.group => 'Shared settings that every NPC listing the group takes before its own.',
       DocumentKind.shop => 'Buy, sell and trade pages an NPC or a GUI opens.',
       DocumentKind.inventory => 'A chest window with buttons, lists and variants.',
@@ -102,7 +103,7 @@ String newDocumentPath(DocumentKind kind, String id) => _pathFor(kind, id);
 /// How an id of [kind] is written, for field hints.
 String idHint(DocumentKind kind) => switch (kind) {
       DocumentKind.npc => 'folder/name, such as town/baker',
-      DocumentKind.route || DocumentKind.pack || DocumentKind.group => 'a name such as town-patrol',
+      DocumentKind.route || DocumentKind.recording || DocumentKind.pack || DocumentKind.group => 'a name such as town-patrol',
       DocumentKind.skin => 'the SHA-256 of the skin file, set for you',
       DocumentKind.presets => 'always presets',
       _ => 'namespace:path, such as town/welcome written town:welcome',

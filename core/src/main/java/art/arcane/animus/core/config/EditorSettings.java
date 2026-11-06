@@ -36,7 +36,8 @@ public record EditorSettings(boolean enabled, String editorUrl, boolean listener
     public EditorSettings {
         url("editorUrl", editorUrl, Set.of("https", "http"));
         if (listenAddress == null || listenAddress.isBlank() || listenAddress.length() > 255) throw new IllegalArgumentException("listenAddress must be a host name or address");
-        require("port", port, 1, 65535);
+        // 0 binds any free port; the listener reports and pairing links carry the port it bound.
+        require("port", port, 0, 65535);
         if (!advertisedUrl.isEmpty()) url("advertisedUrl", advertisedUrl, Set.of("https", "http"));
         if (tlsCertificate.isEmpty() != tlsPrivateKey.isEmpty()) throw new IllegalArgumentException("tlsCertificate and tlsPrivateKey must be set together");
         if (listenerEnabled && tlsCertificate.isEmpty() && !loopback(listenAddress))

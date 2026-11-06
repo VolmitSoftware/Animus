@@ -219,6 +219,42 @@
       }
     },
     {
+      "path": "recordings/market-loop.json",
+      "kind": "recording",
+      "id": "market-loop",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "recordings/roundtrip-input.json",
+      "kind": "recording",
+      "id": "market-loop",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "recordings/too-many-frames.json",
+      "kind": "recording",
+      "id": "market-loop",
+      "expect": {
+        "schema": true,
+        "java": false
+      }
+    },
+    {
+      "path": "recordings/bad-event.json",
+      "kind": "recording",
+      "id": "market-loop",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
       "path": "groups/town-guards.json",
       "kind": "group",
       "id": "town-guards",

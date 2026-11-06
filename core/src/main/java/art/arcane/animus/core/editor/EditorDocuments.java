@@ -8,6 +8,7 @@ import art.arcane.animus.core.behavior.catalog.PackManifest;
 import art.arcane.animus.core.gui.GuiDocument;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.recording.RecordingDocument;
 import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocumentTree;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.IntSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,7 +36,7 @@ import java.util.regex.Pattern;
 public final class EditorDocuments {
     /** Kinds whose documents carry a {@code revision} the server increments on every apply. */
     public static final Set<DocumentKind> REVISIONED = EnumSet.of(DocumentKind.NPC, DocumentKind.GROUP, DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY,
-            DocumentKind.HOLOGRAM, DocumentKind.PRESETS, DocumentKind.RIG, DocumentKind.ANIMATION);
+            DocumentKind.HOLOGRAM, DocumentKind.PRESETS, DocumentKind.RIG, DocumentKind.ANIMATION, DocumentKind.RECORDING);
     private static final String SEGMENT = "[a-z0-9][a-z0-9_-]{0,63}";
     private static final Pattern PROBLEM = Pattern.compile("^(\\$[^:\\s]*):\\s*(.+)$", Pattern.DOTALL);
 
@@ -47,10 +49,21 @@ public final class EditorDocuments {
     }
 
     private final DocumentStore store;
+    private final IntSupplier recordingBytes;
 
-    public EditorDocuments(DocumentStore store) { this.store = Objects.requireNonNull(store); }
+    /** @param recordingBytes the live {@code [recordings] maximumFileBytes} */
+    public EditorDocuments(DocumentStore store, IntSupplier recordingBytes) {
+        this.store = Objects.requireNonNull(store);
+        this.recordingBytes = Objects.requireNonNull(recordingBytes);
+    }
 
     public DocumentStore store() { return store; }
+
+    /** The largest recording the server reads or writes right now. */
+    public int recordingBytes() { return recordingBytes.getAsInt(); }
+
+    /** {@link #validate(DocumentKind, String, JsonObject, int)} with the live recording cap. */
+    public JsonArray validate(DocumentKind kind, String id, JsonObject source) { return validate(kind, id, source, recordingBytes()); }
 
     /** Every document of the kinds, sorted by kind then path. Files that map to no id are left out. */
     public List<Location> list(Collection<DocumentKind> kinds) throws IOException {
@@ -90,6 +103,7 @@ public final class EditorDocuments {
             return switch (kind) {
                 case NPC -> path.matches("npcs/" + SEGMENT + "/" + SEGMENT + "\\.json") ? Optional.of(path.substring(5, path.length() - 5)) : Optional.empty();
                 case ROUTE -> path.matches("routes/" + SEGMENT + "\\.json") ? Optional.of(path.substring(7, path.length() - 5)) : Optional.empty();
+                case RECORDING -> path.matches("recordings/" + SEGMENT + "\\.json") ? Optional.of(path.substring(11, path.length() - 5)) : Optional.empty();
                 case GROUP -> path.matches("groups/" + SEGMENT + "\\.json") ? Optional.of(path.substring(7, path.length() - 5)) : Optional.empty();
                 case SKIN -> path.matches("skins/[a-f0-9]{64}\\.json") ? Optional.of(path.substring(6, 70)) : Optional.empty();
                 case BEHAVIOR -> Optional.of(BehaviorPath.idFor(path));
@@ -108,7 +122,7 @@ public final class EditorDocuments {
     /** The path a new document of this id gets. Behaviors outside packs go under {@code behaviors/}. */
     public static String pathFor(DocumentKind kind, String id) throws EditorError {
         String path = switch (kind) {
-            case NPC, ROUTE, GROUP -> kind.folder() + "/" + id + ".json";
+            case NPC, ROUTE, RECORDING, GROUP -> kind.folder() + "/" + id + ".json";
             case SKIN -> "skins/" + id + ".json";
             case BEHAVIOR -> {
                 try { yield BehaviorPath.forId(id); }
@@ -155,8 +169,12 @@ public final class EditorDocuments {
         catch (IOException unreadable) { return new JsonObject(); }
     }
 
-    /** Field diagnostics from the Java parser for one candidate document; an error refuses it. */
-    public static JsonArray validate(DocumentKind kind, String id, JsonObject source) {
+    /**
+     * Field diagnostics from the Java parser for one candidate document; an error refuses it.
+     *
+     * @param recordingBytes {@code [recordings] maximumFileBytes}, the bound on a recording's serialized form
+     */
+    public static JsonArray validate(DocumentKind kind, String id, JsonObject source, int recordingBytes) {
         JsonArray diagnostics = new JsonArray();
         String text = JsonDocuments.write(source);
         switch (kind) {
@@ -191,6 +209,13 @@ public final class EditorDocuments {
             case ROUTE -> {
                 try { WaypointSettings.document(text); }
                 catch (IOException | RuntimeException invalid) { problems(diagnostics, List.of(String.valueOf(invalid.getMessage()))); }
+            }
+            case RECORDING -> {
+                try {
+                    RecordingDocument recording = RecordingDocument.from(source, recordingBytes);
+                    if (!recording.id().equals(id))
+                        diagnostics.add(diagnostic("error", "$.id", "the recording id is " + recording.id() + " but the document is " + id, "id-mismatch"));
+                } catch (IOException invalid) { problems(diagnostics, List.of(invalid.getMessage().split("; "))); }
             }
             case SKIN -> {
                 if (!JsonDocuments.hash(text).equals(id))

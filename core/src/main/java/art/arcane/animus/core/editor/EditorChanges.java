@@ -85,12 +85,12 @@ public final class EditorChanges {
             JsonObject source = change.source().orElseThrow().deepCopy();
             long revision = EditorDocuments.REVISIONED.contains(change.kind()) ? current.revision() + 1 : 0;
             if (EditorDocuments.REVISIONED.contains(change.kind())) source.addProperty("revision", revision);
-            JsonArray diagnostics = EditorDocuments.validate(change.kind(), change.id(), source);
+            JsonArray diagnostics = documents.validate(change.kind(), change.id(), source);
             if (change.kind() == DocumentKind.NPC && current.exists()) identity(current.content(), source, diagnostics);
             if (change.kind() == DocumentKind.NPC && !current.exists() && !EditorDocuments.hasErrors(diagnostics)) collisions(location, source, diagnostics);
             if (change.kind() == DocumentKind.NPC && !EditorDocuments.hasErrors(diagnostics)) groupReferences(set, source, diagnostics);
             if (EditorDocuments.hasErrors(diagnostics)) invalid.add(documentDiagnostics(change.kind(), change.id(), diagnostics));
-            String content = JsonDocuments.write(source);
+            String content = change.kind() == DocumentKind.RECORDING && !EditorDocuments.hasErrors(diagnostics) ? recording(source) : JsonDocuments.write(source);
             String hash = "sha256:" + JsonDocuments.hash(content);
             writes.add(new DocumentStore.Change(location.path(), plain(current.content()), content));
             applied.add(version(change.kind(), change.id(), revision, hash));
@@ -313,6 +313,12 @@ public final class EditorChanges {
     }
 
     static String plain(String content) { return JsonDocuments.hash(content); }
+
+    /** A valid recording is stored in its one serialized form, which hotload and the runtime read back byte for byte. */
+    private String recording(JsonObject source) {
+        try { return art.arcane.animus.core.recording.RecordingDocument.from(source, documents.recordingBytes()).serialize(); }
+        catch (java.io.IOException invalid) { return JsonDocuments.write(source); }
+    }
 
     private static JsonObject appliedBody(String changeId, String key, JsonArray documents) {
         JsonObject body = new JsonObject();

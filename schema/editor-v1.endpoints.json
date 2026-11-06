@@ -41,6 +41,7 @@
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
     "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
+    "recording": {"folder": "recordings", "applyScope": "apply:npcs", "schema": "recording-v1.schema.json"},
     "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
     "group": {"folder": "groups", "applyScope": "apply:npcs", "schema": "group-v1.schema.json"},
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
