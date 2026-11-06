@@ -120,6 +120,9 @@
 - Interaction triggers take a `consume` condition; a matched click skips shops, hiring, GUIs, riding and selection.
 - Click runs read `context.sneaking` and `context.hand`.
 - Denizen right clicks on NPCs convert, with sneak, hand and NPC checks, `ratelimit`, built flag names and `run <npc.flag[...]>`.
+- `@selected` for the selected NPC wherever a command takes an NPC id.
+- Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
+- `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
 
 ### Changed
 
@@ -188,6 +191,13 @@
 - Citizens imports go in `npcs/<world>/` without region folders (converter v12).
 - Re-importing updates a moved NPC in place rather than installing it again.
 - Denizen converter v3; world click events become `denizen:world-npc/*` behaviors bound to every NPC.
+- `/animus` runs on VolmLib's Director, the same on Bukkit, Folia and mod servers, with clickable paged help and permission-filtered tab completion.
+- Optional command values are always `key=value`; stray words and unknown keys are refused with the usage line.
+- Many commands have new shapes: `navigation`, `combat`, `build`, `import citizens preview`, `worlds=old:new`, comma-separated `accept` (including `commands`), `page=`, `player=` and `debug summary`.
+- `/animus navigate` treats whole-number x and z as the centre of that block.
+
+### Removed
+- The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
 
 ### Fixed
 
@@ -235,6 +245,7 @@
 - Clicking an already selected NPC no longer repeats "Selected ... via INTERACT".
 - Hotload notices wait until edited behaviors, shops, GUIs, holograms and menus are live.
 - Hotload no longer reports numerically equal values, such as `0.0` and `0`, as changed.
+- Plain command replies carry the `[Animus]` prefix, refusals show in red and successes in green.
 
 ### Notes
 
