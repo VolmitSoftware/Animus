@@ -108,8 +108,8 @@ class _EditorShellState extends State<EditorShell> {
   @override
   void didUpdateWidget(EditorShell oldComponent) {
     super.didUpdateWidget(oldComponent);
-    // Leaving the workspace closes its drawer.
-    if (_drawerOpen && component.store.workspace == null) _setDrawer(false);
+    // Moving to another screen (or leaving the workspace) closes the drawer.
+    if (_drawerOpen && (component.store.workspace == null || oldComponent.route != component.route)) _setDrawer(false);
   }
 
   /// The page-wide shortcuts. Keys typed into a text box stay with the box;

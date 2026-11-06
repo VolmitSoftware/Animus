@@ -5,7 +5,10 @@
 // step), export, the starter workspace, persistence across a reload, and a
 // push to the fake server after pairing (a pulled document changed here
 // shows as a conflict and replaces the server copy only when chosen). No
-// console errors and no sideways scrolling.
+// console errors and no sideways scrolling. The shell parts: the documents
+// drawer on phones, the command palette, Undo and Redo with their shortcuts
+// and notices, another tab following an edit, and the banner when the browser
+// keeps no IndexedDB.
 //
 //   python3 -m http.server 8098 --bind 127.0.0.1 --directory build/jaspr
 //   dart run tool/fake_server.dart --data=test/fixtures/npc_browser
@@ -18,6 +21,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {closeDrawer, isCompact, sidebar, topbarAction} = require('./support/shell.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
@@ -101,7 +105,7 @@ async function run(browser, viewport, label, skinFile) {
   // A blank, named workspace lands on the New page.
   await go(page, '');
   await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
-  await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
   await shot(page, label, '01-home');
   await page.getByLabel('Workspace name').fill('Sketchbook');
   await page.getByRole('button', {name: 'Create blank workspace'}).click();
@@ -123,7 +127,7 @@ async function run(browser, viewport, label, skinFile) {
     await shot(page, label, '03-new-npc');
   });
   assert.match(decodeURIComponent(page.url()), /\/npc\/town\/old-tom/);
-  await page.locator('.animus-sidebar').getByText('sketchbook:old-tom-dialogue', {exact: false}).first().waitFor();
+  await (await sidebar(page)).getByText('sketchbook:old-tom-dialogue', {exact: false}).first().waitFor();
 
   // Every other kind from its guided step.
   await create(page, workspace, 'behavior', 'behavior', async () => {
@@ -149,10 +153,12 @@ async function run(browser, viewport, label, skinFile) {
   });
   await create(page, workspace, 'text-animation', 'text animation', async () => page.getByLabel('Name', {exact: true}).fill('blink'));
   await create(page, workspace, 'presets', 'presets');
-  const sidebar = page.locator('.animus-sidebar');
-  for (const text of ['&6Old Tom', 'sketchbook:old-tom-dialogue', 'sketchbook:shop', 'town-pack', 'market-loop', 'sketchbook:market', 'sketchbook:golem', 'sketchbook:golem/wave', 'sketchbook:blink', 'presets']) {
-    await sidebar.getByText(text, {exact: true}).first().waitFor();
+  const side = await sidebar(page);
+  // Legacy colour codes are stripped in the list: "&6Old Tom" reads "Old Tom".
+  for (const text of ['Old Tom', 'sketchbook:old-tom-dialogue', 'sketchbook:shop', 'town-pack', 'market-loop', 'sketchbook:market', 'sketchbook:golem', 'sketchbook:golem/wave', 'sketchbook:blink', 'presets']) {
+    await side.getByText(text, {exact: true}).first().waitFor();
   }
+  assert.equal(await side.getByText('&6Old Tom', {exact: true}).count(), 0);
 
   // Duplicate, delete with a confirmation, and undo.
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/pack/town-pack`);
@@ -162,14 +168,87 @@ async function run(browser, viewport, label, skinFile) {
   await page.getByRole('button', {name: 'Delete', exact: true}).click();
   await page.getByRole('alertdialog').getByText('Delete town-pack-copy?').waitFor();
   await shot(page, label, '04-confirm-delete');
+  // Escape belongs to the confirmation that has focus.
+  await page.waitForFunction(() => document.activeElement && document.activeElement.closest('[role="alertdialog"]'));
   await page.keyboard.press('Escape');
   await page.getByRole('alertdialog').waitFor({state: 'detached'});
   await page.getByRole('button', {name: 'Delete', exact: true}).click();
   await page.getByRole('button', {name: 'Delete document'}).click();
   await page.waitForFunction(() => !location.hash.includes('/pack/'));
-  assert.equal(await sidebar.getByText('town-pack-copy', {exact: true}).count(), 0);
-  await page.getByRole('button', {name: 'Undo'}).click();
-  await sidebar.getByText('town-pack-copy', {exact: true}).waitFor();
+  assert.equal(await side.getByText('town-pack-copy', {exact: true}).count(), 0);
+  // A second tab on the same workspace follows the edits made here.
+  const other = await context.newPage();
+  await other.goto(`${site}/#/workspace/${encodeURIComponent(workspace)}`);
+  await other.getByRole('heading', {name: 'Sketchbook'}).waitFor();
+  assert.equal(await other.evaluate(() => [...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')]
+      .some((el) => el.textContent === 'town-pack-copy')), false);
+  await topbarAction(page, 'Undo');
+  await page.locator('.arcane-toast', {hasText: 'Undid: delete town-pack-copy'}).waitFor();
+  await (await sidebar(page)).getByText('town-pack-copy', {exact: true}).waitFor();
+  await other.waitForFunction(() => [...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')].some((el) => el.textContent === 'town-pack-copy'));
+  assert.equal(await other.locator('.animus-banner').count(), 0, 'an idle tab reloads without a warning');
+  await other.close();
+  // The first tab is in front again (rAF-based waits stall in a background tab).
+  await page.bringToFront();
+  // Redo and Undo from the keyboard, outside any text box.
+  await closeDrawer(page);
+  await page.locator('#animus-main-heading').focus();
+  await page.keyboard.press('Control+Shift+Z');
+  await page.locator('.arcane-toast', {hasText: 'Redid: delete town-pack-copy'}).waitFor();
+  await page.waitForFunction(() => ![...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')].some((el) => el.textContent === 'town-pack-copy'));
+  await page.keyboard.press('Control+z');
+  await page.waitForFunction(() => [...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')].some((el) => el.textContent === 'town-pack-copy'));
+  // A text box keeps its own keys: Ctrl+Z inside the search box is not a workspace undo.
+  await (await sidebar(page)).getByRole('textbox', {name: 'Search documents'}).focus();
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(150);
+  assert.ok(await page.evaluate(() => [...document.querySelectorAll('#animus-sidebar .animus-tree-title, #animus-sidebar .animus-tree-id')].some((el) => el.textContent === 'town-pack-copy')),
+      'Ctrl+Z in a text box did not undo the duplicate');
+  await page.keyboard.press('Escape');
+  // "/" focuses the document search (opening the drawer on phones); Escape closes the drawer.
+  await page.locator('#animus-main-heading').focus();
+  await page.keyboard.press('/');
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-doc-search');
+  if (await isCompact(page)) {
+    await page.locator('#animus-sidebar.is-open').waitFor();
+    await shot(page, label, '04b-drawer');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Escape');
+    await page.locator('#animus-sidebar.is-open').waitFor({state: 'detached'});
+    await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-documents-button');
+  } else {
+    await page.keyboard.press('Escape');
+  }
+  // The command palette opens a document by name.
+  if (await isCompact(page)) {
+    await topbarAction(page, 'Commands');
+  } else {
+    await page.locator('#animus-main-heading').focus();
+    await page.keyboard.press('Control+k');
+  }
+  const palette = page.getByRole('dialog', {name: 'Commands'});
+  await palette.waitFor();
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-palette-input');
+  await page.keyboard.type('market-loop');
+  assert.equal(await page.locator('#animus-palette-input').inputValue(), 'market-loop');
+  await palette.getByRole('option', {name: /market-loop/}).first().waitFor();
+  await shot(page, label, '04c-palette');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/route/market-loop'));
+  await palette.waitFor({state: 'detached'});
+  // Escape closes the palette and gives focus back.
+  await page.locator('#animus-main-heading').focus();
+  if (await isCompact(page)) {
+    await topbarAction(page, 'Commands');
+  } else {
+    await page.keyboard.press('Meta+k');
+  }
+  await palette.waitFor();
+  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'animus-palette-input');
+  await page.keyboard.type('nothing like this at all');
+  await palette.getByText('Nothing matches', {exact: false}).waitFor();
+  await page.keyboard.press('Escape');
+  await palette.waitFor({state: 'detached'});
 
   // A broken field offers a fix.
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/npc/${encodeURIComponent('town/old-tom')}`);
@@ -206,7 +285,7 @@ async function run(browser, viewport, label, skinFile) {
 
   // Export the workspace as a data folder zip.
   const download = page.waitForEvent('download');
-  await page.getByRole('button', {name: 'Export zip'}).first().click();
+  await topbarAction(page, 'Export the data folder zip', {menu: 'export'});
   const zip = await download;
   assert.equal(zip.suggestedFilename(), 'sketchbook.zip');
   const bytes = fs.readFileSync(await zip.path());
@@ -217,7 +296,13 @@ async function run(browser, viewport, label, skinFile) {
   // Everything persists: reload keeps the documents and the undo steps.
   await page.reload();
   await page.getByRole('heading', {name: 'Dry run'}).waitFor();
-  assert.equal(await page.getByRole('button', {name: 'Undo'}).isDisabled(), false, 'undo survives a reload');
+  if (await isCompact(page)) {
+    await page.locator('#animus-menu-more').click();
+    assert.equal(await page.getByRole('menuitem', {name: 'Undo'}).isDisabled(), false, 'undo survives a reload');
+    await page.keyboard.press('Escape');
+  } else {
+    assert.equal(await page.locator('.animus-topbar').getByRole('button', {name: 'Undo'}).isDisabled(), false, 'undo survives a reload');
+  }
 
   // The starter workspace.
   await go(page, '');
@@ -240,7 +325,7 @@ async function run(browser, viewport, label, skinFile) {
   await page.getByRole('checkbox', {name: 'npc town/baker'}).check();
   await page.getByRole('button', {name: 'Compare 1 selected'}).click();
   await page.getByRole('button', {name: 'Pull 1 document'}).click();
-  await sidebar.getByText('town/baker', {exact: false}).first().waitFor();
+  await (await sidebar(page)).getByText('town/baker', {exact: false}).first().waitFor();
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/npc/${encodeURIComponent('town/baker')}`);
   await code(page, (json) => ({...json, name: 'Baker Bea'}));
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/sync`);
@@ -269,6 +354,25 @@ async function run(browser, viewport, label, skinFile) {
   await context.close();
 }
 
+/** Without IndexedDB the editor still works in memory and says so. */
+async function withoutStorage(browser, viewport, label) {
+  const context = await browser.newContext({viewport});
+  await context.addInitScript(() => { delete window.indexedDB; });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
+  await page.goto(site);
+  await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
+  await page.getByRole('status').filter({hasText: 'This browser is not keeping workspaces between visits. Export a zip before you close the tab.'}).waitFor();
+  await page.getByRole('button', {name: 'Create blank workspace'}).click();
+  await page.waitForFunction(() => location.hash.includes('/new'));
+  await page.getByText('This browser is not keeping workspaces between visits.', {exact: false}).waitFor();
+  await shot(page, label, '11-no-storage');
+  assert.deepEqual(errors, []);
+  await context.close();
+}
+
 (async () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'animus-offline-'));
   const browser = await chromium.launch({headless: true});
@@ -290,6 +394,8 @@ async function run(browser, viewport, label, skinFile) {
     fs.writeFileSync(skinFile, Buffer.from(skin, 'base64'));
     await run(browser, {width: 1440, height: 1000}, 'desktop', skinFile);
     await run(browser, {width: 390, height: 844}, 'phone', skinFile);
+    await withoutStorage(browser, {width: 1440, height: 1000}, 'desktop');
+    await withoutStorage(browser, {width: 390, height: 844}, 'phone');
     console.log('offline_editor_browser: ok');
   } finally {
     await browser.close();

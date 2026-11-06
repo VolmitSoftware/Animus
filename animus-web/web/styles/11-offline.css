@@ -106,6 +106,7 @@
 
 .animus-home {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
   width: min(52rem, calc(100% - 2rem));
   margin: 2.5rem auto 3rem;
@@ -113,6 +114,7 @@
 
 .animus-start {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
   padding: 0.5rem 0 0.75rem;
 }
@@ -160,13 +162,19 @@
 
 .animus-start-way.is-first {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 
-/* Long labels wrap inside their button instead of widening the page. */
+.animus-start-head > div {
+  min-width: 0;
+}
+
+/* Long labels wrap inside their button instead of widening the page (the
+   button sets nowrap and a fixed height inline). */
 #arcane-root .animus-start-way .arcane-button {
   max-width: 100%;
-  height: auto;
-  white-space: normal;
+  height: auto !important;
+  white-space: normal !important;
   text-align: start;
 }
 

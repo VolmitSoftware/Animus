@@ -197,12 +197,11 @@ class _ShellSidebarState extends State<ShellSidebar> {
   Widget _group(WorkspaceSnapshot workspace, DocumentKind kind, DocumentRoute? selected, bool Function(AnimusDocument document) matches) {
     final int count = workspace.documents.where((AnimusDocument document) => document.kind == kind).length;
     final LiveSession? session = component.session;
-    final String headingId = 'animus-tree-${kind.wireName}';
-    return dom.section(classes: 'animus-tree-group', attributes: <String, String>{'aria-labelledby': headingId}, <Widget>[
+    return dom.div(classes: 'animus-tree-group', <Widget>[
       dom.div(classes: 'animus-tree-head', <Widget>[
-        dom.h3(id: headingId, <Widget>[
+        dom.h3(<Widget>[
           Component.text(kind.label),
-          dom.span(classes: 'animus-count', attributes: <String, String>{'aria-label': '$count'}, <Widget>[Component.text('$count')]),
+          dom.span(classes: 'animus-count', <Widget>[Component.text('$count')]),
         ]),
         if (kind == DocumentKind.npc)
           dom.a(

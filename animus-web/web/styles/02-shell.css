@@ -636,6 +636,10 @@
   }
 
   /* Thumb-sized targets in the shell and for every lane's buttons. */
+  #arcane-root .arcane-button {
+    max-width: 100%;
+  }
+
   #arcane-root .arcane-button,
   .animus-tree-item,
   .animus-tree-browse,

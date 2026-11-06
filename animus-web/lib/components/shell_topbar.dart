@@ -80,13 +80,13 @@ class ShellTopbar extends StatelessWidget {
       ];
 
   List<MenuEntry> get _importEntries => <MenuEntry>[
-        MenuEntry('Blockbench model (.bbmodel)', actions.onImportBbmodel),
-        MenuEntry('Gloss workspace bundle', actions.onImportGloss),
+        MenuEntry('Import a Blockbench model', actions.onImportBbmodel),
+        MenuEntry('Import a Gloss bundle', actions.onImportGloss),
       ];
 
   List<MenuEntry> get _exportEntries => <MenuEntry>[
-        MenuEntry('Data folder zip', actions.onExportZip),
-        MenuEntry('Gloss workspace bundle', actions.onExportGloss),
+        MenuEntry('Export the data folder zip', actions.onExportZip),
+        MenuEntry('Export a Gloss bundle', actions.onExportGloss),
       ];
 
   @override
@@ -181,12 +181,7 @@ class ShellTopbar extends StatelessWidget {
               ],
               MenuEntry('Commands', actions.onPalette),
               ..._openEntries,
-              if (workspace != null) ...<MenuEntry>[
-                MenuEntry('Import a Blockbench model', actions.onImportBbmodel),
-                MenuEntry('Import a Gloss bundle', actions.onImportGloss),
-                MenuEntry('Export the data folder zip', actions.onExportZip),
-                MenuEntry('Export a Gloss bundle', actions.onExportGloss),
-              ],
+              if (workspace != null) ...<MenuEntry>[..._importEntries, ..._exportEntries],
               MenuEntry(_themeLabel, actions.onToggleTheme),
             ],
           ),
