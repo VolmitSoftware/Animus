@@ -256,6 +256,7 @@
 - Web editor: a stale `group` in an NPC file is a warning, since the server takes the group from the folder.
 - On Folia, build commands and `animus:build` answer a moment later through your own region; `animus:build` answers `queued`.
 - A donation takes the held stack and returns what the build does not need.
+- QA scripts use the Director command syntax.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -391,6 +392,9 @@
 - The web editor opens, creates and names NPCs directly in `npcs/` or nested folders the way the server does, instead of assuming one folder.
 - Undoing an apply on a server workspace drops the documents it removed without asking the server for them.
 - Build protection counters are safe when several regions use them at once.
+- A guard's combat teleport into a chunk held by another Folia region now places the NPC.
+- Guards return exactly to their definition's post after each fight and face their post's direction again; repeated fights no longer move a guard's post.
+- Guards walk back to their post without stalling, and a walk that ends short of the post finishes with a short step.
 
 ### Notes
 
