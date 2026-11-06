@@ -91,7 +91,7 @@ public final class CitizensDropIn {
         if (shopkeepers.isPresent() && !ShopkeepersDropIn.applied(state)) {
             if (host.shopkeepersEnabled().getAsBoolean()) return Optional.of("Shopkeepers migration: " + ShopkeepersDropIn.RUNNING);
             if (sources.saves().isEmpty() || applied(state))
-                return Optional.of("Shopkeepers migration: found " + shopkeepers.get().save().label() + ". Run /animus import citizens to preview it. Nothing is installed until you apply it.");
+                return Optional.of("Shopkeepers migration: found " + shopkeepers.get().save().label() + ". Run /animus import citizens preview. Nothing is installed until you apply it.");
         }
         if (applied(state)) {
             int pending = pending(state).values().stream().mapToInt(Integer::intValue).sum();
@@ -107,7 +107,7 @@ public final class CitizensDropIn {
         String source = JsonDocuments.hash(Files.readString(sources.saves().get().path()));
         if (state.has("sourceSha256") && state.get("sourceSha256").getAsString().equals(source) && state.has("applicationId"))
             return Optional.of("Citizens migration: " + listed(found) + (found.size() == 1 ? " is" : " are") + " staged and not applied. Review " + state.get("report").getAsString() + ", then run /animus import citizens apply");
-        return Optional.of("Citizens migration: found " + listed(found) + ". Run /animus import citizens to preview " + (found.size() == 1 ? "it" : "them") + ". Nothing is installed until you apply it.");
+        return Optional.of("Citizens migration: found " + listed(found) + ". Run /animus import citizens preview to check " + (found.size() == 1 ? "it" : "them") + ". Nothing is installed until you apply it.");
     }
 
     /** {@code a}, {@code a and b}, {@code a, b and c}. */
@@ -116,22 +116,28 @@ public final class CitizensDropIn {
         return String.join(", ", items.subList(0, items.size() - 1)) + " and " + items.getLast();
     }
 
-    public List<String> execute(String[] args) throws IOException {
-        String operation = args.length == 0 ? "stage" : args[0].toLowerCase(Locale.ROOT);
-        return switch (operation) {
-            case "apply" -> { count(args, 1, "import citizens apply"); yield recorded(this::apply); }
-            case "rollback" -> { count(args, 1, "import citizens rollback"); yield rollback(); }
-            case "review" -> { count(args, 1, "import citizens review"); yield review(); }
-            case "accept" -> {
-                if (args.length < 2) throw new IOException("import citizens accept <" + String.join("|", CATEGORIES) + "|all> ...");
-                yield recorded(() -> accept(List.of(args).subList(1, args.length)));
-            }
-            default -> stage(args);
-        };
+    /** Previews the saves this flow finds and stages one application plan; {@code mode} is reject, replace or duplicate with a copy label. */
+    public List<String> preview(String mode, Optional<String> label, Map<String, String> worlds) throws IOException {
+        if (!List.of("reject", "replace", "duplicate").contains(mode)) throw new IOException("mode is reject, replace or duplicate");
+        if (mode.equals("duplicate") != label.isPresent()) throw new IOException(mode.equals("duplicate") ? "mode=duplicate needs a copy label, such as copy=town-copy" : "copy= is used only with mode=duplicate");
+        return stage(mode, label.orElse(null), new TreeMap<>(worlds));
     }
 
+    /** Installs the staged preview. */
+    public List<String> applyStaged() throws IOException { return recorded(this::apply); }
+
+    /** Turns on reviewed categories of the applied import: names from {@link #CATEGORIES}, or {@code all}. */
+    public List<String> acceptCategories(List<String> categories) throws IOException {
+        if (categories.isEmpty()) throw new IOException("import citizens accept <" + String.join("|", CATEGORIES) + "|all>");
+        return recorded(() -> accept(categories));
+    }
+
+    public List<String> reviewApplied() throws IOException { return review(); }
+
+    public List<String> rollbackApplied() throws IOException { return rollback(); }
+
     /**
-     * The transactions the last {@link #execute} committed, oldest first, even when it then failed. After a rollback these are
+     * The transactions the last step committed, oldest first, even when it then failed. After a rollback these are
      * the inverse transactions. The caller reloads the catalogs they touched.
      */
     public List<String> committed() { return List.copyOf(committed); }
@@ -157,22 +163,7 @@ public final class CitizensDropIn {
     }
 
     /** Preview the save, the dtlTraders folder and the schematics, and stage one application plan. Nothing is installed. */
-    List<String> stage(String[] args) throws IOException {
-        String mode = "reject";
-        String label = null;
-        Map<String, String> worlds = new TreeMap<>();
-        for (int index = 0; index < args.length; index++) {
-            String argument = args[index];
-            if (argument.contains("=")) {
-                String[] pair = argument.split("=", 2);
-                if (pair[0].isBlank() || pair[1].isBlank() || worlds.putIfAbsent(pair[0], pair[1]) != null) throw new IOException("Invalid or repeated world mapping: " + argument);
-            } else if (argument.equals("reject") || argument.equals("replace")) mode = argument;
-            else if (argument.equals("duplicate")) {
-                if (index + 1 >= args.length) throw new IOException("duplicate needs a copy label, such as duplicate town-copy");
-                mode = argument;
-                label = args[++index];
-            } else throw new IOException("import citizens [reject|replace|duplicate <label>] [oldWorld=newWorld ...] | apply | review | accept <category...|all> | rollback");
-        }
+    List<String> stage(String mode, String label, Map<String, String> worlds) throws IOException {
         JsonObject previous = state();
         Sources sources = find();
         Optional<ShopkeepersDropIn.Found> shopkeepers = ShopkeepersDropIn.find(store, host.pluginsDirectory());
@@ -262,7 +253,7 @@ public final class CitizensDropIn {
         boolean denizenPending = DenizenDropIn.staged(state) && (citizensPending || applied(state));
         if (!citizensPending && !shopkeepersPending && !denizenPending) {
             if (applied(state) || ShopkeepersDropIn.applied(state)) throw new IOException("Already applied. Use /animus import citizens review, accept or rollback.");
-            throw new IOException("Nothing staged. Run /animus import citizens first.");
+            throw new IOException("Nothing staged. Run /animus import citizens preview first.");
         }
         if (citizensPending) refuseWhileCitizensRuns();
         if (shopkeepersPending && host.shopkeepersEnabled().getAsBoolean()) throw new IOException(ShopkeepersDropIn.RUNNING);
@@ -378,7 +369,7 @@ public final class CitizensDropIn {
     List<String> review() throws IOException {
         JsonObject state = state();
         boolean citizens = applied(state);
-        if (!citizens && !ShopkeepersDropIn.applied(state)) throw new IOException("No applied Citizens import. Run /animus import citizens, then apply.");
+        if (!citizens && !ShopkeepersDropIn.applied(state)) throw new IOException("No applied Citizens import. Run /animus import citizens preview, then apply.");
         List<String> lines = new ArrayList<>();
         Map<String, Integer> pending = pending(state);
         if (citizens) {
@@ -687,5 +678,4 @@ public final class CitizensDropIn {
         try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))); }
         catch (java.security.NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }
     }
-    private static void count(String[] args, int expected, String usage) throws IOException { if (args.length != expected) throw new IOException(usage); }
 }

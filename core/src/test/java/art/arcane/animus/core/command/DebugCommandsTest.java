@@ -41,7 +41,20 @@ class DebugCommandsTest {
 
     private void second() { for (int i = 0; i < 20; i++) { nanos.addAndGet(50_000_000L); metrics.serverTick(); } }
 
-    private List<String> run(Actor actor, String... arguments) { actor.told.clear(); commands.execute(actor, arguments); return actor.told; }
+    /** The typed debug command {@code /animus debug ...} routes these words to. */
+    private List<String> run(Actor actor, String... arguments) {
+        actor.told.clear();
+        String operation = arguments.length < 2 ? "summary" : arguments[1];
+        switch (operation) {
+            case "summary" -> commands.summary(actor);
+            case "network" -> commands.network(actor, arguments.length > 2 ? Optional.of(arguments[2]) : Optional.empty());
+            case "performance" -> commands.performance(actor);
+            case "npc" -> commands.npc(actor, arguments[2]);
+            case "watch" -> commands.watch(actor);
+            default -> throw new AssertionError(operation);
+        }
+        return actor.told;
+    }
 
     @Test void summaryChangesWithLoadAndStaysHonest() {
         Actor console = new Actor(null);
@@ -111,15 +124,9 @@ class DebugCommandsTest {
         assertTrue(run(new Actor(null), "debug", "watch").get(0).contains("belongs to a player"));
     }
 
-    @Test void completesSubcommandsAndViewerNames() {
+    @Test void viewerNamesCompleteTheNetworkPlayer() {
         metrics.viewer(player, "Alex");
-        Actor console = new Actor(null);
-        assertEquals(List.of("network"), commands.complete(console, new String[]{"debug", "ne"}));
-        assertEquals(List.of("Alex"), commands.complete(console, new String[]{"debug", "network", "a"}));
-    }
-
-    @Test void unknownArgumentsShowUsage() {
-        assertTrue(run(new Actor(null), "debug", "bogus").get(0).contains("Usage"));
+        assertEquals(List.of("Alex"), commands.viewers());
         MetricsSnapshot empty = metrics.snapshot();
         assertEquals(0, empty.sequence());
     }

@@ -1,8 +1,10 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.command.AnimusDirector;
 import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.text.RichText;
+import art.arcane.volmlib.util.director.help.DirectorMiniMenu;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -16,10 +18,11 @@ record BukkitActor(CommandSender sender, ReplyScheduler replies) implements Comm
     }
     @Override public boolean permitted(String node) { return sender.hasPermission(node); }
     /** Players see the brand pinks in hex; the console gets their legacy fallbacks, which every Bukkit console renders. */
-    @Override public void tell(String message) {
-        String branded = Palette.reply(message);
-        sender.sendMessage(sender instanceof Player ? branded : RichText.legacy(branded));
-    }
+    @Override public void tell(String message) { plain(Palette.reply(message)); }
+    @Override public void plain(String line) { sender.sendMessage(sender instanceof Player ? line : RichText.legacy(line)); }
     @Override public Optional<UUID> player() { return sender instanceof Player player ? Optional.of(player.getUniqueId()) : Optional.empty(); }
     @Override public boolean reply(Runnable action) { return replies.reply(sender, action); }
+    /** Lenient MiniMessage through VolmLib, the fleet's help delivery: hover chips and click paging for players. */
+    @Override public void menu(DirectorMiniMenu.DirectorHelpPage page) { DirectorMiniMenu.deliver(sender, page, AnimusDirector.THEME, AnimusDirector.TEXT); }
+    @Override public void menu(DirectorMiniMenu.ContentMenu menu) { DirectorMiniMenu.deliverContent(sender, menu, AnimusDirector.THEME, AnimusDirector.TEXT); }
 }

@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.command.CombatControl;
 import art.arcane.animus.api.Outcome;
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
@@ -16,7 +17,6 @@ import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.extension.MutationLane;
 import art.arcane.animus.core.hire.HireDesk;
 import art.arcane.animus.core.runtime.CombatDeletions;
-import art.arcane.animus.core.runtime.CombatModule;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import art.arcane.animus.core.virtual.WorldPosition;
@@ -264,27 +264,21 @@ public final class RegionCombat implements Listener, AutoCloseable {
 
     // ---- Commands and behaviors ----
 
-    /** {@code combat <npc-id> ...}. Status reads the NPC's publication; every change runs on the NPC's owner and is logged. */
-    String execute(String[] args) {
+    /** {@code combat <operation> <npc>}. Status reads the NPC's publication; every change runs on the NPC's owner and is logged. */
+    String command(String id, CombatControl.Operation operation, Optional<UUID> targetId) {
         if (!enabled()) throw new IllegalStateException("Combat module disabled in config.toml");
-        if (args.length < 3) throw new IllegalArgumentException(CombatModule.MODULE_USAGE);
-        RegionActor actor = host.actors.get(args[1]);
-        if (actor == null) throw new IllegalArgumentException("Unknown or inactive NPC: " + args[1]);
-        String operation = args[2];
-        if (operation.equals("status")) {
+        RegionActor actor = host.actors.get(id);
+        if (actor == null) throw new IllegalArgumentException("Unknown or inactive NPC: " + id);
+        if (operation == CombatControl.Operation.STATUS) {
             RegionActor.Publication view = actor.publication;
-            return "Combat " + args[1] + ": " + (view.combat() == null ? "NOT_COMBATANT not a combat NPC (combat disabled, review not accepted, or not active)" : "APPLIED " + view.combat().status());
+            return "Combat " + id + ": " + (view.combat() == null ? "NOT_COMBATANT not a combat NPC (combat disabled, review not accepted, or not active)" : "APPLIED " + view.combat().status());
         }
-        Optional<TargetRef> target = switch (operation) {
-            case "engage", "disengage", "release" -> { if (args.length != 3) throw new IllegalArgumentException(CombatModule.MODULE_USAGE); yield Optional.empty(); }
-            case "target" -> { if (args.length != 4) throw new IllegalArgumentException(CombatModule.MODULE_USAGE); yield Optional.of(participant(CombatModule.uuid(args[3]))); }
-            case "guard" -> { if (args.length != 4) throw new IllegalArgumentException(CombatModule.MODULE_USAGE); yield args[3].equals("stop") ? Optional.empty() : Optional.of(participant(CombatModule.uuid(args[3]))); }
-            default -> throw new IllegalArgumentException(CombatModule.MODULE_USAGE);
-        };
-        String id = args[1];
+        if (operation == CombatControl.Operation.TARGET && targetId.isEmpty()) throw new IllegalArgumentException("Name a target UUID");
+        Optional<TargetRef> target = targetId.map(this::participant);
+        String word = operation.name().toLowerCase(java.util.Locale.ROOT);
         boolean queued = host.onOwner(id, () -> {
             ActorCombat combat = actor.combat();
-            String result = combat == null ? "NOT_COMBATANT not a combat NPC" : describe(combat.operate(operation, target));
+            String result = combat == null ? "NOT_COMBATANT not a combat NPC" : describe(combat.operate(word, target));
             host.plugin.getLogger().info("Combat " + id + ": " + result);
         }, (String reason) -> host.plugin.getLogger().info("Combat " + id + ": UNAVAILABLE " + reason));
         if (!queued) return "Combat " + id + ": UNAVAILABLE the NPC is not active on a region";

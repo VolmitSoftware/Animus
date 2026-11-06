@@ -21,10 +21,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * {@code /animus debug [network [player]|performance|npc <id>|watch]}: what Animus measured on this server. Byte counts
+ * {@code /animus debug summary|network [player=]|performance|npc <npc>|watch}: what Animus measured on this server. Byte counts
  * are estimates from typical packet sizes; per-NPC time is sampled. Requires {@link #PERMISSION}.
  */
-public final class DebugCommands implements AnimusCommands.Extra {
+public final class DebugCommands {
     public static final String PERMISSION = "animus.debug";
     private static final String HEADER = "&8&m        &r " + Palette.PINK + "Animus debug &8&m        ";
     private static final String HONEST = "&8Measured on this server. Bytes are estimates from typical packet sizes.";
@@ -42,32 +42,23 @@ public final class DebugCommands implements AnimusCommands.Extra {
         this.npcIds = Objects.requireNonNull(npcIds); this.services = Objects.requireNonNull(services);
     }
 
-    @Override public List<String> complete(CommandActor actor, String[] arguments) {
-        if (arguments.length == 2) return matching(List.of("network", "performance", "npc", "watch"), arguments[1]);
-        if (arguments.length == 3 && arguments[1].equalsIgnoreCase("network"))
-            return matching(metrics.get().viewerLoads().stream().map(Load::name).filter((String name) -> !name.isEmpty()).sorted().toList(), arguments[2]);
-        return List.of();
+    /** Viewer names with recent Animus traffic, for completion. */
+    public List<String> viewers() {
+        return metrics.get().viewerLoads().stream().map(Load::name).filter((String name) -> !name.isEmpty()).sorted().limit(100).toList();
     }
 
-    private static List<String> matching(List<String> options, String prefix) {
-        String lowered = prefix.toLowerCase(Locale.ROOT);
-        return options.stream().filter((String option) -> option.toLowerCase(Locale.ROOT).startsWith(lowered)).limit(100).toList();
-    }
+    public void summary(CommandActor actor) { tell(actor, summary()); }
 
-    @Override public void execute(CommandActor actor, String[] arguments) {
-        String operation = arguments.length < 2 ? "summary" : arguments[1].toLowerCase(Locale.ROOT);
-        List<String> lines = switch (operation) {
-            case "summary" -> arguments.length == 1 ? summary() : usage();
-            case "network" -> arguments.length <= 3 ? network(arguments.length == 3 ? arguments[2] : null) : usage();
-            case "performance", "perf" -> arguments.length == 2 ? performance() : usage();
-            case "npc" -> arguments.length == 3 ? npc(arguments[2]) : usage();
-            case "watch" -> arguments.length == 2 ? watch(actor) : usage();
-            default -> usage();
-        };
-        for (String line : lines) actor.tell(RichText.colorize(line));
-    }
+    /** The whole server, or one viewer by name or UUID. */
+    public void network(CommandActor actor, Optional<String> player) { tell(actor, network(player.orElse(null))); }
 
-    private static List<String> usage() { return List.of("&7Usage: &f/animus debug &7[&fnetwork &7[player] | &fperformance &7| &fnpc &7<id> | &fwatch&7]"); }
+    public void performance(CommandActor actor) { tell(actor, performance()); }
+
+    public void npc(CommandActor actor, String id) { tell(actor, npc(id)); }
+
+    public void watch(CommandActor actor) { tell(actor, watchToggle(actor)); }
+
+    private static void tell(CommandActor actor, List<String> lines) { for (String line : lines) actor.tell(RichText.colorize(line)); }
 
     private MetricsSnapshot snapshot() { return metrics.get().snapshot(); }
 
@@ -94,7 +85,7 @@ public final class DebugCommands implements AnimusCommands.Extra {
                 gauges.presentationStrained() ? "&cstrained" : "normal", snapshot.extra("combat.waiting")));
         lines.add(fmt("&7Memory: &f~%s &7rough estimate of runtime structures", bytes(snapshot.memoryEstimateBytes())));
         for (String line : services.get()) lines.add("&7" + line);
-        lines.add("&7More: &f/animus debug network&7, &fperformance&7, &fnpc <id>&7, &fwatch");
+        lines.add("&7More: &f/animus debug network&7, &fperformance&7, &fnpc <npc>&7, &fwatch");
         lines.add(HONEST);
         return lines;
     }
@@ -205,9 +196,9 @@ public final class DebugCommands implements AnimusCommands.Extra {
         return lines;
     }
 
-    private List<String> watch(CommandActor actor) {
+    private List<String> watchToggle(CommandActor actor) {
         Optional<UUID> player = actor.player();
-        if (player.isEmpty()) return List.of("&7The live watch belongs to a player; use &f/animus debug &7from the console.");
+        if (player.isEmpty()) return List.of("&7The live watch belongs to a player; use &f/animus debug summary &7from the console.");
         return List.of(watch.toggle(player.get()) ? "&7Animus debug watch &aon&7; run it again to stop." : "&7Animus debug watch &coff&7.");
     }
 }
