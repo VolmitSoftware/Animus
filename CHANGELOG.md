@@ -112,6 +112,7 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- Routes share well between NPCs: `seed`, `startOffset: random`, `waitTicks` ranges, `jitter`, point `weight` for random order and `next` junctions for sequence order, with field-named validation.
 - A short route leg whose goal can't be reached ends beside it when close enough.
 - Denizen `sentinel` commands and `trait state sentinel` convert to combat control.
 - `/animus import citizens accept commands` adds the command namespaces converted behaviors need to config.toml.
@@ -123,9 +124,23 @@
 - `@selected` for the selected NPC wherever a command takes an NPC id.
 - Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
 - `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
+- Performance recording documents (`recordings/<id>.json`): frames, swing, equipment and door events, a byte-exact serialized form, hotload and editor apply, and `schema/recording-v1.schema.json`.
+- Recording core for playback: frame simplification within 0.02 blocks and 2 degrees, and a once, loop or pingpong cursor with interpolated poses, capped event windows and catch-up skips.
+- `[recordings]` settings in `config.toml` for sampling, length, file size, sessions, ghosts and previews, all applied live.
+- `/animus record start|stop|cancel|status|ghost|preview` captures a player's movement, sneaking, swings, equipment and door use into `recordings/<id>.json` as one rollback-able transaction, on the player's own thread on Folia.
+- Recording sessions end and save on quit, death, world change, a teleport over 8 blocks or `maximumTicks`; a recording over `maximumFileBytes` is held until it is stopped again or cancelled.
+- A viewer-private, glowing ghost of the recorder replays the last `ghostStretchTicks` every `ghostIntervalTicks` while recording, and `/animus record preview <id>` plays a saved recording once for the requesting player.
+- Trait groups: `groups/<id>.json` documents of shared definition values that NPCs list in `groups` and merge before their own fields.
+- Group merge rules: objects merge recursively, behaviors and tags append, a `skins` pool picks one skin per NPC UUID.
+- An NPC naming a missing group is refused on edit; a group deleted later leaves its NPCs on their last valid effective definition, reported as `group-problem=`.
+- `/animus inspect` shows the effective definition of an NPC with groups and where each field came from; `/animus status` counts group problems.
+- `/animus groups list|inspect|members|assign|unassign`; assign and unassign take one of `folder=`, `tag=` or `ids=` (with `@selected`) and edit every matching NPC in one transaction.
+- `factor-groups=true` for `/animus import citizens preview` and `--factor-groups` for the converter's `preview`, which move settings shared by two or more imported NPCs into groups.
+- Shared group schema, merge fixtures and an editor-side merge in `animus-web`.
 
 ### Changed
 
+- Random choices on routes (`random` and `wander` orders, and the new route randomness) are seeded from the NPC UUID and route by default, so each NPC repeats its own choices after a restart. Set `"seed": "random"` for the old clock-seeded behavior.
 - Manual runs stay limited to one per NPC; trigger-started executions are counted separately and use scoped variables, resolving player and relationship variables from the triggering player.
 - `/animus behaviors inspect` answers with current waits, conditions and recent steps, and `/animus behaviors trace` lists every active run with its origin. Startup logs every behavior catalog diagnostic.
 - Behavior validation rejects invalid literal capability arguments and reports unavailable capabilities separately.

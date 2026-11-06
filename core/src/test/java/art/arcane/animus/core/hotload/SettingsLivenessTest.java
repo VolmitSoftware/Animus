@@ -10,7 +10,8 @@ class SettingsLivenessTest {
                 "behaviors.engine.fibers", "behaviors.catalog.maximumDocuments", "behaviors.triggers.enabled", "behaviors.state.flushMillis",
                 "behaviors.actions.actionsPerTick", "behaviors.actions.commandBehaviors[0]", "combat.enabled", "combat.brainsPerTick",
                 "builds.enabled", "builds.maximumVolume", "shops.flushMillis", "shops.messages.bought", "editor.listenerEnabled", "editor.port",
-                "editor.relayUrl", "editor.allowedOrigins[1]", "rigs.updatesPerTick", "navigation.planningJobs"})
+                "editor.relayUrl", "editor.allowedOrigins[1]", "rigs.updatesPerTick", "navigation.planningJobs",
+                "recordings.enabled", "recordings.maximumTicks", "recordings.ghostColor", "recordings.maximumPreviews"})
             assertFalse(SettingsLiveness.restartRequired(key, true), key);
     }
 

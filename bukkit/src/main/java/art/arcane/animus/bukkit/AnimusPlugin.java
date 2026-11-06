@@ -27,6 +27,7 @@ import art.arcane.animus.bukkit.gui.BukkitGlossBridge;
 import art.arcane.animus.bukkit.gui.BukkitHoloEvents;
 import art.arcane.animus.bukkit.gui.BukkitScreens;
 import art.arcane.animus.bukkit.packet.NativeDisplayAdapter;
+import art.arcane.animus.bukkit.recording.RecordingSessions;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.presentation.DisplayTransport;
 import art.arcane.animus.bukkit.runtime.BukkitRuntimeHost;
@@ -94,6 +95,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private Executor commands;
     private ReplyScheduler replies;
     private PacketProofService proof;
+    private RecordingSessions recordings;
     private FoliaStationaryProofService foliaProof;
     private NpcRuntime<Player, ItemStack> living;
     private RuntimeCombatService combat;
@@ -229,6 +231,7 @@ public final class AnimusPlugin extends JavaPlugin {
             serverBehaviors = new BukkitServerBehaviors(this, scheduling, servers, facts, (String message) -> getLogger().info(message));
             behaviors.facts(facts);
             serverBehaviors.start();
+            recordings = new RecordingSessions(this, runtime, commands, regions, environment.minecraftVersion());
             AnimusRuntime measuredRuntime = runtime;
             DebugCommands debugCommands = new DebugCommands(() -> metrics, debugWatch,
                     (String id) -> measuredRuntime.isRunning() ? measuredRuntime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
@@ -280,6 +283,7 @@ public final class AnimusPlugin extends JavaPlugin {
         editor = null;
         if (activeEditor != null) activeEditor.close();
         director = null;
+        if (recordings != null) { recordings.close(); recordings = null; }
         ReactBridge bridge = react;
         react = null;
         if (bridge != null) bridge.close();

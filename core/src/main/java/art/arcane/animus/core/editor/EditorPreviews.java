@@ -86,7 +86,7 @@ public final class EditorPreviews {
     }
 
     /** NPC definitions the preview presents. Refuses an invalid or refused candidate with the field diagnostics. */
-    public static List<NpcDefinition> candidates(List<EditorMessages.Change> changes, int maximumNpcs) throws EditorError {
+    public static List<NpcDefinition> candidates(List<EditorMessages.Change> changes, int maximumNpcs, int recordingBytes) throws EditorError {
         JsonArray documents = new JsonArray();
         List<NpcDefinition> npcs = new ArrayList<>();
         boolean refused = false;
@@ -94,7 +94,7 @@ public final class EditorPreviews {
             if (change.delete()) continue;
             JsonObject source = change.source().orElseThrow().deepCopy();
             if (EditorDocuments.REVISIONED.contains(change.kind()) && !source.has("revision")) source.addProperty("revision", 1);
-            JsonArray diagnostics = EditorDocuments.validate(change.kind(), change.id(), source);
+            JsonArray diagnostics = EditorDocuments.validate(change.kind(), change.id(), source, recordingBytes);
             JsonArray refusals = refusals(change.kind(), source);
             refused |= !refusals.isEmpty();
             refusals.forEach(diagnostics::add);

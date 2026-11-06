@@ -47,7 +47,7 @@ class ShopkeepersDropInTest {
         leave("admin.yml", "plugins/Shopkeepers/data/save.yml");
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
-            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
+            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(staged.contains("Shopkeepers plugins/Shopkeepers/data/save.yml: 6 shops"), staged);
             assertTrue(staged.contains("2 found, 1 not found"), staged);
             shopkeepersRunning.set(true);
@@ -73,13 +73,13 @@ class ShopkeepersDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             assertTrue(dropIn(store, npcs).startupNotice().orElseThrow().contains("Shopkeepers migration: found imports/shopkeepers/save.yml"));
-            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
+            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(staged.contains("3 unchecked"), staged);
             String applied = joined(dropIn(store, npcs).applyStaged());
             assertTrue(applied.contains("0 bound to Citizens NPCs, 3 wait"), applied);
             assertNotNull(store.read("shops/shopkeepers/shop-1.json"));
             leave("admin-citizens.yml", "plugins/Animus/imports/saves.yml");
-            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of());
+            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false);
             String later = joined(dropIn(store, npcs).applyStaged());
             assertTrue(later.contains("Bound 2 Shopkeepers shops to their Citizens NPCs"), later);
             assertEquals(Optional.of("shopkeepers:shop-5"), shop(npcs, "citizens-7").map((JsonObject module) -> module.get("shop").getAsString()));
@@ -93,18 +93,18 @@ class ShopkeepersDropInTest {
         leave("admin-citizens.yml", "plugins/Animus/imports/saves.yml");
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
-            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of());
+            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false);
             dropIn(store, npcs).applyStaged();
             assertTrue(shop(npcs, "citizens-0").isEmpty());
             leave("player.yml", "plugins/Animus/imports/shopkeepers/save.yml");
             leave("player-config.yml", "plugins/Animus/imports/shopkeepers/config.yml");
             leave("admin.yml", "plugins/Animus/imports/shopkeepers/save.yml");
-            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
+            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(staged.contains("with its config.yml"), staged);
             String applied = joined(dropIn(store, npcs).applyStaged());
             assertTrue(applied.contains("2 bound to Citizens NPCs"), applied);
             assertTrue(shop(npcs, "citizens-0").isPresent());
-            IOException again = assertThrows(IOException.class, () -> dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
+            IOException again = assertThrows(IOException.class, () -> dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(again.getMessage().contains("already applied"));
             dropIn(store, npcs).rollbackApplied();
             assertTrue(npcs.all().isEmpty());
