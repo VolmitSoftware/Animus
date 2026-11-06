@@ -5,8 +5,11 @@ library;
 
 import 'dart:convert';
 
+import '../gui/gui_expression.dart' show ExpressionCompletion;
 import '../gui/gui_json.dart';
 import '../../model/document_kind.dart';
+import 'behavior_language.dart';
+import 'behavior_operands.dart';
 import 'completion_catalog.dart';
 import 'json_outline.dart';
 import 'schema_fields.dart';
@@ -65,6 +68,10 @@ List<JsonSuggestion> suggestJson(
     if (container is! Map<String, Object?>) return const <JsonSuggestion>[];
     return _keys(context, container, containerSchema, schema, catalog, root);
   }
+  if (catalog != null && context.quoted) {
+    final bool? template = _expressionField(context);
+    if (template != null) return _expression(context, catalog, root, template: template);
+  }
   return _values(context, container, containerSchema, schema, catalog, hints, root);
 }
 
@@ -78,6 +85,7 @@ List<JsonSuggestion> _keys(
 ) {
   final List<FieldSpec> fields = <FieldSpec>[
     ...argumentFields(context.container, root, catalog),
+    ...pointerFields(context.container, root, catalog),
     if (containerSchema != null) ...schema.fields(containerSchema, container),
   ];
   final Set<String> seen = <String>{};
@@ -92,7 +100,7 @@ List<JsonSuggestion> _keys(
     out.add(JsonSuggestion(
       label: field.key,
       insert: context.colonFollows ? quoted : '$quoted: ',
-      detail: <String>[if (field.required) 'required', if (field.description != null) field.description!].join(' - '),
+      detail: <String>[if (field.required) 'required', if (field.description != null) field.description!].join('. '),
       isKey: true,
       replaceStart: context.replaceStart,
       replaceEnd: context.replaceEnd,
@@ -177,6 +185,57 @@ List<JsonSuggestion> _values(
   }
   out.sort((JsonSuggestion a, JsonSuggestion b) => _rank(a.label, typed).compareTo(_rank(b.label, typed)));
   return out.take(_limit).toList();
+}
+
+/// Whether the string at the caret holds a behavior expression (false) or
+/// template (true): `expression` fields and operands, `template` operands,
+/// and the values of `expressions` and `templates` pointer maps.
+bool? _expressionField(CaretContext context) {
+  final String? key = context.key;
+  final JsonStep? parent = context.container.isEmpty ? null : context.container.last;
+  if (parent == 'expressions') return false;
+  if (parent == 'templates') return true;
+  if (key == 'expression') return false;
+  if (key == 'template') return true;
+  return null;
+}
+
+List<JsonSuggestion> _expression(CaretContext context, CompletionCatalog catalog, Object? root, {required bool template}) {
+  final JsonMap document = asMap(root);
+  final ExpressionScope scope = ExpressionScope(
+    language: catalog.expressions,
+    variables: <String, String>{
+      for (final MapEntry<String, Object?> entry in asMap(document['variables']).entries) entry.key: asString(asMap(entry.value)['type']) ?? 'any',
+    },
+    contextKeys: <String>{
+      for (final Object? trigger in asList(document['triggers'])) ...catalog.triggers[asString(asMap(trigger)['event'])]?.context ?? const <String>[],
+    }.toList(),
+    server: document['server'] == true,
+  );
+  final String typed = context.prefix;
+  final int base = context.replaceStart + 1;
+  return <JsonSuggestion>[
+    for (final ExpressionCompletion completion in completeBehaviorExpression(typed, typed.length, scope, template: template, limit: _limit))
+      JsonSuggestion(
+        label: completion.label,
+        insert: completion.insert,
+        detail: completion.detail,
+        replaceStart: base + completion.replaceFrom,
+        replaceEnd: base + completion.replaceTo,
+      ),
+  ];
+}
+
+/// For the `bindings`, `expressions` or `templates` map of an action or
+/// condition node, a pointer key per argument of its capability.
+List<FieldSpec> pointerFields(List<JsonStep> containerPath, Object? root, CompletionCatalog? catalog) {
+  if (catalog == null || containerPath.isEmpty || !const <String>{'bindings', 'expressions', 'templates'}.contains(containerPath.last)) return const <FieldSpec>[];
+  final Object? node = readIn(root, containerPath.sublist(0, containerPath.length - 1));
+  final CapabilitySpec? spec = catalog.capability(asString(asMap(node)['capability']));
+  return <FieldSpec>[
+    for (final FieldSpec argument in spec?.arguments ?? const <FieldSpec>[])
+      FieldSpec(key: argumentPointer(argument.key), kind: FieldKind.string, description: 'fills the null placeholder of argument ${argument.key}'),
+  ];
 }
 
 /// For an `arguments` object of an action or condition node, the argument

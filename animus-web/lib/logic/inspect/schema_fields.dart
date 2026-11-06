@@ -77,7 +77,11 @@ class FieldSpec {
   }
 
   /// Help text: the description, then the bounds.
-  String get help => <String>[if (description != null && description!.isNotEmpty) description!, if (bounds.isNotEmpty) bounds.endsWith('.') ? bounds : '$bounds.'].join(' ');
+  /// The description, then the bounds as their own sentence ("At most 64 characters.").
+  String get help {
+    final String sentence = bounds.isEmpty ? '' : '${bounds[0].toUpperCase()}${bounds.substring(1)}${bounds.endsWith('.') ? '' : '.'}';
+    return <String>[if (description != null && description!.isNotEmpty) description!, if (sentence.isNotEmpty) sentence].join(' ');
+  }
 
   /// A problem with [value] against the bounds, or null.
   String? check(Object? value) {
@@ -91,7 +95,7 @@ class FieldSpec {
       if (minLength != null && value.length < minLength!) return minLength == 1 ? 'Required.' : 'At least $minLength characters.';
       if (maxLength != null && value.length > maxLength!) return 'At most $maxLength characters.';
       final String? expected = pattern;
-      if (expected != null && value.isNotEmpty && !RegExp(expected).hasMatch(value)) return 'Does not match $expected.';
+      if (expected != null && value.isNotEmpty && !RegExp(expected).hasMatch(value)) return patternProblem(expected);
       if (kind == FieldKind.choice && !openChoice && options.isNotEmpty && !options.any((FieldOption option) => option.value == value)) {
         return 'Not one of ${options.map((FieldOption option) => option.label).join(', ')}.';
       }
@@ -99,6 +103,22 @@ class FieldSpec {
     return null;
   }
 }
+
+/// What a value must look like for [pattern], in words; never the regex.
+String patternProblem(String pattern) => switch (pattern) {
+      r'\S' => 'Must not be blank.',
+      r'^[a-z0-9][a-z0-9_-]{0,63}$' => 'Use lowercase letters, digits, _ and -, starting with a letter or digit, at most 64 characters.',
+      r'^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$' => 'Use a namespace:path id in lowercase, such as town:welcome or town:quests/intro.',
+      r'^[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}$' => 'Use namespace:name in lowercase, such as mymodule:wave.',
+      r'^[a-z0-9_.-]+:[a-z0-9_./-]+$' || r'^([a-z0-9_.-]+:)?[a-z0-9_./-]+$' => 'Use a Minecraft resource id in lowercase, such as minecraft:block.note_block.bell.',
+      r'^[A-Za-z0-9_-]+(\.[A-Za-z0-9_*-]+)*$' => 'Use a permission node: words joined by dots, such as town.vip.',
+      r'^[a-z0-9_-]{1,32}$' => 'Use 1 to 32 lowercase letters, digits, _ or -.',
+      r'^[a-z0-9_-]{1,64}$' => 'Use 1 to 64 lowercase letters, digits, _ or -.',
+      r'^[a-f0-9]{64}$' => 'Use the 64-character lowercase hex SHA-256 of the file.',
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' => 'Use a lowercase UUID, such as 3f2a6c1e-0b7d-4c55-9e1a-2d4b6f8a9c01.',
+      r'^#[0-9a-fA-F]{8}$' => 'Use a colour as #AARRGGBB, such as #FFFF5FA8.',
+      _ => 'Does not have the expected form; see the help above.',
+    };
 
 String _number(num value) => value == value.roundToDouble() && value.abs() < 1e15 ? value.toInt().toString() : value.toString();
 
@@ -213,7 +233,7 @@ class SchemaView {
     final Set<String> required = <String>{};
     for (final Map<String, Object?> part in applicable(schema, value)) {
       for (final MapEntry<String, Object?> entry in asMap(part['properties']).entries) {
-        merged[entry.key] = <String, Object?>{...?merged[entry.key], ...resolve(entry.value)};
+        merged[entry.key] = _layer(merged[entry.key], resolve(entry.value));
       }
       for (final Object? key in asList(part['required'])) {
         if (key is String) required.add(key);
@@ -225,6 +245,33 @@ class SchemaView {
     return <FieldSpec>[
       for (final MapEntry<String, Map<String, Object?>> entry in merged.entries) field(entry.key, entry.value, required: required.contains(entry.key)),
     ];
+  }
+
+  /// [over] laid on [base]: keywords of [over] win, but nested schemas
+  /// (`items`, `additionalProperties`, each property) apply both, so a
+  /// conditional branch that narrows `triggers.items` keeps the base items.
+  static Map<String, Object?> _layer(Map<String, Object?>? base, Map<String, Object?> over) {
+    if (base == null) return over;
+    final Map<String, Object?> out = <String, Object?>{...base, ...over};
+    for (final String key in const <String>['items', 'additionalProperties']) {
+      final Object? a = base[key], b = over[key];
+      if (a is Map<String, Object?> && b is Map<String, Object?>) {
+        out[key] = <String, Object?>{
+          'allOf': <Object?>[a, b],
+        };
+      }
+    }
+    final Object? a = base['properties'], b = over['properties'];
+    if (a is Map<String, Object?> && b is Map<String, Object?>) {
+      out['properties'] = <String, Object?>{
+        ...a,
+        for (final MapEntry<String, Object?> entry in b.entries)
+          entry.key: a[entry.key] is Map<String, Object?> && entry.value is Map<String, Object?>
+              ? <String, Object?>{'allOf': <Object?>[a[entry.key], entry.value]}
+              : entry.value,
+      };
+    }
+    return out;
   }
 
   /// The schema for keys of an object that are not in `properties`

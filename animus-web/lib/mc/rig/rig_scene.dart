@@ -71,11 +71,33 @@ const Map<String, McDisplayPose> _contexts = <String, McDisplayPose>{
   'firstperson_lefthand': McDisplayPose.firstPersonLeftHand,
 };
 
+/// Stand-in items the rig editor hangs on sockets, so a socket shows where
+/// equipment goes before any NPC wears the rig.
+const Map<String, String> socketSampleItems = <String, String>{
+  'main_hand': 'minecraft:iron_sword',
+  'off_hand': 'minecraft:torch',
+  'head': 'minecraft:iron_helmet',
+  'chest': 'minecraft:iron_chestplate',
+  'legs': 'minecraft:iron_leggings',
+  'feet': 'minecraft:iron_boots',
+  'body': 'minecraft:white_carpet',
+  'saddle': 'minecraft:saddle',
+};
+
+const Map<String, McDisplayPose> _socketPoses = <String, McDisplayPose>{
+  'main_hand': McDisplayPose.thirdPersonRightHand,
+  'off_hand': McDisplayPose.thirdPersonLeftHand,
+  'head': McDisplayPose.head,
+};
+
+/// [equipment] maps socket slots (`main_hand`, `head`, ...) to item ids; an
+/// item whose slot the rig names as a socket is drawn at that bone.
 RigScene rigScene(
   JsonMap rig,
   Map<String, BonePose> poses, {
   Map<String, Uint8List> resources = const <String, Uint8List>{},
   RigTextureId? textureId,
+  Map<String, String> equipment = const <String, String>{},
 }) {
   final List<McSceneNode> nodes = <McSceneNode>[];
   final List<NpcText> texts = <NpcText>[];
@@ -109,7 +131,36 @@ RigScene rigScene(
         nodes.add(McBlockNode(key: 'bone:$id', blockKey: mcBlockId(state < 0 ? block : block.substring(0, state)), transform: matrix));
       case 'text':
         final String text = visual['text'] is String ? visual['text']! as String : '';
-        texts.add(NpcText(anchor: originOf(at), lines: NpcLook.legacy(text).split('\n'), nameplate: false));
+        texts.add(NpcText(
+          anchor: originOf(at),
+          lines: NpcLook.legacy(text).split('\n'),
+          nameplate: false,
+          lineWidth: visual['lineWidth'] is int ? visual['lineWidth']! as int : 200,
+          background: visual['background'] is String ? visual['background']! as String : null,
+          shadow: visual['shadow'] == true,
+        ));
+    }
+  }
+  final Object? sockets = rig['sockets'];
+  if (sockets is JsonMap) {
+    final List<String> worn = <String>[];
+    for (final MapEntry<String, Object?> socket in sockets.entries) {
+      final String? item = equipment[socket.key];
+      final BonePose? pose = socket.value is String ? poses[socket.value] : null;
+      if (item == null || pose == null || !pose.visible) continue;
+      final McMat4 at = mcMatOfAffine(pose.model);
+      include(originOf(pose.model), 0.5);
+      nodes.add(McItemNode(
+        key: 'socket:${socket.key}',
+        itemId: mcStrip(item),
+        pose: _socketPoses[socket.key] ?? McDisplayPose.fixed,
+        leftHand: socket.key == 'off_hand',
+        transform: at.multiply(_itemDisplayTurn),
+      ));
+      worn.add('${socket.key} on ${socket.value}');
+    }
+    if (worn.isNotEmpty) {
+      notes.add('Socket items (${worn.join(', ')}) show where equipment hangs. The server does not attach equipment to sockets yet.');
     }
   }
   return RigScene(

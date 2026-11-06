@@ -75,7 +75,7 @@ void main() {
     await reloaded.undo();
     expect(reloaded.workspace!.documents, isEmpty);
     expect(reloaded.canUndo, isFalse);
-    expect(await repository.loadUndo(blank.id), isEmpty);
+    expect(await repository.loadHistory(blank.id, HistoryStack.undo), isEmpty);
   });
 
   test('should drop the undo steps of a deleted workspace and cap them', () async {
@@ -85,9 +85,9 @@ void main() {
         DocumentChange(DocumentKind.pack, 'p$index', prettyJson(newPack('p$index')), path: newDocumentPath(DocumentKind.pack, 'p$index')),
       ]);
     }
-    expect((await repository.loadUndo(blank.id)).length, EditorStore.undoLimit);
+    expect((await repository.loadHistory(blank.id, HistoryStack.undo)).length, EditorStore.undoLimit);
     expect(store.document(DocumentKind.pack, 'p3')?.path, 'packs/p3/pack.json');
     await store.deleteWorkspace(blank.id);
-    expect(await repository.loadUndo(blank.id), isEmpty);
+    expect(await repository.loadHistory(blank.id, HistoryStack.undo), isEmpty);
   });
 }

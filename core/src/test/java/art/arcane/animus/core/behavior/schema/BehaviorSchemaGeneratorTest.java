@@ -112,7 +112,7 @@ class BehaviorSchemaGeneratorTest {
 
     @Test void generatedDocumentsAreStrictJsonWithStablePaths() throws Exception {
         Map<String, String> documents = BehaviorSchemaGenerator.generate(withModules());
-        assertEquals(Set.of("schemas/behavior.schema.json", "schemas/npc.schema.json", "schemas/pack.schema.json", "schemas/completions.json"), documents.keySet());
+        assertEquals(Set.of("schemas/behavior.schema.json", "schemas/npc.schema.json", "schemas/route.schema.json", "schemas/pack.schema.json", "schemas/completions.json"), documents.keySet());
         for (String text : documents.values()) assertNotNull(JsonDocuments.object(text));
         assertEquals(documents, BehaviorSchemaGenerator.generate(withModules()), "same registry, same bytes");
         assertEquals("https://json-schema.org/draft/2020-12/schema", JsonDocuments.object(documents.get("schemas/behavior.schema.json")).get("$schema").getAsString());

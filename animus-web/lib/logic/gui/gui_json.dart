@@ -102,5 +102,22 @@ JsonList moveItem(JsonList list, int from, int to) {
   return out;
 }
 
+const Map<String, String> _acronyms = <String, String>{'id': 'ID', 'uuid': 'UUID', 'url': 'URL', 'gui': 'GUI', 'npc': 'NPC', 'npcs': 'NPCs'};
+
+/// A field key as a label: `waitTicks` and `wait_ticks` read "Wait ticks".
+/// Namespaced keys (`animus:combat`) and one-letter axes stay as written.
+String humanizeKey(String key) {
+  if (key.contains(':') || key.length < 2) return key;
+  final List<String> words = <String>[
+    for (final String part in key.replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (Match m) => '${m[1]} ${m[2]}').split(RegExp(r'[\s._-]+')))
+      if (part.isNotEmpty) part.toLowerCase(),
+  ];
+  if (words.isEmpty) return key;
+  final List<String> shown = <String>[for (final String word in words) _acronyms[word] ?? word];
+  final String first = shown.first;
+  shown[0] = first == words.first ? '${first[0].toUpperCase()}${first.substring(1)}' : first;
+  return shown.join(' ');
+}
+
 /// The editor's file format: two-space indent and a final newline.
 String prettyJson(Object? value) => '${const JsonEncoder.withIndent('  ').convert(value)}\n';

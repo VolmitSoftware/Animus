@@ -15,6 +15,7 @@ import 'package:web/web.dart' as web;
 import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/json_completion.dart';
 import '../../logic/inspect/json_outline.dart';
+import '../../logic/inspect/json_syntax.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
 
@@ -76,13 +77,35 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
 
   String? _outlineText;
   JsonOutline? _outline;
+  JsonSyntaxProblem? _syntax;
+
+  /// The line last scrolled into view for a syntax problem.
+  int? _revealed;
 
   JsonOutline get _scan {
     if (_outlineText != component.text || _outline == null) {
       _outline = scanJson(component.text);
+      _syntax = jsonSyntaxProblem(component.text);
       _outlineText = component.text;
     }
     return _outline!;
+  }
+
+  /// Scrolls a new syntax problem's line into view, unless the user is
+  /// typing in the editor: then the marked gutter line and the message do.
+  void _revealProblem(JsonSyntaxProblem? problem) {
+    if (problem == null) {
+      _revealed = null;
+      return;
+    }
+    if (_revealed == problem.line) return;
+    _revealed = problem.line;
+    scheduleMicrotask(() {
+      final web.HTMLTextAreaElement? area = _area;
+      if (area == null || web.document.activeElement == area) return;
+      area.scrollTop = ((problem.line - 3) * _lineHeight).clamp(0, double.infinity).toDouble();
+      _syncGutter(area);
+    });
   }
 
   web.HTMLTextAreaElement? get _area {
@@ -224,7 +247,13 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
   @override
   Widget build(BuildContext context) {
     final JsonOutline outline = _scan;
-    final List<LocatedDiagnostic> located = locateDiagnostics(outline, component.diagnostics, component.serverDiagnostics);
+    final JsonSyntaxProblem? syntax = _syntax;
+    _revealProblem(syntax);
+    final List<LocatedDiagnostic> located = <LocatedDiagnostic>[
+      if (syntax != null) LocatedDiagnostic(Diagnostic(DiagnosticSeverity.error, r'$', syntax.text, code: 'json'), syntax.line),
+      for (final LocatedDiagnostic entry in locateDiagnostics(outline, component.diagnostics, component.serverDiagnostics))
+        if (syntax == null || entry.diagnostic.code != 'json') entry,
+    ];
     final Map<int, List<LocatedDiagnostic>> byLine = <int, List<LocatedDiagnostic>>{};
     for (final LocatedDiagnostic entry in located) {
       if (entry.line != null) byLine.putIfAbsent(entry.line!, () => <LocatedDiagnostic>[]).add(entry);
@@ -321,8 +350,13 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
             ),
         ]),
       ]),
+      if (syntax != null)
+        dom.div(classes: 'animus-code-syntax', attributes: const <String, String>{'role': 'alert'}, <Widget>[
+          Button.secondary(label: 'Go to line ${syntax.line}', size: ButtonSize.small, onPressed: () => _jump(syntax.line)),
+          dom.span(<Widget>[Component.text('${syntax.text}. The document is kept as it was until this parses.')]),
+        ]),
       dom.div(classes: 'animus-code-status animus-muted', <Widget>[
-        Component.text('Line $_caretLine, column ${_caretColumn + 1}. Ctrl+Space completes keys and values.'),
+        Component.text('Line $_caretLine, column ${_caretColumn + 1}. Ctrl+Space completes keys and values, and names inside expressions.'),
       ]),
       if (located.isNotEmpty)
         dom.ul(classes: 'animus-code-problems', attributes: const <String, String>{'aria-label': 'Diagnostics by line'}, <Widget>[

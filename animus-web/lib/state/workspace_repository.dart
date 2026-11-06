@@ -43,6 +43,11 @@ class WorkspaceSnapshot {
         server: server ?? this.server,
       );
 
+  /// The same content at [generation]: an edit kept in memory after its save
+  /// failed stays at the stored generation, so the next save follows it.
+  WorkspaceSnapshot atGeneration(int generation) =>
+      WorkspaceSnapshot(id: id, name: name, generation: generation, documents: documents, resources: resources, server: server);
+
   String encode() => jsonEncode(<String, Object?>{
         'schemaVersion': workspaceSchemaVersion,
         'id': id,
@@ -108,6 +113,33 @@ class WorkspaceConflict implements Exception {
   String toString() => 'Workspace $id is at generation $storedGeneration; this save expected ${attemptedGeneration - 1}';
 }
 
+/// The browser would not write the workspace (out of space, storage
+/// switched off, a broken database).
+class WorkspaceWriteFailure implements Exception {
+  const WorkspaceWriteFailure(this.reason, {this.quota = false});
+
+  /// What the browser said, such as `QuotaExceededError`.
+  final String reason;
+
+  /// True when the browser is out of storage space for this site.
+  final bool quota;
+
+  @override
+  String toString() => 'The browser refused to write the workspace: $reason';
+}
+
+/// Undo and redo, kept beside the workspace.
+enum HistoryStack { undo, redo }
+
+/// One undo or redo step: the workspace to go back (or forward) to, and
+/// what the change it reverts did, such as `rename town:baker`.
+class HistoryStep {
+  const HistoryStep(this.label, this.snapshot);
+
+  final String label;
+  final WorkspaceSnapshot snapshot;
+}
+
 abstract class WorkspaceRepository {
   Future<List<WorkspaceSummary>> list();
 
@@ -115,50 +147,56 @@ abstract class WorkspaceRepository {
 
   /// Stores [snapshot] only if the stored copy is at `snapshot.generation - 1`
   /// (or absent when the generation is 1), checked and written atomically.
-  /// Throws [WorkspaceConflict] otherwise.
+  /// Throws [WorkspaceConflict] otherwise, and [WorkspaceWriteFailure] when
+  /// the browser refuses the write.
   Future<void> save(WorkspaceSnapshot snapshot);
 
   Future<void> delete(String id);
 
-  /// The workspace's undo steps, oldest first: the snapshots an undo returns
-  /// to, kept so undo works after a reload.
-  Future<List<WorkspaceSnapshot>> loadUndo(String id);
+  /// The workspace's steps on [stack], oldest first, kept so undo and redo
+  /// work after a reload.
+  Future<List<HistoryStep>> loadHistory(String id, HistoryStack stack);
 
-  /// Adds the newest undo step and drops the oldest beyond [limit].
-  Future<void> pushUndo(String id, WorkspaceSnapshot snapshot, int limit);
+  /// Adds the newest step to [stack] and drops the oldest beyond [limit].
+  Future<void> pushHistory(String id, HistoryStack stack, HistoryStep step, int limit);
 
-  /// Drops the newest undo step.
-  Future<void> popUndo(String id);
+  /// Drops the newest step of [stack].
+  Future<void> popHistory(String id, HistoryStack stack);
 
-  Future<void> clearUndo(String id);
+  Future<void> clearHistory(String id, HistoryStack stack);
 }
 
 /// In-memory repository for tests and for browsers without IndexedDB.
 class MemoryWorkspaceRepository implements WorkspaceRepository {
   final Map<String, String> _stored = <String, String>{};
-  final Map<String, List<String>> _undo = <String, List<String>>{};
+  final Map<String, List<(String, String)>> _history = <String, List<(String, String)>>{};
+
+  static String _key(String id, HistoryStack stack) => '${stack.name}:$id';
 
   @override
-  Future<List<WorkspaceSnapshot>> loadUndo(String id) async =>
-      <WorkspaceSnapshot>[for (final String text in _undo[id] ?? const <String>[]) WorkspaceSnapshot.decode(text)];
+  Future<List<HistoryStep>> loadHistory(String id, HistoryStack stack) async => <HistoryStep>[
+        for (final (String label, String text) in _history[_key(id, stack)] ?? const <(String, String)>[])
+          HistoryStep(label, WorkspaceSnapshot.decode(text)),
+      ];
 
   @override
-  Future<void> pushUndo(String id, WorkspaceSnapshot snapshot, int limit) async {
-    final List<String> steps = _undo.putIfAbsent(id, () => <String>[])..add(snapshot.encode());
+  Future<void> pushHistory(String id, HistoryStack stack, HistoryStep step, int limit) async {
+    final List<(String, String)> steps = _history.putIfAbsent(_key(id, stack), () => <(String, String)>[])
+      ..add((step.label, step.snapshot.encode()));
     while (steps.length > limit) {
       steps.removeAt(0);
     }
   }
 
   @override
-  Future<void> popUndo(String id) async {
-    final List<String>? steps = _undo[id];
+  Future<void> popHistory(String id, HistoryStack stack) async {
+    final List<(String, String)>? steps = _history[_key(id, stack)];
     if (steps != null && steps.isNotEmpty) steps.removeLast();
   }
 
   @override
-  Future<void> clearUndo(String id) async {
-    _undo.remove(id);
+  Future<void> clearHistory(String id, HistoryStack stack) async {
+    _history.remove(_key(id, stack));
   }
 
   @override

@@ -3,17 +3,21 @@ import 'package:animus_editor/model/document_kind.dart';
 import 'protocol.dart';
 
 /// One entry of a change set; [source] null means a delete. A null
-/// [baseRevision] means the document must not exist yet.
+/// [baseRevision] means the document must not exist yet. A move names the
+/// id it leaves in [from]; its base is the document there.
 class Change {
-  const Change(this.kind, this.id, this.baseRevision, this.baseHash, this.source);
+  const Change(this.kind, this.id, this.baseRevision, this.baseHash, this.source, {this.from});
 
   final DocumentKind kind;
   final String id;
   final int? baseRevision;
   final String? baseHash;
   final Map<String, Object?>? source;
+  final String? from;
 
   bool get delete => source == null;
+
+  bool get move => from != null;
 
   String get name => '${kind.wireName}:$id';
 }
@@ -81,7 +85,7 @@ List<Change> parseChanges(Map<String, Object?> body) {
     final String at = '\$.documents[$index]';
     final Object? element = documents[index];
     if (element is! Map<String, Object?>) throw invalid('$at: expected an object');
-    fields(element, at, <String>{'kind', 'id', 'baseRevision', 'baseHash', 'source', 'delete'});
+    fields(element, at, <String>{'kind', 'id', 'baseRevision', 'baseHash', 'source', 'delete', 'from'});
     final String kindName = stringField(element, 'kind', RegExp(r'^[a-z-]{1,32}$'), '$at.kind');
     final DocumentKind kind = DocumentKind.parse(kindName) ?? (throw invalid('$at.kind: unknown kind $kindName'));
     final String id = stringField(element, 'id', documentIdPattern, '$at.id');
@@ -108,8 +112,20 @@ List<Change> parseChanges(Map<String, Object?> body) {
       if (raw is! Map<String, Object?>) throw invalid('$at.source: expected an object');
       source = raw;
     }
+    String? from;
+    if (element.containsKey('from')) {
+      final Object? origin = element['from'];
+      if (origin is! Map<String, Object?>) throw invalid('$at.from: expected an object with the id the document moves from');
+      fields(origin, '$at.from', <String>{'id'});
+      final String old = stringField(origin, 'id', documentIdPattern, '$at.from.id');
+      if (delete) throw invalid('$at: a delete cannot move; give source with from');
+      if (revision == null) throw invalid('$at: a move needs the baseRevision and baseHash of the document at $old');
+      if (old == id) throw invalid('$at.from.id: the document already has id $id');
+      from = old;
+    }
     if (!seen.add('${kind.wireName}\n$id')) throw invalid('$at: ${kind.wireName} $id appears twice');
-    changes.add(Change(kind, id, revision, hash, source));
+    if (from != null && !seen.add('${kind.wireName}\n$from')) throw invalid('$at: ${kind.wireName} $from appears twice');
+    changes.add(Change(kind, id, revision, hash, source, from: from));
   }
   return changes;
 }

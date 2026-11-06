@@ -9,6 +9,7 @@ import 'services/server/server_connection.dart';
 import 'services/server/server_profiles.dart';
 import 'state/editor_store.dart';
 import 'state/live_session.dart';
+import 'state/session_owner.dart';
 import 'state/server_hub.dart';
 import 'state/workspace_route.dart';
 
@@ -34,19 +35,31 @@ class _AnimusAppState extends State<AnimusApp> {
     component.store.addListener(_storeChanged);
     component.hub.addListener(_storeChanged);
     _stopHash = onHashChange((String hash) => _routeTo(EditorRoute.parse(hash)));
+    toast.addListener(_dropRepeatedToasts);
     _routeTo(_route);
+  }
+
+  /// The same message twice shows once: the older copy goes.
+  void _dropRepeatedToasts() {
+    final Set<String> seen = <String>{};
+    for (final ToastData shown in toast.toasts) {
+      if (!seen.add('${shown.variant.name}:${shown.message}')) toast.dismiss(shown.id);
+    }
   }
 
   @override
   void dispose() {
     component.store.removeListener(_storeChanged);
     component.hub.removeListener(_storeChanged);
+    toast.removeListener(_dropRepeatedToasts);
     _stopHash?.call();
     _session?.dispose();
     super.dispose();
   }
 
   void _storeChanged() {
+    // Another tab deleted the open workspace: the banner says so on the home page.
+    if (component.store.takeWorkspaceGone()) navigate(const HomeRoute().format());
     _syncSession();
     if (mounted) setState(() {});
   }
@@ -62,7 +75,8 @@ class _AnimusAppState extends State<AnimusApp> {
     previous?.dispose();
     if (serverId == null) return;
     final ServerConnection connection = component.hub.connection(serverId);
-    final LiveSession session = LiveSession(store: component.store, connection: connection, serverId: serverId);
+    // The tab that owns the server's workspace runs live editing; see StoreOwner.
+    final LiveSession session = LiveSession(store: component.store, connection: connection, serverId: serverId, owner: StoreOwner(component.store));
     session.addListener(() {
       if (mounted) setState(() {});
     });

@@ -15,13 +15,13 @@ class IndexedDbWorkspaceRepository implements WorkspaceRepository {
   static const int databaseVersion = 2;
   static const String store = 'workspaces';
 
-  /// Undo steps, one record per step (version 2).
+  /// Undo and redo steps, one record per step (version 2).
   static const String undoStore = 'undo';
 
   final web.IDBDatabase _database;
 
   /// Opens the database, or returns null when IndexedDB is unavailable
-  /// (private windows in some browsers).
+  /// (private windows in some browsers, or storage switched off).
   static Future<IndexedDbWorkspaceRepository?> open() async {
     try {
       final web.IDBOpenDBRequest request = web.window.indexedDB.open(databaseName, databaseVersion);
@@ -50,6 +50,28 @@ class IndexedDbWorkspaceRepository implements WorkspaceRepository {
 
   web.IDBObjectStore _store(String mode) => _database.transaction(store.toJS, mode).objectStore(store);
 
+  /// Completes [done] when [transaction] commits. Otherwise fails it with
+  /// [refusal]'s exception when there is one (a generation conflict), or a
+  /// [WorkspaceWriteFailure] naming the browser's reason.
+  static void _settle(web.IDBTransaction transaction, Completer<void> done, String what, {Exception? Function()? refusal}) {
+    void fail() {
+      if (done.isCompleted) return;
+      final Exception? refused = refusal?.call();
+      if (refused != null) {
+        done.completeError(refused);
+        return;
+      }
+      final String name = transaction.error?.name ?? 'AbortError';
+      done.completeError(WorkspaceWriteFailure('IndexedDB $what: $name', quota: name == 'QuotaExceededError'));
+    }
+
+    transaction.oncomplete = ((web.Event _) {
+      if (!done.isCompleted) done.complete();
+    }).toJS;
+    transaction.onabort = ((web.Event _) => fail()).toJS;
+    transaction.onerror = ((web.Event _) => fail()).toJS;
+  }
+
   @override
   Future<List<WorkspaceSummary>> list() async {
     final JSAny? result = await _complete(_store('readonly').getAll());
@@ -74,12 +96,17 @@ class IndexedDbWorkspaceRepository implements WorkspaceRepository {
   }
 
   @override
-  Future<void> save(WorkspaceSnapshot snapshot) async {
+  Future<void> save(WorkspaceSnapshot snapshot) {
+    final Completer<void> done = Completer<void>();
+    final web.IDBTransaction transaction;
+    try {
+      transaction = _database.transaction(store.toJS, 'readwrite');
+    } on Object catch (failure) {
+      return Future<void>.error(WorkspaceWriteFailure('IndexedDB save: $failure'));
+    }
     // One readwrite transaction reads the stored generation and writes, so a
     // second tab cannot interleave between the check and the put.
-    final web.IDBTransaction transaction = _database.transaction(store.toJS, 'readwrite');
     final web.IDBObjectStore objects = transaction.objectStore(store);
-    final Completer<void> done = Completer<void>();
     WorkspaceConflict? conflict;
     final web.IDBRequest read = objects.get(snapshot.id.toJS);
     read.onsuccess = ((web.Event _) {
@@ -92,13 +119,7 @@ class IndexedDbWorkspaceRepository implements WorkspaceRepository {
       }
       objects.put(_record(snapshot));
     }).toJS;
-    transaction.oncomplete = ((web.Event _) => done.complete()).toJS;
-    transaction.onabort = ((web.Event _) {
-      if (!done.isCompleted) done.completeError(conflict ?? StateError('IndexedDB save aborted'));
-    }).toJS;
-    transaction.onerror = ((web.Event _) {
-      if (!done.isCompleted) done.completeError(conflict ?? StateError('IndexedDB save failed'));
-    }).toJS;
+    _settle(transaction, done, 'save', refusal: () => conflict);
     return done.future;
   }
 
@@ -107,45 +128,44 @@ class IndexedDbWorkspaceRepository implements WorkspaceRepository {
     await _complete(_store('readwrite').delete(id.toJS));
   }
 
-  /// Undo keys are `<workspace>\u0001<12-digit sequence>`, so a key range
-  /// lists one workspace's steps in order.
-  static web.IDBKeyRange _undoRange(String id) => web.IDBKeyRange.bound('$id\u0001'.toJS, '$id\u0001￿'.toJS);
+  /// History keys are `<workspace><stack mark><12-digit sequence>`, with
+  /// U+0001 marking undo steps and U+0002 redo steps, so a key range lists
+  /// one workspace's steps on one stack in order.
+  static String _mark(HistoryStack stack) => stack == HistoryStack.undo ? '\u0001' : '\u0002';
 
-  static String _undoKey(String id, int sequence) => '$id\u0001${sequence.toString().padLeft(12, '0')}';
+  static web.IDBKeyRange _historyRange(String id, HistoryStack stack) =>
+      web.IDBKeyRange.bound('$id${_mark(stack)}'.toJS, '$id${_mark(stack)}￿'.toJS);
 
-  static int _sequenceOf(String key) => int.tryParse(key.substring(key.lastIndexOf('\u0001') + 1)) ?? 0;
+  static String _historyKey(String id, HistoryStack stack, int sequence) => '$id${_mark(stack)}${sequence.toString().padLeft(12, '0')}';
 
-  /// Runs [work] with the workspace's undo keys inside one readwrite
-  /// transaction. Everything happens in request callbacks, so the
-  /// transaction stays active between the read and the writes.
-  Future<void> _undoWrite(String id, void Function(web.IDBObjectStore objects, List<String> keys) work) {
+  static int _sequenceOf(String key) => int.tryParse(key.substring(key.length - 12)) ?? 0;
+
+  /// Runs [work] with the stack's keys inside one readwrite transaction.
+  /// Everything happens in request callbacks, so the transaction stays
+  /// active between the read and the writes.
+  Future<void> _historyWrite(String id, HistoryStack stack, void Function(web.IDBObjectStore objects, List<String> keys) work) {
     final web.IDBTransaction transaction = _database.transaction(undoStore.toJS, 'readwrite');
     final web.IDBObjectStore objects = transaction.objectStore(undoStore);
     final Completer<void> done = Completer<void>();
-    final web.IDBRequest read = objects.getAllKeys(_undoRange(id));
+    final web.IDBRequest read = objects.getAllKeys(_historyRange(id, stack));
     read.onsuccess = ((web.Event _) {
       final List<String> keys = <String>[for (final JSAny? key in (read.result! as JSArray<JSAny?>).toDart) (key! as JSString).toDart];
       work(objects, keys);
     }).toJS;
-    transaction.oncomplete = ((web.Event _) => done.complete()).toJS;
-    transaction.onabort = ((web.Event _) {
-      if (!done.isCompleted) done.completeError(StateError('IndexedDB undo write aborted'));
-    }).toJS;
-    transaction.onerror = ((web.Event _) {
-      if (!done.isCompleted) done.completeError(StateError('IndexedDB undo write failed'));
-    }).toJS;
+    _settle(transaction, done, 'history write');
     return done.future;
   }
 
   @override
-  Future<List<WorkspaceSnapshot>> loadUndo(String id) async {
-    final JSAny? result = await _complete(_database.transaction(undoStore.toJS, 'readonly').objectStore(undoStore).getAll(_undoRange(id)));
-    final List<WorkspaceSnapshot> steps = <WorkspaceSnapshot>[];
+  Future<List<HistoryStep>> loadHistory(String id, HistoryStack stack) async {
+    final JSAny? result =
+        await _complete(_database.transaction(undoStore.toJS, 'readonly').objectStore(undoStore).getAll(_historyRange(id, stack)));
+    final List<HistoryStep> steps = <HistoryStep>[];
     for (final JSAny? record in (result! as JSArray<JSAny?>).toDart) {
       final String? text = _text(record);
       if (text == null) continue;
       try {
-        steps.add(WorkspaceSnapshot.decode(text));
+        steps.add(HistoryStep(_label(record), WorkspaceSnapshot.decode(text)));
       } on FormatException {
         continue;
       }
@@ -154,11 +174,11 @@ class IndexedDbWorkspaceRepository implements WorkspaceRepository {
   }
 
   @override
-  Future<void> pushUndo(String id, WorkspaceSnapshot snapshot, int limit) {
-    final String text = snapshot.encode();
-    return _undoWrite(id, (web.IDBObjectStore objects, List<String> keys) {
+  Future<void> pushHistory(String id, HistoryStack stack, HistoryStep step, int limit) {
+    final String text = step.snapshot.encode();
+    return _historyWrite(id, stack, (web.IDBObjectStore objects, List<String> keys) {
       final int next = keys.isEmpty ? 1 : _sequenceOf(keys.last) + 1;
-      objects.put(<String, Object?>{'key': _undoKey(id, next), 'text': text}.jsify()! as JSObject);
+      objects.put(<String, Object?>{'key': _historyKey(id, stack, next), 'label': step.label, 'text': text}.jsify()! as JSObject);
       for (int index = 0; index < keys.length + 1 - limit; index++) {
         objects.delete(keys[index].toJS);
       }
@@ -166,17 +186,23 @@ class IndexedDbWorkspaceRepository implements WorkspaceRepository {
   }
 
   @override
-  Future<void> popUndo(String id) => _undoWrite(id, (web.IDBObjectStore objects, List<String> keys) {
+  Future<void> popHistory(String id, HistoryStack stack) => _historyWrite(id, stack, (web.IDBObjectStore objects, List<String> keys) {
         if (keys.isNotEmpty) objects.delete(keys.last.toJS);
       });
 
   @override
-  Future<void> clearUndo(String id) => _undoWrite(id, (web.IDBObjectStore objects, List<String> keys) {
-        objects.delete(_undoRange(id));
+  Future<void> clearHistory(String id, HistoryStack stack) => _historyWrite(id, stack, (web.IDBObjectStore objects, List<String> keys) {
+        objects.delete(_historyRange(id, stack));
       });
 
   static JSObject _record(WorkspaceSnapshot snapshot) =>
       <String, Object?>{'id': snapshot.id, 'generation': snapshot.generation, 'text': snapshot.encode()}.jsify()! as JSObject;
+
+  /// Steps saved before redo existed carry no label.
+  static String _label(JSAny? record) {
+    final Object? value = record == null || record.isUndefinedOrNull ? null : (record as JSObject).dartify();
+    return value is Map && value['label'] is String ? value['label'] as String : 'an earlier change';
+  }
 
   static String? _text(JSAny? record) {
     if (record == null || record.isUndefinedOrNull) return null;

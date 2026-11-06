@@ -10,6 +10,8 @@ import '../../model/document_kind.dart';
 import 'gui_catalog.dart';
 import 'gui_expression.dart';
 import 'gui_json.dart';
+import 'gui_presets.dart';
+import 'shop_entries.dart';
 
 /// Codes the editors and tests look for.
 const String refusedCode = 'refused';
@@ -29,6 +31,8 @@ List<Diagnostic> validateGui(DocumentKind kind, Object? json, {String? id}) {
       checker.hologram(json);
     case DocumentKind.shop:
       checker.shop(json);
+    case DocumentKind.textAnimation:
+      checker.textAnimation(json);
     default:
       break;
   }
@@ -211,7 +215,7 @@ final class _Checker {
     if (type != null && refused.contains(type)) {
       error(
         childPath(path, 'type'),
-        chest ? "icon '$type' has no meaning in a chest window and is not available in Animus" : "icon '$type' is not available in Animus",
+        refusedIconMessage(type, chest: chest),
       );
       return;
     }
@@ -233,7 +237,9 @@ final class _Checker {
     if (type != null && refused.contains(type)) {
       error(
         childPath(path, 'type'),
-        chest ? "component '$type' is a holographic menu component and is not available in a chest window" : "component '$type' is not available in Animus",
+        chest
+            ? "component '$type' is a holographic menu component and has no meaning in a chest window"
+            : (type == 'field' ? "component 'field' opens a sign, anvil or chat prompt, which is not available in Animus" : "component '$type' is not available in Animus"),
       );
       return;
     }
@@ -262,7 +268,7 @@ final class _Checker {
     if (version is num && version != inventorySchemaVersion) {
       error(r'$.schemaVersion', 'schemaVersion $version is not supported; Animus reads chest GUIs of version $inventorySchemaVersion');
     }
-    if (json.containsKey('preset')) error(r'$.preset', 'Gloss presets are not available in Animus; copy the preset\'s fields in');
+    if (json.containsKey('preset') && json['preset'] != null) error(r'$.preset', presetRefusal);
     namedActions(json, names);
     template(json['title'], r'$.title', names);
     condition(json['show'], r'$.show', names);
@@ -359,9 +365,7 @@ final class _Checker {
     if (version is num && version != hologramSchemaVersion) {
       error(r'$.schemaVersion', 'schemaVersion $version is not supported; Animus reads holograms of version $hologramSchemaVersion');
     }
-    if (json.containsKey('preset') && json['preset'] != null) {
-      error(r'$.preset', 'Gloss presets are not available in Animus; copy the preset\'s fields in');
-    }
+    if (json.containsKey('preset') && json['preset'] != null) error(r'$.preset', presetRefusal);
     condition(json['show'], r'$.show', names);
     presentationExtras(json, r'$');
     _lines(json['lines'], r'$.lines', names);
@@ -395,6 +399,29 @@ final class _Checker {
     }
   }
 
+  // ---- text animations ----
+
+  /// What core's TextAnimation refuses beyond the schema.
+  void textAnimation(JsonMap json) {
+    final Object? version = json['schemaVersion'];
+    if (version is num && version != 1) error(r'$.schemaVersion', 'text animation schemaVersion $version is not supported; Animus reads version 1');
+    if (json.containsKey('preset') && json['preset'] != null) error(r'$.preset', presetRefusal);
+    const List<String> modes = <String>['ascend', 'ascend_descend', 'descend', 'random'];
+    if (!modes.contains(json['mode'])) error(r'$.mode', 'expected one of [${modes.join(', ')}]', code: layoutCode);
+    final Object? interval = json['frameIntervalMs'];
+    if (interval is! num || interval != interval.roundToDouble() || interval < 1 || interval > 60000) {
+      error(r'$.frameIntervalMs', 'expected integer 1..60000', code: layoutCode);
+    }
+    final JsonList frames = asList(json['frames']);
+    if (frames.isEmpty) error(r'$.frames', 'expected a non-empty array of strings', code: layoutCode);
+    if (frames.length > 1024) error(r'$.frames', 'at most 1024 frames', code: layoutCode);
+    condition(json['show'], r'$.show', ExpressionNames.standard);
+    for (int index = 0; index < frames.length; index++) {
+      final Object? frame = frames[index];
+      if (frame is String && frame.contains('|animation.')) error(indexPath(r'$.frames', index), 'a frame cannot show another animation', code: layoutCode);
+    }
+  }
+
   // ---- shops ----
 
   void shop(JsonMap json) {
@@ -405,6 +432,8 @@ final class _Checker {
       error(r'$.defaultMode', "defaultMode '$defaultMode' is not one of the enabled modes", code: layoutCode);
     }
     if (modes.toSet().length != modes.length) error(r'$.modes', 'each mode may appear once', code: layoutCode);
+    final bool container = isContainerShop(json);
+    _owner(json, container);
     final Map<String, String> entryIds = <String, String>{};
     final JsonList pages = asList(json['pages']);
     for (int pageIndex = 0; pageIndex < pages.length; pageIndex++) {
@@ -427,6 +456,7 @@ final class _Checker {
             if (control != null) warning(path, 'slot $slot sits under the $control control and is hidden while that control shows', layoutCode);
           }
           final String type = asString(entry['type']) ?? 'static';
+          _entryFields(entry, path, type, container);
           final List<String> grids = shopGridsFor(type);
           if (!grids.contains(mode)) {
             error(childPath(path, 'type'), "a $type entry belongs in the ${grids.join(' or ')} grid, not $mode", code: layoutCode);
@@ -461,6 +491,66 @@ final class _Checker {
       }
     }
   }
+
+  static final RegExp _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+
+  /// `owner` and `containers`, as ShopDocument checks them.
+  void _owner(JsonMap json, bool container) {
+    final Object? owner = json['owner'];
+    if (owner != null) {
+      if (owner is! Map<String, Object?>) {
+        error(r'$.owner', 'expected {"uuid": "...", "name": "..."}', code: layoutCode);
+      } else if (!_uuid.hasMatch(asString(owner['uuid']) ?? '')) {
+        error(r'$.owner.uuid', 'expected canonical player UUID', code: layoutCode);
+      }
+    }
+    if (!json.containsKey('containers')) return;
+    final Object? raw = json['containers'];
+    if (raw is! List<Object?> || raw.isEmpty || raw.length > 8) {
+      error(r'$.containers', 'expected an array of 1 to 8 containers', code: layoutCode);
+      return;
+    }
+    if (owner == null) error(r'$.owner', 'a shop with containers needs an owner', code: layoutCode);
+    final Set<String> seen = <String>{};
+    for (int index = 0; index < raw.length; index++) {
+      final String path = indexPath(r'$.containers', index);
+      final JsonMap box = asMap(raw[index]);
+      for (final String axis in const <String>['x', 'y', 'z']) {
+        if (asInt(box[axis]) == null) error(childPath(path, axis), 'expected integer', code: layoutCode);
+      }
+      if (!seen.add('${box['world']}|${box['x']}|${box['y']}|${box['z']}')) error(path, 'this container is listed twice', code: layoutCode);
+    }
+  }
+
+  /// The per-type field rules and, in a container shop, its three limits.
+  void _entryFields(JsonMap entry, String path, String type, bool container) {
+    if (container) {
+      if (type != 'trade' && type != 'static') error(childPath(path, 'type'), 'a container shop has only trade and static entries', code: layoutCode);
+      if ((asDouble(entry['price']) ?? 0) > 0) error(childPath(path, 'price'), 'a container shop trades items for items; remove the price', code: layoutCode);
+      if (entry.containsKey('stock')) error(childPath(path, 'stock'), "a container shop's stock is its containers", code: layoutCode);
+    } else if (entry.containsKey('stock') && !shopEntryKeeps(type, 'stock')) {
+      error(childPath(path, 'stock'), 'stock applies to buy, command and trade entries', code: layoutCode);
+    }
+    if ((type == 'buy' || type == 'sell' || type == 'command') && entry['price'] == null) {
+      error(childPath(path, 'price'), 'expected a price; use 0 for free', code: layoutCode);
+    }
+    if (entry.containsKey('sellPartial') && type != 'sell') error(childPath(path, 'sellPartial'), 'applies only to sell entries', code: layoutCode);
+    for (final String key in const <String>['needs', 'gives']) {
+      if (entry.containsKey(key) && type != 'trade') error(childPath(path, key), 'needs and gives apply only to trade entries', code: layoutCode);
+      if (type == 'trade' && asList(entry[key]).isEmpty) error(childPath(path, key), 'expected a non-empty array of items', code: layoutCode);
+    }
+    if (type == 'command' && asList(entry['commands']).isEmpty) error(childPath(path, 'commands'), 'command entries need at least one command', code: layoutCode);
+    if (type == 'static' && asList(entry['commands']).isNotEmpty) error(childPath(path, 'commands'), 'static entries cannot run commands', code: layoutCode);
+    if (type == 'static' && entry.containsKey('limit')) error(childPath(path, 'limit'), 'static entries have no limits', code: layoutCode);
+  }
+}
+
+/// Core's wording for an icon type the surface refuses.
+String refusedIconMessage(String type, {required bool chest}) {
+  if (type == 'customItem') return "icon 'customItem' is not available in Animus";
+  if (chest) return "icon '$type' is a holographic menu icon and cannot be drawn in a chest window";
+  if (type == 'textImage' || type == 'animatedTextImage') return "icon '$type' needs Gloss's image glyphs and is not available in Animus";
+  return "icon '$type' is not available in Animus";
 }
 
 /// Columns and rows of a chest `resolution` (default 9x3).

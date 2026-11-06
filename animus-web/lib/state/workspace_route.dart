@@ -5,7 +5,7 @@
 /// #/                                         home
 /// #/workspace/<id>                           a workspace
 /// #/workspace/<id>/npcs                      the NPC browser
-/// #/workspace/<id>/new[/<kind>]              create a document
+/// #/workspace/<id>/new[/<kind>][?folder=]    create a document (an NPC in a folder)
 /// #/workspace/<id>/sync                      push to or pull from a server
 /// #/workspace/<id>/<kind>/<docId>?view=code  one document (docId URI-encoded)
 /// #/citizens                                 convert a Citizens save locally
@@ -47,7 +47,14 @@ sealed class EditorRoute {
         if (parts.length == 3 && parts[2] == 'npcs') return NpcListRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'new') return NewDocumentRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'sync') return SyncRoute(decode(parts[1]));
-        if (parts.length == 4 && parts[2] == 'new') return NewDocumentRoute(decode(parts[1]), DocumentKind.parse(parts[3]));
+        if (parts.length == 4 && parts[2] == 'new') {
+          String? folder;
+          for (final String pair in query.split('&')) {
+            if (pair.startsWith('folder=')) folder = decode(pair.substring(7));
+          }
+          final DocumentKind? kind = DocumentKind.parse(parts[3]);
+          return kind != null && folder != null ? NewDocumentRoute.inFolder(decode(parts[1]), kind, folder) : NewDocumentRoute(decode(parts[1]), kind);
+        }
         if (parts.length == 4) {
           final DocumentKind? kind = DocumentKind.parse(parts[2]);
           if (kind == null) return WorkspaceRoute(decode(parts[1]));
@@ -134,19 +141,25 @@ class NpcListRoute extends EditorRoute {
 
 /// The New page of a workspace, optionally on one kind's guided step.
 class NewDocumentRoute extends EditorRoute {
-  const NewDocumentRoute(this.workspaceId, [this.kind]);
+  const NewDocumentRoute(this.workspaceId, [this.kind]) : folder = null;
+
+  const NewDocumentRoute.inFolder(this.workspaceId, DocumentKind this.kind, String this.folder);
 
   final String workspaceId;
   final DocumentKind? kind;
 
-  @override
-  String format() => '#/workspace/${Uri.encodeComponent(workspaceId)}/new${kind == null ? '' : '/${kind!.wireName}'}';
+  /// For a new NPC, the folder under npcs/ it starts in.
+  final String? folder;
 
   @override
-  bool operator ==(Object other) => other is NewDocumentRoute && other.workspaceId == workspaceId && other.kind == kind;
+  String format() =>
+      '#/workspace/${Uri.encodeComponent(workspaceId)}/new${kind == null ? '' : '/${kind!.wireName}'}${kind != null && folder != null ? '?folder=${Uri.encodeComponent(folder!)}' : ''}';
 
   @override
-  int get hashCode => Object.hash('new', workspaceId, kind);
+  bool operator ==(Object other) => other is NewDocumentRoute && other.workspaceId == workspaceId && other.kind == kind && other.folder == folder;
+
+  @override
+  int get hashCode => Object.hash('new', workspaceId, kind, folder);
 }
 
 /// Pushing a local workspace to a paired server, or pulling from one.

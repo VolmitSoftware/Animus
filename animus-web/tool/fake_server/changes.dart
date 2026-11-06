@@ -84,12 +84,25 @@ class FakeChanges {
     for (final Change change in set.documents) {
       final Located location = documents.locate(change.kind, change.id);
       final StoredDocument? current = documents.at(location.path);
-      final bool matches = change.baseRevision == null
-          ? current == null
-          : current != null && current.revision == change.baseRevision && current.hash == change.baseHash;
-      if (!matches) {
-        conflicts.add(_conflict(change.kind, change.id, change.baseRevision, change.baseHash, current));
+      // A move's base is the document at its old id; the new id must be free.
+      final String? from = change.from;
+      final Located? origin = from == null ? null : documents.locate(change.kind, from);
+      final StoredDocument? base = origin == null ? current : documents.at(origin.path);
+      if (origin != null && current != null) {
+        conflicts.add(_conflict(change.kind, change.id, null, null, current));
         continue;
+      }
+      final bool matches = change.baseRevision == null
+          ? base == null
+          : base != null && base.revision == change.baseRevision && base.hash == change.baseHash;
+      if (!matches) {
+        conflicts.add(_conflict(change.kind, origin?.id ?? change.id, change.baseRevision, change.baseHash, base));
+        continue;
+      }
+      if (origin != null) {
+        writes.add(_Write(origin, null));
+        inverses.add(_Inverse(origin, base!.content, base.revision, null));
+        deleted.add(<String, Object?>{'kind': change.kind.wireName, 'id': origin.id});
       }
       if (change.delete) {
         writes.add(_Write(location, null));
@@ -99,17 +112,17 @@ class FakeChanges {
         continue;
       }
       final Map<String, Object?> source = copyJson(change.source)! as Map<String, Object?>;
-      if (revisioned.contains(change.kind)) source['revision'] = (current?.revision ?? 0) + 1;
+      if (revisioned.contains(change.kind)) source['revision'] = (base?.revision ?? 0) + 1;
       final String content = prettyJson(source);
       // Kinds without a server revision report what their stored text says (0 for Gloss menus).
       final int revision = revisionOf(content);
       final List<Map<String, Object?>> diagnostics = validateDocument(change.kind, change.id, location.path, source);
-      if (change.kind == DocumentKind.npc) _identity(location, current, source, diagnostics);
+      if (change.kind == DocumentKind.npc) _identity(location, base, source, diagnostics, leaving: origin);
       if (hasErrors(diagnostics)) invalidDocuments.add(documentDiagnostics(change.kind, change.id, diagnostics));
       final String hash = 'sha256:${sha256Text(content)}';
       writes.add(_Write(location, content));
       inverses.add(_Inverse(location, current?.content, revision, hash));
-      applied.add(_version(change.kind, change.id, revision, hash));
+      applied.add(<String, Object?>{..._version(change.kind, change.id, revision, hash), if (origin != null) 'from': <String, Object?>{'id': origin.id}});
       catalog.add(_entry(location, revision, hash));
     }
     if (conflicts.isNotEmpty) {
@@ -138,11 +151,17 @@ class FakeChanges {
     final Outcome? replayed = _replay(key, requestHash);
     if (replayed != null) return replayed;
     final List<Map<String, Object?>> conflicts = <Map<String, Object?>>[];
-    final List<Map<String, Object?>> result = <Map<String, Object?>>[];
+    final Map<String, Map<String, Object?>> result = <String, Map<String, Object?>>{};
     final List<Map<String, Object?>> catalog = <Map<String, Object?>>[];
     final List<Map<String, Object?>> deleted = <Map<String, Object?>>[];
     final List<_Write> writes = <_Write>[];
     final List<_Inverse> inverses = <_Inverse>[];
+    // A move's old id is answered with from naming the id it leaves again.
+    final Map<String, String> movedBack = <String, String>{
+      for (final Object? raw in record.result['documents']! as List<Object?>)
+        if (raw is Map<String, Object?> && raw['from'] is Map<String, Object?>)
+          '${raw['kind']}\n${(raw['from']! as Map<String, Object?>)['id']}': '${raw['id']}',
+    };
     for (final _Inverse inverse in record.inverses) {
       final Located location = inverse.location;
       final StoredDocument? current = documents.at(location.path);
@@ -155,7 +174,7 @@ class FakeChanges {
       final int revision = before == null ? inverse.afterRevision : revisionOf(before);
       final String? hash = before == null ? null : 'sha256:${sha256Text(before)}';
       inverses.add(_Inverse(location, current?.content, revision, hash));
-      result.add(_version(location.kind, location.id, revision, hash));
+      result['${location.kind.wireName}\n${location.id}'] = _version(location.kind, location.id, revision, hash);
       if (hash == null) {
         deleted.add(<String, Object?>{'kind': location.kind.wireName, 'id': location.id});
       } else {
@@ -168,7 +187,15 @@ class FakeChanges {
       return Outcome(409, body);
     }
     if (writes.isEmpty) throw ApiError('not-found', 'Change $changeId wrote no editor documents to undo.');
-    return _commit(key, requestHash, writes, inverses, result, catalog, deleted);
+    movedBack.forEach((String back, String leaving) {
+      final String kind = back.substring(0, back.indexOf('\n'));
+      final Map<String, Object?>? restored = result[back];
+      final Map<String, Object?>? gone = result['$kind\n$leaving'];
+      if (restored == null || gone == null || gone['hash'] != null) return;
+      result.remove('$kind\n$leaving');
+      restored['from'] = <String, Object?>{'id': leaving};
+    });
+    return _commit(key, requestHash, writes, inverses, <Map<String, Object?>>[...result.values], catalog, deleted);
   }
 
   /// `GET /v1/changes/{key}`.
@@ -219,20 +246,21 @@ class FakeChanges {
   void _remember(_Record record) => _records[record.key] = record;
 
   /// An NPC keeps its uuid, and a new NPC's short id and uuid are unique.
-  void _identity(Located location, StoredDocument? current, Map<String, Object?> source, List<Map<String, Object?>> diagnostics) {
+  /// [current] is a move's document at its old id, which [leaving] names.
+  void _identity(Located location, StoredDocument? current, Map<String, Object?> source, List<Map<String, Object?>> diagnostics, {Located? leaving}) {
     final Object? uuid = source['uuid'];
     if (current != null) {
       final Object? before = sourceOf(current.content)['uuid'];
       if (uuid is String && before is String && before != uuid) {
         diagnostics.add(diagnostic('error', r'$.uuid', 'an NPC keeps its uuid; clone it to make a new one', 'identity'));
       }
-      return;
+      if (leaving == null) return;
     }
     if (hasErrors(diagnostics)) return;
-    final String shortId = location.id.substring(location.id.indexOf('/') + 1);
+    final String shortId = location.id.substring(location.id.lastIndexOf('/') + 1);
     for (final StoredDocument other in documents.list(DocumentKind.npc)) {
-      if (other.path == location.path) continue;
-      if (other.id.substring(other.id.indexOf('/') + 1) == shortId) {
+      if (other.path == location.path || other.path == leaving?.path) continue;
+      if (other.id.substring(other.id.lastIndexOf('/') + 1) == shortId) {
         diagnostics.add(diagnostic('error', r'$.id', 'NPC id $shortId is already used by ${other.id}', 'identity'));
         return;
       }

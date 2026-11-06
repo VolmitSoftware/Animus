@@ -1,22 +1,23 @@
 /// The NPC browser's model: one [NpcEntry] per NPC definition, the search
-/// language, folders (the `npcs/<group>/` directories) and tags.
+/// language, the folder tree (the `npcs/` directories, nested up to 8 deep)
+/// and tags.
 ///
 /// Search text is split on spaces. A plain word matches the name, id, type,
 /// folder, world or a tag. `tag:`, `folder:` (or `group:`), `type:`,
 /// `world:`, `has:` (route, combat, shop, rig, skin, behaviors) and `is:`
 /// (spawned, despawned, invalid) narrow by one property; a leading `-`
-/// negates any term.
+/// negates any term. `folder:town` matches `npcs/town/` and every folder
+/// below it; `folder:=town` matches `npcs/town/` alone and `folder:=` the
+/// NPCs directly in `npcs/`.
 library;
 
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_json.dart';
+import 'npc_paths.dart';
 
 /// Tags as the NPC schema and `NpcDefinition` accept them.
 final RegExp npcTagPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,31}$');
-
-/// Folder (group) names as the NPC schema accepts them.
-final RegExp npcFolderPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}(?:/[a-z0-9][a-z0-9_-]{0,63}){0,7}$');
 
 /// The most tags one definition may carry.
 const int npcTagLimit = 32;
@@ -59,18 +60,13 @@ class NpcEntry {
   final AnimusDocument document;
   final JsonMap json;
 
-  /// The workspace id, `<folder>/<id>`.
+  /// The workspace id, `<folders>/<id>` or `<id>` for `npcs/` itself.
   String get key => document.id;
 
-  String get folder {
-    final int slash = document.id.lastIndexOf('/');
-    return slash < 0 ? '' : document.id.substring(0, slash);
-  }
+  /// The folder below `npcs/`, empty for `npcs/` itself.
+  String get folder => npcFolderOf(document.id);
 
-  String get localId {
-    final int slash = document.id.lastIndexOf('/');
-    return slash < 0 ? document.id : document.id.substring(slash + 1);
-  }
+  String get localId => npcLocalIdOf(document.id);
 
   String get name => asString(json['name'])?.trim().isNotEmpty == true ? asString(json['name'])! : localId;
   String get type => asString(json['type']) ?? '';
@@ -115,14 +111,15 @@ class NpcEntry {
   ];
 }
 
-/// Every NPC definition of a workspace, sorted by folder then name.
+/// Every NPC definition of a workspace, sorted by folder (as the tree
+/// lists them) then name.
 List<NpcEntry> npcEntries(Iterable<AnimusDocument> documents) {
   final List<NpcEntry> entries = <NpcEntry>[
     for (final AnimusDocument document in documents)
       if (document.kind == DocumentKind.npc) NpcEntry.of(document),
   ];
   entries.sort((NpcEntry a, NpcEntry b) {
-    final int folder = a.folder.compareTo(b.folder);
+    final int folder = compareNpcFolders(a.folder, b.folder);
     if (folder != 0) return folder;
     final int name = a.name.toLowerCase().compareTo(b.name.toLowerCase());
     return name != 0 ? name : a.key.compareTo(b.key);
@@ -153,7 +150,7 @@ class NpcTerm {
       case 'tag':
         return entry.tags.contains(value);
       case 'folder':
-        return entry.folder == value;
+        return value.startsWith('=') ? entry.folder == value.substring(1) : npcFolderWithin(entry.folder, value);
       case 'type':
         return entry.type == value || entry.type == 'minecraft:$value';
       case 'world':
@@ -205,7 +202,8 @@ class NpcQuery {
       final int colon = word.indexOf(':');
       final String? field = colon > 0 ? _fields[word.substring(0, colon)] : null;
       if (field != null) {
-        final String value = word.substring(colon + 1);
+        String value = word.substring(colon + 1);
+        if (field == 'folder') value = value.startsWith('=') ? '=${normalizeNpcFolder(value.substring(1))}' : normalizeNpcFolder(value);
         if (value.isNotEmpty) terms.add(NpcTerm(field, value, negated: negated));
       } else {
         terms.add(NpcTerm(null, word, negated: negated));
@@ -237,22 +235,99 @@ String toggleTerm(String text, String field, String value) {
 /// Whether the search text holds `field:value`.
 bool hasTerm(String text, String field, String value) => text.trim().toLowerCase().split(RegExp(r'\s+')).contains('$field:$value');
 
-/// A folder with how many NPCs it holds.
-class NpcFolder {
-  const NpcFolder(this.name, this.count);
+/// One folder of the tree: `npcs/` itself has the empty [path].
+class NpcFolderNode {
+  NpcFolderNode(this.path);
 
-  final String name;
-  final int count;
+  final String path;
+
+  /// NPCs directly in this folder.
+  int own = 0;
+
+  /// NPCs in this folder and every folder below it.
+  int total = 0;
+
+  /// Sorted by name.
+  final List<NpcFolderNode> children = <NpcFolderNode>[];
+
+  String get name => npcFolderName(path);
+
+  /// This folder and every folder below it, depth first.
+  Iterable<NpcFolderNode> get all sync* {
+    yield this;
+    for (final NpcFolderNode child in children) {
+      yield* child.all;
+    }
+  }
 }
 
-/// The `npcs/` folders, sorted by name.
-List<NpcFolder> npcFolders(Iterable<NpcEntry> entries) {
-  final Map<String, int> counts = <String, int>{};
-  for (final NpcEntry entry in entries) {
-    counts[entry.folder] = (counts[entry.folder] ?? 0) + 1;
+/// The folder tree of [entries] under `npcs/`, with the folders of [extra]
+/// (made in the browser, still empty) and every folder above each one.
+NpcFolderNode npcFolderTree(Iterable<NpcEntry> entries, {Iterable<String> extra = const <String>[]}) {
+  final NpcFolderNode root = NpcFolderNode('');
+  final Map<String, NpcFolderNode> nodes = <String, NpcFolderNode>{'': root};
+  NpcFolderNode node(String path) {
+    final NpcFolderNode? known = nodes[path];
+    if (known != null) return known;
+    final NpcFolderNode created = NpcFolderNode(path);
+    nodes[path] = created;
+    node(npcParentFolder(path)).children.add(created);
+    return created;
   }
-  final List<String> names = counts.keys.toList()..sort();
-  return <NpcFolder>[for (final String name in names) NpcFolder(name, counts[name]!)];
+
+  for (final String path in extra) {
+    if (npcFolderProblem(path) == null) node(path);
+  }
+  for (final NpcEntry entry in entries) {
+    NpcFolderNode at = node(entry.folder);
+    at.own++;
+    at.total++;
+    String path = entry.folder;
+    while (path.isNotEmpty) {
+      path = npcParentFolder(path);
+      at = nodes[path]!;
+      at.total++;
+    }
+  }
+  for (final NpcFolderNode each in nodes.values) {
+    each.children.sort((NpcFolderNode a, NpcFolderNode b) => a.name.compareTo(b.name));
+  }
+  return root;
+}
+
+/// One visible row of the folder tree.
+class NpcFolderRow {
+  const NpcFolderRow(this.node, this.level, this.parent, {required this.expanded});
+
+  final NpcFolderNode node;
+
+  /// 1 for `npcs/`.
+  final int level;
+
+  /// The row index of the parent folder, null for `npcs/`.
+  final int? parent;
+
+  /// False when the folder has children and they are hidden.
+  final bool expanded;
+
+  bool get expandable => node.children.isNotEmpty;
+}
+
+/// The rows a tree shows with the folders of [collapsed] closed.
+List<NpcFolderRow> npcFolderRows(NpcFolderNode root, Set<String> collapsed) {
+  final List<NpcFolderRow> rows = <NpcFolderRow>[];
+  void visit(NpcFolderNode node, int level, int? parent) {
+    final bool open = !collapsed.contains(node.path);
+    final int index = rows.length;
+    rows.add(NpcFolderRow(node, level, parent, expanded: open));
+    if (!open) return;
+    for (final NpcFolderNode child in node.children) {
+      visit(child, level + 1, index);
+    }
+  }
+
+  visit(root, 1, null);
+  return rows;
 }
 
 /// Every tag in use with how many NPCs carry it, most used first.
@@ -273,3 +348,16 @@ List<String> npcValues(Iterable<NpcEntry> entries, String Function(NpcEntry entr
   final Set<String> values = <String>{for (final NpcEntry entry in entries) read(entry)}..remove('');
   return values.toList()..sort();
 }
+
+/// Behavior ids an NPC can run: every workspace behavior except server-wide
+/// ones (`"server": true`), which have no NPC and use server events only.
+List<String> npcBehaviorIds(Iterable<AnimusDocument> documents) => <String>[
+      for (final AnimusDocument document in documents)
+        if (document.kind == DocumentKind.behavior && asMap(document.json)['server'] != true) document.id,
+    ];
+
+/// The NPCs whose `skin` is [hash].
+List<NpcEntry> npcsWearing(Iterable<NpcEntry> entries, String hash) => <NpcEntry>[
+      for (final NpcEntry entry in entries)
+        if (entry.json['skin'] == hash) entry,
+    ];

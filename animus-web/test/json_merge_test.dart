@@ -98,6 +98,31 @@ void main() {
       expect(drafts, isEmpty);
     });
 
+    test('should pair a deleted base and a new NPC with its uuid as one move', () {
+      const ServerBase crierBase = ServerBase(revision: 4, hash: 'sha256:cc', path: 'npcs/town/crier.json', source: <String, Object?>{'uuid': 'u-1', 'name': 'Crier'});
+      final ServerBinding moving = binding.copyWith(bases: <String, ServerBase>{...binding.bases, 'npc:town/crier': crierBase});
+      final List<AnimusDocument> documents = <AnimusDocument>[
+        doc(DocumentKind.npc, 'town/guard', <String, Object?>{'name': 'Guard'}),
+        doc(DocumentKind.npc, 'town/gone', <String, Object?>{'name': 'Gone'}),
+        doc(DocumentKind.npc, 'town/market/crier', <String, Object?>{'uuid': 'u-1', 'name': 'Crier', 'group': 'town/market'}),
+        doc(DocumentKind.npc, 'town/copy', <String, Object?>{'uuid': 'u-2', 'name': 'Copy'}),
+      ];
+      expect(draftMoves(documents, moving), <String, String>{'npc:town/market/crier': 'npc:town/crier'});
+      final List<DraftChange> drafts = pendingDrafts(documents, moving);
+      expect(drafts.map((DraftChange draft) => draft.state), <DraftState>[DraftState.moved, DraftState.created]);
+      expect(drafts.first.from, 'town/crier');
+      expect(drafts.first.change, <String, Object?>{
+        'kind': 'npc',
+        'id': 'town/market/crier',
+        'from': <String, Object?>{'id': 'town/crier'},
+        'baseRevision': 4,
+        'baseHash': 'sha256:cc',
+        'source': <String, Object?>{'uuid': 'u-1', 'name': 'Crier', 'group': 'town/market'},
+      });
+      final List<DraftChange> undone = pendingDrafts(<AnimusDocument>[...documents.take(2), doc(DocumentKind.npc, 'town/crier', <String, Object?>{'uuid': 'u-1', 'name': 'Crier'})], moving);
+      expect(undone, isEmpty, reason: 'undoing the move in the browser leaves nothing to send');
+    });
+
     test('should block a draft that is not a JSON object', () {
       final List<DraftChange> drafts = pendingDrafts(<AnimusDocument>[doc(DocumentKind.npc, 'town/guard', null), doc(DocumentKind.npc, 'town/gone', <String, Object?>{'name': 'Gone'})], binding);
       expect(drafts.single.problem, isNotNull);
@@ -143,6 +168,28 @@ void main() {
       final ServerBinding undone = recordApplied(next, const ChangeApplied('key-1111111111111111', 'chg_00000002', <AppliedDocument>[]), const <String, ({String path, Object? source})>{}, undoOf: 'chg_00000001');
       expect(undone.history.first.undone, isTrue);
       expect(undone.history.last.undoOf, 'chg_00000001');
+    });
+
+    test('should drop the old base of a moved document', () {
+      const ServerBinding binding = ServerBinding(
+        serverId: 'abc',
+        fingerprint: 'sha256:x',
+        bases: <String, ServerBase>{'npc:town/crier': ServerBase(revision: 4, hash: 'sha256:aa', path: 'npcs/town/crier.json', source: <String, Object?>{})},
+      );
+      final ChangeApplied applied = ChangeOutcome.parse(<String, Object?>{
+        'status': 'applied',
+        'changeId': 'chg_00000003',
+        'idempotencyKey': 'key-2222222222222222',
+        'documents': <Object?>[
+          <String, Object?>{'kind': 'npc', 'id': 'town/market/crier', 'revision': 5, 'hash': 'sha256:dd', 'from': <String, Object?>{'id': 'town/crier'}},
+        ],
+      })! as ChangeApplied;
+      expect(applied.documents.single.from, 'town/crier');
+      final ServerBinding next = recordApplied(binding, applied, <String, ({String path, Object? source})>{
+        'npc:town/market/crier': (path: 'npcs/town/market/crier.json', source: <String, Object?>{'revision': 5}),
+      });
+      expect(next.bases.keys, <String>['npc:town/market/crier']);
+      expect(next.history.single.documents, <String>['npc:town/market/crier', 'npc:town/crier']);
     });
 
     test('should not set revision on kinds the server does not revision', () {
