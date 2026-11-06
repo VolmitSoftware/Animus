@@ -90,7 +90,8 @@ async function scan(page) {
     // Siblings in flow whose boxes cross.
     for (const parent of new Set(all.map(el => el.parentElement))) {
       if (!parent) continue;
-      const kids = [...parent.children].filter(el => shown(el) && flows(el));
+      // Inline boxes that wrap span lines, so their boxes cross by nature.
+      const kids = [...parent.children].filter(el => shown(el) && flows(el) && getComputedStyle(el).display !== 'inline');
       for (let i = 0; i < kids.length; i++) {
         const a = kids[i].getBoundingClientRect();
         for (let j = i + 1; j < kids.length; j++) {
@@ -267,7 +268,10 @@ async function run(browser, width, theme, failures) {
   };
   const hash = async value => {
     await page.evaluate(next => { location.hash = next; }, value);
-    await page.waitForFunction(next => location.hash === next, value);
+    // The editor may pick another view for a document (a dialogue opens in
+    // Conversation), so only the route before the query has to match.
+    await page.waitForFunction(next => location.hash.split('?')[0] === next.split('?')[0], value)
+      .catch(async () => { throw new Error(`${width} ${theme}: ${value} settled on ${await page.evaluate(() => location.hash)}`); });
   };
 
   // Every document in the open workspace in the visual view, and the first
@@ -278,13 +282,14 @@ async function run(browser, width, theme, failures) {
     for (const href of hrefs) {
       const match = /#\/workspace\/[^/]+\/([^/?]+)\/([^?]+)$/.exec(href);
       if (!match) continue;
-      const views = kinds.has(match[1]) ? ['visual'] : ['visual', 'preview', 'code', 'split'];
+      const views = kinds.has(match[1]) ? ['visual'] : ['visual', 'preview', 'code', 'split', ...(match[1] === 'behavior' ? ['conversation'] : [])];
       kinds.add(match[1]);
       for (const view of views) {
         await hash(`${href}?view=${view}`);
         await page.locator('#animus-main').waitFor();
         await page.waitForTimeout(view === 'preview' || view === 'split' ? 400 : 100);
-        await visit(`${label} ${match[1]} ${decodeURIComponent(match[2])} ${view}`);
+        const opened = await page.evaluate(() => new URLSearchParams(location.hash.split('?')[1] || '').get('view') || 'visual');
+        await visit(`${label} ${match[1]} ${decodeURIComponent(match[2])} ${opened}`);
       }
     }
   };
