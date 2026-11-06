@@ -861,7 +861,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "player_block_break",
                     "player_damaged",
                     "player_damage_entity",
-                    "player_kill"
+                    "player_kill",
+                    "projectile_launch",
+                    "projectile_hit",
+                    "entity_shoot_bow"
                   ],
                   "description": "A server behavior uses server events only."
                 }
@@ -5139,7 +5142,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "player_block_break",
             "player_damaged",
             "player_damage_entity",
-            "player_kill"
+            "player_kill",
+            "projectile_launch",
+            "projectile_hit",
+            "entity_shoot_bow"
           ],
           "description": "What starts the run."
         },
@@ -5663,6 +5669,51 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           },
           "then": {
             "$ref": "#/$defs/trigger-player_kill"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "projectile_launch"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-projectile_launch"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "projectile_hit"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-projectile_hit"
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event": {
+                "const": "entity_shoot_bow"
+              }
+            },
+            "required": [
+              "event"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/trigger-entity_shoot_bow"
           }
         }
       ]
@@ -6911,6 +6962,153 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "type": "string",
           "pattern": "^[a-z0-9_.*:/-]{1,128}$",
           "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-projectile_launch": {
+      "type": "object",
+      "description": "A projectile such as an arrow, snowball or trident is launched; the player is the shooter when a player shot it. Runs read context.projectile, context.shooter (an entity type, empty for none), their UUIDs and the launch location. cancel stops the launch.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "projectile_launch"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "projectile": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+        },
+        "shooter": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-projectile_hit": {
+      "type": "object",
+      "description": "A projectile hits an entity or a block; the player is the shooter when a player shot it. Runs read context.projectile, context.shooter, context.entity and context.block (each empty when absent), their UUIDs and the hit location. cancel lets the projectile pass as if nothing was hit.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "projectile_hit"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "projectile": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+        },
+        "shooter": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
+        },
+        "entity": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "block": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      },
+      "required": [
+        "id",
+        "event"
+      ]
+    },
+    "trigger-entity_shoot_bow": {
+      "type": "object",
+      "description": "A player or mob shoots a bow or crossbow; the player is the shooter when a player shot. Runs read context.shooter, context.bow, context.projectile, context.force (a player's bow draw from 0 to 1, otherwise 1), context.hand and the shooter's location. cancel stops the shot.",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier",
+          "description": "Unique within this document."
+        },
+        "event": {
+          "const": "entity_shoot_bow"
+        },
+        "routine": {
+          "$ref": "#/$defs/identifier",
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "shooter": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
+        },
+        "bow": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The weapon's item key such as minecraft:crossbow, or a name without namespace such as bow. Omit for every bow and crossbow."
+        },
+        "projectile": {
+          "type": "string",
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+        },
+        "cancel": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
         }
       },
       "required": [
@@ -9575,6 +9773,207 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           "required": false,
           "pattern": "^[a-z0-9_.*:/-]{1,128}$",
           "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        }
+      }
+    },
+    "projectile_launch": {
+      "description": "A projectile such as an arrow, snowball or trident is launched; the player is the shooter when a player shot it. Runs read context.projectile, context.shooter (an entity type, empty for none), their UUIDs and the launch location. cancel stops the launch.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "projectile",
+        "projectile_uuid",
+        "shooter",
+        "shooter_uuid",
+        "location",
+        "world",
+        "x",
+        "y",
+        "z"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "projectile_launch"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "projectile": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+        },
+        "shooter": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "projectile_hit": {
+      "description": "A projectile hits an entity or a block; the player is the shooter when a player shot it. Runs read context.projectile, context.shooter, context.entity and context.block (each empty when absent), their UUIDs and the hit location. cancel lets the projectile pass as if nothing was hit.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "projectile",
+        "projectile_uuid",
+        "shooter",
+        "shooter_uuid",
+        "entity",
+        "entity_uuid",
+        "block",
+        "location",
+        "world",
+        "x",
+        "y",
+        "z"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "projectile_hit"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "projectile": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+        },
+        "shooter": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
+        },
+        "entity": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "An entity type such as minecraft:zombie, or a name without namespace. Omit for every entity."
+        },
+        "block": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A block key such as minecraft:chest, or a name without namespace such as *_log. Omit for every block."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
+        }
+      }
+    },
+    "entity_shoot_bow": {
+      "description": "A player or mob shoots a bow or crossbow; the player is the shooter when a player shot. Runs read context.shooter, context.bow, context.projectile, context.force (a player's bow draw from 0 to 1, otherwise 1), context.hand and the shooter's location. cancel stops the shot.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "context": [
+        "shooter",
+        "shooter_uuid",
+        "bow",
+        "projectile",
+        "projectile_uuid",
+        "force",
+        "hand",
+        "location",
+        "world",
+        "x",
+        "y",
+        "z"
+      ],
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "entity_shoot_bow"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "shooter": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The shooter's entity type such as minecraft:player or skeleton. Omit for every shooter, none included."
+        },
+        "bow": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "The weapon's item key such as minecraft:crossbow, or a name without namespace such as bow. Omit for every bow and crossbow."
+        },
+        "projectile": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[a-z0-9_.*:/-]{1,128}$",
+          "description": "A projectile entity type such as minecraft:arrow, or a name without namespace such as snowball. Omit for every projectile."
+        },
+        "cancel": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked as the event happens, over flags, facts and the event's context. When it holds, the event is cancelled. Omit to leave the event alone."
         }
       }
     }

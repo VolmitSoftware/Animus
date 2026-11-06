@@ -46,8 +46,13 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -213,6 +218,46 @@ final class ModServerBehaviors {
         if (!listens(TriggerKind.PLAYER_KILL)) return;
         ServerPlayer killer = source.getEntity() instanceof ServerPlayer direct ? direct : victim.getKillCredit() instanceof ServerPlayer credited ? credited : null;
         if (killer != null && killer != victim && online(killer)) servers.publish(ServerEvent.kill(killer.getUUID(), entityKey(victim), victim.getUUID()));
+    }
+
+    /** A bow or crossbow shot in progress: its projectiles publish as the shot, then as launches. Server thread only. */
+    private record Aim(LivingEntity shooter, String bow, InteractionHand hand, double force) {}
+    private Aim aim;
+
+    /** A player's bow reports its draw (shot speed is three times the draw); crossbows and mobs report 1. */
+    void aiming(LivingEntity shooter, InteractionHand hand, ItemStack weapon, float velocity) {
+        aim = listens(TriggerKind.ENTITY_SHOOT_BOW)
+                ? new Aim(shooter, itemKey(weapon), hand, shooter instanceof ServerPlayer && weapon.is(Items.BOW) ? velocity / 3.0 : 1) : null;
+    }
+    void aimed() { aim = null; }
+
+    /** A projectile entering the world; the shot it belongs to decides first, as on Bukkit. */
+    boolean launching(Projectile projectile, ServerLevel level) {
+        Entity owner = projectile.getOwner();
+        Aim shot = aim;
+        BlockPos at = projectile.blockPosition();
+        if (shot != null && owner == shot.shooter() && listens(TriggerKind.ENTITY_SHOOT_BOW)) {
+            BlockPos from = owner.blockPosition();
+            if (servers.decide(ServerEvent.shootBow(playerOf(owner), entityKey(owner), owner.getUUID(), shot.bow(), entityKey(projectile), projectile.getUUID(), shot.force(),
+                    shot.hand() == InteractionHand.OFF_HAND ? "off_hand" : "main_hand", ModWorldKeys.key(level), from.getX(), from.getY(), from.getZ()))) return true;
+        }
+        return listens(TriggerKind.PROJECTILE_LAUNCH) && servers.decide(ServerEvent.projectileLaunch(playerOf(owner), entityKey(projectile), projectile.getUUID(),
+                owner == null ? "" : entityKey(owner), owner == null ? "" : owner.getUUID().toString(), ModWorldKeys.key(level), at.getX(), at.getY(), at.getZ()));
+    }
+
+    /** A projectile hitting an entity or a block; true lets it pass as if nothing was hit. */
+    boolean projectileHit(Projectile projectile, HitResult hit) {
+        if (hit.getType() == HitResult.Type.MISS || !listens(TriggerKind.PROJECTILE_HIT)) return false;
+        Entity owner = projectile.getOwner(), struck = hit instanceof EntityHitResult entityHit ? entityHit.getEntity() : null;
+        BlockPos block = hit instanceof BlockHitResult blockHit ? blockHit.getBlockPos() : null, at = block != null ? block : projectile.blockPosition();
+        return servers.decide(ServerEvent.projectileHit(playerOf(owner), entityKey(projectile), projectile.getUUID(), owner == null ? "" : entityKey(owner),
+                owner == null ? "" : owner.getUUID().toString(), struck == null ? "" : entityKey(struck), struck == null ? "" : struck.getUUID().toString(),
+                block == null ? "" : blockKey(projectile.level().getBlockState(block).getBlock()), ModWorldKeys.key(projectile.level()), at.getX(), at.getY(), at.getZ()));
+    }
+
+    /** The shooter when it is a listed player; a loader's fake player shoots without one. */
+    private Optional<UUID> playerOf(Entity shooter) {
+        return shooter instanceof ServerPlayer player && online(player) ? Optional.of(player.getUUID()) : Optional.empty();
     }
 
     private boolean wants(TriggerKind kind, ServerPlayer player) { return servers.listens(kind) && online(player); }

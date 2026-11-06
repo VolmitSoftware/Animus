@@ -228,17 +228,27 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         if (world == null || !world.isChunkLoaded(((int) Math.floor(point.x())) >> 4, ((int) Math.floor(point.z())) >> 4)) return Optional.empty();
         return launch(world, point, velocity, weapon, this::tag).map(Projectile::getUniqueId);
     }
+    /** True on a thread while it spawns a helper, whose launch event then belongs to no server trigger. */
+    private static final ThreadLocal<Boolean> LAUNCHING = ThreadLocal.withInitial(() -> false);
+    public static boolean launching() { return LAUNCHING.get(); }
+
     /** On the owner of the launch chunk: a shooterless helper projectile, tagged before it can touch anything. */
     public static Optional<Projectile> launch(World world, Vec3 point, Vec3 velocity, RangedWeapon weapon, java.util.function.Consumer<Projectile> tag) {
         double speed = velocity.distance(Vec3.ZERO);
         if (speed < .0001) return Optional.empty();
         Location at = location(world, point);
-        Projectile projectile = switch (weapon) {
-            case ARROW -> world.spawnArrow(at, vector(velocity), (float) speed, 0);
-            case SPECTRAL_ARROW -> world.spawnArrow(at, vector(velocity), (float) speed, 0, SpectralArrow.class);
-            case TRIDENT -> world.spawnArrow(at, vector(velocity), (float) speed, 0, Trident.class);
-            default -> world.spawn(at, THROWN.get(weapon), tag::accept);
-        };
+        Projectile projectile;
+        LAUNCHING.set(true);
+        try {
+            projectile = switch (weapon) {
+                case ARROW -> world.spawnArrow(at, vector(velocity), (float) speed, 0);
+                case SPECTRAL_ARROW -> world.spawnArrow(at, vector(velocity), (float) speed, 0, SpectralArrow.class);
+                case TRIDENT -> world.spawnArrow(at, vector(velocity), (float) speed, 0, Trident.class);
+                default -> world.spawn(at, THROWN.get(weapon), tag::accept);
+            };
+        } finally {
+            LAUNCHING.set(false);
+        }
         if (!projectile.isValid()) return Optional.empty();
         tag.accept(projectile);
         if (projectile instanceof AbstractArrow arrow) arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);

@@ -264,6 +264,12 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity) {
           trigger.addString('entity', entity);
         }
         context['entity'] = 'entity';
+      } else if (_projectileForm(w)) {
+        final _Form form = _projectile(w, trigger, context);
+        final String? reason = form.reason;
+        if (reason != null) return _Mapped.fail(reason);
+        event = form.event!;
+        cancellable = true;
       } else if (phrase.contains('npc')) {
         return const _Mapped.fail('this event covers every NPC; Animus binds a behavior to each NPC instead');
       } else {
@@ -292,6 +298,7 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity) {
     fields.add(field.key, field.value);
   }
   final bool inventory = event.startsWith('player_inventory_');
+  final bool projectile = event.startsWith('projectile_') || event == 'entity_shoot_bow';
   final List<_Cond> guards = <_Cond>[];
   for (final List<String> option in switches.values) {
     final String name = option[0];
@@ -315,6 +322,11 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity) {
         if (event != 'player_world_change' || !_full('[a-z0-9_./-]{1,64}', value)) return _Mapped.fail('switch $name:$value has no Animus equivalent');
         fields.addString(name, value);
       case 'with':
+        if (event == 'entity_shoot_bow') {
+          if (!_full(_eventName, value)) return _Mapped.fail('switch with:$value names a bow Animus cannot check');
+          fields.addString('bow', value);
+          break;
+        }
         if (event != 'player_block_click' && event != 'interaction') return const _Mapped.fail('switch with: has no Animus equivalent on this event');
         if (!_full('[a-z0-9_]{1,64}', value)) return _Mapped.fail('switch with:$value names an item Animus cannot check');
         guards.add(_Atom('same(player.item_in_hand, ${_quote(value == 'air' ? 'minecraft:air' : 'minecraft:$value')})'));
@@ -339,12 +351,86 @@ _Mapped _denizenEvent(String key, Map<String, _Note> notes, bool npcEntity) {
         if (!player) return _Mapped.fail('switch in: needs a player; $event has none');
         if (!_full('[a-z0-9_-]{1,64}', value)) return _Mapped.fail('switch in:$value names an area Animus cannot check');
         if (notes.containsKey(value)) return _Mapped.fail('switch in:$value names a noted area; Animus checks areas only as enter and exit events');
-        guards.add(_Atom('same_world(player.world, ${_quote(value)})'));
+        guards.add(_Atom('same_world(${projectile ? 'context.world' : 'player.world'}, ${_quote(value)})'));
+      case 'entity':
+      case 'block':
+      case 'shooter':
+        if (event != 'projectile_hit' && !(name == 'shooter' && projectile)) return _Mapped.fail('switch $name: has no Animus equivalent on this event');
+        if (value == 'npc') return const _Mapped.fail(_npcProjectileTarget);
+        if (!_full(_eventName, value)) return _Mapped.fail('switch $name:$value names a type Animus cannot check');
+        fields.addString(name, value);
       default:
         return _Mapped.fail('event switch $name: has no Animus equivalent');
     }
   }
   return _Mapped(fields, guards, context, npc, cancellable || npc, null);
+}
+
+// ---- Projectiles ----
+
+/// A projectile event's trigger name, or the reason it has none.
+class _Form {
+  const _Form(this.event, this.reason);
+
+  final String? event;
+  final String? reason;
+}
+
+const String _npcProjectileShooter = 'Animus NPCs shoot combat helper projectiles, which fire no server triggers';
+const String _npcProjectileTarget = 'Animus NPCs are virtual bodies that real projectiles pass through';
+
+/// `<projectile> launched`, `<projectile> hits [<target>]`, `<projectile> collides with <entity>` and `<entity> shoots <bow or block>`.
+bool _projectileForm(List<String> w) =>
+    w.length == 2 && (w[1] == 'launched' || w[1] == 'hits') ||
+    w.length == 3 && (w[1] == 'hits' || w[1] == 'shoots') ||
+    w.length == 4 && w[1] == 'collides' && w[2] == 'with';
+
+/// A projectile event as `projectile_launch`, `projectile_hit` or `entity_shoot_bow`. Denizen's older
+/// `<entity> shoots <block>` and `<projectile> hits <block>` are hits on a block; `*:*` filters for any hit entity or block.
+_Form _projectile(List<String> w, JObject trigger, Map<String, String> context) {
+  if (w[0] == 'npc') return const _Form(null, _npcProjectileShooter);
+  String? reason;
+  if (w[1] == 'shoots' && (w[2] == 'item' || w[2].endsWith('bow'))) {
+    reason = _projectileFilter(trigger, 'shooter', w[0], 'entity') ?? _projectileFilter(trigger, 'bow', w[2], 'item');
+    if (reason != null) return _Form(null, reason);
+    context['entity'] = 'shooter';
+    for (final String key in <String>['bow', 'projectile', 'force', 'hand']) {
+      context[key] = key;
+    }
+    return const _Form('entity_shoot_bow', null);
+  }
+  reason = w[1] == 'shoots'
+      ? _projectileFilter(trigger, 'shooter', w[0], 'entity')
+      : w[0] == 'entity'
+          ? null
+          : _projectileFilter(trigger, 'projectile', w[0], 'projectile');
+  if (reason != null) return _Form(null, reason);
+  context['projectile'] = 'projectile';
+  context['shooter'] = 'shooter';
+  if (w[1] == 'launched') {
+    context['entity'] = 'projectile';
+    return const _Form('projectile_launch', null);
+  }
+  if (w.length > 2) {
+    final String target = w[w.length - 1];
+    final bool entity = w[1] == 'collides' || target == 'entity' || target == 'player';
+    if (target == 'npc') return const _Form(null, _npcProjectileTarget);
+    if (!_full(_eventName, target)) return _Form(null, '${entity ? 'entity ' : 'block '}$target has no Animus equivalent');
+    trigger.addString(entity ? 'entity' : 'block', target == 'entity' || target == 'block' ? '*:*' : target);
+    if (w[1] == 'collides') context['entity'] = 'entity';
+  }
+  context['hit_entity'] = 'entity';
+  context['hit_block'] = 'location';
+  context['location'] = 'location';
+  return const _Form('projectile_hit', null);
+}
+
+/// Adds the filter [field] unless [value] is the word for any.
+String? _projectileFilter(JObject trigger, String field, String value, String any) {
+  if (value == any) return null;
+  if (!_full(_eventName, value)) return '$field $value has no Animus equivalent';
+  trigger.addString(field, value);
+  return null;
 }
 
 /// The context keys of a command script's run.

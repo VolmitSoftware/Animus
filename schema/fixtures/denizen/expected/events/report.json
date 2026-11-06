@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 4,
-  "importId": "91f205bdb64950733781e880ed871830d606796130d062a85b2ba3089ed26ead",
+  "converterVersion": 5,
+  "importId": "59ac818d06efb84cffef52df0ed37974eec673c0e27f845ec98b375dad20c9f4",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
-    "scripts/events.dsc": "9d765b2f62f059fa34b19bc2b80da56e906549c5827ccd561f9a8814b2cd52b0",
+    "scripts/events.dsc": "38a0c955a816652d4863a9b85846706a887b2cb0594f015a78afcf728c1db544",
     "citizens": "e24c0193d3be211d5b0e122b24e44dbb6b2419d16e05b7e0725d25cd819188a0",
     "server_flags.dat": "b7065edb7528ec537a6da528f089d788e787620e5e532f2d1722c4c331654609",
     "notables.yml": "75b1e7fda8bc2585dfb27d1b3b91187938546d87dc859e4ab0b704211542fb61",
     "player_flags/00000000-0000-4000-8000-0000000000b1.dat": "67c7d17fc3a03a61642eac6b06315cc1acf9e703b1834d7e582eaf9bcdd77d54"
   },
-  "behaviors": 8,
+  "behaviors": 9,
   "containers": {
     "assignment": {
       "total": 1,
@@ -25,9 +25,9 @@
       "preserved": 0
     },
     "world": {
-      "total": 5,
+      "total": 6,
       "converted": 2,
-      "partial": 3,
+      "partial": 4,
       "preserved": 0
     }
   },
@@ -37,11 +37,11 @@
       "preserved": 0
     },
     "determine": {
-      "converted": 7,
+      "converted": 10,
       "preserved": 2
     },
     "flag": {
-      "converted": 6,
+      "converted": 7,
       "preserved": 0
     },
     "foreach": {
@@ -49,12 +49,12 @@
       "preserved": 0
     },
     "if": {
-      "converted": 11,
+      "converted": 13,
       "preserved": 0
     },
     "narrate": {
-      "converted": 18,
-      "preserved": 4
+      "converted": 24,
+      "preserved": 5
     },
     "note": {
       "converted": 1,
@@ -69,7 +69,7 @@
       "preserved": 0
     },
     "stop": {
-      "converted": 9,
+      "converted": 11,
       "preserved": 0
     },
     "title": {
@@ -79,6 +79,26 @@
   },
   "events": {
     "on click": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on arrow hits block": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on arrow hits npc": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "world on ender_pearl launched in:world_nether": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on npc shoots bow": {
+      "converted": 0,
+      "preserved": 1
+    },
+    "world on pillager shoots item with:crossbow": {
       "converted": 1,
       "preserved": 0
     },
@@ -186,11 +206,31 @@
       "converted": 1,
       "preserved": 0
     },
+    "world on player shoots bow": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on player shoots target": {
+      "converted": 1,
+      "preserved": 0
+    },
     "world on projectile hits": {
-      "converted": 0,
-      "preserved": 1
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on projectile hits entity:creeper shooter:player": {
+      "converted": 1,
+      "preserved": 0
     },
     "world on server start": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on snowball launched": {
+      "converted": 1,
+      "preserved": 0
+    },
+    "world on trident collides with zombie": {
       "converted": 1,
       "preserved": 0
     }
@@ -216,6 +256,10 @@
       "mapped": 1,
       "unmapped": 0
     },
+    "context.bow": {
+      "mapped": 1,
+      "unmapped": 0
+    },
     "context.cause": {
       "mapped": 1,
       "unmapped": 0
@@ -233,11 +277,23 @@
       "unmapped": 0
     },
     "context.entity": {
-      "mapped": 2,
+      "mapped": 3,
       "unmapped": 0
     },
     "context.final_damage": {
       "mapped": 1,
+      "unmapped": 0
+    },
+    "context.force": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.hand": {
+      "mapped": 1,
+      "unmapped": 0
+    },
+    "context.hit_block": {
+      "mapped": 2,
       "unmapped": 0
     },
     "context.inventory": {
@@ -249,7 +305,15 @@
       "unmapped": 0
     },
     "context.location": {
-      "mapped": 4,
+      "mapped": 5,
+      "unmapped": 0
+    },
+    "context.projectile": {
+      "mapped": 2,
+      "unmapped": 0
+    },
+    "context.shooter": {
+      "mapped": 1,
       "unmapped": 0
     },
     "context.slot": {
@@ -277,7 +341,7 @@
       "unmapped": 0
     },
     "player.has_flag": {
-      "mapped": 5,
+      "mapped": 6,
       "unmapped": 0
     },
     "server.flag": {
@@ -311,6 +375,7 @@
     "denizen:assignment/npc_story": "complete",
     "denizen:task/broadcasts": "complete",
     "denizen:world-npc/combat": "partial",
+    "denizen:world/archery": "partial",
     "denizen:world/areas": "partial",
     "denizen:world/blocks": "partial",
     "denizen:world/combat": "partial",
@@ -319,6 +384,7 @@
   },
   "commandBehaviors": [],
   "serverBehaviors": [
+    "denizen:world/archery",
     "denizen:world/areas",
     "denizen:world/blocks",
     "denizen:world/combat",
@@ -333,6 +399,34 @@
     "notables.yml: cuboid split_yard is not one box or one ellipsoid with literal numbers; its area events are kept"
   ],
   "preserved": [
+    {
+      "source": "events.dsc:135",
+      "container": "archery",
+      "kind": "event",
+      "item": "world on npc shoots bow",
+      "reason": "Animus NPCs shoot combat helper projectiles, which fire no server triggers"
+    },
+    {
+      "source": "events.dsc:136",
+      "container": "archery",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "inside a world event that is kept"
+    },
+    {
+      "source": "events.dsc:137",
+      "container": "archery",
+      "kind": "event",
+      "item": "world on arrow hits npc",
+      "reason": "Animus NPCs are virtual bodies that real projectiles pass through"
+    },
+    {
+      "source": "events.dsc:138",
+      "container": "archery",
+      "kind": "command",
+      "item": "narrate",
+      "reason": "inside a world event that is kept"
+    },
     {
       "source": "events.dsc:14",
       "container": "areas",
@@ -388,26 +482,13 @@
       "kind": "command",
       "item": "determine",
       "reason": "only a top-level determine cancelled after plain guards and rate limits cancels the event in Animus; this one is not reached that way; the routine still ends here"
-    },
-    {
-      "source": "events.dsc:107",
-      "container": "combat",
-      "kind": "event",
-      "item": "world on projectile hits",
-      "reason": "no Animus server trigger for the event projectile hits"
-    },
-    {
-      "source": "events.dsc:108",
-      "container": "combat",
-      "kind": "command",
-      "item": "narrate",
-      "reason": "inside a world event that is kept"
     }
   ],
   "documents": {
     "behaviors/denizen/assignment/npc_story.json": "cb424340f3794a0e91062e52d96e4dd3a31585e03595572b124f277160bd7335",
     "behaviors/denizen/task/broadcasts.json": "77c650872e21a4c92354f2cca80208e3489af577ff1fe6fb4859c658eb09faf3",
     "behaviors/denizen/world-npc/combat.json": "00635bb196904d0cb3543be0cf61e291d930140ddd3a577feba3262abe5a3fd8",
+    "behaviors/denizen/world/archery.json": "5349eb264f09f31211bf7589dc4d0ba79353924b12ccfe58a5486ed2dd87a931",
     "behaviors/denizen/world/areas.json": "e4a8326ae9e56cf9d12757b18eb368c275e65f16fcf6004fcc1200a9fd573f56",
     "behaviors/denizen/world/blocks.json": "b1d8a473bbe830362213777db76e66583b13f5db80aac0aa8a4008b93400586a",
     "behaviors/denizen/world/combat.json": "9ac87bdc8767d7a82f1e90966d4642c0516defd3e9cde207ccffafc923e445c2",

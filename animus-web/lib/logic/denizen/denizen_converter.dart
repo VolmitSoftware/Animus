@@ -24,7 +24,7 @@ part 'denizen_commands.dart';
 part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
-const int denizenConverterVersion = 4;
+const int denizenConverterVersion = 5;
 
 /// The author a converted book gets when its Denizen author is blank.
 const String _blankBookAuthor = 'Server';

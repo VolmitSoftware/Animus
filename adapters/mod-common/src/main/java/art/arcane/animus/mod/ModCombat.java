@@ -151,6 +151,8 @@ final class ModCombat implements AutoCloseable {
         return true;
     }
     boolean suppressesDrops(LivingEntity entity) { return world != null && world.suppressesDrops(entity); }
+    /** Whether the entity is a projectile an NPC launched. */
+    boolean helper(Entity entity) { return world != null && world.helper(entity); }
 
     private static TargetRef reference(Entity entity) {
         if (entity instanceof Player) return new TargetRef(TargetKind.PLAYER, entity.getUUID());
