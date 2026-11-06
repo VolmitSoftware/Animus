@@ -19,7 +19,7 @@ import '../citizens/snake_yaml.dart';
 import 'shopkeepers_items.dart';
 
 /// Must equal `ShopkeepersImporter.VERSION`; the shared golden fixtures fail when they drift.
-const int shopkeepersImporterVersion = 1;
+const int shopkeepersImporterVersion = 2;
 
 const String _namespace = 'shopkeepers';
 const int _maximumShopkeepers = 10000;
@@ -262,6 +262,7 @@ ShopkeepersPreview convertShopkeepers(String save, {String? config, String? citi
         report.field('/tradePerm', _review, 'not a permission node Animus accepts; the shop is open to everyone; set permission by hand');
       }
     }
+    shop.addString('style', 'native');
     shop.add('modes', JArray(<JElement>[const JString('trade')]));
     shop.addString('defaultMode', 'trade');
     shop.addString('match', 'strict');
@@ -709,9 +710,10 @@ JObject? _mob(String importId, int number, String shopId, String objectType, JOb
         ..addInt('shopkeeper', number)
         ..addBool('originalSpawned', true));
   final JObject modules = JObject();
-  modules.add(_shopModule, _module(number, shopId));
   final JObject review = object.deepCopy();
   review.remove('type');
+  final JObject? villager = entity == 'minecraft:villager' ? _villager(review, report) : null;
+  modules.add(_shopModule, _module(number, shopId, villager));
   if (review.isNotEmpty) {
     modules.add('shopkeepers:review', review);
     for (final String field in review.keys) {
@@ -723,16 +725,44 @@ JObject? _mob(String importId, int number, String shopId, String objectType, JOb
   return definition;
 }
 
+final RegExp _profession = RegExp(r'^[a-z0-9_.-]+:[a-z0-9_/.-]+$');
+
+/// `ShopkeepersImporter.villager`: a villager shopkeeper's profession and level, taken out of the review section.
+JObject? _villager(JObject review, _Report report) {
+  final JObject villager = JObject();
+  final String? raw = _string(review, 'profession');
+  if (raw != null) {
+    final String lowered = javaLower(javaTrim(raw));
+    final String profession = lowered.contains(':') ? lowered : 'minecraft:$lowered';
+    if (_profession.hasMatch(profession)) {
+      villager.addString('profession', profession);
+      review.remove('profession');
+      report.field('/object/profession', _converted);
+    }
+  }
+  final int? level = shopkeepersInteger(review.get('villagerLevel'));
+  if (level != null && level >= 1 && level <= 5) {
+    villager.addInt('level', level);
+    review.remove('villagerLevel');
+    report.field('/object/villagerLevel', _converted);
+  }
+  return villager.isEmpty ? null : villager;
+}
+
 /// `ShopkeepersImporter.module`: the `animus:shop` section an imported binding writes; it opens nothing until reviewed.
-JObject _module(int number, String shopId) => JObject()
-  ..addString('shop', shopId)
-  ..addString('openOn', 'right')
-  ..addBool('reviewAccepted', false)
-  ..add(
-      'imported',
-      JObject()
-        ..addString('source', 'Shopkeepers')
-        ..addInt('shopkeeper', number));
+JObject _module(int number, String shopId, [JObject? villager]) {
+  final JObject module = JObject()
+    ..addString('shop', shopId)
+    ..addString('openOn', 'right');
+  if (villager != null) module.add('villager', villager);
+  return module
+    ..addBool('reviewAccepted', false)
+    ..add(
+        'imported',
+        JObject()
+          ..addString('source', 'Shopkeepers')
+          ..addInt('shopkeeper', number));
+}
 
 _Currency _currencyOf(JObject? config, JArray issues) {
   final JObject settings = config ?? JObject();
