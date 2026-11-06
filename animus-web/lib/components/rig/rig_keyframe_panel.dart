@@ -81,7 +81,9 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
       // Keyed by the value: a native select the user changed keeps its own
       // selection when only the option attributes change.
       dom.label(key: ValueKey<String>('blend:$index:$blend'), classes: 'animus-rig-field is-inline', <Widget>[
-        const dom.span(<Widget>[Component.text('Blend')]),
+        dom.span(<Widget>[
+          InfoTip(tip: visible ? 'Visible tracks always replace.' : blendDescriptions[blend] ?? '', docs: Docs.animations, child: const Component.text('Blend')),
+        ]),
         ArcaneSelect(
           size: ComponentSize.sm,
           value: visible ? 'replace' : blend,
@@ -90,7 +92,6 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
           onChanged: (String value) => component.onEdit((JsonMap json) => setTrackBlend(json, index, Blend.values.byName(value))),
         ),
       ]),
-      InfoTip(text: visible ? 'Visible tracks always replace.' : blendDescriptions[blend] ?? '', topic: 'Blend', docs: Docs.animations),
       Button.ghost(
         label: 'Move up',
         size: ButtonSize.small,

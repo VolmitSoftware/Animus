@@ -142,12 +142,13 @@ class _DryRunPanelState extends State<DryRunPanel> {
     final bool finished = session != null && _shown >= steps.length;
     final AnimusDocument? actor = _actor;
     return dom.section(classes: 'animus-panel animus-dryrun', attributes: const <String, String>{'aria-label': 'Dry run'}, <Widget>[
-      labelWithTip(
-        const dom.h3(<Widget>[Component.text('Dry run')]),
-        'Runs in this browser with sample player and NPC facts. Server-only steps are listed, not run.',
-        'Dry run',
-        docs: Docs.dryRun,
-      ),
+      const dom.h3(<Widget>[
+        InfoTip(
+          tip: 'Runs in this browser with sample player and NPC facts. Server-only steps are listed, not run.',
+          docs: Docs.dryRun,
+          child: Component.text('Dry run'),
+        ),
+      ]),
       dom.div(classes: 'animus-dryrun-layout${actor == null ? '' : ' has-stage'}', <Widget>[
         if (actor != null)
           dom.div(classes: 'animus-dryrun-stage', <Widget>[

@@ -220,12 +220,9 @@ class _RigInspectorState extends State<RigInspector> {
         _vectorField('Visual rotation', 'vr:$id', visual['rotation'], 0, (List<num> value) => setVisual((JsonMap v) => v['rotation'] = value)),
         _vectorField('Visual scale', 'vs:$id', visual['scale'], 1, (List<num> value) => setVisual((JsonMap v) => v['scale'] = value)),
       ],
-      labelWithTip(
-        const dom.h3(<Widget>[Component.text('Sockets')]),
-        'Equipment slots shown on a bone. The NPC\'s item follows the bone\'s animation.',
-        'Sockets',
-        docs: Docs.rigs,
-      ),
+      const dom.h3(<Widget>[
+        InfoTip(tip: 'Equipment slots shown on a bone. The NPC\'s item follows the bone\'s animation.', docs: Docs.rigs, child: Component.text('Sockets')),
+      ]),
       for (final String slot in socketSlots)
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           dom.span(<Widget>[Component.text(slot)]),
