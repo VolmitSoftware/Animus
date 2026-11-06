@@ -7,6 +7,7 @@
   display: grid;
   gap: 0.75rem;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .animus-npc-browser-head {
@@ -56,6 +57,14 @@
   grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
   gap: 0.75rem;
   align-items: start;
+}
+
+/* The folder tree moves above the list once the panel, not the window, is
+   too narrow for both side by side. */
+@container (max-width: 40rem) {
+  .animus-npc-browser-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .animus-npc-browser-main {
@@ -263,6 +272,25 @@
   border: 1px solid var(--animus-border);
   min-width: 0;
   overflow: hidden;
+  container-type: inline-size;
+}
+
+/* The list's own width decides its columns: beside the folder tree and the
+   sidebar it is narrower than the window suggests. */
+@container (max-width: 40rem) {
+  .animus-npc-row {
+    grid-template-columns: 1.75rem minmax(0, 1fr);
+  }
+
+  .animus-npc-row > .animus-npc-col-type,
+  .animus-npc-row > .animus-npc-col-world,
+  .animus-npc-row.is-head > span:last-child {
+    display: none;
+  }
+
+  .animus-npc-row > .animus-npc-badges {
+    grid-column: 2;
+  }
 }
 
 .animus-npc-row {
@@ -692,7 +720,8 @@ html.light .animus-route-dot {
 
 .animus-route-list-item {
   display: grid;
-  grid-template-columns: 2rem 3.5rem minmax(0, 1fr) auto;
+  /* The point keeps its natural width; the wait note takes the rest and wraps. */
+  grid-template-columns: 2rem 3.5rem auto minmax(0, 1fr);
   gap: 0.5rem;
   width: 100%;
   padding: 0.25rem 0.5rem;
@@ -1072,24 +1101,6 @@ html.light .animus-route-dot {
 }
 
 @media (max-width: 760px) {
-  .animus-npc-browser-body {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .animus-npc-row {
-    grid-template-columns: 1.75rem minmax(0, 1fr);
-  }
-
-  .animus-npc-row > .animus-npc-col-type,
-  .animus-npc-row > .animus-npc-col-world,
-  .animus-npc-row.is-head > span:last-child {
-    display: none;
-  }
-
-  .animus-npc-row > .animus-npc-badges {
-    grid-column: 2;
-  }
-
   .animus-dialogue-say,
   .animus-dialogue-answer {
     grid-template-columns: minmax(0, 1fr);

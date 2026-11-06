@@ -63,9 +63,9 @@ def main():
         reply=console(session,log,text,pattern)
         report['commands'].append({'command':text,'receipt':reply});save();return reply
     def tx(reply):
-        match=re.search(r'\btransaction ([a-f0-9-]{36}|already-applied)\b',reply)
+        match=re.search(r'\btx ([a-f0-9-]{36})\b',reply) or re.search(r'Already (installed); nothing changed',reply)
         assert match,'Missing transaction identity: '+reply
-        return match[1]
+        return 'already-applied' if match[1]=='installed' else match[1]
     def stage(import_id,mode='reject',label=None):
         reply=command(f'animus import stage {import_id} mode={mode}'+(' copy='+label if label else ''),r'.*Application [a-f0-9]{64}.*')
         identity=re.search(r'Application ([a-f0-9]{64})',reply)[1]
@@ -73,10 +73,10 @@ def main():
         assert plan['mode']==mode.upper()
         return identity,plan,candidates
     def apply(import_id,identity):
-        transaction=tx(command(f'animus import apply-plan {import_id} {identity}',r'.*Installed dormant definitions; transaction .*'))
+        transaction=tx(command(f'animus import apply-plan {import_id} {identity}',r'.*(Installed dormant NPCs; tx|Already installed; nothing changed).*'))
         installed(data,import_id,identity);return transaction
     def rollback(transaction):
-        return tx(command('animus rollback '+transaction,r'.*Rolled back; inverse transaction .*'))
+        return tx(command('animus rollback '+transaction,r'.*Rolled back [^;]*; tx .*'))
     def preview(filename,source_bytes):
         receipt=command('animus import preview '+filename+' worlds=qa_legacy:world',r'.*Preview [a-f0-9]{64}.*')
         identity=re.search(r'Preview ([a-f0-9]{64})',receipt)[1]
@@ -157,7 +157,7 @@ def main():
         passed('default-stage-rejects-collisions')
         stale,stale_plan,_=stage(updated,'replace');assert stale_plan['records']==4 and stale_plan['replacements']==3
         assert_snapshot(data,before);state['staleApplication']=stale
-        state['editTransaction']=tx(command('animus edit citizens-900001 {"name":"QAConcurrent"}',r'.*Saved; transaction .*'))
+        state['editTransaction']=tx(command('animus edit citizens-900001 {"name":"QAConcurrent"}',r'.*Saved[^;]*; tx .*'))
         changed=snapshot(data)
         command(f'animus import apply-plan {updated} {stale}',r'.*(Conflict:|Application no longer matches current definitions).*')
         assert_snapshot(data,changed);assert not (data/'npcs/world/citizens-900004.json').exists()
@@ -190,11 +190,11 @@ def main():
         rollback(state['editTransaction']);assert_snapshot(data,state['baselineSnapshot'])
         rollback(state['baseTransaction']);assert_snapshot(data,empty)
         passed('initial-application-rollback-removes-sources-and-checkpoints')
-        legacy=tx(command('animus import apply '+baseline,r'.*Installed dormant definitions; transaction .*'))
+        legacy=tx(command('animus import apply '+baseline,r'.*(Installed dormant NPCs; tx|Already installed; nothing changed).*'))
         assert legacy!='already-applied' and len(definitions(data))==3
-        assert tx(command('animus import apply '+baseline,r'.*Installed dormant definitions; transaction .*'))=='already-applied'
+        assert tx(command('animus import apply '+baseline,r'.*(Installed dormant NPCs; tx|Already installed; nothing changed).*'))=='already-applied'
         rollback(legacy);assert_snapshot(data,empty);passed('legacy-default-apply-repeat-and-rollback-unchanged')
-        command('animus validate',r'.*validate successful; 0 active definitions.*')
+        command('animus validate',r'.*All definitions valid; 0 active.*')
         stop('rollback-after-restart');start('empty-restart')
         assert_snapshot(data,empty);command('animus status',r'.*NPC definitions: 0.*')
         assert not (data/'state/pending.json').exists()
@@ -210,7 +210,7 @@ def main():
             try:
                 for relative,document in definitions(data).items():
                     assert document['id'] in owned_ids,'Unexpected definition in dedicated import instance'
-                    command('animus delete '+document['id'],r'.*Deleted; rollback transaction .*')
+                    command('animus delete '+document['id'],r'.*Deleted [^;]*; tx .*')
             except Exception as error:report['definitionCleanupError']=str(error)
         if owned:
             report['stop']=run(a,'runtime','stop',name,'--graceful',allow_failure=True)

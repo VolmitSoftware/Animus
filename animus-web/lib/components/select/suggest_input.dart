@@ -29,9 +29,13 @@ class SuggestInput extends StatefulWidget {
     this.placeholder,
     this.onSubmit,
     this.references,
+    this.id,
     this.profile = FieldProfile.none,
     super.key,
   });
+
+  /// The text field's element id, so a row label can name it with `for`.
+  final String? id;
 
   /// What the text completes beyond [suggestions] (registry ids, flags,
   /// placeholders); a field with one and no [references] is an
@@ -55,7 +59,7 @@ class SuggestInput extends StatefulWidget {
 }
 
 class _SuggestInputState extends State<SuggestInput> {
-  final String _baseId = 'animus-suggest-${_nextSuggestId++}';
+  late final String _baseId = component.id ?? 'animus-suggest-${_nextSuggestId++}';
   SelectState _state = const SelectState();
   PopupPlacement _placement = const PopupPlacement(sheet: false);
   void Function()? _stopWatching;

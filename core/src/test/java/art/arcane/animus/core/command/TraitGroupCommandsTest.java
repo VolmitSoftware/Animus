@@ -33,19 +33,19 @@ class TraitGroupCommandsTest {
             assertTrue(repository.reload().isEmpty());
 
             String assigned = TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "town", "", Set.of()), true);
-            assertTrue(assigned.startsWith("assigned 1, unchanged 1; transaction "), assigned);
+            assertTrue(assigned.startsWith("Assigned watch to 1 NPC, 1 unchanged; tx "), assigned);
             String transaction = assigned.substring(assigned.lastIndexOf(' ') + 1);
             assertTrue(store.paths(transaction).contains("npcs/town/guard.json"));
             assertEquals("gold", repository.find("guard").orElseThrow().json().get("teamColor").getAsString());
-            assertEquals(List.of("Members of watch: 2", "baker, guard"), TraitGroupCommands.members(repository, "watch"));
+            assertEquals(List.of("Members of watch (2): baker, guard"), TraitGroupCommands.members(repository, "watch"));
             assertEquals(List.of("watch | revision 1 | members 2 | Town watch"), TraitGroupCommands.rows(repository));
             assertEquals("Group watch | revision 1 | members 2 | Town watch", TraitGroupCommands.inspect(repository, "watch").getFirst());
 
-            assertTrue(TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "watch", Set.of()), true).startsWith("assigned 0, unchanged 2"),
+            assertTrue(TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "watch", Set.of()), true).equals("Assigned watch to 0 NPCs, 2 unchanged"),
                     "tags are read from the effective definition");
-            assertTrue(TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "", Set.of("sailor")), true).startsWith("assigned 1, unchanged 0"));
+            assertTrue(TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "", Set.of("sailor")), true).startsWith("Assigned watch to 1 NPC, 0 unchanged; tx "));
             String unassigned = TraitGroupCommands.change(repository, "watch", TraitGroupCommands.selector(repository, "", "", Set.of("baker", "sailor", "guard")), false);
-            assertTrue(unassigned.startsWith("unassigned 3, unchanged 0"), unassigned);
+            assertTrue(unassigned.startsWith("Unassigned watch from 3 NPCs, 0 unchanged; tx "), unassigned);
             assertTrue(repository.find("baker").orElseThrow().groups().isEmpty());
             assertFalse(repository.draft("baker").document().has("groups"));
 
@@ -79,10 +79,10 @@ class TraitGroupCommandsTest {
         assertTrue(admin.text().contains(TraitGroupCommands.SELECTORS), admin.text());
         admin.lines.clear();
         director.execute(admin, new String[]{"groups", "assign", "watch", "town"});
-        assertTrue(admin.text().contains("Unexpected argument \"town\"") && admin.text().contains("Usage: /animus groups assign <group-id> [folder=…] [tag=…] [ids=…]"), admin.text());
+        assertTrue(admin.text().contains("Unexpected \"town\"") && admin.text().contains("Usage: /animus groups assign <group-id> [folder=…] [tag=…] [ids=…]"), admin.text());
         admin.lines.clear();
         director.execute(admin, new String[]{"groups", "unassign", "watch", "selection"});
-        assertTrue(admin.text().contains("Unexpected argument \"selection\""), admin.text());
+        assertTrue(admin.text().contains("Unexpected \"selection\""), admin.text());
         admin.lines.clear();
         director.execute(admin, new String[]{"groups", "assign", "watch", "ids=@selected"});
         assertTrue(admin.text().contains("The console has no selection"), admin.text());
@@ -99,7 +99,7 @@ class TraitGroupCommandsTest {
 
         AnimusDirectorTest.Actor visitor = new AnimusDirectorTest.Actor(true, "animus.status");
         director.execute(visitor, new String[]{"groups", "list"});
-        assertTrue(visitor.text().contains("You do not have permission"), visitor.text());
+        assertTrue(visitor.text().contains("No permission: animus."), visitor.text());
         assertEquals(List.of(), director.complete(visitor, new String[]{"groups", "inspect", ""}));
     }
 }

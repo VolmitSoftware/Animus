@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.control.ControlInbox;
 import art.arcane.animus.core.control.RideLedger;
@@ -120,7 +121,7 @@ final class RiderService<P, I> implements AutoCloseable {
         String world = host.position(player).world();
         if (!world.equals(vehicle.snapshot().position().world())) return "this NPC is in another world";
         RideSteering.Result ground = probe(world, vehicle).check(feet, feet);
-        if (ground.outcome() != RideSteering.Outcome.MOVED) return "the NPC needs ground or open space with room for its rider (" + ground.detail() + ")";
+        if (ground.outcome() != RideSteering.Outcome.MOVED) return "no room to mount here (" + ground.detail() + ")";
         RideLedger.Admission admission = ledger.admit(host.id(player), vehicle.uuid(), feet, settings,
                 vehicle.body().supports(MovementProfile.Mode.FLY), System.nanoTime());
         if (admission.rejection() != null) return switch (admission.rejection()) {
@@ -230,7 +231,7 @@ final class RiderService<P, I> implements AutoCloseable {
         ride.vehicle.released();
         if (exit == Exit.RESTORE_POSITION && host.online(ride.player) && !host.dead(ride.player)) restore(ride);
         if (host.online(ride.player) && !"shift".equals(reason) && !"shutdown".equals(reason) && !"death".equals(reason) && !"offline".equals(reason))
-            host.tell(ride.player, "Dismounted: " + reason);
+            host.tell(ride.player, Palette.reply("Dismounted: " + reason.replace('-', ' ')));
     }
     /** The client stops following once the detach arrives, then applies this ordinary teleport, so both sides agree again. */
     private void restore(Ride ride) {

@@ -247,6 +247,9 @@
 - Web editor: New conversation in the sidebar and the command palette, and a Conversation behavior template.
 - Web editor: dropdowns that pick a rig, animation, route, recording, group, behavior, skin, shop, chest GUI or menu end with "+ New" (opens the create form with the typed text as the name and the current folder, then returns with the new document picked) and "Manage" (lists that kind). Recordings show how to record one in game instead.
 - Web editor: sidebar sections and NPC folders collapse from their headers, with Collapse all and Expand all; the state is kept per workspace.
+- Chat replies carry click chips: links show as **[Open]** and **[Click to copy]**, wiki pointers as **[Docs]**, transaction ids as a short id that copies the full one plus **[Undo]**, and long status text behind **[Details]**. The console gets the plain values. `ChatLine` and `DocsLink` are shared for other code to use.
+- `/animus editor pair` replies with **[Open editor]** and **[Click to copy]** instead of printing the link, and a token line with **[Revoke]**.
+- Completion values for `type`, `world` and `group` in `/animus create`, and for the build options.
 - Web editor: one autocomplete for text, expression, id and JSON fields. Typing `{`, `<`, `%`, a name or an id, or pressing Ctrl+Space, lists variables, facts, placeholders, tags with colour swatches, registry ids, workspace ids, flags, quests and commands, matched loosely.
 - Web editor: names, placeholders, tags and ids the server would refuse are underlined, with the reason on hover.
 - `GET /v1/lookups` (read scope) lists the server's registry ids, command names and PlaceholderAPI identifiers for completion.
@@ -352,6 +355,11 @@
 - `gravity: false` stays the hover switch and wins over the `gravity` attribute, which sets how fast a body falls.
 - Citizens converter version 13: the attribute trait converts to `attributes` instead of only `movement.stepHeight`, and an armor stand without gravity converts to `gravity: false`.
 - Web editor: every select and suggestion list is the editor's own square dropdown. Lists longer than eight entries have a search field, the keyboard works as in a native select, and phones get a full-width sheet with 44 px rows.
+- Every `/animus` reply, error and report is one or two lines with one `[Animus]` prefix; errors are red, finished changes green. Transactions read `tx <id>`.
+- `/animus status` and `/animus editor status` show one headline; counters and budgets move to **[Details]** for players and to two extra lines for the console.
+- `/animus inspect` shows a two-line summary with the id and position as copy chips and the JSON behind **[JSON]** and **[Merged]**, instead of printing the JSON.
+- Shop and GUI lists page with `page=`; long build, hotload and import reports are clipped with a count of the rest.
+- Startup logs one `Enabled` line with the time taken, plus warnings only for parts that are down. A repeated failure logs its stack trace once, then one line.
 - Web editor: the separate completion lists of GUI text, behavior expressions and the Code view became the shared autocomplete.
 
 ### Removed
@@ -391,6 +399,7 @@
 - GUI editor: changing an action's type keeps nested lists the new type has and asks before dropping others.
 - GUI editor: refusal messages for presets, icons and components use the server's wording.
 - Web editor: groups and recordings are listed in the sidebar; a renamed recording or group rewrites its `id`.
+- The startup banner.
 
 ### Fixed
 
@@ -518,6 +527,11 @@
 - After `/animus editor pair`, the editor's minute permission re-check no longer fails with "NPC runtime requires the owner thread" on Paper, Spigot and mod servers; it runs on the server thread. A repeating editor task failure is now one WARN line, repeated at most every 10 minutes with a count.
 - A route's `maximumFall` now counts levels as Citizens and the game do, so an NPC with a fall of 1 drops from a ledge onto a slab or path one level down instead of reporting the leg blocked and teleporting.
 - A walking NPC now moves at its configured speed; distance left over when a step reached a path node was dropped, which held a fast player body near 6 blocks a second.
+- Editor fields show a range once, under the field, instead of again as the placeholder.
+- Editor number fields are as wide as their allowed range; the control moves under its label in narrow panels.
+- Nested settings such as movement and stuck lay out as full-width groups instead of squeezed columns.
+- The editor NPC list hides its type and world columns when its own column is narrow.
+- Clicking an NPC inspector label focuses its text or number field.
 
 ### Notes
 

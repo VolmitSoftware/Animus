@@ -424,7 +424,7 @@ class BehaviorAuditor(imports.ImportAuditor):
         released(despawn['release'])
         deletion = gates['definition-delete-cancellation']; persisted = json.loads(snapshots['before-restart'][source])
         require(deletion['oldUuid'] == original['uuid'] and deletion['recreatedUuid'] == persisted['uuid'] != original['uuid'] and persisted['revision'] == 1, 'Delete/recreate retained stale identity')
-        require(any('Deleted; rollback transaction ' in r['receipt'] for r in ledger.find('animus delete ' + npc)), 'No actual definition deletion command')
+        require(any(re.search(r'Deleted [^;]*; tx ', r['receipt']) for r in ledger.find('animus delete ' + npc)), 'No actual definition deletion command')
         for command, document in [('animus edit ' + npc + ' {"name":"Behavior Edited"}', original), ('animus despawn ' + npc, before), ('animus delete ' + npc, after)]:
             cancellation_after(ledger, ledger.find(command)[0], npc, document['uuid'], document['revision'])
 

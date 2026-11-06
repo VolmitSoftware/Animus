@@ -369,7 +369,7 @@ public final class CitizensImporter {
         if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
         Path staged = store.resolve("imports/" + id);
         Preview preview = readPreview(staged, id);
-        if (preview.records() == 0 || preview.valid() != preview.records()) throw new IOException("Import has validation errors; inspect report.json");
+        if (preview.records() == 0 || preview.valid() != preview.records()) throw new IOException("Import has invalid records; see imports/" + id + "/report.json");
         String receiptPath = "imports/" + id + "/receipt.json";
         String existing = store.read(receiptPath);
         if (existing != null) {

@@ -37,7 +37,6 @@ import art.arcane.animus.bukkit.runtime.BukkitRuntimeHost;
 import art.arcane.animus.bukkit.runtime.RegionBuildNpcs;
 import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
 import art.arcane.animus.core.AnimusRuntime;
-import art.arcane.animus.core.AnimusSplash;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.bukkit.building.BukkitBuildPlatform;
@@ -130,6 +129,7 @@ public final class AnimusPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        long started = System.nanoTime();
         try {
             AnimusMetrics measured = AnimusMetrics.restart();
             metrics = measured;
@@ -151,27 +151,27 @@ public final class AnimusPlugin extends JavaPlugin {
             };
             runtime.importHost(new CitizensDropIn.Host(Optional.ofNullable(getDataFolder().getAbsoluteFile().getParentFile()).map(java.io.File::toPath), citizens, shopkeepers, denizen));
             CitizensGuard.install(citizens);
-            runtime.npcs().diagnostics().stream().limit(20).forEach(problem -> getLogger().warning("NPC definition recovery: " + problem));
+            List<String> recovered = runtime.npcs().diagnostics();
+            recovered.stream().limit(5).forEach(problem -> getLogger().warning("Definition kept at last valid version: " + problem));
+            if (recovered.size() > 5) getLogger().warning((recovered.size() - 5) + " more definition problems; /animus validate lists them");
             replies = new ReplyScheduler(this);
             commands = runtime.fileExecutor((task, event, failure) -> {
                 // Services retire their pending callbacks before this lane is closed.
                 if (event == MutationLane.EngineTaskEvent.FAILED)
-                    getLogger().log(Level.WARNING, "Animus file task failed", failure);
+                    getLogger().log(Level.WARNING, "File task failed", failure);
             });
             proof = new PacketProofService(this, replies, environment.minecraftVersion(), runtime);
             if (replies.isFolia()) {
                 foliaProof = new FoliaStationaryProofService(this, environment.minecraftVersion(), runtime, runtime.documents(), commands);
-                getLogger().info(foliaProof.status());
             }
             NpcRuntimeSettings npcSettings = runtime.npcSettings();
             PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
             FoliaRegions regions = replies.isFolia() ? new FoliaRegions(this) : null;
             PersistedNpcService<Player, ItemStack> mainThread = regions == null ? BukkitRuntimeHost.start(this, runtime, environment.minecraftVersion(), commands, settings, (Player player, Runnable task) -> replies.reply(player, task)) : null;
             living = regions == null ? mainThread : new RegionNpcRuntime(this, runtime, environment.minecraftVersion(), commands, settings, regions);
-            getLogger().info(living.status());
+            if (!living.available()) getLogger().warning(living.status());
             combat = new RuntimeCombatService(this, runtime, mainThread, environment.minecraftVersion(), replies.isFolia(), living instanceof RegionNpcRuntime regionized ? regionized : null);
-            getLogger().info(combat.status());
-            getLogger().info(proof.status(null));
+            if (combat.status().startsWith("Combat unavailable")) getLogger().warning(combat.status());
             Platform modulePlatform = modulePlatform();
             Function<Runnable, AutoCloseable> ownerTicks = regions != null ? regions::globalTicks : tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel;
             Economy vault = runtime.moduleHooks().economy(BukkitScreens.vault(getServer()));
@@ -185,7 +185,6 @@ public final class AnimusPlugin extends JavaPlugin {
             getServer().getPluginManager().registerEvents(new BukkitHoloEvents(guis), this);
             HireService<Player, ItemStack> hireDesk = new HireService<>(runtime, shops.screens(), living, commands, combat.hireGuarding(), message -> getLogger().info(message));
             hireTicks = ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, hireDesk::tick));
-            getLogger().info(hireDesk.status());
             ShopService<Player, ItemStack> screenService = shops;
             HoloService<Player, ItemStack> holoService = guis;
             living.interactions((Player player, UUID npc, boolean attack, boolean sneaking) ->
@@ -197,8 +196,6 @@ public final class AnimusPlugin extends JavaPlugin {
             }));
             shops.reload(catalog -> {});
             guis.reload(catalog -> {});
-            getLogger().info(shops.status());
-            getLogger().info(guis.status());
             startBuilds(mainThread, living instanceof RegionNpcRuntime regionized ? regionized : null, regions);
             BukkitOwners scheduling = new BukkitOwners(this, regions);
             builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, this::buildsRefusal,
@@ -257,10 +254,11 @@ public final class AnimusPlugin extends JavaPlugin {
             director = new AnimusCommandTree(commandServices).director();
             extensions.start();
             startEditor(modulePlatform);
-            printSplash(AnimusSplash.render(environment, getServer().getVersion(), true));
+            getLogger().info("Enabled " + BuildIdentity.VERSION + " on " + getServer().getName() + " " + environment.minecraftVersion() + (replies.isFolia() ? " (Folia regions)" : "")
+                    + " in " + (System.nanoTime() - started) / 1_000_000 + "ms | " + runtime.npcs().all().size() + " NPCs | editor " + editorState());
             announceCitizensMigration();
         } catch (IOException | ReflectiveOperationException | RuntimeException | LinkageError exception) {
-            getLogger().log(Level.SEVERE, "Failed to start " + BuildIdentity.NAME, exception);
+            getLogger().log(Level.SEVERE, "Failed to start", exception);
             getServer().getPluginManager().disablePlugin(this);
         }
     }
@@ -321,7 +319,7 @@ public final class AnimusPlugin extends JavaPlugin {
     public boolean onCommand(CommandSender sender, Command command, String label, String[] arguments) {
         AnimusDirector active = director;
         BukkitActor actor = new BukkitActor(sender, replies);
-        if (stopping || active == null || runtime == null || !runtime.isRunning()) { actor.tell(Palette.error("Animus is not running.")); return true; }
+        if (stopping || active == null || runtime == null || !runtime.isRunning()) { actor.tell(Palette.error("Not running; the server log has the startup error")); return true; }
         active.execute(actor, arguments);
         return true;
     }
@@ -354,9 +352,9 @@ public final class AnimusPlugin extends JavaPlugin {
                 }
                 @Override public void unregister(Object provider) { getServer().getServicesManager().unregister(provider); }
             });
-            getLogger().info("React metrics: published as source " + ReactMetricCatalog.SOURCE_ID + " (" + ReactMetricCatalog.SPECS.size() + " metrics; see the Animus debug and React metrics docs)");
+            getLogger().info("React metrics on: source " + ReactMetricCatalog.SOURCE_ID + ", " + ReactMetricCatalog.SPECS.size() + " metrics");
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
-            getLogger().warning("React is installed but its metric API is unavailable: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
+            getLogger().warning("React metrics off; its API is unavailable: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
         }
     }
 
@@ -390,9 +388,9 @@ public final class AnimusPlugin extends JavaPlugin {
         try {
             service.start();
             editor = service;
-            service.status().forEach(getLogger()::info);
+            if (!service.problem().isEmpty()) getLogger().warning("Editor " + service.problem());
         } catch (IOException | RuntimeException failure) {
-            getLogger().log(Level.WARNING, "The web editor API could not start", failure);
+            getLogger().log(Level.WARNING, "Editor could not start", failure);
             service.close();
         }
     }
@@ -414,7 +412,12 @@ public final class AnimusPlugin extends JavaPlugin {
             builds = new BuildService<>(runtime, npcs, commands, new BukkitBuildPlatform(getServer(), npcs.ownership()), runtime.moduleHooks().buildProtection(protection), name,
                     folia::globalTicks, triggers, (String message) -> getLogger().info(message), npcs.turns(), null);
         }
-        getLogger().info(builds.status());
+        if (builds.status().startsWith("Builds unavailable") && runtime.buildSettings().enabled()) getLogger().warning(builds.status());
+    }
+
+    private String editorState() {
+        EditorService active = editor;
+        return active == null ? "off" : active.reach();
     }
 
     /** Why builds cannot run now, or null; follows {@code builds.enabled} in config.toml live. */
@@ -494,7 +497,7 @@ public final class AnimusPlugin extends JavaPlugin {
 
         private boolean folia(CommandActor actor) {
             if (foliaProof != null && foliaProof.available()) return true;
-            actor.tell(foliaProof == null ? "Folia stationary proof requires Folia." : foliaProof.status());
+            actor.tell(Palette.error(foliaProof == null ? "Folia only" : foliaProof.status()));
             return false;
         }
 
@@ -504,12 +507,8 @@ public final class AnimusPlugin extends JavaPlugin {
 
         private void folia(CommandActor actor, String operation, String skin) {
             if (!folia(actor)) return;
-            if (!(sender(actor) instanceof Player player)) { actor.tell(Palette.error("This proof belongs to a player viewer.")); return; }
-            if (!foliaProof.execute(player, operation, skin)) actor.tell(Palette.error("Folia proof admission queue is full or unavailable; retry shortly."));
+            if (!(sender(actor) instanceof Player player)) { actor.tell(Palette.error("Players only")); return; }
+            if (!foliaProof.execute(player, operation, skin)) actor.tell(Palette.error("Folia proof queue full or unavailable; try again in a moment"));
         }
-    }
-
-    private void printSplash(String splash) {
-        getServer().getConsoleSender().sendMessage(AnimusSplash.colored(splash));
     }
 }

@@ -121,7 +121,7 @@ class CitizensDropInTest {
             assertTrue(staged.contains("1 .schem/.nbt files") && staged.contains("1 old .schematic"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
             assertTrue(npcs.all().isEmpty());
-            assertTrue(flow.startupNotice().orElseThrow().contains("staged and not applied"));
+            assertTrue(flow.startupNotice().orElseThrow().contains("staged, not applied"));
 
             citizens.set(true);
             IOException refused = assertThrows(IOException.class, () -> flow.applyStaged());
@@ -140,8 +140,7 @@ class CitizensDropInTest {
             assertThrows(IOException.class, () -> flow.preview("reject", Optional.empty(), Map.of(), false));
 
             String review = joined(flow.reviewApplied());
-            assertTrue(review.contains("spawn: 2 waiting") && review.contains("combat: 1 waiting") && review.contains("riding: 1 waiting")
-                    && review.contains("shops: 1 waiting") && review.contains("builder: 0 waiting"), review);
+            assertTrue(review.contains("Waiting: spawn 2, patrols 0, combat 1, riding 1, shops 1, builder 0, denizen 0 https://docs."), review);
             assertTrue(review.contains("Kept but not run: denizen 1") && !review.contains("waypoints 1"), "an empty waypoint set is not a kept route: " + review);
 
             String combat = joined(flow.acceptCategories(List.of("combat")));
@@ -204,9 +203,9 @@ class CitizensDropInTest {
             flow.preview("reject", Optional.empty(), Map.of(), false);
             flow.applyStaged();
             String review = joined(flow.reviewApplied());
-            assertTrue(review.contains("Combat capacity: 2 guards; at most 1 fight or scan at once ([combat] maximumNpcs)"), review);
+            assertTrue(review.contains("Combat capacity: 2 guards, at most 1 fight or scan at once ([combat] maximumNpcs)"), review);
             String accepted = joined(flow.acceptCategories(List.of("combat")));
-            assertTrue(accepted.contains("Combat: 2 guards accepted; at most 1 fight or scan at once ([combat] maximumNpcs)"), accepted);
+            assertTrue(accepted.contains("Combat: 2 guards accepted, at most 1 fight or scan at once ([combat] maximumNpcs)"), accepted);
             String roomy = joined(dropIn(store, npcs).combatLimit(256).reviewApplied());
             assertFalse(roomy.contains("fight or scan at once"), roomy);
         }
@@ -228,7 +227,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             String preview = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
-            assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 skins on non-player NPCs kept unused (Citizens shows skins only on player NPCs)"), preview);
+            assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 skins on non-player NPCs unused"), preview);
         }
     }
 
@@ -294,10 +293,10 @@ class CitizensDropInTest {
             assertTrue(staged.contains("Converted: 1 patrol routes (2 points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
             assertTrue(staged.contains("Off until accepted: spawn 1, patrols 1, combat 0"), staged);
             assertTrue(staged.contains("Kept, not run: nothing"), staged);
-            assertTrue(staged.contains("Commands: 1 behaviors stay denied until listed in config.toml [behaviors.actions] commandBehaviors (for example citizens:commands-5)"), staged);
+            assertTrue(staged.contains("Commands: 1 behaviors stay denied (such as citizens:commands-5); review behaviors/citizens/"), staged);
 
             String applied = joined(flow.applyStaged());
-            assertTrue(applied.contains("behaviors/citizens/ and load now"), applied);
+            assertTrue(applied.contains("Text and command behaviors in behaviors/citizens/ load now"), applied);
             assertNotNull(store.read("behaviors/citizens/text-5.json"));
             assertNotNull(store.read("behaviors/citizens/commands-5.json"));
             NpcDefinition watchman = npcs.find("citizens-5").orElseThrow();
@@ -307,7 +306,7 @@ class CitizensDropInTest {
             assertTrue(modules.getAsJsonObject("animus:look-close").get("enabled").getAsBoolean(), "look-close needs no review of its own");
 
             String review = joined(flow.reviewApplied());
-            assertTrue(review.contains("patrols: 1 waiting"), review);
+            assertTrue(review.contains("Waiting: spawn 1, patrols 1, "), review);
             assertTrue(review.contains("Commands: 1 behaviors stay denied"), review);
 
             String spawn = joined(flow.acceptCategories(List.of("spawn")));

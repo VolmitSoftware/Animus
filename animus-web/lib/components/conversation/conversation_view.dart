@@ -187,12 +187,12 @@ class _ConversationViewState extends State<ConversationView> {
           value: start.radius,
           integer: false,
           label: 'Radius in blocks',
-          placeholder: '1-64',
+          digits: 5,
           onChanged: (num? value) {
             if (value != null) _edit((Conversation c) => c.start.radius = value, coalesce: 'radius');
           },
         ),
-      if (start.kind == ConversationStartKind.proximity) const dom.span(classes: 'animus-muted', <Widget>[Component.text('blocks')]),
+      if (start.kind == ConversationStartKind.proximity) const dom.span(classes: 'animus-muted', <Widget>[Component.text('blocks, 1 to 64')]),
       if (start.kind == ConversationStartKind.manual)
         dom.code(classes: 'animus-muted', <Widget>[Component.text('/animus behaviors run <npc> ${component.document.id}')]),
     ]);

@@ -2,6 +2,7 @@
 
 .animus-inspector {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   min-width: 0;
 }
@@ -10,8 +11,26 @@
 .animus-control-stack,
 .animus-capability {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   min-width: 0;
+}
+
+/* A nested object reads as a group: its name on its own line, its fields
+   below at full width, so nested label columns never squeeze the controls. */
+.animus-gui-row:has(> .animus-gui-control > .animus-inspect-object) > .animus-gui-control {
+  flex-basis: 100%;
+}
+
+/* Its fields indent their labels, not their controls, so every control
+   stays on the same column at any depth. */
+.animus-gui-control > .animus-inspect-object > .animus-gui-row > :first-child {
+  box-sizing: border-box;
+  padding-inline-start: 0.75rem;
+}
+
+.animus-gui-control > .animus-inspect-object .animus-gui-control > .animus-inspect-object > .animus-gui-row > :first-child {
+  padding-inline-start: 1.5rem;
 }
 
 .animus-inspect-const {
@@ -190,16 +209,39 @@
   color: var(--animus-error);
 }
 
-.animus-operand {
-  display: grid;
-  grid-template-columns: minmax(9rem, max-content) minmax(0, 1fr);
+/* A source picker and its value side by side while the value keeps 10rem;
+   in a narrow or deeply nested column the value moves under the picker. */
+.animus-operand,
+.animus-value-editor {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.375rem;
-  align-items: start;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.animus-operand > :first-child,
+.animus-value-editor > :first-child {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.animus-operand > :nth-child(2),
+.animus-value-editor > :nth-child(n + 2) {
+  flex: 1 1 10rem;
   min-width: 0;
 }
 
 .animus-operand > :nth-child(n + 3) {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
+}
+
+/* A select keeps its own width; stretching it would leave its arrow
+   floating away from the box. */
+.animus-operand > .arcane-select-wrapper,
+.animus-value-editor > .arcane-select-wrapper {
+  flex: 0 1 auto;
 }
 
 .animus-expr {
@@ -219,14 +261,6 @@
   overflow-wrap: anywhere;
 }
 
-.animus-value-editor {
-  display: grid;
-  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
-  gap: 0.375rem;
-  align-items: start;
-  min-width: 0;
-}
-
 .animus-value-list {
   display: grid;
   gap: 0.375rem;
@@ -234,10 +268,15 @@
 }
 
 .animus-value-row {
-  display: grid;
-  grid-template-columns: minmax(2rem, max-content) minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.375rem;
-  align-items: start;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.animus-value-row > :nth-child(2) {
+  flex: 1 1 10rem;
   min-width: 0;
 }
 
@@ -354,21 +393,12 @@
     padding-inline-start: calc(0.75rem - 1px);
   }
 
-  .animus-behavior-editor .animus-gui-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .animus-operand,
-  .animus-value-editor {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .animus-value-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .animus-behavior-editor .animus-gui-row > :first-child {
+    flex-basis: 100%;
   }
 
   .animus-value-row > .animus-value-key {
-    grid-column: 1 / -1;
+    flex-basis: 100%;
   }
 
   .animus-node-summary {

@@ -9,11 +9,11 @@ import java.util.function.Predicate;
 
 /** Operator chat lines for hotloads, section-coded through {@link RichText#format}; values are shown as written, never as colour codes. */
 public final class HotloadMessages {
-    public static final int MAXIMUM_PER_FILE = 12, MAXIMUM_VALUE = 120;
-    public static final String APPLIED = Palette.PREFIX + "&aAnimus Hotloaded: &f[{file}] " + Palette.PINK_LIGHT + "[{key}] &7[{oldValue} -> {newValue}]";
-    public static final String TRUNCATED = Palette.PREFIX + "&aAnimus Hotloaded: &f[{file}] &7[{remaining} additional changes omitted]";
+    public static final int MAXIMUM_PER_FILE = 5, MAXIMUM_VALUE = 120;
+    public static final String APPLIED = Palette.PREFIX + "&aHotloaded &f[{file}] " + Palette.PINK_LIGHT + "[{key}] &7[{oldValue} -> {newValue}]";
+    public static final String TRUNCATED = Palette.PREFIX + "&aHotloaded &f[{file}] &7[+{remaining} more changes]";
     public static final String RESTART = " &c[restart required]";
-    public static final String REFUSED = Palette.PREFIX + "&cAnimus Hotload refused: &f[{file}] &c{error} &7[{kept}]";
+    public static final String REFUSED = Palette.PREFIX + "&cHotload refused &f[{file}] &c{error} &7[{kept}]";
     public static final String KEPT = "kept the last valid version";
 
     private HotloadMessages() {}

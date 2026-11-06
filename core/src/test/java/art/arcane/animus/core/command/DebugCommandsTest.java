@@ -87,7 +87,7 @@ class DebugCommandsTest {
         assertTrue(alex.contains("Viewer Alex"), alex);
         assertTrue(alex.contains("hologram: 5"), alex);
         assertFalse(alex.contains("spawn"), alex);
-        assertTrue(String.join("\n", run(console, "debug", "network", "nobody")).contains("No Animus traffic"));
+        assertTrue(String.join("\n", run(console, "debug", "network", "nobody")).contains("No traffic recorded for "));
     }
 
     @Test void performanceShowsEverySubsystemAndTickShare() {
@@ -121,7 +121,7 @@ class DebugCommandsTest {
         assertTrue(bars.get(player).contains("Animus"));
         watch.publish(metrics.snapshot(), (UUID id, String line) -> false);
         assertFalse(watch.watching(player), "an unreachable watcher is dropped");
-        assertTrue(run(new Actor(null), "debug", "watch").get(0).contains("belongs to a player"));
+        assertTrue(run(new Actor(null), "debug", "watch").get(0).contains("The live watch is for players; use "));
     }
 
     @Test void viewerNamesCompleteTheNetworkPlayer() {

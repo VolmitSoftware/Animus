@@ -60,15 +60,15 @@ try:
     server = Server()
     server.command('animus status', r'Animus 0\.1\.0 \| BUKKIT')
     for npc in ('qa-smoke-copy', 'qa-smoke'):
-        server.command('animus delete ' + npc, r'Deleted;|Unknown NPC:')
+        server.command('animus delete ' + npc, r'Deleted [^;]*; tx |Unknown NPC:')
     server.command('animus create qa-smoke minecraft:player world 0 64 0 qa "Smoke Guard"', r'Created dormant qa-smoke;')
-    server.command('animus edit qa-smoke {"name":"Persisted Guard"}', r'Saved; transaction')
+    server.command('animus edit qa-smoke {"name":"Persisted Guard"}', r'Saved[^;]*; tx ')
     server.command('animus inspect qa-smoke', r'"name":"Persisted Guard"')
-    server.command('animus clone qa-smoke qa-smoke-copy', r'Cloned; transaction')
-    deletion = server.command('animus delete qa-smoke-copy', r'Deleted; rollback transaction')
+    server.command('animus clone qa-smoke qa-smoke-copy', r'Cloned [^;]*; tx ')
+    deletion = server.command('animus delete qa-smoke-copy', r'Deleted [^;]*; tx ')
     transaction = re.search(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}', deletion).group()
-    server.command('animus rollback ' + transaction, r'Rolled back; inverse transaction')
-    server.command('animus validate', r'validate successful;')
+    server.command('animus rollback ' + transaction, r'Rolled back [^;]*; tx ')
+    server.command('animus validate', r'All definitions valid;')
     path = root / 'plugins/Animus/npcs/qa/qa-smoke.json'
     original = path.read_text()
     malformed = json.loads(original); malformed['position']['y'] = 'invalid'
@@ -76,14 +76,14 @@ try:
     server.command('animus reload', r'\$\.position\.y:')
     server.command('animus inspect qa-smoke', r'"name":"Persisted Guard"')
     path.write_text(original)
-    server.command('animus reload', r'reload successful;')
+    server.command('animus reload', r'Reloaded; ')
     server.close(); server = None
     assert (root / 'plugins/Animus/config.toml').is_file()
     server = Server()
     server.command('animus inspect qa-smoke', r'"name":"Persisted Guard"')
     server.command('animus inspect qa-smoke-copy', r'"name":"Persisted Guard"')
     for npc in ('qa-smoke-copy', 'qa-smoke'):
-        server.command('animus delete ' + npc, r'Deleted; rollback transaction')
+        server.command('animus delete ' + npc, r'Deleted [^;]*; tx ')
     server.close(); server = None
     print('PASS all console/persistence smoke scenarios; logs: ' + str(root / 'animus-smoke.log'), flush=True)
 finally:

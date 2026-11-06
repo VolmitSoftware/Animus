@@ -75,9 +75,12 @@ node test/skin_render_browser.cjs    # --data from its --write-fixture run
 node test/groups_recordings_browser.cjs
 node test/info_tip_browser.cjs
 node test/dropdowns_browser.cjs
+node test/layout_browser.cjs
 ```
 
 `home_browser.cjs` checks the home page (one primary action, the three ways to start, the empty list), the skip link, renaming a workspace with Enter and Escape (focus goes back to Rename), deleting with Escape and Restore, the routes to a missing workspace or document (each names the cause and links back), then opens `../schema/fixtures/export` as a data folder: the listing, arrow keys in the document list, the document title as the page heading, the view tablist with arrow keys, a broken Code draft named in the header, and Split and Preview.
+
+`layout_browser.cjs` opens every document of the example packs, the test fixtures and `../schema/fixtures/export`, plus home, New document, the NPC and recording lists, Send to a server and the converter, at 1440, 1280, 1024, 768 and 390 px in both themes, with every inspector part open. It fails on boxes overlapping a sibling, content clipped sideways, sideways scrolling, a border or divider through a control, an input too narrow for its value or placeholder, a hint that repeats the placeholder, text out of its box and a row label that focuses no control. `ANIMUS_LAYOUT_WIDTHS` limits the widths.
 
 `offline_editor_browser.cjs` makes a blank workspace and one document of every kind from its guided step, duplicates and deletes with undo, follows the undo in a second tab, redoes and undoes from the keyboard (and leaves Ctrl+Z inside a text box alone), focuses the search with `/`, opens the drawer on phones, opens a document from the command palette, fixes a broken id, plays a rig animation on an NPC, dry-runs a dialogue (answering its prompt) and a shop (a server-only step), exports the zip, checks persistence across a reload and the starter workspace, then pairs with the fake server, pulls an NPC, changes it and pushes the workspace with that conflict resolved. A last pass deletes `window.indexedDB` and checks the storage banner. Both widths, no console errors and no sideways scrolling.
 

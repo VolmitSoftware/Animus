@@ -273,7 +273,7 @@ public final class NativeProtocolClient {
             }
             Vec3 v = accepted.position();
             event("position", "x", v.x, "y", v.y, "z", v.z, "yaw", accepted.yRot(), "pitch", accepted.xRot());
-        } else if (packet instanceof ClientboundSystemChatPacket p) event("chat", "text", p.content().getString(), "clicks", clicks(p.content()));
+        } else if (packet instanceof ClientboundSystemChatPacket p) event("chat", "text", p.content().getString(), "clicks", clicks(p.content()), "actions", actions(p.content()));
         else if (packet instanceof ClientboundSetHealthPacket p) event("health", "health", p.getHealth(), "food", p.getFood(), "saturation", p.getSaturation());
         else if (packet instanceof ClientboundAddEntityPacket p) event("spawn", "id", p.getId(), "uuid", p.getUUID().toString(), "type", BuiltInRegistries.ENTITY_TYPE.getKey(p.getType()).toString(), "x", p.getX(), "y", p.getY(), "z", p.getZ());
         else if (packet instanceof ClientboundPlayerInfoUpdatePacket p) {
@@ -375,6 +375,23 @@ public final class NativeProtocolClient {
         List<String> found = new ArrayList<>();
         root.visit((style, text) -> {
             if (style.getClickEvent() instanceof net.minecraft.network.chat.ClickEvent.RunCommand run) found.add(run.command());
+            return Optional.empty();
+        }, net.minecraft.network.chat.Style.EMPTY);
+        return found;
+    }
+
+    /** Every click on the line as {@code kind value}: run, suggest, copy or open, with the hover text after a tab when there is one. */
+    private static List<String> actions(net.minecraft.network.chat.Component root) {
+        List<String> found = new ArrayList<>();
+        root.visit((style, text) -> {
+            String hover = style.getHoverEvent() instanceof net.minecraft.network.chat.HoverEvent.ShowText shown ? "\t" + shown.value().getString() : "";
+            switch (style.getClickEvent()) {
+                case net.minecraft.network.chat.ClickEvent.RunCommand run -> found.add("run " + run.command() + hover);
+                case net.minecraft.network.chat.ClickEvent.SuggestCommand suggest -> found.add("suggest " + suggest.command() + hover);
+                case net.minecraft.network.chat.ClickEvent.CopyToClipboard copy -> found.add("copy " + copy.value() + hover);
+                case net.minecraft.network.chat.ClickEvent.OpenUrl open -> found.add("open " + open.uri() + hover);
+                case null, default -> { }
+            }
             return Optional.empty();
         }, net.minecraft.network.chat.Style.EMPTY);
         return found;

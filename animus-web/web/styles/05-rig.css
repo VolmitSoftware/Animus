@@ -132,7 +132,8 @@
 }
 
 .animus-rig-field.is-inline {
-  grid-template-columns: max-content minmax(0, 1fr);
+  /* Room for a four-digit tick count and the step arrows. */
+  grid-template-columns: max-content minmax(6rem, 1fr);
   align-items: center;
   gap: 0.5rem;
 }
