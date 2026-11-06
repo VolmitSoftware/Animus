@@ -108,6 +108,8 @@ void main() {
       expect((modules['citizens:review']! as Map<String, Object?>).containsKey('skintrait'), isTrue);
       final Map<String, Object?> report = jsonDecode(preview.files['reports/32.json']!) as Map<String, Object?>;
       expect((report['fields']! as Map<String, Object?>)['/traits/skintrait/textureRaw'], 'UNSUPPORTED_PRESERVED');
+      expect((report['reasons']! as Map<String, Object?>)['/traits/skintrait/textureRaw'],
+          'Citizens draws skins only on player NPCs, so this frog never showed it; kept for when the NPC becomes a player');
       expect(CitizensReview.of(preview).conversions['skinsKept'], 1);
       final JObject skinnedMob = JObject()
         ..addString('type', 'minecraft:frog')

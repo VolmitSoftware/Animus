@@ -63,9 +63,10 @@ class CitizensImporterTest {
         assertEquals("frog", review.getAsJsonObject("skintrait").get("textureRaw").getAsString());
         JsonObject report = JsonDocuments.object(Files.readString(preview.directory().resolve("reports/2.json")));
         assertEquals("UNSUPPORTED_PRESERVED", report.getAsJsonObject("fields").get("/traits/skintrait/textureRaw").getAsString());
-        assertTrue(report.getAsJsonObject("reasons").get("/traits/skintrait/textureRaw").getAsString().contains("player bodies"));
+        assertEquals("Citizens draws skins only on player NPCs, so this frog never showed it; kept for when the NPC becomes a player",
+                report.getAsJsonObject("reasons").get("/traits/skintrait/textureRaw").getAsString());
         assertEquals(1, preview.summary().getAsJsonObject("conversions").get("skinsKept").getAsInt());
-        assertTrue(preview.conversions().contains("skins kept for review 1"));
+        assertTrue(preview.conversions().contains("skins on non-player NPCs kept unused 1"), preview.conversions());
         JsonObject player = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/world-r0_-1/citizens-1.json")));
         assertTrue(player.has("skin"));
         assertFalse(player.getAsJsonObject("modules").getAsJsonObject("citizens:review").has("skintrait"));
