@@ -1,0 +1,13 @@
+{
+  "idempotencyKey": "6f1c2d3e4f5a6b7c",
+  "documents": [
+    {
+      "kind": "npc",
+      "id": "town/greeter",
+      "from": {"id": "examples/greeter"},
+      "baseRevision": 1,
+      "baseHash": "sha256:f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d",
+      "delete": true
+    }
+  ]
+}

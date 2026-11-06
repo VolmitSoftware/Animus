@@ -7,6 +7,11 @@
     "counter": "X-Animus-Counter: a strictly increasing integer per token on every mutating request (POST and DELETE except pair). A value at or below the last accepted one is refused with counter-replayed.",
     "origin": "Origin must equal one of [editor] allowedOrigins exactly, or the request is refused with origin-not-allowed."
   },
+  "changeSets": {
+    "write": "A change with source writes the document; baseRevision and baseHash null create one that must not exist yet.",
+    "delete": "A change with delete removes the document; it needs the baseRevision and baseHash of what it removes.",
+    "move": "A change with source and from moves the document from from.id to id in one transaction: the file at id is written with revision one above the old one and the file at from.id is removed. baseRevision and baseHash are those of the document at from.id. A conflict names from.id when that document changed or is gone, and id when a document already exists there. The applied answer lists id with from, the catalog event lists id and deletes from.id, and undoing the change moves the document back."
+  },
   "endpoints": [
     {"method": "GET", "path": "/v1/hello", "scope": null, "request": null, "responses": {"200": "hello-response"}},
     {"method": "POST", "path": "/v1/pair", "scope": null, "auth": "pairing-secret", "request": "pair-request", "responses": {"200": "pair-response", "401": "error-response", "410": "error-response"}},
