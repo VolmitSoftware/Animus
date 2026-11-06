@@ -21,7 +21,7 @@ class RuntimeFilesTest {
         return runtime;
     }
     private static void create(AnimusRuntime runtime) throws Exception {
-        new Administration(runtime).execute(new String[]{"create", "guard", "minecraft:player", "world", "0", "64", "0", "default", "Guard"});
+        List.of(new Administration(runtime).create("guard", "minecraft:player", "world", 0, 64, 0, "default", "Guard"));
     }
     private static void await(CountDownLatch latch) {
         try { if (!latch.await(5, TimeUnit.SECONDS)) throw new AssertionError("Timed out waiting for controlled work"); }
@@ -40,7 +40,7 @@ class RuntimeFilesTest {
             Executor second = runtime.fileExecutor((task, event, error) -> failures.incrementAndGet());
             first.execute(() -> {
                 entered.countDown(); await(release);
-                try { new Administration(runtime).execute(new String[]{"edit", "guard", "{\"name\":\"Command\"}"}); }
+                try { List.of(new Administration(runtime).edit("guard", "{\"name\":\"Command\"}")); }
                 catch (Exception error) { throw new AssertionError(error); }
             });
             await(entered);

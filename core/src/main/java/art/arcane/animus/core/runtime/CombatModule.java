@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.command.CombatControl;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Subsystem;
 import com.google.gson.JsonObject;
@@ -47,7 +48,6 @@ import java.util.function.Predicate;
  * it on starts an engine as startup does.
  */
 public final class CombatModule implements AutoCloseable {
-    public static final String MODULE_USAGE = "combat status | combat <npc-id> status|engage|disengage|release | combat <npc-id> target <uuid> | combat <npc-id> guard <uuid>|stop";
     private record Candidate(String id, CombatSettings settings, CombatLoadout loadout) {}
     private static final int DEFINITIONS_PER_TICK = 64;
     private static final int ACTIVATIONS_PER_TICK = 16;
@@ -121,34 +121,23 @@ public final class CombatModule implements AutoCloseable {
                 + " | dropped-events=" + engine.droppedEvents() + " | region-unavailable=" + engine.regionUnavailable() + " | deleted-on-death=" + deletedOnDeath.get();
     }
 
-    /** {@code combat <npc-id> ...}: the module's own subcommands. */
-    public String execute(String[] args) {
+    /** {@code combat <operation> <npc>}: the module's own operations on one NPC. */
+    public String command(String id, CombatControl.Operation operation, Optional<UUID> target) {
         if (!active()) throw new IllegalStateException("Combat module " + reason());
-        if (args.length < 3) throw new IllegalArgumentException(MODULE_USAGE);
-        NpcDefinition definition = runtime.npcs().find(args[1]).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + args[1]));
+        NpcDefinition definition = runtime.npcs().find(id).orElseThrow(() -> new IllegalArgumentException("Unknown NPC: " + id));
         UUID npc = definition.uuid();
-        CombatOperations.Result result = switch (args[2]) {
-            case "status" -> {
-                if (args.length != 3) throw new IllegalArgumentException(MODULE_USAGE);
-                yield engine.status(npc).map((CombatEngine.Status state) -> new CombatOperations.Result(CombatOperations.Status.APPLIED,
+        CombatOperations.Result result = switch (operation) {
+            case STATUS -> engine.status(npc).map((CombatEngine.Status state) -> new CombatOperations.Result(CombatOperations.Status.APPLIED,
                         state.state() + " target=" + state.target().map((TargetRef ref) -> ref.kind() + ":" + ref.id()).orElse("none") + (state.disengaged() ? " disengaged" : "")
                                 + (state.ammunition() >= 0 ? " ammunition=" + state.ammunition() : "")))
                         .orElse(new CombatOperations.Result(CombatOperations.Status.NOT_COMBATANT, "not a combat NPC (combat disabled, review not accepted, or not active)"));
-            }
-            case "engage" -> engine.engage(npc);
-            case "disengage" -> engine.disengage(npc);
-            case "release" -> engine.release(npc);
-            case "target" -> {
-                if (args.length != 4) throw new IllegalArgumentException(MODULE_USAGE);
-                yield engine.target(npc, participant(uuid(args[3])));
-            }
-            case "guard" -> {
-                if (args.length != 4) throw new IllegalArgumentException(MODULE_USAGE);
-                yield engine.guard(npc, args[3].equals("stop") ? Optional.empty() : Optional.of(participant(uuid(args[3]))));
-            }
-            default -> throw new IllegalArgumentException(MODULE_USAGE);
+            case ENGAGE -> engine.engage(npc);
+            case DISENGAGE -> engine.disengage(npc);
+            case RELEASE -> engine.release(npc);
+            case TARGET -> engine.target(npc, participant(target.orElseThrow(() -> new IllegalArgumentException("Name a target UUID"))));
+            case GUARD -> engine.guard(npc, target.map(this::participant));
         };
-        return "Combat " + args[1] + ": " + result.status() + " " + result.detail();
+        return "Combat " + id + ": " + result.status() + " " + result.detail();
     }
 
     /** Whether the NPC guards this player or NPC now. */

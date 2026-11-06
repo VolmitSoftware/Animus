@@ -1,6 +1,7 @@
 package art.arcane.animus.core.command;
 
 import art.arcane.animus.core.behavior.builtin.PendingChoices;
+import art.arcane.animus.core.text.RichText;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -24,7 +25,7 @@ class ChoiceCommandTest {
 
     @Test void choiceCommandPassesTheSendersOwnIdentity() {
         List<String> seen = new ArrayList<>();
-        AnimusCommands.choice(sender(true), new String[]{"choice", TOKEN, "yes"}, (UUID player, String token, String option) -> { seen.add(player + ":" + token + ":" + option); return PendingChoices.Selection.ACCEPTED; });
+        ChoiceCommands.choose(sender(true), TOKEN, "yes", (UUID player, String token, String option) -> { seen.add(player + ":" + token + ":" + option); return PendingChoices.Selection.ACCEPTED; });
         assertEquals(List.of(playerId + ":" + TOKEN + ":yes"), seen);
         assertTrue(messages.isEmpty());
     }
@@ -32,22 +33,21 @@ class ChoiceCommandTest {
     @Test void rejectedChoiceTellsThePlayerNothingAboutWhy() {
         for (PendingChoices.Selection rejected : List.of(PendingChoices.Selection.UNKNOWN, PendingChoices.Selection.EXPIRED, PendingChoices.Selection.WRONG_PLAYER, PendingChoices.Selection.UNKNOWN_OPTION, PendingChoices.Selection.NPC_UNAVAILABLE)) {
             messages.clear();
-            AnimusCommands.choice(sender(true), new String[]{"choice", TOKEN, "yes"}, (UUID player, String token, String option) -> rejected);
-            assertEquals(List.of(AnimusCommands.NOT_AVAILABLE), messages);
+            ChoiceCommands.choose(sender(true), TOKEN, "yes", (UUID player, String token, String option) -> rejected);
+            assertEquals(List.of(ChoiceCommands.NOT_AVAILABLE), messages.stream().map(RichText::plain).map((String line) -> line.substring("[Animus]: ".length())).toList());
         }
     }
 
     @Test void malformedChoiceNeverReachesSelection() {
-        for (String[] arguments : List.of(new String[]{"choice"}, new String[]{"choice", TOKEN}, new String[]{"choice", TOKEN, "yes", "extra"},
-                new String[]{"choice", "short", "yes"}, new String[]{"choice", TOKEN.toUpperCase(), "yes"}, new String[]{"choice", TOKEN, "Bad Option"}, new String[]{"choice", TOKEN, "x".repeat(33)})) {
+        for (String[] arguments : List.of(new String[]{"short", "yes"}, new String[]{TOKEN.toUpperCase(), "yes"}, new String[]{TOKEN, "Bad Option"}, new String[]{TOKEN, "x".repeat(33)}, new String[]{"", ""})) {
             messages.clear();
-            AnimusCommands.choice(sender(true), arguments, (UUID player, String token, String option) -> { throw new AssertionError("Malformed click reached selection"); });
-            assertEquals(List.of(AnimusCommands.NOT_AVAILABLE), messages);
+            ChoiceCommands.choose(sender(true), arguments[0], arguments[1], (UUID player, String token, String option) -> { throw new AssertionError("Malformed click reached selection"); });
+            assertEquals(List.of(ChoiceCommands.NOT_AVAILABLE), messages.stream().map(RichText::plain).map((String line) -> line.substring("[Animus]: ".length())).toList());
         }
     }
 
     @Test void consoleCannotAnswerAChoice() {
-        AnimusCommands.choice(sender(false), new String[]{"choice", TOKEN, "yes"}, (UUID player, String token, String option) -> { throw new AssertionError("Console reached selection"); });
-        assertEquals(List.of(AnimusCommands.NOT_AVAILABLE), messages);
+        ChoiceCommands.choose(sender(false), TOKEN, "yes", (UUID player, String token, String option) -> { throw new AssertionError("Console reached selection"); });
+        assertEquals(List.of(ChoiceCommands.NOT_AVAILABLE), messages.stream().map(RichText::plain).map((String line) -> line.substring("[Animus]: ".length())).toList());
     }
 }

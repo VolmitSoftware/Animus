@@ -37,7 +37,8 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 namespace + 'core/AnimusRuntime.class', namespace + 'core/BuildIdentity.class',
                 'art/arcane/animus/api/AnimusApi.class', 'art/arcane/animus/api/TrustedModule.class',
                 internal + 'volmlib/util/config/ConfigJson.class', internal + 'volmlib/util/io/AtomicFileIO.class',
-                internal + 'gson/Gson.class']
+                internal + 'gson/Gson.class', internal + 'volmlib/util/director/runtime/DirectorRuntimeEngine.class',
+                internal + 'volmlib/util/director/help/DirectorMiniMenu.class']
             if (platform != 'bukkit') {
                 required.add(namespace + 'mod/AnimusModRuntime.class')
                 required.add(namespace + 'mod/MinecraftVersion.class')
@@ -164,6 +165,9 @@ TaskProvider verification = tasks.register('verifyArtifact') {
                 require(identity.getField(field).get(null) == expected, "BuildIdentity.${field} does not match build properties")
             }
             require(identity.getField('MINECRAFT_VERSIONS').get(null) == minecraftTargets.keySet().toList(), 'BuildIdentity Minecraft targets do not match the manifest')
+            // The command tree builds and renders its help from the jar alone, without a server, so no needed Director class was filtered out.
+            Class<?> commands = Class.forName(animus.projectGroup + '.core.command.AnimusCommandTree', true, isolated)
+            require(((Integer) commands.getMethod('selfCheck').invoke(null)) > 10, 'the /animus command tree did not build from the jar')
         }
     }
 }
