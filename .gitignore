@@ -17,3 +17,8 @@ private-migration/
 
 # Deployment credentials are stored in GitHub Actions secrets, never in source.
 service-account*.json
+
+# Stray Multiplexor workspace if run from this folder; use ServerMultiplexor instead
+/consumers/
+/.manager-state/
+/.multiplexor/

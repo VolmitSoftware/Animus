@@ -218,6 +218,40 @@ class DenizenConverterTest {
         assertEquals(object("{\"particle\":\"minecraft:flame\",\"count\":4,\"at\":\"player\"}"), step(main, 5).getAsJsonObject("arguments"));
     }
 
+    /** Sentinel is replaced by animus:combat, so its commands from Denizen become combat-control actions on the behavior's NPC. */
+    @Test void sentinelCommandsBecomeCombatControl() throws IOException {
+        DenizenConverter.Output output = convert("""
+                t:
+                  type: task
+                  script:
+                  - execute as_server "sentinel addtarget player:<player.name> --id <npc.id>"
+                  - execute as_server "sentinel removetarget player:<player.name>"
+                  - execute as_op "sentinel forgive"
+                  - execute as_server "sentinel guard <player.name>"
+                  - execute as_server "sentinel guard"
+                  - trait state:false sentinel
+                  - trait state:true sentinel
+                  - execute as_server "sentinel addtarget monsters"
+                  - execute as_server "sentinel removetarget player:<player.name> --id 12"
+                  - execute as_server "sentinel range 20"
+                  - trait sentinel
+                """);
+        JsonObject main = document(output, "denizen:task/t").getAsJsonObject("routines").getAsJsonObject("main");
+        List<String> operations = new java.util.ArrayList<>();
+        for (JsonElement step : main.getAsJsonArray("steps")) {
+            JsonObject action = step.getAsJsonObject();
+            assertEquals("animus:combat-control", action.get("capability").getAsString(), action.toString());
+            JsonObject arguments = action.getAsJsonObject("arguments");
+            operations.add(arguments.get("operation").getAsString() + (arguments.has("target") ? " " + arguments.get("target").getAsString() : ""));
+        }
+        assertEquals(List.of("target player", "release", "release", "guard player", "guard", "disable", "enable"), operations);
+        assertEquals("sentinel addtarget monsters: target types are animus:combat settings; set them in the NPC's animus:combat targets", reasonAt(output, "a.dsc:11"));
+        assertEquals("sentinel names another NPC with --id; animus:combat acts on the behavior's own NPC", reasonAt(output, "a.dsc:12"));
+        assertEquals("sentinel range has no combat action; set it in the NPC's animus:combat settings", reasonAt(output, "a.dsc:13"));
+        assertEquals("trait toggles Sentinel without saying on or off; use state:true or state:false", reasonAt(output, "a.dsc:14"));
+        assertFalse(output.report().getAsJsonArray("commandBehaviors").toString().contains("denizen:task/t"), "no server command is left to allow");
+    }
+
     @Test void quotedTitleArgumentsKeepTheirPrefix() throws IOException {
         JsonObject main = main("""
                 t:
