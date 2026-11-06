@@ -112,6 +112,13 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- GUI editor: shop owner and up to eight stock containers, with container shops limited to trade and static entries.
+- GUI editor: text animation editor with a live preview that pauses, steps by frame and starts paused under reduced motion.
+- GUI editor: presets editor, and a fix that copies a named preset's fields into a chest GUI, hologram or text animation.
+- GUI editor: hologram row show and scale, item rows with count, name and lore, head and entity rows, style and refresh.
+- GUI editor: menu component motion, hover, click box, tooltip, icon styles, list flow, tab spacing and menu constants.
+- GUI editor: chest GUI select, refresh mode and condition ticks, icon count format and head refresh.
+- GUI editor: clicking a menu component on the stage selects it, with a pink ring on the selection.
 
 ### Changed
 
@@ -175,6 +182,11 @@
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
+- GUI editor: changing a shop entry's type removes the fields the new type refuses; stock shows only where it applies.
+- GUI editor: Gloss bundle exports carry the Animus id in the title, so a bundle imports back to the same ids.
+- GUI editor: tabs, fields and the selected slot use the grey and pink editor style; phone slots and fields are 44 px.
+- GUI editor: changing an action's type keeps nested lists the new type has and asks before dropping others.
+- GUI editor: refusal messages for presets, icons and components use the server's wording.
 
 ### Fixed
 
@@ -211,6 +223,12 @@
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 - The editor theme toggle switches themes without a reload.
 - Assignments whose only content was `on assignment` now give their NPCs a behavior.
+- GUI editor: editing a hologram row no longer drops its show, scale or other keys.
+- GUI editor: the mask brush paints every slot a drag crosses, including fast drags.
+- GUI editor: tab labels no longer rewrite tab ids; shop and hologram pages keep a neighbour selected when one is removed.
+- GUI editor: chest window slot names include lore, lore shows on tap in previews, and tooltips wrap on phones.
+- GUI editor: text fields no longer render as grey slabs, and warnings meet contrast in the light theme.
+- GUI editor: invalid inventory arguments show the JSON error at the field instead of being ignored.
 
 ### Notes
 
