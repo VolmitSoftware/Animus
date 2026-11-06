@@ -67,7 +67,7 @@ class RecordCommandsTest {
         assertEquals(List.of(), control.calls, console.text());
         AnimusDirectorTest.Actor visitor = new AnimusDirectorTest.Actor(true, "animus.status");
         director.execute(visitor, new String[]{"record", "start", "demo"});
-        assertTrue(visitor.text().contains("You do not have permission"), visitor.text());
+        assertTrue(visitor.text().contains("No permission: animus."), visitor.text());
         assertEquals(List.of(), control.calls);
     }
 

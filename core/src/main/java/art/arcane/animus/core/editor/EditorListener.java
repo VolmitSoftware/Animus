@@ -114,9 +114,9 @@ public final class EditorListener implements AutoCloseable {
 
     public String describe() {
         ServerSocket socket = server;
-        if (socket == null) return "Editor listener stopped";
-        return "Editor listener " + (settings.tls() ? "https" : "http") + "://" + settings.listenAddress() + ":" + socket.getLocalPort() + BASE
-                + " | connections=" + (settings.openConnections() - connections.availablePermits()) + "/" + settings.openConnections();
+        if (socket == null) return "listener stopped";
+        return "listener " + settings.listenAddress() + ":" + socket.getLocalPort() + (settings.tls() ? " (https)" : " (http)")
+                + " " + (settings.openConnections() - connections.availablePermits()) + "/" + settings.openConnections() + " connections";
     }
 
     @Override

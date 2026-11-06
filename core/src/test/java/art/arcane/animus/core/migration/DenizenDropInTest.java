@@ -76,7 +76,7 @@ class DenizenDropInTest {
             assertTrue(guard.json().getAsJsonObject("modules").has(DenizenImporter.MODULE));
 
             String review = joined(flow.reviewApplied());
-            assertTrue(review.contains("denizen: 4 waiting"), review);
+            assertTrue(review.contains("Waiting: ") && review.contains(" denizen 4 https://docs."), review);
             assertTrue(review.contains("Denizen import "), review);
             JsonObject status = flow.status();
             assertEquals("applied", status.getAsJsonObject("denizen").get("state").getAsString());
@@ -217,7 +217,7 @@ class DenizenDropInTest {
             flow.preview("reject", Optional.empty(), Map.of(), false);
             DocumentStore.atomic(store.resolve(STATE), "{}");
             String applied = joined(flow.applyStaged());
-            assertTrue(applied.contains("Denizen import failed and nothing of it was installed") && applied.contains("Behavior state already stored"), applied);
+            assertTrue(applied.contains("Denizen import failed, none of it installed") && applied.contains("Behavior state already stored"), applied);
             assertNull(store.read("behaviors/denizen/interact/guard_quest.json"));
             assertFalse(npcs.all().isEmpty(), "the Citizens import stays applied");
         }

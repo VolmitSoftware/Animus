@@ -21,12 +21,12 @@ export default {
     if (phase === 'prepare') {
       await step('Create, edit, clone, inspect and validate a dormant definition', async () => {
         await command('/animus create multiplexor-proof minecraft:player world 0 64 0 qa "Multiplexor Original"', /Created dormant multiplexor-proof;/)
-        await command('/animus edit multiplexor-proof {"name":"Multiplexor Edited"}', /Saved; transaction /)
-        await command('/animus inspect multiplexor-proof', /"name":"Multiplexor Edited"/)
-        await command('/animus clone multiplexor-proof multiplexor-clone', /Cloned; transaction /)
-        await command('/animus delete multiplexor-clone', /Deleted; rollback transaction /)
-        await command('/animus validate', /validate successful; 1 active definitions/)
-        await command('/animus reload', /reload successful; 1 active definitions/)
+        await command('/animus edit multiplexor-proof {"name":"Multiplexor Edited"}', /Saved[^;]*; tx /)
+        await command('/animus inspect multiplexor-proof', /multiplexor-proof \| Multiplexor Edited \| minecraft:player/)
+        await command('/animus clone multiplexor-proof multiplexor-clone', /Cloned [^;]*; tx /)
+        await command('/animus delete multiplexor-clone', /Deleted [^;]*; tx /)
+        await command('/animus validate', /All definitions valid; 1 active/)
+        await command('/animus reload', /Reloaded; 1 active/)
       })
       await step('Record persisted UUID and revision for the restart phase', async () => {
         const saved = JSON.parse(await readFile(document, 'utf8'))
@@ -38,9 +38,9 @@ export default {
         const before = JSON.parse(await readFile(marker, 'utf8'))
         const saved = JSON.parse(await readFile(document, 'utf8'))
         expect(saved.uuid === before.uuid && saved.revision === before.revision && saved.name === 'Multiplexor Edited' && saved.spawned === false, 'Restart changed the durable definition', saved)
-        await command('/animus inspect multiplexor-proof', /"name":"Multiplexor Edited"/)
-        await command('/animus delete multiplexor-proof', /Deleted; rollback transaction /)
-        await command('/animus validate', /validate successful; 0 active definitions/)
+        await command('/animus inspect multiplexor-proof', /multiplexor-proof \| Multiplexor Edited \| minecraft:player/)
+        await command('/animus delete multiplexor-proof', /Deleted [^;]*; tx /)
+        await command('/animus validate', /All definitions valid; 0 active/)
         await unlink(marker)
       })
     }

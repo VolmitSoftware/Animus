@@ -24,7 +24,9 @@ import java.util.function.Predicate;
  */
 @Director(name = "groups", description = "List trait groups and assign them to NPCs")
 final class TraitGroupCommands extends CommandGroup {
-    static final String SELECTORS = "Select NPCs with one of folder=<npc-folder>, tag=<tag> or ids=a,b (@selected is your selection)";
+    static final String SELECTORS = "Give exactly one of folder=<folder>, tag=<tag> or ids=a,b (@selected for your selection)";
+
+    private static final int LISTED = 40;
 
     TraitGroupCommands(CommandServices services) { super(services); }
 
@@ -35,10 +37,10 @@ final class TraitGroupCommands extends CommandGroup {
         try {
             services.files().execute(() -> {
                 List<String> rows = rows(repository);
-                String title = "Trait groups (" + repository.groups().groups().size() + "), group-problems=" + repository.groupProblems().size();
-                if (!stopping()) actor.reply(() -> listing(actor, title, "/" + BuildIdentity.ID + " groups list", rows, page, "No trait groups yet; save one as groups/<id>.json."));
+                String title = "Trait groups (" + repository.groups().groups().size() + ", " + repository.groupProblems().size() + " problems)";
+                if (!stopping()) actor.reply(() -> listing(actor, title, "/" + BuildIdentity.ID + " groups list", rows, page, "No trait groups; save one as groups/<id>.json"));
             });
-        } catch (RejectedExecutionException full) { actor.tell(Palette.error("The Animus file queue is full; retry shortly.")); }
+        } catch (RejectedExecutionException full) { actor.tell(Palette.error(CommandActor.BUSY)); }
     }
 
     @Director(description = "Show a group's values and problems")
@@ -86,7 +88,7 @@ final class TraitGroupCommands extends CommandGroup {
         Predicate<NpcDefinition> matches = selector(repository, folder, tag, named);
         files(actor, () -> {
             String line = change(repository, group, matches, assign);
-            if (!line.contains("; transaction ")) return List.of(line);
+            if (!line.contains("; tx ")) return List.of(line);
             living().refresh();
             return List.of(Palette.success(line));
         });
@@ -121,15 +123,14 @@ final class TraitGroupCommands extends CommandGroup {
 
     static List<String> members(NpcRepository repository, String id) {
         List<String> members = memberIds(repository, id);
-        List<String> lines = new ArrayList<>(List.of("Members of " + id + ": " + members.size()));
-        if (!members.isEmpty()) lines.add(String.join(", ", members));
-        return lines;
+        String shown = String.join(", ", members.stream().limit(LISTED).toList()) + (members.size() > LISTED ? ", +" + (members.size() - LISTED) + " more" : "");
+        return List.of("Members of " + id + " (" + members.size() + ")" + (members.isEmpty() ? "" : ": " + shown));
     }
 
     /** Adds or removes {@code id} in the {@code groups} of every matching stored NPC, as one transaction. File lane. */
     static String change(NpcRepository repository, String id, Predicate<NpcDefinition> matches, boolean assign) throws IOException {
         if (assign && repository.groups().find(id).isEmpty())
-            throw new IOException("Unknown group " + id + "; save groups/" + id + ".json and wait for it to load, or run /animus reload");
+            throw new IOException("Unknown group " + id + "; save groups/" + id + ".json, then /animus reload");
         List<NpcRepository.Draft> drafts = new ArrayList<>();
         int unchanged = 0;
         for (NpcDefinition definition : List.copyOf(repository.stored())) {
@@ -145,9 +146,9 @@ final class TraitGroupCommands extends CommandGroup {
             else document.add("groups", groups);
             drafts.add(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
         }
-        String verb = assign ? "assigned " : "unassigned ";
-        if (drafts.isEmpty()) return verb + "0, unchanged " + unchanged;
-        return verb + drafts.size() + ", unchanged " + unchanged + "; transaction " + repository.applyAll(drafts);
+        String head = (assign ? "Assigned " + id + " to " : "Unassigned " + id + " from ") + drafts.size() + (drafts.size() == 1 ? " NPC, " : " NPCs, ") + unchanged + " unchanged";
+        if (drafts.isEmpty()) return head;
+        return head + "; tx " + repository.applyAll(drafts);
     }
 
     private static List<String> memberIds(NpcRepository repository, String id) {

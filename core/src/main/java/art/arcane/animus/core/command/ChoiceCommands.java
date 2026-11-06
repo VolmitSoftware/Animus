@@ -9,7 +9,7 @@ import java.util.UUID;
  * permission: only its single-use token grants anything, and every refusal reads the same.
  */
 final class ChoiceCommands {
-    static final String NOT_AVAILABLE = "That choice is no longer available.";
+    static final String NOT_AVAILABLE = "That choice is no longer available";
 
     @FunctionalInterface interface Selector { PendingChoices.Selection select(UUID player, String token, String option); }
 

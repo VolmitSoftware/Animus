@@ -61,7 +61,7 @@ final class CommandAllowList {
         String names = String.join(", ", needed);
         if (missing.isEmpty()) return "command namespace" + (needed.size() == 1 ? " " : "s ") + names + (needed.size() == 1 ? " is" : " are") + " already allowed by commandNamespaces";
         return "the import needs command namespace" + (missing.size() == 1 ? " " : "s ") + String.join(", ", missing)
-                + "; once applied, /animus import citizens accept commands adds " + (missing.size() == 1 ? "it" : "them") + " to commandNamespaces";
+                + "; after apply, /animus import citizens accept commands allows " + (missing.size() == 1 ? "it" : "them");
     }
 
     /** {@code toml} with {@code commandNamespaces} set to exactly {@code namespaces}; the rest of the text is unchanged. */

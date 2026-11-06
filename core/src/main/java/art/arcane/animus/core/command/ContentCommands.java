@@ -36,8 +36,8 @@ final class ContentCommands {
     private ContentCommands() {}
 
     static String rigSummary(RigCatalog catalog) {
-        return "Rigs reloaded: rigs=" + catalog.rigs().size() + " animations=" + catalog.animations().size() + " problems=" + catalog.problems().size()
-                + (catalog.problems().isEmpty() ? "" : " (see /animus rigs problems)");
+        return "Rigs reloaded: " + catalog.rigs().size() + " rigs, " + catalog.animations().size() + " animations, " + catalog.problems().size() + " problems"
+                + (catalog.problems().isEmpty() ? "" : "; /animus rigs problems lists them");
     }
 
     /** {@code a:b,c:d} as an ordered map; blank means none. */
@@ -47,7 +47,7 @@ final class ContentCommands {
         for (String pair : text.split(",")) {
             String[] parts = pair.split(":", 2);
             if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank() || worlds.putIfAbsent(parts[0].strip(), parts[1].strip()) != null)
-                throw new IllegalArgumentException("Invalid or repeated world mapping " + pair + "; write worlds=old:new,other:renamed");
+                throw new IllegalArgumentException("Bad or repeated world mapping " + pair + "; write worlds=old:new,other:renamed");
         }
         return worlds;
     }
@@ -60,7 +60,7 @@ final class ContentCommands {
 
         private ExtensionRuntime extensions(CommandActor actor) {
             ExtensionRuntime extensions = services.extensions();
-            if (extensions == null) actor.tell(Palette.error("Modules are not initialized."));
+            if (extensions == null) actor.tell(Palette.error("Modules unavailable; see the startup log"));
             return extensions;
         }
 
@@ -72,8 +72,8 @@ final class ContentCommands {
             AnimusRuntime active = runtime();
             ExtensionRuntime.Status snapshot = extensions.status();
             actor.tell("Modules " + snapshot.state() + " | startup=" + extensions.startupStatuses().size()
-                    + " | " + ModuleCapabilityListing.of(extensions.capabilities()).counts() + " | failure=" + snapshot.failure());
-            actor.tell("Module invocations: " + snapshot.invocations() + " | dropped interaction notices=" + extensions.droppedInteractionNotices());
+                    + " | " + ModuleCapabilityListing.of(extensions.capabilities()).counts() + " | failure=" + snapshot.failure()
+                    + " | invocations=" + snapshot.invocations() + " | dropped-notices=" + extensions.droppedInteractionNotices());
             active.moduleHooks().status().forEach(actor::tell);
             if (snapshot.lifecycle() != null) actor.tell("Module lifecycle: " + snapshot.lifecycle());
             if (snapshot.cleanup() != null) actor.tell("Module cleanup: " + snapshot.cleanup());
@@ -92,7 +92,7 @@ final class ContentCommands {
                 return startup.id() + " | " + startup.archive() + " | " + (current == null ? startup.state() : current.state())
                         + " | " + (current == null ? startup.reason() : current.reason());
             }).toList();
-            listing(actor, "Modules (" + rows.size() + ")", "/" + BuildIdentity.ID + " modules list", rows, page, "No modules are installed.");
+            listing(actor, "Modules (" + rows.size() + ")", "/" + BuildIdentity.ID + " modules list", rows, page, "No modules installed");
         }
 
         @Director(description = "List the actions and conditions modules offer")
@@ -101,7 +101,7 @@ final class ContentCommands {
             ExtensionRuntime extensions = extensions(actor);
             if (extensions == null) return;
             ModuleCapabilityListing listing = ModuleCapabilityListing.of(extensions.capabilities());
-            listing(actor, "Module capabilities", "/" + BuildIdentity.ID + " modules capabilities", listing.rows(), page, "No module offers a capability.");
+            listing(actor, "Module capabilities", "/" + BuildIdentity.ID + " modules capabilities", listing.rows(), page, "No module offers a capability");
         }
 
         @Director(description = "Run a module action on an NPC")
@@ -161,7 +161,7 @@ final class ContentCommands {
         @Director(description = "List rig and animation problems")
         void problems(@Param(name = "page", defaultValue = "1", description = "The page to show") int page) {
             CommandActor actor = actor();
-            listing(actor, "Rig problems", "/" + BuildIdentity.ID + " rigs problems", runtime().rigs().catalog().problems(), page, "No rig problems.");
+            listing(actor, "Rig problems", "/" + BuildIdentity.ID + " rigs problems", runtime().rigs().catalog().problems(), page, "No rig problems");
         }
 
         @Director(description = "Play an animation on an NPC's rig")
@@ -172,7 +172,7 @@ final class ContentCommands {
                   @Param(name = "loop", defaultValue = "default", description = "default keeps the animation's own; once, loop, pingpong or hold") Loop loop) {
             CommandActor actor = actor();
             Optional<String> mode = loop == Loop.DEFAULT ? Optional.empty() : Optional.of(loop.name().toLowerCase(Locale.ROOT));
-            npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Animus rigs", () -> {
+            npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Rigs", () -> {
                 living().playAnimation(id, animation, speed, mode, layer);
                 return "Playing " + animation + " on " + id + " layer " + layer;
             }));
@@ -184,7 +184,7 @@ final class ContentCommands {
                   @Param(name = "fade", defaultValue = "0", description = "Fade-out ticks") int fade) {
             CommandActor actor = actor();
             OptionalInt chosen = layer < 0 ? OptionalInt.empty() : OptionalInt.of(layer);
-            npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Animus rigs", () -> {
+            npc(actor, npc).ifPresent((String id) -> onNpcOwner(actor, id, "Rigs", () -> {
                 living().stopAnimation(id, chosen, fade);
                 return "Stopped animation on " + id;
             }));
@@ -196,6 +196,7 @@ final class ContentCommands {
 
     @Director(name = "pack", description = "Build the resource pack for rigged models")
     static final class Pack extends CommandGroup {
+        private static final int PACK_PROBLEMS = 5;
         Pack(CommandServices services) { super(services); }
 
         @Director(description = "Build models/ Blockbench files into pack/out/")
@@ -206,10 +207,10 @@ final class ContentCommands {
                 Path data = active.rigs().data();
                 RigPackBuilder.Result result = RigPackBuilder.build(data, data.resolve("pack/out"), RigPackBuilder.Limits.DEFAULT);
                 List<String> lines = new ArrayList<>();
-                lines.add(Palette.success("Pack built: models=" + result.models() + " files=" + result.files() + " sha1=" + result.sha1() + " -> pack/out/" + result.zip().getFileName()));
-                lines.add("Rig and animation documents for the models are in pack/out/documents; copy them into rigs/ and animations/ to use them.");
-                result.problems().stream().limit(20).forEach((String problem) -> lines.add("Pack: " + problem));
-                if (result.problems().size() > 20) lines.add("Pack: " + (result.problems().size() - 20) + " more problems not shown");
+                lines.add(Palette.success("Built pack/out/" + result.zip().getFileName() + ": " + result.models() + " models, " + result.files() + " files, sha1 " + result.sha1()));
+                lines.add("Copy pack/out/documents into rigs/ and animations/ to use the models");
+                result.problems().stream().limit(PACK_PROBLEMS).forEach((String problem) -> lines.add(Palette.error("Pack: " + problem)));
+                if (result.problems().size() > PACK_PROBLEMS) lines.add("+" + (result.problems().size() - PACK_PROBLEMS) + " more pack problems");
                 return lines;
             });
         }

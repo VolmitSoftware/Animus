@@ -50,8 +50,8 @@ final class DiagnosticCommands {
             };
             if (chosen == null) { actor.tell(Palette.error("Unknown state " + enabled + "; use on, off or toggle")); return; }
             log.debug(chosen);
-            actor.tell(Palette.success(chosen ? "Debug mode enabled: route, activation and packet diagnostics are logged for every NPC until the server restarts."
-                    : "Debug mode disabled: per-NPC diagnostics are summarized every " + AnimusLog.WINDOW.toMinutes() + " minutes."));
+            actor.tell(Palette.success(chosen ? "Debug mode on: every NPC's route, activation and packet diagnostics log until restart"
+                    : "Debug mode off: per-NPC diagnostics summarize every " + AnimusLog.WINDOW.toMinutes() + " min"));
         }
 
         @Director(description = "Toggle a live action-bar readout", origin = DirectorOrigin.PLAYER)
