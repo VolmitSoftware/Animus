@@ -516,8 +516,8 @@ class _EditorShellState extends State<EditorShell> {
             onView: (ViewMode view) => component.onNavigate(selected.withView(view)),
             onSource: (String source) => component.store.editSource(document.kind, document.id, source),
             onJson: jsonEditedKinds.contains(document.kind)
-                ? (Object? json, {String? coalesce}) => component.store.commit(
-                      documents: <DocumentChange>[DocumentChange(document.kind, document.id, prettyJson(json))],
+                ? (JsonUpdate update, {String? coalesce}) => component.store.commit(
+                      documents: <DocumentChange>[DocumentChange.update(document.kind, document.id, update)],
                       coalesce: coalesce == null ? null : '${document.kind.wireName}:${document.id}:$coalesce',
                     )
                 : null,

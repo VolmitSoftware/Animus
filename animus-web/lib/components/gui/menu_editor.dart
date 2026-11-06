@@ -64,7 +64,7 @@ class _MenuEditorState extends State<MenuEditor> {
   List<Diagnostic> get _diagnostics => component.document.diagnostics;
 
   void _write(List<JsonStep> steps, Object? value, {String? coalesce}) =>
-      component.onJson(writeIn(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
+      component.onJson(writeAt(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
 
   List<String> get _namedLists => asMap(_doc['actions']).keys.toList();
 

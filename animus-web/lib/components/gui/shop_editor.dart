@@ -132,7 +132,7 @@ class _ShopEditorState extends State<ShopEditor> {
   bool get _container => isContainerShop(_shop);
 
   void _write(List<JsonStep> steps, Object? value, {String? coalesce}) =>
-      component.onJson(writeIn(_shop, steps, value), coalesce: coalesce ?? steps.join('.'));
+      component.onJson(writeAt(_shop, steps, value), coalesce: coalesce ?? steps.join('.'));
 
   String get _shownMode {
     final List<String> modes = _enabledModes(_shop);

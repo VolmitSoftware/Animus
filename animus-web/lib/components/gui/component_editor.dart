@@ -181,7 +181,7 @@ class IconEditor extends StatelessWidget {
             path: childPath(path, 'style'),
             diagnostics: diagnostics,
             note: 'Menu icons face one way (billboard fixed) and do not show through blocks unless set here.',
-            onChanged: (JsonMap? next) => onChanged(withField(icon, 'style', next)),
+            onChanged: (JsonMap? next, String _) => onChanged(withField(icon, 'style', next)),
           ),
       ],
     ]);
@@ -346,13 +346,13 @@ class ComponentEditor extends StatelessWidget {
           number('step', 'Step', help: '1 by default.'),
           number('width', 'Width', help: '0.01 to 64 blocks; 2 by default.'),
           text('label', 'Label', mode: GuiTextMode.template, help: 'Shows {{ session.<variable> }} by default.'),
-          DisplayStyleEditor(style: asMap(data['style']), path: childPath(path, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next) => set('style', next)),
+          DisplayStyleEditor(style: asMap(data['style']), path: childPath(path, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next, String _) => set('style', next)),
         ],
         if (type == 'tabs') ...<Widget>[
           text('var', 'Variable *', help: 'The chosen tab id lives in session.<variable>; tab by default.'),
           number('spacing', 'Spacing', help: '0 to 64 blocks between tabs; 1 by default.'),
           _tabs(data),
-          DisplayStyleEditor(style: asMap(data['style']), path: childPath(path, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next) => set('style', next)),
+          DisplayStyleEditor(style: asMap(data['style']), path: childPath(path, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next, String _) => set('style', next)),
         ],
       ],
     ]);
@@ -418,7 +418,7 @@ class ComponentEditor extends StatelessWidget {
           (String _) => GuiLinesEditor(lines: stringList(tooltip['lines']), names: names, onChanged: (List<String> lines) => setTooltip('lines', lines))),
       guiFieldRow('Delay', childPath(tooltipPath, 'delayTicks'), diagnostics, help: '0 to 200 ticks before it shows; 10 by default.',
           (String id) => GuiNumberInput(id: id, value: asInt(tooltip['delayTicks']), label: 'Tooltip delay in ticks', onChanged: (num? v) => setTooltip('delayTicks', v))),
-      DisplayStyleEditor(title: 'Tooltip style', style: asMap(tooltip['style']), path: childPath(tooltipPath, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next) => setTooltip('style', next)),
+      DisplayStyleEditor(title: 'Tooltip style', style: asMap(tooltip['style']), path: childPath(tooltipPath, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next, String _) => setTooltip('style', next)),
     ]);
   }
 

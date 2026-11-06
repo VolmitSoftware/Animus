@@ -155,14 +155,13 @@ class _NpcInspectorState extends State<NpcInspector> {
   /// check assumes.
   String get _type => _group ? (_doc.containsKey('armorStand') ? 'minecraft:armor_stand' : 'minecraft:player') : asString(_doc['type']) ?? 'minecraft:player';
 
-  /// Reports edited definition fields, wrapped back into the group file when
-  /// editing a group.
-  void _emit(JsonMap fields, {required String coalesce}) {
-    if (!_group) {
-      component.onJson(fields, coalesce: coalesce);
-      return;
-    }
-    component.onJson(<String, Object?>{..._file, 'values': fields}, coalesce: 'group:$coalesce');
+  /// Writes [value] at [steps] of the definition fields, which sit under
+  /// `values` when editing a group.
+  /// [from] is what the editor saw at [steps] when that is ahead of the
+  /// document.
+  void _emit(List<JsonStep> steps, Object? value, {required String coalesce, Object? from}) {
+    final List<JsonStep> at = <JsonStep>[if (_group) 'values', ...steps];
+    component.onJson(writeAt(from == null ? _file : writeIn(_file, at, from), at, value), coalesce: _group ? 'group:$coalesce' : coalesce);
   }
 
   List<AnimusDocument> _documents(DocumentKind kind) => <AnimusDocument>[
@@ -172,7 +171,7 @@ class _NpcInspectorState extends State<NpcInspector> {
 
   List<String> _ids(DocumentKind kind) => <String>[for (final AnimusDocument document in _documents(kind)) document.id];
 
-  void _write(List<JsonStep> steps, Object? value) => _emit(asMap(writeIn(_doc, steps, value)), coalesce: 'npc:${steps.join('.')}');
+  void _write(List<JsonStep> steps, Object? value) => _emit(steps, value, coalesce: 'npc:${steps.join('.')}');
 
   FieldSpec _spec(String key) {
     final List<FieldSpec> fields = _schema.fields(_schema.root, _doc);
@@ -203,9 +202,11 @@ class _NpcInspectorState extends State<NpcInspector> {
 
   JsonMap get _modules => asMap(_doc['modules']);
 
-  void _putModule(String key, Object? value) {
+  /// Writes module [key]; [from] is the module an editor worked [value] out
+  /// from when that is ahead of the document.
+  void _putModule(String key, Object? value, {JsonMap? from}) {
     final JsonMap next = asMap(writeIn(_modules, <JsonStep>[key], value));
-    _emit(asMap(writeIn(_doc, <JsonStep>['modules'], next.isEmpty ? null : next)), coalesce: 'npc:module:$key');
+    _emit(const <JsonStep>['modules'], next.isEmpty ? null : next, coalesce: 'npc:module:$key', from: from == null ? null : <String, Object?>{..._modules, key: from});
   }
 
   /// Parts the reader opened or closed, by section id.
@@ -391,15 +392,8 @@ class _NpcInspectorState extends State<NpcInspector> {
             value: description,
             label: 'Group description',
             placeholder: 'What NPCs in this group share',
-            onChanged: (String text) {
-              final JsonMap next = <String, Object?>{...file};
-              if (text.trim().isEmpty) {
-                next.remove('description');
-              } else {
-                next['description'] = text;
-              }
-              component.onJson(next, coalesce: 'group:description');
-            },
+            onChanged: (String text) =>
+                component.onJson(writeAt(file, const <JsonStep>['description'], text.trim().isEmpty ? null : text), coalesce: 'group:description'),
           ),
         ),
         GuiRow(
@@ -732,7 +726,7 @@ class _NpcInspectorState extends State<NpcInspector> {
     imported: _doc.containsKey('migration'),
     diagnostics: _diagnostics,
     onOpen: component.onOpen,
-    onChanged: (Object? value) => _putModule(navigationModule, value),
+    onChanged: (Object? value, {JsonMap? from}) => _putModule(navigationModule, value, from: from),
   );
 
   // Modules ------------------------------------------------------------------
@@ -917,7 +911,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           path: r'$',
           diagnostics: _diagnostics,
           skip: _laidOut,
-          onChanged: (JsonMap value) => _emit(value, coalesce: 'npc:other'),
+          onChanged: (JsonMap value) => _emit(const <JsonStep>[], value, coalesce: 'npc:other'),
         ),
       ],
     );
