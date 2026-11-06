@@ -64,6 +64,12 @@ class FakeRequest {
 class FakeResponse {
   const FakeResponse(this.status, {this.body, this.headers = const <String, String>{}});
 
+  /// No answer at all: the direct path drops the connection, the relay closes
+  /// the request (`/__fake/drop-answer`).
+  static const FakeResponse dropped = FakeResponse(0);
+
+  bool get isDropped => status == 0;
+
   final int status;
   final Object? body;
   final Map<String, String> headers;
