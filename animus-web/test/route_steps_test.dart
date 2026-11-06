@@ -96,7 +96,11 @@ void main() {
       expect(spec.links, isEmpty, reason: 'no link is drawn to or from a step');
       expect(spec.waitTicks, const RouteWait(20, 60));
       expect(spec.points[0].waitTicks.toString(), '10-40');
-      expect(spec.problems(), isEmpty);
+      expect(
+        spec.problems(),
+        <(String, String)>[('points[1].weight', 'is only allowed with order random'), ('points[2].weight', 'is only allowed with order random')],
+        reason: 'the mixed route carries every key; the server refuses weight outside order random',
+      );
     });
 
     test('test_routeSpec_unreadablePoint_keepsItsNumber', () {

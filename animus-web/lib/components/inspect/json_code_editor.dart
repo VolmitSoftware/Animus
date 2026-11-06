@@ -45,8 +45,12 @@ class JsonCodeEditor extends StatefulWidget {
     this.hints,
     this.diagnostics = const <Diagnostic>[],
     this.serverDiagnostics = const <Diagnostic>[],
+    this.readOnly = false,
     super.key,
   });
+
+  /// Shows the text without letting it be edited (recordings).
+  final bool readOnly;
 
   final String text;
   final void Function(String text) onChanged;
@@ -291,6 +295,7 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
               'autocomplete': 'off',
               'wrap': 'off',
               'aria-label': 'Document JSON',
+              if (component.readOnly) 'readonly': '',
               'aria-autocomplete': 'list',
               if (open) 'aria-expanded': 'true',
               if (open) 'aria-controls': '$_id-list',

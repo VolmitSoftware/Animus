@@ -14,6 +14,7 @@ import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_text.dart';
 import '../logic/inspect/server_behaviors.dart';
 import '../logic/offline/new_documents.dart';
+import '../logic/recording/rename_references.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
@@ -34,6 +35,7 @@ import 'offline/home_screen.dart';
 import 'offline/new_document_page.dart';
 import 'offline/offline_fields.dart';
 import 'offline/sync_page.dart';
+import 'recording/recording_list.dart';
 import 'rig/rig_actions.dart';
 import 'rig/rig_editor.dart';
 import 'server/live_bar.dart';
@@ -44,7 +46,7 @@ import 'shell_topbar.dart';
 
 /// Kinds whose Visual view edits the parsed JSON (GUI editors, the
 /// schema-driven NPC and behavior inspectors and the route editor).
-const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.behavior, DocumentKind.route, DocumentKind.pack, DocumentKind.serverBehaviors};
+const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.group, DocumentKind.behavior, DocumentKind.route, DocumentKind.pack, DocumentKind.serverBehaviors};
 
 /// The id of every screen's `<main>`, the target of the skip link.
 const String mainId = 'animus-main';
@@ -295,8 +297,9 @@ class _EditorShellState extends State<EditorShell> {
   }
 
   /// Moves (or with [copy], copies) a document to [id] in one undo step. A
-  /// move takes the references along: NPCs listing a renamed behavior, and
-  /// the animations and NPCs of a renamed rig.
+  /// move takes the references along: NPCs listing a renamed behavior or
+  /// group, the animations and NPCs of a renamed rig, and the NPCs and routes
+  /// that play a renamed recording.
   Future<String?> _relocate(WorkspaceSnapshot workspace, AnimusDocument document, String id, {required bool copy}) async {
     final DocumentKind kind = document.kind;
     if (id == document.id) return copy ? 'Pick an id that is not taken.' : null;
@@ -321,6 +324,8 @@ class _EditorShellState extends State<EditorShell> {
           changes.add(DocumentChange(other.kind, other.id, prettyJson(<String, Object?>{...value, 'rig': id})));
         } else if (kind == DocumentKind.rig && other.kind == DocumentKind.npc && asMap(value['rig'])['id'] == document.id) {
           changes.add(DocumentChange(other.kind, other.id, prettyJson(<String, Object?>{...value, 'rig': <String, Object?>{...asMap(value['rig']), 'id': id}})));
+        } else if (renamedReferences(kind, document.id, id, other.kind, value) case final JsonMap renamed) {
+          changes.add(DocumentChange(other.kind, other.id, prettyJson(renamed)));
         }
       }
     }
@@ -438,6 +443,8 @@ class _EditorShellState extends State<EditorShell> {
         PaletteCommand('Workspace', 'Import a Gloss bundle', _importGloss),
         if (workspace.server == null) PaletteCommand('Workspace', 'Send to a server', () => component.onNavigate(SyncRoute(workspace.id)), keywords: const <String>['push', 'pull', 'sync']),
         PaletteCommand('Workspace', 'Browse NPCs', () => component.onNavigate(NpcListRoute(workspace.id)), keywords: const <String>['search', 'filter']),
+        if (workspace.documents.any((AnimusDocument document) => document.kind == DocumentKind.recording))
+          PaletteCommand('Workspace', 'Browse recordings', () => component.onNavigate(RecordingListRoute(workspace.id)), keywords: const <String>['performance', 'playback']),
         PaletteCommand('Workspace', 'Workspace overview', () => component.onNavigate(WorkspaceRoute(workspace.id))),
         for (final AnimusDocument document in workspace.documents)
           PaletteCommand(
@@ -515,7 +522,7 @@ class _EditorShellState extends State<EditorShell> {
                     )
                 : null,
             onRename: _movable(document.kind) ? (String id) => _relocate(workspace, document, id, copy: false) : null,
-            onDuplicate: _movable(document.kind) ? (String id) => _relocate(workspace, document, id, copy: true) : null,
+            onDuplicate: _movable(document.kind) && document.kind != DocumentKind.recording ? (String id) => _relocate(workspace, document, id, copy: true) : null,
             onDelete: () async {
               await component.store.commit(documents: <DocumentChange>[DocumentChange(document.kind, document.id, null)], label: 'delete ${document.id}');
               component.onNavigate(WorkspaceRoute(workspace.id));
@@ -540,6 +547,8 @@ class _EditorShellState extends State<EditorShell> {
               dom.a(href: WorkspaceRoute(workspace.id).format(), const <Widget>[Component.text('Open the workspace overview')]),
             ]),
           ])
+        else if (route is RecordingListRoute)
+          RecordingList(key: ValueKey<String>('recording-list:${workspace.id}'), workspace: workspace)
         else if (route is NpcListRoute)
           NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
         else if (route is NewDocumentRoute)

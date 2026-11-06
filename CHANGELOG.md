@@ -212,6 +212,14 @@
 - A recording stores its world as the Bukkit world name or dimension key; playback and previews resolve it, or a world UUID, like other documents, and refuse in `route-error` a recording whose world is not loaded or is not the NPC's.
 - Route points can be recording steps (`{"recording": id, "fromTick", "toTick", "playback": "once"}`): the NPC walks to the segment's first frame, plays it once and goes on from its last frame, in both runtimes and across Folia handoffs; `inspect` shows `step=recording:<id> cursor=<n>/<to>`.
 - Web editor: the route editor lists recording steps with the points, picks the recording (or takes a typed id when the workspace has none), edits `fromTick` and `toTick`, adds steps and turns a point into a step and back.
+- Web editor: trait groups open in the NPC inspector's parts over their `values`, with a description, members, a skin pool and the server's value checks under `$.values`.
+- Web editor: an NPC's Groups list (order, add, remove, unknown-group warning) and an Effective part showing the merged definition with each value's source, from the shared merge.
+- Web editor: the NPC preview draws the effective definition, so group equipment, holograms and skins show on the stage.
+- Web editor: the NPC browser assigns and unassigns a group for the selection, one folder or an effective tag as one commit and one change set, offline or live.
+- Web editor: recordings list and inspect read-only: length, frames, events, world and size, a top-down path with a scrub and play control, and the events list.
+- Web editor: an NPC's navigation plays a recording with `once`, `loop` or `pingpong`.
+- Web editor: ranged waits take a min and max field; routes edit `seed`, `startOffset`, `jitter`, point `weight` and `next` junctions, checked as the server checks them.
+- Web editor: renaming a recording or group updates the NPCs and routes that name it.
 
 ### Changed
 
@@ -337,6 +345,7 @@
 - GUI editor: tabs, fields and the selected slot use the grey and pink editor style; phone slots and fields are 44 px.
 - GUI editor: changing an action's type keeps nested lists the new type has and asks before dropping others.
 - GUI editor: refusal messages for presets, icons and components use the server's wording.
+- Web editor: groups and recordings are listed in the sidebar; a renamed recording or group rewrites its `id`.
 
 ### Fixed
 

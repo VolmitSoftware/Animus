@@ -13,6 +13,7 @@ import '../model/document_kind.dart';
 import 'gui/gui_validation.dart';
 import 'inspect/json_syntax.dart';
 import 'npc/combat_settings.dart';
+import 'npc/group_model.dart';
 import 'npc/npc_paths.dart';
 import 'rig_validation.dart';
 import 'shared_schemas.dart';
@@ -224,6 +225,7 @@ AnimusDocument validateSource(DocumentLocation location, String path, String sou
     ...mergeGuiDiagnostics(schemas.validate(location.kind, json), validateGui(location.kind, json)),
     ..._identity(location, json),
     if (location.kind == DocumentKind.rig) ...validateRigStructure(json),
+    if (location.kind == DocumentKind.group) ...groupValueDiagnostics(json, schemas),
   ];
   if (location.kind == DocumentKind.npc) diagnostics.addAll(npcCombatDiagnostics(json, diagnostics));
   return AnimusDocument(kind: location.kind, id: location.id, path: path, source: source, json: json, diagnostics: diagnostics);
