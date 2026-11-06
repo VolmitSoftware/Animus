@@ -86,6 +86,7 @@ public final class BehaviorCommands implements AutoCloseable {
         servers.behaviorsEnabled(settings.enabled());
         extensions.connectTriggers(new ModuleTriggers(triggers,servers));
         coordinator=new BehaviorRuntime(runtimeLimits(settings),settings.engine(),repository::snapshot,this::catalogSnapshot,extensions.behaviorInvoker(),triggers,servers,behaviorState);
+        triggers.consumption(behaviorState,coordinator.facts());
     }
     private static BehaviorRuntime.Limits runtimeLimits(BehaviorSettings settings){
         return new BehaviorRuntime.Limits(settings.maximumOperations(),settings.operationsPerTick(),settings.tickMillis(),settings.deliveryBudgetMillis());

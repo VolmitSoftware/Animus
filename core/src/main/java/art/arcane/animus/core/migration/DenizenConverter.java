@@ -42,7 +42,7 @@ import java.util.UUID;
  * accepts them.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 2;
+    static final int CONVERTER_VERSION = 3;
     /** The author a converted book gets when its Denizen author is blank. */
     static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";
@@ -96,6 +96,8 @@ final class DenizenConverter {
         final Map<String, String> saves;
         /** Denizen context keys the trigger passes, and their Animus names. */
         final Map<String, String> context;
+        /** The {@code determine cancelled} line an NPC event's {@code consume} condition was made from; set on that event's scope only. */
+        Item cancel;
 
         Scope(Doc doc, Set<String> calling, boolean record, Container container, Optional<Interact> interact, int step, Map<String, String> definitions, List<String> loops, Map<String, String> saves, Map<String, String> context) {
             this.doc = doc; this.calling = calling; this.record = record; this.server = doc.server; this.container = container; this.interact = interact; this.step = step;
@@ -123,6 +125,10 @@ final class DenizenConverter {
     private final List<Npc> npcs = new ArrayList<>();
     private final TreeMap<String, String> guis = new TreeMap<>();
     private final TreeSet<String> serverBehaviors = new TreeSet<>();
+    /** World behaviors of NPC events, bound to every NPC. */
+    private final TreeSet<String> clickBehaviors = new TreeSet<>();
+    /** Literal values scripts and NPC data give each flag, by {@code scope:name}; filled on first use. */
+    private TreeMap<String, TreeSet<String>> flagValues;
     private final TreeMap<String, List<String>> guards = new TreeMap<>();
     private final DenizenExpressions expressions = new DenizenExpressions(this);
     private final DenizenCommands commands = new DenizenCommands(this, expressions);
@@ -211,6 +217,7 @@ final class DenizenConverter {
                     if (documents.containsKey(other) && !bound.contains(other)) bound.add(other);
                 }
             }
+            for (String click : clickBehaviors) if (documents.containsKey(click) && !bound.contains(click)) bound.add(click);
             for (String problem : npc.problems()) issues.add(npc.id() + ": " + problem);
             if (!bound.isEmpty()) bindings.put(npc.id(), bound);
         }
@@ -545,16 +552,18 @@ final class DenizenConverter {
     }
 
     private boolean partial(String document) {
-        for (Outcome outcome : outcomes.values()) if (!outcome.converted() && document.equals(documentOf(outcome))) return true;
+        for (Outcome outcome : outcomes.values()) if (!outcome.converted() && documentsOf(outcome).contains(document)) return true;
         return false;
     }
 
-    private String documentOf(Outcome outcome) {
+    /** The behaviors an outcome's container makes; a world script makes one for server events and one for NPC events. */
+    private List<String> documentsOf(Outcome outcome) {
         Container container = containers.get(outcome.container().toLowerCase(Locale.ROOT));
-        if (container == null) return "";
+        if (container == null) return List.of();
         return switch (container.type()) {
-            case "task", "assignment", "interact", "world", "command", "book" -> behaviorId(container.type(), container);
-            default -> "";
+            case "world" -> List.of(behaviorId("world", container), behaviorId("world-npc", container));
+            case "task", "assignment", "interact", "command", "book" -> List.of(behaviorId(container.type(), container));
+            default -> List.of();
         };
     }
 
@@ -1018,16 +1027,20 @@ final class DenizenConverter {
 
     // ---- Server behaviors ----
 
-    /** A world script: one server behavior whose routines are its events, each run by the matching server trigger. */
+    /**
+     * A world script: one server behavior whose routines are its events, each run by the matching server trigger, and
+     * one NPC behavior, bound to every NPC, for its NPC click events. A click event whose top level cancels the click
+     * after plain guards gets a {@code consume} condition made of those guards.
+     */
     private void world(Container container, TreeMap<String, String> documents) {
         Optional<Node> events = container.body().get("events");
-        Doc doc = new Doc(true);
-        JsonArray triggers = new JsonArray();
+        Doc server = new Doc(true), clicks = new Doc(false);
+        JsonArray serverTriggers = new JsonArray(), clickTriggers = new JsonArray();
         if (events.isPresent() && events.get() instanceof Mapping mapping) {
             for (Entry entry : mapping.entries()) {
                 String key = entry.key().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
                 String label = "world " + key;
-                Scope kept = Scope.of(doc, true, container, Optional.empty(), -1, Map.of());
+                Scope kept = Scope.of(server, true, container, Optional.empty(), -1, Map.of());
                 if (!(entry.value() instanceof Sequence sequence)) {
                     record(container, entry.line(), "event", label, entry.key(), false, "event without a script list");
                     preserveNode(kept, entry.value(), "inside a world event that is kept");
@@ -1035,6 +1048,8 @@ final class DenizenConverter {
                 }
                 DenizenEvents.Mapped mapped = DenizenEvents.event(key);
                 String reason = mapped.reason();
+                Doc doc = mapped.npc() ? clicks : server;
+                JsonArray triggers = mapped.npc() ? clickTriggers : serverTriggers;
                 String base = "on-" + DenizenEvents.phrase(key).replaceAll("[^a-z0-9_-]+", "-").replaceAll("^-+|-+$", "");
                 if (base.length() > 60) base = base.substring(0, 60);
                 String routine = base;
@@ -1048,19 +1063,62 @@ final class DenizenConverter {
                 }
                 record(container, entry.line(), "event", label, entry.key(), true, "");
                 Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, mapped.context());
+                Optional<DenizenCommands.Consume> consume = mapped.npc() ? commands.consume(sequence.items(), mapped.guards(), scope) : Optional.empty();
+                consume.ifPresent((DenizenCommands.Consume found) -> scope.cancel = found.item());
                 JsonObject body = sequence(commands.block(sequence.items(), 0, scope));
                 for (int index = mapped.guards().size() - 1; index >= 0; index--) body = DenizenExpressions.build(mapped.guards().get(index), body, Optional.empty());
                 doc.routines.put(routine, body);
                 JsonObject trigger = new JsonObject();
                 trigger.addProperty("id", routine);
                 for (Map.Entry<String, JsonElement> field : mapped.trigger().entrySet()) trigger.add(field.getKey(), field.getValue());
+                consume.ifPresent((DenizenCommands.Consume found) -> trigger.addProperty("consume", found.condition()));
                 trigger.addProperty("routine", routine);
                 triggers.add(trigger);
             }
         } else record(container, container.line(), "container", "world", container.name(), false, "world script without events");
         otherKeys(container, List.of("type", "events", "debug", "enabled"), "world");
-        if (doc.routines.isEmpty()) return;
-        document(behaviorId("world", container), doc, container, triggers, documents);
+        if (!server.routines.isEmpty()) document(behaviorId("world", container), server, container, serverTriggers, documents);
+        if (!clicks.routines.isEmpty() && document(behaviorId("world-npc", container), clicks, container, clickTriggers, documents)) clickBehaviors.add(behaviorId("world-npc", container));
+    }
+
+    /** The flag name a {@code ratelimit} line keeps its per-player window in. */
+    String ratelimitFlag(Container container, int line) {
+        String suffix = "-" + line, base = "ratelimit-" + slug(container.name());
+        return (base.length() + suffix.length() > 64 ? base.substring(0, 64 - suffix.length()) : base) + suffix;
+    }
+
+    /**
+     * The literal values scripts give the flag {@code name} of {@code scope} ({@code npc}, {@code player} or
+     * {@code global}) with {@code flag <target> name:value}, and the values Citizens NPCs already hold, lowercased.
+     */
+    TreeSet<String> flagValues(String scope, String name) {
+        if (flagValues == null) {
+            flagValues = new TreeMap<>();
+            for (Container container : containers.values()) collectFlags(container.body());
+            for (Npc npc : npcs) for (Map.Entry<String, String> flag : npc.flags().entrySet()) {
+                Optional<String> flagged = flagName(flag.getKey());
+                if (flagged.isPresent() && !flag.getValue().contains("<")) flagValues.computeIfAbsent("npc:" + flagged.get(), (String ignored) -> new TreeSet<>()).add(flag.getValue().trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        return flagValues.getOrDefault(scope + ":" + name, new TreeSet<>());
+    }
+
+    private void collectFlags(Node node) {
+        if (node instanceof Mapping mapping) for (Entry entry : mapping.entries()) collectFlags(entry.value());
+        else if (node instanceof Sequence sequence) for (Item item : sequence.items()) {
+            item.children().ifPresent(this::collectFlags);
+            DenizenArgs.Command command = DenizenArgs.command(item.text());
+            if (!command.name().equals("flag") || command.args().size() < 2 || !command.args().getFirst().prefix().isEmpty()) continue;
+            String target = command.args().getFirst().value().toLowerCase(Locale.ROOT).replace("<", "").replace(">", "");
+            if (!List.of("player", "npc", "server").contains(target)) continue;
+            String raw = DenizenCommands.raw(command.args().get(1));
+            int colon = raw.indexOf(':');
+            if (colon < 0) continue;
+            Optional<String> flagged = flagName(raw.substring(0, colon));
+            String value = raw.substring(colon + 1).trim().toLowerCase(Locale.ROOT);
+            if (flagged.isEmpty() || !value.matches("[a-z0-9_]{1,64}")) continue;
+            flagValues.computeIfAbsent(scopeOf(target) + ":" + flagged.get(), (String ignored) -> new TreeSet<>()).add(value);
+        }
     }
 
     /** A command script: a server behavior with a {@code command} trigger whose run reads {@code context.args}. */

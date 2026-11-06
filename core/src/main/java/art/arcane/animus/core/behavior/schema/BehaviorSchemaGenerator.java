@@ -440,6 +440,7 @@ public final class BehaviorSchemaGenerator {
             case "routine" -> new Field(described(reference("identifier"), "Starts this routine instead of entry."), "routine", false);
             case "cooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Overrides the configured cooldown, per trigger on each NPC."), "integer", false);
             case "action" -> new Field(described(choices(lower(TriggerBinding.InteractionFilter.values())), "Which hit fires it; interact by default."), "string", false);
+            case "consume" -> new Field(described(expressionText(), "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."), "expression", false);
             case "phase" -> new Field(described(choices(lower(TriggerBinding.Phase.values())), "Entering or leaving the radius."), "string", true);
             case "radius" -> {
                 JsonObject radius = type("number");
