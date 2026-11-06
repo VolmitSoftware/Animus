@@ -112,6 +112,14 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- Rig editor: a panel for the rig's animation names, with idle and walk called out and missing names fixable.
+- Rig editor: an events lane for animation sounds and particles, with markers on the ruler.
+- Rig editor: track blend, order and delete; keyframe drag, arrow-key moves and copy to the playhead.
+- Rig editor: text display background, line width and shadow, and item display count.
+- Rig and NPC stages draw socket equipment.
+- Stage keyboard controls: arrows orbit, Shift and arrows pan, + and - zoom, 0 resets; gizmo handles nudge with the arrow keys.
+- The rig editor shows one pane at a time under the stage on phones.
+- Blockbench import keeps vanilla sound keyframes as events and both values of split keyframes.
 
 ### Changed
 
@@ -175,6 +183,12 @@
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
+- Rig editor selection, playhead and selected keyframe are pink; other keyframes are grey, and the stage sky follows the theme.
+- Build resource pack is now Download server files, and its message says to run `/animus pack build`.
+- Shortening an animation warns about keyframes and events past the new end and offers to trim them.
+- Blockbench import counts curve approximations and left-out particle and script keyframes in its summary.
+- Rig previews play the idle animation after a `once` clip ends, as the server does.
+- The stage wheel zooms only with Ctrl or while the stage has focus, and vertical swipes scroll the page.
 
 ### Fixed
 
@@ -211,6 +225,11 @@
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 - The editor theme toggle switches themes without a reload.
 - Assignments whose only content was `on assignment` now give their NPCs a behavior.
+- Adding a keyframe keys the selected track with its own value instead of the combined pose.
+- Bezier easings the server refuses are refused in the editor too, with a hint at the field.
+- The stage says when the model pack is loading, missing or failed to download, and offers Retry.
+- A skin or texture that fails to load is drawn plain white with a note instead of hiding the body.
+- The stage notes items it cannot draw, elytra, heads and skulls, and items in the body slot of players and armor stands.
 
 ### Notes
 
