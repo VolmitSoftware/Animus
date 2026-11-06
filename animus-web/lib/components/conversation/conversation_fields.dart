@@ -312,6 +312,7 @@ class ActionArguments extends StatelessWidget {
     return dom.div(classes: 'animus-conv-arg', <Widget>[
       dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': id}, <Widget>[withTip(Component.text(label), field.description)]),
       _control(field, id, value),
+      if (field.boundsHint case final String hint) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(hint)]),
     ]);
   }
 
@@ -337,7 +338,7 @@ class ActionArguments extends StatelessWidget {
           value: value as num?,
           integer: field.kind == FieldKind.integer,
           label: humanizeKey(field.key),
-          placeholder: field.bounds.isEmpty ? null : field.bounds,
+          digits: field.digits,
           onChanged: (num? next) => _set(field.key, next, coalesce: 'arg:${at.key}:${field.key}'),
         );
       case FieldKind.string when value is String || value == null:

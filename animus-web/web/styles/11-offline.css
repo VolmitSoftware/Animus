@@ -3,14 +3,11 @@
 
 /* Labelled fields */
 
-.animus-field {
-  display: grid;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
+.animus-field,
 .animus-field-control {
   display: grid;
+  /* A select's longest option never widens the form past its panel. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
   min-width: 0;
 }
