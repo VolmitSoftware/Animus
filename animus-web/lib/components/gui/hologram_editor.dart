@@ -77,7 +77,7 @@ class _HologramEditorState extends State<HologramEditor> {
   List<Diagnostic> get _diagnostics => component.document.diagnostics;
 
   void _write(List<JsonStep> steps, Object? value, {String? coalesce}) =>
-      component.onJson(writeIn(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
+      component.onJson(writeAt(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
 
   List<JsonStep> get _linesSteps {
     if (_page != null) return <JsonStep>['pages', _page!, 'lines'];
@@ -139,7 +139,7 @@ class _HologramEditorState extends State<HologramEditor> {
           path: r'$.style',
           diagnostics: _diagnostics,
           note: 'Every row uses this style. Holograms face the viewer (billboard center) and show through blocks unless set here.',
-          onChanged: (JsonMap? next) => _write(<JsonStep>['style'], next),
+          onChanged: (JsonMap? next, String field) => _write(<JsonStep>['style'], next, coalesce: 'style.$field'),
         ),
         GuiSection(title: 'Click actions', count: asList(doc['actions']).length, open: asList(doc['actions']).isNotEmpty, children: <Widget>[
           const dom.p(classes: 'animus-muted', <Widget>[
@@ -404,7 +404,7 @@ class _HologramEditorState extends State<HologramEditor> {
             ]);
             // Core refuses lines and pages together; the first page takes the lines.
             if (pages.isEmpty) next = writeIn(next, <JsonStep>['lines'], null);
-            component.onJson(next);
+            component.onJson(writeAt(_doc, const <JsonStep>[], next));
             setState(() {
               _page = pages.length;
               _variant = null;
@@ -463,7 +463,7 @@ class _HologramEditorState extends State<HologramEditor> {
         path: '$path.presentation.style',
         diagnostics: _diagnostics,
         note: 'Laid over the hologram style while this variant shows.',
-        onChanged: (JsonMap? next) => _write(<JsonStep>['variants', index, 'presentation', 'style'], next),
+        onChanged: (JsonMap? next, String field) => _write(<JsonStep>['variants', index, 'presentation', 'style'], next, coalesce: 'variants.$index.style.$field'),
       ),
       dom.div(classes: 'animus-row', <Widget>[
         Button.secondary(label: 'Edit lines', size: ButtonSize.small, onPressed: () => setState(() {

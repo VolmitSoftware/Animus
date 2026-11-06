@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import '../logic/data_folder.dart';
+import '../logic/gui/gui_json.dart';
 import '../logic/rig_validation.dart';
 import '../logic/shared_schemas.dart';
 import '../model/animus_document.dart';
@@ -12,14 +13,24 @@ import 'workspace_repository.dart';
 
 typedef StoreListener = void Function();
 
-/// One document written by [EditorStore.commit]: new text, or removal when
-/// [source] is null.
+/// One document written by [EditorStore.commit]: new text, removal when
+/// [source] is null, or an [update] of an existing document.
 class DocumentChange {
-  const DocumentChange(this.kind, this.id, this.source, {this.path});
+  const DocumentChange(this.kind, this.id, this.source, {this.path}) : update = null;
+
+  /// An edit run on the document's JSON when the commit's turn comes, after
+  /// every commit queued before it, and written back as formatted JSON. An
+  /// edit worked out from what an editor shows goes this way, so it cannot
+  /// overwrite a quicker edit that was still being saved. Skipped when the
+  /// document is gone by then.
+  const DocumentChange.update(this.kind, this.id, JsonUpdate this.update)
+      : source = null,
+        path = null;
 
   final DocumentKind kind;
   final String id;
   final String? source;
+  final JsonUpdate? update;
 
   /// Where a new document lives; defaults to [documentPath].
   final String? path;
@@ -54,7 +65,7 @@ String saveFailureMessage(Object failure) {
 String describeChanges(List<DocumentChange> documents, Iterable<String> resources, bool Function(DocumentChange change) exists) {
   if (documents.length == 1) {
     final DocumentChange change = documents.single;
-    if (change.source == null) return 'delete ${change.id}';
+    if (change.source == null && change.update == null) return 'delete ${change.id}';
     return exists(change) ? 'edit ${change.id}' : 'create ${change.id}';
   }
   if (documents.isEmpty) return resources.length == 1 ? 'change ${resources.single}' : 'change ${resources.length} files';
@@ -371,7 +382,10 @@ class EditorStore {
         describeChanges(documents, resources.keys, (DocumentChange change) => next.any((AnimusDocument d) => d.kind == change.kind && d.id == change.id));
     for (final DocumentChange change in documents) {
       final int index = next.indexWhere((AnimusDocument document) => document.kind == change.kind && document.id == change.id);
-      final String? source = change.source;
+      final JsonUpdate? update = change.update;
+      final Object? updated = update == null || index < 0 ? null : update(next[index].json);
+      if (update != null && (index < 0 || jsonEquals(updated, next[index].json))) continue;
+      final String? source = update != null ? prettyJson(updated) : change.source;
       if (source == null) {
         if (index >= 0) {
           next.removeAt(index);
@@ -436,6 +450,9 @@ class EditorStore {
     if (changed) await _clearRedo(current.id);
     _coalesce = undoable ? coalesce : null;
   });
+
+  /// Completes once every commit, undo and redo asked for so far has run.
+  Future<void> settled() => _enqueue(() async {});
 
   /// Goes back one step; returns what the step did, or null when there was
   /// nothing to undo.

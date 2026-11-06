@@ -1,4 +1,5 @@
 import 'package:animus_editor/logic/change_sets.dart';
+import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/json_merge.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
@@ -215,6 +216,41 @@ void main() {
         ],
       });
       expect((invalid! as ChangeInvalid).diagnostics['npc:town/guard']!.single.path, r'$.name');
+    });
+  });
+
+  group('rebaseJson and writeAt', () {
+    final Map<String, Object?> shown = <String, Object?>{
+      'name': 'Guard',
+      'title': '',
+      'lines': <Object?>['a', 'b', 'c'],
+    };
+
+    test('should keep an edit queued ahead of one worked out from the same shown document', () {
+      final Object? first = writeAt(shown, <JsonStep>['name'], 'Captain')(shown);
+      final Object? second = writeAt(shown, <JsonStep>['title'], 'Sir')(first);
+      expect(second, <String, Object?>{'name': 'Captain', 'title': 'Sir', 'lines': <Object?>['a', 'b', 'c']});
+    });
+
+    test('should let a field written back to its shown value win over a queued edit to it', () {
+      final Object? typed = writeAt(shown, <JsonStep>['title'], 'x')(shown);
+      final Object? erased = writeAt(shown, <JsonStep>['title'], '')(typed);
+      expect(asMap(erased)['title'], '');
+    });
+
+    test('should merge list edits by item and by splice', () {
+      final Object? edited = writeAt(shown, <JsonStep>['lines', 0], 'A')(shown);
+      expect(asMap(writeAt(shown, <JsonStep>['lines', 2], 'C')(edited))['lines'], <Object?>['A', 'b', 'C']);
+      final Object? added = writeAt(shown, <JsonStep>['lines'], <Object?>['a', 'b', 'c', 'd'])(edited);
+      expect(asMap(added)['lines'], <Object?>['A', 'b', 'c', 'd']);
+      final Object? removed = writeAt(shown, <JsonStep>['lines', 0], null)(shown);
+      expect(asMap(writeAt(shown, <JsonStep>['lines', 2], 'C')(removed))['lines'], <Object?>['b', 'C']);
+    });
+
+    test('should take the later whole value where both changed the same place', () {
+      expect(rebaseJson(<String, Object?>{'a': 1}, <String, Object?>{'a': 3}, <String, Object?>{'a': 2}), <String, Object?>{'a': 3});
+      expect(rebaseJson(<Object?>[1, 2], <Object?>[9], <Object?>[1, 2, 3]), <Object?>[9, 3]);
+      expect(rebaseJson(<Object?>[1, 2], <Object?>[5, 2, 7], <Object?>[6, 2]), <Object?>[5, 2, 7]);
     });
   });
 

@@ -29,9 +29,9 @@ enum GuiTextMode {
   expression,
 }
 
-/// How an editor reports a whole new document value; edits sharing
-/// [coalesce] close together undo as one step.
-typedef JsonEdit = void Function(Object? json, {String? coalesce});
+/// How an editor reports an edit, run on the latest document (usually
+/// [writeAt]); edits sharing [coalesce] close together undo as one step.
+typedef JsonEdit = void Function(JsonUpdate update, {String? coalesce});
 
 int _nextFieldId = 0;
 

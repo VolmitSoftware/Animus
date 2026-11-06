@@ -38,7 +38,7 @@ class PresetFix extends StatelessWidget {
           Button.primary(
             label: "Copy this preset's fields into the document",
             size: ButtonSize.small,
-            onPressed: () => onJson(inlined),
+            onPressed: () => onJson(writeAt(doc, const <JsonStep>[], inlined)),
           ),
           dom.span(classes: 'animus-muted', <Widget>[
             Component.text('Copies defaults.${presetKindFor(kind)} and preset ${doc['preset']} under this document\'s own fields, then removes preset.'),
@@ -47,7 +47,7 @@ class PresetFix extends StatelessWidget {
       else
         dom.div(classes: 'animus-row', <Widget>[
           dom.span(classes: 'animus-muted', <Widget>[Component.text('The fields cannot be copied: $problem. Remove preset and set the fields here.')]),
-          Button.secondary(label: 'Remove preset', size: ButtonSize.small, onPressed: () => onJson(<String, Object?>{...doc}..remove('preset'))),
+          Button.secondary(label: 'Remove preset', size: ButtonSize.small, onPressed: () => onJson(writeAt(doc, const <JsonStep>['preset'], null))),
         ]),
     ]);
   }
@@ -70,7 +70,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
   List<Diagnostic> get _diagnostics => component.document.diagnostics;
 
   void _write(List<JsonStep> steps, Object? value, {String? coalesce}) =>
-      component.onJson(writeIn(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
+      component.onJson(writeAt(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
 
   /// Kinds with defaults or presets, in schema order.
   List<String> get _used => <String>[

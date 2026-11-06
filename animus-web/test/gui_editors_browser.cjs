@@ -2,7 +2,9 @@
 // widths, in the dark and light themes, and checks each GUI editor: the
 // chest GUI (keyboard to a slot, brush drag, lore in slot names), shop
 // (entry type change strips fields, container shop round trip), hologram
-// (rows keep show and scale), menu (stage pick, motion and tooltip), text
+// (rows keep show and scale, two quick style edits both kept and undone one
+// at a time, rows drawn as one styled text display), menu (stage pick,
+// motion and tooltip), text
 // animation (preset fix, preview pause) and presets editors; edits
 // round-trip to the document JSON, refused actions are flagged at their
 // field, expression completion works, the data folder zip and the Gloss
@@ -254,6 +256,33 @@ async function run(browser, viewport, tag, theme) {
   await page.waitForTimeout(300);
   json = await codeOf(page);
   assert.deepEqual(json.lines[2], {head: '{{ viewer.name }}', scale: 2, show: 'viewer.level > 1'});
+  // Hologram style: two edits with no pause between them both land, each is
+  // its own undo step, and the stage draws the rows as one styled display.
+  const holoStyle = await openSection(page.locator('.animus-main'), 'Style');
+  await openSection(holoStyle, 'Text');
+  await holoStyle.getByLabel('Background argb').fill('#80112233');
+  await holoStyle.getByLabel('Text alignment').selectOption('left');
+  await page.waitForTimeout(300);
+  json = await codeOf(page);
+  assert.deepEqual(json.style, {backgroundArgb: '#80112233', textAlignment: 'left'}, 'both quick style edits are kept');
+  const holoText = page.locator('.animus-mc-text');
+  await holoText.first().waitFor();
+  assert.equal(await holoText.count(), 1, 'every text row is in one text display');
+  const drawn = await holoText.evaluate((element) => {
+    const first = element.querySelector('.animus-mc-text-line span');
+    return {
+      align: getComputedStyle(element).textAlign,
+      background: getComputedStyle(element).backgroundColor,
+      colour: getComputedStyle(first).color,
+      weight: getComputedStyle(first).fontWeight,
+    };
+  });
+  assert.deepEqual(drawn, {align: 'left', background: 'rgba(17, 34, 51, 0.5)', colour: 'rgb(255, 170, 0)', weight: '700'});
+  await topbarAction(page, 'Undo');
+  await page.waitForTimeout(300);
+  json = await codeOf(page);
+  assert.deepEqual(json.style, {backgroundArgb: '#80112233'}, 'Undo takes back only the second edit');
+  assert.equal(await holoText.evaluate(element => getComputedStyle(element).textAlign), 'center');
   await noSideways(page, `${tag} hologram`);
 
   // Menu: 3D stage, rename a component.

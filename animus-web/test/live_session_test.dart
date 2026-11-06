@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:animus_editor/logic/change_sets.dart';
@@ -169,8 +170,20 @@ class MiniServer {
   }
 }
 
+/// A repository whose saves wait while [hold] is set, to keep an edit queued.
+class HeldRepository extends MemoryWorkspaceRepository {
+  Completer<void>? hold;
+
+  @override
+  Future<void> save(WorkspaceSnapshot snapshot) async {
+    await hold?.future;
+    await super.save(snapshot);
+  }
+}
+
 void main() {
   late MiniServer server;
+  late HeldRepository repository;
   late FakeNetwork network;
   late ServerConnection connection;
   late EditorStore store;
@@ -183,7 +196,8 @@ void main() {
       ..put(DocumentKind.npc, 'town/baker', <String, Object?>{'schemaVersion': 1, 'id': 'baker', 'group': 'town', 'name': 'Baker'});
     network = FakeNetwork(serverHandler(rest: (ApiRequest request) => server.handle(request)));
     connection = ServerConnection(profile: profile, token: token, open: network.open, delay: Waits().call);
-    store = EditorStore(repository: MemoryWorkspaceRepository(), schemas: SharedSchemas.embedded, newId: () => 'ws-1');
+    repository = HeldRepository();
+    store = EditorStore(repository: repository, schemas: SharedSchemas.embedded, newId: () => 'ws-1');
     await store.openServerWorkspace('server-${profile.id}', 'Town', ServerBinding(serverId: profile.id, fingerprint: profile.fingerprint));
     session = LiveSession(store: store, connection: connection, serverId: profile.id, newKey: () => 'key-${(keys++).toString().padLeft(20, '0')}');
     session.start();
@@ -239,6 +253,40 @@ void main() {
     expect(session.drafts, isEmpty);
     expect(store.workspace!.server!.history.single.changeId, 'chg_00000001');
     expect(store.workspace!.server!.pending, isEmpty);
+  });
+
+  test('should keep an edit made while an apply is in flight and send edits queued before it', () async {
+    await session.openDocuments(session.catalog);
+    final AnimusDocument shown = store.document(DocumentKind.npc, 'town/guard')!;
+    // Two quick edits from the same shown document, then Apply at once.
+    unawaited(store.commit(documents: <DocumentChange>[DocumentChange.update(DocumentKind.npc, shown.id, writeAt(shown.json, <JsonStep>['name'], 'Captain'))]));
+    unawaited(store.commit(documents: <DocumentChange>[DocumentChange.update(DocumentKind.npc, shown.id, writeAt(shown.json, <JsonStep>['spawned'], false))]));
+    final Completer<void> answer = Completer<void>();
+    network.gate = (ConnectionPath path, ApiRequest request) async {
+      if (request.path == '/v1/changes') await answer.future;
+    };
+    final Future<bool> applying = session.apply();
+    await settle();
+    expect(network.sent.where(((ConnectionPath, ApiRequest) entry) => entry.$2.path == '/v1/changes'), hasLength(1));
+    // An edit made now waits in the store while the answer arrives.
+    repository.hold = Completer<void>();
+    final AnimusDocument during = store.document(DocumentKind.npc, shown.id)!;
+    final Future<void> late = store.commit(documents: <DocumentChange>[DocumentChange.update(DocumentKind.npc, shown.id, writeAt(during.json, <JsonStep>['type'], 'minecraft:villager'))]);
+    answer.complete();
+    await settle();
+    repository.hold!.complete();
+    repository.hold = null;
+    expect(await applying, isTrue);
+    await late;
+    final Map<String, Object?> stored = server.documents['npc:town/guard']!['source']! as Map<String, Object?>;
+    expect(stored['name'], 'Captain');
+    expect(stored['spawned'], isFalse);
+    final Map<String, Object?> draft = store.document(DocumentKind.npc, shown.id)!.json! as Map<String, Object?>;
+    expect(draft['type'], 'minecraft:villager', reason: 'the edit made during the apply is kept');
+    expect(draft['spawned'], isFalse);
+    expect(draft['name'], 'Captain');
+    expect(draft['revision'], 2);
+    expect(session.drafts.single.state, DraftState.modified);
   });
 
   test('should show server diagnostics from validation per document', () async {

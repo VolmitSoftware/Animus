@@ -29,7 +29,7 @@ class ServerBehaviorsEditor extends StatelessWidget {
     final List<String> listed = stringList(json['behaviors']);
     final Map<String, bool> behaviors = workspaceBehaviors(workspaceDocuments);
     final List<String> addable = <String>[for (final MapEntry<String, bool> entry in behaviors.entries) if (entry.value && !listed.contains(entry.key)) entry.key];
-    void put(List<String> next) => onJson(<String, Object?>{...json, 'schemaVersion': 1, 'behaviors': next}, coalesce: 'server-behaviors');
+    void put(List<String> next) => onJson(writeAt(json, const <JsonStep>[], <String, Object?>{...json, 'schemaVersion': 1, 'behaviors': next}), coalesce: 'server-behaviors');
     return dom.section(classes: 'animus-panel animus-inspector animus-server-behaviors', attributes: const <String, String>{'aria-label': 'Server behaviors list'}, <Widget>[
       const dom.h2(<Widget>[Component.text('Server behaviors that run')]),
       const dom.p(classes: 'animus-gui-help', <Widget>[

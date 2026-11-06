@@ -137,7 +137,9 @@ class RouteEditor extends StatefulWidget {
 
   /// The route fields (a module object or a route document).
   final JsonMap value;
-  final void Function(JsonMap value) onChanged;
+  /// The new route and the route it was worked out from, which can be
+  /// ahead of [value] while quick edits are still being saved.
+  final void Function(JsonMap value, JsonMap from) onChanged;
 
   /// The NPC's x, y and z, drawn on the grid and used for new points.
   final (double, double, double)? origin;
@@ -191,8 +193,9 @@ class _RouteEditorState extends State<RouteEditor> {
   JsonMap get _route => _sent ?? component.value;
 
   void _write(JsonMap next) {
+    final JsonMap from = _route;
     _sent = next;
-    component.onChanged(next);
+    component.onChanged(next, from);
   }
 
   void _field(String key, Object? value) {
