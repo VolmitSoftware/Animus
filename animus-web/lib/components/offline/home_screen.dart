@@ -127,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Button.secondary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), disabled: busy, onPressed: component.onOpenFolder),
           Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: busy, onPressed: component.onOpenZip),
           Button.ghost(
-            label: 'Convert Citizens save',
+            label: 'Convert Citizens, Shopkeepers, dtlTraders or Denizen',
             icon: ArcaneIcon.arrowRightLeft(),
             disabled: busy,
             onPressed: () => component.onNavigate(const CitizensRoute()),
