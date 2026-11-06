@@ -889,17 +889,24 @@ public final class EditorApi implements EditorRequestHandler {
         parts.previews().expire();
     }
 
-    /** Revokes tokens whose issuing player lost {@code animus.admin}. */
+    /**
+     * Revokes tokens whose issuing player lost {@code animus.admin}. The permission answer arrives on the player's owner
+     * thread; the revoke writes token and audit files, so it moves to the file lane. A full lane retries next minute.
+     */
     public void recheckAdmins() {
         for (EditorTokens.Token token : parts.tokens().list()) {
             token.admin().ifPresent((UUID admin) -> parts.host().admin(admin, (EditorHost.Admin status) -> {
                 if (status != EditorHost.Admin.NOT_ADMIN) return;
                 try {
-                    if (!revoke(token.id(), "token-revoked").isEmpty())
-                        parts.audit().record(new EditorAudit.Entry("revoke", Optional.of(token.id()), Optional.of(admin), "server", "admin-check", List.of(), "animus.admin removed"));
-                } catch (IOException failure) {
-                    System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor token revoke failed: " + failure.getMessage());
-                }
+                    parts.host().files().execute(() -> {
+                        try {
+                            if (!revoke(token.id(), "token-revoked").isEmpty())
+                                parts.audit().record(new EditorAudit.Entry("revoke", Optional.of(token.id()), Optional.of(admin), "server", "admin-check", List.of(), "animus.admin removed"));
+                        } catch (IOException failure) {
+                            System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor token revoke failed: " + failure.getMessage());
+                        }
+                    });
+                } catch (RejectedExecutionException full) { /* The next minute retries. */ }
             }));
         }
     }
