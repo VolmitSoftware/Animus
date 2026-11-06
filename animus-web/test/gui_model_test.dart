@@ -105,6 +105,11 @@ void main() {
         'gui/inventories/town/board.json': <String>[],
         'gui/inventories/town/gloss-only.json': <String>[r"$.keys.X.actions[1].type: action 'camera' is not available in Animus"],
         'gui/menus/town/hub.json': <String>[],
+        'gui/presets.json': <String>[],
+        'gui/text-animations/town/sparkle.json': <String>[
+          r"$.preset: Gloss presets are not available in Animus; inline the preset's fields",
+          r'$.mode: expected one of [ascend, ascend_descend, descend, random]',
+        ],
         'shops/town/market.json': <String>[],
       });
     });
@@ -364,14 +369,14 @@ void main() {
         now: 0,
       );
       expect(exported.skipped, <String>['Chest GUIs: town:board uses animus: actions, which Gloss cannot run']);
-      expect(exported.exported, 3, reason: 'gloss-only, hub and welcome; the shop is not a Gloss kind');
+      expect(exported.exported, 5, reason: 'gloss-only, hub, welcome, sparkle and presets; the shop is not a Gloss kind');
       final JsonMap bundle = jsonDecode(exported.bundle) as JsonMap;
-      expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town.hub', 'town.welcome', 'town.gloss-only'});
+      expect(asList(asMap(bundle['workspace'])['documents']).map((Object? d) => asMap(d)['runtimeId']).toSet(), <String>{'town.hub', 'town.welcome', 'town.gloss-only', 'town.sparkle', 'presets'});
       final GlossImport back = readGlossBundle(exported.bundle);
       // The Animus id rides in the Gloss title, so ids come back unchanged
       // even though town:welcome leaves as town.welcome.
       expect(back.notes, isEmpty);
-      expect(back.documents, hasLength(3));
+      expect(back.documents, hasLength(5));
       for (final GlossImportedDocument document in back.documents) {
         final AnimusDocument original = folder.documents.firstWhere((AnimusDocument d) => d.kind == document.location.kind && d.id == document.location.id);
         expect(document.path, original.path);

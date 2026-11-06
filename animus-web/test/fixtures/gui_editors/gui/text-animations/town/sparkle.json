@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "preset": "glow",
+  "frameIntervalMs": 300,
+  "frames": ["&e*  ", "&6 * ", "&e  *"]
+}
