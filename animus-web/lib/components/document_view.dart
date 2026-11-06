@@ -38,6 +38,8 @@ import 'npc/pack_editor.dart';
 import 'npc/route_editor.dart';
 import 'npc/skin_summary.dart';
 import 'npc_preview.dart';
+import 'info_tip.dart';
+import '../config/docs_links.dart';
 
 /// Kinds with a visual editor and a painted or 3D preview.
 const Set<DocumentKind> guiEditorKinds = <DocumentKind>{DocumentKind.inventory, DocumentKind.shop, DocumentKind.menu, DocumentKind.hologram};
@@ -225,9 +227,9 @@ class _DocumentPaneState extends State<DocumentPane> {
         attributes: <String, String>{'role': 'tabpanel', 'aria-labelledby': TabStrip.tabId(_tabPrefix, selectedTab)},
         <Widget>[
         if (component.editor != null && view != ViewMode.code)
-          component.editor!
+          DocsScope(link: Docs.forKind(document.kind), child: component.editor!)
         else if (view == ViewMode.visual || (view == ViewMode.split && !_staged(document)))
-          _visual(document),
+          DocsScope(link: Docs.forKind(document.kind), child: _visual(document)),
         if (component.editor == null && (view == ViewMode.preview || (view == ViewMode.split && _staged(document)))) _preview(document),
         if (view == ViewMode.code || view == ViewMode.split) _code(document),
       ]),

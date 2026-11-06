@@ -15,6 +15,8 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
+import '../../logic/help_text.dart';
+import '../info_tip.dart';
 
 int _nextListId = 0;
 
@@ -27,21 +29,27 @@ String controlId(String path) => 'animus-field-${path.replaceAll(RegExp(r'[^A-Za
 /// A labelled row like [GuiRow] whose label is a `<label for>` of the control
 /// [labelFor], for selects and other controls without their own name.
 class InspectRow extends StatelessWidget {
-  const InspectRow({required this.label, required this.labelFor, required this.child, this.help, this.problems = const <Diagnostic>[], super.key});
+  const InspectRow({required this.label, required this.labelFor, required this.child, this.help, this.tip, this.problems = const <Diagnostic>[], super.key});
 
   final String label;
   final String labelFor;
   final Widget child;
+
+  /// Shown under the control when short; long help moves into the info tip.
   final String? help;
+
+  /// Info tip text beside the label; with it, [help] always stays inline.
+  final String? tip;
   final List<Diagnostic> problems;
 
   @override
   Widget build(BuildContext context) {
+    final ({String? hint, String? tip}) split = tip == null ? splitHelp(help) : (hint: help == null || help!.isEmpty ? null : help, tip: tip);
     return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': labelFor}, <Widget>[Component.text(label)]),
+      labelWithTip(dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': labelFor}, <Widget>[Component.text(label)]), split.tip, label),
       dom.div(classes: 'animus-gui-control', <Widget>[
         child,
-        if (help != null && help!.isNotEmpty) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(help!)]),
+        if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
         for (final Diagnostic problem in problems)
           dom.span(
             classes: 'animus-gui-problem is-${problem.severity.name}',
@@ -102,7 +110,8 @@ class InspectField extends StatelessWidget {
     return InspectRow(
       label: fieldLabel(field, label: label),
       labelFor: controlId(path),
-      help: field.help,
+      help: field.boundsHint,
+      tip: field.description ?? '',
       problems: fieldProblems(field, value, path, diagnostics, nested: nested),
       child: InspectControl(
         field: field,
