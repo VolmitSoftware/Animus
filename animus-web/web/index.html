@@ -26,7 +26,11 @@
   <link rel="stylesheet" href="/styles/11-offline.css">
 </head>
 <body>
-  <div class="animus-boot" id="loading"><div class="animus-boot-spinner"></div></div>
+  <div class="animus-boot" id="loading" role="status" aria-label="Loading the Animus editor">
+    <img class="animus-boot-mark" src="/assets/brand/animus-mark.svg" width="72" height="72" alt="" fetchpriority="high">
+    <div class="animus-boot-line" aria-hidden="true"><span></span></div>
+    <p class="animus-boot-message" id="animus-boot-message"></p>
+  </div>
   <div id="app"></div>
   <noscript>Animus Editor requires JavaScript.</noscript>
   <script defer src="/main.client.dart.js"></script>

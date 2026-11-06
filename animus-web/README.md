@@ -2,7 +2,15 @@
 
 The browser editor for Animus. It is a client-mode Jaspr app on arcane_jaspr, hosted on Firebase as `animus-editor.web.app` (project `animus-editor`). The design is in [dev/editor-design.md](../dev/editor-design.md) and the shared contracts in [dev/editor-contracts.md](../dev/editor-contracts.md).
 
-The first screen starts a workspace: blank and named, seeded with the example packs from `../examples/packs` (embedded at build time by `tool/embed_starter_packs.dart`), or opened from a data folder (`plugins/Animus`, or `config/animus` on mod servers) as a directory pick or a zip. Workspaces are listed there with Rename, Duplicate, Export zip and Delete (confirmed; Restore brings the last one back while the tab is open). Every document is checked against the schemas in `../schema` in the browser, and the workspace and its undo steps (50) are kept in IndexedDB. Each document has Visual, Preview, Code and Split views. Nothing is uploaded, and no server is needed for any of it.
+The first screen starts a workspace: blank and named, seeded with the example packs from `../examples/packs` (embedded at build time by `tool/embed_starter_packs.dart`), or opened from a data folder (`plugins/Animus`, or `config/animus` on mod servers) as a directory pick or a zip. Workspaces are listed there with Rename, Duplicate, Export zip and Delete (confirmed; Restore brings the last one back until you close the tab). Every document is checked against the schemas in `../schema` in the browser, and the workspace and its undo steps (50) are kept in IndexedDB. Each document has Visual, Preview, Code and Split views. Nothing is uploaded, and no server is needed for any of it.
+
+## Shell and keyboard
+
+The top bar keeps the workspace's controls (Undo and Redo, then the Open, Import and Export menus) apart from the app's (Commands and the theme). Shortcuts, outside text boxes: Ctrl+Z (Cmd+Z) undo, Ctrl+Shift+Z or Ctrl+Y redo, Ctrl+K the command palette (open a document by name, switch workspace, new document, export, theme, undo and redo), Ctrl+F or `/` the document search. Escape closes the palette, a menu, the drawer or the confirmation that has focus. Undo and Redo are stored beside the workspace (50 steps each) and their notices say what they reverted ("Undid: rename town:baker"). At 760 px and below the sidebar is a drawer behind Documents and the other top bar controls sit under More. The theme follows the system until the toggle is used.
+
+Saves that the browser refuses (out of space, storage switched off) keep the edit on screen and a banner names the cause, with Save again and Export zip. Without IndexedDB the editor works in memory and says so in a banner. Tabs of one browser stay in step over `BroadcastChannel('animus.workspace')`: an idle tab reloads a workspace another tab saved, and a tab whose workspace was deleted elsewhere goes home. Each open workspace takes the Web Lock `animus.workspace.<id>` (`BrowserWorkspaceLocks` in `lib/services/browser.dart`); `EditorStore.ownedByThisTab` says whether this tab holds it. Closing the tab asks first while an edit waits to be stored or Code text is not applied.
+
+The brand mark is `web/assets/brand/animus-mark.svg` (the Animus triangle, stripe and diamond in the brand pinks and greys). `web/favicon.svg` is the mark on the near-black tile; `favicon.ico` (32 px, PNG inside), `apple-touch-icon.png` (180 px) and `icon-512.png` are rendered from it. `firebase.json` caches `/assets/brand/` for a year as immutable, so a changed mark needs a new file name. Show the mark with `<img src="/assets/brand/animus-mark.svg" width=".." height=".." alt="">`, or `BrandMark(size: ..)` in Dart.
 
 ## Working without a server
 
@@ -34,26 +42,29 @@ CI clones arcane_jaspr into `.deps/arcane_jaspr` at a pinned ref instead of the 
 
 The 3D preview draws with textures and models from the Minecraft client, which are Mojang's and never committed: `web/assets/mc/` is gitignored, and the extraction tool writes `web/assets/mc/26.3/` (block and item atlases, `models.json`, the entity textures in `mcEntityTextureIds`, about 2 MB) from a client jar before `jaspr build`. It reads only `assets/minecraft/` from the jar and makes no network request. Any 26.3 client jar works, for example the one Loom or NeoForm keeps in `~/.gradle/caches`. Without the pack the editor works and the stage says the pack is missing.
 
-The browser check opens `../schema/fixtures/export` in the built site at desktop and phone widths:
+The browser checks run against a built site you serve yourself. Every script refuses to start without `ANIMUS_WEB_URL` (the served site), and the ones that talk to a server without `ANIMUS_FAKE_URL` (your own fake server); never point them at a shared port. `ANIMUS_SCREENSHOTS` is optional and should point outside the repository. `test/support/shell.cjs` opens the phone drawer and the More menu for a check, so one script reads the same at both widths.
 
 ```sh
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/home_browser.cjs
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/brand_browser.cjs
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/npc_preview_browser.cjs
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/rig_editor_browser.cjs
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/gui_editors_browser.cjs
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/inspectors_browser.cjs
-dart run tool/fake_server.dart &     # for the live editing check
-dart run tool/fake_server.dart --data=test/fixtures/npc_browser --port=9897 &
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_WEB_URL=http://127.0.0.1:<web port> ANIMUS_FAKE_URL=http://127.0.0.1:9897 ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/npc_browser_browser.cjs
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/live_editing_browser.cjs
-dart run tool/fake_server.dart --data=test/fixtures/npc_browser &
-PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/offline_editor_browser.cjs
+python3 -m http.server 8111 --bind 127.0.0.1 --directory build/jaspr &
+dart run tool/fake_server.dart --port=9911 --origin=http://127.0.0.1:8111 --data=test/fixtures/npc_browser &
+export PLAYWRIGHT_MODULE=/path/to/node_modules/playwright
+export ANIMUS_WEB_URL=http://127.0.0.1:8111 ANIMUS_FAKE_URL=http://127.0.0.1:9911 ANIMUS_SCREENSHOTS=/tmp/animus-shots
+node test/home_browser.cjs
+node test/brand_browser.cjs
+node test/npc_preview_browser.cjs
+node test/rig_editor_browser.cjs
+node test/gui_editors_browser.cjs
+node test/inspectors_browser.cjs
+node test/npc_browser_browser.cjs
+node test/offline_editor_browser.cjs
+node test/live_editing_browser.cjs   # fake server started with the default --data
 ```
 
-`offline_editor_browser.cjs` makes a blank workspace and one document of every kind from its guided step, duplicates and deletes with undo, fixes a broken id, plays a rig animation on an NPC, dry-runs a dialogue (answering its prompt) and a shop (a server-only step), exports the zip, checks persistence across a reload and the starter workspace, then pairs with the fake server, pulls an NPC, changes it and pushes the workspace with that conflict resolved, at both widths with no console errors and no sideways scrolling.
+`home_browser.cjs` checks the home page (one primary action, the three ways to start, the empty list), the skip link, renaming a workspace with Enter and Escape (focus goes back to Rename), deleting with Escape and Restore, the routes to a missing workspace or document (each names the cause and links back), then opens `../schema/fixtures/export` as a data folder: the listing, arrow keys in the document list, the document title as the page heading, the view tablist with arrow keys, a broken Code draft named in the header, and Split and Preview.
 
-`brand_browser.cjs` checks the Animus colours (`lib/config/brand.dart`: pink `#FF5FA8` on near-black `#0D0D0F` in dark, deep pink `#C2185B` on `#F5F3F4` in light, greys for text and borders) in both themes at both widths: the surfaces and `theme-color`, the primary button's fill and contrast, the pink focus ring, the selected view tab, grey panels and the theme toggle, with no console errors and no sideways scrolling.
+`offline_editor_browser.cjs` makes a blank workspace and one document of every kind from its guided step, duplicates and deletes with undo, follows the undo in a second tab, redoes and undoes from the keyboard (and leaves Ctrl+Z inside a text box alone), focuses the search with `/`, opens the drawer on phones, opens a document from the command palette, fixes a broken id, plays a rig animation on an NPC, dry-runs a dialogue (answering its prompt) and a shop (a server-only step), exports the zip, checks persistence across a reload and the starter workspace, then pairs with the fake server, pulls an NPC, changes it and pushes the workspace with that conflict resolved. A last pass deletes `window.indexedDB` and checks the storage banner. Both widths, no console errors and no sideways scrolling.
+
+`brand_browser.cjs` checks the Animus brand (`lib/config/brand.dart`: pink `#FF5FA8` on near-black `#0D0D0F` in dark, deep pink `#C2185B` on `#F5F3F4` in light, greys for text and borders) in both themes at both widths: the mark in the top bar, on the home page and in the boot splash, the icon files, the system theme when none is stored, the surfaces and `theme-color`, Geist on controls, pink links, the primary button's fill and contrast, a grey disabled primary button, the pink focus ring, the selected view tab (raised grey with a pink underline), grey panels and the theme toggle, with no console errors and no sideways scrolling.
 
 `rig_editor_browser.cjs` opens `test/fixtures/rig_editor` (the shared golem rig, whose `idle` name is missing, and two clips). It fixes and renames animation names, drives the bone tree by keyboard, moves and nudges a bone with the gizmo and undoes it, renames a bone, keys the second rotation track of a bone, changes a blend, adds an event, moves a keyframe by keyboard, checks the bezier field error, trims a shorter duration, orbits the stage by keyboard, plays, downloads the server files and the workspace zip, and imports `test/fixtures/bbmodel/robot.bbmodel`. It runs at 1440 px dark and 390 px light (with a touch swipe over the stage that must scroll the page), glances at the other theme at each width, and checks the pack loading, 404 and retry states with `page.route`. No console errors, no sideways scrolling.
 
@@ -86,7 +97,7 @@ Unanswered change sets are kept with the workspace. After a reconnect (or a relo
 
 ## Importing on a server
 
-The Convert Citizens save screen can also import on a paired server: choose the Citizens `saves.yml`, any dtlTraders files and a Shopkeepers `save.yml` and `config.yml`, pick the server under Import on a server and press Upload and stage. The server converts and stages them and shows its review; Apply installs the import dormant, the review categories (spawn, patrols, combat, riding, shops, builder, denizen) are accepted one at a time or all at once, and Roll back undoes the import and every acceptance. The token needs the `import` scope, so pair with `/animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui`. Over the relay, files larger than one relay frame (about 756 KiB) are refused before they are sent; connect over the direct path for those.
+The Convert a Citizens, Shopkeepers, dtlTraders or Denizen save screen can also import on a paired server: choose the Citizens `saves.yml`, any dtlTraders files and a Shopkeepers `save.yml` and `config.yml`, pick the server under Import on a server and press Upload and stage. The server converts and stages them and shows its review; Apply installs the import dormant, the review categories (spawn, patrols, combat, riding, shops, builder, denizen) are accepted one at a time or all at once, and Roll back undoes the import and every acceptance. The token needs the `import` scope, so pair with `/animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui`. Over the relay, files larger than one relay frame (about 756 KiB) are refused before they are sent; connect over the direct path for those.
 
 `import_browser.cjs` runs this against the fake server (`POST /__fake/pair?scopes=import` mints a code with the import scope) at both widths, and checks the relay limit.
 

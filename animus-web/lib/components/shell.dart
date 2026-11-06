@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:js_interop';
 import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
+import 'package:web/web.dart' as web;
 
 import '../logic/gui/gloss_bundle.dart';
 import '../logic/gui/gui_catalog.dart';
@@ -19,40 +21,33 @@ import '../state/live_session.dart';
 import '../state/server_hub.dart';
 import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
+import 'brand_mark.dart';
 import 'citizens_screen.dart';
+import '../logic/command_search.dart';
+import 'command_palette.dart';
 import 'document_view.dart';
 import 'gui/gui_fields.dart';
 import 'npc/npc_browser.dart';
 import 'offline/home_screen.dart';
 import 'offline/new_document_page.dart';
 import 'offline/sync_page.dart';
-import 'server/connection_pill.dart';
+import 'rig/rig_actions.dart';
+import 'rig/rig_editor.dart';
 import 'server/live_bar.dart';
 import 'server/pair_page.dart';
 import 'server/server_overview.dart';
-import 'rig/rig_actions.dart';
-import 'rig/rig_editor.dart';
+import 'shell_sidebar.dart';
+import 'shell_topbar.dart';
 
 /// Kinds whose Visual view edits the parsed JSON (GUI editors, the
 /// schema-driven NPC and behavior inspectors and the route editor).
 const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.behavior, DocumentKind.route};
 
-/// Kinds listed in the sidebar, in this order.
-const List<DocumentKind> listedKinds = <DocumentKind>[
-  DocumentKind.npc,
-  DocumentKind.behavior,
-  DocumentKind.pack,
-  DocumentKind.shop,
-  DocumentKind.inventory,
-  DocumentKind.menu,
-  DocumentKind.hologram,
-  DocumentKind.rig,
-  DocumentKind.animation,
-  DocumentKind.route,
-  DocumentKind.skin,
-  DocumentKind.textAnimation,
-  DocumentKind.presets,
-];
+/// The id of every screen's `<main>`, the target of the skip link.
+const String mainId = 'animus-main';
+
+/// Widths at which the sidebar becomes a drawer and the top bar a short row.
+const String compactQuery = '(max-width: 760px)';
 
 class EditorShell extends StatefulWidget {
   const EditorShell({
@@ -82,7 +77,113 @@ class EditorShell extends StatefulWidget {
 
 class _EditorShellState extends State<EditorShell> {
   bool _busy = false;
-  String _filter = '';
+  bool _compact = false;
+  bool _drawerOpen = false;
+  bool _paletteOpen = false;
+  void Function()? _stopKeys;
+  void Function()? _stopMedia;
+
+  @override
+  void initState() {
+    super.initState();
+    final (bool compact, void Function() stop) = watchMedia(compactQuery, (bool compact) {
+      if (!mounted) return;
+      setState(() {
+        _compact = compact;
+        if (!compact) _setDrawer(false);
+      });
+    });
+    _compact = compact;
+    _stopMedia = stop;
+    _stopKeys = onKeyDown(_shortcut);
+  }
+
+  @override
+  void dispose() {
+    _stopKeys?.call();
+    _stopMedia?.call();
+    setScrollLocked(false);
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(EditorShell oldComponent) {
+    super.didUpdateWidget(oldComponent);
+    // Moving to another screen (or leaving the workspace) closes the drawer.
+    if (_drawerOpen && (component.store.workspace == null || oldComponent.route != component.route)) _setDrawer(false);
+  }
+
+  /// The page-wide shortcuts. Keys typed into a text box stay with the box;
+  /// Escape is handled by whatever has focus.
+  void _shortcut(web.KeyboardEvent event) {
+    if (_paletteOpen) return;
+    final bool modifier = event.ctrlKey || event.metaKey;
+    final String key = event.key.toLowerCase();
+    if (isTypingTarget(event.target) || event.altKey) return;
+    final WorkspaceSnapshot? workspace = component.store.workspace;
+    if (modifier && key == 'k') {
+      event.preventDefault();
+      _openPalette();
+    } else if (modifier && key == 'z' && workspace != null) {
+      event.preventDefault();
+      event.shiftKey ? _redo() : _undo();
+    } else if (modifier && key == 'y' && workspace != null) {
+      event.preventDefault();
+      _redo();
+    } else if (((modifier && key == 'f') || (!modifier && key == '/')) && workspace != null) {
+      event.preventDefault();
+      _focusSearch();
+    }
+  }
+
+  void _focusSearch() {
+    if (_compact && !_drawerOpen) setState(() => _setDrawer(true));
+    focusWhenShown(documentSearchId);
+  }
+
+  void _setDrawer(bool open) {
+    _drawerOpen = open;
+    setScrollLocked(open || _paletteOpen);
+  }
+
+  void _openDrawer() {
+    setState(() => _setDrawer(true));
+    // The open document's link, else the search box, takes focus.
+    web.window.setTimeout((() {
+      final web.HTMLElement? current = web.document.querySelector('#animus-sidebar [aria-current="page"]') as web.HTMLElement?;
+      if (current != null) {
+        current.scrollIntoView(web.ScrollIntoViewOptions(block: 'center'));
+        current.focus();
+      } else {
+        focusById(documentSearchId);
+      }
+    }).toJS, 30.toJS);
+  }
+
+  void _closeDrawer() {
+    setState(() => _setDrawer(false));
+    focusWhenShown('animus-documents-button');
+  }
+
+  void _openPalette() {
+    setState(() => _paletteOpen = true);
+    setScrollLocked(true);
+  }
+
+  void _closePalette() {
+    setState(() => _paletteOpen = false);
+    setScrollLocked(_drawerOpen);
+  }
+
+  Future<void> _undo() async {
+    final String? label = await component.store.undo();
+    if (label != null) ArcaneSonner.info('Undid: $label');
+  }
+
+  Future<void> _redo() async {
+    final String? label = await component.store.redo();
+    if (label != null) ArcaneSonner.info('Redid: $label');
+  }
 
   Future<void> _open(Future<PickedFiles?> Function() pick) async {
     setState(() => _busy = true);
@@ -92,15 +193,18 @@ class _EditorShellState extends State<EditorShell> {
       final WorkspaceSnapshot snapshot = await component.store.openFiles(picked.name, picked.files);
       final int invalid = snapshot.documents.where((AnimusDocument document) => !document.valid).length;
       if (snapshot.documents.isEmpty) {
-        ArcaneSonner.warning('No Animus documents found. Pick the plugins/Animus folder or a zip of it.');
+        ArcaneSonner.warning('No Animus documents in ${picked.name}. Pick the plugins/Animus folder (config/animus on mod servers) or a zip of it.');
       } else if (invalid > 0) {
-        ArcaneSonner.warning('Opened ${snapshot.documents.length} documents; $invalid need repair.');
+        ArcaneSonner.warning('Opened ${snapshot.documents.length} documents as a new workspace; $invalid need repair. '
+            'Edits stay in this browser: export a zip to take them back.');
       } else {
-        ArcaneSonner.success('Opened ${snapshot.documents.length} documents.');
+        ArcaneSonner.success('Opened ${snapshot.documents.length} documents as a new workspace. '
+            'Edits stay in this browser: export a zip to take them back.');
       }
       component.onNavigate(WorkspaceRoute(snapshot.id));
+      focusMainHeading();
     } on Object catch (failure) {
-      ArcaneSonner.error('Could not open the files: $failure');
+      ArcaneSonner.error('The files could not be opened ($failure). Pick the plugins/Animus folder or a zip of it, and check that the zip is complete.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -130,9 +234,12 @@ class _EditorShellState extends State<EditorShell> {
       ArcaneSonner.error(imported.error!);
       return;
     }
-    await component.store.commit(documents: <DocumentChange>[
-      for (final GlossImportedDocument document in imported.documents) DocumentChange(document.location.kind, document.location.id, document.source),
-    ]);
+    await component.store.commit(
+      documents: <DocumentChange>[
+        for (final GlossImportedDocument document in imported.documents) DocumentChange(document.location.kind, document.location.id, document.source),
+      ],
+      label: 'import ${picked.$1}',
+    );
     final int invalid = imported.documents
         .where((GlossImportedDocument d) => !(component.store.document(d.location.kind, d.location.id)?.valid ?? false))
         .length;
@@ -185,13 +292,32 @@ class _EditorShellState extends State<EditorShell> {
         }
       }
     }
-    await component.store.commit(documents: changes);
+    await component.store.commit(documents: changes, label: copy ? 'duplicate ${document.id} as $id' : 'rename ${document.id} to $id');
     final int references = changes.length - (copy ? 1 : 2);
     ArcaneSonner.success(copy
         ? 'Copied ${document.id} as $id.'
         : 'Moved ${document.id} to $id${references > 0 ? ' and updated $references reference${references == 1 ? '' : 's'}' : ''}.');
     component.onNavigate(DocumentRoute(workspace.id, kind, id));
+    focusMainHeading();
     return null;
+  }
+
+  TopbarActions _actions(WorkspaceSnapshot? workspace) {
+    final EditorStore store = component.store;
+    final bool idle = !_busy;
+    return TopbarActions(
+      onPalette: _openPalette,
+      onToggleTheme: component.onToggleTheme,
+      onOpenFolder: idle ? () => _open(pickDirectory) : null,
+      onOpenZip: idle ? () => _open(pickZip) : null,
+      onUndo: workspace != null && store.canUndo ? _undo : null,
+      onRedo: workspace != null && store.canRedo ? _redo : null,
+      onImportBbmodel: workspace != null && idle ? () => _importBbmodel(workspace) : null,
+      onImportGloss: workspace != null ? _importGloss : null,
+      onExportZip: workspace != null ? () => exportWorkspace(workspace) : null,
+      onExportGloss: workspace != null ? () => _exportGloss(workspace) : null,
+      onDocuments: workspace != null ? (_drawerOpen ? _closeDrawer : _openDrawer) : null,
+    );
   }
 
   @override
@@ -199,11 +325,27 @@ class _EditorShellState extends State<EditorShell> {
     final EditorStore store = component.store;
     final WorkspaceSnapshot? workspace = store.workspace;
     return dom.div(classes: 'animus-shell', <Widget>[
-      _topbar(workspace),
-      if (store.problem != null)
-        dom.div(key: const ValueKey<String>('banner'), classes: 'animus-banner', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          Component.text(store.problem!),
+      dom.button(
+        classes: 'animus-skip',
+        attributes: const <String, String>{'type': 'button'},
+        events: <String, void Function(web.Event)>{'click': (web.Event _) => focusById(mainId)},
+        <Widget>[Component.text(workspace != null ? 'Skip to document' : 'Skip to content')],
+      ),
+      ShellTopbar(
+        actions: _actions(workspace),
+        dark: component.brightness == Brightness.dark,
+        compact: _compact,
+        workspace: workspace,
+        session: component.session,
+        undoLabel: store.undoLabel,
+        redoLabel: store.redoLabel,
+        drawerOpen: _drawerOpen,
+      ),
+      if (!store.persistent)
+        const dom.div(key: ValueKey<String>('storage-banner'), classes: 'animus-banner is-warning', attributes: <String, String>{'role': 'status'}, <Widget>[
+          Component.text('This browser is not keeping workspaces between visits. Export a zip before you close the tab.'),
         ]),
+      if (store.problem != null) _problemBanner(store, workspace),
       if (component.route is PairRoute)
         PairPage(
           key: ValueKey<String>('pair:${(component.route as PairRoute).code}'),
@@ -212,10 +354,11 @@ class _EditorShellState extends State<EditorShell> {
           onPaired: (String id) => replaceHash(ServerRoute(id, const <String>[]).format()),
         )
       else if (component.route is ServerRoute && component.hub.server((component.route as ServerRoute).serverId) == null)
-        const dom.main_(classes: 'animus-home', <Widget>[
-          dom.section(classes: 'animus-panel', <Widget>[
-            dom.h1(<Widget>[Component.text('This server is not paired in this browser')]),
-            dom.p(<Widget>[Component.text('Run /animus editor pair on the server and open the link it prints.')]),
+        const dom.main_(id: mainId, classes: 'animus-home', attributes: <String, String>{'tabindex': '-1'}, <Widget>[
+          dom.section(classes: 'animus-panel is-error', <Widget>[
+            dom.h1(id: mainHeadingId, attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('This server is not paired in this browser')]),
+            dom.p(<Widget>[Component.text('Run /animus editor pair on the server and open the link it prints, or paste it under Servers.')]),
+            dom.p(<Widget>[dom.a(href: '#/', <Widget>[Component.text('Back to workspaces')])]),
           ]),
         ])
       else if (workspace == null && component.route is CitizensRoute)
@@ -224,76 +367,62 @@ class _EditorShellState extends State<EditorShell> {
         _home(store)
       else
         _workspace(workspace),
+      if (_paletteOpen) CommandPalette(key: const ValueKey<String>('palette'), commands: _commands(workspace), onClose: _closePalette),
     ]);
   }
 
-  Widget _topbar(WorkspaceSnapshot? workspace) {
+  Widget _problemBanner(EditorStore store, WorkspaceSnapshot? workspace) =>
+      dom.div(key: const ValueKey<String>('banner'), classes: 'animus-banner is-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[
+        dom.span(<Widget>[Component.text(store.problem!)]),
+        dom.div(classes: 'animus-row', <Widget>[
+          if (store.hasUnsavedEdit) ...<Widget>[
+            Button.secondary(label: 'Save again', size: ButtonSize.small, onPressed: store.saveAgain),
+            if (workspace != null) Button.ghost(label: 'Export zip', size: ButtonSize.small, onPressed: () => exportWorkspace(workspace)),
+          ] else
+            Button.ghost(label: 'Dismiss', size: ButtonSize.small, onPressed: store.dismissProblem),
+        ]),
+      ]);
+
+  List<PaletteCommand> _commands(WorkspaceSnapshot? workspace) {
+    final EditorStore store = component.store;
     final bool dark = component.brightness == Brightness.dark;
-    return dom.header(classes: 'animus-topbar', <Widget>[
-      const dom.a(href: '#/', classes: 'animus-brand', <Widget>[
-        dom.span(classes: 'animus-brand-mark', <Widget>[Component.text('A')]),
-        dom.span(<Widget>[Component.text('Animus Editor')]),
-      ]),
-      if (workspace != null)
-        dom.span(classes: 'animus-topbar-workspace', <Widget>[Component.text(workspace.name)]),
-      if (component.session != null)
-        ConnectionPill(status: component.session!.connection.status, hasToken: component.session!.connection.token != null),
-      dom.div(classes: 'animus-topbar-actions', <Widget>[
-        Button.secondary(
-          label: 'Open folder',
-          icon: ArcaneIcon.folderOpen(),
-          size: ButtonSize.small,
-          disabled: _busy,
-          onPressed: () => _open(pickDirectory),
-        ),
-        Button.secondary(
-          label: 'Open zip',
-          icon: ArcaneIcon.fileArchive(),
-          size: ButtonSize.small,
-          disabled: _busy,
-          onPressed: () => _open(pickZip),
-        ),
-        if (workspace != null) ...<Widget>[
-          Button.secondary(
-            label: 'Import .bbmodel',
-            icon: ArcaneIcon.upload(),
-            size: ButtonSize.small,
-            disabled: _busy,
-            onPressed: () => _importBbmodel(workspace),
+    return <PaletteCommand>[
+      if (workspace != null) ...<PaletteCommand>[
+        if (store.canUndo) PaletteCommand('Edit', 'Undo ${store.undoLabel}', _undo, hint: 'Ctrl+Z', keywords: const <String>['undo']),
+        if (store.canRedo) PaletteCommand('Edit', 'Redo ${store.redoLabel}', _redo, hint: 'Ctrl+Shift+Z', keywords: const <String>['redo']),
+        PaletteCommand('Workspace', 'New document', () => component.onNavigate(NewDocumentRoute(workspace.id)), keywords: const <String>['create', 'add']),
+        PaletteCommand('Workspace', 'Export the data folder zip', () => exportWorkspace(workspace), keywords: const <String>['download', 'save']),
+        PaletteCommand('Workspace', 'Export a Gloss bundle', () => _exportGloss(workspace), keywords: const <String>['download']),
+        PaletteCommand('Workspace', 'Import a Blockbench model', () => _importBbmodel(workspace), keywords: const <String>['bbmodel', 'rig']),
+        PaletteCommand('Workspace', 'Import a Gloss bundle', _importGloss),
+        if (workspace.server == null) PaletteCommand('Workspace', 'Send to a server', () => component.onNavigate(SyncRoute(workspace.id)), keywords: const <String>['push', 'pull', 'sync']),
+        PaletteCommand('Workspace', 'Browse NPCs', () => component.onNavigate(NpcListRoute(workspace.id)), keywords: const <String>['search', 'filter']),
+        PaletteCommand('Workspace', 'Workspace overview', () => component.onNavigate(WorkspaceRoute(workspace.id))),
+        for (final AnimusDocument document in workspace.documents)
+          PaletteCommand(
+            'Documents',
+            guiPlainText(document.title),
+            () => component.onNavigate(DocumentRoute(workspace.id, document.kind, document.id)),
+            hint: document.title == document.id ? document.kind.label : '${document.kind.label}, ${document.id}',
+            keywords: <String>[document.id, document.kind.wireName, 'open'],
           ),
-          Button.secondary(
-            label: 'Export zip',
-            icon: ArcaneIcon.download(),
-            size: ButtonSize.small,
-            onPressed: () => exportWorkspace(workspace),
+      ],
+      for (final WorkspaceSummary summary in store.workspaces)
+        if (summary.id != workspace?.id)
+          PaletteCommand(
+            'Workspaces',
+            'Switch to ${summary.name}',
+            () => component.onNavigate(summary.serverId != null && component.hub.server(summary.serverId!) != null
+                ? ServerRoute(summary.serverId!, const <String>[])
+                : WorkspaceRoute(summary.id)),
+            hint: '${summary.documentCount} document${summary.documentCount == 1 ? '' : 's'}',
           ),
-          Button.ghost(
-            label: 'Import Gloss bundle',
-            icon: ArcaneIcon.upload(),
-            size: ButtonSize.small,
-            onPressed: _importGloss,
-          ),
-          Button.ghost(
-            label: 'Export Gloss bundle',
-            size: ButtonSize.small,
-            onPressed: () => _exportGloss(workspace),
-          ),
-        ],
-        if (workspace != null)
-          Button.ghost(
-            label: 'Undo',
-            size: ButtonSize.small,
-            disabled: !component.store.canUndo,
-            onPressed: component.store.undo,
-          ),
-        Button.ghost(
-          icon: dark ? ArcaneIcon.sun() : ArcaneIcon.moon(),
-          size: ButtonSize.small,
-          attributes: <String, String>{'aria-label': dark ? 'Use light theme' : 'Use dark theme'},
-          onPressed: component.onToggleTheme,
-        ),
-      ]),
-    ]);
+      PaletteCommand('Workspaces', 'All workspaces', () => component.onNavigate(const HomeRoute()), keywords: const <String>['home']),
+      PaletteCommand('App', dark ? 'Use light theme' : 'Use dark theme', component.onToggleTheme, keywords: const <String>['theme', 'dark', 'light']),
+      PaletteCommand('App', 'Open a data folder as a new workspace', () => _open(pickDirectory)),
+      PaletteCommand('App', 'Open a zip as a new workspace', () => _open(pickZip)),
+      PaletteCommand('App', 'Convert a Citizens, Shopkeepers, dtlTraders or Denizen save', () => component.onNavigate(const CitizensRoute())),
+    ];
   }
 
   Widget _home(EditorStore store) => HomeScreen(
@@ -315,8 +444,15 @@ class _EditorShellState extends State<EditorShell> {
     final AnimusDocument? document = selected == null ? null : component.store.document(selected.kind, selected.documentId);
     final LiveSession? session = workspace.server == null ? null : component.session;
     return dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'animus-workspace', <Widget>[
-      _sidebar(workspace, selected),
-      dom.main_(classes: 'animus-main', <Widget>[
+      ShellSidebar(
+        workspace: workspace,
+        route: route,
+        compact: _compact,
+        open: _drawerOpen,
+        onClose: _closeDrawer,
+        session: component.session,
+      ),
+      dom.main_(id: mainId, classes: 'animus-main', attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
         if (session != null)
           LiveBar(
             session: session,
@@ -339,8 +475,9 @@ class _EditorShellState extends State<EditorShell> {
             onRename: _movable(document.kind) ? (String id) => _relocate(workspace, document, id, copy: false) : null,
             onDuplicate: _movable(document.kind) ? (String id) => _relocate(workspace, document, id, copy: true) : null,
             onDelete: () async {
-              await component.store.commit(documents: <DocumentChange>[DocumentChange(document.kind, document.id, null)]);
+              await component.store.commit(documents: <DocumentChange>[DocumentChange(document.kind, document.id, null)], label: 'delete ${document.id}');
               component.onNavigate(WorkspaceRoute(workspace.id));
+              focusMainHeading();
               ArcaneSonner.info('Deleted ${document.id}. Undo brings it back.');
             },
             skinDocument: _skinOf(document),
@@ -352,8 +489,14 @@ class _EditorShellState extends State<EditorShell> {
             onOpen: (DocumentKind kind, String id) => component.onNavigate(DocumentRoute(workspace.id, kind, id)),
           )
         else if (selected != null)
-          dom.section(classes: 'animus-panel', <Widget>[
-            Component.text('${selected.kind.label}: ${selected.documentId} is not in this workspace.'),
+          dom.section(classes: 'animus-panel is-error', <Widget>[
+            dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
+              Component.text('${selected.kind.label}: ${selected.documentId} is not in this workspace'),
+            ]),
+            const dom.p(<Widget>[Component.text('It may have been renamed or deleted (Undo brings a deletion back), or the link is from another workspace.')]),
+            dom.p(<Widget>[
+              dom.a(href: WorkspaceRoute(workspace.id).format(), const <Widget>[Component.text('Open the workspace overview')]),
+            ]),
           ])
         else if (route is NpcListRoute)
           NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
@@ -380,107 +523,53 @@ class _EditorShellState extends State<EditorShell> {
     ]);
   }
 
-  Widget _sidebar(WorkspaceSnapshot workspace, DocumentRoute? selected) {
-    final String filter = _filter.trim().toLowerCase();
-    bool matches(AnimusDocument document) =>
-        filter.isEmpty || document.id.toLowerCase().contains(filter) || document.title.toLowerCase().contains(filter);
-    return dom.aside(classes: 'animus-sidebar', <Widget>[
-      dom.nav(classes: 'animus-new', attributes: const <String, String>{'aria-label': 'Workspace'}, <Widget>[
-        dom.a(
-          href: NewDocumentRoute(workspace.id).format(),
-          classes: 'animus-side-link is-primary${component.route is NewDocumentRoute ? ' is-selected' : ''}',
-          const <Widget>[Component.text('New document')],
-        ),
-        if (workspace.server == null)
-          dom.a(
-            href: SyncRoute(workspace.id).format(),
-            classes: 'animus-side-link${component.route is SyncRoute ? ' is-selected' : ''}',
-            const <Widget>[Component.text('Send to a server')],
-          ),
-      ]),
-      TextInput(
-        placeholder: 'Search documents',
-        value: _filter,
-        onChanged: (String value) => setState(() => _filter = value),
-      ),
-      for (final DocumentKind kind in listedKinds)
-        if (workspace.documents.any((AnimusDocument document) => document.kind == kind))
-          dom.section(classes: 'animus-tree-group', <Widget>[
-            dom.h3(<Widget>[
-              Component.text(kind.label),
-              dom.span(classes: 'animus-count', <Widget>[
-                Component.text('${workspace.documents.where((AnimusDocument document) => document.kind == kind).length}'),
-              ]),
-              if (kind == DocumentKind.npc)
-                dom.a(
-                  href: NpcListRoute(workspace.id).format(),
-                  classes: 'animus-tree-browse${component.route is NpcListRoute ? ' is-selected' : ''}',
-                  const <Widget>[Component.text('Browse')],
-                ),
-            ]),
-            dom.ul(attributes: const <String, String>{'role': 'list'}, <Widget>[
-              for (final AnimusDocument document in workspace.documents)
-                if (document.kind == kind && matches(document))
-                  dom.li(<Widget>[
-                    dom.a(
-                      href: DocumentRoute(workspace.id, kind, document.id, selected?.view ?? ViewMode.visual).format(),
-                      classes: 'animus-tree-item${selected?.kind == kind && selected?.documentId == document.id ? ' is-selected' : ''}',
-                      <Widget>[
-                        dom.span(classes: 'animus-tree-title', <Widget>[Component.text(document.title)]),
-                        if (document.title != document.id)
-                          dom.span(classes: 'animus-tree-id', <Widget>[Component.text(document.id)]),
-                        if (!document.valid)
-                          dom.span(classes: 'animus-badge is-error', <Widget>[Component.text('${errorCount(document)}')]),
-                        if (component.session != null && workspace.server != null && draftBadge(component.session!, kind, document.id) != null)
-                          dom.span(
-                            classes: 'animus-badge is-draft',
-                            attributes: <String, String>{'data-draft': draftBadge(component.session!, kind, document.id)!},
-                            <Widget>[Component.text(draftBadge(component.session!, kind, document.id)!)],
-                          ),
-                      ],
-                    ),
-                  ]),
-            ]),
-          ]),
-    ]);
-  }
-
   Widget _overview(WorkspaceSnapshot workspace) {
     final List<AnimusDocument> invalid = workspace.documents.where((AnimusDocument document) => !document.valid).toList();
     return dom.div(classes: 'animus-overview', <Widget>[
       dom.section(classes: 'animus-panel', <Widget>[
-        dom.h2(<Widget>[Component.text(workspace.name)]),
-        dom.div(classes: 'animus-stats', <Widget>[
-          for (final DocumentKind kind in listedKinds)
-            if (workspace.documents.any((AnimusDocument document) => document.kind == kind))
-              dom.div(classes: 'animus-stat', <Widget>[
-                dom.strong(<Widget>[Component.text('${workspace.documents.where((AnimusDocument document) => document.kind == kind).length}')]),
-                dom.span(<Widget>[Component.text(kind.label)]),
+        dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[Component.text(workspace.name)]),
+        if (workspace.documents.isNotEmpty)
+          dom.div(classes: 'animus-stats', <Widget>[
+            for (final DocumentKind kind in listedKinds)
+              if (workspace.documents.any((AnimusDocument document) => document.kind == kind))
+                dom.div(classes: 'animus-stat', <Widget>[
+                  dom.strong(<Widget>[Component.text('${workspace.documents.where((AnimusDocument document) => document.kind == kind).length}')]),
+                  dom.span(<Widget>[Component.text(kind.label)]),
+                ]),
+          ])
+        else
+          dom.div(classes: 'animus-empty', <Widget>[
+            const BrandMark(size: 56, classes: 'animus-empty-mark'),
+            dom.div(<Widget>[
+              const dom.p(<Widget>[
+                Component.text('This workspace has no documents yet. An NPC is a good first one: pick its body, name and skin, then give it a behavior.'),
               ]),
-        ]),
-        if (workspace.documents.isEmpty) ...<Widget>[
-          const dom.p(<Widget>[Component.text('Nothing here yet. An NPC is a good first document: pick its body, name and skin, then give it a behavior.')]),
-          dom.div(classes: 'animus-row', <Widget>[
-            Button.primary(label: 'Create an NPC', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id, DocumentKind.npc))),
-            Button.ghost(label: 'Every kind of document', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id))),
+              dom.div(classes: 'animus-row', <Widget>[
+                Button.primary(label: 'Create an NPC', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id, DocumentKind.npc))),
+                Button.ghost(label: 'See every kind of document', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id))),
+              ]),
+            ]),
           ]),
-        ],
       ]),
       if (workspace.documents.isNotEmpty) _starters(workspace),
       if (workspace.documents.isNotEmpty)
-        dom.section(classes: 'animus-panel', <Widget>[
-        dom.h2(<Widget>[Component.text(invalid.isEmpty ? 'Every document passes the shared schemas' : '${invalid.length} documents need repair')]),
-        if (invalid.isNotEmpty)
-          dom.ul(classes: 'animus-problem-list', <Widget>[
-            for (final AnimusDocument document in invalid)
-              dom.li(<Widget>[
-                dom.a(href: DocumentRoute(workspace.id, document.kind, document.id).format(), <Widget>[
-                  Component.text('${document.kind.label}: ${document.id}'),
-                ]),
-                dom.span(classes: 'animus-muted', <Widget>[Component.text(firstError(document))]),
-              ]),
+        dom.section(classes: 'animus-panel${invalid.isEmpty ? '' : ' is-error'}', <Widget>[
+          dom.h2(<Widget>[
+            Component.text(invalid.isEmpty
+                ? 'Every document passes the shared schemas'
+                : '${invalid.length} ${invalid.length == 1 ? 'document needs' : 'documents need'} repair'),
           ]),
-      ]),
+          if (invalid.isNotEmpty)
+            dom.ul(classes: 'animus-problem-list', <Widget>[
+              for (final AnimusDocument document in invalid)
+                dom.li(<Widget>[
+                  dom.a(href: DocumentRoute(workspace.id, document.kind, document.id).format(), <Widget>[
+                    Component.text('${document.kind.label}: ${document.id}'),
+                  ]),
+                  dom.span(classes: 'animus-muted', <Widget>[Component.text(_firstError(document))]),
+                ]),
+            ]),
+        ]),
       if (component.store.ignored.isNotEmpty)
         dom.section(classes: 'animus-panel', <Widget>[
           dom.details(<Widget>[
@@ -573,14 +662,11 @@ class _EditorShellState extends State<EditorShell> {
     if (skin == null && component.store.workspace?.server != null) component.session?.openSkin(hash);
     return skin;
   }
-}
 
-int errorCount(AnimusDocument document) =>
-    document.diagnostics.where((Diagnostic diagnostic) => diagnostic.severity == DiagnosticSeverity.error).length;
-
-String firstError(AnimusDocument document) {
-  for (final Diagnostic diagnostic in document.diagnostics) {
-    if (diagnostic.severity == DiagnosticSeverity.error) return '${diagnostic.path}: ${diagnostic.message}';
+  String _firstError(AnimusDocument document) {
+    for (final Diagnostic diagnostic in document.diagnostics) {
+      if (diagnostic.severity == DiagnosticSeverity.error) return '${diagnostic.path}: ${diagnostic.message}';
+    }
+    return '';
   }
-  return '';
 }

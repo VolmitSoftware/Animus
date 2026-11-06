@@ -6,6 +6,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../logic/gui/gui_json.dart';
+import '../logic/gui/gui_text.dart';
 import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
@@ -13,8 +14,10 @@ import '../logic/npc/route_model.dart';
 import '../logic/offline/document_fixes.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
+import '../services/browser.dart';
 import '../state/workspace_route.dart';
 import 'gui/gui_fields.dart';
+import 'tab_strip.dart';
 import 'offline/dry_run_panel.dart';
 import 'offline/offline_fields.dart';
 import 'gui/hologram_editor.dart';
@@ -106,17 +109,65 @@ class _DocumentPaneState extends State<DocumentPane> {
   String? _draftError;
   String? _renaming;
   String? _renameProblem;
+  void Function()? _stopGuard;
 
   /// True when the id field copies instead of moving.
   bool _copying = false;
   bool _confirmDelete = false;
 
-  static const Map<ViewMode, String> _labels = <ViewMode, String>{
-    ViewMode.visual: 'Visual',
-    ViewMode.preview: 'Preview',
-    ViewMode.code: 'Code',
-    ViewMode.split: 'Split',
-  };
+  static const String _panelId = 'animus-view-panel';
+  static const String _tabPrefix = 'animus-view-tab';
+  static const String _renameInputId = 'animus-rename-input';
+
+  static const List<TabOption<ViewMode>> _views = <TabOption<ViewMode>>[
+    TabOption<ViewMode>(ViewMode.visual, 'Visual'),
+    TabOption<ViewMode>(ViewMode.preview, 'Preview'),
+    TabOption<ViewMode>(ViewMode.code, 'Code'),
+    TabOption<ViewMode>(ViewMode.split, 'Split'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Closing the tab with Code text that was never applied asks first.
+    _stopGuard = guardUnload(() => _draft != null);
+  }
+
+  @override
+  void dispose() {
+    _stopGuard?.call();
+    super.dispose();
+  }
+
+  void _startRename({required bool copy}) {
+    setState(() {
+      _renaming = copy ? '${component.document.id}-copy' : component.document.id;
+      _copying = copy;
+      _renameProblem = null;
+    });
+    focusWhenShown(_renameInputId);
+  }
+
+  void _cancelRename() {
+    final bool copying = _copying;
+    setState(() {
+      _renaming = null;
+      _renameProblem = null;
+    });
+    focusWhenShown(copying ? 'animus-doc-duplicate' : 'animus-doc-rename');
+  }
+
+  Future<void> _submitRename() async {
+    final String? renaming = _renaming;
+    if (renaming == null) return;
+    final String? problem = await (_copying ? component.onDuplicate! : component.onRename!)(renaming.trim());
+    if (!mounted) return;
+    setState(() {
+      _renameProblem = problem;
+      if (problem == null) _renaming = null;
+    });
+    if (problem != null) focusById(_renameInputId);
+  }
 
   void _edit(String value) {
     String? error;
@@ -142,27 +193,30 @@ class _DocumentPaneState extends State<DocumentPane> {
   Widget build(BuildContext context) {
     final AnimusDocument document = component.document;
     final ViewMode view = component.view;
+    final int selectedTab = _views.indexWhere((TabOption<ViewMode> option) => option.value == view);
     return dom.div(classes: 'animus-document', <Widget>[
       dom.header(classes: 'animus-document-header', <Widget>[
-        dom.div(<Widget>[
+        dom.div(classes: 'animus-document-title', <Widget>[
           dom.span(classes: 'animus-eyebrow', <Widget>[Component.text(document.kind.label)]),
-          dom.h2(<Widget>[Component.text(document.title)]),
-          dom.code(classes: 'animus-muted', <Widget>[Component.text(document.path)]),
+          dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[Component.text(guiPlainText(document.title))]),
+          dom.code(classes: 'animus-muted animus-document-path', <Widget>[Component.text(document.path)]),
         ]),
         if (component.onRename != null || component.onDelete != null || component.onDuplicate != null) _manage(document),
-        dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'tablist'}, <Widget>[
-          for (final ViewMode option in ViewMode.values)
-            Button(
-              label: _labels[option],
-              variant: option == view ? ButtonVariant.primary : ButtonVariant.ghost,
-              size: ButtonSize.small,
-              attributes: <String, String>{'role': 'tab', 'aria-selected': '${option == view}'},
-              onPressed: () => component.onView(option),
-            ),
-        ]),
+        TabStrip<ViewMode>(
+          idPrefix: _tabPrefix,
+          label: 'View',
+          options: _views,
+          selected: view,
+          panelId: _panelId,
+          onSelect: component.onView,
+        ),
       ]),
       _diagnostics(document),
-      dom.div(classes: 'animus-views is-${view.name}${component.editor != null ? ' has-editor' : ''}', <Widget>[
+      dom.div(
+        id: _panelId,
+        classes: 'animus-views is-${view.name}${component.editor != null ? ' has-editor' : ''}',
+        attributes: <String, String>{'role': 'tabpanel', 'aria-labelledby': TabStrip.tabId(_tabPrefix, selectedTab)},
+        <Widget>[
         if (component.editor != null && view != ViewMode.code)
           component.editor!
         else if (view == ViewMode.visual || (view == ViewMode.split && !_staged(document)))
@@ -184,50 +238,55 @@ class _DocumentPaneState extends State<DocumentPane> {
           setState(() => _confirmDelete = false);
           component.onDelete!();
         },
-        onCancel: () => setState(() => _confirmDelete = false),
+        onCancel: () {
+          setState(() => _confirmDelete = false);
+          focusWhenShown('animus-doc-delete');
+        },
       );
     }
     if (renaming == null) {
       return dom.div(classes: 'animus-row', attributes: const <String, String>{'role': 'group', 'aria-label': 'Manage document'}, <Widget>[
         if (component.onRename != null)
-          Button.ghost(label: 'Rename', size: ButtonSize.small, onPressed: () => setState(() {
-            _renaming = document.id;
-            _copying = false;
-          })),
+          Button.ghost(id: 'animus-doc-rename', label: 'Rename', size: ButtonSize.small, onPressed: () => _startRename(copy: false)),
         if (component.onDuplicate != null)
-          Button.ghost(label: 'Duplicate', size: ButtonSize.small, onPressed: () => setState(() {
-            _renaming = '${document.id}-copy';
-            _copying = true;
-          })),
-        if (component.onDelete != null) Button.ghost(label: 'Delete', size: ButtonSize.small, onPressed: () => setState(() => _confirmDelete = true)),
+          Button.ghost(id: 'animus-doc-duplicate', label: 'Duplicate', size: ButtonSize.small, onPressed: () => _startRename(copy: true)),
+        if (component.onDelete != null)
+          Button.ghost(id: 'animus-doc-delete', label: 'Delete', size: ButtonSize.small, onPressed: () => setState(() => _confirmDelete = true)),
       ]);
     }
     return dom.div(classes: 'animus-row animus-rename', <Widget>[
-      GuiTextInput(value: renaming, label: _copying ? 'Id of the copy' : 'New id', onChanged: (String value) => setState(() => _renaming = value)),
-      Button.primary(
-        label: _copying ? 'Copy' : 'Move',
-        size: ButtonSize.small,
-        onPressed: () async {
-          final String? problem = await (_copying ? component.onDuplicate! : component.onRename!)(renaming.trim());
-          if (!mounted) return;
-          setState(() {
-            _renameProblem = problem;
-            if (problem == null) _renaming = null;
-          });
-        },
+      OfflineTextField(
+        id: _renameInputId,
+        label: _copying ? 'Id of the copy' : 'New id',
+        value: renaming,
+        error: _renameProblem,
+        onChanged: (String value) => setState(() {
+          _renaming = value;
+          _renameProblem = null;
+        }),
+        onSubmit: _submitRename,
+        onCancel: _cancelRename,
       ),
-      Button.ghost(label: 'Cancel', size: ButtonSize.small, onPressed: () => setState(() {
-        _renaming = null;
-        _renameProblem = null;
-      })),
-      if (_renameProblem != null) dom.span(classes: 'animus-error', <Widget>[Component.text(_renameProblem!)]),
+      Button.primary(label: _copying ? 'Copy' : 'Move', size: ButtonSize.small, onPressed: _submitRename),
+      Button.ghost(label: 'Cancel', size: ButtonSize.small, onPressed: _cancelRename),
     ]);
   }
 
   Widget _diagnostics(AnimusDocument document) {
     final List<Diagnostic> server = component.serverDiagnostics;
+    if (_draftError != null) {
+      return const dom.p(classes: 'animus-draft-error', attributes: <String, String>{'role': 'status'}, <Widget>[
+        Component.text('The draft in Code has a JSON error, so it is not applied. The saved document below is unchanged.'),
+      ]);
+    }
     if (document.diagnostics.isEmpty && server.isEmpty) {
       return const dom.p(classes: 'animus-ok', <Widget>[Component.text('Valid against the shared schema.')]);
+    }
+    // A kind without a shared schema gets one plain note, not a diagnostic
+    // with a "$" path.
+    final List<Diagnostic> noSchema = <Diagnostic>[for (final Diagnostic d in document.diagnostics) if (d.code == 'no-schema') d];
+    if (noSchema.length == document.diagnostics.length && server.isEmpty) {
+      return dom.p(classes: 'animus-muted animus-schema-note', <Widget>[Component.text(noSchema.first.message)]);
     }
     final List<DocumentFix> fixes = fixesFor(document);
     final Widget list = _diagnosticList(document, server);
@@ -252,7 +311,7 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _diagnosticList(AnimusDocument document, List<Diagnostic> server) {
     return dom.ul(classes: 'animus-diagnostics', <Widget>[
-      for (final Diagnostic diagnostic in document.diagnostics.take(50))
+      for (final Diagnostic diagnostic in document.diagnostics.where((Diagnostic d) => d.code != 'no-schema').take(50))
         dom.li(classes: 'is-${diagnostic.severity.name}', <Widget>[
           dom.code(<Widget>[Component.text(diagnostic.path)]),
           Component.text(' ${diagnostic.message}'),
@@ -318,7 +377,9 @@ class _DocumentPaneState extends State<DocumentPane> {
       return SkinSummary(document: document, workspaceDocuments: component.workspaceDocuments, onOpen: component.onOpen, onLoaded: () => setState(() {}));
     }
     if (json is! Map<String, Object?>) {
-      return const dom.section(classes: 'animus-panel', <Widget>[Component.text('The document is not a JSON object.')]);
+      return const dom.section(classes: 'animus-panel', <Widget>[
+        Component.text('This document is not a JSON object, so Visual has no fields to show. Open Code to fix the text; the problems are listed above.'),
+      ]);
     }
     return dom.section(classes: 'animus-panel animus-fields', <Widget>[
       dom.table(<Widget>[
@@ -410,6 +471,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     final InspectSchemas schemas = _schemas;
     final ValueHints? hints = switch (document.kind) {
       DocumentKind.behavior => behaviorHints(guiIds: <DocumentKind, List<String>>{for (final DocumentKind kind in <DocumentKind>[DocumentKind.inventory, DocumentKind.menu, DocumentKind.shop]) kind: _ids(kind)}),
+      // TODO(L3 integration): pass npcBehaviorIds(component.workspaceDocuments) from npc_catalog.dart so server behaviors drop out.
       DocumentKind.npc => npcHints(behaviorIds: _ids(DocumentKind.behavior), skinIds: _ids(DocumentKind.skin)),
       _ => null,
     };
@@ -432,7 +494,10 @@ class _DocumentPaneState extends State<DocumentPane> {
         ),
         if (_draft != null)
           Button.ghost(label: 'Discard', size: ButtonSize.small, onPressed: () => setState(() => _draft = null)),
-        if (_draftError != null) dom.span(classes: 'animus-error', <Widget>[Component.text('Invalid JSON: $_draftError')]),
+        if (_draftError != null)
+          dom.span(classes: 'animus-error', <Widget>[
+            Component.text('Not valid JSON yet: $_draftError. Fix the text, or Discard to go back to the saved document.'),
+          ]),
       ]),
     ]);
   }
