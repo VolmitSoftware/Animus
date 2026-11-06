@@ -285,31 +285,52 @@ num tickValue(double tick) {
   return rounded == rounded.roundToDouble() ? rounded.round() : rounded;
 }
 
-/// Sets the value at [tick] on the first track for [bone] and [target],
-/// creating the track (blend replace) when there is none. A keyframe already
-/// at that tick keeps its easing unless [easing] is given.
-JsonMap setKeyframe(JsonMap animation, String bone, TrackTarget target, double tick, Object value, {String? easing}) {
+/// The index of the track to key for [bone] and [target]: [preferred] when it
+/// is such a track, else the first one, else null.
+int? trackFor(JsonMap animation, String bone, TrackTarget target, {int? preferred}) {
+  final List<JsonMap> tracks = tracksOf(animation);
+  bool matches(int index) => index >= 0 && index < tracks.length && tracks[index]['bone'] == bone && tracks[index]['target'] == target.name;
+  if (preferred != null && matches(preferred)) return preferred;
+  for (int index = 0; index < tracks.length; index++) {
+    if (matches(index)) return index;
+  }
+  return null;
+}
+
+/// Sets the value at [tick] on track [track] when given (it must be a
+/// [bone] [target] track), otherwise on the first track for [bone] and
+/// [target], creating one with [blend] when there is none. The value is the
+/// track's own channel value, not the combined pose. A keyframe already at
+/// that tick keeps its easing unless [easing] is given.
+JsonMap setKeyframe(
+  JsonMap animation,
+  String bone,
+  TrackTarget target,
+  double tick,
+  Object value, {
+  String? easing,
+  int? track,
+  Blend blend = Blend.replace,
+}) {
   final double duration = _number(animation['durationTicks']);
-  if (tick < 0 || tick > duration) throw RigEditException('Tick $tick is outside 0..${tickValue(duration)}.');
+  if (tick < 0 || tick > duration) throw RigEditException('Tick ${tickValue(tick)} is outside 0 to ${tickValue(duration)}.');
   if (target == TrackTarget.visible ? value is! bool : value is! List<Object?>) {
     throw RigEditException('${target.name} keyframes take ${target == TrackTarget.visible ? 'true or false' : 'three numbers'}.');
   }
   final JsonMap out = cloneJson(animation);
   final List<Object?> tracks = out['tracks'] is List<Object?> ? out['tracks']! as List<Object?> : <Object?>[];
   out['tracks'] = tracks;
-  JsonMap? track;
-  for (final Object? candidate in tracks) {
-    if (candidate is JsonMap && candidate['bone'] == bone && candidate['target'] == target.name) {
-      track = candidate;
-      break;
-    }
-  }
-  if (track == null) {
+  final int? found = trackFor(out, bone, target, preferred: track);
+  if (track != null && found != track) throw RigEditException('Track ${track + 1} is not a $bone ${target.name} track.');
+  final JsonMap keyed;
+  if (found == null) {
     if (tracks.length >= maximumTracks) throw const RigEditException('An animation holds at most $maximumTracks tracks.');
-    track = <String, Object?>{'bone': bone, 'target': target.name, 'blend': 'replace', 'keyframes': <Object?>[]};
-    tracks.add(track);
+    keyed = <String, Object?>{'bone': bone, 'target': target.name, 'blend': target == TrackTarget.visible ? 'replace' : blend.name, 'keyframes': <Object?>[]};
+    tracks.add(keyed);
+  } else {
+    keyed = tracks[found]! as JsonMap;
   }
-  final List<Object?> keys = track['keyframes']! as List<Object?>;
+  final List<Object?> keys = keyed['keyframes']! as List<Object?>;
   final num at = tickValue(tick);
   int index = 0;
   while (index < keys.length && _number((keys[index]! as JsonMap)['tick']) < at) {
@@ -367,6 +388,213 @@ JsonMap moveKeyframe(JsonMap animation, int track, int keyframe, double tick) {
   key['tick'] = at;
   keys.sort((Object? a, Object? b) => _number((a! as JsonMap)['tick']).compareTo(_number((b! as JsonMap)['tick'])));
   return out;
+}
+
+/// Copies a keyframe to [tick] on its own track, replacing a keyframe there.
+JsonMap copyKeyframe(JsonMap animation, int track, int keyframe, double tick) {
+  final JsonMap source = tracksOf(animation)[track];
+  final JsonMap key = keyframesOf(source)[keyframe];
+  final Object value = key['value']!;
+  final String? easing = key['easing'] is String ? key['easing']! as String : null;
+  return setKeyframe(
+    animation,
+    '${source['bone']}',
+    TrackTarget.values.byName('${source['target']}'),
+    tick,
+    value is List<Object?> ? List<Object?>.of(value) : value,
+    easing: easing ?? 'linear',
+    track: track,
+  );
+}
+
+/// The value a [blend] track holds when it changes nothing: 0 for add, 1 for
+/// multiply, and the current channel for replace.
+List<double> neutralValue(Blend blend, TrackTarget target, List<double> current) => switch (blend) {
+  Blend.add => <double>[0, 0, 0],
+  Blend.multiply => <double>[1, 1, 1],
+  Blend.replace => List<double>.of(current),
+};
+
+/// Changes how a track combines with the tracks before it. `visible`
+/// tracks always replace.
+JsonMap setTrackBlend(JsonMap animation, int track, Blend blend) {
+  final JsonMap out = cloneJson(animation);
+  final JsonMap entry = tracksOf(out)[track];
+  if (entry['target'] == 'visible' && blend != Blend.replace) throw const RigEditException('Visible tracks always replace.');
+  entry['blend'] = blend.name;
+  return out;
+}
+
+/// Adds a [bone] [target] track with one keyframe at [tick].
+JsonMap addTrack(JsonMap animation, String bone, TrackTarget target, Blend blend, double tick, Object value) {
+  final List<JsonMap> tracks = tracksOf(animation);
+  if (tracks.length >= maximumTracks) throw const RigEditException('An animation holds at most $maximumTracks tracks.');
+  if (target == TrackTarget.visible && blend != Blend.replace) throw const RigEditException('Visible tracks always replace.');
+  final JsonMap out = cloneJson(animation);
+  final List<Object?> list = out['tracks'] is List<Object?> ? out['tracks']! as List<Object?> : <Object?>[];
+  out['tracks'] = list;
+  list.add(<String, Object?>{'bone': bone, 'target': target.name, 'blend': blend.name, 'keyframes': <Object?>[]});
+  return setKeyframe(out, bone, target, tick, value, track: list.length - 1);
+}
+
+JsonMap removeTrack(JsonMap animation, int track) {
+  final JsonMap out = cloneJson(animation);
+  (out['tracks']! as List<Object?>).removeAt(track);
+  return out;
+}
+
+/// Moves track [from] to position [to]. Order matters: tracks apply in
+/// document order, so an add track after a replace track adds to it.
+JsonMap moveTrack(JsonMap animation, int from, int to) {
+  final JsonMap out = cloneJson(animation);
+  final List<Object?> tracks = out['tracks']! as List<Object?>;
+  if (to < 0 || to >= tracks.length || from == to) return out;
+  tracks.insert(to, tracks.removeAt(from));
+  return out;
+}
+
+/// Keyframes and events after [duration] ticks.
+({int keyframes, int events}) pastEnd(JsonMap animation, num duration) {
+  int keyframes = 0;
+  for (final JsonMap track in tracksOf(animation)) {
+    keyframes += keyframesOf(track).where((JsonMap key) => _number(key['tick']) > duration).length;
+  }
+  return (keyframes: keyframes, events: eventsOf(animation).where((JsonMap event) => _number(event['tick']) > duration).length);
+}
+
+/// Sets the duration. Keyframes and events past the new end are refused
+/// unless [trim], which removes them (and tracks left without keyframes).
+JsonMap setDuration(JsonMap animation, int duration, {bool trim = false}) {
+  if (duration < 1 || duration > maximumDurationTicks) throw const RigEditException('Durations are 1 to $maximumDurationTicks ticks.');
+  final ({int keyframes, int events}) beyond = pastEnd(animation, duration);
+  if (!trim && beyond.keyframes + beyond.events > 0) {
+    throw RigEditException('${beyond.keyframes} keyframes and ${beyond.events} events are after tick $duration.');
+  }
+  final JsonMap out = cloneJson(animation)..['durationTicks'] = duration;
+  final List<Object?> tracks = out['tracks'] is List<Object?> ? out['tracks']! as List<Object?> : <Object?>[];
+  for (final Object? track in tracks) {
+    if (track is JsonMap && track['keyframes'] is List<Object?>) {
+      (track['keyframes']! as List<Object?>).removeWhere((Object? key) => key is JsonMap && _number(key['tick']) > duration);
+    }
+  }
+  tracks.removeWhere((Object? track) => track is JsonMap && keyframesOf(track).isEmpty);
+  final Object? events = out['events'];
+  if (events is List<Object?>) {
+    events.removeWhere((Object? event) => event is JsonMap && _number(event['tick']) > duration);
+    if (events.isEmpty) out.remove('events');
+  }
+  return out;
+}
+
+// --- events -------------------------------------------------------------------
+
+const int maximumEvents = 256;
+
+/// The capabilities an animation event may run (schema/animation-v1.schema.json).
+const List<String> eventCapabilities = <String>['animus:play-sound', 'animus:spawn-particle'];
+
+List<JsonMap> eventsOf(JsonMap animation) {
+  final Object? events = animation['events'];
+  return <JsonMap>[
+    if (events is List<Object?>)
+      for (final Object? event in events)
+        if (event is JsonMap) event,
+  ];
+}
+
+/// The argument a capability needs before an event can run.
+String requiredArgument(String capability) => capability == 'animus:spawn-particle' ? 'particle' : 'sound';
+
+void _checkEvent(JsonMap animation, int tick, String capability) {
+  if (!eventCapabilities.contains(capability)) throw RigEditException('Animations run only ${eventCapabilities.join(' and ')}.');
+  final num duration = _number(animation['durationTicks']);
+  if (tick < 0 || tick > duration) throw RigEditException('Tick $tick is outside 0 to ${tickValue(duration.toDouble())}.');
+}
+
+/// Adds an event at [tick], after any events already at that tick.
+JsonMap addEvent(JsonMap animation, int tick, String capability, JsonMap arguments) {
+  _checkEvent(animation, tick, capability);
+  if (eventsOf(animation).length >= maximumEvents) throw const RigEditException('An animation holds at most $maximumEvents events.');
+  final JsonMap out = cloneJson(animation);
+  final List<Object?> events = out['events'] is List<Object?> ? out['events']! as List<Object?> : <Object?>[];
+  out['events'] = events;
+  int at = 0;
+  while (at < events.length && _number((events[at]! as JsonMap)['tick']) <= tick) {
+    at++;
+  }
+  events.insert(at, <String, Object?>{'tick': tick, 'capability': capability, if (arguments.isNotEmpty) 'arguments': cloneJson(arguments)});
+  return out;
+}
+
+/// Replaces event [index], keeping the list in tick order.
+JsonMap updateEvent(JsonMap animation, int index, int tick, String capability, JsonMap arguments) {
+  _checkEvent(animation, tick, capability);
+  return addEvent(removeEvent(animation, index), tick, capability, arguments);
+}
+
+JsonMap removeEvent(JsonMap animation, int index) {
+  final JsonMap out = cloneJson(animation);
+  final List<Object?> events = out['events']! as List<Object?>;
+  events.removeAt(index);
+  if (events.isEmpty) out.remove('events');
+  return out;
+}
+
+// --- the rig's animation names -------------------------------------------------
+
+/// The names navigation plays: `idle` while standing, `walk` while moving.
+const List<String> navigationAnimations = <String>['idle', 'walk'];
+
+final RegExp animationNamePattern = boneIdPattern;
+
+JsonMap animationNames(JsonMap rig) => rig['animations'] is JsonMap ? rig['animations']! as JsonMap : const <String, Object?>{};
+
+void _checkName(String name) {
+  if (!animationNamePattern.hasMatch(name)) {
+    throw RigEditException('Names are lower case letters, digits, - and _, starting with a letter or digit: $name');
+  }
+}
+
+/// Sets [name] to [animation], adding the name when new.
+JsonMap setAnimationName(JsonMap rig, String name, String animation) {
+  _checkName(name);
+  if (!documentIdPattern.hasMatch(animation)) throw RigEditException('$animation is not an animation id.');
+  final JsonMap out = cloneJson(rig);
+  final JsonMap names = out['animations'] is JsonMap ? out['animations']! as JsonMap : <String, Object?>{};
+  names[name] = animation;
+  out['animations'] = names;
+  return out;
+}
+
+/// Renames [from] to [to], keeping its place in the map.
+JsonMap renameAnimationName(JsonMap rig, String from, String to) {
+  if (from == to) return rig;
+  _checkName(to);
+  final JsonMap names = animationNames(rig);
+  if (!names.containsKey(from)) throw RigEditException('No animation named $from.');
+  if (names.containsKey(to)) throw RigEditException('The name $to is taken.');
+  return cloneJson(rig)..['animations'] = <String, Object?>{for (final MapEntry<String, Object?> entry in names.entries) entry.key == from ? to : entry.key: entry.value};
+}
+
+JsonMap removeAnimationName(JsonMap rig, String name) {
+  final JsonMap out = cloneJson(rig);
+  final JsonMap names = out['animations'] is JsonMap ? out['animations']! as JsonMap : <String, Object?>{};
+  names.remove(name);
+  if (names.isEmpty) {
+    out.remove('animations');
+  } else {
+    out['animations'] = names;
+  }
+  return out;
+}
+
+/// A free name from [base]: `base`, `base-2`, `base-3`, ...
+String freeAnimationName(JsonMap rig, String base) {
+  final JsonMap names = animationNames(rig);
+  if (!names.containsKey(base)) return base;
+  for (int suffix = 2;; suffix++) {
+    if (!names.containsKey('$base-$suffix')) return '$base-$suffix';
+  }
 }
 
 /// A new, empty animation for [rigId].

@@ -285,6 +285,18 @@ class EditorStore {
       final AnimusDocument fresh = validateSource(DocumentLocation(document.kind, document.id), document.path, document.source, schemas);
       next[index] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateAnimationStructure(fresh.json, rigs[rig])]);
     }
+    if (touched.any((String key) => key.startsWith('rig:') || key.startsWith('animation:'))) {
+      final Map<String, Object?> animations = <String, Object?>{
+        for (final AnimusDocument document in next)
+          if (document.kind == DocumentKind.animation) document.id: document.json,
+      };
+      for (int index = 0; index < next.length; index++) {
+        final AnimusDocument document = next[index];
+        if (document.kind != DocumentKind.rig) continue;
+        final AnimusDocument fresh = validateSource(DocumentLocation(document.kind, document.id), document.path, document.source, schemas);
+        next[index] = fresh.copyWith(diagnostics: <Diagnostic>[...fresh.diagnostics, ...validateRigAnimations(fresh.json, animations)]);
+      }
+    }
     final bool merge = coalesce != null && coalesce == _coalesce && _undo.isNotEmpty;
     await _save(current, current.next(documents: next, resources: nextResources, server: binding), recordUndo: undoable && !merge);
     _coalesce = undoable ? coalesce : null;
