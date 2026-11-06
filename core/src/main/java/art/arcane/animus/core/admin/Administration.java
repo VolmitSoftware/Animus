@@ -177,7 +177,7 @@ public final class Administration {
     private List<String> catalogs(List<String> transactions, boolean rollback) {
         if (transactions.isEmpty()) return List.of();
         CatalogChange change;
-        try { change = CatalogChange.of(runtime.documents(), transactions, rollback).without(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE); }
+        try { change = CatalogChange.of(runtime.documents(), transactions, rollback).without(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.RECORDING); }
         catch (IOException unreadable) { return List.of("Catalogs not reloaded (" + unreadable.getMessage() + "); run /animus shop reload, /animus gui reload and /animus behaviors reload"); }
         if (!change.empty()) runtime.catalogs().reload(change);
         return List.of();

@@ -6,6 +6,7 @@ import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.config.NavigationSettings;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.config.PluginSettings;
+import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.config.RigSettings;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -182,6 +183,22 @@ class RuntimeSettingsHotloadTest {
         assertFalse(harness.service.status().contains("last-error"), harness.service.status());
     }
 
+    @Test
+    void recordingSettingsReachTheRuntimeOnAHotload() throws IOException {
+        ViewerWatchRaceTest.Harness harness = harness(PersistedNpcService.Settings.DEFAULT);
+        assertEquals(RecordingSettings.DEFAULT, harness.runtime.recordingSettings());
+        PluginSettings base = PluginSettings.load(harness.runtime.documents());
+        RecordingSettings lowered = new RecordingSettings(false, 4, 600, 65_536, 1, false, 40, 20, false, "red", 1);
+        PluginSettings next = new PluginSettings(base.statusMessage(), base.packetProofEnabled(), base.npcs(), base.files(), base.modules(), base.behaviors(),
+                base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), base.rigs(), base.navigation(), base.hotload(), lowered);
+        Thread lane = new Thread(() -> harness.runtime.applySettings(next), "file-lane");
+        lane.start();
+        try { lane.join(); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }
+        assertEquals(lowered, harness.runtime.recordingSettings());
+        harness.tick(3);
+        assertTrue(harness.service.available(), harness.service.status());
+    }
+
     private ViewerWatchRaceTest.Harness harness(PersistedNpcService.Settings settings) throws IOException { return harness(settings, true); }
     private ViewerWatchRaceTest.Harness harness(PersistedNpcService.Settings settings, boolean available) throws IOException {
         Path npcs = directory.resolve("npcs/test");
@@ -206,7 +223,7 @@ class RuntimeSettingsHotloadTest {
         NpcRuntimeSettings table = new NpcRuntimeSettings(npcs.enabled(), (int) npcs.viewDistance(), npcs.maximumVisible(), npcs.maximumViewers(),
                 npcs.updatesPerTick(), npcs.packetsPerTick(), npcs.pendingSpawnsPerViewer(), npcs.lookUpdatesPerTick());
         PluginSettings next = new PluginSettings(base.statusMessage(), base.packetProofEnabled(), table, base.files(), base.modules(), base.behaviors(),
-                base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), rigs, navigation, base.hotload());
+                base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), rigs, navigation, base.hotload(), base.recordings());
         Thread lane = new Thread(() -> harness.runtime.applySettings(next), "file-lane");
         lane.start();
         try { lane.join(); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }

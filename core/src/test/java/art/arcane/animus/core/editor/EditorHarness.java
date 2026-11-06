@@ -139,7 +139,7 @@ final class EditorHarness implements AutoCloseable {
         store = new DocumentStore(root);
         npcs = new NpcRepository(store);
         npcs.reload();
-        EditorDocuments documents = new EditorDocuments(store);
+        EditorDocuments documents = new EditorDocuments(store, art.arcane.animus.core.config.RecordingSettings.DEFAULT::maximumFileBytes);
         EditorEvents events = new EditorEvents();
         EditorPreviews previews = new EditorPreviews(clock, (String id, String state) -> {
             host.previews().ifPresent((EditorHost.PreviewPresenter presenter) -> presenter.end(id));

@@ -10,6 +10,7 @@ The files under `schema/` are the contracts between the plugin, the relay and `a
 | `shop-v1.schema.json` | Shops (`shops/<namespace>/<path>.json`) | Hand-written to match `ShopDocument` |
 | `gui-inventory-v1.schema.json` | Chest GUIs (`gui/inventories/<namespace>/<name>.json`), the Gloss inventory format as Animus reads it | Hand-written to match `GuiDocument` and `GuiParser` |
 | `rig-v1.schema.json`, `animation-v1.schema.json` | Rigs and animations | Hand-written; the format in editor-design.md section 4 |
+| `recording-v1.schema.json` | Performance recordings (`recordings/<id>.json`) | Hand-written to match `RecordingDocument`; the format in recording-groups-routes.md section 1 |
 | `editor-v1.schema.json` | Every `/animus/v1` request, response, change set, diagnostic, event and relay frame, one `$defs` entry each | Hand-written |
 | `editor-v1.endpoints.json` | Methods and paths with their scope and message definitions, error statuses, document kinds with folders and apply scopes, pairing defaults and limits | Hand-written |
 | `gloss/` | Gloss schemas copied unchanged for the adopted kinds, and `source.json` with the Gloss commit and the supported, Animus-only and refused GUI actions | Copied from Gloss |
@@ -28,7 +29,8 @@ Regenerate the generated schemas after changing capabilities, the behavior langu
 Java (`core`):
 
 - the generated schemas match the generator;
-- every document fixture with `expect.java` is accepted or refused by `NpcDefinition`, `BehaviorCompiler` (after the catalog's revision check), `PackManifest`, `ShopDocument` and `GuiDocument` as listed;
+- every document fixture with `expect.java` is accepted or refused by `NpcDefinition`, `BehaviorCompiler` (after the catalog's revision check), `PackManifest`, `ShopDocument`, `GuiDocument` and `RecordingDocument` as listed;
+- `RecordingDocument.serialize` reproduces `fixtures/recordings/market-loop.json` byte for byte, from itself and from `roundtrip-input.json`;
 - `EditorScope` and `DocumentKind` match the scope and kind enums and the endpoint table;
 - `PairingCode` decodes and re-encodes every valid pairing fixture byte for byte and refuses every invalid one;
 - `EditorIdentity` reproduces the relay handshake golden, and `EditorRelayClient` answers the `relay-request` fixtures with the `relay-response` and `relay-event` fixtures;
@@ -77,4 +79,4 @@ The server's segment planning (2-tick samples merged while linear within 0.01 bl
 - `POST /v1/imports` takes the file's raw bytes on the direct path. Over the relay, whose frames carry JSON, the body is a JSON string holding the bytes in base64; the listener hands the handler the same form. A relay frame is 1 MiB, so files larger than about 756 KiB need the direct path; the editor says so before it sends anything.
 - The import endpoints run the drop-in flow (`CitizensDropIn`) through `EditorImports`: uploads land in `imports/saves.yml`, `imports/shopkeepers/save.yml`, `imports/shopkeepers/config.yml` and `imports/dtltraders/`, and every answer is an `import-review`. Each step is audited, and apply, accept and rollback send one catalog event for the documents they changed. Tokens limited to NPC groups are refused.
 - Change ids are the journal transaction ids, so `POST /v1/changes/{changeId}/undo` replays the rollback receipt. Idempotency records live in `state/editor/changes/<key>.json` and are written in the same transaction as the documents.
-- On apply the server sets `revision` to the stored revision plus one for npc, behavior, shop, inventory, hologram, presets, rig and animation documents.
+- On apply the server sets `revision` to the stored revision plus one for npc, behavior, shop, inventory, hologram, presets, rig, animation and recording documents. A recording is stored in its serialized form, not pretty-printed.

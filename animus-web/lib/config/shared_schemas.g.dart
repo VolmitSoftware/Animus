@@ -115,6 +115,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
     "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
+    "recording": {"folder": "recordings", "applyScope": "apply:npcs", "schema": "recording-v1.schema.json"},
     "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
     "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
@@ -180,7 +181,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "protocol": {"const": 1},
     "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "admin"]},
     "kind": {
-      "enum": ["npc", "route", "skin", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
+      "enum": ["npc", "route", "recording", "skin", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."
     },
     "documentId": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[a-z0-9_.:/-]+$", "description": "The kind's own id: group/id for NPCs, namespace:path for behaviors, shops, GUIs, rigs and animations, the SHA-256 for skins, the relative path for menus."},
@@ -15232,6 +15233,114 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           }
         }
       ]
+    }
+  }
+}
+''',
+  'recording-v1.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/recording-v1.schema.json",
+  "title": "Animus performance recording",
+  "description": "recordings/<id>.json. A player's movement captured as frames relative to origin, plus arm swings, equipment changes and door uses. Rules a schema cannot express (frame ticks strictly increasing from 0 to durationTicks, at most durationTicks / sampleTicks + 1 frames, event ticks at most durationTicks, events sorted by tick then type, the id matching the file name, the file at most [recordings] maximumFileBytes) are checked by RecordingDocument; see dev/recording-groups-routes.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "id", "recordedBy", "world", "origin", "sampleTicks", "durationTicks", "frames", "events"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "Matches the file name."},
+    "recordedBy": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", "description": "UUID of the player who recorded it."},
+    "world": {"type": "string", "minLength": 1, "pattern": "\\S", "description": "The world the recording was made in."},
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z", "yaw", "pitch"],
+      "properties": {
+        "x": {"$ref": "#/$defs/coordinate"},
+        "y": {"$ref": "#/$defs/coordinate"},
+        "z": {"$ref": "#/$defs/coordinate"},
+        "yaw": {"$ref": "#/$defs/yaw"},
+        "pitch": {"$ref": "#/$defs/pitch"}
+      }
+    },
+    "sampleTicks": {"type": "integer", "minimum": 1, "maximum": 20, "description": "Ticks between two captured frames."},
+    "durationTicks": {"type": "integer", "minimum": 1, "maximum": 72000, "description": "The tick of the last frame."},
+    "frames": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 72001,
+      "description": "[tick, dx, dy, dz, yaw, pitch, flags]. Position relative to origin, rounded to 0.01 blocks; absolute yaw and pitch rounded to 0.5 degrees. Flags: 1 onGround, 2 sneaking, 4 sprinting, 8 swimming, 16 gliding, 32 jumping.",
+      "items": {
+        "type": "array",
+        "minItems": 7,
+        "maxItems": 7,
+        "prefixItems": [
+          {"type": "integer", "minimum": 0, "maximum": 72000},
+          {"$ref": "#/$defs/offset"},
+          {"$ref": "#/$defs/offset"},
+          {"$ref": "#/$defs/offset"},
+          {"$ref": "#/$defs/yaw"},
+          {"$ref": "#/$defs/pitch"},
+          {"type": "integer", "minimum": 0, "maximum": 63}
+        ]
+      }
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": {"oneOf": [{"$ref": "#/$defs/swing"}, {"$ref": "#/$defs/equipment"}, {"$ref": "#/$defs/use"}]}
+    }
+  },
+  "$defs": {
+    "coordinate": {"type": "number", "minimum": -30000000, "maximum": 30000000},
+    "offset": {"type": "number", "minimum": -30000000, "maximum": 30000000},
+    "yaw": {"type": "number", "minimum": -360, "maximum": 360},
+    "pitch": {"type": "number", "minimum": -90, "maximum": 90},
+    "tick": {"type": "integer", "minimum": 0, "maximum": 72000},
+    "block": {"type": "integer", "minimum": -30000000, "maximum": 30000000},
+    "swing": {
+      "type": "object",
+      "description": "The main arm swung.",
+      "additionalProperties": false,
+      "required": ["tick", "type"],
+      "properties": {"tick": {"$ref": "#/$defs/tick"}, "type": {"const": "swing"}}
+    },
+    "equipment": {
+      "type": "object",
+      "description": "A slot changed; item null means the slot was emptied.",
+      "additionalProperties": false,
+      "required": ["tick", "type", "slot", "item"],
+      "properties": {
+        "tick": {"$ref": "#/$defs/tick"},
+        "type": {"const": "equipment"},
+        "slot": {"enum": ["main_hand", "off_hand", "head", "chest", "legs", "feet"]},
+        "item": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/item"}]}
+      }
+    },
+    "use": {
+      "type": "object",
+      "description": "The recorder opened or closed the door, fence gate or trapdoor at this block.",
+      "additionalProperties": false,
+      "required": ["tick", "type", "x", "y", "z", "block"],
+      "properties": {
+        "tick": {"$ref": "#/$defs/tick"},
+        "type": {"const": "use"},
+        "x": {"$ref": "#/$defs/block"},
+        "y": {"$ref": "#/$defs/block"},
+        "z": {"$ref": "#/$defs/block"},
+        "block": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"}
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "maxLength": 128, "pattern": "^[a-z0-9_.-]+:[a-z0-9_./-]+$"},
+        "count": {"type": "integer", "minimum": 1, "maximum": 99},
+        "components": {"type": "string", "maxLength": 4096, "pattern": "^\\[[\\s\\S]*\\]$"}
+      }
     }
   }
 }
