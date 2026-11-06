@@ -1,5 +1,6 @@
 package art.arcane.animus.core.config;
 
+import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.text.Palette;
 import java.text.DecimalFormat;
 import java.util.LinkedHashMap;
@@ -8,14 +9,16 @@ import java.util.Set;
 
 /**
  * {@code [shops]} in {@code config.toml}. {@code economy} is {@code auto} (Vault on Bukkit when installed) or
- * {@code none}. {@code messages} overrides any of the default texts; placeholders are written {@code {name}}.
+ * {@code none}. {@code style} is the window a shop opens when neither the shop nor its NPC names one: {@code chest} or
+ * {@code native}. {@code messages} overrides any of the default texts; placeholders are written {@code {name}}.
  */
-public record ShopSettings(boolean enabled, String economy, String priceFormat, int flushMillis, Map<String, String> messages) {
+public record ShopSettings(boolean enabled, String economy, String style, String priceFormat, int flushMillis, Map<String, String> messages) {
     public static final Map<String, String> DEFAULT_MESSAGES = defaults();
-    public static final ShopSettings DEFAULT = new ShopSettings(true, "auto", "#,##0.##", 2000, DEFAULT_MESSAGES);
+    public static final ShopSettings DEFAULT = new ShopSettings(true, "auto", "chest", "#,##0.##", 2000, DEFAULT_MESSAGES);
 
     public ShopSettings {
         if (!Set.of("auto", "none").contains(economy)) throw new IllegalArgumentException("economy must be auto or none");
+        if (ShopDocument.Style.of(style).isEmpty()) throw new IllegalArgumentException("style must be chest or native");
         try { new DecimalFormat(priceFormat); }
         catch (IllegalArgumentException invalid) { throw new IllegalArgumentException("priceFormat is not a decimal pattern: " + priceFormat, invalid); }
         if (flushMillis < 100 || flushMillis > 60_000) throw new IllegalArgumentException("flushMillis must be within 100..60000");
@@ -27,6 +30,8 @@ public record ShopSettings(boolean enabled, String economy, String priceFormat, 
         }
         messages = Map.copyOf(merged);
     }
+
+    public ShopDocument.Style defaultStyle() { return ShopDocument.Style.of(style).orElseThrow(); }
 
     public String message(String key) { return messages.getOrDefault(key, key); }
 
@@ -75,6 +80,15 @@ public record ShopSettings(boolean enabled, String economy, String priceFormat, 
         texts.put("confirmTitle", "&8Confirm purchase");
         texts.put("confirm", "&aConfirm");
         texts.put("cancel", "&cCancel");
+        texts.put("tokenPrice", "&e{price}");
+        texts.put("tokenFree", "&aFree");
+        texts.put("tokenPays", "&ePays {price}");
+        texts.put("merchantTitle", "{title} - {level}");
+        texts.put("level1", "Novice");
+        texts.put("level2", "Apprentice");
+        texts.put("level3", "Journeyman");
+        texts.put("level4", "Expert");
+        texts.put("level5", "Master");
         return Map.copyOf(texts);
     }
 }

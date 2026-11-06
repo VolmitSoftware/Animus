@@ -398,7 +398,7 @@ class _DocumentPaneState extends State<DocumentPane> {
           diagnostics: <Diagnostic>[..._allDiagnostics(document), ...serverBehaviorsDiagnostics(json, workspace)],
         ),
       DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson, presets: workspacePresets(workspace)),
-      DocumentKind.shop => ShopEditor(document: document, onJson: onJson),
+      DocumentKind.shop => ShopEditor(document: document, onJson: onJson, layouts: _ids(DocumentKind.inventory)),
       DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace)),
       DocumentKind.hologram => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace), presets: workspacePresets(workspace)),
       DocumentKind.textAnimation || DocumentKind.presets => guiDataEditor(document, onJson, workspace) ?? _fields(json),

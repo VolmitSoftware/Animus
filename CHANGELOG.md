@@ -232,6 +232,11 @@
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
 - Web editor: an info button beside labels shows a short note on hover, focus or tap and opens the matching wiki section.
 - Web editor changes play a sound and show one chat line in game, such as "Brian's editor applied 3 NPCs, 1 behavior (tx 1a2b3c4d)", for applies, undos, imports, spawns, pairings, revokes and refusals. Holders of `animus.editor.notify` (operators by default) and the token's owner get them; the transaction id copies on click and the line suggests `/animus rollback`. Bursts merge into one notice, and the notice waits for the reload so it reports the real result. Sounds, chat, action bar and log line are set in `[editor.notify]`.
+- Shops can open in the villager trading screen: `"style": "native"` or `"chest"` on the shop, on an NPC's `animus:shop` module (so trait groups can set it), with `[shops] style` as the server default and `style=` on `/animus shop open`. Every buy, sell, trade and command entry shows as an offer and trades through the same transactions, limits and stock as the chest window.
+- `animus:shop` `villager` (profession and level) shows a villager NPC's level in the trading screen title.
+- Shop `layout` draws the chest window in a chest GUI, with the offers in its list area and paged by its own buttons.
+- `/animus shop problems` lists notes about offers a shop's window style cannot show exactly.
+- Web editor: Style and Layout fields in the shop editor, with a trading screen preview.
 
 ### Changed
 
@@ -329,6 +334,7 @@
 - Mob targeting of NPCs reads the definitions again only after they change.
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
 - Web editor: shorter copy on every screen; field explanations moved from inline paragraphs into info buttons.
+- Shopkeepers imports open in the trading screen (`"style": "native"`), and villager profession and level move from the review section to `animus:shop` `villager`; the importer version is 2.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
