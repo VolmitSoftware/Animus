@@ -7,9 +7,11 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 
+import '../../config/docs_links.dart';
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/rig_edit.dart';
+import '../info_tip.dart';
 
 /// Arguments the event form leaves out: events always play to nearby players.
 const Set<String> playerArguments = <String>{'audience', 'at', 'player'};
@@ -121,10 +123,12 @@ class _RigEventEditorState extends State<RigEventEditor> {
   Widget build(BuildContext context) {
     final List<FieldSpec> fields = _fields;
     return dom.div(classes: 'animus-rig-keyframe animus-rig-event-editor', attributes: <String, String>{'aria-label': 'Event at tick $_tick'}, <Widget>[
-      dom.strong(<Widget>[Component.text('Event at tick $_tick')]),
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Plays at the NPC for nearby players each time the clip reaches this tick.'),
-      ]),
+      labelWithTip(
+        dom.strong(<Widget>[Component.text('Event at tick $_tick')]),
+        'Plays at the NPC for nearby players each time the clip reaches this tick.',
+        'Animation events',
+        docs: Docs.animationEvents,
+      ),
       _input('Tick', 'tick', '$_tick', _commitTick, number: true),
       dom.label(key: ValueKey<String>('runs:${component.index}:$_capability'), classes: 'animus-rig-field is-inline', <Widget>[
         const dom.span(<Widget>[Component.text('Runs')]),

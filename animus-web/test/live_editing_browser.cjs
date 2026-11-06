@@ -174,7 +174,7 @@ async function run(browser, width, height, label, theme) {
   await page.getByRole('button', {name: 'Preview'}).click();
   await page.locator('[data-testid="preview-state"]', {hasText: 'for your player only'}).waitFor();
   assert.equal((await control('state')).previews.length, 1, 'the fake server runs one preview');
-  await page.locator('[data-testid="preview-hidden"]', {hasText: `Live NPC hidden for you while previewing: ${npc}`}).waitFor();
+  await page.locator('[data-testid="preview-hidden"]', {hasText: `Hidden while previewing: ${npc}`}).waitFor();
   await shot(page, `${label}-03-preview`);
 
   // Apply.
@@ -311,8 +311,8 @@ async function failures(browser, width, height, label, theme) {
 
   // A code that is not one: the cause, the next step and the paste field.
   await page.goto(`${site}/#/pair/ANM1.not-json`);
-  await page.getByRole('heading', {level: 1, name: 'This pairing link cannot be used'}).waitFor();
-  await page.getByRole('alert').getByText('Run /animus editor pair on the server again').waitFor();
+  await page.getByRole('heading', {level: 1, name: 'Invalid pairing link'}).waitFor();
+  await page.getByRole('alert').getByText('Run /animus editor pair again').waitFor();
   await shot(page, `${label}-f01-bad-code`);
 
   // An expired code: no Pair, the next step and the paste field.
@@ -337,7 +337,7 @@ async function failures(browser, width, height, label, theme) {
   await editDraft(page, (json) => { json.name = 'Scoped'; });
   await page.getByRole('textbox', {name: 'Change note'}).fill('keep me');
   await control('fail?code=scope-missing&times=1&route=/v1/changes', {});
-  await expectNotice(page, 'This pairing does not allow that action.', () => click(page, 'Apply 1'));
+  await expectNotice(page, 'This pairing lacks that scope.', () => click(page, 'Apply 1'));
   await page.locator('[data-testid="draft-count"]', {hasText: '1 changed draft'}).waitFor();
   assert.equal(await page.getByRole('textbox', {name: 'Change note'}).inputValue(), 'keep me', 'a refused apply keeps the note');
 
@@ -349,19 +349,19 @@ async function failures(browser, width, height, label, theme) {
 
   // A preview for a player who is not on the server.
   await control('player?online=false', {});
-  await expectNotice(page, 'who is not on the server', () => click(page, 'Preview'));
+  await expectNotice(page, 'Your player is not on the server.', () => click(page, 'Preview'));
   await control('player?online=true', {});
   await shot(page, `${label}-f04-player-offline`);
 
   // The server closes the stream at its limit: one notice, then online.
-  await expectNotice(page, 'fell too far behind', () => control('limit', {}));
+  await expectNotice(page, 'Fell behind on server events.', () => control('limit', {}));
   await status(page, 'online');
-  assert.equal(await logCount(page, 'fell too far behind'), 1, 'one notice for one close');
+  assert.equal(await logCount(page, 'Fell behind on server events.'), 1, 'one notice for one close');
 
   // A relay error, with the direct path down so the relay carries the session.
   await control('drop', {path: 'direct', seconds: 60});
   await page.locator('.animus-live .animus-pill', {hasText: 'Online (relay)'}).waitFor({timeout: 20000});
-  await expectNotice(page, 'The relay is full right now.', () => control('relay-error?code=capacity', {}));
+  await expectNotice(page, 'Relay is full.', () => control('relay-error?code=capacity', {}));
   await page.locator('.animus-live .animus-pill', {hasText: 'Online (relay)'}).waitFor({timeout: 20000});
   await control('restore', {});
 
@@ -396,7 +396,7 @@ async function failures(browser, width, height, label, theme) {
   await page.locator('[data-testid="live-cause"]').waitFor({state: 'detached'});
 
   // Revoked: one notice, a Pair again button that opens the field.
-  await expectNotice(page, 'was revoked on the server', () => control('revoke', {tokenId: 'all'}));
+  await expectNotice(page, 'Pairing revoked on the server.', () => control('revoke', {tokenId: 'all'}));
   await page.locator('.animus-live .animus-pill[data-phase="needsPairing"]').waitFor();
   assert.equal(await logCount(page, 'revoked'), 1, 'one notice for a revoked token');
   await click(page, 'Pair again');
@@ -411,7 +411,7 @@ async function failures(browser, width, height, label, theme) {
   await status(page, 'online');
 
   // Expired on the server: the same Pair again.
-  await expectNotice(page, 'The pairing for this browser expired.', () => control('expire', {}));
+  await expectNotice(page, 'Pairing expired.', () => control('expire', {}));
   await page.getByRole('button', {name: 'Pair again'}).waitFor();
 
   // Forget: cancel gives focus back, confirm removes the server and its workspace.
@@ -423,7 +423,7 @@ async function failures(browser, width, height, label, theme) {
   await focused(page, 'animus-forget-');
   await click(page, 'Forget Animus fake server');
   await click(page, 'Forget server');
-  await page.getByText('No server is paired yet').waitFor();
+  await page.getByText('No servers paired.').waitFor();
   assert.equal(await page.getByRole('link', {name: 'Animus fake server'}).count(), 0, 'the live workspace is gone too');
   await shot(page, `${label}-f09-forgotten`);
 

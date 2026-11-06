@@ -137,7 +137,7 @@ class ActionsEditor extends StatelessWidget {
               if (next == null || next == type) return;
               final (JsonMap changed, List<String> dropped) = changeActionType(action, next);
               if (dropped.isNotEmpty &&
-                  !web.window.confirm('A $next action has no ${dropped.join(', ')}. Changing the type drops the actions nested there. Change it anyway?')) {
+                  !web.window.confirm('A $next action has no ${dropped.join(', ')}. Their nested actions will be dropped. Change type?')) {
                 onChanged(<Object?>[...actions]);
                 return;
               }
@@ -166,14 +166,13 @@ class ActionsEditor extends StatelessWidget {
           dom.p(classes: 'animus-gui-refused', attributes: const <String, String>{'role': 'alert'}, <Widget>[
             dom.code(<Widget>[Component.text(childPath(actionPath, 'type'))]),
             Component.text(typeProblems.isNotEmpty ? ' ${typeProblems.first.message}' : " action '$type' is not available in Animus"),
-            const Component.text('. Pick an Animus action above or remove it; the server refuses the whole file.'),
+            const Component.text('. Pick another action or remove it.'),
           ])
         else ...<Widget>[
           for (final GuiField field in actionFields[type] ?? const <GuiField>[]) _input(index, action, field, actionPath),
           if (type == 'command')
             const dom.p(classes: 'animus-gui-note', <Widget>[
-              Component.text('Commands run only when this GUI\'s id or namespace is on commandBehaviors or commandNamespaces '
-                  'under [behaviors.actions] in config.toml, the same allow-list animus:command uses.'),
+              Component.text('Needs this GUI on commandBehaviors or commandNamespaces under [behaviors.actions] in config.toml.'),
             ]),
           for (final String refused in refusedSequenceFields)
             if (type == 'sequence' && action.containsKey(refused))
@@ -186,7 +185,7 @@ class ActionsEditor extends StatelessWidget {
             GuiRow(
               label: 'At tick',
               forId: guiPathId('$actionPath.atTicks'),
-              help: 'When this step runs, in ticks from the start of the sequence.',
+              help: 'Ticks from sequence start',
               problems: diagnosticsAt(diagnostics, childPath(actionPath, 'atTicks')),
               child: GuiNumberInput(
                 id: guiPathId('$actionPath.atTicks'),
@@ -379,9 +378,9 @@ class ActionsEditor extends StatelessWidget {
         return GuiSection(title: name, children: <Widget>[
           for (final Diagnostic problem in problems) dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
           row('item', 'Item *', (String rowId) => GuiTextInput(id: rowId, value: asString(icon['item']) ?? '', mode: GuiTextMode.template, names: names, label: 'Item id', onChanged: (String v) => set(with_('item', v))),
-              help: 'An item id such as minecraft:bread.'),
+              help: 'Such as minecraft:bread'),
           row('count', 'Count', (String rowId) => GuiNumberInput(id: rowId, value: asInt(icon['count']), label: 'Item count', onChanged: (num? v) => set(with_('count', v))),
-              help: '1 to 99 per stack; amount sets how many.'),
+              help: '1 to 99 per stack'),
           row('name', 'Name', (String rowId) => GuiTextInput(id: rowId, value: asString(icon['name']) ?? '', mode: GuiTextMode.template, names: names, label: 'Item name', onChanged: (String v) => set(with_('name', v)))),
           row('lore', 'Lore', (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: names, onChanged: (List<String> lines) => set(with_('lore', lines)))),
           row('customModelValue', 'Custom model', (String rowId) => GuiNumberInput(id: rowId, value: asInt(icon['customModelValue']), label: 'Custom model value', onChanged: (num? v) => set(with_('customModelValue', v)))),

@@ -9,6 +9,9 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../logic/help_text.dart';
+import '../info_tip.dart';
+
 /// A visible label around one control, with a help line and a problem.
 class FieldRow extends StatelessWidget {
   const FieldRow({required this.label, required this.child, this.help, this.error, super.key});
@@ -19,16 +22,20 @@ class FieldRow extends StatelessWidget {
   final String? error;
 
   @override
-  Widget build(BuildContext context) => dom.div(classes: 'animus-field${error == null ? '' : ' has-error'}', <Widget>[
+  Widget build(BuildContext context) {
+    final ({String? hint, String? tip}) split = splitHelp(help);
+    return dom.div(classes: 'animus-field${error == null ? '' : ' has-error'}', <Widget>[
         // Only the label text names the control; help and problems sit
         // outside the label so they do not join its accessible name.
+        if (split.tip != null) dom.span(classes: 'animus-field-tip', <Widget>[InfoTip(text: split.tip!, topic: label)]),
         dom.label(classes: 'animus-field-control', <Widget>[
           dom.span(classes: 'animus-field-label', <Widget>[Component.text(label)]),
           child,
         ]),
-        if (help != null) dom.span(classes: 'animus-field-help', <Widget>[Component.text(help!)]),
+        if (split.hint != null) dom.span(classes: 'animus-field-help', <Widget>[Component.text(split.hint!)]),
         if (error != null) dom.span(classes: 'animus-field-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(error!)]),
       ]);
+  }
 }
 
 /// A text box inside a [FieldRow].

@@ -37,22 +37,22 @@ const List<DocumentKind> creatableKinds = <DocumentKind>[
 
 /// What each kind is for, in one line, for the New page.
 String kindPurpose(DocumentKind kind) => switch (kind) {
-      DocumentKind.npc => 'A character in the world: body, name, skin, position and the behaviors it runs.',
-      DocumentKind.behavior => 'Steps an NPC runs when clicked, approached, on a timer or after an answer, or a server behavior that reacts to joins, chat and commands.',
-      DocumentKind.pack => 'A named bundle of behaviors, installed under packs/.',
-      DocumentKind.route => 'Waypoints an NPC walks, reusable by several NPCs.',
-      DocumentKind.recording => 'A player\'s captured movement that NPCs play back; made in game with /animus record.',
-      DocumentKind.group => 'Shared settings that every NPC listing the group takes before its own.',
-      DocumentKind.shop => 'Buy, sell and trade pages an NPC or a GUI opens.',
-      DocumentKind.inventory => 'A chest window with buttons, lists and variants.',
-      DocumentKind.menu => 'A holographic menu drawn in front of the player.',
-      DocumentKind.hologram => 'Floating lines of text and items at a place in the world.',
-      DocumentKind.rig => 'A body built from display entities, bone by bone.',
-      DocumentKind.animation => 'Keyframes that move a rig\'s bones.',
-      DocumentKind.skin => 'A player skin from a PNG, for player bodies.',
-      DocumentKind.textAnimation => 'Frames that GUI text cycles through.',
-      DocumentKind.presets => 'Default settings for Gloss GUI documents; one per workspace.',
-      DocumentKind.serverBehaviors => 'Which server behaviors run. Only the ones listed here start; one per workspace.',
+      DocumentKind.npc => 'A character in the world',
+      DocumentKind.behavior => 'What an NPC or the server does',
+      DocumentKind.pack => 'A bundle of behaviors',
+      DocumentKind.route => 'Waypoints NPCs walk',
+      DocumentKind.recording => 'Movement recorded in game',
+      DocumentKind.group => 'Settings shared by NPCs',
+      DocumentKind.shop => 'Buy, sell and trade pages',
+      DocumentKind.inventory => 'A chest window',
+      DocumentKind.menu => 'A floating menu',
+      DocumentKind.hologram => 'Floating text and items',
+      DocumentKind.rig => 'A display-entity body',
+      DocumentKind.animation => 'Keyframes for a rig',
+      DocumentKind.skin => 'A player skin PNG',
+      DocumentKind.textAnimation => 'Cycling GUI text',
+      DocumentKind.presets => 'Gloss GUI defaults',
+      DocumentKind.serverBehaviors => 'Which server behaviors run',
     };
 
 /// An id or folder name: lowercase letters, digits, `_` and `-`, starting
@@ -108,10 +108,10 @@ String newDocumentPath(DocumentKind kind, String id) => _pathFor(kind, id);
 String idHint(DocumentKind kind) => switch (kind) {
       DocumentKind.npc => 'folder/name, such as town/baker',
       DocumentKind.route || DocumentKind.recording || DocumentKind.pack || DocumentKind.group => 'a name such as town-patrol',
-      DocumentKind.skin => 'the SHA-256 of the skin file, set for you',
+      DocumentKind.skin => 'the skin SHA-256, set for you',
       DocumentKind.presets => 'always presets',
       DocumentKind.serverBehaviors => 'always server-behaviors',
-      _ => 'namespace:path, such as town/welcome written town:welcome',
+      _ => 'namespace:path, such as town:welcome',
     };
 
 // --- NPCs --------------------------------------------------------------------
@@ -186,12 +186,12 @@ JsonMap newNpc(NpcSeed seed, {required String uuid}) {
 
 /// Behavior templates the New page offers, from the example packs.
 enum BehaviorTemplate {
-  greeter('Greeter', 'Greets on click, remembers each player, and waves when someone comes close.'),
-  dialogue('Dialogue', 'Asks a question with answers that lead to their own replies.'),
-  patrol('Patrol', 'Walks a square around its post on a timer and says when it starts and ends.'),
-  shop('Shop', 'Greets when someone comes close and opens a shop on click.'),
-  guard('Guard', 'Arms itself, challenges strangers and calls for help when hit.'),
-  quest('Quest', 'Offers a delivery quest, then thanks the player when they come back.');
+  greeter('Greeter', 'Greets on click, waves nearby'),
+  dialogue('Dialogue', 'A question with answers'),
+  patrol('Patrol', 'Walks a square on a timer'),
+  shop('Shop', 'Opens a shop on click'),
+  guard('Guard', 'Challenges strangers, calls for help'),
+  quest('Quest', 'A delivery quest');
 
   const BehaviorTemplate(this.label, this.description);
 
@@ -412,8 +412,8 @@ JsonMap newRoute({(double, double, double) origin = (0, 64, 0), String mode = 'w
 
 /// Starting shapes for a new rig.
 enum RigStarter {
-  pivot('Empty', 'One root bone with nothing drawn, to build up bone by bone.'),
-  figure('Block figure', 'A body block with a head and two arms, ready to animate.');
+  pivot('Empty', 'One empty root bone'),
+  figure('Block figure', 'Body, head and two arms');
 
   const RigStarter(this.label, this.description);
 
@@ -465,9 +465,9 @@ JsonMap newRig(String id, {RigStarter starter = RigStarter.figure, bool bodyShow
 
 /// Starting motions for a new animation.
 enum AnimationStarter {
-  empty('Empty', 'No tracks yet; key bones in the timeline.'),
-  bob('Bob', 'The first drawn bone rises and settles, looping.'),
-  wave('Wave', 'An arm swings back and forth (a bone named like an arm, or the first drawn bone).');
+  empty('Empty', 'No tracks yet'),
+  bob('Bob', 'First bone rises and settles'),
+  wave('Wave', 'An arm swings');
 
   const AnimationStarter(this.label, this.description);
 

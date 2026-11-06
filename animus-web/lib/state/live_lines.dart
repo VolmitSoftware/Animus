@@ -14,8 +14,8 @@ String appliedLine(ChangeApplied applied, {required bool undo}) {
 /// The live log line after a server validation.
 String validationLine(bool valid, int documents, int errors) {
   if (valid) return 'The server accepts ${_plural(documents, 'document')}.';
-  if (errors == 0) return 'The server did not accept the drafts but named no error. Check the server console, then validate again.';
-  return 'The server found ${_plural(errors, 'error')}. Fix the marked fields, then validate again.';
+  if (errors == 0) return 'The server refused the drafts but named no error. Check its console.';
+  return 'The server found ${_plural(errors, 'error')}. Fix the marked fields.';
 }
 
 /// The live log line after spawning or despawning a selection.
@@ -25,7 +25,7 @@ String spawnLine({required bool spawn, required int total, required int sent, re
   final List<String> parts = <String>[
     if (sent == total && refused.isEmpty) '$verb $accepted $npcs on the server.' else '$verb $accepted of $total $npcs.',
     if (refused.isNotEmpty) 'The server refused ${refused.take(3).join(', ')}${refused.length > 3 ? ' and ${refused.length - 3} more' : ''}: ${reason?.text ?? ''}',
-    if (sent < total) 'The connection failed before ${total - sent} could be sent; select them again once it reconnects.',
+    if (sent < total) 'Connection failed with ${total - sent} unsent. Select them again after reconnecting.',
   ];
   return parts.join(' ').trim();
 }

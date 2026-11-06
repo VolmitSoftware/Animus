@@ -38,6 +38,8 @@ import 'npc/pack_editor.dart';
 import 'npc/route_editor.dart';
 import 'npc/skin_summary.dart';
 import 'npc_preview.dart';
+import 'info_tip.dart';
+import '../config/docs_links.dart';
 
 /// Kinds with a visual editor and a painted or 3D preview.
 const Set<DocumentKind> guiEditorKinds = <DocumentKind>{DocumentKind.inventory, DocumentKind.shop, DocumentKind.menu, DocumentKind.hologram};
@@ -225,9 +227,9 @@ class _DocumentPaneState extends State<DocumentPane> {
         attributes: <String, String>{'role': 'tabpanel', 'aria-labelledby': TabStrip.tabId(_tabPrefix, selectedTab)},
         <Widget>[
         if (component.editor != null && view != ViewMode.code)
-          component.editor!
+          DocsScope(link: Docs.forKind(document.kind), child: component.editor!)
         else if (view == ViewMode.visual || (view == ViewMode.split && !_staged(document)))
-          _visual(document),
+          DocsScope(link: Docs.forKind(document.kind), child: _visual(document)),
         if (component.editor == null && (view == ViewMode.preview || (view == ViewMode.split && _staged(document)))) _preview(document),
         if (view == ViewMode.code || view == ViewMode.split) _code(document),
       ]),
@@ -239,7 +241,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     if (_confirmDelete && component.onDelete != null) {
       return ConfirmRow(
         question: 'Delete ${document.id}?',
-        detail: 'Undo in the top bar brings it back.',
+        detail: 'Undo brings it back.',
         confirmLabel: 'Delete ${document.kind == DocumentKind.npc ? 'NPC' : 'document'}',
         onConfirm: () {
           setState(() => _confirmDelete = false);
@@ -283,7 +285,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     final List<Diagnostic> server = component.serverDiagnostics;
     if (_draftError != null) {
       return const dom.p(classes: 'animus-draft-error', attributes: <String, String>{'role': 'status'}, <Widget>[
-        Component.text('The draft in Code has a JSON error, so it is not applied. The saved document below is unchanged.'),
+        Component.text('The Code draft has a JSON error and is not applied.'),
       ]);
     }
     if (document.diagnostics.isEmpty && server.isEmpty) {
@@ -346,7 +348,7 @@ class _DocumentPaneState extends State<DocumentPane> {
     final JsonEdit? onJson = component.onJson;
     if (json is! Map<String, Object?>) {
       return const dom.section(classes: 'animus-panel', <Widget>[
-        Component.text('This document is not a JSON object, so Visual has no fields to show. Open Code to fix the text; the problems are listed above.'),
+        Component.text('Not a JSON object. Fix it in Code.'),
       ]);
     }
     if (document.kind == DocumentKind.recording) return RecordingView(key: ValueKey<String>('recording:${document.id}'), document: document);
@@ -528,7 +530,7 @@ class _DocumentPaneState extends State<DocumentPane> {
       ),
       if (document.kind == DocumentKind.recording)
         const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-recording': 'code-note'}, <Widget>[
-          Component.text('Recordings are made in game with /animus record, so this text is read-only here. Rename and Delete above still apply.'),
+          Component.text('Read-only. Recordings are made in game with /animus record.'),
         ])
       else
         dom.div(classes: 'animus-row', <Widget>[
@@ -542,7 +544,7 @@ class _DocumentPaneState extends State<DocumentPane> {
           Button.ghost(label: 'Discard', size: ButtonSize.small, onPressed: () => setState(() => _draft = null)),
         if (_draftError != null)
           dom.span(classes: 'animus-error', <Widget>[
-            Component.text('Not valid JSON yet: $_draftError. Fix the text, or Discard to go back to the saved document.'),
+            Component.text('Not valid JSON: $_draftError. Fix it or Discard.'),
           ]),
       ]),
     ]);
@@ -585,7 +587,7 @@ List<(String, String)> previewFacts(DocumentKind kind, Map<String, Object?> json
     case DocumentKind.serverBehaviors:
       final List<Object?> listed = json['behaviors'] is List<Object?> ? json['behaviors']! as List<Object?> : const <Object?>[];
       return <(String, String)>[
-        ('Runs', listed.isEmpty ? 'nothing: the list is empty' : '${listed.length} server behavior${listed.length == 1 ? '' : 's'}'),
+        ('Runs', listed.isEmpty ? 'nothing (empty list)' : '${listed.length} server behavior${listed.length == 1 ? '' : 's'}'),
         ('Order', listed.isEmpty ? '-' : listed.join(', ')),
       ];
     case DocumentKind.rig:

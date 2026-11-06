@@ -46,12 +46,12 @@ class CapabilityFields extends StatelessWidget {
       GuiRow(
         label: 'Capability *',
         help: spec == null
-            ? (id == null || id.isEmpty ? 'Pick what this $kind runs.' : 'Not a built-in capability; a module checks it when installed.')
+            ? (id == null || id.isEmpty ? null : 'Module capability, checked on install.')
             : <String>[
-                spec.description,
                 if (!spec.available) 'Unavailable here: ${spec.reason}.',
-                if (spec.privileged) 'Privileged: allowed only for behaviors on the allow-list.',
-                if (context.server && spec.npcOnly) 'Needs an NPC, so a server behavior cannot run it.',
+                if (spec.privileged) 'Privileged: allow-listed behaviors only.',
+                if (context.server && spec.npcOnly) 'NPC only: a server behavior cannot run it.',
+                spec.description,
               ].join(' '),
         problems: diagnosticsAt(context.diagnostics, _at(<JsonStep>['capability'])),
         child: dom.div(classes: 'animus-control-stack', <Widget>[
@@ -100,7 +100,7 @@ class CapabilityFields extends StatelessWidget {
           GuiRow(
             key: ValueKey<String>('kept-argument:${entry.key}'),
             label: entry.key,
-            help: spec == null ? 'Argument for the module.' : 'Not an argument of ${spec.id}; kept as written.',
+            help: spec == null ? 'Module argument' : 'Unknown argument, kept as written',
             problems: diagnosticsAt(context.diagnostics, _at(<JsonStep>['arguments', entry.key]), nested: true),
             child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? next) => context.write(<JsonStep>[...steps, 'arguments', entry.key], next)),
           ),
@@ -142,7 +142,7 @@ class CapabilityFields extends StatelessWidget {
           problems: <Diagnostic>[
             ...diagnosticsAt(context.diagnostics, '${_at(<JsonStep>[field])}[$pointer]', nested: true),
             if (stray.contains(pointer))
-              Diagnostic(DiagnosticSeverity.warning, _at(<JsonStep>[field]), '$pointer names no null placeholder in arguments; put null there or remove this slot.'),
+              Diagnostic(DiagnosticSeverity.warning, _at(<JsonStep>[field]), 'No null argument at $pointer. Set it to null or remove this slot.'),
           ],
           child: dom.div(classes: 'animus-control-stack', <Widget>[
             SuggestInput(value: pointer, label: 'Pointer of this placeholder', suggestions: pointers, onChanged: (String next) {
@@ -188,7 +188,7 @@ class CallArguments extends StatelessWidget {
     void put(JsonMap next) => context.write(at, next.isEmpty ? null : next);
     return GuiRow(
       label: 'Arguments',
-      help: 'Declared variables set before the routine runs.',
+      help: 'Variables set before the call',
       problems: diagnosticsAt(context.diagnostics, formatPath(at)),
       child: dom.div(classes: 'animus-control-stack', <Widget>[
         for (final MapEntry<String, Object?> entry in arguments.entries)
@@ -217,7 +217,7 @@ class CallArguments extends StatelessWidget {
             },
           )
         else if (context.variables.isEmpty)
-          const dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Declare variables under Variables to pass values to the routine.')]),
+          const dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Declare a variable first.')]),
       ]),
     );
   }

@@ -56,7 +56,7 @@ void main() {
         ServerConnection.pair(both, network.open),
         throwsA(isA<PairingRefused>()
             .having((PairingRefused refused) => refused.code, 'code', 'pairing-invalid')
-            .having((PairingRefused refused) => refused.message, 'message', contains('Run /animus editor pair on the server again'))),
+            .having((PairingRefused refused) => refused.message, 'message', contains('Run /animus editor pair and open the new link.'))),
       );
     });
 

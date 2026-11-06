@@ -60,6 +60,6 @@ void exportWorkspace(WorkspaceSnapshot workspace) {
   final String name = '${sanitizeName(workspace.name, 'animus')}.zip';
   downloadBytes(name, zipFiles(workspaceFiles(workspace)));
   ArcaneSonner.success(
-    'Saved $name with ${workspace.documents.length} documents and ${workspace.resources.length} pack files. Unzip it over plugins/Animus.',
+    'Saved $name: ${workspace.documents.length} documents, ${workspace.resources.length} pack files. Unzip over plugins/Animus.',
   );
 }

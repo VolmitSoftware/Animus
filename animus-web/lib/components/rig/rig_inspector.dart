@@ -8,7 +8,9 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
+import '../info_tip.dart';
 
 const List<String> socketSlots = <String>['main_hand', 'off_hand', 'head', 'chest', 'legs', 'feet', 'body', 'saddle'];
 
@@ -60,7 +62,7 @@ class _RigInspectorState extends State<RigInspector> {
     final JsonMap? bone = selected == null ? null : boneById(rig, selected);
     if (bone == null) {
       return const dom.div(classes: 'animus-rig-inspector', <Widget>[
-        dom.p(classes: 'animus-muted', <Widget>[Component.text('Select a bone in the tree or on the stage to edit it.')]),
+        dom.p(classes: 'animus-muted', <Widget>[Component.text('Select a bone to edit it.')]),
       ]);
     }
     final String id = '${bone['id']}';
@@ -170,7 +172,7 @@ class _RigInspectorState extends State<RigInspector> {
         _textField('Background (#AARRGGBB)', 'background:$id', '${visual['background'] ?? ''}', (String value) {
           final String trimmed = value.trim();
           if (trimmed.isNotEmpty && !_background.hasMatch(trimmed)) {
-            setState(() => _errors['background:$id'] = 'Use # and eight hex digits, alpha first, like #40000000. Leave it empty for the default.');
+            setState(() => _errors['background:$id'] = 'Use #AARRGGBB, like #40000000, or leave it empty.');
             return;
           }
           setVisual((JsonMap v) {
@@ -185,7 +187,7 @@ class _RigInspectorState extends State<RigInspector> {
           final String trimmed = value.trim();
           final int? width = int.tryParse(trimmed);
           if (trimmed.isNotEmpty && (width == null || width < 1 || width > 1024)) {
-            setState(() => _errors['lineWidth:$id'] = 'Use a whole number from 1 to 1024, or leave it empty for 200.');
+            setState(() => _errors['lineWidth:$id'] = 'Use 1 to 1024, or leave it empty for 200.');
             return;
           }
           setVisual((JsonMap v) {
@@ -218,10 +220,12 @@ class _RigInspectorState extends State<RigInspector> {
         _vectorField('Visual rotation', 'vr:$id', visual['rotation'], 0, (List<num> value) => setVisual((JsonMap v) => v['rotation'] = value)),
         _vectorField('Visual scale', 'vs:$id', visual['scale'], 1, (List<num> value) => setVisual((JsonMap v) => v['scale'] = value)),
       ],
-      const dom.h3(<Widget>[Component.text('Sockets')]),
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Equipment slots that hang from a bone. The stage draws the NPC\'s item there, or a sample item in the rig editor.'),
-      ]),
+      labelWithTip(
+        const dom.h3(<Widget>[Component.text('Sockets')]),
+        'Equipment slots shown on a bone. The NPC\'s item follows the bone\'s animation.',
+        'Sockets',
+        docs: Docs.rigs,
+      ),
       for (final String slot in socketSlots)
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           dom.span(<Widget>[Component.text(slot)]),

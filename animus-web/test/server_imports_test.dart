@@ -61,7 +61,7 @@ void main() {
     path = ConnectionPath.direct;
     await imports.upload(large);
     expect(sent, 1);
-    expect(uploadProblem(ImportUpload(ImportFile.citizens, Uint8List(importBodyBytes + 1)), ConnectionPath.direct), contains('limited to 16.0 MiB'));
+    expect(uploadProblem(ImportUpload(ImportFile.citizens, Uint8List(importBodyBytes + 1)), ConnectionPath.direct), contains('over the 16.0 MiB upload limit'));
   });
 
   test('should raise the server refusal as ImportRefused', () async {

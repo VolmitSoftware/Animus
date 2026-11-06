@@ -37,7 +37,7 @@ class DialogueView extends StatelessWidget {
         ]),
       if (tree.unasked.isNotEmpty)
         dom.p(classes: 'animus-gui-problem is-warning', <Widget>[
-          Component.text('No routine asks the prompt of trigger${tree.unasked.length == 1 ? '' : 's'} ${tree.unasked.join(', ')}; ${tree.unasked.length == 1 ? 'it' : 'they'} never run.'),
+          Component.text('Never asked, so never run: ${tree.unasked.join(', ')}.'),
         ]),
     ]);
   }
@@ -90,7 +90,7 @@ class DialogueView extends StatelessWidget {
                       ),
                   ]),
                   if (option.answers.isEmpty)
-                    const dom.p(classes: 'animus-muted', <Widget>[Component.text('No dialogue_choice trigger answers this; the conversation ends.')])
+                    const dom.p(classes: 'animus-muted', <Widget>[Component.text('No dialogue_choice answers this. The conversation ends.')])
                   else
                     for (final DialogueAnswer answer in option.answers)
                       dom.div(classes: 'animus-dialogue-branch', <Widget>[

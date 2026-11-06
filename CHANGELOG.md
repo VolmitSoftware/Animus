@@ -230,6 +230,7 @@
 - `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
+- Web editor: an info button beside labels shows a short note on hover, focus or tap and opens the matching wiki section.
 
 ### Changed
 
@@ -326,6 +327,7 @@
 - Look-close players, fight and chat witnesses, hologram placement and per-NPC viewer lookups use chunk indexes instead of scanning every player, watcher, hologram or viewer.
 - Mob targeting of NPCs reads the definitions again only after they change.
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
+- Web editor: shorter copy on every screen; field explanations moved from inline paragraphs into info buttons.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

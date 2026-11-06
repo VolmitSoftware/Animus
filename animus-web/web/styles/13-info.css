@@ -1,0 +1,122 @@
+/* The info control (lib/components/info_tip.dart): a square "i" beside a
+   label, its tooltip under it. Square, flat, the secondary button colours. */
+
+.animus-info {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  vertical-align: middle;
+}
+
+.animus-info-button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1px solid var(--animus-border);
+  border-radius: 0;
+  background: var(--secondary, #2a272b);
+  color: var(--secondary-foreground, var(--foreground));
+  font: 600 0.75rem/1 var(--font-mono);
+  text-decoration: none;
+  cursor: help;
+}
+
+.animus-info-button:hover {
+  background: var(--card-hover, #222024);
+}
+
+.animus-info-button:focus-visible {
+  outline: 2px solid var(--ring, #ffb3d6);
+  outline-offset: 1px;
+}
+
+.animus-info-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  display: none;
+  width: max-content;
+  max-width: min(18rem, calc(100vw - 1rem));
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--animus-border);
+  border-radius: 0;
+  background: var(--popover, #161518);
+  color: var(--popover-foreground, var(--foreground));
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: start;
+  white-space: normal;
+  transform: translateX(var(--animus-info-shift, 0px));
+}
+
+@media (hover: hover) {
+  .animus-info:not(.is-dismissed):hover .animus-info-pop {
+    display: grid;
+    gap: 0.25rem;
+  }
+}
+
+.animus-info:not(.is-dismissed):has(.animus-info-button:focus-visible) .animus-info-pop,
+.animus-info.is-open .animus-info-pop {
+  display: grid;
+  gap: 0.25rem;
+}
+
+/* The label beside it, as rows lay it out. */
+.animus-label-tip {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.animus-label-tip > .animus-info {
+  margin-top: 0.3rem;
+}
+
+/* A FieldRow with a tip: the label, then the tip, then the control. */
+.animus-field:has(> .animus-field-tip) {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.375rem;
+}
+
+.animus-field:has(> .animus-field-tip) > .animus-field-control {
+  display: contents;
+}
+
+.animus-field:has(> .animus-field-tip) > .animus-field-control > .animus-field-label {
+  grid-row: 1;
+  grid-column: 1;
+}
+
+.animus-field-tip {
+  grid-row: 1;
+  grid-column: 2;
+  display: inline-flex;
+}
+
+.animus-field:has(> .animus-field-tip) > .animus-field-control > :not(.animus-field-label),
+.animus-field:has(> .animus-field-tip) > .animus-field-help,
+.animus-field:has(> .animus-field-tip) > .animus-field-error {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .animus-info-button {
+    width: 2.75rem;
+    height: 2.75rem;
+    font-size: 0.875rem;
+  }
+
+  .animus-label-tip {
+    align-items: center;
+  }
+
+  .animus-label-tip > .animus-info {
+    margin-top: 0;
+  }
+}

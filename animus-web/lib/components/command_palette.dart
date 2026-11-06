@@ -138,7 +138,7 @@ class _CommandPaletteState extends State<CommandPalette> {
               if (active >= 0) 'aria-activedescendant': 'animus-palette-option-$active',
               'autocomplete': 'off',
               'spellcheck': 'false',
-              'placeholder': 'Open a document, switch workspace or run a command',
+              'placeholder': 'Documents and commands',
             },
             value: _query,
             events: <String, void Function(web.Event)>{
@@ -150,13 +150,10 @@ class _CommandPaletteState extends State<CommandPalette> {
           ),
           if (matches.isEmpty)
             dom.p(classes: 'animus-palette-empty', attributes: const <String, String>{'role': 'status'}, <Widget>[
-              Component.text('Nothing matches "$_query". Try part of a document id or name, or a word like export or theme.'),
+              Component.text('Nothing matches "$_query".'),
             ])
           else
             dom.ul(id: _listId, classes: 'animus-palette-list', attributes: const <String, String>{'role': 'listbox', 'aria-label': 'Commands'}, rows),
-          const dom.p(classes: 'animus-palette-keys', attributes: <String, String>{'aria-hidden': 'true'}, <Widget>[
-            Component.text('Up and Down to move, Enter to run, Esc to close'),
-          ]),
         ],
       ),
     ]);

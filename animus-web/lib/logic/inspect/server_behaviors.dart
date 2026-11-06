@@ -17,9 +17,9 @@ Map<String, bool> workspaceBehaviors(List<AnimusDocument> documents) => <String,
 
 /// Why a listed [id] is fine or not, in words.
 String serverBehaviorNote(String id, Map<String, bool> behaviors) => switch (behaviors[id]) {
-      true => 'Server behavior in this workspace.',
-      false => 'In this workspace without the server switch, so the server refuses to run it.',
-      null => 'Not in this workspace; the server runs it if it has it.',
+      true => 'Server behavior',
+      false => 'Server behavior is off, so it will not run.',
+      null => 'Not in this workspace. Runs if the server has it.',
     };
 
 /// Warnings for the list [json] against [documents]: listed NPC behaviors.

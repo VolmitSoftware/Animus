@@ -104,7 +104,7 @@ class IconEditor extends StatelessWidget {
             onChanged: (num? value) => onChanged(withField(icon, key, value)),
           ),
         );
-    final String chestIgnored = chest ? ' Chest windows ignore it; it matters in menus and Gloss.' : '';
+    final String chestIgnored = chest ? ' Ignored in chest windows.' : '';
     final JsonMap box = asMap(icon['box']);
     return dom.div(classes: 'animus-gui-icon', <Widget>[
       guiFieldRow('Icon', childPath(path, 'type'), diagnostics, (String id) => GuiSelect(
@@ -138,24 +138,24 @@ class IconEditor extends StatelessWidget {
         )
       else ...<Widget>[
         if (type == 'item') ...<Widget>[
-          text('item', 'Item', help: 'An item id such as minecraft:bread; expressions work.'),
-          number('count', 'Count', help: '1 to 99.'),
+          text('item', 'Item', help: 'Item id or expression'),
+          number('count', 'Count', help: '1 to 99'),
           number('customModelValue', 'Custom model'),
         ],
         if (type == 'playerHead') ...<Widget>[
-          text('player', 'Player', help: 'A name; the head shows that player\'s skin.'),
+          text('player', 'Player', help: 'Player whose skin to show'),
           number('refreshTicks', 'Skin refresh', help: 'Ticks between skin checks.$chestIgnored'),
         ],
-        if (type == 'item' || type == 'playerHead') text('countFormat', 'Count format', help: 'How the count reads, such as {{ count }}x.$chestIgnored'),
+        if (type == 'item' || type == 'playerHead') text('countFormat', 'Count format', help: 'Such as {{ count }}x.$chestIgnored'),
         if (type == 'text') ...<Widget>[
           text('text', 'Text', multiline: true),
-          number('refreshTicks', 'Refresh', help: '0 to 1200 ticks between text updates; 10 by default.'),
+          number('refreshTicks', 'Refresh', help: '0 to 1200 ticks, default 10'),
         ],
-        if (type == 'block') text('block', 'Block', mode: GuiTextMode.plain, help: 'A block id; minecraft:barrier by default.'),
+        if (type == 'block') text('block', 'Block', mode: GuiTextMode.plain, help: 'Default minecraft:barrier'),
         if (type == 'entity') ...<Widget>[
-          text('entity', 'Entity', mode: GuiTextMode.plain, help: 'An entity type; minecraft:pig by default.'),
-          number('width', 'Width', integer: false, help: '0.01 to 64 blocks of click box; 1 by default.'),
-          number('height', 'Height', integer: false, help: '0.01 to 64 blocks; 1 by default.'),
+          text('entity', 'Entity', mode: GuiTextMode.plain, help: 'Default minecraft:pig'),
+          number('width', 'Width', integer: false, help: 'Click box, 0.01 to 64 blocks'),
+          number('height', 'Height', integer: false, help: '0.01 to 64 blocks, default 1'),
         ],
         if (type != 'text' && type != 'entity') ...<Widget>[
           text('name', 'Name'),
@@ -171,8 +171,8 @@ class IconEditor extends StatelessWidget {
           dom.p(classes: box['enabled'] == true ? 'animus-gui-refused' : 'animus-gui-note', <Widget>[
             dom.code(<Widget>[Component.text(childPath(path, 'box'))]),
             Component.text(box['enabled'] == true
-                ? ' box panels are not available in Animus; use style.backgroundArgb. '
-                : ' is switched off and has no effect. '),
+                ? ' box panels are unsupported; use style.backgroundArgb. '
+                : ' is off and has no effect. '),
             Button.ghost(label: 'Remove box', size: ButtonSize.small, onPressed: () => onChanged(withField(icon, 'box', null))),
           ]),
         if (!chest && type != 'entity')
@@ -180,7 +180,7 @@ class IconEditor extends StatelessWidget {
             style: asMap(icon['style']),
             path: childPath(path, 'style'),
             diagnostics: diagnostics,
-            note: 'Menu icons face one way (billboard fixed) and do not show through blocks unless set here.',
+            note: 'Default: billboard fixed, not see-through.',
             onChanged: (JsonMap? next, String _) => onChanged(withField(icon, 'style', next)),
           ),
       ],
@@ -305,7 +305,7 @@ class ComponentEditor extends StatelessWidget {
           text('condition', 'Condition *', mode: GuiTextMode.expression),
           GuiRow(
             label: 'Expected',
-            help: 'The true side shows when the condition gives this.',
+            help: 'Value that shows the true side',
             child: GuiSwitch(
               value: data['expectedValue'] != false && data['expectedValue'] != 'false',
               label: 'true',
@@ -320,9 +320,9 @@ class ComponentEditor extends StatelessWidget {
         if (!chest && (type == 'button' || type == 'toggle')) _hover(data, set),
         if (!chest && type == 'button') _tooltip(data),
         if (type == 'list') ...<Widget>[
-          text('var', 'Variable *', help: 'Each entry is readable under this name.'),
-          text('source', 'Source *', mode: GuiTextMode.expression, help: 'An expression that gives a list.'),
-          number('pageSize', 'Page size', integer: true, help: '1 to 64; 6 by default.'),
+          text('var', 'Variable *', help: 'Name for each entry'),
+          text('source', 'Source *', mode: GuiTextMode.expression, help: 'Expression giving a list'),
+          number('pageSize', 'Page size', integer: true, help: '1 to 64, default 6'),
           _flow(data),
           GuiSection(
             title: 'Template',
@@ -340,17 +340,17 @@ class ComponentEditor extends StatelessWidget {
           ),
         ],
         if (type == 'slider') ...<Widget>[
-          text('var', 'Variable *', help: 'The value lives in session.<variable>.'),
-          number('min', 'Minimum', help: '0 by default.'),
-          number('max', 'Maximum', help: '100 by default; must be above the minimum.'),
-          number('step', 'Step', help: '1 by default.'),
-          number('width', 'Width', help: '0.01 to 64 blocks; 2 by default.'),
-          text('label', 'Label', mode: GuiTextMode.template, help: 'Shows {{ session.<variable> }} by default.'),
+          text('var', 'Variable *', help: 'Stored in session.<variable>'),
+          number('min', 'Minimum', help: 'Default 0'),
+          number('max', 'Maximum', help: 'Default 100, above minimum'),
+          number('step', 'Step', help: 'Default 1'),
+          number('width', 'Width', help: '0.01 to 64 blocks, default 2'),
+          text('label', 'Label', mode: GuiTextMode.template, help: 'Default {{ session.<variable> }}'),
           DisplayStyleEditor(style: asMap(data['style']), path: childPath(path, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next, String _) => set('style', next)),
         ],
         if (type == 'tabs') ...<Widget>[
-          text('var', 'Variable *', help: 'The chosen tab id lives in session.<variable>; tab by default.'),
-          number('spacing', 'Spacing', help: '0 to 64 blocks between tabs; 1 by default.'),
+          text('var', 'Variable *', help: 'Stores tab id, default tab'),
+          number('spacing', 'Spacing', help: 'Gap in blocks, default 1'),
           _tabs(data),
           DisplayStyleEditor(style: asMap(data['style']), path: childPath(path, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next, String _) => set('style', next)),
         ],
@@ -373,9 +373,9 @@ class ComponentEditor extends StatelessWidget {
       title: 'Hover and click box',
       open: data.containsKey('hitbox') || data.containsKey('highlightModifier') || data.containsKey('hoverEasing'),
       children: <Widget>[
-        guiFieldRow('Highlight', childPath(path, 'highlightModifier'), diagnostics, help: '-64 to 64; how much the icon grows on hover, 0 by default.',
+        guiFieldRow('Highlight', childPath(path, 'highlightModifier'), diagnostics, help: 'Hover growth, -64 to 64',
             (String id) => GuiNumberInput(id: id, value: asDouble(data['highlightModifier']), integer: false, label: 'Highlight', onChanged: (num? v) => set('highlightModifier', v))),
-        guiFieldRow('Hover time', childPath(path, 'hoverDurationTicks'), diagnostics, help: '0 to 40 ticks; 4 by default.',
+        guiFieldRow('Hover time', childPath(path, 'hoverDurationTicks'), diagnostics, help: '0 to 40 ticks, default 4',
             (String id) => GuiNumberInput(id: id, value: asInt(data['hoverDurationTicks']), label: 'Hover time in ticks', onChanged: (num? v) => set('hoverDurationTicks', v))),
         guiFieldRow('Hover easing', childPath(path, 'hoverEasing'), diagnostics,
             (String id) => GuiSelect(id: id, value: asString(data['hoverEasing']), options: hoverEasings, allowNone: true, noneLabel: 'ease_out_cubic', onChanged: (String? v) => set('hoverEasing', v))),
@@ -385,7 +385,7 @@ class ComponentEditor extends StatelessWidget {
             (String id) => GuiNumberInput(id: id, value: asDouble(hitbox['height']), integer: false, label: 'Click box height', onChanged: (num? v) => setHitbox('height', v))),
         GuiRow(
           label: 'Box offset',
-          help: 'From the box anchor, within 64 blocks.',
+          help: 'From the anchor, within 64 blocks',
           problems: diagnosticsAt(diagnostics, childPath(hitboxPath, 'offset'), nested: true),
           child: dom.div(classes: 'animus-row animus-gui-xyz', <Widget>[
             for (int i = 0; i < 3; i++)
@@ -398,7 +398,7 @@ class ComponentEditor extends StatelessWidget {
               ),
           ]),
         ),
-        guiFieldRow('Box anchor', childPath(hitboxPath, 'anchor'), diagnostics, help: 'button puts the box on the component; menu on the menu centre.',
+        guiFieldRow('Box anchor', childPath(hitboxPath, 'anchor'), diagnostics, help: 'button: on the component. menu: menu centre.',
             (String id) => GuiSelect(id: id, value: asString(hitbox['anchor']), options: const <String>['button', 'menu'], allowNone: true, noneLabel: 'button', onChanged: (String? v) => setHitbox('anchor', v))),
       ],
     );
@@ -413,10 +413,9 @@ class ComponentEditor extends StatelessWidget {
     }
 
     return GuiSection(title: 'Tooltip', open: tooltip.isNotEmpty, children: <Widget>[
-      const dom.p(classes: 'animus-muted', <Widget>[Component.text('Lines shown beside the button while the viewer looks at it.')]),
       guiFieldRow('Lines', childPath(tooltipPath, 'lines'), diagnostics, nested: true,
           (String _) => GuiLinesEditor(lines: stringList(tooltip['lines']), names: names, onChanged: (List<String> lines) => setTooltip('lines', lines))),
-      guiFieldRow('Delay', childPath(tooltipPath, 'delayTicks'), diagnostics, help: '0 to 200 ticks before it shows; 10 by default.',
+      guiFieldRow('Delay', childPath(tooltipPath, 'delayTicks'), diagnostics, help: 'Ticks before showing, default 10',
           (String id) => GuiNumberInput(id: id, value: asInt(tooltip['delayTicks']), label: 'Tooltip delay in ticks', onChanged: (num? v) => setTooltip('delayTicks', v))),
       DisplayStyleEditor(title: 'Tooltip style', style: asMap(tooltip['style']), path: childPath(tooltipPath, 'style'), diagnostics: diagnostics, onChanged: (JsonMap? next, String _) => setTooltip('style', next)),
     ]);
@@ -433,11 +432,11 @@ class ComponentEditor extends StatelessWidget {
     Widget number(String key, String label, String help, {bool integer = false}) => guiFieldRow(label, childPath(flowPath, key), diagnostics, help: help,
         (String id) => GuiNumberInput(id: id, value: integer ? asInt(flow[key]) : asDouble(flow[key]), integer: integer, label: 'Flow $label', onChanged: (num? v) => setFlow(key, v)));
     return GuiSection(title: 'Flow', open: flow.isNotEmpty, children: <Widget>[
-      number('columns', 'Columns', '1 to 64; 3 by default.', integer: true),
-      number('spacingX', 'Spacing X', 'Blocks between columns; 1 by default.'),
-      number('spacingY', 'Spacing Y', 'Blocks between rows; 0.5 by default.'),
-      number('x', 'Start X', 'Where the first cell sits; 0 by default.'),
-      number('y', 'Start Y', 'Where the first cell sits; 0 by default.'),
+      number('columns', 'Columns', '1 to 64, default 3', integer: true),
+      number('spacingX', 'Spacing X', 'Column gap, default 1'),
+      number('spacingY', 'Spacing Y', 'Row gap, default 0.5'),
+      number('x', 'Start X', 'First cell, default 0'),
+      number('y', 'Start Y', 'First cell, default 0'),
     ]);
   }
 
@@ -463,7 +462,7 @@ class ComponentEditor extends StatelessWidget {
             mode: GuiTextMode.template,
             names: names,
             label: 'Tab ${index + 1} label',
-            placeholder: 'label (the id when blank)',
+            placeholder: 'label (defaults to id)',
             onChanged: (String v) => setTabs(<Object?>[...tabs]..[index] = withField(asMap(tabs[index]), 'label', v)),
           ),
           ...guiMoveButtons(index: index, length: tabs.length, noun: 'tab ${index + 1}', onMove: (int to) => setTabs(moveItem(tabs, index, to))),

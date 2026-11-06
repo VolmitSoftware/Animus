@@ -48,17 +48,15 @@ String documentPath(DocumentKind kind, String id) {
 const String reloadedFromOtherTab = 'Another tab changed this workspace, so this tab reloaded it. Your last edit here was not kept.';
 
 /// The problem shown when another tab deleted the open workspace.
-const String deletedInOtherTab = 'Another tab deleted this workspace, so it is no longer in this browser. '
-    'That tab can restore it until it is closed.';
+const String deletedInOtherTab = 'Another tab deleted this workspace. That tab can restore it until it closes.';
 
 /// The sentence for a save the browser refused: the cause and what to do.
 String saveFailureMessage(Object failure) {
   if (failure is WorkspaceWriteFailure && failure.quota) {
-    return 'The last change was not saved: the browser refused to write (it is out of storage space for this site). '
-        'Free space or export a zip, then try again.';
+    return 'Not saved: the browser is out of storage space for this site. Free space or export a zip, then try again.';
   }
   final String reason = failure is WorkspaceWriteFailure ? failure.reason : '$failure';
-  return 'The last change was not saved: the browser refused to write ($reason). Export a zip to keep a copy, then try again.';
+  return 'Not saved: the browser refused to write ($reason). Export a zip, then try again.';
 }
 
 /// What a commit did, for "Undid: ..." when no label was given.
@@ -196,7 +194,7 @@ class EditorStore {
       _workspaces = await repository.list();
       _listProblem = null;
     } on Object catch (failure) {
-      _listProblem = 'The workspaces in this browser could not be read ($failure). Reload the page to try again.';
+      _listProblem = 'Could not read the workspaces ($failure). Reload the page.';
     }
     _listed = true;
     _changed();
@@ -315,7 +313,7 @@ class EditorStore {
     _resetHistory();
     if (snapshot != null) await _loadHistory(id);
     _unsaved = false;
-    _problem = snapshot == null ? 'There is no workspace "$id" in this browser. It may have been deleted, or made in another browser.' : null;
+    _problem = snapshot == null ? 'There is no workspace "$id" in this browser.' : null;
     if (snapshot != null) {
       await _claim(id);
     } else {
