@@ -301,8 +301,8 @@ final class ContentCommands {
         @Director(description = "List the imported settings still waiting for review")
         void review() { step(CitizensDropIn::reviewApplied); }
 
-        @Director(description = "Turn on reviewed categories")
-        void accept(@Param(name = "categories", description = "Comma-separated categories, or all") String categories) {
+        @Director(description = "Turn on reviewed categories, or allow the command namespaces converted behaviors run")
+        void accept(@Param(name = "categories", description = "Comma-separated categories, all, or commands") String categories) {
             List<String> chosen = Arrays.stream(categories.split(",")).map(String::strip).filter((String category) -> !category.isEmpty()).toList();
             step((CitizensDropIn dropIn) -> dropIn.acceptCategories(chosen));
         }

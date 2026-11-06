@@ -15,6 +15,10 @@ import java.util.OptionalDouble;
  * later turns keep to that side, so the body follows a cliff or a wall until it can head for the goal again. After
  * {@link #ATTEMPTS} plans in a row that got no closer, the leg is blocked.
  *
+ * <p>A leg that fits one capture but whose goal no path reaches, such as the top of a pillar or a block the body cannot
+ * stand in, is planned once more in the same capture as a partial search. When that ends within {@link #NEAR} blocks of
+ * the goal across and {@link #NEAR_HEIGHT} up or down, the body walks there and the leg is done, as Citizens' distance margin finishes it.
+ *
  * <p>Each segment is one ordinary plan, so it takes the runtime's planning turns and capture reads like any other. Work
  * stays bounded: a leg walks at most one segment per block it gets closer, plus {@link #ATTEMPTS} plans between any two
  * of them. Owner thread only.
@@ -27,6 +31,8 @@ public final class LongLeg {
         SEGMENT,
         /** Plan again from where the body stands. */
         RETRY,
+        /** Walk the planned path to its end, beside a goal no path reaches, and arrive there. */
+        ARRIVE,
         /** The terrain allows no way on. */
         BLOCKED
     }
@@ -42,6 +48,8 @@ public final class LongLeg {
     public static final PathPlanner.Limits DIRECT = new PathPlanner.Limits(4096, 4096, 256);
     public static final PathPlanner.Limits SEGMENT = new PathPlanner.Limits(4096, 4096, 256, true);
     private static final double[] TURNS = {0, 45, -45, 90, -90, 135, -135};
+    /** How close across, and up or down, the end of a path beside an unreachable goal must be to finish the leg. */
+    public static final double NEAR = 1.5, NEAR_HEIGHT = 2;
     private static final double PROGRESS = 1, DETOUR = 3;
     private static final int VOXELS = NavigationLimits.DEFAULT.maximumCaptureVoxels(), MINIMUM_TALL = 18;
     private final Vec3 goal;
@@ -49,6 +57,8 @@ public final class LongLeg {
     private double best;
     /** Plans since the body last got closer; the turn of the next plan; the turn of the last detour walked. */
     private int tries, turn, side;
+    /** The exact plan found no path, so the next plan in that capture goes as near the goal as it can; that plan was asked. */
+    private boolean near, nearAsked;
     private Vec3 from;
 
     public LongLeg(Vec3 origin, Vec3 goal, double hullWidth, double hullHeight) { this(origin, goal, hullWidth, hullHeight, OptionalDouble.empty()); }
@@ -70,8 +80,12 @@ public final class LongLeg {
     public Request request(Vec3 at) {
         from = Objects.requireNonNull(at, "at");
         BlockPos target = BlockPos.containing(goal);
-        if (turn == 0 && at.distance(goal) <= range && fits(at, goal, hullWidth, hullHeight))
-            return new Request(exact(at, goal, hullWidth, hullHeight), target, DIRECT, true);
+        nearAsked = false;
+        if (turn == 0 && at.distance(goal) <= range && fits(at, goal, hullWidth, hullHeight)) {
+            if (!near) return new Request(exact(at, goal, hullWidth, hullHeight), target, DIRECT, true);
+            nearAsked = true;
+            return new Request(exact(at, goal, hullWidth, hullHeight), target, SEGMENT, false);
+        }
         CaptureBounds bounds = toward(at, goal, hullWidth, hullHeight, TURNS[turn], range);
         if (turn == 0) return new Request(bounds, target, SEGMENT, false);
         // A turned plan aims along its turn, at the far side of its capture, so it explores instead of hugging the obstacle.
@@ -83,7 +97,16 @@ public final class LongLeg {
     /** What to do with a finished plan. Unavailable terrain and cancellation are the runtime's to handle first. */
     public Next planned(PathPlanner.Result result) {
         Objects.requireNonNull(result, "result");
-        if (result.status() == PathPlanner.Status.FOUND && turn == 0) { tries = 0; return Next.FINAL; }
+        if (result.status() == PathPlanner.Status.FOUND && turn == 0 && !nearAsked) { tries = 0; return Next.FINAL; }
+        if (nearAsked) {
+            near = false;
+            if (!result.path().isEmpty() && beside(result.path().getLast().point())) { tries = 0; return Next.ARRIVE; }
+        } else if (result.status() == PathPlanner.Status.UNREACHABLE && turn == 0 && result.path().isEmpty() && fits(from, goal, hullWidth, hullHeight)
+                && from.distance(goal) <= range) {
+            // No path reaches the goal itself; go as near as this capture allows before turning.
+            near = true; tries++;
+            return Next.RETRY;
+        }
         if (result.status() == PathPlanner.Status.FOUND || result.status() == PathPlanner.Status.PARTIAL) {
             Vec3 end = result.path().getLast().point();
             double distance = end.distance(goal);
@@ -95,6 +118,9 @@ public final class LongLeg {
             }
         }
         return stalled();
+    }
+    private boolean beside(Vec3 end) {
+        return Math.hypot(end.x() - goal.x(), end.z() - goal.z()) <= NEAR + MotionValidator.EPSILON && Math.abs(end.y() - goal.y()) <= NEAR_HEIGHT + MotionValidator.EPSILON;
     }
     /** A step of the walked path was blocked by terrain that changed since it was planned. */
     public Next blocked() { return stalled(); }

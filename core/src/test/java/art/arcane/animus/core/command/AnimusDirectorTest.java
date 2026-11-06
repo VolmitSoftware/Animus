@@ -215,6 +215,13 @@ class AnimusDirectorTest {
         } finally { log.debug(false); }
     }
 
+    @Test void navigateCentresWholeBlockCoordinates() {
+        assertEquals(10.5, AnimusCommandTree.blockCenter(10));
+        assertEquals(-3.5, AnimusCommandTree.blockCenter(-4));
+        assertEquals(10.25, AnimusCommandTree.blockCenter(10.25), "an exact point stays");
+        assertEquals(0.5, AnimusCommandTree.blockCenter(0));
+    }
+
     private static void collect(DirectorRuntimeNode node, List<DirectorRuntimeNode> out) {
         if (node.isInvocable()) out.add(node);
         for (DirectorRuntimeNode child : node.getChildren()) collect(child, out);

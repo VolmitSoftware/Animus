@@ -331,7 +331,7 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
     final JObject fields = JObject();
     final Map<String, FieldNote> notes = <String, FieldNote>{...presentation.notes, ...runtime.notes, ...state.notes};
     if (traits.has('skintrait') && !skinApplied) {
-      notes['/traits/skintrait'] = const FieldNote(unsupportedPreserved, 'skins show only on player bodies; this one is kept for when the NPC becomes a player');
+      notes['/traits/skintrait'] = FieldNote(unsupportedPreserved, unusedSkin(definition.get('type')!.asPrimitive.asString));
     }
     final JObject reasons = JObject();
     _classify(record, '', fields, <String>{...presentation.converted, ...runtime.converted, ...state.converted}, notes, reasons);
@@ -386,6 +386,12 @@ CitizensPreview convertCitizens(String original, Map<String, String> worldMap) {
 
 /// `CitizensImporter.group`: the world (after mapping) as a path segment, plus the 512-block region when the
 /// position is a usable coordinate pair.
+/// Why a skin on a body that is not a player is kept: Citizens never drew it either.
+String unusedSkin(String type) {
+  final String body = type.substring(type.indexOf(':') + 1).replaceAll('_', ' ');
+  return 'Citizens draws skins only on player NPCs, so this $body never showed it; kept for when the NPC becomes a player';
+}
+
 String citizensGroup(String world, JElement? x, JElement? z) {
   String lowered = javaLower(world)
       .replaceAll(RegExp('[^a-z0-9_-]+', unicode: true), '-')
