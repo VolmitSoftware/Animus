@@ -21,6 +21,7 @@ public final class SnapshotFacts implements BehaviorFacts {
     private final Map<UUID, Map<String, Object>> players = new ConcurrentHashMap<>();
     private final Function<UUID, Optional<Map<String, Object>>> npcs;
     private volatile Map<String, Object> server = Map.of();
+    private volatile Function<String, Optional<String>> worlds = (String reference) -> Optional.empty();
 
     public SnapshotFacts(Function<UUID, Optional<Map<String, Object>>> npcs) { this.npcs = Objects.requireNonNull(npcs); }
 
@@ -32,10 +33,32 @@ public final class SnapshotFacts implements BehaviorFacts {
     }
     public void forget(UUID player) { players.remove(player); }
     public void server(Map<String, Object> facts) { server = Map.copyOf(facts); }
+    /**
+     * The platform's world resolver, which must be quick and safe on any thread: the form its player facts give for a
+     * world name, dimension key or UUID. NPC worlds are reported in that form too, so {@code npc.world} and
+     * {@code player.world} are equal in the same world.
+     */
+    public void worlds(Function<String, Optional<String>> resolver) { worlds = Objects.requireNonNull(resolver); }
 
     @Override public Optional<Map<String, Object>> player(UUID player) { return Optional.ofNullable(players.get(player)); }
-    @Override public Optional<Map<String, Object>> npc(UUID npc) { return npcs.apply(npc); }
+    @Override public Optional<Map<String, Object>> npc(UUID npc) { return npcs.apply(npc).map(this::canonicalWorld); }
     @Override public Map<String, Object> server() { return server; }
+    @Override public Optional<String> world(String reference) {
+        if (reference == null || reference.isBlank()) return Optional.empty();
+        try { return worlds.apply(reference); }
+        catch (RuntimeException failure) { return Optional.empty(); }
+    }
+
+    /** The facts with the world in the resolver's form; a world it does not know stays as the runtime reported it. */
+    private Map<String, Object> canonicalWorld(Map<String, Object> facts) {
+        if (!(facts.get("world") instanceof String reported)) return facts;
+        Optional<String> named = world(reported);
+        if (named.isEmpty() || named.get().equals(reported)) return facts;
+        Map<String, Object> copy = new LinkedHashMap<>(facts);
+        copy.put("world", named.get());
+        if (facts.get("x") instanceof Double x && facts.get("y") instanceof Double y && facts.get("z") instanceof Double z) copy.put("location", location(x, y, z, named.get()));
+        return copy;
+    }
 
     /** The player facts the expression language names, built from plain values; {@code location} is {@code x,y,z,world} to two decimals. */
     public static Map<String, Object> player(String name, UUID uuid, double health, double maxHealth, long food, long level, String world,

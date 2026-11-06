@@ -97,6 +97,40 @@ class DenizenConverterTest {
         assertEquals("(!(npc.spawned) || (starts_with(lower(player.name), 'st') || ends_with(lower(player.name), 've')))", condition.getAsJsonObject("else").get("expression").getAsString());
     }
 
+    @Test void worldComparisonsResolveBothSidesOnEveryPlatform() throws IOException {
+        JsonObject main = main("""
+                t:
+                  type: task
+                  script:
+                  - if <player.world.name> == world_nether:
+                    - narrate hot
+                  - if <npc.location.world> != <player.world>:
+                    - narrate far
+                  - if <player.world.name.equals[world]>:
+                    - narrate home
+                  - if <player.world> matches world_the_end|skylands:
+                    - narrate end
+                  - if <player.name> == world:
+                    - narrate named
+                """);
+        assertEquals("same_world(player.world, 'world_nether')", step(main, 0).get("expression").getAsString());
+        assertEquals("!same_world(npc.world, player.world)", step(main, 1).get("expression").getAsString());
+        assertEquals("same_world(player.world, 'world')", step(main, 2).get("expression").getAsString());
+        assertEquals("(same_world(player.world, 'world_the_end') || same_world(player.world, 'skylands'))", step(main, 3).get("expression").getAsString());
+        assertEquals("same(player.name, 'world')", step(main, 4).get("expression").getAsString());
+    }
+
+    @Test void inWorldSwitchesResolveTheWorld() throws IOException {
+        JsonObject world = document(convert("""
+                lobby:
+                  type: world
+                  events:
+                    on player chats in:world_nether:
+                    - narrate hot
+                """), "denizen:world/lobby");
+        assertEquals("same_world(player.world, 'world_nether')", world.getAsJsonObject("routines").getAsJsonObject("on-player-chats").get("expression").getAsString());
+    }
+
     @Test void permissionAtomsStayCapabilityConditions() throws IOException {
         JsonObject main = main("""
                 t:

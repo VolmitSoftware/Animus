@@ -81,6 +81,14 @@ void main() {
       expect(convertForType(3.5, 'integer').$2, isNotNull);
       expect(convertForType(3.0, 'string'), ('3', null));
     });
+
+    test('should match a world by Bukkit name or dimension key when the sample server resolves both', () {
+      final BehaviorEvalScope scope = BehaviorEvalScope(read: (String name) => null, flag: (String scope, String name) => null, quest: (String scope, String name) => 0, random: math.Random(1));
+      expect(evaluateBehaviorExpression("same_world(player.world, 'minecraft:overworld')", scope), isTrue);
+      expect(evaluateBehaviorExpression("same_world('world_nether', 'minecraft:the_nether')", scope), isTrue);
+      expect(evaluateBehaviorExpression("same_world('Skylands', 'skylands')", scope), isTrue);
+      expect(evaluateBehaviorExpression("same_world(player.world, 'minecraft:the_end')", scope), isFalse);
+    });
   });
 
   group('operands and placeholders', () {

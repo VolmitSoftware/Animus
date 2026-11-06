@@ -32,7 +32,7 @@
       "steps": [
         {
           "type": "condition",
-          "expression": "!same(context.world, 'world')",
+          "expression": "!same_world(context.world, 'world')",
           "then": {
             "type": "return"
           }
