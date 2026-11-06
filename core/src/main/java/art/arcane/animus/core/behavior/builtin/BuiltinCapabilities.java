@@ -535,7 +535,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         action("title", Effect.PRESENTATION, "Shows a title and subtitle to the triggering player, or the player named by player.",
                 schema(string("title", 256) + "," + string("subtitle", 256) + "," + integer("fadeIn", 0, 72000) + "," + integer("stay", 0, 72000) + "," + integer("fadeOut", 0, 72000) + "," + PLAYER,
                         "\"anyOf\":[{" + required("title") + "},{" + required("subtitle") + "}]"),
-                (arguments, problems) -> { if (arguments.has("title")) plainText(arguments, "title", problems); if (arguments.has("subtitle")) plainText(arguments, "subtitle", problems); checkPlayer(arguments, problems); },
+                (arguments, problems) -> { if (arguments.has("title")) displayText(arguments, "title", problems); if (arguments.has("subtitle")) displayText(arguments, "subtitle", problems); checkPlayer(arguments, problems); },
                 call -> {
                     UUID player = target(call);
                     BehaviorPlatform.Title title = new BehaviorPlatform.Title(text(call.arguments, "title"), text(call.arguments, "subtitle"),
@@ -544,7 +544,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 });
         action("actionbar", Effect.PRESENTATION, "Shows action bar text to the triggering player, or the player named by player.",
                 schema(string("text", 256) + "," + PLAYER, required("text")),
-                (arguments, problems) -> { plainText(arguments, "text", problems); checkPlayer(arguments, problems); },
+                (arguments, problems) -> { displayText(arguments, "text", problems); checkPlayer(arguments, problems); },
                 call -> {
                     UUID player = target(call);
                     String written = text(call.arguments, "text").orElseThrow();
@@ -994,6 +994,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         String value = arguments.get(name).getAsString();
         if (value.isBlank() || value.codePoints().anyMatch(Character::isISOControl))
             problems.add(problem("$." + name, "argument-control-characters", name + " must not be blank or contain control characters"));
+    }
+
+    /** Title, subtitle and action bar text: a space alone is a deliberate blank line, so only empty text and control characters are refused. */
+    private static void displayText(JsonObject arguments, String name, List<Diagnostic> problems) {
+        String value = arguments.get(name).getAsString();
+        if (value.isEmpty() || value.codePoints().anyMatch(Character::isISOControl))
+            problems.add(problem("$." + name, "argument-control-characters", name + " must not be empty or contain control characters"));
     }
 
     private static Diagnostic problem(String field, String code, String message) {

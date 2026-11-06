@@ -26,7 +26,7 @@ class TriggerBridgeTest {
 
     @BeforeEach void setUp()throws Exception{
         String triggers="""
-                [{"id":"click","event":"interaction"},{"id":"hit","event":"interaction","action":"attack"},
+                [{"id":"click","event":"interaction"},{"id":"hit","event":"interaction","action":"attack"},{"id":"talk","event":"interaction","consume":"context.sneaking"},
                  {"id":"born","event":"spawn"},{"id":"gone","event":"despawn"},{"id":"hurt","event":"damage"},{"id":"dead","event":"death"},
                  {"id":"stop","event":"waypoint"},{"id":"near","event":"proximity","phase":"enter","radius":8}]""";
         var program=BehaviorCompiler.compile("{\"schemaVersion\":1,\"id\":\""+BEHAVIOR+"\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"sequence\",\"steps\":[]}},\"triggers\":"+triggers+"}").program().orElseThrow();
@@ -35,6 +35,7 @@ class TriggerBridgeTest {
         NpcDefinition definition=NpcDefinition.parse("{\"schemaVersion\":1,\"revision\":1,\"uuid\":\""+npc+"\",\"id\":\"test\",\"group\":\"test\",\"name\":\"Test\",\"type\":\"minecraft:player\",\"spawned\":true,\"behaviors\":[\""+BEHAVIOR+"\"],\"position\":{\"world\":\"world\",\"x\":0,\"y\":61,\"z\":0,\"yaw\":0,\"pitch\":0}}");
         TriggerSettings settings=new TriggerSettings(true,64,64,64,64,32,8,100,32,16,8,0,0,4096,1024,1,32,1,16,32,64);
         dispatcher=new TriggerDispatcher(settings,()->Map.of("test",definition),()->catalog);dispatcher.connect();
+        dispatcher.consumption(new art.arcane.animus.core.behavior.builtin.MemoryBehaviorState(),art.arcane.animus.core.behavior.BehaviorFacts.NONE);
         bridge=new TriggerBridge(dispatcher,index);
         pump();
     }
@@ -47,11 +48,17 @@ class TriggerBridgeTest {
         bridge.removed(npc);pump();assertEquals(List.of("gone"),fired);
     }
     @Test void validatedInteractionFiresWithTheViewerAction(){
-        active();bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,false);pump();assertEquals(List.of("click"),fired);fired.clear();
-        bridge.interaction(npc,viewer,TriggerEvent.Action.ATTACK,false);pump();assertEquals(List.of("hit"),fired);
+        active();bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,false,TriggerEvent.Hand.MAIN_HAND,false);pump();assertEquals(List.of("click","talk"),fired);fired.clear();
+        bridge.interaction(npc,viewer,TriggerEvent.Action.ATTACK,false,TriggerEvent.Hand.MAIN_HAND,false);pump();assertEquals(List.of("hit"),fired);
+    }
+    @Test void aSneakingClickIsConsumedAndAPlainOneIsNot(){
+        active();
+        assertTrue(bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,true,TriggerEvent.Hand.MAIN_HAND,false));
+        assertFalse(bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,false,TriggerEvent.Hand.MAIN_HAND,false));
+        assertFalse(bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,true,TriggerEvent.Hand.MAIN_HAND,true),"previews never consume");
     }
     @Test void previewInteractionNeverFires(){
-        active();bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,true);pump();assertEquals(List.of(),fired);assertEquals(0,dispatcher.snapshot().events());
+        active();bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,false,TriggerEvent.Hand.MAIN_HAND,true);pump();assertEquals(List.of(),fired);assertEquals(0,dispatcher.snapshot().events());
     }
     @Test void waypointArrivalFires(){
         active();bridge.waypoint(npc,2);pump();assertEquals(List.of("stop"),fired);
@@ -79,6 +86,6 @@ class TriggerBridgeTest {
     }
     @Test void runtimeFailureMarksTriggersUnavailable(){
         active();bridge.failed("NPC runtime tick failed");assertFalse(dispatcher.available());assertEquals("NPC runtime tick failed",dispatcher.snapshot().reason());
-        bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,false);pump();assertEquals(List.of(),fired);
+        bridge.interaction(npc,viewer,TriggerEvent.Action.INTERACT,false,TriggerEvent.Hand.MAIN_HAND,false);pump();assertEquals(List.of(),fired);
     }
 }

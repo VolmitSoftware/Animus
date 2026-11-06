@@ -412,7 +412,9 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         return null;
     }
     public String combatStatus() { RegionCombat module = combat; return module == null ? null : module.status(); }
-    public String combatCommand(String[] args) { return Objects.requireNonNull(combat, "Combat is not running").execute(args); }
+    public String combatCommand(String id, art.arcane.animus.core.command.CombatControl.Operation operation, Optional<UUID> target) {
+        return Objects.requireNonNull(combat, "Combat is not running").command(id, operation, target);
+    }
     public String combatOperate(UUID npc, art.arcane.animus.core.behavior.builtin.BehaviorPlatform.CombatOperation operation, Optional<UUID> target) {
         RegionCombat module = combat;
         if (module == null) throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "combat-unavailable", "Combat is not running");

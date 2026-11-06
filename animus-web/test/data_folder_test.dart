@@ -13,6 +13,8 @@ import 'fixtures.dart';
 void main() {
   test('should locate documents by their data folder path', () {
     expect(locateDocument('npcs/town/guard.json'), const DocumentLocation(DocumentKind.npc, 'town/guard'));
+    expect(locateDocument('npcs/guard.json'), const DocumentLocation(DocumentKind.npc, 'guard'));
+    expect(locateDocument('npcs/world/town/market/smith.json'), const DocumentLocation(DocumentKind.npc, 'world/town/market/smith'));
     expect(locateDocument('behaviors/town/greet/morning.json'), const DocumentLocation(DocumentKind.behavior, 'town:greet/morning'));
     expect(locateDocument('packs/quest/pack.json'), const DocumentLocation(DocumentKind.pack, 'quest'));
     expect(locateDocument('recordings/market-loop.json'), const DocumentLocation(DocumentKind.recording, 'market-loop'));
@@ -26,8 +28,7 @@ void main() {
     expect(locateDocument('animations/town/golem/walk.json'), const DocumentLocation(DocumentKind.animation, 'town:golem/walk'));
     for (final String ignored in <String>[
       'config.toml',
-      'npcs/guard.json',
-      'npcs/town/nested/guard.json',
+      'npcs/a/b/c/d/e/f/g/h/i/guard.json',
       'npcs/Town/guard.json',
       'state/npc-definitions/last-valid/town/guard.json',
       'schemas/npc.schema.json',

@@ -131,7 +131,7 @@ class ShopkeepersImporterTest {
             npcs.reload();
             ShopkeepersImporter importer = new ShopkeepersImporter();
             ShopkeepersImporter.Preview preview = importer.preview(path("admin.yml"), Optional.empty(), Optional.of(path("admin-citizens.yml")), store);
-            ShopkeepersImporter.Applied applied = importer.apply(store, preview.id(), npcs.all());
+            ShopkeepersImporter.Applied applied = importer.apply(store, preview.id(), npcs.installed());
             assertEquals(2, applied.bound());
             assertEquals(1, applied.pending().size());
             npcs.reload();
@@ -140,7 +140,7 @@ class ShopkeepersImporterTest {
             assertEquals(2, smith.revision());
             assertNotNull(store.read("shops/shopkeepers/shop-3.json"));
             assertNotNull(store.read("npcs/shopkeepers/shopkeeper-3.json"));
-            assertThrows(IOException.class, () -> importer.apply(store, preview.id(), npcs.all()));
+            assertThrows(IOException.class, () -> importer.apply(store, preview.id(), npcs.installed()));
             store.rollback(applied.transaction());
             assertNull(store.read("shops/shopkeepers/shop-1.json"));
         }
@@ -151,15 +151,15 @@ class ShopkeepersImporterTest {
         try (DocumentStore store = new DocumentStore(data)) {
             ShopkeepersImporter importer = new ShopkeepersImporter();
             ShopkeepersImporter.Preview preview = importer.preview(path("admin.yml"), Optional.empty(), Optional.empty(), store);
-            ShopkeepersImporter.Applied applied = importer.apply(store, preview.id(), List.of());
+            ShopkeepersImporter.Applied applied = importer.apply(store, preview.id(), NpcRepository.Installed.NONE);
             assertEquals(0, applied.bound());
             assertEquals(3, applied.pending().size());
-            assertTrue(ShopkeepersImporter.bind(store, applied.pending(), List.of()).isEmpty());
+            assertTrue(ShopkeepersImporter.bind(store, applied.pending(), NpcRepository.Installed.NONE).isEmpty());
             CitizensImporter.Preview citizens = new CitizensImporter().preview(path("admin-citizens.yml"), store, Map.of());
             new CitizensImporter().apply(store, citizens.id());
             NpcRepository npcs = new NpcRepository(store);
             npcs.reload();
-            ShopkeepersImporter.Applied later = ShopkeepersImporter.bind(store, applied.pending(), npcs.all()).orElseThrow();
+            ShopkeepersImporter.Applied later = ShopkeepersImporter.bind(store, applied.pending(), npcs.installed()).orElseThrow();
             assertEquals(2, later.bound());
             assertEquals(1, later.pending().size());
         }

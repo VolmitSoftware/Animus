@@ -1,9 +1,9 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
-import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.gui.exchange.GlossExchange;
@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
@@ -108,7 +109,11 @@ public final class HoloService<P, S> implements AutoCloseable {
         }
 
         boolean schedule(int ticks, Runnable work) {
-            if (pending.size() >= MAXIMUM_PENDING) { log.accept("Holograms and menus for " + id + " have " + MAXIMUM_PENDING + " delayed actions; one was dropped"); return false; }
+            if (pending.size() >= MAXIMUM_PENDING) {
+                AnimusLog.shared().routine("viewers dropped a delayed hologram or menu action at the limit", String.valueOf(id),
+                        "Holograms and menus for " + id + " have " + MAXIMUM_PENDING + " delayed actions; one was dropped", log);
+                return false;
+            }
             pending.add(new Pending(tick + Math.max(1, ticks), work));
             return true;
         }
@@ -130,22 +135,26 @@ public final class HoloService<P, S> implements AutoCloseable {
         HologramView(String key, HologramDocument document, Optional<UUID> npc) { this.key = key; this.document = document; this.npc = npc; }
     }
 
-    /** Reads every document on the file lane, then the chest GUIs and shops, and reports problems. */
-    public void reload(Consumer<HoloCatalog> done) {
+    /** Reads every document on the file lane, then the chest GUIs and shops, and reports problems. The result completes once the new catalog is live, or at once when the queue refuses the work. */
+    public CompletableFuture<Void> reload(Consumer<HoloCatalog> done) {
+        CompletableFuture<Void> published = new CompletableFuture<>();
         try {
             files.execute(() -> {
-                HoloCatalog next;
-                try { next = HoloCatalog.load(data, runtime.behaviorSettings().actions()::commandAllowed); }
-                catch (IOException | RuntimeException failure) {
-                    log.accept("Hologram and menu catalog could not be read: " + failure.getMessage());
-                    next = new HoloCatalog(catalog.holograms(), catalog.menus(), catalog.animations(), List.of("catalog: " + failure.getMessage()));
-                }
-                next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
-                catalog = next;
-                next.problems().stream().limit(40).forEach((String problem) -> log.accept("Hologram or menu refused: " + problem));
-                done.accept(next);
+                try {
+                    HoloCatalog next;
+                    try { next = HoloCatalog.load(data, runtime.behaviorSettings().actions()::commandAllowed); }
+                    catch (IOException | RuntimeException failure) {
+                        log.accept("Hologram and menu catalog could not be read: " + failure.getMessage());
+                        next = new HoloCatalog(catalog.holograms(), catalog.menus(), catalog.animations(), List.of("catalog: " + failure.getMessage()));
+                    }
+                    next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
+                    catalog = next;
+                    next.problems().stream().limit(40).forEach((String problem) -> log.accept("Hologram or menu refused: " + problem));
+                    done.accept(next);
+                } finally { published.complete(null); }
             });
-        } catch (RejectedExecutionException full) { log.accept("Hologram and menu reload refused: the file queue is full"); }
+        } catch (RejectedExecutionException full) { log.accept("Hologram and menu reload refused: the file queue is full"); published.complete(null); }
+        return published;
     }
 
     /** One owner tick for one online player. */
@@ -534,52 +543,45 @@ public final class HoloService<P, S> implements AutoCloseable {
         return new double[]{-Math.sin(y) * Math.cos(p), -Math.sin(p), Math.cos(y) * Math.cos(p)};
     }
 
-    /** {@code /animus gui ...}. */
-    public AnimusCommands.Extra command() {
-        return new AnimusCommands.Extra() {
-            @Override public void execute(CommandActor actor, String[] arguments) { command(actor, arguments); }
-            @Override public List<String> complete(CommandActor actor, String[] arguments) {
-                if (arguments.length == 2) return matching(List.of("status", "list", "open", "menu", "close", "reload", "problems", "import", "export"), arguments[1]);
-                String operation = arguments[1].toLowerCase(Locale.ROOT);
-                if (arguments.length == 3 && operation.equals("open")) return matching(List.copyOf(shops.catalog().guis().keySet()), arguments[2]);
-                if (arguments.length == 3 && operation.equals("menu")) return matching(List.copyOf(catalog.menus().keySet()), arguments[2]);
-                if (arguments.length == 3 && operation.equals("list")) return matching(List.of("inventory", "menu", "hologram", "animation"), arguments[2]);
-                if (operation.equals("import") || operation.equals("export")) return exchange.complete(arguments);
-                return List.of();
-            }
-        };
+    /** Chest GUI ids, menu ids, and the Gloss exchange, for {@code /animus gui}. */
+    public List<String> guiIds() { return shops.catalog().guis().keySet().stream().sorted().limit(100).toList(); }
+
+    public List<String> menuIds() { return catalog.menus().keySet().stream().sorted().limit(100).toList(); }
+
+    public GlossExchange exchange() { return exchange; }
+
+    public void statusCommand(CommandActor actor) { actor.tell(status()); actor.tell(shops.status()); }
+
+    public void problems(CommandActor actor) {
+        List<String> problems = new ArrayList<>(shops.catalog().problems());
+        problems.addAll(catalog.problems());
+        actor.tell("GUI problems: " + problems.size());
+        problems.stream().limit(30).forEach(actor::tell);
     }
 
-    private void command(CommandActor actor, String[] arguments) {
-        String operation = arguments.length < 2 ? "status" : arguments[1].toLowerCase(Locale.ROOT);
-        switch (operation) {
-            case "status" -> { actor.tell(status()); actor.tell(shops.status()); }
-            case "list" -> list(actor, arguments.length > 2 ? arguments[2].toLowerCase(Locale.ROOT) : "all");
-            case "problems" -> {
-                List<String> problems = new ArrayList<>(shops.catalog().problems());
-                problems.addAll(catalog.problems());
-                actor.tell("GUI problems: " + problems.size());
-                problems.stream().limit(30).forEach(actor::tell);
-            }
-            case "reload" -> reloadAll(actor);
-            case "open" -> {
-                if (arguments.length < 3 || arguments.length > 4) { actor.tell("gui open <gui> [player]"); return; }
-                deliver(actor, arguments.length == 4 ? Optional.of(arguments[3]) : Optional.empty(), (P player) -> shops.openGui(player, arguments[2], Map.of(), Optional.empty()));
-            }
-            case "menu" -> {
-                if (arguments.length < 3 || arguments.length > 4) { actor.tell("gui menu <menu> [player]"); return; }
-                if (transport.unavailable() != null) { actor.tell("Menus are unavailable: " + transport.unavailable()); return; }
-                deliver(actor, arguments.length == 4 ? Optional.of(arguments[3]) : Optional.empty(), (P player) -> openMenu(player, arguments[2], Map.of(), Optional.empty()));
-            }
-            case "close" -> deliver(actor, arguments.length == 3 ? Optional.of(arguments[2]) : Optional.empty(), (P player) -> {
-                Viewer viewer = viewers.get(host.id(player));
-                if (viewer != null) closeMenu(viewer);
-            });
-            case "import", "export" -> exchange.command(actor, arguments, () -> reloadAll(actor));
-            default -> actor.tell("gui status | list [inventory|menu|hologram|animation] | open <gui> [player] | menu <menu> [player] | close [player] | reload | problems"
-                    + " | import gloss|file ... | export gloss|file ...");
-        }
+    /** Opens a chest GUI for the actor, or for the named player. */
+    public void open(CommandActor actor, String gui, Optional<String> player) {
+        deliver(actor, player, (P viewer) -> shops.openGui(viewer, gui, Map.of(), Optional.empty()));
     }
+
+    /** Opens a display menu for the actor, or for the named player. */
+    public void menu(CommandActor actor, String menu, Optional<String> player) {
+        if (transport.unavailable() != null) { actor.tell("Menus are unavailable: " + transport.unavailable()); return; }
+        deliver(actor, player, (P viewer) -> openMenu(viewer, menu, Map.of(), Optional.empty()));
+    }
+
+    /** Closes the display menu the actor, or the named player, has open. */
+    public void closeMenu(CommandActor actor, Optional<String> player) {
+        deliver(actor, player, (P viewer) -> {
+            Viewer open = viewers.get(host.id(viewer));
+            if (open != null) closeMenu(open);
+        });
+    }
+
+    /** What {@code gui list} shows: {@code all}, or one of inventory, menu, hologram and animation. */
+    public enum Listing { ALL, INVENTORY, MENU, HOLOGRAM, ANIMATION }
+
+    public void list(CommandActor actor, Listing kind) { list(actor, kind.name().toLowerCase(Locale.ROOT)); }
 
     private void list(CommandActor actor, String kind) {
         if (kind.equals("all") || kind.equals("inventory")) actor.tell("Chest GUIs: " + String.join(", ", shops.catalog().guis().keySet().stream().limit(50).toList()));
@@ -592,7 +594,7 @@ public final class HoloService<P, S> implements AutoCloseable {
         if (kind.equals("all") || kind.equals("animation")) actor.tell("Text animations: " + String.join(", ", catalog.animations().keySet().stream().limit(50).toList()));
     }
 
-    private void reloadAll(CommandActor actor) {
+    public void reloadAll(CommandActor actor) {
         shops.reload((ShopCatalog chest) -> reload((HoloCatalog next) -> answer(actor, "Reloaded " + chest.guis().size() + " chest GUIs, " + chest.shops().size() + " shops, "
                 + next.menus().size() + " menus, " + next.holograms().size() + " holograms and " + next.animations().size() + " animations; "
                 + (chest.problems().size() + next.problems().size()) + " problems")));
@@ -605,11 +607,6 @@ public final class HoloService<P, S> implements AutoCloseable {
     }
 
     private void answer(CommandActor actor, String message) { if (!closed && !actor.reply(() -> actor.tell(message))) log.accept(message); }
-
-    private static List<String> matching(List<String> options, String prefix) {
-        String lowered = prefix.toLowerCase(Locale.ROOT);
-        return options.stream().filter((String option) -> option.startsWith(lowered)).sorted().limit(100).toList();
-    }
 
     /** Forgets every viewer and removes every display the transport still shows. */
     @Override public void close() {

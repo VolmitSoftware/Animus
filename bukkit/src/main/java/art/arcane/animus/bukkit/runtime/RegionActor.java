@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.MovementSettings;
@@ -209,7 +210,7 @@ final class RegionActor implements RegionOwner.Body {
         yaw = spec.yaw(); pitch = spec.pitch(); onGround = true;
         displayName = spec.name(); displaySkin = skin;
         equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec, ItemStack::clone)); equipmentRevision++; appearance++; pose++;
-        waypoints = WaypointSettings.parse(spec.definition()).map(this::progress).orElse(null);
+        waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
         recordingSource = RecordingSource.parse(spec.definition().json()).orElse(null);
         performance.run = null; performance.held = null; performance.playing = false;
         lookPose = spec.appearance().pose(); lookMotion = 0; look = null; lookRevision++;
@@ -428,7 +429,7 @@ final class RegionActor implements RegionOwner.Body {
     boolean resumePatrol() {
         if (!navigable() || route != null || routeRead != null || performance.run != null) return false;
         if (performance.resume()) { waypoints = null; publish(true); return true; }
-        waypoints = WaypointSettings.parse(spec.definition()).map(this::progress).orElse(null);
+        waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
         if (waypoints != null) { beginLeg(waypoints.start(state.snapshot().position().point())); return true; }
         if (recordingSource != null) {
             performance.held = null;
@@ -905,10 +906,12 @@ final class RegionActor implements RegionOwner.Body {
     /** Terrain blocks the leg for good: logged once per NPC with the leg, then the route fails as any failed leg does. */
     private void blockLeg(Route current, String reason) {
         if (current.recording != null) { failLeg(current, reason); return; }
-        if (!blockedWarned) {
-            blockedWarned = true;
-            host.plugin.getLogger().warning(PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
-                    current.leg != null && movement.teleportsWhenStuck()));
+        if (exactPoint(current, reason)) return;
+        boolean once = AnimusLog.shared().debug();
+        if (!once || !blockedWarned) {
+            if (once) blockedWarned = true;
+            AnimusLog.shared().routine(PersistedNpcService.BLOCKED_LEGS, id, PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
+                    current.leg != null && movement.teleportsWhenStuck()), host.plugin.getLogger()::warning);
         }
         failLeg(current, reason);
     }
@@ -986,7 +989,7 @@ final class RegionActor implements RegionOwner.Body {
         if (next.isPresent()) beginLeg(next);
         else finishWatch();
     }
-    private WaypointProgress progress(WaypointSettings declared) { return WaypointProgress.of(declared, spec.position().point(), uuid); }
+    private WaypointProgress progress(WaypointSettings declared, String route) { return WaypointProgress.of(declared, spec.position().point(), uuid, route); }
     /** Same leg rules as {@link PersistedNpcService}: a pause leg holds the route until its wait ends. */
     private void beginLeg(Optional<WaypointProgress.Leg> next) {
         WaypointProgress progress = waypoints;
@@ -999,6 +1002,7 @@ final class RegionActor implements RegionOwner.Body {
         if (!leg.pause()) {
             try { PersistedNpcService.validateLeg(at, goal, settings.mode(), speed, hullWidth(), hullHeight()); }
             catch (IllegalArgumentException invalid) {
+                if (leg.jittered()) { beginLeg(progress.exact(leg)); return; }
                 navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(navigationStatus);
                 Optional<WaypointProgress.Leg> retry = progress.failed(leg);
                 if (retry.isPresent()) beginLeg(retry);
@@ -1019,13 +1023,26 @@ final class RegionActor implements RegionOwner.Body {
             performance.walkFailed(current.recording, reason);
             return;
         }
-        if (teleportStuck(current)) return;
+        if (exactPoint(current, reason) || teleportStuck(current)) return;
         WaypointProgress progress = waypoints;
         stopRoute(reason);
         if (progress == null || current.leg == null || !progress.retries() || route != null || !navigable()) return;
         String failure = navigationStatus;
         beginLeg(progress.failed(current.leg));
         if (route != null) routeStatus(route, "waiting to retry", "after " + failure);
+    }
+    /** Same jitter fallback as {@link PersistedNpcService}: a jittered goal that cannot finish walks to the exact point once. */
+    private boolean exactPoint(Route current, String reason) {
+        WaypointProgress progress = waypoints;
+        if (current.leg == null || !current.leg.jittered() || progress == null || route != current || !state.snapshot().active()) return false;
+        Optional<WaypointProgress.Leg> exact = progress.exact(current.leg);
+        if (exact.isEmpty()) return false;
+        if (current.plan != null) current.plan.cancel();
+        if (current.execution != null) current.execution.cancel();
+        route = null;
+        beginLeg(exact);
+        if (route != null) routeStatus(route, "queued", "exact point after " + reason);
+        return true;
     }
     /** Same stuck rule as {@link PersistedNpcService}: a waypoint leg ends at its point and the route goes on. */
     private boolean teleportStuck(Route current) {
@@ -1250,7 +1267,7 @@ final class RegionActor implements RegionOwner.Body {
         if (routeWatch != null && settings.endless()) { navigationStatus = "invalid: a looping route never finishes"; failWatch(navigationStatus); return; }
         if (waypoints != null && !waypoints.reload(settings)) return;
         stopRoute("replaced by reusable route reload");
-        if (waypoints == null) waypoints = progress(settings);
+        if (waypoints == null) waypoints = progress(settings, read.reference);
         beginLeg(waypoints.start(state.snapshot().position().point()));
     }
     private void readAppearance(String reference) {

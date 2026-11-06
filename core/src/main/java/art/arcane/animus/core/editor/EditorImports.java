@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -92,35 +91,30 @@ public final class EditorImports {
         return review(lines);
     }
 
-    /** {@code /animus import citizens [mode] [label] [old=new ...]}. */
+    /** {@code /animus import citizens preview [mode=] [copy=] [worlds=]}. */
     public JsonObject stage(String mode, Optional<String> label, Map<String, String> worlds) throws EditorError, IOException {
-        List<String> args = new ArrayList<>();
-        args.add(mode);
-        label.ifPresent(args::add);
-        worlds.forEach((String from, String to) -> args.add(from + "=" + to));
-        return run(args, EditorError.Code.INVALID_REQUEST);
+        for (Map.Entry<String, String> world : worlds.entrySet())
+            if (world.getKey().isBlank() || world.getValue().isBlank()) throw EditorMessages.invalid("Invalid world mapping: " + world.getKey() + "=" + world.getValue());
+        return run((CitizensDropIn dropIn) -> dropIn.preview(mode, label, worlds, false), EditorError.Code.INVALID_REQUEST);
     }
 
-    public JsonObject apply(String importId) throws EditorError, IOException { expect(importId, false); return run(List.of("apply"), EditorError.Code.CONFLICT); }
+    public JsonObject apply(String importId) throws EditorError, IOException { expect(importId, false); return run(CitizensDropIn::applyStaged, EditorError.Code.CONFLICT); }
 
     public JsonObject accept(String importId, List<String> categories) throws EditorError, IOException {
         expect(importId, true);
         for (String category : categories)
             if (!category.equals("all") && !CitizensDropIn.CATEGORIES.contains(category))
                 throw EditorMessages.invalid("Unknown review category " + category + "; expected " + String.join(", ", CitizensDropIn.CATEGORIES) + " or all.");
-        List<String> args = new ArrayList<>();
-        args.add("accept");
-        args.addAll(categories);
-        return run(args, EditorError.Code.CONFLICT);
+        return run((CitizensDropIn dropIn) -> dropIn.acceptCategories(categories), EditorError.Code.CONFLICT);
     }
 
-    public JsonObject rollback(String importId) throws EditorError, IOException { expect(importId, true); return run(List.of("rollback"), EditorError.Code.CONFLICT); }
+    public JsonObject rollback(String importId) throws EditorError, IOException { expect(importId, true); return run(CitizensDropIn::rollbackApplied, EditorError.Code.CONFLICT); }
 
     /** The current state, with the review lines once applied. */
     public JsonObject status() throws IOException {
         JsonObject status = dropIn().status();
         if (!status.get("state").getAsString().equals("applied")) return review(List.of());
-        try { return review(dropIn().execute(new String[]{"review"})); }
+        try { return review(dropIn().reviewApplied()); }
         catch (IOException refused) { return review(List.of(refused.getMessage())); }
     }
 
@@ -135,9 +129,11 @@ public final class EditorImports {
         throw new EditorError(EditorError.Code.CONFLICT, "Import " + importId + " is not the staged import; reload the review.");
     }
 
-    private JsonObject run(List<String> args, EditorError.Code refusal) throws EditorError, IOException {
+    @FunctionalInterface private interface Step { List<String> run(CitizensDropIn dropIn) throws IOException; }
+
+    private JsonObject run(Step step, EditorError.Code refusal) throws EditorError, IOException {
         List<String> lines;
-        try { lines = dropIn().execute(args.toArray(String[]::new)); }
+        try { lines = step.run(dropIn()); }
         catch (IOException refused) { throw new EditorError(refusal, refused.getMessage() == null ? "The import step was refused." : clip(refused.getMessage(), 2048)); }
         return review(lines);
     }

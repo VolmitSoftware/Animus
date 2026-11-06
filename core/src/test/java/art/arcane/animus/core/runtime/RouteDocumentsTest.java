@@ -17,7 +17,7 @@ class RouteDocumentsTest {
     @Test void sharedRouteIsLoadedAsBoundedImmutableTypedData() throws Exception {
         try(var store=new DocumentStore(directory)) {
             Path routes=store.resolve("routes");Files.createDirectories(routes);Files.writeString(routes.resolve("patrol.json"),ROUTE);
-            var data=RouteDocuments.read(store,"patrol");assertTrue(data.loop());assertEquals(2,data.points().size());assertEquals(10,data.waitTicks());
+            var data=RouteDocuments.read(store,"patrol");assertTrue(data.loop());assertEquals(2,data.points().size());assertEquals(WaypointSettings.Wait.fixed(10),data.waitTicks());
             assertThrows(UnsupportedOperationException.class,()->data.points().clear());
         }
     }

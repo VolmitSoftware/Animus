@@ -8,7 +8,7 @@ import java.util.*;
 
 /** Generated last-valid definitions; never substitutes for or overwrites a hand-edited source file. */
 final class DefinitionCheckpoints {
-    private static final String PREFIX = "state/npc-definitions/last-valid/", NAMESPACE = "npc-definitions";
+    private static final String PREFIX = DocumentStore.DEFINITION_POINTERS, NAMESPACE = "npc-definitions";
     private final DocumentStore store;
     record Saved(NpcDefinition definition, String sourceHash) {}
     DefinitionCheckpoints(DocumentStore store) { this.store = store; }
@@ -23,7 +23,7 @@ final class DefinitionCheckpoints {
                     || version.getAsBigDecimal().intValueExact() != 1) throw new IOException("Unsupported recovery pointer schema");
             String sourceHash = string(pointer, "sourceHash"), objectHash = string(pointer, "objectHash");
             if (!sourceHash.matches("[a-f0-9]{64}") || !objectHash.matches("[a-f0-9]{64}")) throw new IOException("Invalid recovery hashes");
-            NpcDefinition definition = NpcDefinition.parse(store.immutableJson(NAMESPACE, objectHash));
+            NpcDefinition definition = NpcDefinition.read(path, store.immutableJson(NAMESPACE, objectHash));
             if (!path.equals(definition.path()) || !path.equals(string(pointer, "path"))) throw new IOException("Recovery definition does not match its source path");
             return Optional.of(new Saved(definition, sourceHash));
         } catch (RuntimeException error) { throw new IOException("Invalid recovery pointer: " + path, error); }
@@ -53,9 +53,9 @@ final class DefinitionCheckpoints {
     Set<String> paths() throws IOException {
         Path directory = store.resolve(PREFIX);
         Set<String> paths = new TreeSet<>();
-            for (Path path : JsonDocumentTree.files(directory)) {
+            for (Path path : JsonDocumentTree.files(directory, NpcPaths.TREE_DEPTH + 1)) {
                     String relative = directory.relativize(path).toString().replace('\\', '/');
-                    if (!relative.matches("npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json")) throw new IOException("Invalid recovery pointer path: " + relative);
+                    if (!NpcPaths.file(relative)) throw new IOException("Invalid recovery pointer path: " + relative);
                     paths.add(relative);
             }
         return Set.copyOf(paths);

@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000501",
+  "id": "citizens-1",
+  "group": "town",
+  "name": "Foal",
+  "type": "minecraft:horse",
+  "spawned": false,
+  "migration": {
+    "importId": "de14bc7b40fae6f816c27297122ab341732aa8b44952290cb2446a2cbff248ca",
+    "citizensId": 1,
+    "originalSpawned": false,
+    "references": [
+      {
+        "source": "/traits/mounttrait/mountedon",
+        "kind": "mount",
+        "original": "0a1b2c3d-0000-4000-8000-000000000500",
+        "npcUuid": "0a1b2c3d-0000-4000-8000-000000000500",
+        "npcId": "citizens-0",
+        "citizensId": 0,
+        "status": "resolved"
+      }
+    ]
+  },
+  "position": {
+    "world": "town",
+    "x": 14.0,
+    "y": 64.0,
+    "z": 22.0,
+    "yaw": 0.0,
+    "pitch": 0.0
+  },
+  "equipment": {
+    "saddle": {
+      "id": "minecraft:saddle",
+      "count": 1
+    }
+  },
+  "nameplate": {
+    "visible": false
+  },
+  "movement": {
+    "avoidWater": false,
+    "fly": true
+  },
+  "baby": true,
+  "gravity": false,
+  "poses": {
+    "rest": {
+      "yaw": 90.0,
+      "pitch": 0.0
+    }
+  },
+  "modules": {
+    "animus:combat": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "targeting": {
+        "fightBack": false
+      },
+      "defense": {
+        "invincible": false
+      },
+      "targetableByMobs": true
+    },
+    "animus:look-close": {
+      "enabled": false,
+      "range": 10.0,
+      "lineOfSight": true,
+      "whileNavigating": false
+    },
+    "animus:navigation": {
+      "enabled": false,
+      "reviewAccepted": false,
+      "mode": "walk",
+      "speed": 4.3,
+      "order": "wander",
+      "waitTicks": 120,
+      "points": [],
+      "wander": {
+        "radius": 10,
+        "height": 7
+      }
+    },
+    "citizens:review": {
+      "type": "HORSE",
+      "location": {
+        "world": "town",
+        "x": 14.0,
+        "y": 64.0,
+        "z": 22.0,
+        "yaw": 0.0,
+        "pitch": 0.0
+      },
+      "age": {
+        "age": -1,
+        "locked": true
+      },
+      "gravity": {
+        "enabled": true
+      },
+      "horsemodifiers": {
+        "saddle": {
+          "type": "saddle",
+          "amount": 1
+        },
+        "color": "WHITE"
+      },
+      "targetable": {
+        "targetable": true
+      },
+      "spawned": false,
+      "controllable": {
+        "enabled": false
+      },
+      "mounttrait": {
+        "mountedon": "0a1b2c3d-0000-4000-8000-000000000500"
+      },
+      "poses": {
+        "list": [
+          "rest;90.0;0.0"
+        ]
+      },
+      "lookclose": {
+        "enabled": false,
+        "perplayer": true
+      },
+      "sneak": {}
+    }
+  }
+}

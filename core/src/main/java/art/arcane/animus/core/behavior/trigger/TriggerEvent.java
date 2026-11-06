@@ -1,6 +1,8 @@
 package art.arcane.animus.core.behavior.trigger;
 
 import art.arcane.animus.api.Capabilities;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -11,14 +13,22 @@ import java.util.UUID;
  */
 public sealed interface TriggerEvent {
     enum Action { INTERACT, ATTACK }
+    enum Hand { MAIN_HAND, OFF_HAND }
     UUID npc();
     TriggerKind kind();
     default Optional<UUID> player() { return Optional.empty(); }
 
-    record Interaction(UUID npc, UUID viewer, Action action) implements TriggerEvent {
-        public Interaction { Objects.requireNonNull(npc); Objects.requireNonNull(viewer); Objects.requireNonNull(action); }
+    /** {@code sneaking} is the client's secondary-action flag on the click itself, not a player snapshot. */
+    record Interaction(UUID npc, UUID viewer, Action action, boolean sneaking, Hand hand) implements TriggerEvent {
+        public Interaction { Objects.requireNonNull(npc); Objects.requireNonNull(viewer); Objects.requireNonNull(action); Objects.requireNonNull(hand); }
+        /** A main-hand click without sneaking. */
+        public Interaction(UUID npc, UUID viewer, Action action) { this(npc, viewer, action, false, Hand.MAIN_HAND); }
         @Override public TriggerKind kind() { return TriggerKind.INTERACTION; }
         @Override public Optional<UUID> player() { return Optional.of(viewer); }
+        /** What a run and a consume condition read as {@code context.sneaking} and {@code context.hand} ({@code main_hand} or {@code off_hand}). */
+        public Map<String, Object> context() { return Map.of("sneaking", sneaking, "hand", hand.name().toLowerCase(Locale.ROOT)); }
+        /** The platform's hand name: {@code OFF_HAND} is the off hand, anything else the main hand. */
+        public static Hand hand(String name) { return "OFF_HAND".equals(name) ? Hand.OFF_HAND : Hand.MAIN_HAND; }
     }
     /** Names the single binding whose radius was crossed; phase and radius belong to that binding. */
     record Proximity(UUID npc, UUID viewer, String binding) implements TriggerEvent {

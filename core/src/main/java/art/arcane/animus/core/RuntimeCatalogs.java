@@ -7,32 +7,36 @@ import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.editor.DocumentKind;
 import art.arcane.animus.core.rig.RigCatalog;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
  * The catalog reloads every platform shares: NPCs, behaviors, shops and chest GUIs, holograms and menus, and rigs, each
- * only when a change touched its kind. Runs on the file lane; the shop and hologram reloads queue their own file work.
+ * only when a change touched its kind. Runs on the file lane; the behavior, shop and hologram reloads queue their own file
+ * work, which {@link #reloaded} waits for without blocking the lane.
  */
 public final class RuntimeCatalogs implements CatalogReloads {
     /**
      * @param refresh asks the NPC runtime to pick up changed definitions, on any thread
-     * @param shops reloads shops and chest GUIs
-     * @param holograms reloads holograms, menus and text animations
+     * @param shops reloads shops and chest GUIs; completes once the new catalog is live
+     * @param holograms reloads holograms, menus and text animations; completes once the new catalog is live
      */
-    public record Parts(AnimusRuntime runtime, Runnable refresh, Supplier<BehaviorCommands> behaviors, Runnable shops, Runnable holograms, Consumer<String> log) {
+    public record Parts(AnimusRuntime runtime, Runnable refresh, Supplier<BehaviorCommands> behaviors, Supplier<CompletableFuture<?>> shops,
+                        Supplier<CompletableFuture<?>> holograms, Consumer<String> log) {
         public Parts {
             Objects.requireNonNull(runtime); Objects.requireNonNull(refresh); Objects.requireNonNull(behaviors);
             Objects.requireNonNull(shops); Objects.requireNonNull(holograms); Objects.requireNonNull(log);
         }
     }
 
-    private static final Set<DocumentKind> NPCS = Set.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.RECORDING);
+    private static final Set<DocumentKind> NPCS = Set.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.RECORDING, DocumentKind.GROUP);
     private static final Set<DocumentKind> BEHAVIORS = Set.of(DocumentKind.BEHAVIOR, DocumentKind.PACK);
     private static final Set<DocumentKind> SHOPS = Set.of(DocumentKind.SHOP, DocumentKind.INVENTORY);
     private static final Set<DocumentKind> HOLOGRAMS = Set.of(DocumentKind.MENU, DocumentKind.HOLOGRAM, DocumentKind.TEXT_ANIMATION, DocumentKind.PRESETS);
@@ -41,14 +45,17 @@ public final class RuntimeCatalogs implements CatalogReloads {
 
     public RuntimeCatalogs(Parts parts) { this.parts = Objects.requireNonNull(parts); }
 
-    @Override public void reload(CatalogChange change, Consumer<String> reported) {
+    @Override public void reload(CatalogChange change, Consumer<String> reported) { reloaded(change, reported); }
+
+    @Override public CompletableFuture<Void> reloaded(CatalogChange change, Consumer<String> reported) {
         AnimusMetrics metrics = AnimusMetrics.current();
         long started = metrics.start();
-        try { apply(change, reported); }
+        try { return apply(change, reported); }
         finally { metrics.stop(Subsystem.HOTLOAD, started); }
     }
 
-    private void apply(CatalogChange change, Consumer<String> reported) {
+    private CompletableFuture<Void> apply(CatalogChange change, Consumer<String> reported) {
+        List<CompletableFuture<?>> queued = new ArrayList<>();
         if (touches(change, NPCS)) {
             try {
                 List<String> problems = change.rollback() ? parts.runtime().npcs().reloadAfterRollback() : parts.runtime().npcs().reload();
@@ -62,16 +69,17 @@ public final class RuntimeCatalogs implements CatalogReloads {
         }
         if (touches(change, BEHAVIORS) || !change.removedBehaviors().isEmpty()) {
             BehaviorCommands behaviors = parts.behaviors().get();
-            if (behaviors != null) behaviors.reload(console(), change.removedBehaviors());
+            if (behaviors != null) queued.add(behaviors.reload(console(), change.removedBehaviors()));
         }
-        if (touches(change, SHOPS)) parts.shops().run();
-        if (touches(change, HOLOGRAMS)) parts.holograms().run();
+        if (touches(change, SHOPS)) queued.add(parts.shops().get());
+        if (touches(change, HOLOGRAMS)) queued.add(parts.holograms().get());
         if (touches(change, RIGS)) {
             RigCatalog rigs = parts.runtime().rigs().reload();
             if (!rigs.problems().isEmpty()) parts.log().accept("Catalog reload: " + rigs.problems().size() + " rig problems; see /animus rigs problems");
             rigs.problems().forEach(reported);
             parts.refresh().run();
         }
+        return CompletableFuture.allOf(queued.toArray(CompletableFuture<?>[]::new));
     }
 
     private static boolean touches(CatalogChange change, Set<DocumentKind> kinds) { return change.kinds().stream().anyMatch(kinds::contains); }

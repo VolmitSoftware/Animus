@@ -1,7 +1,6 @@
 package art.arcane.animus.core.shop;
 
 import art.arcane.animus.core.AnimusRuntime;
-import art.arcane.animus.core.command.AnimusCommands;
 import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.config.ShopSettings;
 import art.arcane.animus.core.gui.GuiDocument;
@@ -20,11 +19,11 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
@@ -116,23 +115,27 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
                 + " | economy=" + money.map((String reason) -> "unavailable (" + reason + ")").orElse("ready");
     }
 
-    /** Reads the catalog on the file lane and reports problems to the log and the callback. */
-    public void reload(Consumer<ShopCatalog> done) {
+    /** Reads the catalog on the file lane and reports problems to the log and the callback. The result completes once the new catalog is live, or at once when the queue refuses the work. */
+    public CompletableFuture<Void> reload(Consumer<ShopCatalog> done) {
+        CompletableFuture<Void> published = new CompletableFuture<>();
         try {
             files.execute(() -> {
-                ShopCatalog next;
                 try {
-                    next = ShopCatalog.load(data, runtime.behaviorSettings().actions()::commandAllowed);
-                } catch (IOException | RuntimeException failure) {
-                    log.accept("Shop and GUI catalog could not be read: " + failure.getMessage());
-                    next = new ShopCatalog(catalog.guis(), catalog.shops(), List.of("catalog: " + failure.getMessage()));
-                }
-                next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
-                catalog = next;
-                next.problems().stream().limit(40).forEach((String problem) -> log.accept("Shop or GUI refused: " + problem));
-                done.accept(next);
+                    ShopCatalog next;
+                    try {
+                        next = ShopCatalog.load(data, runtime.behaviorSettings().actions()::commandAllowed);
+                    } catch (IOException | RuntimeException failure) {
+                        log.accept("Shop and GUI catalog could not be read: " + failure.getMessage());
+                        next = new ShopCatalog(catalog.guis(), catalog.shops(), List.of("catalog: " + failure.getMessage()));
+                    }
+                    next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
+                    catalog = next;
+                    next.problems().stream().limit(40).forEach((String problem) -> log.accept("Shop or GUI refused: " + problem));
+                    done.accept(next);
+                } finally { published.complete(null); }
             });
-        } catch (RejectedExecutionException full) { log.accept("Shop catalog reload refused: the file queue is full"); }
+        } catch (RejectedExecutionException full) { log.accept("Shop catalog reload refused: the file queue is full"); published.complete(null); }
+        return published;
     }
 
     /**
@@ -201,76 +204,69 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
         return bindings.get(npc);
     }
 
-    /** {@code /animus shop ...}. */
-    public AnimusCommands.Extra shopCommand() {
-        return new AnimusCommands.Extra() {
-            @Override public void execute(CommandActor actor, String[] arguments) { shopCommand(actor, arguments); }
-            @Override public List<String> complete(CommandActor actor, String[] arguments) {
-                if (arguments.length == 2) return matching(List.of("status", "list", "open", "reload", "reset", "problems", "import"), arguments[1]);
-                if (arguments.length == 3 && arguments[1].equalsIgnoreCase("import")) return matching(List.of("preview", "apply"), arguments[2]);
-                if (arguments.length == 3 && List.of("open", "reset").contains(arguments[1].toLowerCase(Locale.ROOT))) return matching(List.copyOf(catalog.shops().keySet()), arguments[2]);
-                return List.of();
-            }
-        };
+    /** Shop ids, for completion. */
+    public List<String> shopIds() { return catalog.shops().keySet().stream().sorted().limit(100).toList(); }
+
+    public void list(CommandActor actor) {
+        actor.tell("Shops: " + catalog.shops().size());
+        catalog.shops().values().stream().limit(50).forEach((ShopDocument shop) -> actor.tell(shop.id() + " | " + RichText.plain(shop.title()) + " | pages=" + shop.pages().size()));
     }
 
-    private void shopCommand(CommandActor actor, String[] arguments) {
-        String operation = arguments.length < 2 ? "status" : arguments[1].toLowerCase(Locale.ROOT);
-        switch (operation) {
-            case "status" -> actor.tell(status());
-            case "list" -> {
-                actor.tell("Shops: " + catalog.shops().size());
-                catalog.shops().values().stream().limit(50).forEach((ShopDocument shop) -> actor.tell(shop.id() + " | " + RichText.plain(shop.title()) + " | pages=" + shop.pages().size()));
-            }
-            case "problems" -> problems(actor);
-            case "reload" -> reload((ShopCatalog next) -> answer(actor, "Reloaded " + next.shops().size() + " shops and " + next.guis().size() + " GUIs; " + next.problems().size() + " problems"));
-            case "open" -> {
-                if (arguments.length < 3 || arguments.length > 4) { actor.tell("shop open <shop> [player]"); return; }
-                deliver(actor, arguments.length == 4 ? Optional.of(arguments[3]) : Optional.empty(), (P player) -> openShop(player, arguments[2], Optional.empty()));
-            }
-            case "reset" -> {
-                if (arguments.length < 3 || arguments.length > 4) { actor.tell("shop reset <shop> [player]"); return; }
-                Optional<UUID> player = Optional.empty();
-                if (arguments.length == 4) {
-                    player = playerNamed.apply(arguments[3]).or(() -> { try { return Optional.of(UUID.fromString(arguments[3])); } catch (IllegalArgumentException invalid) { return Optional.empty(); } });
-                    if (player.isEmpty()) { actor.tell("Unknown player: " + arguments[3]); return; }
-                }
-                store.ledger().reset(arguments[2], player);
-                actor.tell("Cleared limits and stock of " + arguments[2] + player.map((UUID id) -> " for " + id).orElse(""));
-            }
-            case "import" -> importShops(actor, arguments);
-            default -> actor.tell("shop status | list | open <shop> [player] | reload | reset <shop> [player] | problems | import preview <folder> [saves.yml] | import apply <import-id>");
+    public void reloadCommand(CommandActor actor) {
+        reload((ShopCatalog next) -> answer(actor, "Reloaded " + next.shops().size() + " shops and " + next.guis().size() + " GUIs; " + next.problems().size() + " problems"));
+    }
+
+    /** Opens a shop for the actor, or for the named player. */
+    public void open(CommandActor actor, String shop, Optional<String> player) {
+        deliver(actor, player, (P viewer) -> openShop(viewer, shop, Optional.empty()));
+    }
+
+    /** Clears the limits and stock counters of a shop, for everyone or one player by name or UUID. */
+    public void reset(CommandActor actor, String shop, Optional<String> named) {
+        Optional<UUID> player = Optional.empty();
+        if (named.isPresent()) {
+            player = playerNamed.apply(named.get()).or(() -> { try { return Optional.of(UUID.fromString(named.get())); } catch (IllegalArgumentException invalid) { return Optional.empty(); } });
+            if (player.isEmpty()) { actor.tell("Unknown player: " + named.get()); return; }
         }
+        store.ledger().reset(shop, player);
+        actor.tell("Cleared limits and stock of " + shop + player.map((UUID id) -> " for " + id).orElse(""));
     }
 
-    /** {@code shop import preview <folder> [saves.yml]} reads from {@code imports/inbox/}; {@code shop import apply <id>} installs. */
-    private void importShops(CommandActor actor, String[] arguments) {
-        String usage = "shop import preview <folder under imports/inbox> [saves file under imports/inbox] | shop import apply <import-id>";
-        if (arguments.length < 4) { actor.tell(usage); return; }
-        String step = arguments[2].toLowerCase(Locale.ROOT);
+    /** Reads a dtlTraders or Shopkeepers folder from {@code imports/inbox/}, with an optional saves file there too. */
+    public void importPreview(CommandActor actor, String folder, Optional<String> saves) {
+        if (!folder.matches("[A-Za-z0-9_-]{1,64}") || saves.isPresent() && !saves.get().matches("[A-Za-z0-9_-]{1,64}\\.yml")) {
+            actor.tell("Shop import: name a folder and an optional .yml file directly under imports/inbox/");
+            return;
+        }
+        fileWork(actor, () -> {
+            Optional<Path> savesFile = saves.isPresent() ? Optional.of(runtime.documents().resolve("imports/inbox/" + saves.get())) : Optional.empty();
+            ShopImporter.Preview preview = new ShopImporter().preview(runtime.documents().resolve("imports/inbox/" + folder), savesFile, runtime.documents());
+            answer(actor, "Shop import " + preview.id() + ": " + preview.shops() + " shops, " + preview.entries() + " entries, "
+                    + preview.issues() + " issues, limit data " + preview.limitStatus());
+            answer(actor, "Review " + preview.directory().resolve("report.json") + ", then /animus shop import apply " + preview.id());
+        });
+    }
+
+    public void importApply(CommandActor actor, String importId) {
+        fileWork(actor, () -> {
+            String transaction = new ShopImporter().apply(runtime.documents(), importId);
+            answer(actor, "Shop import applied; transaction " + transaction + ". Reloading shops.");
+            reload((ShopCatalog next) -> answer(actor, "Loaded " + next.shops().size() + " shops; " + next.problems().size() + " problems. Restart to load imported limit counts."));
+        });
+    }
+
+    @FunctionalInterface private interface FileWork { void run() throws IOException; }
+
+    private void fileWork(CommandActor actor, FileWork work) {
         try {
             files.execute(() -> {
-                try {
-                    ShopImporter importer = new ShopImporter();
-                    if (step.equals("preview") && (arguments.length == 4 || arguments.length == 5)) {
-                        if (!arguments[3].matches("[A-Za-z0-9_-]{1,64}") || (arguments.length == 5 && !arguments[4].matches("[A-Za-z0-9_-]{1,64}\\.yml")))
-                            throw new IOException("Name a folder and an optional .yml file directly under imports/inbox/");
-                        Optional<Path> saves = arguments.length == 5 ? Optional.of(runtime.documents().resolve("imports/inbox/" + arguments[4])) : Optional.empty();
-                        ShopImporter.Preview preview = importer.preview(runtime.documents().resolve("imports/inbox/" + arguments[3]), saves, runtime.documents());
-                        answer(actor, "Shop import " + preview.id() + ": " + preview.shops() + " shops, " + preview.entries() + " entries, "
-                                + preview.issues() + " issues, limit data " + preview.limitStatus());
-                        answer(actor, "Review " + preview.directory().resolve("report.json") + ", then /animus shop import apply " + preview.id());
-                    } else if (step.equals("apply") && arguments.length == 4) {
-                        String transaction = importer.apply(runtime.documents(), arguments[3]);
-                        answer(actor, "Shop import applied; transaction " + transaction + ". Reloading shops.");
-                        reload((ShopCatalog next) -> answer(actor, "Loaded " + next.shops().size() + " shops; " + next.problems().size() + " problems. Restart to load imported limit counts."));
-                    } else answer(actor, usage);
-                } catch (IOException | RuntimeException failure) { answer(actor, "Shop import: " + failure.getMessage()); }
+                try { work.run(); }
+                catch (IOException | RuntimeException failure) { answer(actor, "Shop import: " + failure.getMessage()); }
             });
         } catch (RejectedExecutionException full) { actor.tell("Animus file queue is full; retry shortly."); }
     }
 
-    private void problems(CommandActor actor) {
+    public void problems(CommandActor actor) {
         List<String> problems = catalog.problems();
         actor.tell("Shop and GUI problems: " + problems.size());
         problems.stream().limit(30).forEach(actor::tell);
@@ -283,11 +279,6 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
     }
 
     private void answer(CommandActor actor, String message) { if (!closed && !actor.reply(() -> actor.tell(message))) log.accept(message); }
-
-    private static List<String> matching(List<String> options, String prefix) {
-        String lowered = prefix.toLowerCase(Locale.ROOT);
-        return options.stream().filter((String option) -> option.startsWith(lowered)).sorted().limit(100).toList();
-    }
 
     /** Forgets every window; the caller closes the platform windows. Then saves the counters. */
     @Override public void close() {

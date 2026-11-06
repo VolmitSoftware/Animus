@@ -117,6 +117,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
     "recording": {"folder": "recordings", "applyScope": "apply:npcs", "schema": "recording-v1.schema.json"},
     "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
+    "group": {"folder": "groups", "applyScope": "apply:npcs", "schema": "group-v1.schema.json"},
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
     "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
     "shop": {"folder": "shops", "applyScope": "apply:gui", "schema": "shop-v1.schema.json"},
@@ -181,7 +182,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "protocol": {"const": 1},
     "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "admin"]},
     "kind": {
-      "enum": ["npc", "route", "recording", "skin", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
+      "enum": ["npc", "route", "recording", "skin", "group", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."
     },
     "documentId": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[a-z0-9_.:/-]+$", "description": "The kind's own id: group/id for NPCs, namespace:path for behaviors, shops, GUIs, rigs and animations, the SHA-256 for skins, the relative path for menus."},
@@ -5319,7 +5320,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "trigger-interaction": {
       "type": "object",
-      "description": "A viewer's validated hit on the NPC.",
+      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -5346,6 +5347,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "any"
           ],
           "description": "Which hit fires it; interact by default."
+        },
+        "consume": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
         }
       },
       "required": [
@@ -7315,7 +7322,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   ],
   "triggers": {
     "interaction": {
-      "description": "A viewer's validated hit on the NPC.",
+      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
       "carriesPlayer": true,
       "reach": "npc",
       "fields": {
@@ -7350,6 +7357,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "any"
           ],
           "description": "Which hit fires it; interact by default."
+        },
+        "consume": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
         }
       }
     },
@@ -8332,7 +8346,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Animus NPC definition",
-  "description": "npcs/<group>/<id>.json. Unknown fields and modules are kept as written.",
+  "description": "npcs/<folders>/<id>.json, in npcs/ itself or up to 8 folders deep. Unknown fields and modules are kept as written.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -8367,8 +8381,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "group": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
-      "description": "Matches the directory name."
+      "pattern": "^(?:[a-z0-9][a-z0-9_-]{0,63}(?:/[a-z0-9][a-z0-9_-]{0,63}){0,7})?$",
+      "description": "The folder under npcs/, empty for npcs/ itself. Animus sets it from where the file is."
     },
     "name": {
       "type": "string",
@@ -8449,6 +8463,17 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "maxItems": 32,
       "uniqueItems": true
     },
+    "groups": {
+      "type": "array",
+      "description": "Trait groups under groups/ whose values this NPC takes, in merge order; the NPC's own fields win.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true
+    },
     "rig": {
       "type": "object",
       "description": "The rig under rigs/ this NPC's body shows.",
@@ -8521,10 +8546,45 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "description": "Order sequence only: start again from the first point."
             },
             "waitTicks": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 12000
+                },
+                {
+                  "type": "array",
+                  "description": "[min, max] in ticks, min not above max.",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 12000
+                  }
+                }
+              ],
+              "description": "Wait before the first leg and after each arrival: ticks, or [min, max] drawn per arrival."
+            },
+            "seed": {
+              "enum": [
+                "npc",
+                "random"
+              ],
+              "description": "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."
+            },
+            "startOffset": {
+              "enum": [
+                "first",
+                "random"
+              ],
+              "description": "random: start at a random point after a random 0..waitTicks wait. first by default."
+            },
+            "jitter": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 12000,
-              "description": "Wait before the first leg and after each arrival."
+              "maximum": 8,
+              "description": "Leg goals move by a random whole-block x/z offset within this radius."
             },
             "points": {
               "type": "array",
@@ -8555,10 +8615,62 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "maximum": 29999984
                   },
                   "waitTicks": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 12000
+                      },
+                      {
+                        "type": "array",
+                        "description": "[min, max] in ticks, min not above max.",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 12000
+                        }
+                      }
+                    ],
+                    "description": "Wait after arriving here, instead of the route's."
+                  },
+                  "jitter": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 12000,
-                    "description": "Wait after arriving here, instead of the route's."
+                    "maximum": 8,
+                    "description": "Jitter radius of this point, instead of the route's."
+                  },
+                  "weight": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "Order random only: how often this point is chosen."
+                  },
+                  "next": {
+                    "type": "array",
+                    "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "to"
+                      ],
+                      "properties": {
+                        "to": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
+                        },
+                        "weight": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1000
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -8686,6 +8798,21 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                       },
                       {
                         "required": [
+                          "seed"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "startOffset"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "jitter"
+                        ]
+                      },
+                      {
+                        "required": [
                           "recording"
                         ]
                       }
@@ -8744,6 +8871,21 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                         {
                           "required": [
                             "wander"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "seed"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "startOffset"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "jitter"
                           ]
                         }
                       ]
@@ -8872,6 +9014,91 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "required": [
                   "order"
                 ]
+              }
+            },
+            {
+              "if": {
+                "not": {
+                  "properties": {
+                    "order": {
+                      "const": "random"
+                    }
+                  },
+                  "required": [
+                    "order"
+                  ]
+                }
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "weight"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "order"
+                ],
+                "not": {
+                  "properties": {
+                    "order": {
+                      "const": "sequence"
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "next"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "order": {
+                    "const": "wander"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              },
+              "then": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "jitter"
+                      ]
+                    }
+                  ]
+                }
               }
             }
           ]
@@ -14265,6 +14492,58 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "supported": ["command", "sound", "message", "title", "actionbar", "close", "navigate", "inventory", "setSession", "give", "take", "economy", "delay", "sequence", "if", "switch", "chance", "cooldown", "stop", "call", "teleport", "bossbar", "broadcast", "effect", "particle", "parallel", "repeat"],
     "animus": ["animus:open-shop"],
     "refused": ["connect", "surface", "prompt", "dialog", "book", "emit", "setState", "addState", "clearState", "sky", "camera", "glow"]
+  }
+}
+''',
+  'group-v1.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/group-v1.schema.json",
+  "title": "Animus trait group",
+  "description": "groups/<id>.json. Definition values that NPCs listing this group take before their own fields. The Java validator (GroupDocument) also checks every value with the NPC field validators; this schema checks the shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "id", "values"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "Matches the file name."},
+    "description": {"type": "string", "maxLength": 256},
+    "values": {
+      "type": "object",
+      "description": "Any optional NPC definition field, plus skins. Identity and state fields are refused, and a group cannot list other groups.",
+      "propertyNames": {
+        "not": {"enum": ["schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position", "owner", "migration", "groups"]}
+      },
+      "properties": {
+        "modules": {"type": "object", "description": "Module settings keyed by namespace:name; merged key by key with the NPC's."},
+        "behaviors": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9_-]+:[a-z0-9_/-]+$"}, "description": "Appended before the NPC's own, without duplicates."},
+        "tags": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"}},
+        "equipment": {"type": "object"},
+        "hologram": {"type": "object"},
+        "nameplate": {"type": "object"},
+        "pose": {"type": "string"},
+        "poses": {"type": "object"},
+        "movement": {"type": "object"},
+        "rig": {"type": "object"},
+        "armorStand": {"type": "object"},
+        "glowing": {"type": "boolean"},
+        "teamColor": {"type": "string"},
+        "baby": {"type": "boolean"},
+        "usingItem": {"type": "boolean"},
+        "listed": {"type": "boolean"},
+        "gravity": {"type": "boolean"},
+        "skin": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "skins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "description": "A pool of skin hashes; each NPC takes one by a stable hash of its UUID unless it sets skin itself."
+        }
+      }
+    }
   }
 }
 ''',

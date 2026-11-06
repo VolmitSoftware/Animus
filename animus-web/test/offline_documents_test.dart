@@ -44,7 +44,10 @@ void main() {
 
     test('should check ids against their data-folder location', () {
       expect(validDocumentId(DocumentKind.npc, 'town/baker'), isTrue);
-      expect(validDocumentId(DocumentKind.npc, 'baker'), isFalse);
+      expect(validDocumentId(DocumentKind.npc, 'baker'), isTrue);
+      expect(validDocumentId(DocumentKind.npc, 'world/town/baker'), isTrue);
+      expect(validDocumentId(DocumentKind.npc, 'a/b/c/d/e/f/g/h/i/baker'), isFalse);
+      expect(validDocumentId(DocumentKind.npc, 'Town/baker'), isFalse);
       expect(validDocumentId(DocumentKind.behavior, 'town:greeter'), isTrue);
       expect(validDocumentId(DocumentKind.behavior, 'Town:Greeter'), isFalse);
       expect(validDocumentId(DocumentKind.pack, 'town'), isTrue);
