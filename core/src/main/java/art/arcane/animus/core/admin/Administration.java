@@ -36,7 +36,8 @@ public final class Administration {
     }
 
     public List<String> status() {
-        List<String> lines = new ArrayList<>(List.of(runtime.status(), "NPC definitions: " + runtime.npcs().all().size(), settingsInEffect()));
+        List<String> lines = new ArrayList<>(List.of(runtime.status(), "NPC definitions: " + runtime.npcs().all().size() + "; trait groups: "
+                + runtime.npcs().groups().groups().size() + " group-problems=" + runtime.npcs().groupProblems().size(), settingsInEffect()));
         if (!runtime.npcs().diagnostics().isEmpty()) lines.add("Definition file problems: " + runtime.npcs().diagnostics().size() + "; validate for field errors; retained definitions remain active");
         return List.copyOf(lines);
     }
@@ -46,7 +47,21 @@ public final class Administration {
         return runtime.npcs().all().stream().map((NpcDefinition definition) -> definition.id() + " | " + definition.name() + " | revision " + definition.revision()).toList();
     }
 
-    public String inspect(String id) throws IOException { return runtime.npcs().draft(id).document().toString(); }
+    /** The stored JSON, then for an NPC with groups its effective JSON, where each field came from and any group problem. */
+    public List<String> inspect(String id) throws IOException {
+        NpcRepository.Draft draft = runtime.npcs().draft(id);
+        List<String> lines = new ArrayList<>(List.of(draft.document().toString()));
+        NpcDefinition effective = runtime.npcs().find(id).orElseThrow(() -> new IOException("Unknown NPC: " + id));
+        NpcDefinition stored = NpcDefinition.parse(JsonDocuments.write(draft.document()));
+        if (stored.groups().isEmpty()) return lines;
+        lines.add("Effective (groups: " + String.join(", ", stored.groups()) + ")");
+        lines.add(effective.json().toString());
+        lines.add("from: " + String.join(", ", runtime.npcs().provenance(id).entrySet().stream()
+                .map((Map.Entry<String, String> entry) -> entry.getKey() + "<-" + entry.getValue()).toList()));
+        String problem = runtime.npcs().groupProblems().get(draft.path());
+        if (problem != null) lines.add("group-problem=" + problem);
+        return lines;
+    }
 
     public String create(String id, String type, String world, double x, double y, double z, String group, String name) throws IOException {
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) throw new IOException("Coordinates must be numbers");
@@ -169,6 +184,7 @@ public final class Administration {
         lines.addAll(notes);
         return lines;
     }
+
     /**
      * Reloads the shops, GUIs, holograms, rigs and behaviors these committed transactions touched. The caller has already
      * reloaded NPC definitions. Returns a line only when the transactions could not be read.
@@ -176,7 +192,7 @@ public final class Administration {
     private List<String> catalogs(List<String> transactions, boolean rollback) {
         if (transactions.isEmpty()) return List.of();
         CatalogChange change;
-        try { change = CatalogChange.of(runtime.documents(), transactions, rollback).without(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE); }
+        try { change = CatalogChange.of(runtime.documents(), transactions, rollback).without(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.RECORDING, DocumentKind.GROUP); }
         catch (IOException unreadable) { return List.of("Catalogs not reloaded (" + unreadable.getMessage() + "); run /animus shop reload, /animus gui reload and /animus behaviors reload"); }
         if (!change.empty()) runtime.catalogs().reload(change);
         return List.of();

@@ -315,6 +315,7 @@ public final class NativeProtocolClient {
             event("blocks", "cells", cells);
         }
         else if (packet instanceof ClientboundRotateHeadPacket p) event("head", "id", reflectedId(p), "yaw", p.getYHeadRot());
+        else if (packet instanceof ClientboundAnimatePacket p) event("animate", "id", p.getId(), "action", p.getAction());
         else if (packet instanceof ClientboundMoveEntityPacket p && p.hasRotation()) event("rotation", "id", reflectedId(p), "yaw", p.getYRot(), "pitch", p.getXRot());
         else if (packet instanceof ClientboundSetEntityDataPacket p) {
             List<Map<String, Object>> fields = new ArrayList<>();
@@ -424,6 +425,11 @@ public final class NativeProtocolClient {
                 Vec3 point=command.has("x")?new Vec3(coordinate(command,"x"),coordinate(command,"y"),coordinate(command,"z")):Vec3.ZERO;
                 send(new ServerboundInteractPacket(command.get("id").getAsInt(), InteractionHand.MAIN_HAND, point, false));
                 event("interaction_point","id",command.get("id").getAsInt(),"x",point.x,"y",point.y,"z",point.z);
+            }
+            case "swing" -> {
+                if (!loaded) throw new IllegalStateException("Swing requires an active game connection");
+                send(ProtocolRevision.swing());
+                event("swing");
             }
             case "input" -> {
                 if (!loaded) throw new IllegalStateException("Input requires an active game connection");

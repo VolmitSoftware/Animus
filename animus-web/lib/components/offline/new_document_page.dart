@@ -113,6 +113,8 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   Set<String> _taken(DocumentKind kind) => <String>{for (final AnimusDocument document in _of(kind)) document.id};
 
+  static const String _recordingNote = 'Recordings are made in game with /animus record start <id>.';
+
   String get _namespace => slug(component.workspace.name, fallback: 'local');
 
   /// The id the form proposes for [kind] until the user types one.
@@ -129,7 +131,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     });
     final String candidate = switch (kind) {
       DocumentKind.npc => npcIdIn(npcFolderSlug(_group), base),
-      DocumentKind.route || DocumentKind.pack => base,
+      DocumentKind.route || DocumentKind.pack || DocumentKind.group => base,
       DocumentKind.animation => '${_rig ?? '$_namespace:rig'}/$base',
       _ => '$_namespace:$base',
     };
@@ -228,8 +230,13 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           await _write(changes, kind, id);
         case DocumentKind.pack:
           await _write(<DocumentChange>[_change(kind, id, newPack(id, name: _title, description: _name))], kind, id);
+        case DocumentKind.group:
+          await _write(<DocumentChange>[_change(kind, id, newGroup(id))], kind, id);
         case DocumentKind.route:
           await _write(<DocumentChange>[_change(kind, id, newRoute(origin: (_x.toDouble(), _y.toDouble(), _z.toDouble()), mode: _mode))], kind, id);
+        case DocumentKind.recording:
+          setState(() => _problem = _recordingNote);
+          return;
         case DocumentKind.shop:
         case DocumentKind.inventory:
         case DocumentKind.menu:
@@ -376,6 +383,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           OfflineTextField(label: 'Name', value: _title, onChanged: (String value) => setState(() => _title = value)),
           OfflineTextField(label: 'Description', value: _name, onChanged: (String value) => setState(() => _name = value)),
         ],
+      DocumentKind.group => <Widget>[_idField(kind)],
       DocumentKind.route => <Widget>[
           OfflineTextField(label: 'Name', value: _name, onChanged: (String value) => setState(() => _name = value)),
           _idField(kind),
@@ -385,6 +393,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           ),
           _position(help: 'The first of four points in a square; drag them on the route grid afterwards.'),
         ],
+      DocumentKind.recording => const <Widget>[dom.p(classes: 'animus-muted', <Widget>[Component.text(_recordingNote)])],
       DocumentKind.shop || DocumentKind.inventory || DocumentKind.menu || DocumentKind.hologram => <Widget>[
           OfflineTextField(
             label: kind == DocumentKind.hologram ? 'First line' : 'Title',

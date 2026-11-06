@@ -14,9 +14,11 @@ import java.util.*;
 public final class NpcDefinition {
     /** The most labels one NPC may carry. */
     public static final int MAX_TAGS = 32;
+    /** The most trait groups one NPC may list. */
+    public static final int MAX_GROUPS = 16;
     private final JsonObject data;
     private final boolean spawned, imported;
-    private final List<String> behaviors, tags;
+    private final List<String> behaviors, tags, groups;
     private NpcDefinition(JsonObject data) {
         this.data = data.deepCopy();
         spawned = data.get("spawned").getAsBoolean();
@@ -27,6 +29,16 @@ public final class NpcDefinition {
         List<String> labels = new ArrayList<>();
         if (data.has("tags")) for (JsonElement tag : data.getAsJsonArray("tags")) labels.add(tag.getAsString());
         tags = List.copyOf(labels);
+        List<String> members = new ArrayList<>();
+        if (data.has("groups")) for (JsonElement group : data.getAsJsonArray("groups")) members.add(group.getAsString());
+        groups = List.copyOf(members);
+    }
+
+    /** A definition from an object that has already passed {@link #validate}. */
+    static NpcDefinition validated(JsonObject object) throws IOException {
+        List<String> errors = validate(object);
+        if (!errors.isEmpty()) throw new IOException(String.join("; ", errors));
+        return new NpcDefinition(object);
     }
 
     public static NpcDefinition parse(String json) throws IOException {
@@ -104,6 +116,21 @@ public final class NpcDefinition {
                 }
             }
         }
+        if (object.has("groups")) {
+            JsonElement value = object.get("groups");
+            if (!value.isJsonArray() || value.getAsJsonArray().isEmpty() || value.getAsJsonArray().size() > MAX_GROUPS)
+                errors.add("$.groups: expected an array of 1-" + MAX_GROUPS + " group ids");
+            else {
+                Set<String> seen = new HashSet<>();
+                JsonArray groups = value.getAsJsonArray();
+                for (int i = 0; i < groups.size(); i++) {
+                    JsonElement group = groups.get(i);
+                    if (!group.isJsonPrimitive() || !group.getAsJsonPrimitive().isString() || !group.getAsString().matches(GroupDocument.ID))
+                        errors.add("$.groups[" + i + "]: expected 1-64 lowercase letters, digits, _ or -");
+                    else if (!seen.add(group.getAsString())) errors.add("$.groups[" + i + "]: duplicate group");
+                }
+            }
+        }
         if (object.has("owner")) {
             JsonElement owner = object.get("owner");
             String text = owner.isJsonPrimitive() && owner.getAsJsonPrimitive().isString() ? owner.getAsString() : "";
@@ -117,6 +144,8 @@ public final class NpcDefinition {
         if (object.has("modules") && !object.get("modules").isJsonObject()) errors.add("$.modules: expected object");
         else {
             try { WaypointSettings.parse(object); }
+            catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
+            try { art.arcane.animus.core.recording.RecordingSource.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
             try { CombatSettings.parse(object); }
             catch (IllegalArgumentException invalid) { errors.add(invalid.getMessage()); }
@@ -180,6 +209,8 @@ public final class NpcDefinition {
     public List<String> behaviors() { return behaviors; }
     /** Labels the editor uses to find and group NPCs; empty when none are declared. */
     public List<String> tags() { return tags; }
+    /** Trait groups whose values this NPC takes, in merge order; empty when none are listed. */
+    public List<String> groups() { return groups; }
     public JsonObject json() { return data.deepCopy(); }
     public String serialize() { return JsonDocuments.write(data); }
 }

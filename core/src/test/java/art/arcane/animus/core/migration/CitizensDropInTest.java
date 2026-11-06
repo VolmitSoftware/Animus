@@ -69,7 +69,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             assertTrue(dropIn(store, npcs).startupNotice().isEmpty());
-            IOException missing = assertThrows(IOException.class, () -> dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
+            IOException missing = assertThrows(IOException.class, () -> dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(missing.getMessage().contains("No Citizens save found"));
         }
     }
@@ -112,7 +112,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.preview("reject", Optional.empty(), Map.of()));
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(staged.contains("3 NPCs, 3 valid"), staged);
             assertTrue(staged.contains("Folders: npcs/world/ 2, npcs/world_nether/ 1"), staged);
             assertTrue(staged.contains("1 shops"), staged);
@@ -137,7 +137,7 @@ class CitizensDropInTest {
             assertEquals(10.5, guard.json().getAsJsonObject("position").get("x").getAsDouble());
             assertNotNull(store.read("shops/dtltraders/bakery.json"));
             assertTrue(Files.exists(store.resolve("schematics/hut.schem")));
-            assertThrows(IOException.class, () -> flow.preview("reject", Optional.empty(), Map.of()));
+            assertThrows(IOException.class, () -> flow.preview("reject", Optional.empty(), Map.of(), false));
 
             String review = joined(flow.reviewApplied());
             assertTrue(review.contains("spawn: 2 waiting") && review.contains("combat: 1 waiting") && review.contains("riding: 1 waiting")
@@ -201,7 +201,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs).combatLimit(1);
-            flow.preview("reject", Optional.empty(), Map.of());
+            flow.preview("reject", Optional.empty(), Map.of(), false);
             flow.applyStaged();
             String review = joined(flow.reviewApplied());
             assertTrue(review.contains("Combat capacity: 2 guards; at most 1 fight or scan at once ([combat] maximumNpcs)"), review);
@@ -227,7 +227,7 @@ class CitizensDropInTest {
                 """);
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
-            String preview = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
+            String preview = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 skins on non-player NPCs kept unused (Citizens shows skins only on player NPCs)"), preview);
         }
     }
@@ -250,13 +250,13 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.preview("duplicate", Optional.of("copy"), Map.of("world", "survival")));
+            String staged = joined(flow.preview("duplicate", Optional.of("copy"), Map.of("world", "survival"), false));
             assertTrue(staged.contains("Folders: npcs/survival/ 2, npcs/world_nether/ 1") && staged.contains("Application duplicate"), staged);
             flow.applyStaged();
             assertEquals("copy-copy", npcs.find("citizens-1-copy").orElseThrow().group());
             assertEquals("survival", npcs.find("citizens-1-copy").orElseThrow().json().getAsJsonObject("position").get("world").getAsString());
             assertThrows(IOException.class, () -> flow.acceptCategories(List.of("everything")));
-            assertThrows(IOException.class, () -> flow.preview("bogus", Optional.empty(), Map.of()));
+            assertThrows(IOException.class, () -> flow.preview("bogus", Optional.empty(), Map.of(), false));
             assertTrue(JsonDocuments.object(store.read(CitizensDropIn.STATE)).get("state").getAsString().equals("applied"));
         }
     }
@@ -290,7 +290,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.preview("reject", Optional.empty(), Map.of()));
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(staged.contains("Converted: 1 patrol routes (2 points), look-close on 1 NPCs, 1 text and 1 command behaviors"), staged);
             assertTrue(staged.contains("Off until accepted: spawn 1, patrols 1, combat 0"), staged);
             assertTrue(staged.contains("Kept, not run: nothing"), staged);
@@ -344,7 +344,7 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            String staged = joined(flow.preview("reject", Optional.empty(), Map.of()));
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(staged.contains("needs command namespace citizens") && staged.contains("accept commands"), staged);
             flow.applyStaged();
             String review = joined(flow.reviewApplied());
@@ -383,7 +383,7 @@ class CitizensDropInTest {
             runtime.importHost(new CitizensDropIn.Host(Optional.of(root.resolve("plugins")), citizens::get, () -> false, () -> false));
             runtime.catalogs((CatalogChange change, java.util.function.Consumer<String> problems) -> reloads.add(change));
             Administration admin = new Administration(runtime);
-            admin.citizens((CitizensDropIn dropIn) -> dropIn.preview("reject", Optional.empty(), Map.of()));
+            admin.citizens((CitizensDropIn dropIn) -> dropIn.preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(reloads.isEmpty(), "staging installs nothing");
             admin.citizens(CitizensDropIn::applyStaged);
             CatalogChange applied = reloads.getLast();

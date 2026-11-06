@@ -112,6 +112,7 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- Routes share well between NPCs: `seed`, `startOffset: random`, `waitTicks` ranges, `jitter`, point `weight` for random order and `next` junctions for sequence order, with field-named validation.
 - A short route leg whose goal can't be reached ends beside it when close enough.
 - Denizen `sentinel` commands and `trait state sentinel` convert to combat control.
 - `/animus import citizens accept commands` adds the command namespaces converted behaviors need to config.toml.
@@ -185,9 +186,36 @@
 - Web editor: `test/shape_browser.cjs` walks every page at both widths and themes and fails on a corner radius, an inset or offset shadow, a one-sided accent border or an accent gradient, including hover, focus and active states.
 - `same_world(a, b)` behavior expression function, which matches worlds by name, UUID or dimension key.
 - `viewer.world_key` GUI placeholder.
+- Performance recording documents (`recordings/<id>.json`): frames, swing, equipment and door events, a byte-exact serialized form, hotload and editor apply, and `schema/recording-v1.schema.json`.
+- Recording core for playback: frame simplification within 0.02 blocks and 2 degrees, and a once, loop or pingpong cursor with interpolated poses, capped event windows and catch-up skips.
+- `[recordings]` settings in `config.toml` for sampling, length, file size, sessions, ghosts and previews, all applied live.
+- `/animus record start <id>`, `stop`, `cancel`, `status`, `ghost on|off|toggle` and `preview <id> [action=stop]` capture a player's movement, sneaking, swings, equipment and door use into `recordings/<id>.json` as one rollback-able transaction, on the player's own thread on Folia.
+- Recording sessions end and save on quit, death, world change, a teleport over 8 blocks or `maximumTicks`; a recording over `maximumFileBytes` is held until it is stopped again or cancelled.
+- A viewer-private, glowing ghost of the recorder replays the last `ghostStretchTicks` every `ghostIntervalTicks` while recording, and `/animus record preview <id>` plays a saved recording once for the requesting player.
+- Recording on Fabric, NeoForge and Forge with the same `record` command, sampling, end rules, saves and ghosts; swings come from the swing packet (the punch packet on 26.3) and door use from the use-on-block packet.
+- `@selected` for the selected NPC wherever a command takes an NPC id.
+- Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
+- `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
+- Trait groups: `groups/<id>.json` documents of shared definition values that NPCs list in `groups` and merge before their own fields.
+- Group merge rules: objects merge recursively, behaviors and tags append, a `skins` pool picks one skin per NPC UUID.
+- An NPC naming a missing group is refused on edit; a group deleted later leaves its NPCs on their last valid effective definition, reported as `group-problem=`.
+- `/animus inspect` shows the effective definition of an NPC with groups and where each field came from; `/animus status` counts group problems.
+- `/animus groups list|inspect|members|assign|unassign`; assign and unassign take one of `folder=`, `tag=` or `ids=` (with `@selected`) and edit every matching NPC in one transaction.
+- `factor-groups=true` for `/animus import citizens preview` and `--factor-groups` for the converter's `preview`, which move settings shared by two or more imported NPCs into groups.
+- Shared group schema, merge fixtures and an editor-side merge in `animus-web`.
+- Recording playback: `animus:navigation` plays a recording (`"recording"`, `"playback": "once|loop|pingpong"`) as a third source beside `route` and inline points.
+- Playback walks a planned leg to the first frame, plays one recorded tick per route turn with live terrain checks, and catches up 40 ticks ahead over a refused step, up to five skips before the `movement.stuck` rules.
+- Playback swings, changes equipment and opens doors behind protection as recorded, and shows sneaking, swimming, sprinting and gliding as body metadata.
+- A stopped playback keeps its cursor and `resumePatrol` continues from it; a changed recording file hotloads and restarts; a paused cursor waits for unloaded terrain or sleeps with no player near.
+- Folia playback runs on the region budget and carries its cursor, mode and direction through region handoffs.
+- `animus:play-recording` and `animus:resume-patrol` behavior actions; `inspect` and status report the recording, mode, cursor and state.
+- A recording stores its world as the Bukkit world name or dimension key; playback and previews resolve it, or a world UUID, like other documents, and refuse in `route-error` a recording whose world is not loaded or is not the NPC's.
+- Route points can be recording steps (`{"recording": id, "fromTick", "toTick", "playback": "once"}`): the NPC walks to the segment's first frame, plays it once and goes on from its last frame, in both runtimes and across Folia handoffs; `inspect` shows `step=recording:<id> cursor=<n>/<to>`.
+- Web editor: the route editor lists recording steps with the points, picks the recording (or takes a typed id when the workspace has none), edits `fromTick` and `toTick`, adds steps and turns a point into a step and back.
 
 ### Changed
 
+- Random choices on routes (`random` and `wander` orders, and the new route randomness) are seeded from the NPC UUID and route by default, so each NPC repeats its own choices after a restart. Set `"seed": "random"` for the old clock-seeded behavior.
 - Manual runs stay limited to one per NPC; trigger-started executions are counted separately and use scoped variables, resolving player and relationship variables from the triggering player.
 - `/animus behaviors inspect` answers with current waits, conditions and recent steps, and `/animus behaviors trace` lists every active run with its origin. Startup logs every behavior catalog diagnostic.
 - Behavior validation rejects invalid literal capability arguments and reports unavailable capabilities separately.
@@ -312,6 +340,7 @@
 
 ### Fixed
 
+- The web editor's route model no longer drops points it cannot draw: recording steps, ranged waits and unknown keys survive an edit, and points after a step keep their numbers.
 - NPC previews in the web editor wear their real skin, fetched from the skin's texture URL.
 - A builder standing inside its target block walks aside instead of teleporting.
 - A valid NPC edit is no longer refused because another NPC file is invalid.

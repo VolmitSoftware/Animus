@@ -27,6 +27,7 @@ import art.arcane.animus.bukkit.gui.BukkitGlossBridge;
 import art.arcane.animus.bukkit.gui.BukkitHoloEvents;
 import art.arcane.animus.bukkit.gui.BukkitScreens;
 import art.arcane.animus.bukkit.packet.NativeDisplayAdapter;
+import art.arcane.animus.bukkit.recording.BukkitRecordings;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.presentation.DisplayTransport;
 import art.arcane.animus.bukkit.runtime.BukkitRuntimeHost;
@@ -97,6 +98,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private Executor commands;
     private ReplyScheduler replies;
     private PacketProofService proof;
+    private BukkitRecordings recordings;
     private FoliaStationaryProofService foliaProof;
     private NpcRuntime<Player, ItemStack> living;
     private RuntimeCombatService combat;
@@ -231,13 +233,14 @@ public final class AnimusPlugin extends JavaPlugin {
             serverBehaviors = new BukkitServerBehaviors(this, scheduling, servers, facts, (String message) -> getLogger().info(message));
             behaviors.facts(facts);
             serverBehaviors.start();
+            recordings = new BukkitRecordings(this, runtime, commands, regions, environment.minecraftVersion());
             AnimusRuntime measuredRuntime = runtime;
             DebugCommands debugCommands = new DebugCommands(() -> metrics, debugWatch,
                     (String id) -> measuredRuntime.isRunning() ? measuredRuntime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
                     () -> { EditorService active = editor; return active == null ? List.of("Editor: off") : active.status(); });
             CommandServices commandServices = new CommandServices(runtime, commands, living, () -> behaviors, extensions, builtins, combat.control(), shops, guis,
                     new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsRefusal())), new EditorCommands(() -> editor, commands), debugCommands,
-                    new BukkitProof(), () -> getServer().getOnlinePlayers().stream().map(Player::getName).toList(), () -> stopping);
+                    new BukkitProof(), recordings.sessions(), () -> getServer().getOnlinePlayers().stream().map(Player::getName).toList(), () -> stopping);
             measured.extra("combat.waiting", combat::waiting);
             measured.extra("combat.load", combat::load);
             measured.extra("editor.streams", () -> { EditorService active = editor; return active == null ? 0 : active.eventStreams(); });
@@ -282,6 +285,7 @@ public final class AnimusPlugin extends JavaPlugin {
         editor = null;
         if (activeEditor != null) activeEditor.close();
         director = null;
+        if (recordings != null) { recordings.close(); recordings = null; }
         ReactBridge bridge = react;
         react = null;
         if (bridge != null) bridge.close();

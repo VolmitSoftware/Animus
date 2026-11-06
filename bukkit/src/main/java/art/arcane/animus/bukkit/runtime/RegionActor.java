@@ -11,6 +11,20 @@ import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.runtime.DefinitionAuthority;
 import art.arcane.animus.core.runtime.NavigationRefusals;
 import art.arcane.animus.core.runtime.RouteDocuments;
+import art.arcane.animus.core.runtime.RecordingDoors;
+import art.arcane.animus.core.runtime.RecordingSteps;
+import art.arcane.animus.core.npc.NpcPose;
+import art.arcane.animus.core.presentation.BodyLook;
+import art.arcane.animus.core.presentation.BodyRules;
+import art.arcane.animus.core.recording.Playback;
+import art.arcane.animus.core.recording.RecordingDocument;
+import art.arcane.animus.core.recording.RecordingDocuments;
+import art.arcane.animus.core.recording.RecordingEvent;
+import art.arcane.animus.core.recording.RecordingPose;
+import art.arcane.animus.core.recording.RecordingRun;
+import art.arcane.animus.core.recording.RecordingSource;
+import art.arcane.animus.core.recording.RecordingWorlds;
+import art.arcane.animus.core.recording.RouteRecordings;
 import art.arcane.animus.core.runtime.SkinDocuments;
 import art.arcane.animus.core.runtime.WaypointProgress;
 
@@ -83,7 +97,7 @@ final class RegionActor implements RegionOwner.Body {
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
-                       List<UUID> passengers, Player rider, CombatView combat, long swings) {}
+                       List<UUID> passengers, Player rider, CombatView combat, BodyLook look, long lookRevision, long swings) {}
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -140,6 +154,18 @@ final class RegionActor implements RegionOwner.Body {
     private CompletableFuture<Void> routeWatch;
     private RouteRead routeRead;
     private boolean routeReadWanted;
+    /** The definition's own recording; {@link #performance} holds the run playing now and the one kept for resuming. */
+    private RecordingSource recordingSource;
+    final RegionPlayback performance = new RegionPlayback(new PlaybackActor());
+    /** The route leg a step run belongs to, and its route, kept while the step plays or is stopped so it can resume. */
+    private WaypointProgress.Leg stepLeg;
+    private WaypointProgress stepProgress;
+    private RecordingDoors recordingDoors;
+    /** The pose and motion a playback shows, published with {@link #lookRevision}; swings count up for viewers to send. */
+    private NpcPose lookPose = NpcPose.STANDING;
+    private int lookMotion;
+    private long lookRevision;
+    private BodyLook look;
     private String displayName;
     private BodySkin displaySkin;
     private AppearanceRead appearanceRead;
@@ -165,6 +191,7 @@ final class RegionActor implements RegionOwner.Body {
         this.host = host; this.desired = desired; this.announced = announced;
         spec = desired.spec(); id = spec.definition().id(); uuid = spec.definition().uuid();
         doors = new DoorPassage(uuid);
+        recordingDoors = new RecordingDoors(uuid);
         RegionNpcRuntime.Geometry geometry = host.geometry(spec.type());
         state = new VirtualNpcState(uuid, spec.position(), geometry.width(), geometry.height(), PersistedNpcService.maximumHealth(spec));
         state.spawn();
@@ -188,8 +215,11 @@ final class RegionActor implements RegionOwner.Body {
         yaw = spec.yaw(); pitch = spec.pitch(); onGround = true;
         displayName = spec.name(); displaySkin = skin;
         equipment.clear(); equipment.putAll(NpcPresentation.equipment(spec, ItemStack::clone)); equipmentRevision++; appearance++; pose++;
-        waypoints = WaypointSettings.parse(spec.definition()).map(this::progress).orElse(null);
-        routeReadWanted = waypoints == null && routeSource != null;
+        waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
+        recordingSource = RecordingSource.parse(spec.definition().json()).orElse(null);
+        performance.run = null; performance.held = null; performance.playing = false; stepLeg = null; stepProgress = null;
+        lookPose = spec.appearance().pose(); lookMotion = 0; look = null; lookRevision++;
+        routeReadWanted = waypoints == null ? routeSource != null || recordingSource != null : !routeReady();
         rigId = RigReference.parse(spec.definition().json()).orElse(null);
         rig = null; rigProblem = null; rigGeneration = -1;
         combatSettings = CombatSettings.active(spec.definition()).orElse(null);
@@ -268,7 +298,13 @@ final class RegionActor implements RegionOwner.Body {
         host.anchor(this, anchored, anchor()); anchored = anchor();
         if (state.snapshot().active()) host.index.upsert(state.snapshot());
         if (woken && !announced) { announced = true; host.activated(uuid); }
-        if (woken && route == null && waypoints != null && !waypoints.complete()) beginLeg(waypoints.start(state.snapshot().position().point()));
+        if (woken && route == null && performance.run == null && routeReady() && !waypoints.complete()) beginLeg(waypoints.start(state.snapshot().position().point()));
+        if (performance.run != null) {
+            // The cursor came along; the new owner walks to the pose at the cursor from where the body stands, then plays on.
+            cancelPlan();
+            route = null;
+            performance.adopted();
+        }
         publish(true);
     }
     @Override public void released() {
@@ -320,7 +356,7 @@ final class RegionActor implements RegionOwner.Body {
         if (sampled) mark = metrics.sampledLap(Subsystem.NAVIGATION, mark);
         tickCombat();
         if (sampled) mark = metrics.sampledLap(Subsystem.COMBAT, mark);
-        if (reread) { reread = false; routeReadWanted |= routeSource != null; }
+        if (reread) { reread = false; routeReadWanted |= routeSource != null || recordingToRead() != null || inlineSteps() != null; }
         if (routeReadWanted) requestRouteRead();
         if (route != null && !seated) { navigate(); supportWanted = false; fallSpeed = 0; }
         else if (!seated && (supportWanted || fallSpeed > 0)) support();
@@ -353,7 +389,7 @@ final class RegionActor implements RegionOwner.Body {
         configure(next);
         error = null;
         if (state.snapshot().active()) host.index.upsert(state.snapshot());
-        if (waypoints != null) beginLeg(waypoints.start(state.snapshot().position().point()));
+        if (routeReady()) beginLeg(waypoints.start(state.snapshot().position().point()));
     }
 
     /** Owner only. The calling thread holds the NPC and its current definition is applied. */
@@ -394,12 +430,47 @@ final class RegionActor implements RegionOwner.Body {
         catch (IllegalStateException busy) { return CombatWorld.MoveStatus.BUSY; }
     }
     private static double clamp(double value, double limit) { return Math.max(-limit, Math.min(limit, value)); }
-    /** Restarts the definition's own patrol, if nothing else moves the NPC. */
-    void resumePatrol() {
-        if (!navigable() || route != null || routeRead != null) return;
-        waypoints = WaypointSettings.parse(spec.definition()).map(this::progress).orElse(null);
-        if (waypoints != null) beginLeg(waypoints.start(state.snapshot().position().point()));
-        else if (routeSource != null) routeReadWanted = true;
+    /** Same rules as {@link PersistedNpcService#resumePatrol}: a stopped recording continues from its cursor. */
+    boolean resumePatrol() {
+        if (!navigable() || route != null || routeRead != null || performance.run != null) return false;
+        RecordingRun held = performance.held;
+        if (held != null && held.step()) {
+            WaypointProgress kept = stepProgress;
+            if (!held.playback().finished() && kept != null && kept.current(stepLeg)) {
+                waypoints = kept;
+                performance.resume();
+                publish(true);
+                return true;
+            }
+            performance.held = null; forgetStep();
+        }
+        if (performance.resume()) { waypoints = null; publish(true); return true; }
+        waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(declared, WaypointProgress.INLINE)).orElse(null);
+        if (waypoints != null) {
+            if (routeReady()) beginLeg(waypoints.start(state.snapshot().position().point()));
+            else routeReadWanted = true;
+            publish(true);
+            return true;
+        }
+        if (recordingSource != null) {
+            performance.held = null;
+            boolean started = startRead(null, null, recordingSource, true);
+            publish(true);
+            return started;
+        }
+        if (routeSource != null) routeReadWanted = true;
+        return routeSource != null;
+    }
+    void playRecording(String reference, Playback playback) {
+        Objects.requireNonNull(playback);
+        if (reference == null || !reference.matches(RecordingDocument.ID)) throw new IllegalArgumentException("Invalid recording identifier");
+        if (!host.recordings().enabled()) throw new IllegalStateException(RECORDINGS_DISABLED);
+        failWatch("cancelled: replaced by a recording");
+        cancelRouteRead();
+        stopRoute("cancelled: replaced by recording");
+        waypoints = null; performance.held = null; forgetStep();
+        if (!startRead(null, null, new RecordingSource(reference, playback), true)) throw new IllegalStateException("Recording reads are busy; retry shortly");
+        publish(true);
     }
     /**
      * Places the NPC on clear ground at the destination. A destination this region holds is checked here; one another
@@ -606,7 +677,7 @@ final class RegionActor implements RegionOwner.Body {
         return route.id;
     }
     boolean stopNavigation() {
-        boolean running = route != null || routeReadWanted || routeRead != null || (waypoints != null && !waypoints.complete());
+        boolean running = route != null || routeReadWanted || routeRead != null || performance.run != null || (waypoints != null && !waypoints.complete());
         cancelRouteRead(); waypoints = null; stopRoute("cancelled by administrator"); failWatch("cancelled: navigation stopped");
         publish(true);
         return running;
@@ -634,6 +705,8 @@ final class RegionActor implements RegionOwner.Body {
         LookClose look = lookClose;
         if (look == null || turns < nextLook || mount || seated || riding.active() || !navigable()) return;
         if (!look.whileNavigating() && (routeRead != null || (route != null && (route.plan != null || route.execution != null)))) return;
+        // A playing recording faces where the recorder looked.
+        if (performance.run != null) return;
         if (!host.budget.cosmeticAllowed() || host.budget.take(RegionBudget.Kind.LOOKS, 1) == 0) return;
         nextLook = turns + LookClose.INTERVAL_TICKS;
         WorldPosition at = state.snapshot().position();
@@ -696,8 +769,8 @@ final class RegionActor implements RegionOwner.Body {
         failWatch("cancelled: replaced by a new route");
         cancelRouteRead();
         stopRoute("cancelled: replaced by reusable route");
-        waypoints = null;
-        if (!startRouteRead(reference)) throw new IllegalStateException("Reusable route reads are busy; retry shortly");
+        waypoints = null; forgetStep();
+        if (!startRead(reference, null, null, true)) throw new IllegalStateException("Reusable route reads are busy; retry shortly");
         navigationStatus = "loading reusable route " + reference;
         publish(true);
     }
@@ -754,23 +827,48 @@ final class RegionActor implements RegionOwner.Body {
         if (turns < current.nextAttempt) return;
         if (!state.snapshot().active()) { stopRoute("cancelled by definition/lifecycle change"); return; }
         // A patrol with no player near sleeps: no turn, plan or budget until a viewer marks it again.
-        if (current.leg != null && routeWatch == null && !watched()) {
-            if (!routeSleeping) { routeSleeping = true; cancelPlan(); doors.closeAll(host.doors); routeStatus(current, "sleeping", "no player within " + (int) host.settings().viewDistance() + " blocks"); }
+        if ((current.leg != null || current.recording != null) && routeWatch == null && !watched()) {
+            if (!routeSleeping) {
+                routeSleeping = true; cancelPlan(); doors.closeAll(host.doors);
+                if (current.recording != null) current.recording.paused(RecordingRun.Phase.SLEEPING);
+                routeStatus(current, "sleeping", "no player within " + (int) host.settings().viewDistance() + " blocks");
+            }
             routeWaited = 0;
             return;
         }
-        if (routeSleeping) { routeSleeping = false; current.progressTurn = turns; routeStatus(current, "queued", "a player is near"); }
+        if (routeSleeping) {
+            routeSleeping = false; current.progressTurn = turns;
+            if (current.recording != null) current.recording.retry();
+            if (current.recording != null && current.walk) current.deadline = turns + RecordingSteps.walkTicks(state.snapshot().position().point().distance(current.goal.point()), current.speed);
+            routeStatus(current, "queued", "a player is near");
+        }
         if (current.leg != null && current.leg.pause()) {
             route = null;
             if (waypoints != null) beginLeg(waypoints.resume(current.leg, state.snapshot().position().point()));
             return;
         }
+        if (current.leg != null && current.leg.step() != null && current.recording == null) {
+            route = null;
+            startStep(current.leg);
+            return;
+        }
         World world = host.world(current.goal.world());
         if (world == null) { stopRoute("cancelled: world unavailable"); return; }
-        if (current.leg != null && movement.stuck(turns - current.progressTurn)) { failLeg(current, "stuck: no progress for " + (turns - current.progressTurn) + " ticks"); return; }
+        if (current.recording != null && !host.recordings().enabled()) {
+            routeError = RECORDINGS_DISABLED; performance.end("unavailable: " + RECORDINGS_DISABLED); return;
+        }
+        if (current.recording != null && current.walk && turns > current.deadline) {
+            failLeg(current, "unreachable: the walk to the recording took longer than " + (current.deadline - current.startTurn) + " ticks"); return;
+        }
+        if ((current.leg != null || current.recording != null) && movement.stuck(turns - current.progressTurn)) { failLeg(current, "stuck: no progress for " + (turns - current.progressTurn) + " ticks"); return; }
         int waited = routeWaited;
         if (!host.budget.takeRoute(waited)) { routeWaited = waited + 1; return; }
         routeWaited = 0;
+        if (current.recording != null && !current.walk) {
+            try { if (!performance.turn(current.recording)) { host.budget.routeRefused(waited); routeWaited = waited + 1; } }
+            catch (RuntimeException failure) { stopRoute("failed: " + PersistedNpcService.concise(failure)); }
+            return;
+        }
         ChunkOwnership owned = (x, z) -> host.regions.owns(world, x, z, x, z);
         try {
             if (current.execution == null) {
@@ -880,6 +978,8 @@ final class RegionActor implements RegionOwner.Body {
     }
     /** Terrain blocks the leg for good: logged once per NPC with the leg, then the route fails as any failed leg does. */
     private void blockLeg(Route current, String reason) {
+        if (current.recording != null) { failLeg(current, reason); return; }
+        if (exactPoint(current, reason)) return;
         boolean once = AnimusLog.shared().debug();
         if (!once || !blockedWarned) {
             if (once) blockedWarned = true;
@@ -951,6 +1051,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     private void arriveAt(Route current) {
         if (route != current) return;
+        if (current.recording != null) { route = null; performance.arrived(current.recording); return; }
         WaypointProgress progress = waypoints;
         route = null; routeStatus(current, "arrived", ""); arrivals++;
         host.plugin.getServer().getPluginManager().callEvent(new VirtualNpcWaypointEvent(uuid, id, current.id, current.waypoint, state.snapshot().position()));
@@ -961,7 +1062,7 @@ final class RegionActor implements RegionOwner.Body {
         if (next.isPresent()) beginLeg(next);
         else finishWatch();
     }
-    private WaypointProgress progress(WaypointSettings declared) { return WaypointProgress.of(declared, spec.position().point(), uuid); }
+    private WaypointProgress progress(WaypointSettings declared, String route) { return WaypointProgress.of(declared, spec.position().point(), uuid, route); }
     /** Same leg rules as {@link PersistedNpcService}: a pause leg holds the route until its wait ends. */
     private void beginLeg(Optional<WaypointProgress.Leg> next) {
         WaypointProgress progress = waypoints;
@@ -969,11 +1070,12 @@ final class RegionActor implements RegionOwner.Body {
         WaypointProgress.Leg leg = next.get();
         WaypointSettings settings = progress.settings();
         WorldPosition at = state.snapshot().position();
-        WorldPosition goal = leg.pause() ? at : new WorldPosition(at.world(), leg.goal());
+        WorldPosition goal = leg.goal() == null ? at : new WorldPosition(at.world(), leg.goal());
         double speed = movement.routeSpeed(routeSpeedDeclared, settings.speed());
-        if (!leg.pause()) {
+        if (leg.goal() != null) {
             try { PersistedNpcService.validateLeg(at, goal, settings.mode(), speed, hullWidth(), hullHeight()); }
             catch (IllegalArgumentException invalid) {
+                if (leg.jittered()) { beginLeg(progress.exact(leg)); return; }
                 navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(navigationStatus);
                 Optional<WaypointProgress.Leg> retry = progress.failed(leg);
                 if (retry.isPresent()) beginLeg(retry);
@@ -985,15 +1087,103 @@ final class RegionActor implements RegionOwner.Body {
         route.progressTurn = turns;
         routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
     }
+    /** The waypoints can start: they have no recording steps, or the recordings those steps play were read. */
+    private boolean routeReady() { return waypoints != null && (waypoints.recordings() != null || waypoints.settings().recordings().isEmpty()); }
+    /** The definition's inline route when it has recording steps, whose recordings a route load reads; otherwise null. */
+    private WaypointSettings inlineSteps() {
+        try {
+            WaypointSettings inline = WaypointSettings.parse(spec.definition()).orElse(null);
+            return inline == null || inline.recordings().isEmpty() ? null : inline;
+        } catch (IllegalArgumentException invalid) { return null; }
+    }
+    private static final String STEP_ERROR = "recording step ";
+    /** Same rules as {@link PersistedNpcService}: walk in to the segment's first frame and play it, or block the leg. */
+    private void startStep(WaypointProgress.Leg leg) {
+        WaypointProgress progress = waypoints;
+        if (progress == null || !progress.current(leg) || !state.snapshot().active()) return;
+        if (!host.recordings().enabled()) { stepFailed(leg, RECORDINGS_DISABLED); return; }
+        RouteRecordings recordings = progress.recordings() == null ? RouteRecordings.NONE : progress.recordings();
+        RouteRecordings.Start start = recordings.start(leg.arrival(), leg.step(), state.snapshot().position().world(),
+                (String reference) -> Optional.ofNullable(host.worldKey(reference)));
+        if (start.run() == null) { stepFailed(leg, start.problem()); return; }
+        if (routeError != null && routeError.startsWith(STEP_ERROR)) routeError = null;
+        stepLeg = leg; stepProgress = progress; performance.held = null;
+        startRecording(start.run());
+    }
+    /** A step that cannot play or finish is a blocked leg under the route's failure rules. */
+    private void stepFailed(WaypointProgress.Leg leg, String reason) {
+        WaypointProgress progress = waypoints;
+        stepLeg = null; stepProgress = null;
+        routeError = STEP_ERROR + (leg == null ? "" : leg.arrival() + ": ") + reason;
+        navigationStatus = "blocked: " + routeError;
+        failWatch(navigationStatus);
+        if (progress == null || leg == null || !progress.current(leg)) return;
+        String failure = navigationStatus;
+        beginLeg(progress.failed(leg));
+        if (route != null) routeStatus(route, "waiting to retry", "after " + failure);
+    }
+    /** A step played to toTick: its waypoint is reached where the segment ended, and the route goes on from there. */
+    private void stepReached(UUID routeId) {
+        WaypointProgress progress = waypoints; WaypointProgress.Leg leg = stepLeg;
+        stepLeg = null; stepProgress = null;
+        if (leg == null) return;
+        arrivals++;
+        navigationStatus = "arrived; route=" + routeId + "; waypoint=" + leg.arrival() + "; recording step";
+        host.plugin.getServer().getPluginManager().callEvent(new VirtualNpcWaypointEvent(uuid, id, routeId, leg.arrival(), state.snapshot().position()));
+        host.waypoint(uuid, leg.arrival());
+        if (progress == null) { finishWatch(); return; }
+        if (!navigable() || route != null || waypoints != progress || !progress.current(leg)) return;
+        Optional<WaypointProgress.Leg> next = progress.arrived(leg, state.snapshot().position().point());
+        if (next.isPresent()) beginLeg(next);
+        else finishWatch();
+    }
+    /** Drops a stopped step and its route, so a later resumePatrol starts the declared route rather than the old step. */
+    private void forgetStep() {
+        if (performance.held != null && performance.held.step()) performance.held = null;
+        if (performance.run == null || !performance.run.step()) { stepLeg = null; stepProgress = null; }
+    }
+    /** An unchanged route whose step recording changed: a step playing it restarts, a stopped one forgets its cursor. */
+    private void recordingsReloaded(RouteRecordings before, RouteRecordings after) {
+        RecordingRun playing = performance.run;
+        if (playing != null && playing.step() && after.changed(before, playing.source().recording())) {
+            WaypointProgress.Leg leg = stepLeg;
+            stopRoute("recording step restarted: recording changed");
+            performance.held = null;
+            startStep(leg);
+            return;
+        }
+        RecordingRun held = performance.held;
+        if (held != null && held.step() && after.changed(before, held.source().recording())) performance.held = null;
+    }
     /** A leg that cannot finish: random and wander routes pause and choose again, every other route halts. */
     private void failLeg(Route current, String reason) {
-        if (teleportStuck(current)) return;
+        if (current.recording != null) {
+            if (current.plan != null) current.plan.cancel();
+            if (current.execution != null) current.execution.cancel();
+            if (route == current) route = null;
+            performance.walkFailed(current.recording, reason);
+            return;
+        }
+        if (exactPoint(current, reason) || teleportStuck(current)) return;
         WaypointProgress progress = waypoints;
         stopRoute(reason);
         if (progress == null || current.leg == null || !progress.retries() || route != null || !navigable()) return;
         String failure = navigationStatus;
         beginLeg(progress.failed(current.leg));
         if (route != null) routeStatus(route, "waiting to retry", "after " + failure);
+    }
+    /** Same jitter fallback as {@link PersistedNpcService}: a jittered goal that cannot finish walks to the exact point once. */
+    private boolean exactPoint(Route current, String reason) {
+        WaypointProgress progress = waypoints;
+        if (current.leg == null || !current.leg.jittered() || progress == null || route != current || !state.snapshot().active()) return false;
+        Optional<WaypointProgress.Leg> exact = progress.exact(current.leg);
+        if (exact.isEmpty()) return false;
+        if (current.plan != null) current.plan.cancel();
+        if (current.execution != null) current.execution.cancel();
+        route = null;
+        beginLeg(exact);
+        if (route != null) routeStatus(route, "queued", "exact point after " + reason);
+        return true;
     }
     /** Same stuck rule as {@link PersistedNpcService}: a waypoint leg ends at its point and the route goes on. */
     private boolean teleportStuck(Route current) {
@@ -1023,6 +1213,12 @@ final class RegionActor implements RegionOwner.Body {
     private void stopRoute(String reason) {
         Route current = route; route = null; routeSleeping = false; routeWaited = 0;
         if (doors != null) doors.closeAll(host.doors);
+        if (performance.run != null) {
+            // The cursor stays with the actor, so resumePatrol continues from it.
+            performance.stopped();
+            recordingDoors.closeAll(host.doors);
+            resetLook();
+        }
         if (current == null) { navigationStatus = reason; return; }
         if (current.plan != null) current.plan.cancel();
         if (current.execution != null) current.execution.cancel();
@@ -1056,23 +1252,165 @@ final class RegionActor implements RegionOwner.Body {
     double hullWidth() { return PersistedNpcService.hullWidth(bodyWidth()); }
     double hullHeight() { return PersistedNpcService.hullHeight(bodyHeight()); }
 
+    // ---- Recording playback, on the owner, inside the route slot ----
+
+    private static final String RECORDINGS_DISABLED = "recordings are disabled in config.toml";
+
+    /** The actor's side of {@link RegionPlayback}: routes, the body, terrain and cells of this region. */
+    private final class PlaybackActor implements RegionPlayback.Actor {
+        @Override public WorldPosition position() { return state.snapshot().position(); }
+        @Override public boolean active() { return state.snapshot().active(); }
+        @Override public long turns() { return turns; }
+        @Override public double hullWidth() { return RegionActor.this.hullWidth(); }
+        @Override public double hullHeight() { return RegionActor.this.hullHeight(); }
+        @Override public double walkSpeed() { return movement.routeSpeed(false, RegionPlayback.WALK_SPEED); }
+        @Override public boolean loaded(String world, int chunkX, int chunkZ) { return RegionActor.this.loaded(new ChunkPosition(world, chunkX, chunkZ)); }
+        @Override public int takeCells(int wanted) { return host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted); }
+        @Override public void refundCells(int unused) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, unused); }
+        @Override public int cellLimit() { return host.navigationSettings().motionCellsPerTick(); }
+        @Override public MotionValidator.Sampler terrain(String world) {
+            World loaded = host.world(world);
+            return loaded == null ? (int x, int y, int z) -> null : LiveMovementProbe.owned(loaded, (int x, int z) -> host.regions.owns(loaded, x, z, x, z));
+        }
+        @Override public void walk(RecordingRun run, WorldPosition goal, double speed, long deadline) {
+            PersistedNpcService.validateLeg(state.snapshot().position(), goal, MovementProfile.Mode.WALK, speed, hullWidth(), hullHeight());
+            cancelPlan();
+            route = route(goal, MovementProfile.Mode.WALK, speed, null);
+            route.recording = run; route.walk = true; route.progressTurn = turns; route.startTurn = turns; route.deadline = deadline;
+            routeStatus(route, "queued", "");
+        }
+        @Override public void play(RecordingRun run, int delay) {
+            cancelPlan();
+            route = route(state.snapshot().position(), MovementProfile.Mode.WALK, RegionPlayback.WALK_SPEED, null);
+            route.recording = run; route.walk = false; route.progressTurn = turns; route.startTurn = turns;
+            route.nextAttempt = turns + Math.max(1, delay);
+            routeStatus(route, run.phase() == RecordingRun.Phase.BLOCKED ? "blocked" : "playing", "");
+        }
+        @Override public void step(WorldPosition at, RecordingPose pose, boolean moved) {
+            if (moved) { state.move(at); host.index.upsert(state.snapshot()); RegionActor.this.pose++; }
+            setPose((float) pose.yaw(), (float) pose.pitch(), pose.onGround());
+            applyLook(pose);
+            if (route != null) route.progressTurn = turns;
+        }
+        @Override public void event(String world, RecordingEvent event) { playEvent(world, event); }
+        @Override public boolean teleportsWhenStuck() { return movement.teleportsWhenStuck(); }
+        @Override public void teleport(RecordingPose pose) {
+            WorldPosition goal = new WorldPosition(state.snapshot().position().world(), new Vec3(pose.x(), pose.y(), pose.z()));
+            World world = host.world(goal.world());
+            // Only terrain this region owns is read; a goal elsewhere is used as it is.
+            state.move(world == null ? goal : PersistedNpcService.stuckTarget(goal, MovementProfile.Mode.WALK, hullWidth(), hullHeight(),
+                    LiveMovementProbe.owned(world, (int x, int z) -> host.regions.owns(world, x, z, x, z))));
+            host.index.upsert(state.snapshot());
+            RegionActor.this.pose++; setPose((float) pose.yaw(), (float) pose.pitch(), true);
+        }
+        @Override public void status(String phase, String detail) { if (route != null) routeStatus(route, phase, detail); }
+        @Override public void retryIn(int ticks) { if (route != null) route.nextAttempt = turns + ticks; }
+        @Override public boolean watched() { return routeWatch != null; }
+        @Override public void ended(String status, boolean failed) {
+            cancelPlan();
+            if (route != null && route.execution != null) route.execution.cancel();
+            UUID routeId = route == null ? UUID.randomUUID() : route.id;
+            route = null;
+            recordingDoors.closeAll(host.doors);
+            if (failed) doors.closeAll(host.doors);
+            resetLook();
+            RecordingRun over = performance.held;
+            if (over != null && over.step()) {
+                performance.held = null;
+                if (failed) stepFailed(stepLeg, status); else stepReached(routeId);
+                return;
+            }
+            navigationStatus = status;
+            if (failed) failWatch(status); else finishWatch();
+        }
+        @Override public void stop(String reason) { stopRoute(reason); }
+    }
+    private void startRecording(RecordingRun run) {
+        navigationStatus = "starting";
+        performance.start(run);
+    }
+    private void playEvent(String world, RecordingEvent event) {
+        switch (event) {
+            case RecordingEvent.Swing ignored -> swings++;
+            case RecordingEvent.Equipment change -> {
+                if (!host.packets.equipmentAvailable()) return;
+                if (change.item().isEmpty()) { equipment.put(change.slot(), new ItemStack(org.bukkit.Material.AIR)); equipmentRevision++; return; }
+                ItemStack stack = DefinitionItems.stack(change.item().get(), "$.events", new ArrayList<>());
+                if (stack == null) return;
+                equipment.put(change.slot(), stack);
+                equipmentRevision++;
+            }
+            case RecordingEvent.Use use -> recordingDoors.use(world, new BlockPos(use.x(), use.y(), use.z()), host.doors);
+        }
+    }
+    private void applyLook(RecordingPose shown) {
+        if (!BodyRules.PLAYER.equals(spec.type())) return;
+        changeLook(RecordingSteps.pose(shown, spec.appearance().pose()), RecordingSteps.motion(shown));
+    }
+    private void resetLook() { changeLook(spec.appearance().pose(), 0); }
+    private void changeLook(NpcPose nextPose, int motion) {
+        if (lookPose == nextPose && lookMotion == motion) return;
+        lookPose = nextPose; lookMotion = motion; lookRevision++;
+        look = BodyLook.of(uuid, spec.type(), displayName, spec.appearance()).moving(nextPose, motion);
+    }
+    /** The recording a hotload re-reads: the one playing or kept, else the declared one. */
+    private RecordingSource recordingToRead() {
+        if (performance.run != null && !performance.run.step()) return performance.run.source();
+        if (performance.run == null && performance.held != null && !performance.held.step()) return performance.held.source();
+        return recordingSource;
+    }
+    /** Same rules as {@link PersistedNpcService}: a hotload re-read keeps an unchanged recording and restarts a changed one. */
+    private void finishRecordingRead(RouteRead read, RecordingDocument document, String failure) {
+        RecordingRun current = performance.run != null ? performance.run : performance.held;
+        String error = failure == null && !host.recordings().enabled() ? RECORDINGS_DISABLED : failure;
+        if (error == null)
+            error = RecordingWorlds.refusal(document, state.snapshot().position().world(), (String reference) -> Optional.ofNullable(host.worldKey(reference))).orElse(null);
+        if (error != null) {
+            routeError = error + "; last-valid-recording-retained=" + (current != null);
+            failWatch("unavailable: " + error);
+            if (route == null && performance.run == null) navigationStatus = "unavailable: recording " + read.recording.recording();
+            return;
+        }
+        routeError = null;
+        if (routeWatch != null && read.recording.playback() != Playback.ONCE) { navigationStatus = "invalid: a looping recording never finishes"; failWatch(navigationStatus); return; }
+        boolean same = current != null && current.source().equals(read.recording) && current.document().equals(document);
+        if (!read.start) {
+            if (same) return;
+            if (performance.run == null && performance.held != null) { performance.held = null; return; }
+            if (performance.run == null && route != null) return;
+        }
+        stopRoute("replaced by recording reload");
+        performance.held = null; waypoints = null;
+        startRecording(new RecordingRun(read.recording, document));
+    }
+
     // ---- File reads: admitted on the owner, completed back through the mailbox ----
 
     private void requestRouteRead() {
-        if (routeSource == null || routeRead != null) { routeReadWanted = false; return; }
-        if (startRouteRead(routeSource)) { routeReadWanted = false; if (route == null) navigationStatus = "loading reusable route"; }
+        RecordingSource recorded = (performance.run != null && !performance.run.step()) || routeSource == null ? recordingToRead() : null;
+        WaypointSettings inline = recorded == null && routeSource == null ? inlineSteps() : null;
+        if ((routeSource == null && recorded == null && inline == null) || routeRead != null) { routeReadWanted = false; return; }
+        if (startRead(recorded == null ? routeSource : null, inline, recorded, false)) {
+            routeReadWanted = false;
+            if (route == null) navigationStatus = recorded == null ? "loading reusable route" : "loading recording";
+        }
     }
-    private boolean startRouteRead(String reference) {
+    /**
+     * Reads a reusable route and its step recordings, the step recordings of the {@code inline} route, or a recording;
+     * {@code start} plays the recording whatever was playing.
+     */
+    private boolean startRead(String reference, WaypointSettings inline, RecordingSource recorded, boolean start) {
         if (!host.admitRead()) return false;
-        RouteRead read = new RouteRead(reference);
+        RouteRead read = new RouteRead(reference, inline, recorded, start, host.recordings().maximumFileBytes());
         routeRead = read;
         try { host.io.execute(read); return true; }
         catch (RejectedExecutionException full) { routeRead = null; host.releaseRead(); routeError = "I/O queue full; retry reload"; return false; }
     }
     private void cancelRouteRead() { routeReadWanted = false; if (routeRead != null) { routeRead.cancelled = true; routeRead = null; } }
-    private void finishRouteRead(RouteRead read, WaypointSettings settings, String failure) {
+    private void finishRouteRead(RouteRead read, WaypointSettings settings, RouteRecordings recordings, RecordingDocument document, String failure) {
         if (routeRead != read || read.cancelled) return;
         routeRead = null;
+        if (read.recording != null) { finishRecordingRead(read, document, failure); return; }
         if (failure != null) {
             routeError = failure + "; last-valid-route-retained=" + (waypoints != null);
             failWatch("unavailable: " + failure);
@@ -1081,9 +1419,18 @@ final class RegionActor implements RegionOwner.Body {
         }
         routeError = null;
         if (routeWatch != null && settings.endless()) { navigationStatus = "invalid: a looping route never finishes"; failWatch(navigationStatus); return; }
-        if (waypoints != null && !waypoints.reload(settings)) return;
-        stopRoute("replaced by reusable route reload");
-        if (waypoints == null) waypoints = progress(settings);
+        if (read.inline != null && waypoints == null) return;
+        if (waypoints != null && !waypoints.reload(settings)) {
+            RouteRecordings before = waypoints.recordings();
+            waypoints.recordings(recordings);
+            if (before != null) { recordingsReloaded(before, recordings); return; }
+            if (route != null || performance.run != null) return;
+        } else {
+            stopRoute("replaced by reusable route reload");
+            forgetStep();
+            if (waypoints == null) waypoints = progress(settings, read.inline != null ? WaypointProgress.INLINE : read.reference);
+            waypoints.recordings(recordings);
+        }
         beginLeg(waypoints.start(state.snapshot().position().point()));
     }
     private void readAppearance(String reference) {
@@ -1108,16 +1455,30 @@ final class RegionActor implements RegionOwner.Body {
             @Override public void refuse(String reason) { /* A dormant or retired NPC no longer wants this read. */ }
         });
     }
+    /**
+     * One reusable route and the recordings its steps play, the step recordings of an inline route, or one recording;
+     * every recording within the live {@code [recordings] maximumFileBytes}.
+     */
     private final class RouteRead implements Runnable {
-        final String reference; volatile boolean cancelled;
-        RouteRead(String reference) { this.reference = reference; }
+        final String reference; final WaypointSettings inline; final RecordingSource recording; final boolean start; final int maximumBytes; volatile boolean cancelled;
+        RouteRead(String reference, WaypointSettings inline, RecordingSource recording, boolean start, int maximumBytes) {
+            this.reference = reference; this.inline = inline; this.recording = recording; this.start = start; this.maximumBytes = maximumBytes;
+        }
         @Override public void run() {
-            WaypointSettings settings = null; String failure = null;
-            try { if (!cancelled) settings = RouteDocuments.read(host.runtime.documents(), reference); }
+            WaypointSettings settings = null; RouteRecordings steps = null; RecordingDocument document = null; String failure = null;
+            try {
+                if (!cancelled) {
+                    if (recording != null) document = RecordingDocuments.read(host.runtime.documents(), recording.recording(), maximumBytes);
+                    else {
+                        settings = inline != null ? inline : RouteDocuments.read(host.runtime.documents(), reference);
+                        steps = RouteRecordings.read(settings, (String id) -> RecordingDocuments.read(host.runtime.documents(), id, maximumBytes));
+                    }
+                }
+            }
             catch (Exception problem) { failure = PersistedNpcService.concise(problem); }
             finally { host.releaseRead(); }
-            WaypointSettings result = settings; String reason = failure;
-            if (!cancelled) complete(() -> finishRouteRead(this, result, reason));
+            WaypointSettings result = settings; RouteRecordings loaded = steps; RecordingDocument played = document; String reason = failure;
+            if (!cancelled) complete(() -> finishRouteRead(this, result, loaded, played, reason));
         }
     }
     private final class AppearanceRead implements Runnable {
@@ -1142,11 +1503,11 @@ final class RegionActor implements RegionOwner.Body {
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
                 && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
                 && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
-                && previous.swings() == swings) return;
+                && previous.lookRevision() == lookRevision && previous.swings() == swings) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         equipment.forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
-                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), swings);
+                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings);
     }
     private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {
@@ -1154,7 +1515,8 @@ final class RegionActor implements RegionOwner.Body {
         return current == null ? null : current.snapshot();
     }
     private String navigation() {
-        return navigationStatus + (routeSource == null ? "" : "; route-source=" + routeSource) + (routeError == null ? "" : "; route-error=" + routeError);
+        return navigationStatus + (routeSource == null ? "" : "; route-source=" + routeSource) + (routeError == null ? "" : "; route-error=" + routeError)
+                + performance.describe(recordingSource == null ? null : recordingSource.recording());
     }
 
     private static final class Route {
@@ -1164,6 +1526,8 @@ final class RegionActor implements RegionOwner.Body {
         long nextAttempt, progressTurn;
         /** The path being walked ends part way along a long leg. */
         boolean segment;
+        /** A recording's turn: a planned walk to its goal pose when {@link #walk}, otherwise its frames; a walk fails after {@link #deadline}. */
+        RecordingRun recording; boolean walk; long deadline = Long.MAX_VALUE, startTurn;
         Route(WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, Vec3 origin, LongLeg longLeg) {
             this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
             this.origin = origin; this.longLeg = longLeg;

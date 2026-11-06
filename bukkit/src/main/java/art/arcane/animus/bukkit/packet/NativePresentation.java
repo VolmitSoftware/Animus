@@ -62,6 +62,7 @@ final class NativePresentation {
         }
         poses = (Class<? extends Enum>) Class.forName("net.minecraft.world.entity.Pose");
         for (NpcPose candidate : NpcPose.values()) Enum.valueOf((Class) poses, BodyLook.nativePose(candidate));
+        Enum.valueOf((Class) poses, "FALL_FLYING");
         rotations = Class.forName("net.minecraft.core.Rotations").getConstructor(float.class, float.class, float.class);
         vector = Class.forName("org.joml.Vector3f").getConstructor(float.class, float.class, float.class);
         Class<?> component = Class.forName("net.minecraft.network.chat.Component");
@@ -108,13 +109,13 @@ final class NativePresentation {
     List<Object> bodyValues(BodyLook look, String typeKey) throws ReflectiveOperationException {
         List<Object> values = new ArrayList<>();
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        byte flags = BodyLook.sharedFlags(look.pose(), invisible, look.traits().glowing());
+        byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(dataValue.invoke(null, sharedFlags, flags));
         if (look.traits().usingItem()) values.add(dataValue.invoke(null, livingFlags, BodyLook.livingFlags(true)));
         Optional<BodyRules.BabyFlag> baby = look.traits().baby() ? BodyRules.babyFlag(typeKey) : Optional.empty();
         if (baby.isPresent() && babies.containsKey(baby.get())) values.add(dataValue.invoke(null, babies.get(baby.get()), Boolean.TRUE));
-        if (look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING)
-            values.add(dataValue.invoke(null, pose, Enum.valueOf((Class) poses, BodyLook.nativePose(look.pose()))));
+        if ((look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING) || (look.motion() & BodyLook.GLIDING) != 0)
+            values.add(dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.nativePose())));
         if (look.armorStand().isPresent()) {
             ArmorStandLook stand = look.armorStand().get();
             values.add(dataValue.invoke(null, standFlags, BodyLook.armorStandFlags(stand)));
@@ -139,7 +140,14 @@ final class NativePresentation {
     /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
     Object visibility(BodyLook look, boolean hidden) throws ReflectiveOperationException {
         boolean invisible = hidden || look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        return dataValue.invoke(null, sharedFlags, BodyLook.sharedFlags(look.pose(), invisible, look.traits().glowing()));
+        return dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible));
+    }
+
+    /** The shared flags and pose of a body whose pose changed in place; both are always sent, so standing again clears a crouch. */
+    List<Object> lookValues(BodyLook look) throws ReflectiveOperationException {
+        boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
+        return List.of(dataValue.invoke(null, sharedFlags, look.sharedFlags(invisible)),
+                dataValue.invoke(null, pose, Enum.valueOf((Class) poses, look.pose() == NpcPose.SITTING ? "STANDING" : look.nativePose())));
     }
 
     /** Formatted text as a styled vanilla component, so hex colours render; a plain literal would show them as codes. */

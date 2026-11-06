@@ -361,6 +361,20 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         } finally { buffer.release(); }
     }
 
+    /** The shared flags and pose of a visible body from {@code look}; both are always sent, so standing again clears a crouch. */
+    @Override public CompletionStage<Void> look(ServerPlayer viewer, BodyTransport.Body presented, BodyLook look) {
+        Body body = checkBody(presented);
+        Objects.requireNonNull(look);
+        Session session = existing(viewer);
+        if (session == null) return unwatched("Viewer is not watched");
+        if (session.visible.get(body.entityId) != body) return failed("Body is not visible to this viewer");
+        boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
+        Pose pose = look.pose() == NpcPose.SITTING ? Pose.STANDING : Pose.valueOf(look.nativePose());
+        return send(session, body, PacketKind.METADATA, List.of(new ClientboundSetEntityDataPacket(body.entityId, List.of(
+                SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), look.sharedFlags(invisible)),
+                SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), pose)))));
+    }
+
     @Override public CompletionStage<Void> equipment(ServerPlayer viewer, BodyTransport.Body presented, Map<EquipmentSlot, ItemStack> items) {
         Body body = checkBody(presented);
         Session session = existing(viewer);
@@ -521,7 +535,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     /** The body's shared flags, invisible when a rig hides it; its pose flags are kept. */
     private static SynchedEntityData.DataValue<Byte> visibility(BodyLook look, boolean hidden) {
         boolean invisible = hidden || look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        return SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), BodyLook.sharedFlags(look.pose(), invisible, look.traits().glowing()));
+        return SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), look.sharedFlags(invisible));
     }
 
     @Override public void placeRider(ServerPlayer rider, double x, double y, double z) {
@@ -598,7 +612,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
     private static List<SynchedEntityData.DataValue<?>> bodyValues(BodyLook look, String typeKey) {
         List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
-        byte flags = BodyLook.sharedFlags(look.pose(), invisible, look.traits().glowing());
+        byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), flags));
         if (look.traits().usingItem()) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(true)));
         if (look.traits().baby()) BodyRules.babyFlag(typeKey).ifPresent((BodyRules.BabyFlag flag) -> values.add(SynchedEntityData.DataValue.create(switch (flag) {
@@ -607,8 +621,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             case PIGLIN -> PiglinDataAccess.animus$baby();
             case ZOGLIN -> ZoglinDataAccess.animus$baby();
         }, Boolean.TRUE)));
-        if (look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING)
-            values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), Pose.valueOf(BodyLook.nativePose(look.pose()))));
+        if ((look.pose() != NpcPose.STANDING && look.pose() != NpcPose.SITTING) || (look.motion() & BodyLook.GLIDING) != 0)
+            values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), Pose.valueOf(look.nativePose())));
         if (look.armorStand().isPresent()) {
             ArmorStandLook stand = look.armorStand().get();
             values.add(SynchedEntityData.DataValue.create(ArmorStand.DATA_CLIENT_FLAGS, BodyLook.armorStandFlags(stand)));

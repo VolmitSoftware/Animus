@@ -1,0 +1,6 @@
+{"schemaVersion":1,"revision":1,"id":"market-loop","recordedBy":"8667ba71-b85a-4004-af54-457a9734eed7","world":"world",
+ "origin":{"x":100.50,"y":64.0,"z":-20.5,"yaw":90,"pitch":0.0},"sampleTicks":2,"durationTicks":80,
+ "frames":[[0,0.001,-0.004,0,90.2,0,1],[20,1.499,0,0.2500,92.6,-3.1,5],[40,3.2049,0,0.1,179.4,-3,5],[60,3.2,0.4200,0.104,-175.6,10.1,33],[80,0,0,0,89.9,0.2,1]],
+ "events":[{"tick":0,"type":"equipment","slot":"main_hand","item":{"id":"minecraft:iron_sword","count":1}},{"tick":20,"type":"swing"},
+  {"tick":40,"type":"equipment","slot":"off_hand","item":{"id":"minecraft:torch","count":16,"components":"[custom_name=\"Lamp\"]"}},
+  {"tick":40,"type":"use","x":104,"y":64,"z":-18,"block":"minecraft:oak_door"},{"tick":60,"type":"equipment","slot":"main_hand","item":null},{"tick":60,"type":"swing"}]}

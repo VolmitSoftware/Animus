@@ -18,8 +18,10 @@ import java.util.UUID;
  * the same look from the same definition.
  */
 public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, boolean hideProfileName, boolean aboveNativeNameplate,
-                       NpcPose pose, Optional<ArmorStandLook> armorStand, BodyTraits traits) {
+                       NpcPose pose, Optional<ArmorStandLook> armorStand, BodyTraits traits, int motion) {
     public static final int SEAT_FLAGS = 0x10 | 0x08;
+    /** Shared-flag bits of {@link #motion}: a sprinting body, and one gliding on elytra, which also shows the fall-flying pose. */
+    public static final int SPRINTING = 0x08, GLIDING = 0x80;
     public static final byte BILLBOARD_CENTER = 3;
     public static final int LINE_WIDTH = 4096;
     /** Vanilla's text display view range is a multiple of this many blocks. */
@@ -45,7 +47,19 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
     public BodyLook {
         rows = List.copyOf(rows);
         Objects.requireNonNull(style); Objects.requireNonNull(pose); Objects.requireNonNull(armorStand); Objects.requireNonNull(traits);
+        if ((motion & ~(SPRINTING | GLIDING)) != 0) throw new IllegalArgumentException("motion holds only the sprinting and gliding bits");
     }
+
+    /** This look in another pose and motion, as a recording playback shows it. */
+    public BodyLook moving(NpcPose nextPose, int nextMotion) {
+        return new BodyLook(profileName, rows, style, hideProfileName, aboveNativeNameplate, nextPose, armorStand, traits, nextMotion);
+    }
+
+    /** The shared flags this look sends: its pose, invisibility, glow and motion. */
+    public byte sharedFlags(boolean invisible) { return (byte) (sharedFlags(pose, invisible, traits.glowing()) | motion); }
+
+    /** The vanilla {@code Pose} constant this look shows; gliding shows {@code FALL_FLYING}. */
+    public String nativePose() { return (motion & GLIDING) != 0 ? "FALL_FLYING" : nativePose(pose); }
 
     /** Every row's text, top row first, one row per line. */
     public Optional<String> text() {
@@ -76,7 +90,7 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
         else rows.addAll(stacked(lines, hologram, nameRow));
         String profile = player && fitsProfile(name) ? name : uuid.toString().replace("-", "").substring(0, 16);
         return new BodyLook(profile, rows, TextStyle.of(hologram), player && !nativeName, nativeName && !rows.isEmpty(), appearance.pose(),
-                appearance.armorStand(), appearance.traits());
+                appearance.armorStand(), appearance.traits(), 0);
     }
 
     /**
@@ -100,7 +114,7 @@ public record BodyLook(String profileName, List<TextRow> rows, TextStyle style, 
 
     /** A plain body: the profile name is its nameplate and nothing else is presented. */
     public static BodyLook named(String profileName) {
-        return new BodyLook(profileName, List.of(), TextStyle.DEFAULT, false, false, NpcPose.STANDING, Optional.empty(), BodyTraits.DEFAULT);
+        return new BodyLook(profileName, List.of(), TextStyle.DEFAULT, false, false, NpcPose.STANDING, Optional.empty(), BodyTraits.DEFAULT, 0);
     }
 
     private static boolean fitsProfile(String name) {

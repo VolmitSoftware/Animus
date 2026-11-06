@@ -657,6 +657,42 @@
       }
     },
     {
+      "id": "animus:play-recording",
+      "kind": "action",
+      "description": "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
+      "arguments": {
+        "recording": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "playback": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "once",
+            "loop",
+            "pingpong"
+          ]
+        },
+        "wait": {
+          "type": "boolean",
+          "required": false
+        },
+        "timeoutTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 20,
+          "maximum": 12000
+        }
+      }
+    },
+    {
       "id": "animus:play-sound",
       "kind": "action",
       "description": "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player.",
@@ -806,6 +842,16 @@
           "atMost"
         ]
       ]
+    },
+    {
+      "id": "animus:resume-patrol",
+      "kind": "action",
+      "description": "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
+      "arguments": {}
     },
     {
       "id": "animus:say",

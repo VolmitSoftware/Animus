@@ -121,8 +121,15 @@ class ViewerWatchRaceTest {
         final FakeTransport transport = new FakeTransport();
         final FakeHost host = new FakeHost(this);
         final List<Runnable> ticks = new ArrayList<>();
+        /** The waypoint indexes the host was told were reached, in order. */
+        final List<Integer> reached = new ArrayList<>();
         MotionValidator.Sampler terrain;
         volatile boolean playersAway;
+        /** What {@code resolveWorld} answers; every reference names itself by default. */
+        java.util.function.Function<String, Optional<String>> worlds = Optional::of;
+        /** Chunks the host reports loaded; every chunk by default. */
+        volatile java.util.function.BiPredicate<Integer, Integer> loaded = (Integer x, Integer z) -> true;
+        art.arcane.animus.core.navigation.DoorPassage.Doors doors = art.arcane.animus.core.navigation.DoorPassage.NONE;
         PersistedNpcService<Player, Object> service;
         Harness(AnimusRuntime runtime, Path npcs) { this.runtime = runtime; this.npcs = npcs; }
         void tick(int count) { for (int i = 0; i < count; i++) for (Runnable tick : List.copyOf(ticks)) tick.run(); }
@@ -159,13 +166,16 @@ class ViewerWatchRaceTest {
         final AtomicInteger watches = new AtomicInteger(), spawned = new AtomicInteger(), forgotten = new AtomicInteger(), closed = new AtomicInteger();
         /** Body packets in the order the runtime sent them: "spawn", "move" or "despawn", a space and the body UUID. */
         final List<String> sent = new ArrayList<>();
-        volatile boolean watched, connected = true;
+        volatile boolean watched, connected = true, equipment, presentation;
         volatile String spawnFailure;
+        final AtomicInteger swings = new AtomicInteger(), equipped = new AtomicInteger();
+        /** Looks sent with {@link #look}, in order. */
+        final List<art.arcane.animus.core.presentation.BodyLook> looks = new ArrayList<>();
         private void requireWatch() { if (!watched) throw new BodyTransport.ViewerUnwatched("Viewer must be watched before sending body packets"); }
         @Override public Set<String> entityTypes() { return Set.of("minecraft:player", "minecraft:villager"); }
         @Override public String riderUnavailable() { return "test"; }
-        @Override public boolean presentationAvailable() { return false; }
-        @Override public boolean equipmentAvailable() { return false; }
+        @Override public boolean presentationAvailable() { return presentation; }
+        @Override public boolean equipmentAvailable() { return equipment; }
         @Override public Body createBody(UUID uuid, String typeKey, String profileName, BodySkin skin) { return new FakeBody(uuid, typeKey); }
         @Override public Body createBody(UUID uuid, String typeKey, String name, NpcAppearance appearance, BodySkin skin) { return new FakeBody(uuid, typeKey); }
         @Override public int presentationIds(UUID uuid, String typeKey, String name, NpcAppearance appearance) { return 0; }
@@ -184,7 +194,9 @@ class ViewerWatchRaceTest {
         @Override public CompletionStage<Void> move(Player viewer, Body body, BodyPose pose) { requireWatch(); sent.add("move " + body.uuid()); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> passengers(Player viewer, Body vehicle, List<? extends Body> passengers, Player realRider, boolean authoritative) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> dragonPhase(Player viewer, Body dragon, int phase) { return CompletableFuture.completedFuture(null); }
-        @Override public CompletionStage<Void> equipment(Player viewer, Body body, Map<EquipmentSlot, Object> items) { return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> equipment(Player viewer, Body body, Map<EquipmentSlot, Object> items) { equipped.incrementAndGet(); return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> swing(Player viewer, Body body) { swings.incrementAndGet(); return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> look(Player viewer, Body body, art.arcane.animus.core.presentation.BodyLook look) { looks.add(look); return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> despawn(Player viewer, Body body) { sent.add("despawn " + body.uuid()); return CompletableFuture.completedFuture(null); }
         @Override public void forget(Player viewer) { forgotten.incrementAndGet(); }
         @Override public ControlSubscription subscribeControl(Player viewer) { throw new IllegalStateException("no control"); }
@@ -196,7 +208,7 @@ class ViewerWatchRaceTest {
         private final Harness harness;
         FakeHost(Harness harness) { this.harness = harness; }
         @Override public boolean worldLoaded(String world) { return true; }
-        @Override public boolean chunkLoaded(String world, int chunkX, int chunkZ) { return true; }
+        @Override public boolean chunkLoaded(String world, int chunkX, int chunkZ) { return harness.loaded.test(chunkX, chunkZ); }
         @Override public MotionValidator.Sampler collision(String world) { return harness.terrain; }
         @Override public boolean ownerThread() { return true; }
         @Override public boolean execute(Runnable work) { work.run(); return true; }
@@ -222,15 +234,15 @@ class ViewerWatchRaceTest {
         @Override public boolean permitted(Player player, String node) { return false; }
         @Override public void tell(Player player, String message) {}
         @Override public boolean teleport(Player player, WorldPosition destination, float yaw, float pitch) { return false; }
-        @Override public Optional<String> resolveWorld(String reference) { return Optional.of(reference); }
+        @Override public Optional<String> resolveWorld(String reference) { return harness.worlds.apply(reference); }
         @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return true; }
         @Override public boolean clearSight(Player player, Vec3 eye, Vec3 direction, double distance) { return true; }
-        @Override public art.arcane.animus.core.navigation.DoorPassage.Doors doors() { return art.arcane.animus.core.navigation.DoorPassage.NONE; }
+        @Override public art.arcane.animus.core.navigation.DoorPassage.Doors doors() { return harness.doors; }
         @Override public boolean solid(String world, int x, int y, int z) { return y < 64; }
         @Override public boolean registeredEntity(UUID uuid) { return false; }
         @Override public Object item(NpcItem item, String path, List<String> errors) { return new Object(); }
         @Override public Object copy(Object item) { return item; }
         @Override public boolean interactionAllowed(Player player, UUID npc, Interaction action, double distance) { return true; }
-        @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) {}
+        @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) { harness.reached.add(waypoint); }
     }
 }

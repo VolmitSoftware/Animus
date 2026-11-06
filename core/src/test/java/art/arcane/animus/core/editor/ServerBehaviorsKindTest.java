@@ -32,10 +32,10 @@ class ServerBehaviorsKindTest {
     @Test
     void validationUsesTheStrictParser() {
         JsonArray valid = EditorDocuments.validate(DocumentKind.SERVER_BEHAVIORS, "server-behaviors",
-                JsonParser.parseString("{\"schemaVersion\":1,\"behaviors\":[\"town:welcome\"]}").getAsJsonObject());
+                JsonParser.parseString("{\"schemaVersion\":1,\"behaviors\":[\"town:welcome\"]}").getAsJsonObject(), 1_048_576);
         assertTrue(valid.isEmpty(), valid::toString);
         JsonArray revisioned = EditorDocuments.validate(DocumentKind.SERVER_BEHAVIORS, "server-behaviors",
-                JsonParser.parseString("{\"schemaVersion\":1,\"revision\":2,\"behaviors\":[]}").getAsJsonObject());
+                JsonParser.parseString("{\"schemaVersion\":1,\"revision\":2,\"behaviors\":[]}").getAsJsonObject(), 1_048_576);
         assertEquals(1, revisioned.size(), revisioned::toString);
     }
 }

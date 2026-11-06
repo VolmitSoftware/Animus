@@ -37,8 +37,22 @@ import art.arcane.animus.core.metrics.RuntimeGauges;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
 import art.arcane.animus.core.config.PluginSettings;
+import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.config.RigSettings;
 import art.arcane.animus.core.npc.NpcItem;
+import art.arcane.animus.core.npc.NpcPose;
+import art.arcane.animus.core.presentation.BodyLook;
+import art.arcane.animus.core.presentation.BodyRules;
+import art.arcane.animus.core.recording.Playback;
+import art.arcane.animus.core.recording.RecordingDocument;
+import art.arcane.animus.core.recording.RecordingDocuments;
+import art.arcane.animus.core.recording.RecordingEvent;
+import art.arcane.animus.core.recording.RecordingPlayback;
+import art.arcane.animus.core.recording.RecordingPose;
+import art.arcane.animus.core.recording.RecordingRun;
+import art.arcane.animus.core.recording.RecordingSource;
+import art.arcane.animus.core.recording.RecordingWorlds;
+import art.arcane.animus.core.recording.RouteRecordings;
 import art.arcane.animus.core.rig.AnimationDocument;
 import art.arcane.animus.core.rig.DisplayTransform;
 import art.arcane.animus.core.rig.NpcRig;
@@ -134,6 +148,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     final AnimusRuntime runtime;
     private final Executor io;
     private static final String DISABLED = "disabled in config.toml";
+    private static final String RECORDINGS_DISABLED = "recordings are disabled in config.toml";
+    /** Blocks per second of the walk to a recording's first frame and of a catch-up, unless the NPC's movement sets a speed. */
+    private static final double RECORDING_WALK_SPEED = 4;
+    /** A body this close to a recording pose plays it without walking there first. */
+    private static final double ARRIVED = 0.25;
     /** Owner thread only; a hotload replaces it at the start of a tick. */
     private Settings settings;
     /** Settings a hotload published on the file lane, taken by the owner at the start of its next tick. */
@@ -161,6 +180,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private final Deque<Value> rigOrder = new ArrayDeque<>();
     private final Deque<Value> lookOrder = new ArrayDeque<>();
     private RigSettings rigSettings;
+    /** The {@code [recordings]} table; owner thread only, replaced by a hotload at the start of a tick. */
+    private RecordingSettings recordingSettings;
     private final Deque<Value> routeReadQueue = new ArrayDeque<>();
     private final Set<RouteReadTask> routeReads = new HashSet<>();
     private final ConcurrentLinkedQueue<RouteReadCompletion> routeReadCompletions = new ConcurrentLinkedQueue<>();
@@ -219,6 +240,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         previews = new ViewerPreviews(io, runtime.documents());
         completionCapacity = completionCapacity(settings);
         rigSettings = runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT;
+        recordingSettings = runtime.isRunning() ? runtime.recordingSettings() : RecordingSettings.DEFAULT;
         navigationSettings = runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT;
         routeOrder = new RouteScheduler<>(navigationSettings.routesPerTick(), navigationSettings.wakeChecksPerTick(), (Route route) -> route.nextAttempt);
         owner();
@@ -272,6 +294,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (rigSettings.enabled() != next.rigs().enabled())
             for (Value value : rigOrder) value.rigGeneration = Long.MIN_VALUE;
         rigSettings = next.rigs();
+        recordingSettings = next.recordings();
         if (previous.maximumVisible() != settings.maximumVisible())
             for (Viewer viewer : viewers.values()) viewer.guard.limits(viewerLimits());
         if (!settings.enabled() && unavailable != DISABLED) suspend();
@@ -323,7 +346,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         return "NPC runtime ready | active=" + index.size() + " | viewers=" + viewers.size() + " | visible=" + visible
                 + " | skin-reads=" + skinTasks.size() + " | accepted=" + accepted + " | rejected=" + rejected
                 + " | routes=" + routeOrder.size() + " | routes-sleeping=" + routeOrder.sleeping() + " | routes-waiting=" + routeOrder.waiting()
-                + " | presentation=" + pressure.describe(tickNumber) + " | navigation-pressure=" + navigationPressure.describe() + " | path-jobs=" + navigation.outstandingJobs() + " | route-reads=" + routeReads.size()
+                + " | presentation=" + pressure.describe(tickNumber) + " | navigation-pressure=" + navigationPressure.describe() + " | path-jobs=" + navigation.outstandingJobs() + " | route-reads=" + routeReads.size() + " | recordings=" + playingRecordings()
                 + " | mounted=" + mountRuntime.mountedCount() + " | mount-problems=" + mountRuntime.problemCount() + " | riders=" + riders.count()
                 + " | chunks=" + host.chunkDelivery() + (failures.last() == null ? "" : " | last-error=" + failures.last());
     }
@@ -367,6 +390,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 + (entry.value == null ? "" : "; health=" + entry.value.state.snapshot().health())
                 + (entry.value == null ? "" : "; position=" + entry.value.state.snapshot().position().point() + "; navigation=" + entry.value.navigationStatus)
                 + (entry.value == null || entry.value.routeError == null ? "" : "; route-error=" + entry.value.routeError)
+                + (entry.value == null ? "" : recordingStatus(entry.value))
                 + (entry.value == null ? "" : appearance(entry.value))
                 + (entry.value == null ? "" : rigStatus(entry.value))
                 + (entry.value == null ? "" : mountRuntime.summary(entry.value))
@@ -439,7 +463,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (!available()) throw new IllegalStateException("NPC runtime " + (closed ? "closed" : unavailable));
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
         if (value == null) return false;
-        boolean running = value.route != null || value.routeReadQueued || value.routeTask != null || (value.waypoints != null && !value.waypoints.complete());
+        boolean running = value.route != null || value.routeReadQueued || value.routeTask != null || value.recording != null
+                || (value.waypoints != null && !value.waypoints.complete());
         cancelRouteRead(value); value.waypoints = null; stopRoute(value, "cancelled by administrator"); failWatch(value, "cancelled: navigation stopped"); return running;
     }
     @Override public String navigationStatus(String id) {
@@ -448,7 +473,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         return "Navigation " + id + ": " + (value == null ? "inactive" : value.navigationStatus + "; position="
                 + value.state.snapshot().position().point() + "; tick=" + tickNumber + "; arrivals=" + value.arrivals
                 + (value.routeSource == null ? "" : "; route-source=" + value.routeSource)
-                + (value.routeError == null ? "" : "; route-error=" + value.routeError));
+                + (value.routeError == null ? "" : "; route-error=" + value.routeError) + recordingStatus(value));
     }
     @Override public void lookAt(String id, WorldPosition target) {
         Value value = navigable(id); Objects.requireNonNull(target);
@@ -475,6 +500,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             LookClose look = value.lookClose;
             if (mountRuntime.vehicleOf(value.spec.definition().id()) != null || riders.riderOf(value.spec.definition().uuid()) != null) continue;
             if (!look.whileNavigating() && (value.routeTask != null || (value.route != null && (value.route.plan != null || value.route.execution != null)))) continue;
+            // A playing recording faces where the recorder looked.
+            if (value.recording != null) continue;
             WorldPosition at = value.state.snapshot().position();
             Vec3 eye = LookClose.eye(at.point(), bodyHeight(value));
             List<LookClose.Candidate<P>> candidates = new ArrayList<>();
@@ -551,11 +578,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     public void swing(String id) {
         if (!available()) return;
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
-        if (value == null) return;
-        for (Viewer viewer : viewers.values()) {
-            Presented body = viewer.visible.get(value.spec.definition().uuid());
-            if (body != null && body.value == value && body.bound && !body.retired) packets.swing(viewer.player, body.body);
-        }
+        if (value != null) swing(value);
     }
     /**
      * Moves an active NPC at once onto clear, supported, loaded ground, in its own world or another loaded one; false
@@ -598,12 +621,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     }
     /**
      * Where a stationary NPC stands guard: its definition's position, which no fight or route changes. Empty for an NPC
-     * that patrols waypoints or a reusable route, or that is not active.
+     * that patrols waypoints, a reusable route or a recording, or that is not active.
      */
     public Optional<WorldPosition> post(String id) {
         if (!available()) return Optional.empty();
         owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
-        if (value == null || !value.state.snapshot().active() || value.routeSource != null || WaypointSettings.parse(value.spec.definition()).isPresent())
+        if (value == null || !value.state.snapshot().active() || value.routeSource != null || value.recordingSource != null
+                || WaypointSettings.parse(value.spec.definition()).isPresent())
             return Optional.empty();
         return Optional.of(value.spec.position());
     }
@@ -612,13 +636,247 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         Value value = navigable(id);
         setPose(value, value.spec.yaw(), value.spec.pitch(), true);
     }
-    /** Restarts the definition's own waypoint patrol from its first point, if it declares one and nothing else moves the NPC. */
-    public void resumePatrol(String id) {
+    /**
+     * Restarts the definition's own patrol if nothing else moves the NPC: a recording stopped earlier continues from its
+     * cursor, a declared recording or reusable route is read again, and inline waypoints start from their first point.
+     */
+    @Override public boolean resumePatrol(String id) {
         Value value = navigable(id);
-        if (value.route != null || value.routeTask != null || value.routeReadQueued) return;
-        value.waypoints = WaypointSettings.parse(value.spec.definition()).map((WaypointSettings declared) -> progress(value, declared)).orElse(null);
-        if (value.waypoints != null) beginLeg(value, value.waypoints.start(value.state.snapshot().position().point()));
-        else requestRouteRead(value);
+        if (value.route != null || value.routeTask != null || value.routeReadQueued || value.recording != null) return false;
+        RecordingRun held = value.heldRecording;
+        if (held != null && held.step()) {
+            value.heldRecording = null;
+            WaypointProgress route = value.stepProgress;
+            if (!held.playback().finished() && route != null && route.current(value.stepLeg)) {
+                value.waypoints = route;
+                startRecording(value, held.resumed());
+                return true;
+            }
+            forgetStep(value);
+        }
+        if (held != null && !held.playback().finished()) {
+            value.heldRecording = null; value.waypoints = null;
+            startRecording(value, RecordingRun.resume(held.source(), held.document(), Optional.of(held.state())));
+            return true;
+        }
+        if (startInline(value)) return true;
+        if (value.recordingSource != null) {
+            value.heldRecording = null;
+            return startRecordingRead(value, value.recordingSource);
+        }
+        requestRouteRead(value);
+        return value.routeSource != null;
+    }
+    /** Replaces the current route with a recording read from {@code recordings/<id>.json}; the read and any failure show in navigation status. */
+    @Override public void playRecording(String id, String recording, Playback playback) {
+        Value value = navigable(id); Objects.requireNonNull(playback);
+        if (recording == null || !recording.matches(RecordingDocument.ID)) throw new IllegalArgumentException("Invalid recording identifier");
+        if (!recordingSettings.enabled()) throw new IllegalStateException(RECORDINGS_DISABLED);
+        if (routeReads.size() >= MAX_ROUTE_READS) throw new IllegalStateException("Recording reads are busy; retry shortly");
+        failWatch(value, "cancelled: replaced by a recording");
+        cancelRouteRead(value);
+        stopRoute(value, "cancelled: replaced by recording");
+        value.waypoints = null; value.heldRecording = null; forgetStep(value);
+        if (!startRecordingRead(value, new RecordingSource(recording, playback))) throw new IllegalStateException("I/O queue is full; retry shortly");
+    }
+    /** Reads a recording on the I/O lane and starts it from its first frame; false when the read could not start. */
+    private boolean startRecordingRead(Value value, RecordingSource source) {
+        if (routeReads.size() >= MAX_ROUTE_READS) return false;
+        RouteReadTask task = new RouteReadTask(value, source, true, runtime.documents());
+        value.routeTask = task; routeReads.add(task);
+        value.navigationStatus = "loading recording " + source.recording();
+        try { io.execute(task); }
+        catch (RejectedExecutionException full) { routeReads.remove(task); value.routeTask = null; return false; }
+        return true;
+    }
+    private int playingRecordings() {
+        int playing = 0;
+        for (Entry entry : entries.values()) if (entry.value != null && entry.value.recording != null) playing++;
+        return playing;
+    }
+    private static String recordingStatus(PersistedNpcService<?, ?>.Value value) {
+        if (value.recording != null) return "; " + value.recording.describe();
+        if (value.heldRecording != null) return "; " + value.heldRecording.describe(value.heldRecording.playback().finished() ? "finished" : "stopped");
+        return value.recordingSource == null ? "" : "; recording-source=" + value.recordingSource.recording();
+    }
+    /** Starts a run: the NPC walks to the pose at its cursor, or plays at once when it already stands there. */
+    private void startRecording(Value value, RecordingRun run) {
+        value.recording = run;
+        value.navigationStatus = "starting";
+        beginRecordingWalk(value, run);
+    }
+    /** A planned leg to the run's goal pose; a goal the body already stands at plays without walking. */
+    private void beginRecordingWalk(Value value, RecordingRun run) {
+        if (value.recording != run || !value.state.snapshot().active()) return;
+        WorldPosition at = value.state.snapshot().position();
+        RecordingPose pose = run.goal();
+        Vec3 target = new Vec3(pose.x(), pose.y(), pose.z());
+        if (at.point().distance(target) <= ARRIVED) { run.arrived(); beginRecordingPlay(value, run, 1); return; }
+        WorldPosition goal = new WorldPosition(at.world(), new Vec3(pose.x(), Math.floor(pose.y() + 0.000001), pose.z()));
+        double speed = value.movement.routeSpeed(false, RECORDING_WALK_SPEED);
+        try { validateDestination(value, goal, MovementProfile.Mode.WALK, speed); }
+        catch (IllegalArgumentException invalid) { endRecording(value, run, "invalid: " + invalid.getMessage()); return; }
+        Route route = new Route(value, goal, MovementProfile.Mode.WALK, speed, run, true);
+        route.deadline = tickNumber + RecordingSteps.walkTicks(at.point().distance(goal.point()), speed);
+        value.route = route; routeOrder.add(route, tickNumber); routeStatus(route, "queued", "");
+    }
+    /** The run's playing turn: one recorded tick per server tick from {@code delay} ticks on. */
+    private void beginRecordingPlay(Value value, RecordingRun run, int delay) {
+        if (value.recording != run) return;
+        Route route = new Route(value, value.state.snapshot().position(), MovementProfile.Mode.WALK, RECORDING_WALK_SPEED, run, false);
+        route.nextAttempt = tickNumber + Math.max(1, delay);
+        value.route = route; routeOrder.add(route, tickNumber); routeStatus(route, run.phase() == RecordingRun.Phase.BLOCKED ? "blocked" : "playing", "");
+    }
+    /** The walk reached its goal pose: the frames play on from the next tick. */
+    private void recordingArrived(Route route) {
+        Value value = route.value; RecordingRun run = route.recording;
+        if (value.route != route) return;
+        value.route = null;
+        run.arrived();
+        beginRecordingPlay(value, run, 1);
+    }
+    /** The walk could not reach its goal: aim further ahead, or apply the movement.stuck rules after five skips. */
+    private void recordingWalkFailed(Route route, String reason) {
+        Value value = route.value; RecordingRun run = route.recording;
+        if (route.plan != null) route.plan.cancel();
+        if (route.execution != null) route.execution.cancel();
+        routeOrder.remove(route);
+        if (value.route == route) value.route = null;
+        if (value.recording != run || !valueCurrent(value)) return;
+        if (run.walkFailed() == RecordingRun.Failure.RETRY_FURTHER) { beginRecordingWalk(value, run); return; }
+        if (value.movement.teleportsWhenStuck()) {
+            RecordingPose pose = run.goal();
+            WorldPosition goal = new WorldPosition(value.state.snapshot().position().world(), new Vec3(pose.x(), pose.y(), pose.z()));
+            value.state.move(stuckTarget(goal, MovementProfile.Mode.WALK, moveWidth(value), moveHeight(value), host.collision(goal.world())));
+            index.upsert(value.state.snapshot());
+            value.poseRevision++; setPose(value, (float) pose.yaw(), (float) pose.pitch(), true);
+            run.teleported();
+            beginRecordingPlay(value, run, 1);
+            return;
+        }
+        run.blocked();
+        if (run.source().playback() == Playback.ONCE) { endRecording(value, run, "blocked: " + reason); return; }
+        beginRecordingPlay(value, run, RecordingRun.BLOCKED_RETRY_TICKS);
+        if (value.route != null) routeStatus(value.route, "blocked", reason + "; retrying in " + RecordingRun.BLOCKED_RETRY_TICKS + " ticks");
+    }
+    /** The run stops for good: a blocked once playback, or an invalid goal. A waiting behavior fails with the reason. */
+    private void endRecording(Value value, RecordingRun run, String reason) {
+        if (value.recording != run) return;
+        Route route = value.route;
+        if (route != null) {
+            value.route = null; routeOrder.remove(route);
+            if (route.plan != null) route.plan.cancel();
+            if (route.execution != null) route.execution.cancel();
+        }
+        value.recording = null; value.heldRecording = run;
+        value.recordingDoors.closeAll(host.doors()); value.doors.closeAll(host.doors());
+        resetLook(value);
+        if (run.step()) { value.heldRecording = null; stepFailed(value, value.stepLeg, reason); return; }
+        value.navigationStatus = reason;
+        failWatch(value, reason);
+    }
+    /**
+     * One playing turn: the cursor moves a tick, the body steps to the interpolated pose after the same terrain check a
+     * route step gets, and the tick's events run. A refused step catches up; terrain that is not loaded pauses the cursor.
+     */
+    private RouteScheduler.Result playRecording(Route route) {
+        Value value = route.value; RecordingRun run = route.recording;
+        if (value.recording != run) { stopRoute(value, "cancelled: recording replaced"); return RouteScheduler.Result.DONE; }
+        if (run.phase() == RecordingRun.Phase.BLOCKED) {
+            value.route = null;
+            run.retry();
+            beginRecordingWalk(value, run);
+            return RouteScheduler.Result.DONE;
+        }
+        if (run.phase() == RecordingRun.Phase.UNAVAILABLE || run.phase() == RecordingRun.Phase.SLEEPING) run.retry();
+        WorldPosition at = value.state.snapshot().position();
+        String world = at.world();
+        if (!host.worldLoaded(world)) { stopRoute(value, "cancelled: world unavailable"); return RouteScheduler.Result.DONE; }
+        RecordingPlayback.State before = run.state();
+        run.playback().advance();
+        RecordingPose pose = run.playback().pose();
+        Vec3 to = new Vec3(pose.x(), pose.y(), pose.z());
+        if (!host.chunkLoaded(world, Math.floorDiv((int) Math.floor(to.x()), 16), Math.floorDiv((int) Math.floor(to.z()), 16))) {
+            pausePlayback(route, before, "unavailable terrain at the next frame; no chunk loading requested");
+            return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
+        }
+        double distance = at.point().distance(to);
+        if (distance > 0.000001) {
+            int cells = RecordingSteps.cells(moveWidth(value), moveHeight(value), distance);
+            if (motionCells < cells && motionCells < navigationSettings.motionCellsPerTick()) { run.rewind(before); return RouteScheduler.Result.DEFER; }
+            MotionValidator.Result check = RecordingSteps.check(at.point(), pose, moveWidth(value), moveHeight(value), host.collision(world));
+            motionCells -= check.sampledCells();
+            if (check.status() == MotionValidator.Status.UNAVAILABLE_TERRAIN) {
+                pausePlayback(route, before, check.detail());
+                return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
+            }
+            if (!check.clear()) {
+                value.route = null;
+                run.refused();
+                beginRecordingWalk(value, run);
+                if (value.route != null) routeStatus(value.route, "catching up", "blocked: " + check.status() + "; " + check.detail());
+                return RouteScheduler.Result.DONE;
+            }
+            value.state.move(new WorldPosition(world, to)); index.upsert(value.state.snapshot());
+            value.poseRevision++;
+        }
+        setPose(value, (float) pose.yaw(), (float) pose.pitch(), pose.onGround());
+        applyLook(value, pose);
+        for (RecordingEvent event : run.playback().due()) playEvent(value, world, event);
+        route.progressTick = tickNumber;
+        if (run.finished()) {
+            value.route = null; value.recording = null; value.heldRecording = run;
+            value.recordingDoors.closeAll(host.doors());
+            resetLook(value);
+            if (run.step()) { value.heldRecording = null; stepReached(value, route); return RouteScheduler.Result.DONE; }
+            value.navigationStatus = "finished";
+            finishWatch(value);
+            return RouteScheduler.Result.DONE;
+        }
+        routeStatus(route, "playing", "");
+        return RouteScheduler.Result.KEEP;
+    }
+    /** The next frame cannot be played yet: the cursor stays and the turn comes back later. A waiting behavior is told now. */
+    private void pausePlayback(Route route, RecordingPlayback.State before, String reason) {
+        RecordingRun run = route.recording;
+        run.rewind(before);
+        if (route.value.routeWatch != null) { stopRoute(route.value, "unavailable: " + reason); return; }
+        run.paused(RecordingRun.Phase.UNAVAILABLE);
+        route.nextAttempt = tickNumber + 20;
+        routeStatus(route, "unavailable", reason);
+    }
+    private void playEvent(Value value, String world, RecordingEvent event) {
+        switch (event) {
+            case RecordingEvent.Swing ignored -> swing(value);
+            case RecordingEvent.Equipment change -> {
+                if (!packets.equipmentAvailable()) return;
+                Optional<I> stack = change.item().isPresent() ? Optional.ofNullable(host.item(change.item().get(), "$.events", new ArrayList<>())) : host.emptyItem();
+                if (change.item().isPresent() && stack.isEmpty()) return;
+                if (stack.isPresent()) value.equipment.put(change.slot(), stack.get());
+                else value.equipment.remove(change.slot());
+                value.equipmentRevision++;
+            }
+            case RecordingEvent.Use use -> value.recordingDoors.use(world, new BlockPos(use.x(), use.y(), use.z()), host.doors());
+        }
+    }
+    /** Sneaking, swimming, sprinting and gliding show on a player body as metadata, without respawning it. */
+    private void applyLook(Value value, RecordingPose pose) {
+        if (!BodyRules.PLAYER.equals(value.spec.type())) return;
+        changeLook(value, RecordingSteps.pose(pose, value.spec.appearance().pose()), RecordingSteps.motion(pose));
+    }
+    private void resetLook(Value value) { changeLook(value, value.spec.appearance().pose(), 0); }
+    private void changeLook(Value value, NpcPose pose, int motion) {
+        if (value.lookPose == pose && value.lookMotion == motion) return;
+        value.lookPose = pose; value.lookMotion = motion; value.lookRevision++;
+        value.look = BodyLook.of(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.spec.appearance()).moving(pose, motion);
+    }
+    private void swing(Value value) {
+        for (Viewer viewer : viewers.values()) {
+            Presented body = viewer.visible.get(value.spec.definition().uuid());
+            if (body == null || body.value != value || !body.bound || body.retired) continue;
+            try { packets.swing(viewer.player, body.body); }
+            catch (RuntimeException failure) { cosmeticFailed(viewer, "swing", value, failure); }
+        }
     }
     /** Replaces the current route with a reusable route; its read and any read failure are reported in navigation status. */
     @Override public void followRoute(String id, String route) {
@@ -628,8 +886,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         failWatch(value, "cancelled: replaced by a new route");
         cancelRouteRead(value);
         stopRoute(value, "cancelled: replaced by reusable route");
-        value.waypoints = null;
-        RouteReadTask task = new RouteReadTask(value, route, runtime.documents());
+        value.waypoints = null; forgetStep(value);
+        RouteReadTask task = new RouteReadTask(value, route, null, runtime.documents());
         value.routeTask = task; routeReads.add(task);
         try { io.execute(task); }
         catch (RejectedExecutionException full) {
@@ -879,7 +1137,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
      * naming the leg, so an imported patrol that stops is explained.
      */
     private void blockLeg(Route route, String reason) {
+        if (route.recording != null) { failLeg(route, reason); return; }
         Value value = route.value;
+        if (exactPoint(route, reason)) return;
         String id = value.spec.definition().id();
         boolean once = AnimusLog.shared().debug();
         if (!once || !value.blockedWarned) {
@@ -914,6 +1174,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     void stopRoute(Value value, String reason) {
         Route route = value.route; value.route = null;
         value.doors.closeAll(host.doors());
+        RecordingRun run = value.recording;
+        if (run != null) {
+            // The cursor stays in the value, so resumePatrol continues from it.
+            value.recording = null; value.heldRecording = run;
+            value.recordingDoors.closeAll(host.doors());
+            resetLook(value);
+        }
         if (route != null) {
             routeOrder.remove(route); if (route.plan != null) route.plan.cancel();
             if (route.execution != null) route.execution.cancel();
@@ -921,8 +1188,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (route == null) value.navigationStatus = reason;
         else { routeStatus(route, reason, ""); failWatch(value, reason); }
     }
-    private WaypointProgress progress(Value value, WaypointSettings declared) {
-        return WaypointProgress.of(declared, value.spec.position().point(), value.spec.definition().uuid());
+    private WaypointProgress progress(Value value, WaypointSettings declared, String route) {
+        return WaypointProgress.of(declared, value.spec.position().point(), value.spec.definition().uuid(), route);
     }
     /** Queues the route's next leg. A pause leg holds the route's slot until its wait ends; a random or wander leg that cannot start pauses instead. */
     private void beginLeg(Value value, Optional<WaypointProgress.Leg> next) {
@@ -931,11 +1198,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         WaypointProgress.Leg leg = next.get();
         WaypointSettings waypointSettings = progress.settings();
         WorldPosition at = value.state.snapshot().position();
-        WorldPosition goal = leg.pause() ? at : new WorldPosition(at.world(), leg.goal());
+        WorldPosition goal = leg.goal() == null ? at : new WorldPosition(at.world(), leg.goal());
         double speed = value.movement.routeSpeed(value.routeSpeedDeclared, waypointSettings.speed());
-        if (!leg.pause()) {
+        if (leg.goal() != null) {
             try { validateDestination(value, goal, waypointSettings.mode(), speed); }
             catch (IllegalArgumentException invalid) {
+                if (leg.jittered()) { beginLeg(value, progress.exact(leg)); return; }
                 value.navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(value, value.navigationStatus);
                 Optional<WaypointProgress.Leg> retry = progress.failed(leg);
                 if (retry.isPresent()) beginLeg(value, retry);
@@ -946,16 +1214,104 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         route.nextAttempt = tickNumber + Math.max(1, leg.waitTicks());
         value.route = route; routeOrder.add(route, tickNumber); routeStatus(route, leg.pause() ? "waiting to retry" : "queued", "");
     }
+    /**
+     * Starts the definition's inline route; false when it has none. A route with recording steps first reads their
+     * recordings, so its first leg waits for that read.
+     */
+    private boolean startInline(Value value) {
+        value.waypoints = WaypointSettings.parse(value.spec.definition()).map((WaypointSettings declared) -> progress(value, declared, WaypointProgress.INLINE)).orElse(null);
+        if (value.waypoints == null) return false;
+        if (value.waypoints.settings().recordings().isEmpty()) beginLeg(value, value.waypoints.start(value.state.snapshot().position().point()));
+        else requestRouteRead(value);
+        return true;
+    }
+    /** A step leg's wait is over: walk in to the segment's first frame and play it, or block the leg with the reason it cannot. */
+    private void startStep(Value value, WaypointProgress.Leg leg) {
+        WaypointProgress progress = value.waypoints;
+        if (progress == null || !progress.current(leg) || !value.state.snapshot().active()) return;
+        if (!recordingSettings.enabled()) { stepFailed(value, leg, RECORDINGS_DISABLED); return; }
+        RouteRecordings recordings = progress.recordings() == null ? RouteRecordings.NONE : progress.recordings();
+        RouteRecordings.Start start = recordings.start(leg.arrival(), leg.step(), value.state.snapshot().position().world(), host::resolveWorld);
+        if (start.run() == null) { stepFailed(value, leg, start.problem()); return; }
+        if (value.routeError != null && value.routeError.startsWith(STEP_ERROR)) value.routeError = null;
+        value.stepLeg = leg; value.stepProgress = progress; value.heldRecording = null;
+        startRecording(value, start.run());
+    }
+    private static final String STEP_ERROR = "recording step ";
+    /** A step that cannot play or finish is a blocked leg: the route's failure rules apply, so random routes retry and others halt. */
+    private void stepFailed(Value value, WaypointProgress.Leg leg, String reason) {
+        WaypointProgress progress = value.waypoints;
+        value.stepLeg = null; value.stepProgress = null;
+        value.routeError = STEP_ERROR + (leg == null ? "" : leg.arrival() + ": ") + reason;
+        value.navigationStatus = "blocked: " + value.routeError;
+        failWatch(value, value.navigationStatus);
+        if (progress == null || leg == null || !progress.current(leg)) return;
+        String failure = value.navigationStatus;
+        beginLeg(value, progress.failed(leg));
+        if (value.route != null) routeStatus(value.route, "waiting to retry", "after " + failure);
+    }
+    /** A step played its segment to toTick: the waypoint is reached where the segment ended, and the route goes on from there. */
+    private void stepReached(Value value, Route route) {
+        WaypointProgress progress = value.waypoints; WaypointProgress.Leg leg = value.stepLeg;
+        value.stepLeg = null; value.stepProgress = null;
+        if (leg == null) return;
+        value.arrivals++;
+        value.navigationStatus = "arrived; route=" + route.id + "; waypoint=" + leg.arrival() + "; recording step";
+        host.waypointReached(value.spec.definition().uuid(), value.spec.definition().id(), route.id, leg.arrival(), value.state.snapshot().position());
+        if (triggers != null) triggers.waypoint(value.spec.definition().uuid(), leg.arrival());
+        if (progress == null || value.waypoints != progress || value.route != null || !valueCurrent(value) || !progress.current(leg)) {
+            if (progress == null) finishWatch(value);
+            return;
+        }
+        Optional<WaypointProgress.Leg> next = progress.arrived(leg, value.state.snapshot().position().point());
+        if (next.isPresent()) beginLeg(value, next);
+        else finishWatch(value);
+    }
+    /** Drops a stopped step and its route, so a later resumePatrol starts the declared route rather than the old step. */
+    private static void forgetStep(PersistedNpcService<?, ?>.Value value) {
+        if (value.heldRecording != null && value.heldRecording.step()) value.heldRecording = null;
+        if (value.recording == null || !value.recording.step()) { value.stepLeg = null; value.stepProgress = null; }
+    }
+    /**
+     * The route is unchanged but a recording its steps play changed: a step playing it restarts from fromTick, as a
+     * recording source restarts, and a stopped step of it forgets its cursor.
+     */
+    private void recordingsReloaded(Value value, RouteRecordings before, RouteRecordings after) {
+        RecordingRun playing = value.recording;
+        if (playing != null && playing.step() && after.changed(before, playing.source().recording())) {
+            WaypointProgress.Leg leg = value.stepLeg;
+            stopRoute(value, "recording step restarted: recording changed");
+            value.heldRecording = null;
+            startStep(value, leg);
+            return;
+        }
+        RecordingRun held = value.heldRecording;
+        if (held != null && held.step() && after.changed(before, held.source().recording())) value.heldRecording = null;
+    }
     /** A leg that cannot finish: random and wander routes pause and choose again, every other route halts. */
     private void failLeg(Route route, String reason) {
+        if (route.recording != null) { recordingWalkFailed(route, reason); return; }
         Value value = route.value;
-        if (teleportStuck(route)) return;
+        if (exactPoint(route, reason) || teleportStuck(route)) return;
         WaypointProgress progress = value.waypoints;
         stopRoute(value, reason);
         if (progress == null || route.leg == null || !progress.retries() || value.route != null || !valueCurrent(value)) return;
         String failure = value.navigationStatus;
         beginLeg(value, progress.failed(route.leg));
         if (value.route != null) routeStatus(value.route, "waiting to retry", "after " + failure);
+    }
+    /** A leg aimed at a jittered goal that cannot finish walks to its exact point instead, once, before any stuck rule. */
+    private boolean exactPoint(Route route, String reason) {
+        Value value = route.value; WaypointProgress progress = value.waypoints;
+        if (route.leg == null || !route.leg.jittered() || progress == null || value.route != route || !routeCurrent(route)) return false;
+        Optional<WaypointProgress.Leg> exact = progress.exact(route.leg);
+        if (exact.isEmpty()) return false;
+        if (route.plan != null) route.plan.cancel();
+        if (route.execution != null) route.execution.cancel();
+        routeOrder.remove(route); value.route = null;
+        beginLeg(value, exact);
+        if (value.route != null) routeStatus(value.route, "queued", "exact point after " + reason);
+        return true;
     }
     /**
      * A waypoint leg of an NPC whose movement teleports when stuck ends at its point, as Citizens' default stuck action
@@ -1014,9 +1370,16 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             @Override public void slept(Route route) {
                 if (route.plan != null) route.plan.cancel(); route.plan = null; route.result = null;
                 route.value.doors.closeAll(host.doors());
+                if (route.recording != null) route.recording.paused(RecordingRun.Phase.SLEEPING);
                 routeStatus(route, "sleeping", "no player within " + (int) settings.viewDistance() + " blocks");
             }
-            @Override public void woke(Route route) { route.progressTick = tickNumber; routeStatus(route, "queued", "a player is near"); }
+            @Override public void woke(Route route) {
+                route.progressTick = tickNumber;
+                if (route.recording != null) route.recording.retry();
+                if (route.recording != null && route.walk)
+                    route.deadline = tickNumber + RecordingSteps.walkTicks(route.value.state.snapshot().position().point().distance(route.goal.point()), route.speed);
+                routeStatus(route, "queued", "a player is near");
+            }
         });
         navigationPressure.observe(tickNumber, turn.deferred() + pathRefusals, "routesPerTick=" + navigationSettings.routesPerTick()
                 + ", motionCellsPerTick=" + navigationSettings.motionCellsPerTick() + ", planningStartsPerTick=" + navigationSettings.planningStartsPerTick()
@@ -1028,7 +1391,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
      * a behavior waits for, never sleeps. The answer is kept for a second, so checking costs one player scan per route per second.
      */
     private boolean routeAwake(Route route) {
-        if (route.leg == null || route.value.routeWatch != null || !routeCurrent(route)) return true;
+        if ((route.leg == null && route.recording == null) || route.value.routeWatch != null || !routeCurrent(route)) return true;
         // A new route has never looked: awakeChecked starts unset, and subtracting from it must not overflow into "recent".
         if (route.awakeChecked != Long.MIN_VALUE && tickNumber - route.awakeChecked < AWAKE_RECHECK_TICKS) return route.awake;
         route.awakeChecked = tickNumber;
@@ -1038,14 +1401,29 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     private RouteScheduler.Result workRoute(Route route) {
         Value value = route.value;
         if (!routeCurrent(route)) { stopRoute(value, "cancelled by definition/lifecycle change"); return RouteScheduler.Result.DONE; }
+        if (route.recording != null && !recordingSettings.enabled()) {
+            value.routeError = RECORDINGS_DISABLED;
+            endRecording(value, route.recording, "unavailable: " + RECORDINGS_DISABLED);
+            return RouteScheduler.Result.DONE;
+        }
+        if (route.recording != null && !route.walk) return playRecording(route);
         if (route.leg != null && route.leg.pause()) {
             value.route = null;
             if (value.waypoints != null) beginLeg(value, value.waypoints.resume(route.leg, value.state.snapshot().position().point()));
             return RouteScheduler.Result.DONE;
         }
+        if (route.leg != null && route.leg.step() != null && route.recording == null) {
+            value.route = null;
+            startStep(value, route.leg);
+            return RouteScheduler.Result.DONE;
+        }
         String world = route.goal.world();
         if (!host.worldLoaded(world)) { stopRoute(value, "cancelled: world unavailable"); return RouteScheduler.Result.DONE; }
-        if (route.leg != null && value.movement.stuck(tickNumber - route.progressTick)) {
+        if (route.recording != null && tickNumber > route.deadline) {
+            failLeg(route, "unreachable: the walk to the recording took longer than " + (route.deadline - route.progressStart) + " ticks");
+            return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
+        }
+        if ((route.leg != null || route.recording != null) && value.movement.stuck(tickNumber - route.progressTick)) {
             failLeg(route, "stuck: no progress for " + (tickNumber - route.progressTick) + " ticks");
             return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
         }
@@ -1214,6 +1592,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     }
     private void arriveAt(Route route) {
         Value value = route.value; if (!routeCurrent(route)) return;
+        if (route.recording != null) { recordingArrived(route); return; }
         WaypointProgress progress = value.waypoints;
         value.route = null; routeStatus(route, "arrived", "");
         value.arrivals++;
@@ -1237,10 +1616,23 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         return available() && entry != null && entry.value == value && value.authority.accepts(runtime.npcs().snapshot().get(entry.id));
     }
     private void requestRouteRead(Value value) {
-        if (value.routeSource == null || value.routeReadQueued || value.routeTask != null) return;
+        if ((value.routeSource == null && recordingToRead(value) == null && inlineSteps(value) == null) || value.routeReadQueued || value.routeTask != null) return;
         // Each NPC queues at most once, so the queue never outgrows the active NPCs; reads start a few per tick.
         value.routeReadQueued = true; routeReadQueue.addLast(value);
-        if (value.route == null) value.navigationStatus = "loading reusable route";
+        if (value.route == null) value.navigationStatus = value.routeSource == null ? "loading recording" : "loading reusable route";
+    }
+    /** The recording a hotload re-reads: the one playing or kept, else the declared one. A playing recording wins over a declared route. */
+    private static RecordingSource recordingToRead(PersistedNpcService<?, ?>.Value value) {
+        if (value.recording != null && !value.recording.step()) return value.recording.source();
+        if (value.recording == null && value.heldRecording != null && !value.heldRecording.step()) return value.heldRecording.source();
+        return value.recordingSource;
+    }
+    /** The definition's inline route when it has recording steps, whose recordings a route load reads; otherwise null. */
+    private static WaypointSettings inlineSteps(PersistedNpcService<?, ?>.Value value) {
+        try {
+            WaypointSettings inline = WaypointSettings.parse(value.spec.definition()).orElse(null);
+            return inline == null || inline.recordings().isEmpty() ? null : inline;
+        } catch (IllegalArgumentException invalid) { return null; }
     }
     void cancelRouteRead(Value value) {
         routeReadQueue.remove(value); value.routeReadQueued = false;
@@ -1253,6 +1645,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             boolean ownsTask = value.routeTask == task;
             if (ownsTask) value.routeTask = null;
             if (task.cancelled || !ownsTask || !valueCurrent(value)) continue;
+            if (task.recording != null) { finishRecordingRead(task, completion); continue; }
             if (completion.error != null) {
                 value.routeError = completion.error + "; last-valid-route-retained=" + (value.waypoints != null);
                 failWatch(value, "unavailable: " + completion.error);
@@ -1261,18 +1654,63 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             }
             value.routeError = null;
             if (value.routeWatch != null && completion.settings.endless()) { value.navigationStatus = "invalid: a looping route never finishes"; failWatch(value, value.navigationStatus); continue; }
-            if (value.waypoints != null && !value.waypoints.reload(completion.settings)) continue;
-            stopRoute(value, "replaced by reusable route reload");
-            if (value.waypoints == null) value.waypoints = progress(value, completion.settings);
+            if (task.inline != null && value.waypoints == null) continue;
+            if (value.waypoints != null && !value.waypoints.reload(completion.settings)) {
+                RouteRecordings before = value.waypoints.recordings();
+                value.waypoints.recordings(completion.recordings);
+                if (before != null) { recordingsReloaded(value, before, completion.recordings); continue; }
+            } else {
+                stopRoute(value, "replaced by reusable route reload");
+                forgetStep(value);
+                if (value.waypoints == null) value.waypoints = progress(value, completion.settings, task.inline != null ? WaypointProgress.INLINE : task.source);
+                value.waypoints.recordings(completion.recordings);
+            }
             beginLeg(value, value.waypoints.start(value.state.snapshot().position().point()));
         }
         for (int i = 0; i < MAX_ROUTE_READS && routeReads.size() < MAX_ROUTE_READS && !routeReadQueue.isEmpty(); i++) {
             Value value = routeReadQueue.removeFirst(); value.routeReadQueued = false;
             if (!valueCurrent(value)) continue;
-            RouteReadTask task = new RouteReadTask(value, value.routeSource, runtime.documents()); value.routeTask = task; routeReads.add(task);
+            RecordingSource recording = (value.recording != null && !value.recording.step()) || value.routeSource == null ? recordingToRead(value) : null;
+            WaypointSettings inline = recording == null && value.routeSource == null ? inlineSteps(value) : null;
+            if (recording == null && value.routeSource == null && inline == null) continue;
+            RouteReadTask task = recording != null ? new RouteReadTask(value, recording, false, runtime.documents())
+                    : new RouteReadTask(value, value.routeSource, inline, runtime.documents());
+            value.routeTask = task; routeReads.add(task);
             try { io.execute(task); }
             catch (RejectedExecutionException full) { routeReads.remove(task); value.routeTask = null; value.routeError = "I/O queue full; retry reload"; }
         }
+    }
+    /**
+     * A recording read finished. A started read plays from the first frame; a hotload re-read leaves an unchanged
+     * recording alone, restarts a changed one that is playing, forgets the kept cursor of a changed stopped one, and
+     * starts an NPC that had nothing to play. A failed read keeps the last valid recording.
+     */
+    private void finishRecordingRead(RouteReadTask task, RouteReadCompletion completion) {
+        Value value = task.value;
+        RecordingRun current = value.recording != null ? value.recording : value.heldRecording;
+        String error = completion.error == null && !recordingSettings.enabled() ? RECORDINGS_DISABLED : completion.error;
+        if (error == null)
+            error = RecordingWorlds.refusal(completion.recording, value.state.snapshot().position().world(), host::resolveWorld).orElse(null);
+        if (error != null) {
+            value.routeError = error + "; last-valid-recording-retained=" + (current != null);
+            failWatch(value, "unavailable: " + error);
+            if (value.route == null && value.recording == null) value.navigationStatus = "unavailable: recording " + task.recording.recording();
+            return;
+        }
+        value.routeError = null;
+        RecordingDocument document = completion.recording;
+        if (value.routeWatch != null && task.recording.playback() != Playback.ONCE) {
+            value.navigationStatus = "invalid: a looping recording never finishes"; failWatch(value, value.navigationStatus); return;
+        }
+        boolean same = current != null && current.source().equals(task.recording) && current.document().equals(document);
+        if (!task.start) {
+            if (same) return;
+            if (value.recording == null && value.heldRecording != null) { value.heldRecording = null; return; }
+            if (value.recording == null && value.route != null) return;
+        }
+        stopRoute(value, "replaced by recording reload");
+        value.heldRecording = null; value.waypoints = null;
+        startRecording(value, new RecordingRun(task.recording, document));
     }
     public Optional<CombatBinding> combat(String id) {
         if (!available()) return Optional.empty();
@@ -1443,10 +1881,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (entry.value.rigId != null) { bindRig(entry.value); rigOrder.addLast(entry.value); }
         if (entry.value.lookClose != null) lookOrder.addLast(entry.value);
         if (!sameNpc && triggers != null) triggers.activated(spec.definition().uuid());
-        Value created = entry.value;
-        created.waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(created, declared)).orElse(null);
-        if (created.waypoints != null) beginLeg(created, created.waypoints.start(created.state.snapshot().position().point()));
-        else requestRouteRead(entry.value);
+        if (!startInline(entry.value)) requestRouteRead(entry.value);
     }
     public static double maximumHealth(DefinitionSpec<?> spec) {
         return CombatSettings.active(spec.definition()).map((CombatSettings combat) -> combat.defense().maximumHealth()).orElse(20.0);
@@ -1527,6 +1962,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                     equip(viewer, body); sent++;
                     if (!current(viewer)) return sent;
                 }
+                if (body.spawnFinished && !body.looking && sent < packetBudget && body.deliveredLookRevision != body.value.lookRevision) {
+                    look(viewer, body); sent++;
+                    if (!current(viewer)) return sent;
+                }
             }
             sent += mountRuntime.update(viewer, packetBudget - sent);
         }
@@ -1564,6 +2003,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             viewer.presentationOrder.addLast(presented); viewer.rigOrder.addLast(presented);
             viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
             presented.deliveredPoseRevision = value.poseRevision;
+            // A body spawns with its definition's look, so a playback pose shown now is sent once the spawn lands.
+            presented.deliveredLookRevision = value.lookPose == value.spec.appearance().pose() && value.lookMotion == 0 ? value.lookRevision : value.lookRevision - 1;
             BodyPose pose = pose(value);
             packets.spawn(viewer.player, body, pose).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
                 if (!current(viewer)) return;
@@ -1613,6 +2054,24 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             body.equipping = false;
             body.deliveredEquipmentRevision = revision;
             cosmeticFailed(viewer, "equipment", body.value, failure);
+        }
+    }
+    /** Cosmetic, like equipment: the playback pose of a body, sent as metadata. */
+    private void look(Viewer viewer, Presented body) {
+        long revision = body.value.lookRevision;
+        BodyLook look = body.value.look;
+        if (look == null || !packets.presentationAvailable()) { body.deliveredLookRevision = revision; return; }
+        body.looking = true;
+        try {
+            packets.look(viewer.player, body.body, look).whenComplete((Void nothing, Throwable failure) -> enqueue(viewer, () -> {
+                body.looking = false;
+                body.deliveredLookRevision = revision;
+                if (failure != null && current(viewer) && !body.retired) cosmeticFailed(viewer, "look", body.value, failure);
+            }));
+        } catch (RuntimeException failure) {
+            body.looking = false;
+            body.deliveredLookRevision = revision;
+            cosmeticFailed(viewer, "look", body.value, failure);
         }
     }
     private boolean eligibleNow(Viewer viewer, Value value) {
@@ -1810,6 +2269,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         boolean blockedWarned;
         final String routeSource;
         RouteReadTask routeTask; boolean routeReadQueued;
+        /** The definition's own recording; {@link #recording} is the run playing now, {@link #heldRecording} one stopped or finished. */
+        final RecordingSource recordingSource;
+        RecordingRun recording, heldRecording;
+        /** The route leg a step run belongs to, and its route, kept while the step plays or is stopped so it can resume. */
+        WaypointProgress.Leg stepLeg; WaypointProgress stepProgress;
+        final RecordingDoors recordingDoors;
+        /** The pose and motion a playback shows; {@link #look} is the body look with them, sent when {@link #lookRevision} moves. */
+        NpcPose lookPose; int lookMotion; long lookRevision; BodyLook look;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
         final LookClose lookClose; long nextLook, nextRandomLook;
@@ -1832,6 +2299,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             falls = MovementSettings.falls(spec.type(), spec.definition().json());
             routeSpeedDeclared = MovementSettings.routeDeclaresSpeed(spec.definition().json());
             routeSource = WaypointSettings.reference(spec.definition());
+            recordingSource = RecordingSource.parse(spec.definition().json()).orElse(null);
+            recordingDoors = new RecordingDoors(spec.definition().uuid());
+            lookPose = spec.appearance().pose();
             authority = new DefinitionAuthority(spec.definition());
             rigId = RigReference.parse(spec.definition().json()).orElse(null);
         }
@@ -1840,21 +2310,28 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         final UUID id = UUID.randomUUID(); final Value value; final WorldPosition goal;
         final MovementProfile.Mode mode; final double speed; final int waypoint; final WaypointProgress.Leg leg;
         final Vec3 origin; final LongLeg longLeg;
+        /** A recording's turn: a planned walk to its goal pose when {@link #walk}, otherwise its frames. */
+        final RecordingRun recording; final boolean walk;
         NavigationPlan plan; CompletableFuture<PathPlanner.Result> result; PathExecution execution; CaptureProvenance capture;
         long nextAttempt, awakeChecked = Long.MIN_VALUE, progressTick;
+        /** A recording walk fails as unreachable after this tick; a playing turn has none. */
+        long deadline = Long.MAX_VALUE; final long progressStart;
         /** Segment: the path being walked ends part way along a long leg. */
         boolean awake = true, segment;
-        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) {
+        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg) { this(value, goal, mode, speed, leg, null, false); }
+        Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, RecordingRun recording, boolean walk) { this(value, goal, mode, speed, null, recording, walk); }
+        private Route(Value value, WorldPosition goal, MovementProfile.Mode mode, double speed, WaypointProgress.Leg leg, RecordingRun recording, boolean walk) {
+            this.recording = recording; this.walk = walk;
             this.value = value; this.goal = goal; this.mode = mode; this.speed = speed; this.leg = leg; this.waypoint = leg == null ? -1 : leg.arrival();
-            progressTick = tickNumber;
+            progressTick = tickNumber; progressStart = tickNumber;
             origin = value.state.snapshot().position().point();
             longLeg = new LongLeg(origin, goal.point(), moveWidth(value), moveHeight(value), value.movement.pathRange());
         }
     }
     final class Presented {
         final Value value; final BodyTransport.Body body;
-        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping;
-        long deliveredPoseRevision, deliveredEquipmentRevision;
+        boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking;
+        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision;
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;
         BodyTransport.Bones bones; RigView view; long rigIdentity; boolean bonesShown, rigFailed;
@@ -1882,8 +2359,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         SkinCompletion(SkinTask task, BodySkin skin, String error) { this.task = task; this.skin = skin; this.error = error; }
     }
     private final class RouteReadCompletion {
-        final RouteReadTask task; final WaypointSettings settings; final String error;
-        RouteReadCompletion(RouteReadTask task, WaypointSettings settings, String error) { this.task = task; this.settings = settings; this.error = error; }
+        final RouteReadTask task; final WaypointSettings settings; final RouteRecordings recordings; final RecordingDocument recording; final String error;
+        RouteReadCompletion(RouteReadTask task, WaypointSettings settings, RouteRecordings recordings, RecordingDocument recording, String error) {
+            this.task = task; this.settings = settings; this.recordings = recordings; this.recording = recording; this.error = error;
+        }
     }
     private final class AppearanceCompletion {
         final AppearanceTask task; final BodySkin skin; final String error;
@@ -1899,14 +2378,35 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             if (!closed) appearanceCompletions.add(new AppearanceCompletion(this, skin, error));
         }
     }
+    /**
+     * Reads one reusable route and the recordings its steps play, the recordings of an inline route's steps, or one
+     * recording; every recording within the live {@code [recordings] maximumFileBytes}.
+     */
     private final class RouteReadTask implements Runnable {
-        final Value value; final String source; final DocumentStore documents; volatile boolean cancelled;
-        RouteReadTask(Value value, String source, DocumentStore documents) { this.value = value; this.source = source; this.documents = documents; }
+        final Value value; final String source; final WaypointSettings inline; final RecordingSource recording; final boolean start; final int maximumBytes;
+        final DocumentStore documents; volatile boolean cancelled;
+        /** A reusable route {@code source}, or with {@code inline} the definition's own route, whose step recordings are read. */
+        RouteReadTask(Value value, String source, WaypointSettings inline, DocumentStore documents) {
+            this.value = value; this.source = source; this.inline = inline; this.recording = null; this.start = false;
+            this.maximumBytes = recordingSettings.maximumFileBytes(); this.documents = documents;
+        }
+        /** {@code start}: play the recording whatever was playing; otherwise a hotload re-read that keeps an unchanged recording. */
+        RouteReadTask(Value value, RecordingSource recording, boolean start, DocumentStore documents) {
+            this.value = value; this.source = recording.recording(); this.inline = null; this.recording = recording; this.start = start;
+            this.maximumBytes = recordingSettings.maximumFileBytes(); this.documents = documents;
+        }
         @Override public void run() {
-            WaypointSettings loaded = null; String error = null;
-            try { if (!cancelled && !closed) loaded = RouteDocuments.read(documents, source); }
-            catch (Exception failure) { error = concise(failure); }
-            if (!closed) routeReadCompletions.add(new RouteReadCompletion(this, loaded, error));
+            WaypointSettings loaded = null; RouteRecordings steps = null; RecordingDocument played = null; String error = null;
+            try {
+                if (!cancelled && !closed) {
+                    if (recording != null) played = RecordingDocuments.read(documents, source, maximumBytes);
+                    else {
+                        loaded = inline != null ? inline : RouteDocuments.read(documents, source);
+                        steps = RouteRecordings.read(loaded, (String id) -> RecordingDocuments.read(documents, id, maximumBytes));
+                    }
+                }
+            } catch (Exception failure) { error = concise(failure); }
+            if (!closed) routeReadCompletions.add(new RouteReadCompletion(this, loaded, steps, played, error));
         }
     }
     private final class SkinTask implements Runnable {

@@ -11,6 +11,7 @@ import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.runtime.ViewerPreviews;
@@ -145,6 +146,14 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     @Override public boolean stopNavigation(NpcHandle npc) {
         Optional<NpcRuntime.ActiveNpc> active = living.active(npc.uuid());
         return active.isPresent() && PlatformRefusals.mapped(() -> living.stopNavigation(active.get().id()));
+    }
+    @Override public void playRecording(NpcHandle npc, String recording, Playback playback) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.playRecording(active.id(), recording, playback); return true; });
+    }
+    @Override public boolean resumePatrol(NpcHandle npc) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        return PlatformRefusals.mapped(() -> living.resumePatrol(active.id()));
     }
     @Override public void look(NpcHandle npc, Vec3 target) {
         NpcRuntime.ActiveNpc active = require(npc);
