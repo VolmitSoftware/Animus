@@ -6,6 +6,7 @@ import art.arcane.animus.core.behavior.trigger.ServerCommandSync;
 import art.arcane.animus.core.behavior.trigger.ServerEvent;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
+import art.arcane.animus.core.platform.BukkitWorlds;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -19,6 +20,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Server;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.damage.DamageSource;
 import org.bukkit.entity.Entity;
@@ -79,6 +81,7 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
         this.plugin = plugin; server = plugin.getServer(); this.owners = owners; this.servers = servers; this.facts = facts; this.log = log;
         ServerCommandSync bound = null;
         if (servers != null) {
+            servers.worlds(this::world);
             try {
                 bound = new ServerCommandSync(BukkitServerCommands.bind(server, servers, this::resendCommands), log);
             } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
@@ -89,6 +92,13 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
     }
 
     SnapshotFacts facts() { return facts; }
+
+    /** The name a trigger's world reference resolves to among the loaded worlds; events report worlds by name. */
+    private Optional<String> world(String reference) {
+        List<BukkitWorlds.Loaded> loaded = new ArrayList<>();
+        for (World world : server.getWorlds()) loaded.add(new BukkitWorlds.Loaded(world.getName(), world.getUID(), world.getKey().toString()));
+        return BukkitWorlds.resolve(reference, loaded);
+    }
 
     void start() {
         server.getPluginManager().registerEvents(this, plugin);
