@@ -9,6 +9,7 @@ import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.npc.NpcPose;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BodyTransport;
+import art.arcane.animus.core.recording.GhostReplay;
 import art.arcane.animus.core.recording.RecordingDocument;
 import java.util.List;
 import java.util.Map;

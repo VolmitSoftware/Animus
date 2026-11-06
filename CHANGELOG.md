@@ -189,9 +189,13 @@
 - Performance recording documents (`recordings/<id>.json`): frames, swing, equipment and door events, a byte-exact serialized form, hotload and editor apply, and `schema/recording-v1.schema.json`.
 - Recording core for playback: frame simplification within 0.02 blocks and 2 degrees, and a once, loop or pingpong cursor with interpolated poses, capped event windows and catch-up skips.
 - `[recordings]` settings in `config.toml` for sampling, length, file size, sessions, ghosts and previews, all applied live.
-- `/animus record start|stop|cancel|status|ghost|preview` captures a player's movement, sneaking, swings, equipment and door use into `recordings/<id>.json` as one rollback-able transaction, on the player's own thread on Folia.
+- `/animus record start <id>`, `stop`, `cancel`, `status`, `ghost on|off|toggle` and `preview <id> [action=stop]` capture a player's movement, sneaking, swings, equipment and door use into `recordings/<id>.json` as one rollback-able transaction, on the player's own thread on Folia.
 - Recording sessions end and save on quit, death, world change, a teleport over 8 blocks or `maximumTicks`; a recording over `maximumFileBytes` is held until it is stopped again or cancelled.
 - A viewer-private, glowing ghost of the recorder replays the last `ghostStretchTicks` every `ghostIntervalTicks` while recording, and `/animus record preview <id>` plays a saved recording once for the requesting player.
+- Recording on Fabric, NeoForge and Forge with the same `record` command, sampling, end rules, saves and ghosts; swings come from the swing packet (the punch packet on 26.3) and door use from the use-on-block packet.
+- `@selected` for the selected NPC wherever a command takes an NPC id.
+- Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
+- `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
 - Trait groups: `groups/<id>.json` documents of shared definition values that NPCs list in `groups` and merge before their own fields.
 - Group merge rules: objects merge recursively, behaviors and tags append, a `skins` pool picks one skin per NPC UUID.
 - An NPC naming a missing group is refused on edit; a group deleted later leaves its NPCs on their last valid effective definition, reported as `group-problem=`.

@@ -1,11 +1,8 @@
-package art.arcane.animus.bukkit.recording;
+package art.arcane.animus.core.recording;
 
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcItem;
-import art.arcane.animus.core.recording.RecordingDocument;
-import art.arcane.animus.core.recording.RecordingEvent;
-import art.arcane.animus.core.recording.RecordingFrame;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;

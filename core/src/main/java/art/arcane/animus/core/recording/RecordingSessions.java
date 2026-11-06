@@ -1,15 +1,13 @@
-package art.arcane.animus.bukkit.recording;
+package art.arcane.animus.core.recording;
 
-import art.arcane.animus.bukkit.BukkitWorldLookup;
-import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.CatalogReloads;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.RecordingControl;
 import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.presentation.BodySkin;
-import art.arcane.animus.core.recording.RecordingDocument;
-import art.arcane.animus.core.recording.RecordingDocuments;
+import art.arcane.animus.core.virtual.Vec3;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -23,35 +21,21 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Stream;
-import org.bukkit.Location;
-import org.bukkit.World;
-import org.bukkit.block.Block;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
-import org.bukkit.event.player.PlayerAnimationEvent;
-import org.bukkit.event.player.PlayerAnimationType;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * Performance capture and ghost previews. One recording session and one preview per player, capped by
+ * Performance capture and ghost previews on any platform. One recording session and one preview per player, capped by
  * {@code [recordings] maximumSessions} and {@code maximumPreviews}, read live; lowering a cap lets running ones finish.
  * Every session and preview ticks on its player's owner. Saves run on the file lane as one transaction each.
+ *
+ * @param <P> the platform's online player
+ * @param <I> the platform's item stack
  */
-public final class RecordingSessions implements Listener, AutoCloseable {
-    private static final String ADMIN = "animus.admin";
-    private final JavaPlugin plugin;
+public final class RecordingSessions<P, I> implements RecordingControl, AutoCloseable {
+    private final RecordingHost<P, I> host;
     private final AnimusRuntime runtime;
     private final Executor files;
-    private final RecorderOwners owners;
-    private final GhostBodies ghosts;
-    private final RecordingRoster<RecordingSession> sessions = new RecordingRoster<>("recording");
-    private final RecordingRoster<Preview> previews = new RecordingRoster<>("preview");
+    private final RecordingRoster<RecordingSession<P, I>> sessions = new RecordingRoster<>("recording");
+    private final RecordingRoster<Preview<P, I>> previews = new RecordingRoster<>("preview");
     private final Map<UUID, Boolean> ghostChoice = new ConcurrentHashMap<>();
     private final AutoCloseable settingsSubscription;
     private volatile RecordingSettings settings;
@@ -60,95 +44,108 @@ public final class RecordingSessions implements Listener, AutoCloseable {
     private volatile boolean closed;
 
     /** A saved recording playing once for one player. */
-    private static final class Preview {
-        final Player viewer;
+    private static final class Preview<P, I> {
+        final P viewer;
         final CommandActor actor;
         final String id;
-        final UUID world;
-        GhostReplay<Player, ItemStack> ghost;
+        final String world;
+        GhostReplay<P, I> ghost;
         AutoCloseable task;
-        Location last;
+        Vec3 last;
         boolean ended;
-        Preview(Player viewer, CommandActor actor, String id) {
-            this.viewer = viewer; this.actor = actor; this.id = id; world = viewer.getWorld().getUID(); last = viewer.getLocation();
+        Preview(RecordingHost<P, I> host, P viewer, CommandActor actor, String id) {
+            this.viewer = viewer; this.actor = actor; this.id = id; world = host.world(viewer); last = host.position(viewer);
         }
     }
 
-    /** @param regions the Folia schedulers, or null off Folia */
-    public RecordingSessions(JavaPlugin plugin, AnimusRuntime runtime, Executor files, FoliaRegions regions, String version) {
-        this.plugin = plugin;
+    public RecordingSessions(RecordingHost<P, I> host, AnimusRuntime runtime, Executor files) {
+        this.host = host;
         this.runtime = runtime;
         this.files = files;
-        owners = new RecorderOwners(plugin, regions);
-        ghosts = new GhostBodies(plugin, version, owners);
         settings = runtime.recordingSettings();
         settingsSubscription = runtime.onSettings((PluginSettings next) -> settings = next.recordings());
-        plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
     // Commands, each on the player's owner.
 
-    public void start(Player player, CommandActor actor, String id) {
+    @Override public void start(CommandActor actor, String id) { player(actor, "start").ifPresent((P player) -> start(player, actor, id)); }
+    @Override public void stop(CommandActor actor) { player(actor, "stop").ifPresent((P player) -> stop(player, actor)); }
+    @Override public void cancel(CommandActor actor) { player(actor, "cancel").ifPresent((P player) -> cancel(player, actor)); }
+    @Override public List<String> status(CommandActor actor) { return status(actor.player().flatMap(host::player)); }
+    @Override public void ghost(CommandActor actor, Optional<Boolean> on) {
+        player(actor, "show the ghost of").ifPresent((P player) -> ghost(player, actor, on.orElseGet(() -> !ghostWanted(player))));
+    }
+    @Override public void preview(CommandActor actor, String id) { player(actor, "preview").ifPresent((P player) -> preview(player, actor, id)); }
+    @Override public void stopPreview(CommandActor actor) { player(actor, "stop the preview of").ifPresent((P player) -> stopPreview(player, actor)); }
+
+    /** The online player behind {@code actor}; empty after telling the console it cannot. */
+    private Optional<P> player(CommandActor actor, String verb) {
+        Optional<P> player = actor.player().flatMap(host::player);
+        if (player.isEmpty()) actor.tell("Only a player can " + verb + " a recording.");
+        return player;
+    }
+
+    void start(P player, CommandActor actor, String id) {
         if (!id.matches(RecordingDocument.ID)) { actor.tell("Recording ids are 1 to 64 lowercase letters, digits, _ or -."); return; }
         RecordingSettings current = settings;
-        if (sessions.get(player.getUniqueId()).isPresent()) { actor.tell("You are already recording; /animus record stop or cancel first."); return; }
-        RecordingSession session;
-        try { session = new RecordingSession(player, actor, id, current); }
+        if (sessions.get(host.id(player)).isPresent()) { actor.tell("You are already recording; /animus record stop or cancel first."); return; }
+        RecordingSession<P, I> session;
+        try { session = new RecordingSession<>(host, player, actor, id, current); }
         catch (IllegalArgumentException invalid) { actor.tell("Cannot record here: " + invalid.getMessage()); return; }
-        Optional<String> refused = sessions.admit(player.getUniqueId(), session, current.enabled() && !closed, current.maximumSessions());
+        Optional<String> refused = sessions.admit(host.id(player), session, current.enabled() && !closed, current.maximumSessions());
         if (refused.isPresent()) { actor.tell(refused.get()); return; }
-        session.task = owners.everyTick(player, () -> tick(session), () -> end(session, RecordingCapture.End.QUIT));
-        String ghost = !ghostWanted(player) ? "off" : ghosts.unavailable().map((String reason) -> "unavailable, " + reason).orElse("every " + current.ghostIntervalTicks() + " ticks");
+        session.task = host.everyTick(player, () -> tick(session), () -> end(session, RecordingCapture.End.QUIT));
+        String ghost = !ghostWanted(player) ? "off" : host.ghostsUnavailable().map((String reason) -> "unavailable, " + reason).orElse("every " + current.ghostIntervalTicks() + " ticks");
         actor.tell("Recording " + id + ": sampling every " + current.sampleTicks() + " ticks, at most " + current.maximumTicks() + " ticks; ghost " + ghost + ". /animus record stop saves it.");
     }
 
-    public void stop(Player player, CommandActor actor) {
-        Optional<RecordingSession> found = sessions.get(player.getUniqueId());
+    void stop(P player, CommandActor actor) {
+        Optional<RecordingSession<P, I>> found = sessions.get(host.id(player));
         if (found.isEmpty()) { actor.tell("You are not recording."); return; }
-        RecordingSession session = found.get();
+        RecordingSession<P, I> session = found.get();
         if (session.state == RecordingSession.State.SAVING) { actor.tell("Recording " + session.capture.id() + " is already saving."); return; }
         end(session, RecordingCapture.End.STOPPED);
     }
 
-    public void cancel(Player player, CommandActor actor) {
-        Optional<RecordingSession> found = sessions.get(player.getUniqueId());
+    void cancel(P player, CommandActor actor) {
+        Optional<RecordingSession<P, I>> found = sessions.get(host.id(player));
         if (found.isEmpty()) { actor.tell("You are not recording."); return; }
-        RecordingSession session = found.get();
+        RecordingSession<P, I> session = found.get();
         if (session.state == RecordingSession.State.SAVING) { actor.tell("Recording " + session.capture.id() + " is saving and can no longer be cancelled."); return; }
         retire(session);
         actor.tell("Recording " + session.capture.id() + " discarded.");
     }
 
-    public void ghost(Player player, CommandActor actor, boolean on) {
-        ghostChoice.put(player.getUniqueId(), on);
+    void ghost(P player, CommandActor actor, boolean on) {
+        ghostChoice.put(host.id(player), on);
         if (!on) {
-            sessions.get(player.getUniqueId()).ifPresent((RecordingSession session) -> closeGhost(session));
+            sessions.get(host.id(player)).ifPresent(this::closeGhost);
             actor.tell("Recording ghost off.");
             return;
         }
         RecordingSettings current = settings;
         if (!current.ghostEnabled()) actor.tell("Recording ghost on for you, but [recordings] ghostEnabled is false in config.toml.");
-        else actor.tell("Recording ghost on" + ghosts.unavailable().map((String reason) -> ", but ghosts are unavailable: " + reason).orElse("") + ".");
+        else actor.tell("Recording ghost on" + host.ghostsUnavailable().map((String reason) -> ", but ghosts are unavailable: " + reason).orElse("") + ".");
     }
 
-    public List<String> status(Optional<Player> player) {
+    List<String> status(Optional<P> player) {
         RecordingSettings current = settings;
         List<String> lines = new ArrayList<>();
         lines.add("Recordings " + (current.enabled() ? "enabled" : "disabled") + " | sessions " + sessions.size() + "/" + current.maximumSessions()
                 + " | previews " + previews.size() + "/" + current.maximumPreviews() + " | ghosts "
-                + (current.ghostEnabled() ? ghosts.unavailable().map((String reason) -> "unavailable: " + reason).orElse("available") : "off in config.toml"));
-        for (RecordingSession session : sessions.values())
-            if (player.isEmpty() || session.player.getUniqueId().equals(player.get().getUniqueId()) || player.get().hasPermission(ADMIN))
+                + (current.ghostEnabled() ? host.ghostsUnavailable().map((String reason) -> "unavailable: " + reason).orElse("available") : "off in config.toml"));
+        for (RecordingSession<P, I> session : sessions.values())
+            if (player.isEmpty() || host.id(session.player).equals(host.id(player.get())) || host.admin(player.get()))
                 lines.add("  " + session.describe());
-        for (Preview preview : previews.values()) lines.add("  preview " + preview.id + " for " + preview.viewer.getName());
+        for (Preview<P, I> preview : previews.values()) lines.add("  preview " + preview.id + " for " + host.name(preview.viewer));
         return lines;
     }
 
-    public void preview(Player player, CommandActor actor, String id) {
+    void preview(P player, CommandActor actor, String id) {
         if (!id.matches(RecordingDocument.ID)) { actor.tell("Recording ids are 1 to 64 lowercase letters, digits, _ or -."); return; }
         RecordingSettings current = settings;
         if (!current.enabled()) { actor.tell("Recordings are disabled; set [recordings] enabled = true in config.toml."); return; }
-        Optional<String> unavailable = ghosts.unavailable();
+        Optional<String> unavailable = host.ghostsUnavailable();
         if (unavailable.isPresent()) { actor.tell("Previews are unavailable: " + unavailable.get()); return; }
         int maximumBytes = current.maximumFileBytes();
         try {
@@ -159,7 +156,7 @@ public final class RecordingSessions implements Listener, AutoCloseable {
                 catch (IOException | RuntimeException failure) { document = null; problem = failure instanceof NoSuchFileException ? "no recording " + id : String.valueOf(failure.getMessage()); }
                 RecordingDocument read = document;
                 String refused = problem;
-                owners.later(player, () -> {
+                host.later(player, () -> {
                     if (refused != null) actor.tell("Cannot preview " + id + ": " + refused);
                     else beginPreview(player, actor, read);
                 }, () -> {});
@@ -167,14 +164,14 @@ public final class RecordingSessions implements Listener, AutoCloseable {
         } catch (RejectedExecutionException busy) { actor.tell("The file queue is full; try the preview again shortly."); }
     }
 
-    public void stopPreview(Player player, CommandActor actor) {
-        Optional<Preview> found = previews.get(player.getUniqueId());
+    void stopPreview(P player, CommandActor actor) {
+        Optional<Preview<P, I>> found = previews.get(host.id(player));
         if (found.isEmpty()) { actor.tell("No preview is playing."); return; }
         endPreview(found.get(), "stopped");
     }
 
     /** Recording ids for tab completion, from a listing refreshed on the file lane at most every five seconds. */
-    public List<String> ids() {
+    @Override public List<String> ids() {
         long now = System.nanoTime();
         if (now - idsRefreshed > 5_000_000_000L && !closed) {
             idsRefreshed = now;
@@ -195,33 +192,26 @@ public final class RecordingSessions implements Listener, AutoCloseable {
         return knownIds;
     }
 
-    // Listeners: Bukkit fires these on the player's owner.
+    // Player events, each on the player's owner.
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void swung(PlayerAnimationEvent event) {
-        if (event.getAnimationType() != PlayerAnimationType.ARM_SWING) return;
-        recording(event.getPlayer()).ifPresent((RecordingSession session) -> session.capture.swing());
+    /** The player swung its main arm. */
+    public void swung(P player) { recording(player).ifPresent((RecordingSession<P, I> session) -> session.capture.swing()); }
+
+    /** The player right-clicked an openable block (door, trapdoor, fence gate) with its main hand. */
+    public void used(P player, int x, int y, int z, String block) {
+        recording(player).ifPresent((RecordingSession<P, I> session) -> session.capture.use(x, y, z, block));
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void interacted(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getHand() != EquipmentSlot.HAND) return;
-        Block block = event.getClickedBlock();
-        if (!RecorderLook.openable(block)) return;
-        recording(event.getPlayer()).ifPresent((RecordingSession session) ->
-                session.capture.use(block.getX(), block.getY(), block.getZ(), block.getType().getKeyOrThrow().toString()));
-    }
-
-    private Optional<RecordingSession> recording(Player player) {
-        return sessions.get(player.getUniqueId()).filter((RecordingSession session) -> session.player == player && session.state == RecordingSession.State.RECORDING);
+    private Optional<RecordingSession<P, I>> recording(P player) {
+        return sessions.get(host.id(player)).filter((RecordingSession<P, I> session) -> session.player == player && session.state == RecordingSession.State.RECORDING);
     }
 
     // Ticks.
 
-    private void tick(RecordingSession session) {
+    private void tick(RecordingSession<P, I> session) {
         if (session.state != RecordingSession.State.RECORDING) {
-            if (session.state == RecordingSession.State.HELD && !session.player.isOnline()) {
-                plugin.getLogger().warning("Recording " + session.capture.id() + " was too large to save and its recorder left; it is discarded.");
+            if (session.state == RecordingSession.State.HELD && !host.online(session.player)) {
+                host.warn("Recording " + session.capture.id() + " was too large to save and its recorder left; it is discarded.");
                 retire(session);
             }
             return;
@@ -229,11 +219,11 @@ public final class RecordingSessions implements Listener, AutoCloseable {
         RecordingSettings current = settings;
         Optional<RecordingCapture.End> end = session.tick(current.maximumTicks());
         if (end.isPresent()) { end(session, end.get()); return; }
-        if (current.enabled() && current.ghostEnabled() && ghostWanted(session.player) && ghosts.unavailable().isEmpty()) {
+        if (current.enabled() && current.ghostEnabled() && ghostWanted(session.player) && host.ghostsUnavailable().isEmpty()) {
             Optional<RecordingDocument> stretch = session.ghostDue(current);
             if (stretch.isPresent()) {
-                try { session.ghost = ghosts.play(session.player, stretch.get(), session.player.getName(), RecorderLook.skin(session.player), current); }
-                catch (RuntimeException failure) { plugin.getLogger().warning("Recording ghost failed: " + failure.getMessage()); }
+                try { session.ghost = host.ghost(session.player, stretch.get(), host.name(session.player), host.skin(session.player), current); }
+                catch (RuntimeException failure) { host.warn("Recording ghost failed: " + failure.getMessage()); }
             }
         } else closeGhost(session);
         if (session.ghost != null) {
@@ -242,10 +232,9 @@ public final class RecordingSessions implements Listener, AutoCloseable {
         }
     }
 
-    private void end(RecordingSession session, RecordingCapture.End reason) {
+    private void end(RecordingSession<P, I> session, RecordingCapture.End reason) {
         if (session.state == RecordingSession.State.SAVING || session.state == RecordingSession.State.DONE) return;
         closeGhost(session);
-        session.ended = reason;
         Optional<RecordingCapture.Take> take = session.capture.finish();
         String why = reason == RecordingCapture.End.STOPPED ? "" : " (" + reason.reason() + ")";
         if (take.isEmpty()) {
@@ -264,12 +253,12 @@ public final class RecordingSessions implements Listener, AutoCloseable {
                 RecordingWriter.Outcome saved = outcome;
                 String problem = failure;
                 Runnable finish = () -> saved(session, saved, problem, why);
-                owners.later(session.player, finish, finish);
+                host.later(session.player, finish, finish);
             });
         } catch (RejectedExecutionException busy) { saved(session, null, "the file queue is full; run /animus record stop again", why); }
     }
 
-    private void saved(RecordingSession session, RecordingWriter.Outcome outcome, String problem, String why) {
+    private void saved(RecordingSession<P, I> session, RecordingWriter.Outcome outcome, String problem, String why) {
         String id = session.capture.id();
         if (outcome instanceof RecordingWriter.Saved saved) {
             retire(session);
@@ -278,9 +267,9 @@ public final class RecordingSessions implements Listener, AutoCloseable {
             idsRefreshed = 0;
             return;
         }
-        if (!session.player.isOnline()) {
+        if (!host.online(session.player)) {
             retire(session);
-            plugin.getLogger().warning("Recording " + id + " was not saved after its recorder left: "
+            host.warn("Recording " + id + " was not saved after its recorder left: "
                     + (outcome instanceof RecordingWriter.TooLarge large ? large.bytes() + " bytes, above maximumFileBytes " + large.maximum() : problem));
             return;
         }
@@ -291,78 +280,77 @@ public final class RecordingSessions implements Listener, AutoCloseable {
         else report(session, "Recording " + id + " was not saved: " + problem + ". It is held; /animus record stop retries, cancel discards.");
     }
 
-    private void report(RecordingSession session, String message) {
-        if (session.player.isOnline()) session.actor.tell(message);
-        else plugin.getLogger().info(message);
+    private void report(RecordingSession<P, I> session, String message) {
+        if (host.online(session.player)) session.actor.tell(message);
+        else host.info(message);
     }
 
-    private void retire(RecordingSession session) {
+    private void retire(RecordingSession<P, I> session) {
         session.state = RecordingSession.State.DONE;
         closeGhost(session);
-        sessions.remove(session.player.getUniqueId(), session);
+        sessions.remove(host.id(session.player), session);
         close(session.task);
     }
 
-    private void closeGhost(RecordingSession session) {
+    private void closeGhost(RecordingSession<P, I> session) {
         if (session.ghost == null) return;
         session.ghost.close();
         session.ghost = null;
-        ghosts.release(session.player);
+        host.release(session.player);
     }
 
-    private boolean ghostWanted(Player player) { return ghostChoice.getOrDefault(player.getUniqueId(), Boolean.TRUE); }
+    private boolean ghostWanted(P player) { return ghostChoice.getOrDefault(host.id(player), Boolean.TRUE); }
 
     // Previews.
 
-    private void beginPreview(Player player, CommandActor actor, RecordingDocument document) {
+    private void beginPreview(P player, CommandActor actor, RecordingDocument document) {
         RecordingSettings current = settings;
-        if (closed || !player.isOnline() || player.isDead() || !player.hasPermission(ADMIN)) return;
+        if (closed || !host.online(player) || host.dead(player) || !host.admin(player)) return;
         if (!current.enabled()) { actor.tell("Recordings are disabled; set [recordings] enabled = true in config.toml."); return; }
-        World recorded = BukkitWorldLookup.find(plugin.getServer(), document.world());
-        if (recorded == null) { actor.tell("Recording " + document.id() + " names world " + document.world() + ", which is not loaded."); return; }
-        if (!recorded.getUID().equals(player.getWorld().getUID())) {
-            actor.tell("Recording " + document.id() + " was made in " + recorded.getName() + "; go there to preview it.");
+        if (host.resolveWorld(document.world()).isEmpty()) { actor.tell("Recording " + document.id() + " names world " + document.world() + ", which is not loaded."); return; }
+        if (!RecordingWorlds.same(host.world(player), document.world(), host::resolveWorld)) {
+            actor.tell("Recording " + document.id() + " was made in " + document.world() + "; go there to preview it.");
             return;
         }
-        previews.get(player.getUniqueId()).ifPresent((Preview running) -> endPreview(running, null));
-        Preview preview = new Preview(player, actor, document.id());
-        Optional<String> refused = previews.admit(player.getUniqueId(), preview, true, current.maximumPreviews());
+        previews.get(host.id(player)).ifPresent((Preview<P, I> running) -> endPreview(running, null));
+        Preview<P, I> preview = new Preview<>(host, player, actor, document.id());
+        Optional<String> refused = previews.admit(host.id(player), preview, true, current.maximumPreviews());
         if (refused.isPresent()) { actor.tell(refused.get()); return; }
-        Player recorder = plugin.getServer().getPlayer(document.recordedBy());
-        String name = recorder != null ? recorder.getName() : Optional.ofNullable(plugin.getServer().getOfflinePlayer(document.recordedBy()).getName()).orElse("Ghost");
-        Optional<BodySkin> skin = recorder != null ? RecorderLook.skin(recorder) : Optional.empty();
-        try { preview.ghost = ghosts.play(player, document, name, skin, current); }
-        catch (RuntimeException failure) { previews.remove(player.getUniqueId(), preview); actor.tell("Cannot preview " + document.id() + ": " + failure.getMessage()); return; }
-        preview.task = owners.everyTick(player, () -> tickPreview(preview), () -> endPreview(preview, null));
+        Optional<P> recorder = host.player(document.recordedBy());
+        String name = recorder.map(host::name).or(() -> host.knownName(document.recordedBy())).orElse("Ghost");
+        Optional<BodySkin> skin = recorder.flatMap(host::skin);
+        try { preview.ghost = host.ghost(player, document, name, skin, current); }
+        catch (RuntimeException failure) { previews.remove(host.id(player), preview); actor.tell("Cannot preview " + document.id() + ": " + failure.getMessage()); return; }
+        preview.task = host.everyTick(player, () -> tickPreview(preview), () -> endPreview(preview, null));
         RecordingDocument.Origin origin = document.origin();
         actor.tell("Previewing " + document.id() + " (" + document.durationTicks() + " ticks) at " + Math.round(origin.x()) + " " + Math.round(origin.y()) + " "
-                + Math.round(origin.z()) + ". /animus record preview " + document.id() + " stop ends it.");
+                + Math.round(origin.z()) + ". /animus record preview " + document.id() + " action=stop ends it.");
     }
 
-    private void tickPreview(Preview preview) {
+    private void tickPreview(Preview<P, I> preview) {
         if (preview.ended) return;
-        Player viewer = preview.viewer;
+        P viewer = preview.viewer;
         RecordingSettings current = settings;
-        if (!viewer.isOnline()) { endPreview(preview, null); return; }
-        if (viewer.isDead()) { endPreview(preview, "you died"); return; }
-        if (!viewer.getWorld().getUID().equals(preview.world)) { endPreview(preview, "you changed world"); return; }
-        if (!viewer.hasPermission(ADMIN)) { endPreview(preview, "you no longer have " + ADMIN); return; }
+        if (!host.online(viewer)) { endPreview(preview, null); return; }
+        if (host.dead(viewer)) { endPreview(preview, "you died"); return; }
+        if (!host.world(viewer).equals(preview.world)) { endPreview(preview, "you changed world"); return; }
+        if (!host.admin(viewer)) { endPreview(preview, "you no longer have animus.admin"); return; }
         if (!current.enabled()) { endPreview(preview, "recordings were disabled"); return; }
-        Location at = viewer.getLocation();
-        if (at.distanceSquared(preview.last) > RecordingCapture.TELEPORT_DISTANCE * RecordingCapture.TELEPORT_DISTANCE) { endPreview(preview, "you teleported"); return; }
+        Vec3 at = host.position(viewer);
+        if (at.distance(preview.last) > RecordingCapture.TELEPORT_DISTANCE) { endPreview(preview, "you teleported"); return; }
         preview.last = at;
         preview.ghost.tick();
         if (preview.ghost.finished()) endPreview(preview, "finished");
     }
 
     /** Ends a preview; {@code reason} is told to the viewer when it is not null. */
-    private void endPreview(Preview preview, String reason) {
+    private void endPreview(Preview<P, I> preview, String reason) {
         if (preview.ended) return;
         preview.ended = true;
-        if (preview.ghost != null) { preview.ghost.close(); ghosts.release(preview.viewer); }
-        previews.remove(preview.viewer.getUniqueId(), preview);
+        if (preview.ghost != null) { preview.ghost.close(); host.release(preview.viewer); }
+        previews.remove(host.id(preview.viewer), preview);
         close(preview.task);
-        if (reason != null && preview.viewer.isOnline()) preview.actor.tell("Preview " + preview.id + " ended: " + reason + ".");
+        if (reason != null && host.online(preview.viewer)) preview.actor.tell("Preview " + preview.id + " ended: " + reason + ".");
     }
 
     private static void close(AutoCloseable task) {
@@ -372,14 +360,14 @@ public final class RecordingSessions implements Listener, AutoCloseable {
     }
 
     /**
-     * Saves every running recording directly, since the file lane closes with the plugin, then removes every ghost.
+     * Saves every running recording directly, since the file lane closes with the runtime, then removes every ghost.
      * Catalogs are not reloaded: the next start reads the files.
      */
     @Override public void close() {
         closed = true;
         close(settingsSubscription);
-        for (Preview preview : previews.values()) endPreview(preview, null);
-        for (RecordingSession session : sessions.values()) {
+        for (Preview<P, I> preview : previews.values()) endPreview(preview, null);
+        for (RecordingSession<P, I> session : sessions.values()) {
             close(session.task);
             if (session.state != RecordingSession.State.RECORDING) { retire(session); continue; }
             Optional<RecordingCapture.Take> take = session.capture.finish();
@@ -387,9 +375,9 @@ public final class RecordingSessions implements Listener, AutoCloseable {
             if (take.isEmpty()) continue;
             try {
                 RecordingWriter.Outcome outcome = RecordingWriter.save(runtime.documents(), CatalogReloads.NONE, take.get(), settings.maximumFileBytes());
-                plugin.getLogger().info("Recording " + session.capture.id() + (outcome instanceof RecordingWriter.Saved ? " saved" : " not saved, too large") + " at shutdown.");
-            } catch (IOException | RuntimeException failure) { plugin.getLogger().warning("Recording " + session.capture.id() + " not saved at shutdown: " + failure.getMessage()); }
+                host.info("Recording " + session.capture.id() + (outcome instanceof RecordingWriter.Saved ? " saved" : " not saved, too large") + " at shutdown.");
+            } catch (IOException | RuntimeException failure) { host.warn("Recording " + session.capture.id() + " not saved at shutdown: " + failure.getMessage()); }
         }
-        ghosts.close();
+        host.closeGhosts();
     }
 }
