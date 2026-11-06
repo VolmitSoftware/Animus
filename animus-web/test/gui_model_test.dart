@@ -127,7 +127,7 @@ void main() {
         },
       };
       expect(<String>[for (final Diagnostic d in validateGui(DocumentKind.inventory, doc)) if (d.code == refusedCode) '${d.path}: ${d.message}'], <String>[
-        r"$.preset: Gloss presets are not available in Animus; copy the preset's fields in",
+        r"$.preset: Gloss presets are not available in Animus; inline the preset's fields",
         r"$.keys.a.type: component 'slider' is a holographic menu component and is not available in a chest window",
         r"$.keys.b.icon.type: icon 'block' has no meaning in a chest window and is not available in Animus",
         r"$.keys.b.actions[0].steps[0].type: action 'glow' is not available in Animus",
