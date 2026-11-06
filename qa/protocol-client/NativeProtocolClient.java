@@ -67,6 +67,7 @@ public final class NativeProtocolClient {
     private volatile boolean expectedDisconnect;
     // The open container window (0 is the player's own inventory) and the state id the server last sent for it.
     private volatile int windowId, windowState;
+    private int blockSequence;
     private int positionReminder;
     private Vec3 queuedMove;
     private boolean positioned;
@@ -426,6 +427,14 @@ public final class NativeProtocolClient {
                 Vec3 point=command.has("x")?new Vec3(coordinate(command,"x"),coordinate(command,"y"),coordinate(command,"z")):Vec3.ZERO;
                 send(new ServerboundInteractPacket(command.get("id").getAsInt(), InteractionHand.MAIN_HAND, point, false));
                 event("interaction_point","id",command.get("id").getAsInt(),"x",point.x,"y",point.y,"z",point.z);
+            }
+            case "use_block" -> {
+                // A right click on the top face of a block with the main hand, as the vanilla client sends it.
+                if (!loaded) throw new IllegalStateException("Block use requires an active game connection");
+                net.minecraft.core.BlockPos at = new net.minecraft.core.BlockPos(command.get("x").getAsInt(), command.get("y").getAsInt(), command.get("z").getAsInt());
+                net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(at), net.minecraft.core.Direction.UP, at, false);
+                send(new ServerboundUseItemOnPacket(InteractionHand.MAIN_HAND, hit, ++blockSequence));
+                event("use_block", "x", at.getX(), "y", at.getY(), "z", at.getZ(), "sequence", blockSequence);
             }
             case "swing" -> {
                 if (!loaded) throw new IllegalStateException("Swing requires an active game connection");
