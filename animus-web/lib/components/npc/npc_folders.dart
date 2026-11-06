@@ -162,7 +162,7 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
       _problem = null;
     });
     component.onSelect(path);
-    ArcaneSonner.success('Made npcs/$path/. It stays here until the page reloads; move NPCs into it or create one there to keep it.');
+    ArcaneSonner.success('Made npcs/$path/. Add an NPC to keep it.');
   }
 
   Future<void> _relocate(NpcFolderNode folder, String to, String verb) async {
@@ -191,8 +191,8 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
         });
       }
       component.onSelect(to);
-      final String moved = edit.moved == 0 ? 'It holds no NPCs yet.' : 'Moved ${edit.moved} NPC${edit.moved == 1 ? '' : 's'}; Undo reverts it in one step.';
-      ArcaneSonner.success('${verb == 'rename' ? 'Renamed' : 'Moved'} npcs/${folder.path}/ to npcs/$to/. $moved');
+      final String moved = edit.moved == 0 ? '' : ' Moved ${edit.moved} NPC${edit.moved == 1 ? '' : 's'}.';
+      ArcaneSonner.success('${verb == 'rename' ? 'Renamed' : 'Moved'} npcs/${folder.path}/ to npcs/$to/.$moved');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -377,7 +377,7 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
       _Operation.delete => <Widget>[
           dom.p(<Widget>[
             Component.text(current.total == 0
-                ? 'Remove the empty folder $where? It holds no NPCs, so no file changes.'
+                ? 'Remove the empty folder $where?'
                 : '$where holds ${current.total} NPC${current.total == 1 ? '' : 's'}; move or delete them first.'),
           ]),
           dom.div(classes: 'animus-row', <Widget>[

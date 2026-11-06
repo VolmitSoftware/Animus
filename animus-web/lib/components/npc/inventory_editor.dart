@@ -28,7 +28,7 @@ class NpcInventoryEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     if (value == null) {
       return dom.div(classes: 'animus-row', <Widget>[
-        const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('No stored items. Behaviors and combat ammunition read them from here.')]),
+        const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('No stored items.')]),
         Button.secondary(
           label: 'Add an inventory',
           size: ButtonSize.small,
@@ -64,7 +64,7 @@ class NpcInventoryEditor extends StatelessWidget {
             onChanged: (String? next) => onChanged(<String, Object?>{...inventory, 'size': int.parse(next ?? '9')}),
           ),
         ),
-        if (numbers.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Empty. Add an item to fill the first free slot.')]),
+        if (numbers.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Empty. Add an item.')]),
         for (final int slot in numbers) _slot(slot, asMap(slots['$slot']), slots, putSlots, outside.contains(slot), size),
         dom.div(classes: 'animus-row', <Widget>[
           Button.ghost(

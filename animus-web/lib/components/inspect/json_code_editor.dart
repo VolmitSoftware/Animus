@@ -358,10 +358,10 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
       if (syntax != null)
         dom.div(classes: 'animus-code-syntax', attributes: const <String, String>{'role': 'alert'}, <Widget>[
           Button.secondary(label: 'Go to line ${syntax.line}', size: ButtonSize.small, onPressed: () => _jump(syntax.line)),
-          dom.span(<Widget>[Component.text('${syntax.text}. The document is kept as it was until this parses.')]),
+          dom.span(<Widget>[Component.text('${syntax.text}. Not saved until it parses.')]),
         ]),
       dom.div(classes: 'animus-code-status animus-muted', <Widget>[
-        Component.text('Line $_caretLine, column ${_caretColumn + 1}. Ctrl+Space completes keys and values, and names inside expressions.'),
+        Component.text('Line $_caretLine, column ${_caretColumn + 1}. Ctrl+Space to complete.'),
       ]),
       if (located.isNotEmpty)
         dom.ul(classes: 'animus-code-problems', attributes: const <String, String>{'aria-label': 'Diagnostics by line'}, <Widget>[

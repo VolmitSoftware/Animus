@@ -12,6 +12,8 @@ import '../../state/workspace_route.dart';
 import 'connection_pill.dart';
 import 'live_confirm.dart';
 import '../brand_mark.dart';
+import '../info_tip.dart';
+import '../../config/docs_links.dart';
 
 /// `#/pair/<code>`: shows the server the code names and exchanges its
 /// one-time secret for a token. One column: the mark, the server's name, its
@@ -31,7 +33,7 @@ class PairPage extends StatefulWidget {
 }
 
 /// Why a pasted code cannot be used, with the next step.
-const String newCodeStep = 'Run /animus editor pair on the server again and open the new link, or paste it below.';
+const String newCodeStep = 'Run /animus editor pair again, then open or paste the new link.';
 
 class _PairPageState extends State<PairPage> {
   PairingPayload? _payload;
@@ -62,7 +64,7 @@ class _PairPageState extends State<PairPage> {
       final String id = await component.hub.pair(component.code, remember: _remember, client: _client.trim());
       final String name = component.hub.server(id)?.name ?? id;
       if (component.hub.storageRefused) {
-        ArcaneSonner.warning('Paired with $name, but this browser refused to store it, so the pairing lasts until this tab closes.');
+        ArcaneSonner.warning('Paired with $name for this tab only. The browser refused storage.');
       } else {
         ArcaneSonner.success('Paired with $name.');
       }
@@ -86,16 +88,16 @@ class _PairPageState extends State<PairPage> {
       dom.section(classes: 'animus-panel animus-pair', attributes: const <String, String>{'aria-labelledby': 'animus-pair-title'}, <Widget>[
         const BrandMark(size: 48, classes: 'animus-server-mark'),
         if (payload == null || _invalid != null) ...<Widget>[
-          const dom.h1(id: 'animus-pair-title', <Widget>[Component.text('This pairing link cannot be used')]),
+          const dom.h1(id: 'animus-pair-title', <Widget>[Component.text('Invalid pairing link')]),
           dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-            Component.text('${_invalid ?? 'The link holds no pairing code.'} $newCodeStep'),
+            Component.text('${_invalid ?? 'No pairing code in the link.'} $newCodeStep'),
           ]),
           PairCodeField(onCode: (String code) => _goTo(code)),
         ] else ...<Widget>[
           dom.p(classes: 'animus-pair-kicker', <Widget>[Component.text(expired ? 'Pairing code expired' : 'Pair this browser with')]),
           dom.h1(id: 'animus-pair-title', <Widget>[Component.text(payload.serverName ?? payload.label ?? 'Server ${payload.serverId.substring(0, 8)}')]),
           dom.div(classes: 'animus-pair-fingerprint', <Widget>[
-            const dom.span(classes: 'animus-muted', <Widget>[Component.text('Fingerprint. Check it matches /animus editor status on the server.')]),
+            const dom.span(classes: 'animus-muted', <Widget>[Component.text('Fingerprint, must match /animus editor status')]),
             dom.code(attributes: const <String, String>{'data-testid': 'pair-fingerprint'}, <Widget>[Component.text(payload.fingerprint)]),
           ]),
           dom.ul(classes: 'animus-pair-paths', attributes: const <String, String>{'aria-label': 'Ways to reach the server'}, <Widget>[
@@ -112,7 +114,7 @@ class _PairPageState extends State<PairPage> {
             PairCodeField(onCode: (String code) => _goTo(code)),
           ] else ...<Widget>[
             TextInput(
-              label: 'Name for this browser on the server',
+              label: 'Browser name',
               value: _client,
               size: ComponentSize.sm,
               onChanged: (String value) => setState(() => _client = value),
@@ -124,12 +126,11 @@ class _PairPageState extends State<PairPage> {
                 size: ComponentSize.sm,
                 onChanged: (bool value) => setState(() => _remember = value),
               ),
-              const dom.span(classes: 'animus-muted', <Widget>[
-                Component.text('On: the token stays after this tab closes. Off: it lasts for this tab only. Leave it off on a shared computer.'),
-              ]),
-            ]),
-            const dom.p(classes: 'animus-muted', <Widget>[
-              Component.text('Every later connection checks that the server answers with this fingerprint. The pairing secret works once.'),
+              const InfoTip(
+                text: 'On keeps the token after this tab closes. Leave it off on a shared computer.',
+                topic: 'Remember this browser',
+                docs: Docs.pairing,
+              ),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
               Button.primary(label: _busy ? 'Pairing' : 'Pair', loading: _busy, disabled: _busy, onPressed: _pair),
@@ -177,7 +178,7 @@ class _PairCodeFieldState extends State<PairCodeField> {
   void _submit() {
     final String code = extractPairingCode(_code);
     if (!code.startsWith(pairingPrefix)) {
-      ArcaneSonner.warning('Paste the link or the ANM1. code that /animus editor pair prints on the server.');
+      ArcaneSonner.warning('Paste a pairing link or ANM1. code.');
       return;
     }
     component.onCode(code);
@@ -217,7 +218,7 @@ class _ServersPanelState extends State<ServersPanel> {
   Future<void> _forget(ServerProfile server) async {
     setState(() => _forgetting = null);
     await component.hub.forget(server.id);
-    ArcaneSonner.success('Forgot ${server.name}: its token and live workspace left this browser. Pair again to edit it.');
+    ArcaneSonner.success('Forgot ${server.name}. Pair again to edit it.');
     focusSoon('animus-servers-title');
   }
 
@@ -228,7 +229,7 @@ class _ServersPanelState extends State<ServersPanel> {
       const dom.h2(id: 'animus-servers-title', attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Servers')]),
       if (hub.servers.isEmpty)
         const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('No server is paired yet. Run /animus editor pair on a server and open the link it prints, or paste it here, to edit that server live.'),
+          Component.text('No servers paired. Run /animus editor pair and open its link.'),
         ])
       else
         dom.ul(classes: 'animus-workspace-list animus-server-list', <Widget>[
@@ -237,7 +238,7 @@ class _ServersPanelState extends State<ServersPanel> {
               if (_forgetting == server.id)
                 LiveConfirm(
                   question: 'Forget ${server.name}?',
-                  detail: 'Its token and its live workspace, with any drafts not applied, leave this browser. The server keeps everything already applied.',
+                  detail: 'Removes its token and unapplied drafts from this browser. Applied changes stay on the server.',
                   confirmLabel: 'Forget server',
                   destructive: true,
                   returnFocus: _forgetId(server.id),

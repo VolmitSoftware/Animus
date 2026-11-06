@@ -12,6 +12,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_edit.dart';
 import '../../logic/inspect/behavior_language.dart';
@@ -21,6 +22,7 @@ import '../../logic/inspect/completion_catalog.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import 'behavior_capability.dart';
 import 'behavior_inputs.dart';
 import 'behavior_operand.dart';
@@ -97,7 +99,6 @@ class AddNodeSelect extends StatelessWidget {
         GuiSelect(
           value: null,
           options: context.nodeTypes,
-          labels: <String, String>{for (final String type in context.nodeTypes) type: '$type: ${context.catalog.nodes[type]?.description ?? ''}'},
           noneLabel: label,
           label: label,
           onChanged: (String? type) {
@@ -175,7 +176,7 @@ class BehaviorNodeView extends StatelessWidget {
         final void Function()? remove = onRemove;
         if (remove == null) return;
         key.preventDefault();
-        if (web.window.confirm('Remove ${caption ?? 'this step'} (${nodeSummary(node, variables: context.variables)}) and everything inside it?')) remove();
+        if (web.window.confirm('Remove ${caption ?? 'this step'} (${nodeSummary(node, variables: context.variables)}) and its contents?')) remove();
     }
   }
 
@@ -219,7 +220,10 @@ class BehaviorNodeView extends StatelessWidget {
                 }
               },
             ),
-            dom.span(classes: 'animus-node-help', <Widget>[Component.text(spec?.description ?? (type == null ? 'A step needs a type.' : 'Unknown step type; kept as written.'))]),
+            if (spec != null && spec.description.isNotEmpty)
+              InfoTip(text: spec.description, topic: type ?? 'Step', docs: Docs.behaviorNodes)
+            else if (spec == null)
+              dom.span(classes: 'animus-node-help', <Widget>[Component.text(type == null ? 'Pick a type' : 'Unknown type, kept as written')]),
             if (onUp != null) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move $label up', onPressed: onUp!),
             if (onDown != null) GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move $label down', onPressed: onDown!),
             if (onRemove != null) GuiIconButton(icon: ArcaneIcon.x(size: IconSize.sm), label: 'Remove $label', onPressed: onRemove!),
@@ -228,10 +232,10 @@ class BehaviorNodeView extends StatelessWidget {
             dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text(problem.message)]),
           if (strayJump)
             dom.span(classes: 'animus-gui-problem is-warning', attributes: const <String, String>{'role': 'note'}, <Widget>[
-              Component.text('$type only works inside a repeat, foreach or while body of this routine, outside parallel branches; the server refuses it here.'),
+              Component.text('$type must be inside a repeat, foreach or while, outside parallel branches.'),
             ]),
           ..._fields(value, type, spec),
-          if (kept.isNotEmpty) dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Kept as written; the server reads it: ${kept.join(', ')}')]),
+          if (kept.isNotEmpty) dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Kept as written: ${kept.join(', ')}')]),
         ]),
       ],
     );
@@ -305,7 +309,7 @@ class BehaviorNodeView extends StatelessWidget {
     final bool expression = value.containsKey('expression');
     return GuiRow(
       label: 'Test',
-      help: 'A capability asks the game (a flag, a permission); an expression computes true or false from variables and facts.',
+      help: 'A capability asks the game. An expression computes true or false.',
       child: GuiSelect(
         value: expression ? 'expression' : 'capability',
         options: const <String>['capability', 'expression'],
@@ -420,7 +424,7 @@ class BehaviorNodeView extends StatelessWidget {
         help: field.description,
         problems: _problems(field.key, nested: false),
         child: options.isEmpty
-            ? const dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Declare a variable under Variables first.')])
+            ? const dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Declare a variable first.')])
             : GuiSelect(
                 value: asString(value[field.key]),
                 options: options,
@@ -458,7 +462,7 @@ class BehaviorNodeView extends StatelessWidget {
     final JsonList items = asList(value[field.key]);
     final String noun = field.key == 'branches' ? 'branch' : 'step';
     return dom.div(classes: 'animus-node-children', attributes: <String, String>{'role': 'group', 'aria-label': '${humanizeKey(field.key)} of ${caption ?? 'step'}'}, <Widget>[
-      if (items.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text(noun == 'step' ? 'No steps yet; this runs nothing. Add the first step below.' : 'A parallel needs at least one branch.')]),
+      if (items.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text(noun == 'step' ? 'No steps yet.' : 'A parallel needs at least one branch.')]),
       for (int index = 0; index < items.length; index++)
         BehaviorNodeView(
           key: ValueKey<String>(formatPath(<JsonStep>[...at, index])),

@@ -67,8 +67,8 @@ class OperandControl extends StatelessWidget {
         OperandMode.variable => compatible.isEmpty
             ? dom.p(classes: 'animus-gui-note', <Widget>[
                 Component.text(type == null || type == 'any'
-                    ? 'Declare a variable under Variables first.'
-                    : 'No variable of type $type is declared. Declare one under Variables, or use an expression.'),
+                    ? 'Declare a variable first.'
+                    : 'No $type variable. Declare one or use an expression.'),
               ])
             : GuiSelect(
                 value: operandText(value).isEmpty ? null : operandText(value),
@@ -158,11 +158,11 @@ class ArgumentField extends StatelessWidget {
         switch (source) {
           ArgumentSource.literal => literalNull
               ? const dom.p(classes: 'animus-gui-note', <Widget>[
-                  Component.text('A placeholder (null) that nothing fills yet. Pick a source to fill it at run time.'),
+                  Component.text('Empty placeholder. Pick a source.'),
                 ])
               : literal,
           ArgumentSource.binding => variables.isEmpty
-              ? const dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Declare a variable under Variables first.')])
+              ? const dom.p(classes: 'animus-gui-note', <Widget>[Component.text('Declare a variable first.')])
               : GuiSelect(
                   value: text.isEmpty ? null : text,
                   options: variables.keys.toList(),
@@ -185,10 +185,6 @@ class ArgumentField extends StatelessWidget {
               onChanged: (String next) => onNode(setArgumentSlotText(node, key, next)),
             ),
         },
-        if (source != ArgumentSource.literal)
-          dom.span(classes: 'animus-gui-help', <Widget>[
-            Component.text('Written as null in arguments; ${source.field} fills ${argumentPointer(key)} when the step runs.'),
-          ]),
       ]),
     );
   }

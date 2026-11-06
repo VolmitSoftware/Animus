@@ -311,7 +311,7 @@ void main() {
     await session.openDocuments(session.catalog);
     await session.startPreview(focus: <String>{'npc:town/baker'});
     expect(session.preview!.hidden, <String>['town/baker']);
-    expect(session.preview!.hiddenLine, 'Live NPC hidden for you while previewing: town/baker');
+    expect(session.preview!.hiddenLine, 'Hidden while previewing: town/baker');
     await session.endPreview();
     expect(session.preview!.running, isFalse);
     expect(session.preview!.hiddenLine, isNull);
@@ -403,7 +403,7 @@ void main() {
     await stream.end('limit');
     await settle();
     final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
-    expect(messages.where((String message) => message.contains('fell too far behind')), hasLength(1), reason: 'one notice per close');
+    expect(messages.where((String message) => message.contains('Fell behind on server events.')), hasLength(1), reason: 'one notice per close');
     expect(connection.status.online, isTrue);
     expect(network.streams.length, greaterThan(1), reason: 'a new event stream is open');
     expect(network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/catalog').length, greaterThan(catalogLoads));

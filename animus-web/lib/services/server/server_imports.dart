@@ -144,14 +144,13 @@ final int relayUploadBytes = (_limit('relayFrameBytes') - 16384) ~/ 4 * 3;
 /// Why [upload] cannot go over [path], or null when it can.
 String? uploadProblem(ImportUpload upload, ConnectionPath? path) {
   final int size = upload.bytes.length;
-  if (size == 0) return '${upload.label} is empty. Choose the file again from the plugin\'s data folder.';
+  if (size == 0) return '${upload.label} is empty. Choose it again.';
   if (size > importBodyBytes) {
-    return '${upload.label} is ${formatSize(size)}; uploads are limited to ${formatSize(importBodyBytes)}. '
-        'Copy it into the server\'s imports folder and run /animus import citizens there instead.';
+    return '${upload.label} is over the ${formatSize(importBodyBytes)} upload limit. '
+        'Copy it to the server\'s imports folder and run /animus import citizens.';
   }
   if (path == ConnectionPath.relay && size > relayUploadBytes) {
-    return '${upload.label} is ${formatSize(size)}, more than the ${formatSize(relayUploadBytes)} a relay frame carries. '
-        'Connect over the direct path (the server\'s listener) to upload it.';
+    return '${upload.label} is over the ${formatSize(relayUploadBytes)} relay limit. Connect over the direct path.';
   }
   return null;
 }

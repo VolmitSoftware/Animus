@@ -8,6 +8,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_edit.dart';
 import '../../logic/inspect/behavior_operands.dart';
@@ -17,6 +18,7 @@ import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/dialogue_tree.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import '../npc/dialogue_view.dart';
 import 'behavior_inputs.dart';
 import 'behavior_nodes.dart';
@@ -62,11 +64,11 @@ class BehaviorEditor extends StatelessWidget {
     );
     final bool server = behavior.server;
     return dom.section(classes: 'animus-panel animus-inspector animus-behavior-editor', attributes: const <String, String>{'aria-label': 'Behavior editor'}, <Widget>[
-      if (schemas.live) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Capabilities and triggers come from the connected server.')]),
+      if (schemas.live) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Capabilities and triggers from the server.')]),
       GuiSection(title: 'Document', children: <Widget>[
         GuiRow(
           label: 'ID',
-          help: '${_spec('id').description ?? ''} Change it by moving the file.',
+          help: _spec('id').description ?? 'Set by the file path.',
           problems: diagnosticsAt(diagnostics, r'$.id'),
           child: dom.code(classes: 'animus-inspect-const', <Widget>[Component.text(asString(doc['id']) ?? '-')]),
         ),
@@ -80,9 +82,8 @@ class BehaviorEditor extends StatelessWidget {
         GuiRow(
           label: 'Server behavior',
           help: server
-              ? 'On: no NPC runs this. It reacts to server events (joins, chat, commands, timers of at least $serverTimerMinimum ticks), declares only execution, player and global variables, '
-                  'cannot use NPC-only capabilities, and runs only when server-behaviors.json lists it.'
-              : 'Off: NPCs that list this behavior run it. Turn it on for joins, chat, commands and other server events with no NPC.',
+              ? 'Runs on server events with no NPC. It runs only when server-behaviors.json lists it.'
+              : 'Off: NPCs that list it run it.',
           problems: diagnosticsAt(diagnostics, r'$.server'),
           child: GuiSwitch(
             value: server,
@@ -94,7 +95,7 @@ class BehaviorEditor extends StatelessWidget {
           if (!_documentKeys.contains(entry.key))
             GuiRow(
               label: entry.key,
-              help: 'Kept as written; the server reads it.',
+              help: 'Kept as written',
               problems: diagnosticsAt(diagnostics, childPath(r'$', entry.key), nested: true),
               child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? v) => _write(<JsonStep>[entry.key], v)),
             ),
@@ -112,8 +113,8 @@ class BehaviorEditor extends StatelessWidget {
     final List<String> names = variables.keys.toList();
     void put(JsonMap next) => _write(<JsonStep>['variables'], next.isEmpty ? null : next);
     return GuiSection(title: 'Variables', count: variables.length, open: variables.isNotEmpty, children: <Widget>[
-      dom.p(classes: 'animus-gui-help', <Widget>[Component.text(_spec('variables').description ?? '')]),
-      if (variables.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No variables yet. Add one to count, remember or pass values; expressions read them by name.')]),
+      if (_spec('variables').description case final String about when about.isNotEmpty) InfoTip(text: about, topic: 'Variables', docs: Docs.behaviorVariables),
+      if (variables.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No variables yet.')]),
       for (int index = 0; index < names.length; index++) _variable(doc, variables, names[index], index, put, server),
       Button.ghost(
         label: 'Add variable',
@@ -159,8 +160,8 @@ class BehaviorEditor extends StatelessWidget {
       GuiRow(
         label: 'Scope',
         help: server
-            ? 'One run (execution, the default), one player, or everyone. A server behavior has no NPC, so npc and relationship are not offered.'
-            : 'One run (execution, the default), one NPC, one player, one NPC and player pair, or everyone.',
+            ? 'execution is one run. A server behavior has no npc or relationship scope.'
+            : 'execution is one run. relationship is one NPC and player pair.',
         problems: diagnosticsAt(diagnostics, childPath(path, 'scope')),
         child: GuiSelect(
           value: asString(variable['scope']),
@@ -183,7 +184,7 @@ class BehaviorEditor extends StatelessWidget {
       if (variable['scope'] != null && variable['scope'] != 'execution')
         GuiRow(
           label: 'Lifetime *',
-          help: 'Transient values last until the server stops; persistent values are stored.',
+          help: 'Transient ends when the server stops. Persistent is saved.',
           problems: diagnosticsAt(diagnostics, childPath(path, 'lifetime')),
           child: GuiSelect(value: asString(variable['lifetime']), options: _catalog.variableLifetimes, label: 'Lifetime of $name', onChanged: (String? v) => field('lifetime', v)),
         ),
@@ -194,9 +195,7 @@ class BehaviorEditor extends StatelessWidget {
     final JsonMap routines = asMap(doc['routines']);
     final List<String> names = routines.keys.toList();
     return GuiSection(title: 'Routines', count: routines.length, children: <Widget>[
-      dom.p(classes: 'animus-gui-help', <Widget>[
-        Component.text('${_spec('routines').description ?? ''} Up and Down move between steps, Right and Left open and close one, Delete removes it.'),
-      ]),
+      if (_spec('routines').description case final String about when about.isNotEmpty) InfoTip(text: about, topic: 'Routines', docs: Docs.behaviorNodes),
       dom.div(classes: 'animus-behavior-tree', <Widget>[
         for (int index = 0; index < names.length; index++)
           dom.div(key: ValueKey<String>('routine-$index'), classes: 'animus-routine', attributes: <String, String>{'data-routine': names[index]}, <Widget>[
@@ -244,20 +243,19 @@ class BehaviorEditor extends StatelessWidget {
     final List<String> ids = <String>[for (final Object? trigger in triggers) asString(asMap(trigger)['id']) ?? ''];
     final List<String> events = _catalog.eventsFor(server: behavior.server);
     return GuiSection(title: 'Triggers', count: triggers.length, children: <Widget>[
-      dom.p(classes: 'animus-gui-help', <Widget>[
-        Component.text(behavior.server
-            ? 'What starts this server behavior: server events only. NPC events need the server switch off.'
-            : '${_spec('triggers').description ?? ''} Server events need the server switch on.'),
-      ]),
+      InfoTip(
+        text: behavior.server ? 'Server events only. NPC events need Server behavior off.' : '${_spec('triggers').description ?? ''} Server events need Server behavior on.',
+        topic: 'Triggers',
+        docs: Docs.behaviorTriggers,
+      ),
       if (triggers.isEmpty)
         dom.p(classes: 'animus-muted', <Widget>[
-          Component.text(behavior.server ? 'No triggers yet, so nothing starts this behavior. Add a join, chat or command trigger.' : 'No triggers yet; the behavior runs only when something calls it. Add a click or proximity trigger.'),
+          Component.text(behavior.server ? 'No triggers yet. Add a join, chat or command trigger.' : 'No triggers yet. It runs only when called.'),
         ]),
       for (int index = 0; index < triggers.length; index++) _trigger(triggers, index, put, behavior),
       GuiSelect(
         value: null,
         options: events,
-        labels: <String, String>{for (final String event in events) event: '$event: ${_catalog.triggers[event]?.description ?? ''}'},
         noneLabel: 'Add a trigger',
         label: 'Add a trigger',
         onChanged: (String? event) {
@@ -303,9 +301,10 @@ class BehaviorEditor extends StatelessWidget {
               if (next != null) put(<Object?>[...triggers]..[index] = changeTriggerEvent(trigger, next, _catalog));
             },
           ),
-          dom.span(classes: 'animus-node-help', <Widget>[
-            Component.text(spec == null ? 'Unknown event; kept as written.' : '${spec.description}${spec.carriesPlayer ? '' : ' No player is carried.'}'),
-          ]),
+          if (spec == null)
+            const dom.span(classes: 'animus-node-help', <Widget>[Component.text('Unknown event, kept as written')])
+          else if ('${spec.description}${spec.carriesPlayer ? '' : ' No player is carried.'}'.trim() case final String about when about.isNotEmpty)
+            InfoTip(text: about, topic: event ?? 'Event', docs: Docs.behaviorTriggers),
           if (index > 0) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move trigger ${index + 1} up', onPressed: () => put(moveItem(triggers, index, index - 1))),
           if (index < triggers.length - 1)
             GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move trigger ${index + 1} down', onPressed: () => put(moveItem(triggers, index, index + 1))),
@@ -313,7 +312,7 @@ class BehaviorEditor extends StatelessWidget {
         ]),
         if (misplaced)
           dom.span(classes: 'animus-gui-problem is-error', attributes: const <String, String>{'role': 'note'}, <Widget>[
-            Component.text(behavior.server ? '$event needs an NPC, and a server behavior has none. Pick a server event or remove this trigger.' : '$event is a server event; turn the server switch on or pick an NPC event.'),
+            Component.text(behavior.server ? '$event needs an NPC. Pick a server event.' : '$event is a server event. Turn on Server behavior or pick an NPC event.'),
           ]),
         for (final Diagnostic problem in diagnosticsAt(diagnostics, path))
           dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
@@ -348,7 +347,7 @@ class BehaviorEditor extends StatelessWidget {
             if (!known.contains(entry.key) && entry.key != 'event')
               GuiRow(
                 label: entry.key,
-                help: 'Not a field of this event; kept as written.',
+                help: 'Unknown field, kept as written',
                 problems: diagnosticsAt(diagnostics, childPath(path, entry.key), nested: true),
                 child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? v) => _write(<JsonStep>[...steps, entry.key], v)),
               ),

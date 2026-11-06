@@ -52,7 +52,7 @@ String phaseHint(ConnectionStatus status, {required bool hasToken}) {
   return switch (status.phase) {
     ConnectionPhase.reconnecting when status.retryAt != null =>
       '${message ?? transportCopy('dropped').cause} Next try at ${status.retryAt!.toLocal().toString().substring(11, 19)}.',
-    ConnectionPhase.offline => 'Not connected. Press Connect on the server page to reach it.',
+    ConnectionPhase.offline => 'Not connected. Use Connect on the server page.',
     _ => message ?? '',
   };
 }

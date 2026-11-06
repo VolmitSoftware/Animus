@@ -252,7 +252,7 @@ async function local(browser, viewport, tag, theme) {
   await actions.getByRole('button', {name: 'Make folder'}).click();
   await folderItem(page, 'harbor/docks').waitFor();
   assert.equal(await folderCount(page, 'harbor/docks'), 0);
-  await browserPanel.getByText('npcs/harbor/docks/ holds no NPCs yet.', {exact: false}).waitFor();
+  await browserPanel.getByText('npcs/harbor/docks/ is empty.', {exact: false}).waitFor();
   await browserPanel.locator('.animus-npc-empty').getByRole('link', {name: 'New NPC in npcs/harbor/docks/'}).waitFor();
   await shot(page, `${tag}-02d-folder-empty`);
   await search(page, '');
@@ -447,7 +447,7 @@ async function local(browser, viewport, tag, theme) {
   await routeStep.getByRole('button', {name: 'Add recording step'}).click();
   const stepPicked = routeStep.getByRole('group', {name: 'Selected Step 5'});
   await stepPicked.waitFor();
-  await stepPicked.getByText('No recordings in this workspace').waitFor();
+  await stepPicked.getByText('No recordings. Type an id.', {exact: true}).waitFor();
   await stepPicked.getByLabel('Step 5 recording').fill('market-loop');
   await stepPicked.getByLabel('Step 5 toTick').fill('400');
   await settle(page);
@@ -591,7 +591,7 @@ async function empty(browser, viewport, tag, theme) {
   const workspace = await page.evaluate(() => location.hash.replace(/\/new.*$/, ''));
   await page.goto(`${site}/${workspace}/npcs`);
   const browserPanel = page.getByRole('region', {name: 'NPC browser'});
-  await browserPanel.getByText('This workspace has no NPCs yet.').waitFor();
+  await browserPanel.getByText('No NPCs yet.').waitFor();
   await shot(page, `${tag}-14-empty`);
   await noSidewaysScroll(page, `${tag} empty`);
   await browserPanel.getByRole('link', {name: 'Create an NPC'}).click();
@@ -670,7 +670,7 @@ async function serverFolders(browser, viewport, tag, theme) {
   await page.getByRole('button', {name: 'Undo on the server'}).click();
   await page.getByTestId('live-last').filter({hasText: 'Undid 2 documents, 2 moved'}).waitFor();
   assert.deepEqual(await serverDocuments(), before, 'undo moves them back');
-  await browserEmpty(page, 'npcs/town/bazaar/ holds no NPCs yet.');
+  await browserEmpty(page, 'npcs/town/bazaar/ is empty.');
   await search(page, '');
   await waitRows(page, ['town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
   await page.getByTestId('draft-count').filter({hasText: 'No changed drafts'}).waitFor();

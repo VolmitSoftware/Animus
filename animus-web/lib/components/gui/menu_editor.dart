@@ -107,9 +107,6 @@ class _MenuEditorState extends State<MenuEditor> {
             if (index >= 0) setState(() => _selected = index);
           },
         ),
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Click a component on the stage or in the list to edit it; the pink ring marks the one selected.'),
-        ]),
         dom.ul(classes: 'animus-gui-component-list', attributes: const <String, String>{'role': 'list', 'aria-label': 'Components'}, <Widget>[
           for (int index = 0; index < components.length; index++)
             dom.li(<Widget>[
@@ -146,11 +143,11 @@ class _MenuEditorState extends State<MenuEditor> {
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
         if (components.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('This menu has no components. Add a component to put something in front of the viewer.')])
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No components yet. Add one below.')])
         else
           GuiSection(title: 'Component $selectedId', children: _component(components)),
         GuiSection(title: 'Menu', open: components.isEmpty, children: <Widget>[
-          _vector(const <JsonStep>['offset'], 'Offset *', help: 'From the viewer\'s feet to the menu centre, in blocks.'),
+          _vector(const <JsonStep>['offset'], 'Offset *', help: 'Blocks from viewer\'s feet'),
           GuiRow(
             label: 'Movement',
             child: dom.div(classes: 'animus-row', <Widget>[
@@ -160,7 +157,7 @@ class _MenuEditorState extends State<MenuEditor> {
           ),
           GuiRow(
             label: 'Max distance',
-            help: 'Blocks before the menu closes.',
+            help: 'Blocks before it closes',
             child: GuiNumberInput(value: asDouble(doc['maxDistance']), integer: false, label: 'Max distance', onChanged: (num? v) => _write(<JsonStep>['maxDistance'], v)),
           ),
           GuiRow(
@@ -195,7 +192,7 @@ class _MenuEditorState extends State<MenuEditor> {
         problems: diagnosticsAt(_diagnostics, '$path.id'),
         child: GuiTextInput(value: asString(entry['id']) ?? '', label: 'Component id', onChanged: (String v) => _write(<JsonStep>['components', index, 'id'], v)),
       ),
-      _vector(<JsonStep>['components', index, 'offset'], 'Offset *', help: 'From the menu centre, in blocks.'),
+      _vector(<JsonStep>['components', index, 'offset'], 'Offset *', help: 'Blocks from menu centre'),
       guiFieldRow('Show when', '$path.show', _diagnostics, (String id) => GuiTextInput(
             id: id,
             value: conditionText(entry['show']),
@@ -242,12 +239,11 @@ class _MenuEditorState extends State<MenuEditor> {
     Widget field(String key, String label, String help) => guiFieldRow(label, '$path.motion.$key', _diagnostics, help: help,
         (String id) => GuiNumberOrExpression(id: id, value: motion[key], label: 'Motion $label', onChanged: (Object? v) => set(key, v)));
     return GuiSection(title: 'Motion', open: motion.isNotEmpty, children: <Widget>[
-      const dom.p(classes: 'animus-muted', <Widget>[Component.text('A number or an expression for each; blank keeps the default.')]),
-      field('x', 'X', 'Blocks; 0 by default.'),
-      field('y', 'Y', 'Blocks; 0 by default.'),
-      field('z', 'Z', 'Blocks; 0 by default.'),
-      field('scale', 'Scale', '1 by default.'),
-      field('ticks', 'Ticks', '0 to 59; 3 by default.'),
+      field('x', 'X', 'Blocks, default 0'),
+      field('y', 'Y', 'Blocks, default 0'),
+      field('z', 'Z', 'Blocks, default 0'),
+      field('scale', 'Scale', 'Default 1'),
+      field('ticks', 'Ticks', '0 to 59, default 3'),
     ]);
   }
 
@@ -258,7 +254,7 @@ class _MenuEditorState extends State<MenuEditor> {
     void setAll(JsonMap next) => _write(<JsonStep>['vars'], next.isEmpty ? null : next, coalesce: 'vars-structure');
     return <Widget>[
       const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Each name holds a constant expression, such as 5 or \'gold\'. Names are lowercase letters, digits and _.'),
+        Component.text('Constants, such as 5 or \'gold\'. Names: a-z, 0-9, _'),
       ]),
       for (final MapEntry<String, Object?> entry in vars.entries)
         dom.div(classes: 'animus-gui-line', attributes: <String, String>{'data-path': childPath(r'$.vars', entry.key)}, <Widget>[
@@ -299,7 +295,7 @@ class _MenuEditorState extends State<MenuEditor> {
     return <Widget>[
       for (final MapEntry<String, Object?> entry in named.entries)
         GuiSection(title: entry.key, count: asList(entry.value).length, open: false, children: <Widget>[
-          guiFieldRow('Name', childPath(r'$.actions', entry.key), _diagnostics, help: 'Letters, digits, _ and -; call uses it.', (String id) => GuiTextInput(
+          guiFieldRow('Name', childPath(r'$.actions', entry.key), _diagnostics, help: 'Letters, digits, _ and -', (String id) => GuiTextInput(
                 id: id,
                 value: entry.key,
                 label: 'List name',

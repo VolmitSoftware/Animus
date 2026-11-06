@@ -15,6 +15,8 @@ import '../../services/server/server_profiles.dart';
 import '../../services/server/transport.dart';
 import '../../state/server_hub.dart';
 import '../gui/gui_fields.dart';
+import '../../config/docs_links.dart';
+import '../info_tip.dart';
 import 'connection_pill.dart';
 import 'live_confirm.dart';
 
@@ -122,9 +124,9 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         _accept.retainAll(<String>{for (final String category in importCategories) if ((review.pending[category] ?? 0) > 0) category});
       });
     } on ImportRefused catch (refused) {
-      if (mounted) setState(() => _error = refused.detail == null ? refused.message : '${refused.message} The server said: ${refused.detail}');
+      if (mounted) setState(() => _error = refused.detail == null ? refused.message : '${refused.message} Server: ${refused.detail}');
     } on NotConnected catch (offline) {
-      if (mounted) setState(() => _error = offline.status.message ?? 'The server is not connected. Press Connect, then try again.');
+      if (mounted) setState(() => _error = offline.status.message ?? 'Not connected. Use Connect, then try again.');
     } on TransportFailure catch (failure) {
       if (mounted) setState(() => _error = failure.message);
     } on Object {
@@ -139,7 +141,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
     for (final ImportUpload upload in component.uploads) {
       last = await imports.upload(upload);
     }
-    if (last == null) throw const ImportRefused('invalid-request', 'No file is chosen. Choose a Citizens or Shopkeepers save above first.');
+    if (last == null) throw const ImportRefused('invalid-request', 'No file chosen. Choose a save above.');
     return imports.stage(mode: _mode, label: _mode == 'duplicate' ? _label.trim() : null, worlds: component.worlds);
   }
 
@@ -157,13 +159,11 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         if (uploadProblem(upload, path) != null) uploadProblem(upload, path)!,
     ];
     return dom.section(classes: 'animus-panel animus-server-import', attributes: const <String, String>{'aria-label': 'Import on a server'}, <Widget>[
-      const dom.h2(<Widget>[Component.text('Import on a server')]),
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Upload the files chosen above to a paired server. The server converts and stages them, shows its review, '
-            'and installs nothing until you apply. Imported NPCs stay despawned and their patrols, combat, riding, shops and builds stay off until accepted.'),
-      ]),
+      labelWithTip(const dom.h2(<Widget>[Component.text('Import on a server')]),
+          'Nothing installs until you apply. Imported NPCs stay despawned with features off until accepted.', 'Server import',
+          docs: Docs.liveImports),
       if (servers.isEmpty)
-        const dom.p(<Widget>[Component.text('No server is paired in this browser. Run /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui on the server and open its link.')])
+        const dom.p(<Widget>[Component.text('No servers paired. Run /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui and open its link.')])
       else ...<Widget>[
         dom.div(classes: 'animus-row', <Widget>[
           GuiSelect(
@@ -187,19 +187,18 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         ]),
         if (online && !scoped)
           const dom.p(classes: 'animus-citizens-error', attributes: <String, String>{'role': 'alert'}, <Widget>[
-            Component.text('This pairing cannot import. Run /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui on the server and open the new link.'),
+            Component.text('This pairing cannot import. Run /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui and open the new link.'),
           ]),
         if (path == ConnectionPath.relay)
           dom.p(classes: 'animus-muted', attributes: const <String, String>{'data-testid': 'import-relay-note'}, <Widget>[
-            Component.text('Connected over the relay: files up to ${formatSize(relayUploadBytes)} fit a relay frame. '
-                'Larger saves need the direct path (the server\'s listener).'),
+            Component.text('Relay limit: ${formatSize(relayUploadBytes)} per file. Use the direct path for larger saves.'),
           ]),
         dom.div(classes: 'animus-row', <Widget>[
           GuiSelect(
             value: _mode,
             options: const <String>['reject', 'replace', 'duplicate'],
             labels: const <String, String>{
-              'reject': 'Refuse NPCs that already exist',
+              'reject': 'Refuse on collision',
               'replace': 'Replace an earlier import',
               'duplicate': 'Install a second copy',
             },
@@ -207,7 +206,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
           ),
           if (_mode == 'duplicate')
             TextInput(
-              placeholder: 'Copy label, such as town-copy',
+              placeholder: 'Copy label (town-copy)',
               value: _label,
               size: ComponentSize.sm,
               onChanged: (String value) => setState(() => _label = value),
@@ -272,7 +271,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
       if (importId != null && _confirm == 'apply')
         LiveConfirm(
           question: 'Install this import on the server?',
-          detail: 'Its NPCs are installed despawned, with patrols, combat, riding, shops and builds off until you accept them. Roll back undoes it.',
+          detail: 'NPCs install despawned, with features off until accepted.',
           confirmLabel: 'Install import',
           returnFocus: _actionId('apply'),
           onConfirm: () => _run('Applying', (ServerImports i) => i.apply(importId)),
@@ -281,8 +280,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
       else if (importId != null && _confirm == 'rollback')
         LiveConfirm(
           question: 'Roll back this import on the server?',
-          detail: 'Every acceptance, the shops, the generated behaviors and the NPC definitions of this import are removed. '
-              'The staged preview stays, so it can be applied again.',
+          detail: 'Removes its NPCs, shops, behaviors and acceptances. The staged import stays.',
           confirmLabel: 'Roll back',
           destructive: true,
           returnFocus: _actionId('rollback'),
@@ -327,7 +325,7 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         if (_confirm == 'accept-all')
           LiveConfirm(
             question: 'Accept every waiting category on the server?',
-            detail: '${review.waiting} change${review.waiting == 1 ? '' : 's'} go live at once: NPCs spawn, and patrols, combat, riding, shops and builds turn on.',
+            detail: '${review.waiting} change${review.waiting == 1 ? '' : 's'} go live: NPCs spawn and their features turn on.',
             confirmLabel: 'Accept all',
             returnFocus: _actionId('accept-all'),
             onConfirm: () => _run('Accepting', (ServerImports i) => i.accept(importId, const <String>['all'])),

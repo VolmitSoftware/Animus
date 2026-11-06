@@ -25,30 +25,30 @@ final class _StyleField {
 
 const List<(String, List<_StyleField>)> _groups = <(String, List<_StyleField>)>[
   ('Facing and size', <_StyleField>[
-    _StyleField('billboard', _StyleKind.choice, 'How it turns to face the viewer.', choices: <String>['fixed', 'vertical', 'horizontal', 'center']),
-    _StyleField('scaleX', _StyleKind.number, '0.01 to 64; 1 by default.'),
-    _StyleField('scaleY', _StyleKind.number, '0.01 to 64; 1 by default.'),
-    _StyleField('scaleZ', _StyleKind.number, '0.01 to 64; 1 by default.'),
-    _StyleField('viewRange', _StyleKind.number, '0.01 to 64; 1 by default, a multiple of the entity view distance.'),
+    _StyleField('billboard', _StyleKind.choice, 'How it faces the viewer', choices: <String>['fixed', 'vertical', 'horizontal', 'center']),
+    _StyleField('scaleX', _StyleKind.number, '0.01 to 64, default 1'),
+    _StyleField('scaleY', _StyleKind.number, '0.01 to 64, default 1'),
+    _StyleField('scaleZ', _StyleKind.number, '0.01 to 64, default 1'),
+    _StyleField('viewRange', _StyleKind.number, 'Multiple of view distance, default 1'),
   ]),
   ('Text', <_StyleField>[
-    _StyleField('textAlignment', _StyleKind.choice, 'center by default.', choices: <String>['center', 'left', 'right']),
-    _StyleField('lineWidth', _StyleKind.integer, '1 to 16384 pixels before a line wraps.'),
-    _StyleField('textOpacity', _StyleKind.integer, '0 to 255; 255 is opaque.'),
-    _StyleField('backgroundArgb', _StyleKind.colour, '#AARRGGBB; #00000000 shows no background.'),
-    _StyleField('shadow', _StyleKind.boolean, 'A drop shadow under the text.'),
-    _StyleField('seeThrough', _StyleKind.boolean, 'Visible through blocks.'),
+    _StyleField('textAlignment', _StyleKind.choice, 'Default center', choices: <String>['center', 'left', 'right']),
+    _StyleField('lineWidth', _StyleKind.integer, 'Wrap width, 1 to 16384 px'),
+    _StyleField('textOpacity', _StyleKind.integer, '0 to 255, 255 is opaque'),
+    _StyleField('backgroundArgb', _StyleKind.colour, '#AARRGGBB, #00000000 for none'),
+    _StyleField('shadow', _StyleKind.boolean, 'Text drop shadow'),
+    _StyleField('seeThrough', _StyleKind.boolean, 'Visible through blocks'),
   ]),
   ('Light, shadow and glow', <_StyleField>[
-    _StyleField('blockLight', _StyleKind.integer, '0 to 15; set together with sky light.'),
-    _StyleField('skyLight', _StyleKind.integer, '0 to 15; set together with block light.'),
-    _StyleField('shadowRadius', _StyleKind.number, '0 to 64 blocks.'),
-    _StyleField('shadowStrength', _StyleKind.number, '0 to 1.'),
-    _StyleField('glowColor', _StyleKind.colour, '#AARRGGBB; the low 24 bits colour the glow.'),
+    _StyleField('blockLight', _StyleKind.integer, '0 to 15, set with sky light'),
+    _StyleField('skyLight', _StyleKind.integer, '0 to 15, set with block light'),
+    _StyleField('shadowRadius', _StyleKind.number, '0 to 64 blocks'),
+    _StyleField('shadowStrength', _StyleKind.number, '0 to 1'),
+    _StyleField('glowColor', _StyleKind.colour, '#AARRGGBB, low 24 bits used'),
   ]),
   ('Culling', <_StyleField>[
-    _StyleField('cullingWidth', _StyleKind.number, '0 to 4096. Checked; the server does not use it yet.'),
-    _StyleField('cullingHeight', _StyleKind.number, '0 to 4096. Checked; the server does not use it yet.'),
+    _StyleField('cullingWidth', _StyleKind.number, '0 to 4096, not used yet'),
+    _StyleField('cullingHeight', _StyleKind.number, '0 to 4096, not used yet'),
   ]),
 ];
 

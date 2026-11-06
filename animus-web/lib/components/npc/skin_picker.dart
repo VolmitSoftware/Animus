@@ -77,7 +77,7 @@ class _SkinPickerState extends State<SkinPicker> {
       _placeholders(),
       GuiRow(
         label: 'Skin hash',
-        help: 'SHA-256 of a skin document under skins/. The server supplies a signed texture once connected.',
+        help: 'SHA-256 of a skin under skins/.',
         problems: <Diagnostic>[
           ...component.diagnostics.where((Diagnostic diagnostic) => diagnostic.path == r'$.skin'),
           if (value != null && !_hash.hasMatch(value)) const Diagnostic(DiagnosticSeverity.error, r'$.skin', 'expected 64 lowercase hex characters'),
@@ -109,7 +109,7 @@ class _SkinPickerState extends State<SkinPicker> {
     final PlaceholderLook worn = SkinImages.placeholderLook(component.npcId);
     return dom.div(classes: 'animus-skin-placeholders', attributes: const <String, String>{'role': 'group', 'aria-label': 'Preview placeholder'}, <Widget>[
       const dom.p(classes: 'animus-gui-help', <Widget>[
-        Component.text('Preview placeholder: worn on the stage while this NPC has no skin texture here. Not saved; the server never sees it.'),
+        Component.text('Preview only. Not saved.'),
       ]),
       dom.div(classes: 'animus-skin-grid', attributes: const <String, String>{'role': 'radiogroup', 'aria-label': 'Placeholder skins'}, <Widget>[
         for (final PlaceholderLook look in placeholderLooks)

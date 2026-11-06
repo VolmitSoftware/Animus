@@ -189,7 +189,7 @@ class _ShellSidebarState extends State<ShellSidebar> {
           ]),
           if (nothingMatches)
             dom.p(classes: 'animus-muted animus-doc-search-empty', attributes: const <String, String>{'role': 'status'}, <Widget>[
-              Component.text('No document id or name contains "${_filter.trim()}". Clear the search to see every document.'),
+              Component.text('Nothing matches "${_filter.trim()}".'),
             ]),
           dom.nav(classes: 'animus-tree', attributes: const <String, String>{'aria-label': 'Documents by kind'}, groups),
         ],

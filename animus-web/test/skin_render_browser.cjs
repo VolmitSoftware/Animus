@@ -196,7 +196,7 @@ async function run(browser, viewport, label) {
   await page.goto(`${site}/?reload=1#${workspace}/npc/${encodeURIComponent(classic.id)}?view=preview`);
   const state = page.locator('[data-testid="npc-skin-state"]');
   await state.getByText('texture not loaded: textures.minecraft.net answered HTTP 503').waitFor();
-  await state.getByText(/Showing the placeholder \w+ skin \(classic\); retry or load a PNG/).waitFor();
+  await state.getByText(/Showing the placeholder \w+ skin \(classic\)/).waitFor();
   await shot(page, `${label}-server-failed`);
   failing = null;
   await state.getByRole('button', {name: 'Retry texture'}).focus();

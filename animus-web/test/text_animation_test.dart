@@ -62,7 +62,7 @@ void main() {
     expect(first(0), '&e* &6Bakery');
     expect(first(500), '&6+ &6Bakery');
     final GuiScene scene = hologramScene(sign, clock: GuiAnimationClock(from: 'shop:sign', animations: animations));
-    expect(scene.notes, contains('Text animation shop:gone is not in this workspace, so its token shows as written.'));
+    expect(scene.notes, contains('Text animation shop:gone is not in this workspace; token shown as written.'));
     expect(animationTickMs('|animation.sparkle|', 'shop:sign', animations), 500);
     expect(animationTickMs('plain', 'shop:sign', animations), isNull);
   });

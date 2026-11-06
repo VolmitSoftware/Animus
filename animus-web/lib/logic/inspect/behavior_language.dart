@@ -152,9 +152,9 @@ String? _checkName(String name, ExpressionScope scope) {
   if (head == 'context') return parts.length < 2 ? 'context needs a key, as in context.message.' : null;
   if (scope.language.roots.contains(head)) return null;
   if (scope.variables.containsKey(head)) {
-    return scope.language.readable(head) ? null : '$head cannot be read in expressions: rename it to lowercase letters, digits and _, starting with a letter.';
+    return scope.language.readable(head) ? null : '$head cannot be read in expressions. Rename it to start with a letter and use only a-z, 0-9 and _.';
   }
-  return 'No variable named $head. Declare it under Variables first.';
+  return 'No variable named $head. Declare it first.';
 }
 
 /// A `{{ }}` hole of a behavior template, found the way the server finds

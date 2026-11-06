@@ -202,18 +202,16 @@ class _EditorShellState extends State<EditorShell> {
       final WorkspaceSnapshot snapshot = await component.store.openFiles(picked.name, picked.files);
       final int invalid = snapshot.documents.where((AnimusDocument document) => !document.valid).length;
       if (snapshot.documents.isEmpty) {
-        ArcaneSonner.warning('No Animus documents in ${picked.name}. Pick the plugins/Animus folder (config/animus on mod servers) or a zip of it.');
+        ArcaneSonner.warning('No Animus documents in ${picked.name}. Pick plugins/Animus or a zip of it.');
       } else if (invalid > 0) {
-        ArcaneSonner.warning('Opened ${snapshot.documents.length} documents as a new workspace; $invalid need repair. '
-            'Edits stay in this browser: export a zip to take them back.');
+        ArcaneSonner.warning('Opened ${snapshot.documents.length} documents; $invalid need repair.');
       } else {
-        ArcaneSonner.success('Opened ${snapshot.documents.length} documents as a new workspace. '
-            'Edits stay in this browser: export a zip to take them back.');
+        ArcaneSonner.success('Opened ${snapshot.documents.length} documents.');
       }
       component.onNavigate(WorkspaceRoute(snapshot.id));
       focusMainHeading();
     } on Object catch (failure) {
-      ArcaneSonner.error('The files could not be opened ($failure). Pick the plugins/Animus folder or a zip of it, and check that the zip is complete.');
+      ArcaneSonner.error('Could not open the files ($failure). Pick plugins/Animus or a complete zip of it.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -231,7 +229,7 @@ class _EditorShellState extends State<EditorShell> {
       return;
     }
     downloadBytes('${_fileStem(workspace)}.gloss-workspace.json', utf8.encode(exported.bundle), type: 'application/json');
-    ArcaneSonner.success('Exported ${exported.exported} documents as a Gloss workspace bundle.'
+    ArcaneSonner.success('Exported ${exported.exported} documents as a Gloss bundle.'
         '${exported.skipped.isEmpty ? '' : ' Skipped ${exported.skipped.length}: ${exported.skipped.join('; ')}'}');
   }
 
@@ -382,7 +380,7 @@ class _EditorShellState extends State<EditorShell> {
       ),
       if (!store.persistent)
         const dom.div(key: ValueKey<String>('storage-banner'), classes: 'animus-banner is-warning', attributes: <String, String>{'role': 'status'}, <Widget>[
-          Component.text('This browser is not keeping workspaces between visits. Export a zip before you close the tab.'),
+          Component.text('This browser is not keeping workspaces. Export a zip before closing the tab.'),
         ]),
       if (store.problem != null) _problemBanner(store, workspace),
       if (component.route is PairRoute)
@@ -395,8 +393,8 @@ class _EditorShellState extends State<EditorShell> {
       else if (component.route is ServerRoute && component.hub.server((component.route as ServerRoute).serverId) == null)
         const dom.main_(id: mainId, classes: 'animus-home', attributes: <String, String>{'tabindex': '-1'}, <Widget>[
           dom.section(classes: 'animus-panel is-error', <Widget>[
-            dom.h1(id: mainHeadingId, attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('This server is not paired in this browser')]),
-            dom.p(<Widget>[Component.text('Run /animus editor pair on the server and open the link it prints, or paste it under Servers.')]),
+            dom.h1(id: mainHeadingId, attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Server not paired')]),
+            dom.p(<Widget>[Component.text('Run /animus editor pair and open the link, or paste it under Servers.')]),
             dom.p(<Widget>[dom.a(href: '#/', <Widget>[Component.text('Back to workspaces')])]),
           ]),
         ])
@@ -467,9 +465,9 @@ class _EditorShellState extends State<EditorShell> {
           ),
       PaletteCommand('Workspaces', 'All workspaces', () => component.onNavigate(const HomeRoute()), keywords: const <String>['home']),
       PaletteCommand('App', dark ? 'Use light theme' : 'Use dark theme', component.onToggleTheme, keywords: const <String>['theme', 'dark', 'light']),
-      PaletteCommand('App', 'Open a data folder as a new workspace', () => _open(pickDirectory)),
-      PaletteCommand('App', 'Open a zip as a new workspace', () => _open(pickZip)),
-      PaletteCommand('App', 'Convert a Citizens, Shopkeepers, dtlTraders or Denizen save', () => component.onNavigate(const CitizensRoute())),
+      PaletteCommand('App', 'Open data folder', () => _open(pickDirectory)),
+      PaletteCommand('App', 'Open zip', () => _open(pickZip)),
+      PaletteCommand('App', 'Convert Citizens and others', () => component.onNavigate(const CitizensRoute())),
     ];
   }
 
@@ -542,7 +540,7 @@ class _EditorShellState extends State<EditorShell> {
             dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
               Component.text('${selected.kind.label}: ${selected.documentId} is not in this workspace'),
             ]),
-            const dom.p(<Widget>[Component.text('It may have been renamed or deleted (Undo brings a deletion back), or the link is from another workspace.')]),
+            const dom.p(<Widget>[Component.text('It was renamed or deleted, or the link is from another workspace.')]),
             dom.p(<Widget>[
               dom.a(href: WorkspaceRoute(workspace.id).format(), const <Widget>[Component.text('Open the workspace overview')]),
             ]),
@@ -600,11 +598,11 @@ class _EditorShellState extends State<EditorShell> {
             const BrandMark(size: 56, classes: 'animus-empty-mark'),
             dom.div(<Widget>[
               const dom.p(<Widget>[
-                Component.text('This workspace has no documents yet. An NPC is a good first one: pick its body, name and skin, then give it a behavior.'),
+                Component.text('No documents yet.'),
               ]),
               dom.div(classes: 'animus-row', <Widget>[
                 Button.primary(label: 'Create an NPC', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id, DocumentKind.npc))),
-                Button.ghost(label: 'See every kind of document', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id))),
+                Button.ghost(label: 'All kinds', size: ButtonSize.small, onPressed: () => component.onNavigate(NewDocumentRoute(workspace.id))),
               ]),
             ]),
           ]),
@@ -657,9 +655,6 @@ class _EditorShellState extends State<EditorShell> {
         ]);
     return dom.section(classes: 'animus-panel animus-try', attributes: const <String, String>{'aria-labelledby': 'animus-try-title'}, <Widget>[
       const dom.h2(id: 'animus-try-title', <Widget>[Component.text('Try it in the browser')]),
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Previews draw NPCs with their equipment, pose, text and rig. A dry run steps through a behavior and says what would happen on a server.'),
-      ]),
       dom.div(classes: 'animus-try-groups', <Widget>[
         if (npcs.isNotEmpty) links('NPC previews', npcs, 'Preview'),
         if (behaviors.isNotEmpty) links('Behavior dry runs', behaviors, 'Dry-run'),

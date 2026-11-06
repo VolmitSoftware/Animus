@@ -11,8 +11,10 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
 import '../../logic/rig_sampler.dart';
+import '../info_tip.dart';
 import 'rig_events.dart';
 import 'rig_gizmo.dart';
 import 'rig_keyframe_panel.dart';
@@ -23,10 +25,10 @@ const List<double> playbackSpeeds = <double>[0.25, 0.5, 1, 2, 4];
 
 /// What each loop mode does, as the server plays it.
 const Map<String, String> loopDescriptions = <String, String>{
-  'once': 'Plays to the end, then the NPC goes back to its idle animation.',
-  'loop': 'Starts again from tick 0 at the end.',
-  'pingpong': 'Plays forward, then backward, and repeats.',
-  'hold': 'Plays to the end and keeps the last pose until something else plays.',
+  'once': 'Plays once, then returns to idle.',
+  'loop': 'Restarts from tick 0.',
+  'pingpong': 'Plays forward, then backward, repeating.',
+  'hold': 'Plays once and keeps the last pose.',
 };
 
 String formatTick(double value) {
@@ -195,14 +197,15 @@ class _RigTimelineState extends State<RigTimeline> {
           events: <String, void Function(web.Event)>{'click': (web.Event _) => setState(() => _namesOpen = !_namesOpen)},
           <Widget>[
             dom.span(classes: 'animus-rig-names-caret', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[Component.text(_namesOpen ? '-' : '+')]),
-            const Component.text('Animation names (idle, walk and the names behaviors play)'),
+            const Component.text('Animation names'),
           ],
         ),
+        const InfoTip(text: 'Behaviors play animations by name. idle and walk play on their own.', topic: 'Animation names', docs: Docs.rigs),
         if (_namesOpen) dom.div(id: 'animus-rig-names', <Widget>[component.names]),
       ]),
       if (animation == null)
         const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Showing the rest pose. Pick an animation or create one to key bones.'),
+          Component.text('Rest pose. Pick or create an animation to key bones.'),
         ])
       else
         ..._clipView(animation),
@@ -252,6 +255,7 @@ class _RigTimelineState extends State<RigTimeline> {
             onChanged: (String value) => component.onEdit((JsonMap json) => cloneJson(json)..['loop'] = value),
           ),
         ]),
+        InfoTip(text: loopDescriptions[loop] ?? loop, topic: 'Loop', docs: Docs.animations),
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Duration (ticks)')]),
           TextInput(
@@ -265,7 +269,6 @@ class _RigTimelineState extends State<RigTimeline> {
           ),
         ]),
       ]),
-      dom.p(classes: 'animus-muted animus-rig-loop-note', <Widget>[Component.text(loopDescriptions[loop] ?? '')]),
       if (component.status != null) dom.p(classes: 'animus-rig-status', <Widget>[Component.text(component.status!)]),
       if (trim != null)
         dom.div(classes: 'animus-rig-trim', attributes: const <String, String>{'role': 'alert'}, <Widget>[
@@ -315,7 +318,7 @@ class _RigTimelineState extends State<RigTimeline> {
         ]),
         for (int index = 0; index < tracks.length; index++) _lane(tracks, index, span, time),
         if (tracks.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No tracks yet. Select a bone, then add a keyframe or drag a gizmo handle.')]),
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No tracks yet. Select a bone and add a keyframe.')]),
         _eventLane(events, span, time),
       ]),
       dom.div(classes: 'animus-rig-toolbar animus-rig-keybar', <Widget>[
@@ -467,7 +470,7 @@ class _RigTimelineState extends State<RigTimeline> {
         'aria-label': label,
         'aria-pressed': '${component.keyframe == (index, key)}',
         'data-key': '$index:$key',
-        'title': '$label. Drag or use the arrow keys to move it.',
+        'title': label,
       },
       styles: _at(tick, span),
       events: <String, void Function(web.Event)>{

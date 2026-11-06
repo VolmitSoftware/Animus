@@ -43,9 +43,9 @@ final class HologramTextStyle {
       scaleY: asDouble(style['scaleY']) ?? 1,
       brightness: block == null || sky == null ? null : mcLightBrightness(math.max(block, sky)),
       notes: <String>[
-        if (billboard != 'center') 'Style billboard $billboard turns the text with yaw and pitch in game; the preview draws it facing the camera.',
-        if (!seeThrough) 'Style seeThrough is off, so blocks in front hide the text in game; the preview draws it over them.',
-        if (unshown.isNotEmpty) 'Style ${unshown.join(', ')} is saved and used by the server; the preview does not draw it.',
+        if (billboard != 'center') 'Preview ignores billboard $billboard and faces the camera.',
+        if (!seeThrough) 'Preview draws text over blocks; seeThrough is off in game.',
+        if (unshown.isNotEmpty) 'Preview does not draw style ${unshown.join(', ')}.',
       ],
     );
   }

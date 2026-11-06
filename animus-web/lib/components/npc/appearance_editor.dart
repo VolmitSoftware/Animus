@@ -33,7 +33,7 @@ class HologramLinesEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     if (value == null) {
       return dom.div(classes: 'animus-row', <Widget>[
-        const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('No text above the body. The nameplate still shows the name.')]),
+        const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('No lines. The nameplate still shows.')]),
         Button.secondary(
           label: 'Add hologram text',
           size: ButtonSize.small,
@@ -95,7 +95,7 @@ class HologramLinesEditor extends StatelessWidget {
           Button.ghost(label: 'Remove hologram', size: ButtonSize.small, onPressed: () => onChanged(null)),
         ]),
         const dom.p(classes: 'animus-gui-help', <Widget>[
-          Component.text('& codes colour the text: &a green, &c red, &l bold. Each line holds at most 256 characters.'),
+          Component.text('&a green, &c red, &l bold. Up to 256 characters a line.'),
         ]),
         if (node.isNotEmpty)
           InspectObject(
@@ -150,7 +150,7 @@ class ArmorStandEditor extends StatelessWidget {
             skip: armorStandParts.toSet(),
             onChanged: put,
           ),
-        const dom.p(classes: 'animus-gui-help', <Widget>[Component.text('Pose angles in degrees, -360 to 360. A part at 0, 0, 0 keeps the default pose.')]),
+        const dom.p(classes: 'animus-gui-help', <Widget>[Component.text('Degrees, -360 to 360. 0, 0, 0 is the default pose.')]),
         dom.div(classes: 'animus-armor-stand-parts', <Widget>[
           for (final String part in armorStandParts)
             dom.div(

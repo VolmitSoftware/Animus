@@ -34,9 +34,10 @@ async function run(browser, viewport, label) {
   await page.getByRole('heading', {level: 1, name: 'Start a workspace'}).waitFor();
   assert.deepEqual(await page.locator('.animus-start-way h2').allTextContents(), ['Blank', 'From the example packs', 'From a data folder']);
   assert.equal(await page.locator(".animus-start .arcane-button[data-variant='primary']").count(), 1, 'one primary action on the home page');
-  await page.getByText('edits do not go back into the folder', {exact: false}).waitFor();
-  await page.getByRole('button', {name: 'Convert a Citizens, Shopkeepers, dtlTraders or Denizen save'}).waitFor();
-  await page.getByText('None yet. A workspace you start above', {exact: false}).waitFor();
+  assert.equal(await page.getByRole('link', {name: 'Data folder docs'}).getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
+  assert.equal(await page.getByRole('link', {name: 'Workspaces docs'}).getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
+  await page.getByRole('button', {name: 'Convert Citizens and others'}).waitFor();
+  await page.getByText('No workspaces yet.', {exact: true}).waitFor();
   await noSideways(page, `${label} home`);
 
   // The skip link is the first stop and moves focus to the main content.
@@ -74,7 +75,7 @@ async function run(browser, viewport, label) {
   await page.waitForFunction(() => document.activeElement && document.activeElement.getAttribute('aria-label') === 'Delete Renamed');
   await page.getByRole('button', {name: 'Delete Renamed'}).click();
   await page.getByRole('button', {name: 'Delete workspace'}).click();
-  await page.getByText('You can restore it until you close the tab.', {exact: false}).waitFor();
+  await page.getByText('Deleted Renamed. Restore until you close the tab.', {exact: false}).waitFor();
   await page.getByRole('button', {name: 'Restore Renamed'}).click();
   await page.getByRole('link', {name: 'Renamed'}).waitFor();
   await noSideways(page, `${label} workspace list`);
@@ -126,7 +127,7 @@ async function run(browser, viewport, label) {
   await page.locator('.animus-code textarea').waitFor();
   // A broken draft says so in the header instead of claiming the document is valid.
   await page.locator('.animus-code textarea').fill('{"broken": ');
-  await page.getByText('The draft in Code has a JSON error, so it is not applied.', {exact: false}).waitFor();
+  await page.getByText('The Code draft has a JSON error and is not applied.', {exact: true}).waitFor();
   await page.getByRole('button', {name: 'Discard'}).click();
   await page.getByRole('tab', {name: 'Split'}).click();
   // An NPC's Split view puts the 3D preview beside the code.

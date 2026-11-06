@@ -550,14 +550,6 @@
   color: var(--animus-muted);
 }
 
-.animus-palette-keys {
-  margin: 0;
-  padding: 0.5rem 1rem;
-  font-size: 0.75rem;
-  color: var(--animus-muted);
-  border-top: 1px solid var(--animus-border);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .animus-menu,
   .animus-palette,

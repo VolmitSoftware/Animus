@@ -100,7 +100,10 @@ async function run(browser, viewport, tag, theme) {
   await page.getByRole('tab', {name: 'Visual'}).click();
   const inspector = page.getByRole('region', {name: 'NPC inspector'}).or(page.locator('.animus-inspector')).first();
   await inspector.waitFor();
-  await inspector.getByText('The displayed name.').waitFor();
+  // The schema's help is the Name row's info tooltip, linked to the NPC page.
+  const nameInfo = inspector.getByRole('link', {name: 'Name docs', exact: true});
+  assert.equal(await nameInfo.getAttribute('href'), 'https://docs.volmitsoftware.com/animus/04-npc-definitions#definition-file');
+  assert.equal(await page.locator(`[id="${await nameInfo.getAttribute('aria-describedby')}"]`).textContent(), 'The displayed name.');
   const name = inspector.getByLabel('name', {exact: true});
   await name.fill('Greeter Edited');
   await page.waitForTimeout(300);
@@ -143,7 +146,7 @@ async function run(browser, viewport, tag, theme) {
   await selectWith(wave, 'Add step').selectOption('call');
   await editor.locator('[data-node-path="$.routines.wave.steps[2]"]').waitFor();
   const say = editor.locator('[data-node-path="$.routines.main.steps[1].then"]');
-  await say.getByText('Unavailable here').first().waitFor();
+  await say.locator('.animus-info [role="tooltip"]', {hasText: 'Unavailable here'}).first().waitFor({state: 'attached'});
   await page.waitForTimeout(300);
   await shot(page, `${tag}-behavior-editor`);
   json = await codeOf(page);
@@ -155,6 +158,7 @@ async function run(browser, viewport, tag, theme) {
   // Denizen v2 parts: a list variable with items, loops, expressions, a placeholder.
   const variables = editor.locator('details.animus-gui-section', {has: page.locator('summary', {hasText: 'Variables'})});
   await variables.locator('summary').first().click();
+  assert.equal(await variables.getByRole('link', {name: 'Variables docs'}).getAttribute('href'), 'https://docs.volmitsoftware.com/animus/07-behaviors#variables');
   await variables.getByRole('button', {name: 'Add variable'}).click();
   const flag = editor.locator('[data-variable="flag"]');
   await flag.waitFor();
@@ -245,15 +249,16 @@ async function run(browser, viewport, tag, theme) {
   const workspace = await page.evaluate(() => decodeURIComponent(location.hash.split('/')[2]));
   await page.goto(`${process.env.ANIMUS_WEB_URL}/#/workspace/${encodeURIComponent(workspace)}/new/server-behaviors`);
   await page.getByRole('heading', {name: 'New server behaviors list'}).waitFor();
-  await page.getByText('listing the 1 server behavior in this workspace: greeter:greeter').waitFor();
+  await page.getByText('Creates server-behaviors.json with greeter:greeter.').waitFor();
   await page.getByRole('button', {name: 'Create server behaviors list'}).click();
   await page.locator('.animus-document-header').getByText('server-behaviors.json').waitFor();
   await page.getByRole('tab', {name: 'Visual'}).click();
   const list = page.locator('.animus-server-behaviors');
   await list.waitFor();
   await list.locator('[data-behavior="greeter:greeter"]').waitFor();
+  assert.equal(await list.getByRole('link', {name: 'Server behaviors docs'}).getAttribute('href'), 'https://docs.volmitsoftware.com/animus/07-behaviors#server-behaviors');
   await list.getByRole('button', {name: 'Remove greeter:greeter from the list'}).click();
-  await list.getByText('The list is empty, so no server behavior runs. Add one below.').waitFor();
+  await list.getByText('Nothing listed. Add one below.').waitFor();
   await selectWith(list, 'Add a server behavior').selectOption('greeter:greeter');
   await list.locator('[data-behavior="greeter:greeter"]').waitFor();
   await shot(page, `${tag}-server-behaviors`);

@@ -81,7 +81,7 @@ async function run(browser, viewport, theme, tag) {
   await page.selectOption('#animus-group-assign-group', 'town-guards');
   await page.selectOption('#animus-group-assign-by', 'folder');
   await page.selectOption('#animus-group-assign-folder', 'town');
-  await form.locator('[data-npc="group-assign-reach"]').getByText('3 NPCs reached', {exact: false}).waitFor();
+  await form.locator('[data-npc="group-assign-reach"]').getByText('3 NPCs affected', {exact: false}).waitFor();
   await shot(page, `${tag}-01-group-assign`);
   await noSidewaysScroll(page, `${tag} group assign`);
   await page.locator('#animus-group-assign').click();

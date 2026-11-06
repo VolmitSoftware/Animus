@@ -133,7 +133,7 @@ async function run(browser, viewport, label, skinFile) {
   // Every other kind from its guided step.
   await create(page, workspace, 'behavior', 'behavior', async () => {
     await page.getByRole('radio', {name: /^Shop/}).click();
-    await select(page, 'Give it to an NPC').selectOption('town/old-tom');
+    await select(page, 'Give to NPC').selectOption('town/old-tom');
   });
   await create(page, workspace, 'pack', 'pack', async () => page.getByLabel('Name', {exact: true}).fill('Town pack'));
   await create(page, workspace, 'route', 'route', async () => page.getByLabel('Name', {exact: true}).fill('Market loop'));
@@ -261,7 +261,7 @@ async function run(browser, viewport, label, skinFile) {
   // Playground: the NPC with its skin and the rig playing an animation.
   await code(page, (json) => ({...json, rig: {id: 'sketchbook:golem'}}));
   await page.getByRole('tab', {name: 'Preview'}).click();
-  await page.getByText('Browser preview.', {exact: false}).first().waitFor();
+  await page.getByText('Browser preview', {exact: true}).first().waitFor();
   await page.locator('.animus-mc-stage[data-webgl="ready"]').waitFor();
   await page.locator('.animus-npc-facts').getByText(/^(tom\.png|the PNG kept in this workspace) \(classic\)$/).waitFor();
   await page.getByLabel('Animation').selectOption('sketchbook:golem/wave');
@@ -281,7 +281,7 @@ async function run(browser, viewport, label, skinFile) {
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/behavior/${encodeURIComponent('sketchbook:shop')}?view=preview`);
   await page.getByRole('button', {name: /^click: a player right-clicks/}).click();
   await page.locator('.animus-dryrun-step.is-serverOnly', {hasText: 'Would open shop'}).waitFor();
-  await page.getByText('1 step would run on the server and was not run here.').waitFor();
+  await page.getByText('1 server-only step not run.').waitFor();
   await shot(page, label, '07-dry-run-server-only');
 
   // Export the workspace as a data folder zip.
@@ -316,7 +316,7 @@ async function run(browser, viewport, label, skinFile) {
 
   // With no server paired, the sync page says how to pair one.
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/sync`);
-  await page.locator('[data-testid="sync-no-server"]', {hasText: 'Run /animus editor pair on the server'}).waitFor();
+  await page.locator('[data-testid="sync-no-server"]', {hasText: 'No server paired. Run /animus editor pair'}).waitFor();
   await page.getByRole('button', {name: 'Pair a server'}).waitFor();
   await shot(page, label, '08b-sync-no-server');
 
@@ -358,13 +358,13 @@ async function run(browser, viewport, label, skinFile) {
   assert.notEqual((await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`)).source.name, 'Baker Bea', 'cancel sent nothing');
   await page.getByRole('button', {name: /^Push \d+/}).click();
   await page.getByRole('alertdialog').getByRole('button', {name: 'Replace and push'}).click();
-  await page.locator('.animus-ok', {hasText: /The server applied \d+ documents? as change/}).waitFor();
+  await page.locator('.animus-ok', {hasText: /^Applied \d+ documents? as change/}).waitFor();
   const state = await control('state');
   const baker = await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`);
   assert.equal(baker.source.name, 'Baker Bea', 'the chosen overwrite reached the server');
   assert.ok(state.documents.some((document) => document.kind === 'npc' && document.id === 'town/old-tom'), 'the new NPC reached the server');
   await shot(page, label, '10-pushed');
-  await page.locator('[data-testid="sync-nothing"]', {hasText: /already match the server\. Nothing to push\./}).waitFor();
+  await page.locator('[data-testid="sync-nothing"]', {hasText: /documents already match the server\.$/}).waitFor();
 
   assert.deepEqual(errors, []);
   await context.close();
@@ -380,10 +380,10 @@ async function withoutStorage(browser, viewport, label) {
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(site);
   await page.getByRole('heading', {name: 'Start a workspace'}).waitFor();
-  await page.getByRole('status').filter({hasText: 'This browser is not keeping workspaces between visits. Export a zip before you close the tab.'}).waitFor();
+  await page.getByRole('status').filter({hasText: 'This browser is not keeping workspaces. Export a zip before closing the tab.'}).waitFor();
   await page.getByRole('button', {name: 'Create blank workspace'}).click();
   await page.waitForFunction(() => location.hash.includes('/new'));
-  await page.getByText('This browser is not keeping workspaces between visits.', {exact: false}).waitFor();
+  await page.getByText('This browser is not keeping workspaces.', {exact: false}).waitFor();
   await shot(page, label, '11-no-storage');
   assert.deepEqual(errors, []);
   await context.close();

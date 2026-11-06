@@ -367,12 +367,12 @@ async function packStates(browser) {
     await page.route('**/assets/mc/*/models.json', async route => { await held; await route.continue(); });
     const {base, workspace} = await openFolder(page);
     await page.goto(`${base}#${workspace}/rig/${encodeURIComponent('town:golem')}`);
-    await page.locator('.animus-mc-status').getByText('Loading the Minecraft models (about 2 MB).').waitFor();
+    await page.locator('.animus-mc-status').getByText('Loading models (2 MB)').waitFor();
     assert.equal(await page.locator('.animus-mc-stage').getAttribute('data-pack'), 'loading');
     await shot(page, 'pack', 'loading');
     release();
     await drawn(page);
-    assert.equal(await page.locator('.animus-mc-status').getByText('Loading the Minecraft models').count(), 0);
+    assert.equal(await page.locator('.animus-mc-status').getByText('Loading models').count(), 0);
     assert.deepEqual(errors, []);
     step('pack', 'held models.json -> loading line and spinner, released -> drawn');
     await context.close();
@@ -386,11 +386,11 @@ async function packStates(browser) {
     await page.route('**/assets/mc/*/pack.json', route => route.fulfill({status: 404, body: 'not found'}));
     const {base, workspace} = await openFolder(page);
     await page.goto(`${base}#${workspace}/rig/${encodeURIComponent('town:golem')}`);
-    await page.locator('.animus-mc-problem').getByText('The model pack is not on this site. The preview needs the pack described in the README.').waitFor();
+    await page.locator('.animus-mc-problem').getByText('Model pack missing from this site. See the README.').waitFor();
     assert.equal(await page.locator('.animus-mc-problem').getByRole('button', {name: 'Retry'}).count(), 0);
     await shot(page, 'pack', 'missing');
     assert.deepEqual(errors, []);
-    step('pack', 'pack.json 404 -> "The model pack is not on this site..." without Retry');
+    step('pack', 'pack.json 404 -> "Model pack missing from this site..." without Retry');
     await context.close();
   }
   // Network failure: Retry loads the pack once the network is back.
@@ -402,7 +402,7 @@ async function packStates(browser) {
     await page.route('**/assets/mc/*/pack.json', route => route.abort('failed'));
     const {base, workspace} = await openFolder(page);
     await page.goto(`${base}#${workspace}/rig/${encodeURIComponent('town:golem')}`);
-    await page.locator('.animus-mc-problem').getByText('The models could not be downloaded. Check the connection and retry.').waitFor();
+    await page.locator('.animus-mc-problem').getByText('Models failed to download. Check the connection.').waitFor();
     await shot(page, 'pack', 'network');
     await page.unroute('**/assets/mc/*/pack.json');
     await page.locator('.animus-mc-problem').getByRole('button', {name: 'Retry'}).click();

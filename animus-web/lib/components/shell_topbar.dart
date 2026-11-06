@@ -75,8 +75,8 @@ class ShellTopbar extends StatelessWidget {
   String get _themeLabel => dark ? 'Use light theme' : 'Use dark theme';
 
   List<MenuEntry> get _openEntries => <MenuEntry>[
-        MenuEntry('Open folder as a new workspace', actions.onOpenFolder),
-        MenuEntry('Open zip as a new workspace', actions.onOpenZip),
+        MenuEntry('Open folder', actions.onOpenFolder),
+        MenuEntry('Open zip', actions.onOpenZip),
       ];
 
   List<MenuEntry> get _importEntries => <MenuEntry>[

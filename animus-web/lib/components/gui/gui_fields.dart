@@ -17,6 +17,8 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../mc/npc/mc_text.dart';
 import '../../model/animus_document.dart';
+import '../../logic/help_text.dart';
+import '../info_tip.dart';
 
 /// What a text field holds, which decides its checks and completion.
 enum GuiTextMode {
@@ -60,14 +62,18 @@ class GuiRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ({String? hint, String? tip}) split = splitHelp(help);
     return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      if (forId != null)
-        dom.label(htmlFor: forId, classes: 'animus-gui-label', <Widget>[Component.text(label)])
-      else
-        dom.span(classes: 'animus-gui-label', <Widget>[Component.text(label)]),
+      labelWithTip(
+        forId != null
+            ? dom.label(htmlFor: forId, classes: 'animus-gui-label', <Widget>[Component.text(label)])
+            : dom.span(classes: 'animus-gui-label', <Widget>[Component.text(label)]),
+        split.tip,
+        label,
+      ),
       dom.div(classes: 'animus-gui-control', <Widget>[
         child,
-        if (help != null && help!.isNotEmpty) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(help!)]),
+        if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
         for (final Diagnostic problem in problems)
           dom.span(
             classes: 'animus-gui-problem is-${problem.severity.name}',
@@ -661,10 +667,10 @@ class _GuiJsonObjectInputState extends State<GuiJsonObjectInput> {
         setState(() => _problem = null);
         component.onChanged(parsed);
       } else {
-        setState(() => _problem = 'Must be a JSON object in braces; nothing is saved until it is.');
+        setState(() => _problem = 'Must be a JSON object. Not saved yet.');
       }
     } on FormatException catch (error) {
-      setState(() => _problem = 'Not valid JSON yet (${error.message}); nothing is saved until it parses.');
+      setState(() => _problem = 'Invalid JSON (${error.message}). Not saved yet.');
     }
   }
 

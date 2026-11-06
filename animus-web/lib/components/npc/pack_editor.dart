@@ -7,11 +7,13 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/pack_model.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 
 class PackEditor extends StatefulWidget {
@@ -65,14 +67,17 @@ class _PackEditorState extends State<PackEditor> {
           title: 'Modules',
           count: modules.length,
           children: <Widget>[
-            const dom.p(classes: 'animus-gui-help', <Widget>[
-              Component.text(
-                "Java modules this pack's behaviors use. A missing required module makes the pack's behaviors unavailable; an optional one only switches off what needs it.",
+            dom.p(classes: 'animus-gui-help', <Widget>[
+              labelWithTip(
+                const dom.span(<Widget>[Component.text("Java modules the pack's behaviors use.")]),
+                "A missing required module disables the pack's behaviors. A missing optional one only switches off what needs it.",
+                'Pack modules',
+                docs: Docs.packs,
               ),
             ]),
             if (modules.isEmpty)
               const dom.p(classes: 'animus-muted', <Widget>[
-                Component.text('The pack needs no Java modules. Add one below if its behaviors use a module capability.'),
+                Component.text('No modules.'),
               ]),
             for (final MapEntry<String, Object?> entry in modules.entries) _module(pack, entry.key, asMap(entry.value)),
             dom.div(classes: 'animus-gui-line', <Widget>[
@@ -137,13 +142,13 @@ class _PackEditorState extends State<PackEditor> {
           dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('$renameProblem The name stays $name until then.')]),
         GuiSwitch(
           value: module['required'] != false,
-          label: 'Required: without it the pack is unavailable',
+          label: 'Required',
           onChanged: (bool required) =>
               put(<String, Object?>{...module, 'required': required}..removeWhere((String key, Object? value) => key == 'required' && value == true)),
         ),
         GuiRow(
           label: 'Configuration',
-          help: "The module's own settings, kept as written.",
+          help: 'Kept as written.',
           problems: diagnosticsAt(component.diagnostics, '$path.configuration', nested: true),
           child: KeptJsonEditor(
             value: module['configuration'] ?? const <String, Object?>{},
