@@ -112,6 +112,14 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- The editor edits every Denizen v2 behavior node: foreach, while, break, continue and return, with loop variables picked or declared for you.
+- One operand control in the behavior editor takes a typed value, a variable, an expression or a template wherever the language allows an operand.
+- Expression and template fields check their syntax and complete variables, facts and functions as you type, in the Visual and Code views.
+- Action and condition arguments can be filled at run time from a variable, an expression or a template.
+- A server switch in the behavior editor, with server events, scopes, capabilities and timer limits to match.
+- The editor opens, creates, edits and exports `server-behaviors.json`, and the workspace overview counts the listed server behaviors.
+- The dry run runs loops, expressions, templates, call results and server events, and asks about facts only a server knows.
+- `completions.json` lists the expression language, which capabilities need an NPC, and each server event's context keys.
 
 ### Changed
 
@@ -175,6 +183,9 @@
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
+- The behavior tree reads by indentation with one thin rail per level, and shows each step's type and a plain summary when collapsed.
+- Field labels read as words ("Cooldown ticks"), and format problems say what the value must look like instead of showing a pattern.
+- New variables are named `flag_2` rather than `flag-2`, so expressions can read them.
 
 ### Fixed
 
@@ -211,6 +222,12 @@
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 - The editor theme toggle switches themes without a reload.
 - Assignments whose only content was `on assignment` now give their NPCs a behavior.
+- Typing an expression into a while or condition no longer reports "Invalid JSON".
+- Setting a variable from an expression no longer writes a second, conflicting operand.
+- Changing a list, map or any variable's type gives it a matching starting value instead of empty text.
+- New while and foreach steps are valid as soon as they are added.
+- The editor keeps `server-behaviors.json` when a data folder is opened and exported.
+- The code view names a JSON syntax error by line and column in words.
 
 ### Notes
 
