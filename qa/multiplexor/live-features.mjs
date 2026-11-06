@@ -372,7 +372,7 @@ async function triggers() {
   });
   await check('trigger waypoint arrival', async () => {
     const from = owner.events.length;
-    await server.cmd('animus navigate trig 4 61 10 walk 3', /./);
+    await server.cmd('animus navigate trig 4 61 10 mode=walk speed=3', /./);
     return (await owner.chat('Trigger » waypoint-fired', from, 15_000)).text;
   });
   await check('behaviors triggers output', async () => {
@@ -701,7 +701,7 @@ async function actions() {
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('navigate wait fails when blocked mid-walk', async () => {
-    await server.cmd('animus navigate act 0 61 3 walk 5', /./); await delay(2000);
+    await server.cmd('animus navigate act 0 61 3 mode=walk speed=5', /./); await delay(2000);
     server.behavior('live:nav', { routines: { main: seq(action('animus:navigate', { x: 12, y: 61, z: 3, speed: 1, wait: true, timeoutTicks: 600 }), sayTo('walled-arrived')) } });
     await server.reload();
     const execution = await owner.run('act', 'live:nav');
@@ -713,7 +713,7 @@ async function actions() {
     return diagnosticOf(result.text).replace(/^.*Behavior diagnostic/, 'diagnostic').slice(0, 200);
   });
   await check('navigate wait times out', async () => {
-    await server.cmd('animus navigate act 0 61 3 walk 5', /./); await delay(3000);
+    await server.cmd('animus navigate act 0 61 3 mode=walk speed=5', /./); await delay(3000);
     const result = await runDoc(owner, 'nav', action('animus:navigate', { x: 30, y: 61, z: 3, speed: 1, wait: true, timeoutTicks: 20 }));
     assert.equal(result.state, 'FAILED');
     assert(/navigation-timeout/.test(result.text), result.text.slice(0, 400));
@@ -1209,7 +1209,7 @@ async function dragon() {
   await check('moving dragon uses flight phase and returns to sitting', async () => {
     await go(0, 61, -20);
     const from = owner.events.length;
-    const reply = await server.capture('animus navigate drake 0 61 16 walk 2', /Navigation[^\n]*|Animus navigation[^\n]*/, 2500);
+    const reply = await server.capture('animus navigate drake 0 61 16 mode=walk speed=2', /Navigation[^\n]*|Animus navigation[^\n]*/, 2500);
     const status = await server.capture('animus navigation drake status', /Navigation[^\n]*|Animus navigation[^\n]*/);
     note(reply + status);
     const phases = () => owner.events.slice(from).filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ');
@@ -1341,7 +1341,7 @@ async function foliaMounts(owner, at) {
     const before = await inspect('fhorse');
     const goal = [before.x + 24, before.y, before.z];
     await owner.tp(before.x + 12, before.y, before.z - 4);
-    await server.cmd(`animus navigate fhorse ${goal[0].toFixed(1)} ${goal[1]} ${goal[2].toFixed(1)} walk 4`, /Navigation|navigation|route/i);
+    await server.cmd(`animus navigate fhorse ${goal[0].toFixed(1)} ${goal[1]} ${goal[2].toFixed(1)} mode=walk speed=4`, /Navigation|navigation|route/i);
     const end = await until(async () => { const h = await inspect('fhorse'); return { ok: Math.abs(h.x - goal[0]) < .7, x: h.x, line: h.line.slice(0, 200) }; }, 30000, 'horse did not arrive');
     const rider = await inspect('fknight');
     const chunks = Math.floor(goal[0] / 16) - Math.floor(before.x / 16);
@@ -1478,7 +1478,7 @@ async function foliaDragon(owner, at) {
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 6), from, 8000);
     const moved = owner.events.length;
     const goal = at(-20, 46);
-    await server.cmd(`animus navigate fdrake ${goal[0]} ${goal[1]} ${goal[2]} walk 2`, /Navigation|navigation|route/i);
+    await server.cmd(`animus navigate fdrake ${goal[0]} ${goal[1]} ${goal[2]} mode=walk speed=2`, /Navigation|navigation|route/i);
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 0), moved, 10000);
     await owner.wait(e => e.event === 'metadata' && e.id === body.id && e.fields.some(f => f.value === 6), moved, 20000);
     return owner.events.filter(e => e.event === 'metadata' && e.id === body.id).map(e => JSON.stringify(e.fields)).join(' ').slice(0, 200);
@@ -1530,11 +1530,12 @@ async function inspect(id) {
 }
 async function combatOf(id) {
   const pattern = new RegExp(`Combat ${id}:[^\\n]*`);
-  return plain(await server.capture(`animus combat ${id} status`, pattern)).match(pattern)[0];
+  return plain(await server.capture(`animus combat status npc=${id}`, pattern)).match(pattern)[0];
 }
 async function combatCommand(id, operation) {
   const pattern = new RegExp(`Combat ${id}:[^\\n]*|Unknown NPC[^\\n]*|Usage[^\\n]*`);
-  return plain(await server.capture(`animus combat ${id} ${operation}`, pattern)).match(pattern)[0];
+  const [verb, ...rest] = operation.split(' ');
+  return plain(await server.capture(`animus combat ${verb} ${id}${rest.length ? ' ' + rest.join(' ') : ''}`, pattern)).match(pattern)[0];
 }
 async function entityNumber(uuid, nbt) {
   const text = plain(await server.capture(`data get entity ${uuid} ${nbt}`, /following entity data[^\n]*|No entity was found|Found no elements[^\n]*/));
@@ -2442,7 +2443,7 @@ async function foliaBuilds(owner, at) {
   const startCommand = `animus build start ${SCAFFOLD.npc} schematic=${SCAFFOLD.file} at=${ox},${oy},${oz} anchor=corner materials=creative interval=2 timeout=30`;
   let created = false, helper = false;
   await check('Folia: builds run on region turns', async () => {
-    const status = plain(await server.capture('animus build', /Builds [^\n]*/)).match(/Builds [^\n]*/)[0];
+    const status = plain(await server.capture('animus build status', /Builds [^\n]*/)).match(/Builds [^\n]*/)[0];
     assert.match(status, /^Builds ready on Folia regions \| /);
     return status;
   });
@@ -2500,7 +2501,7 @@ async function foliaBuilds(owner, at) {
       assert(top >= oy + 9, `the rigger only reached y=${top}`);
       const crossed = new Set(moves.map(m => Math.floor(m.x / 16))).size;
       assert(crossed >= 2, 'the rigger never left its first chunk column');
-      const turns = plain(await server.capture('animus build', /Builds [^\n]*/)).match(/region-turns=(\d+) out=\d+ lost=(\d+)/);
+      const turns = plain(await server.capture('animus build status', /Builds [^\n]*/)).match(/region-turns=(\d+) out=\d+ lost=(\d+)/);
       assert(turns && Number(turns[1]) > 0 && turns[2] === '0', `region turns: ${turns?.[0]}`);
       const undo = await foliaLog(`animus build undo ${SCAFFOLD.npc}`, new RegExp(`Undoing \\d+ changes of build ${SCAFFOLD.npc}[^\\n]*|Animus build: [^\\n]*`));
       assert.match(undo, new RegExp(`^Undoing \\d+ changes of build ${SCAFFOLD.npc}`));
@@ -2566,7 +2567,7 @@ async function smoke() {
   });
   await check('smoke navigation arrives', async () => {
     const from = owner.events.length;
-    await server.cmd('animus navigate smoke 4 61 6 walk 3', /./);
+    await server.cmd('animus navigate smoke 4 61 6 mode=walk speed=3', /./);
     await owner.chat('Smoke » smoke-arrived', from, 15_000);
     const moved = owner.events.slice(from).filter(e => e.event === 'move' && e.id === body.id).at(-1);
     assert(moved && Math.abs(moved.x - 4.5) < 1, JSON.stringify(moved));
