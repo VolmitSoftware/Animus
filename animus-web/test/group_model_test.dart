@@ -60,6 +60,21 @@ void main() {
       expect(effective.rows.map((EffectiveRow row) => row.path), isNot(contains('name')));
     });
 
+    test('attributes show one row each with the source that set it', () {
+      final JsonMap npc = <String, Object?>{...entry('town/gate-guard').json, 'attributes': <String, Object?>{'minecraft:scale': 2}};
+      final JsonMap guards = <String, Object?>{
+        ...groups['town-guards']!,
+        'values': <String, Object?>{...asMap(groups['town-guards']!['values']), 'attributes': <String, Object?>{'gravity': 0.02, 'scale': 1.2}},
+      };
+      final NpcEffective effective = effectiveNpc(npc, <String, JsonMap>{...groups, 'town-guards': guards})!;
+      final Map<String, EffectiveRow> rows = <String, EffectiveRow>{for (final EffectiveRow row in effective.rows) row.path: row};
+      expect(rows['attributes.scale']!.value, 2);
+      expect(rows['attributes.scale']!.source, 'npc');
+      expect(rows['attributes.gravity']!.value, 0.02);
+      expect(rows['attributes.gravity']!.source, 'town-guards');
+      expect(rows.containsKey('attributes'), isFalse);
+    });
+
     test('a missing group is reported and skipped', () {
       final JsonMap npc = <String, Object?>{...entry('town/gate-guard').json, 'groups': <String>['town-guards', 'gone']};
       final NpcEffective effective = effectiveNpc(npc, groups)!;

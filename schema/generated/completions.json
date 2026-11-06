@@ -929,6 +929,39 @@
       ]
     },
     {
+      "id": "animus:set-attribute",
+      "kind": "action",
+      "description": "Sets one vanilla attribute of the NPC, such as scale or movement_speed, or with reset returns it to the definition's value. Lasts until the runtime restarts or the definition changes.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
+      "arguments": {
+        "attribute": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "value": {
+          "type": "number",
+          "required": false
+        },
+        "reset": {
+          "type": "boolean",
+          "required": false
+        }
+      },
+      "oneOfRequired": [
+        [
+          "value"
+        ],
+        [
+          "reset"
+        ]
+      ]
+    },
+    {
       "id": "animus:set-equipment",
       "kind": "action",
       "description": "Shows an item in an equipment slot, or clears the slot when no item is given. Lasts until the runtime restarts or the definition changes.",

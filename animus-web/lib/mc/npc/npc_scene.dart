@@ -199,7 +199,8 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
     'minecraft:ender_dragon' => McBodyPose(rig: McRigPose.rest, frame: McMat4.translation(0, 0, -1), heightBlocks: rig.heightBlocks),
     _ => McBodyPose(rig: McRigPose.rest, frame: McMat4.identity(), heightBlocks: rig.heightBlocks),
   };
-  final McMat4 root = McMat4.rotationY(-look.yawDeg).multiply(body.frame);
+  final double scale = look.scale;
+  final McMat4 root = McMat4.rotationY(-look.yawDeg).multiply(McMat4.scale(scale, scale, scale)).multiply(body.frame);
   final McMat4 model = root.multiply(mcRigModelToWorld(rig));
   // Every part, visible or not: an armless armor stand still holds items,
   // because the client shows the arm for the transform
@@ -295,8 +296,8 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
     notes.add('$where is not drawn on ${look.type}.');
   }
 
-  final double feet = look.isPlayer && look.pose == NpcPose.sitting ? -mcPlayerVehicleAttachment : 0;
-  final double top = feet + body.heightBlocks;
+  final double feet = (look.isPlayer && look.pose == NpcPose.sitting ? -mcPlayerVehicleAttachment : 0) * scale;
+  final double top = feet + body.heightBlocks * scale;
   final List<NpcText> texts = <NpcText>[
     if (look.nativeName)
       NpcText(

@@ -56,6 +56,20 @@ final class RigPlaybackTest {
     }
 
     @Test
+    void aScaledBodyScalesItsBonesAboutItsFeet() {
+        RigDocument rig = RigDocument.parse("town:golem", RIG).document().orElseThrow();
+        Map<String, AnimationDocument> clips = Map.of("town:golem/slide", AnimationDocument.parse(null, SLIDE).document().orElseThrow());
+        RigPlayback playback = new RigPlayback(rig, (String id) -> Optional.ofNullable(clips.get(id)), SEAT, 2);
+        playback.play("town:golem/slide", 1, Optional.empty(), 1, 0);
+        DisplayTransform torso = playback.plan(0, 0, 2, 0).targets()[0];
+        DisplayTransform plain = playback().plan(0, 0, 2, 0).targets()[0];
+        // The client raises the passenger point with the body, so the bone keeps its place relative to the scaled body.
+        assertEquals(2 * 1 - 2 * 1.8, torso.ty(), 1e-5);
+        assertEquals(2 * plain.sx(), torso.sx(), 1e-5);
+        assertEquals(2 * plain.sy(), torso.sy(), 1e-5);
+    }
+
+    @Test
     void easedRotationIsSampledInShortSegments() {
         RigPlayback playback = playback();
         playback.moving(true, 0);

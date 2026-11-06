@@ -70,6 +70,11 @@ public final class NpcRig<I> {
      * {@code empty} is the platform's empty stack; without one the rig's sockets are left out.
      */
     public static <I> Optional<NpcRig<I>> bind(String rigId, RigCatalog catalog, SeatGeometry seat, Items<I> items, Optional<I> empty, List<String> problems) {
+        return bind(rigId, catalog, seat, 1, items, empty, problems);
+    }
+
+    /** As above, for a body of the given {@code scale} attribute; the bones grow with the body. */
+    public static <I> Optional<NpcRig<I>> bind(String rigId, RigCatalog catalog, SeatGeometry seat, double scale, Items<I> items, Optional<I> empty, List<String> problems) {
         Optional<RigDocument> found = catalog.rig(rigId);
         if (found.isEmpty()) { problems.add("$.rig.id: " + rigId + " is not a loaded rig"); return Optional.empty(); }
         RigDocument rig = found.get();
@@ -86,7 +91,7 @@ public final class NpcRig<I> {
         RigDocument shown = empty.isPresent() ? rig : rig.withoutSockets();
         EquipmentSlot[] slots = shown.sockets().keySet().stream().map((String key) -> EquipmentSlot.fromKey(key).orElseThrow()).toArray(EquipmentSlot[]::new);
         for (EquipmentSlot slot : slots) displays.add(socket(slot, empty.orElseThrow()));
-        return Optional.of(new NpcRig<>(shown, displays, new RigPlayback(shown, catalog.clips(), seat), catalog.generation(), slots, empty.orElse(null)));
+        return Optional.of(new NpcRig<>(shown, displays, new RigPlayback(shown, catalog.clips(), seat, scale), catalog.generation(), slots, empty.orElse(null)));
     }
 
     private static <I> BoneDisplay<I> socket(EquipmentSlot slot, I item) {
