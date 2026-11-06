@@ -206,6 +206,7 @@
 - Folia playback runs on the region budget and carries its cursor, mode and direction through region handoffs.
 - `animus:play-recording` and `animus:resume-patrol` behavior actions; `inspect` and status report the recording, mode, cursor and state.
 - A recording stores its world as the Bukkit world name or dimension key; playback and previews resolve it, or a world UUID, like other documents, and refuse in `route-error` a recording whose world is not loaded or is not the NPC's.
+- Route points can be recording steps (`{"recording": id, "fromTick", "toTick", "playback": "once"}`): the NPC walks to the segment's first frame, plays it once and goes on from its last frame, in both runtimes and across Folia handoffs; `inspect` shows `step=recording:<id> cursor=<n>/<to>`.
 
 ### Changed
 
