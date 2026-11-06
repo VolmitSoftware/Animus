@@ -4,6 +4,7 @@ import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.BehaviorEngine;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
+import art.arcane.animus.core.behavior.trigger.ServerTriggerSettings;
 import art.arcane.animus.core.behavior.trigger.TriggerSettings;
 import art.arcane.animus.core.storage.*;
 import art.arcane.volmlib.util.config.TomlCodec;
@@ -260,7 +261,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
 
     private static BehaviorSettings behaviors(JsonObject document) {
         BehaviorSettings defaults = BehaviorSettings.DEFAULT;
-        JsonObject engine = table(document, "engine"), catalog = table(document, "catalog"), trigger = table(document, "triggers"), state = table(document, "state");
+        JsonObject engine = table(document, "engine"), catalog = table(document, "catalog"), trigger = table(document, "triggers"), state = table(document, "state"), server = table(document, "server");
         BehaviorEngine.Limits execution = defaults.engine();
         BehaviorEngine.Limits engineLimits = new BehaviorEngine.Limits(
                 budget(engine, "executions", execution.executions(), 1, 128, "engine"),
@@ -314,7 +315,20 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
                 integer(document, "operationsPerTick", defaults.operationsPerTick()),
                 integer(document, "tickMillis", defaults.tickMillis()),
                 integer(document, "deliveryBudgetMillis", defaults.deliveryBudgetMillis()), engineLimits, catalogLimits, triggerBudgets, stateLimits,
-                actions(table(document, "actions"), defaults.actions()));
+                actions(table(document, "actions"), defaults.actions()), serverTriggers(server, defaults.server()));
+    }
+
+    private static ServerTriggerSettings serverTriggers(JsonObject server, ServerTriggerSettings defaults) {
+        return new ServerTriggerSettings(bool(server, "enabled", defaults.enabled()),
+                budget(server, "eventQueue", defaults.eventQueue(), 1, 4096, "server"),
+                budget(server, "eventsPerTick", defaults.eventsPerTick(), 1, 1024, "server"),
+                budget(server, "startsPerTick", defaults.startsPerTick(), 1, 64, "server"),
+                budget(server, "queuePerTrigger", defaults.queuePerTrigger(), 1, 256, "server"),
+                budget(server, "concurrentPerTrigger", defaults.concurrentPerTrigger(), 1, 64, "server"),
+                budget(server, "concurrentTotal", defaults.concurrentTotal(), 1, 128, "server"),
+                budget(server, "defaultCooldownTicks", defaults.defaultCooldownTicks(), 0, 72000, "server"),
+                budget(server, "minimumTimerTicks", defaults.minimumTimerTicks(), 20, 72000, "server"),
+                budget(server, "maximumCommands", defaults.maximumCommands(), 0, 64, "server"));
     }
 
     private static BuiltinActionSettings actions(JsonObject actions, BuiltinActionSettings defaults) {

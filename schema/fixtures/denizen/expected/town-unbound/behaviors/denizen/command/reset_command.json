@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:command/reset_command",
+  "server": true,
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "met_guard",
+            "scope": "player",
+            "clear": true
+          }
+        },
+        {
+          "type": "condition",
+          "expression": "len(context.args) > 0",
+          "then": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": null
+            },
+            "templates": {
+              "/text": "Reset for {{ first(context.args) }}."
+            }
+          },
+          "else": {
+            "type": "action",
+            "capability": "animus:message",
+            "arguments": {
+              "text": "Reset."
+            }
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:open-gui",
+          "arguments": {
+            "gui": "denizen:gate_menu"
+          }
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "id": "command",
+      "event": "command",
+      "name": "guardreset",
+      "aliases": [
+        "gr"
+      ],
+      "permission": "town.reset",
+      "description": "Resets the guard greeting",
+      "usage": "/guardreset (player)",
+      "routine": "main"
+    }
+  ]
+}

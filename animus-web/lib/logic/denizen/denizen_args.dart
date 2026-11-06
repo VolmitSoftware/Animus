@@ -2,7 +2,7 @@
 library;
 
 final RegExp _prefixName = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
-final RegExp _duration = RegExp(r'^[0-9]{1,7}(?:\.[0-9]{1,4})?[tsmh]?$');
+final RegExp _duration = RegExp(r'^[0-9]{1,7}(?:\.[0-9]{1,4})?[tsmhd]?$');
 
 /// One argument. [prefix] is lowercase, or empty when the argument has none.
 class DenizenArg {
@@ -253,7 +253,7 @@ int? denizenTicks(String text) {
   final String last = value[value.length - 1];
   final String unit = _digit(last) ? 's' : last;
   final String number = _digit(last) ? value : value.substring(0, value.length - 1);
-  final int factor = switch (unit) { 't' => 1, 's' => 20, 'm' => 1200, _ => 72000 };
+  final int factor = switch (unit) { 't' => 1, 's' => 20, 'm' => 1200, 'h' => 72000, _ => 1728000 };
   final int dot = number.indexOf('.');
   final String digits = dot < 0 ? number : number.substring(0, dot) + number.substring(dot + 1);
   final int scale = dot < 0 ? 0 : number.length - dot - 1;

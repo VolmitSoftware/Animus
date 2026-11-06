@@ -17,6 +17,9 @@ import java.util.Set;
 public final class TriggerCompiler {
     public static final int MAX_TRIGGERS = 32, MAX_COOLDOWN_TICKS = 72000, MAX_INTERVAL_TICKS = 72000, MAX_WAYPOINT = 4095;
     public static final double MAX_RADIUS = 64;
+    /** Server behavior bounds: timers fire at most once a second; commands are lowercase words with a few aliases. */
+    public static final int MIN_SERVER_INTERVAL_TICKS = 20, MAX_ALIASES = 8, MAX_PATTERN = 256, MAX_COMMAND_TEXT = 256, MAX_WORLD_NAME = 64;
+    public static final String COMMAND_NAME = "[a-z0-9_-]{1,32}", PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
     private static final String IDENTIFIER = "[a-z0-9][a-z0-9_-]{0,63}";
 
     public static final class Invalid extends RuntimeException {
@@ -26,27 +29,40 @@ public final class TriggerCompiler {
     }
     private TriggerCompiler() {}
 
-    public static List<TriggerBinding> compile(JsonElement raw, Set<String> routines) {
+    public static List<TriggerBinding> compile(JsonElement raw, Set<String> routines) { return compile(raw, routines, false); }
+
+    /** {@code server} compiles the triggers of a server behavior: server events only, with the server timer bounds. */
+    public static List<TriggerBinding> compile(JsonElement raw, Set<String> routines, boolean server) {
         if (raw == null || !raw.isJsonArray()) throw new Invalid("$.triggers", "expected array");
         JsonArray array = raw.getAsJsonArray();
         if (array.size() > MAX_TRIGGERS) throw new Invalid("$.triggers", "at most " + MAX_TRIGGERS + " triggers");
         List<TriggerBinding> result = new ArrayList<>(array.size());
-        Set<String> ids = new HashSet<>();
+        Set<String> ids = new HashSet<>(), labels = new HashSet<>();
         for (int index = 0; index < array.size(); index++) {
-            TriggerBinding binding = binding(array.get(index), "$.triggers[" + index + "]", routines);
-            if (!ids.add(binding.id())) throw new Invalid("$.triggers[" + index + "].id", "duplicate trigger id");
+            String path = "$.triggers[" + index + "]";
+            TriggerBinding binding = binding(array.get(index), path, routines, server);
+            if (!ids.add(binding.id())) throw new Invalid(path + ".id", "duplicate trigger id");
+            if (binding.spec() instanceof TriggerBinding.Command command) {
+                if (!labels.add(command.name())) throw new Invalid(path + ".name", "another command trigger of this behavior already uses this name");
+                for (int alias = 0; alias < command.aliases().size(); alias++)
+                    if (!labels.add(command.aliases().get(alias))) throw new Invalid(path + ".aliases[" + alias + "]", "another command trigger of this behavior already uses this name");
+            }
             result.add(binding);
         }
         return List.copyOf(result);
     }
 
-    private static TriggerBinding binding(JsonElement element, String path, Set<String> routines) {
+    private static TriggerBinding binding(JsonElement element, String path, Set<String> routines, boolean server) {
         if (element == null || !element.isJsonObject()) throw new Invalid(path, "expected object");
         JsonObject object = element.getAsJsonObject();
         String id = identifier(object, "id", path);
         String event = text(object, "event", path);
         TriggerKind kind = TriggerKind.find(event).orElseThrow(() -> new Invalid(path + ".event",
                 "expected one of: " + Suggestions.list(TriggerKind.names()) + Suggestions.didYouMean(event, TriggerKind.names())));
+        if (server && !kind.server())
+            throw new Invalid(path + ".event", "a server behavior has no NPC, so it cannot use " + event + "; expected one of: " + Suggestions.list(names(true)));
+        if (!server && !kind.npc())
+            throw new Invalid(path + ".event", event + " is a server event: only server behaviors (\"server\": true) use it");
         fields(object, path, kind);
         Optional<String> routine = Optional.empty();
         if (object.has("routine")) {
@@ -55,10 +71,17 @@ public final class TriggerCompiler {
             routine = Optional.of(name);
         }
         OptionalInt cooldown = object.has("cooldownTicks") ? OptionalInt.of(integer(object, "cooldownTicks", path, 0, MAX_COOLDOWN_TICKS)) : OptionalInt.empty();
-        return new TriggerBinding(id, spec(kind, object, path), routine, cooldown);
+        return new TriggerBinding(id, spec(kind, object, path, server), routine, cooldown);
     }
 
-    private static TriggerBinding.Spec spec(TriggerKind kind, JsonObject object, String path) {
+    /** The events a server behavior, or an NPC behavior, may use. */
+    public static List<String> names(boolean server) {
+        List<String> names = new ArrayList<>();
+        for (TriggerKind kind : TriggerKind.values()) if (server ? kind.server() : kind.npc()) names.add(kind.jsonName());
+        return List.copyOf(names);
+    }
+
+    private static TriggerBinding.Spec spec(TriggerKind kind, JsonObject object, String path, boolean server) {
         return switch (kind) {
             case INTERACTION -> new TriggerBinding.Interaction(object.has("action")
                     ? named(TriggerBinding.InteractionFilter.class, text(object, "action", path), path + ".action", "interact, attack or any")
@@ -68,9 +91,13 @@ public final class TriggerCompiler {
                 TriggerBinding.Phase phase = named(TriggerBinding.Phase.class, text(object, "phase", path), path + ".phase", "enter or leave");
                 yield new TriggerBinding.Proximity(phase, radius(object, path));
             }
-            case SPAWN, DESPAWN, DAMAGE, DEATH, BUILD_FINISHED, BUILD_PAUSED -> new TriggerBinding.Lifecycle(kind);
+            case SPAWN, DESPAWN, DAMAGE, DEATH, BUILD_FINISHED, BUILD_PAUSED, PLAYER_QUIT, SERVER_START, PLAYER_DEATH, PLAYER_RESPAWN -> new TriggerBinding.Lifecycle(kind);
             case WAYPOINT -> new TriggerBinding.Waypoint(object.has("waypoint") ? OptionalInt.of(integer(object, "waypoint", path, -1, MAX_WAYPOINT)) : OptionalInt.empty());
-            case TIMER -> new TriggerBinding.Timer(integer(object, "intervalTicks", path, 1, MAX_INTERVAL_TICKS));
+            case TIMER -> new TriggerBinding.Timer(integer(object, "intervalTicks", path, server ? MIN_SERVER_INTERVAL_TICKS : 1, MAX_INTERVAL_TICKS));
+            case PLAYER_JOIN -> new TriggerBinding.PlayerJoin(object.has("first") ? Optional.of(bool(object, "first", path)) : Optional.empty());
+            case PLAYER_CHAT -> new TriggerBinding.PlayerChat(object.has("pattern") ? Optional.of(bounded(object, "pattern", path, MAX_PATTERN)) : Optional.empty());
+            case COMMAND -> command(object, path);
+            case PLAYER_WORLD_CHANGE -> new TriggerBinding.WorldChange(optional(object, "from", path, MAX_WORLD_NAME), optional(object, "to", path, MAX_WORLD_NAME));
             case DIALOGUE_CHOICE -> new TriggerBinding.DialogueChoice(identifier(object, "dialogue", path),
                     object.has("choice") ? Optional.of(identifier(object, "choice", path)) : Optional.empty());
             case MODULE -> new TriggerBinding.ModuleEvent(key(text(object, "key", path), path + ".key"));
@@ -82,6 +109,42 @@ public final class TriggerCompiler {
                 yield new TriggerBinding.AnimationFinished(Optional.of(animation));
             }
         };
+    }
+
+    private static TriggerBinding.Command command(JsonObject object, String path) {
+        String name = label(object.get("name"), path + ".name");
+        List<String> aliases = new ArrayList<>();
+        if (object.has("aliases")) {
+            JsonElement raw = object.get("aliases");
+            if (!raw.isJsonArray() || raw.getAsJsonArray().size() > MAX_ALIASES) throw new Invalid(path + ".aliases", "expected an array of at most " + MAX_ALIASES + " command names");
+            JsonArray array = raw.getAsJsonArray();
+            for (int index = 0; index < array.size(); index++) {
+                String alias = label(array.get(index), path + ".aliases[" + index + "]");
+                if (alias.equals(name) || aliases.contains(alias)) throw new Invalid(path + ".aliases[" + index + "]", "duplicate command name");
+                aliases.add(alias);
+            }
+        }
+        Optional<String> permission = optional(object, "permission", path, 128);
+        if (permission.isPresent() && !permission.get().matches(PERMISSION)) throw new Invalid(path + ".permission", "expected a permission node such as town.spawn");
+        return new TriggerBinding.Command(name, aliases, permission, optional(object, "description", path, MAX_COMMAND_TEXT), optional(object, "usage", path, MAX_COMMAND_TEXT));
+    }
+    private static String label(JsonElement value, String field) {
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString() || !value.getAsString().matches(COMMAND_NAME))
+            throw new Invalid(field, "expected a lowercase command name of 1..32 letters, digits, _ or -");
+        return value.getAsString();
+    }
+    private static Optional<String> optional(JsonObject object, String key, String path, int maximum) {
+        return object.has(key) ? Optional.of(bounded(object, key, path, maximum)) : Optional.empty();
+    }
+    private static String bounded(JsonObject object, String key, String path, int maximum) {
+        String value = text(object, key, path);
+        if (value.length() > maximum || value.codePoints().anyMatch(Character::isISOControl)) throw new Invalid(path + "." + key, "expected text of at most " + maximum + " characters without control characters");
+        return value;
+    }
+    private static boolean bool(JsonObject object, String key, String path) {
+        JsonElement value = object.get(key);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean()) throw new Invalid(path + "." + key, "expected true or false");
+        return value.getAsBoolean();
     }
 
     private static void fields(JsonObject object, String path, TriggerKind kind) {

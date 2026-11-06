@@ -1,6 +1,8 @@
 /// A line-for-line copy of core's `DenizenConverter`: Denizen scripts and flags become Animus behaviors in the
-/// `denizen` namespace and behavior state, with the same staged bytes as the server. Everything that does not convert
-/// is listed in the report with its reason. See wiki animus/13-migrating-from-citizens.
+/// `denizen` namespace, chest GUIs and behavior state, with the same staged bytes as the server. Assignment and
+/// interact scripts become NPC behaviors; task scripts routines and manual-run behaviors, procedures routines that
+/// return a value; world, command and book scripts server behaviors; inventory scripts chest GUIs. Everything that does
+/// not convert is listed in the report with its reason. See wiki animus/13-migrating-from-citizens.
 library;
 
 import 'dart:collection';
@@ -17,7 +19,11 @@ import 'denizen_args.dart';
 import 'denizen_flags.dart';
 import 'denizen_scripts.dart';
 
-const int denizenConverterVersion = 1;
+part 'denizen_commands.dart';
+part 'denizen_events.dart';
+part 'denizen_expressions.dart';
+
+const int denizenConverterVersion = 2;
 const String _namespace = 'denizen';
 const int denizenMaximumFiles = 512;
 const int denizenMaximumPlayers = 10000;
@@ -25,10 +31,22 @@ const int _maximumStateKeys = 128;
 const int _maximumText = 1024;
 const int _defaultRadius = 5;
 const String _stateRoot = 'state/behavior-state/';
+const String _guiRoot = 'guis/denizen/';
+const String _noNpc = 'server behaviors have no NPC';
+const String _keyCharacters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+const Set<String> _scriptTypes = <String>{'task', 'procedure', 'command', 'assignment', 'interact', 'world'};
+const List<String> _itemKeys = <String>['type', 'material', 'display name', 'lore', 'debug'];
 
 final RegExp _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
 final RegExp _name = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
 final RegExp _javaSpaces = RegExp('[ \t\n\x0B\f\r]+');
+final Map<String, RegExp> _patterns = <String, RegExp>{};
+
+/// Java `String.matches`: the whole text matches the pattern.
+bool _full(String pattern, String text) => (_patterns[pattern] ??= RegExp('^(?:$pattern)\$')).hasMatch(text);
+
+/// Java `replaceAll("\\s+", " ").trim()` after lowercasing.
+String _collapse(String text) => javaTrim(text.toLowerCase().replaceAll(_javaSpaces, ' '));
 
 class DenizenImportException implements Exception {
   const DenizenImportException(this.message);
@@ -101,8 +119,6 @@ Uint8List denizenBundleZip(DenizenPreview preview) {
 
 DenizenPreview convertDenizen(DenizenInput input) => _Converter().run(input);
 
-enum _Kind { neutral, boolean, integer, other }
-
 class _Npc {
   const _Npc(this.key, this.id, this.uuid, this.name, this.assignments, this.triggers, this.flags, this.problems);
 
@@ -129,23 +145,6 @@ class _Outcome {
   final String reason;
 }
 
-class _Block {
-  const _Block(this.steps, this.stops);
-
-  final List<JObject> steps;
-  final bool stops;
-}
-
-class _Chain {
-  const _Chain(this.node, this.tail, this.stops);
-
-  final JObject node;
-  final bool tail;
-  final bool stops;
-}
-
-typedef _Condition = JObject Function(JObject then, JObject? otherwise);
-
 class _Interact {
   const _Interact(this.container, this.slug, this.quest, this.steps, this.order, this.defaultIndex);
 
@@ -156,6 +155,7 @@ class _Interact {
   final List<String> order;
   final int defaultIndex;
 
+  /// Stage of a step by its name, ignoring case and the default marker.
   int? stage(String name) {
     final String wanted = _stepName(name);
     for (int index = 0; index < steps.length; index++) {
@@ -167,121 +167,53 @@ class _Interact {
 
 String _stepName(String name) => javaTrim(name.toLowerCase().replaceAll('*', ''));
 
-class _Scope {
-  _Scope(this.routines, this.calling, this.npcName, this.record, this.container, this.interact, this.step);
+/// One behavior document under construction: its routines, declared variables and counters for generated names.
+class _Doc {
+  _Doc(this.server);
 
-  final LinkedHashMap<String, JObject> routines;
+  final bool server;
+  final LinkedHashMap<String, JObject> routines = LinkedHashMap<String, JObject>();
+  final SplayTreeMap<String, String> variables = SplayTreeMap<String, String>();
+  int temporaries = 0;
+  int loops = 0;
+}
+
+/// Where the commands being converted come from and what they may read.
+class _Scope {
+  _Scope(this.doc, this.calling, this.record, this.container, this.interact, this.step, this.definitions, this.loops, this.saves, this.context)
+      : server = doc.server;
+
+  _Scope.of(_Doc doc, bool record, DenizenContainer container, _Interact? interact, int step, Map<String, String> context)
+      : this(doc, <String>{}, record, container, interact, step, SplayTreeMap<String, String>(), const <String>[], SplayTreeMap<String, String>(), context);
+
+  final _Doc doc;
   final Set<String> calling;
-  final String? npcName;
   final bool record;
+  final bool server;
   final DenizenContainer container;
   final _Interact? interact;
   final int step;
 
-  _Scope inContainer(DenizenContainer other) => _Scope(routines, calling, npcName, false, other, null, -1);
+  /// Definitions a loop gives another meaning, such as `loop_index`, by lowercase name.
+  final Map<String, String> definitions;
+
+  /// The kinds of the enclosing loops, innermost last.
+  final List<String> loops;
+
+  /// `save:` names of converted runs and the variables holding their results.
+  final Map<String, String> saves;
+
+  /// Denizen context keys the trigger passes, and their Animus names.
+  final Map<String, String> context;
+
+  /// The scope of another script run from this one: same document, its own definitions, no loops and no event context.
+  _Scope inContainer(DenizenContainer other) => _Scope(doc, calling, false, other, null, -1, SplayTreeMap<String, String>(), const <String>[],
+      SplayTreeMap<String, String>(), const <String, String>{});
+
+  _Scope loop(Map<String, String> inner, List<String> kinds) => _Scope(doc, calling, record, container, interact, step, inner, kinds, saves, context);
 }
 
-class _Converted {
-  const _Converted(this.steps, this.reason);
-
-  _Converted.of(List<JObject> steps) : this(steps, '');
-  const _Converted.kept(String reason) : this(const <JObject>[], reason);
-
-  final List<JObject> steps;
-  final String reason;
-}
-
-class _Mapped {
-  const _Mapped(this.value, this.reason);
-
-  final String? value;
-  final String? reason;
-}
-
-class _Result {
-  const _Result(this.value, this.reason);
-
-  final _Condition? value;
-  final String? reason;
-}
-
-const Map<String, String> _particleNames = <String, String>{
-  'villager_happy': 'happy_villager', 'villager_angry': 'angry_villager', 'spell_witch': 'witch',
-  'smoke_normal': 'smoke', 'smoke_large': 'large_smoke', 'explosion_normal': 'poof',
-  'explosion_large': 'explosion', 'explosion_huge': 'explosion_emitter', 'water_splash': 'splash',
-  'water_bubble': 'bubble', 'water_wake': 'fishing', 'suspended': 'underwater',
-  'suspended_depth': 'underwater', 'crit_magic': 'enchanted_hit', 'spell': 'effect',
-  'spell_instant': 'instant_effect', 'drip_water': 'dripping_water', 'drip_lava': 'dripping_lava',
-  'enchantment_table': 'enchant', 'town_aura': 'mycelium', 'snowball': 'item_snowball',
-  'snow_shovel': 'item_snowball', 'slime': 'item_slime', 'fireworks_spark': 'firework',
-  'totem': 'totem_of_undying', 'mob_appearance': 'elder_guardian', 'water_drop': 'rain',
-};
-const Set<String> _dataParticles = <String>{
-  'dust', 'redstone', 'block', 'block_crack', 'block_dust', 'item', 'item_crack', 'falling_dust', 'dust_color_transition',
-  'vibration', 'entity_effect', 'spell_mob', 'spell_mob_ambient', 'block_marker', 'sculk_charge', 'shriek', 'dust_pillar', 'trail', 'legacy_block_marker',
-};
-const Set<String> _scriptTypes = <String>{'task', 'procedure', 'command', 'assignment', 'interact', 'world'};
-const Map<String, String> _escapes =<String, String>{
-  '&nl': '\n', 'n': '\n', '&sp': ' ', '&co': ':', '&sc': ';', '&pipe': '|',
-  '&lt': '<', '&gt': '>', '&amp': '&', '&lb': '[', '&rb': ']', '&dq': '"',
-  '&quo': '"', '&sq': "'", '&pc': '%', '&ns': '#', '&hash': '#', '&at': '@',
-  '&dot': '.', '&cm': ',', '&exc': '!', '&ss': '§', '&bs': r'\', '&fs': '/',
-  '&lc': '{', '&rc': '}', '&eq': '=', '&nbsp': ' ', '&hrt': '❤',
-};
-const Map<String, String> _colors = <String, String>{
-  'black': '0', 'dark_blue': '1', 'dark_green': '2', 'dark_aqua': '3', 'dark_red': '4',
-  'dark_purple': '5', 'gold': '6', 'gray': '7', 'dark_gray': '8', 'blue': '9',
-  'green': 'a', 'aqua': 'b', 'red': 'c', 'light_purple': 'd', 'yellow': 'e',
-  'white': 'f', 'magic': 'k', 'bold': 'l', 'strikethrough': 'm', 'underline': 'n',
-  'italic': 'o', 'reset': 'r',
-};
-
-bool _full(String pattern, String text) => RegExp('^(?:$pattern)\$').hasMatch(text);
-
-JObject _action(String capability, JObject arguments) => JObject()
-  ..addString('type', 'action')
-  ..addString('capability', capability)
-  ..add('arguments', arguments);
-
-JObject _plain(List<JObject> steps) {
-  if (steps.length == 1) return steps.first;
-  return JObject()
-    ..addString('type', 'sequence')
-    ..add('steps', JArray(<JElement>[...steps]));
-}
-
-/// One step, or a sequence; more than 128 steps nest in sequences of at most 128.
-JObject _sequence(List<JObject> steps) {
-  if (steps.length == 1) return steps.first;
-  List<JObject> current = steps;
-  while (current.length > 128) {
-    final List<JObject> grouped = <JObject>[];
-    for (int index = 0; index < current.length; index += 128) {
-      grouped.add(_plain(current.sublist(index, index + 128 < current.length ? index + 128 : current.length)));
-    }
-    current = grouped;
-  }
-  return _plain(current);
-}
-
-JObject _conditionNode(String capability, JObject arguments, JObject then, JObject? otherwise) {
-  final JObject node = JObject()
-    ..addString('type', 'condition')
-    ..addString('capability', capability)
-    ..add('arguments', arguments)
-    ..add('then', then);
-  if (otherwise != null) node.add('else', otherwise);
-  return node;
-}
-
-_Condition _atom(String capability, JObject arguments, bool negated) => (JObject then, JObject? otherwise) => negated
-    ? _conditionNode(capability, arguments.deepCopy(), otherwise ?? _sequence(<JObject>[]), then)
-    : _conditionNode(capability, arguments.deepCopy(), then, otherwise);
-
-String _scopeOf(String target) => switch (target) { 'npc' => 'npc', 'server' => 'global', _ => 'player' };
-
-String _raw(DenizenArg arg) => arg.prefix.isEmpty ? arg.value : '${arg.prefix}:${arg.value}';
-
+/// The Animus flag or quest name for a Denizen flag: lowercase, sub-flag dots as dashes. Null when it cannot be one.
 String? _flagName(String name) {
   final String lowered = name.toLowerCase();
   if (!_full('[a-z0-9_.]+', lowered)) return null;
@@ -289,93 +221,28 @@ String? _flagName(String name) {
   return _name.hasMatch(mapped) ? mapped : null;
 }
 
-/// `{target, name, attribute}` of a flag tag such as `<player.has_flag[name]>`.
-List<String>? _flagTag(String token) {
-  if (!token.startsWith('<') || !token.endsWith('>') || denizenTagEnd(token, 0) != token.length - 1) return null;
-  final DenizenTag tag = denizenTag(token.substring(1, token.length - 1));
-  final List<DenizenPart> parts = List<DenizenPart>.of(tag.parts);
-  if (parts.length == 3 && parts[2].name == 'if_null') parts.removeLast();
-  if (parts.length != 2 || parts.first.parameter != null) return null;
-  final String target = parts.first.name.toLowerCase();
-  final String attribute = parts[1].name.toLowerCase();
-  if (!<String>['player', 'npc', 'server'].contains(target) || !<String>['flag', 'has_flag'].contains(attribute) || parts[1].parameter == null) return null;
-  final String name = parts[1].parameter!;
-  if (name.contains('<')) return null;
-  return <String>[target, name.toLowerCase(), attribute];
+/// A variable name from a prefix and a Denizen name: lowercase, other characters as `_`, at most 64 characters.
+String _variable(String prefix, String name) {
+  final String text = prefix + name.toLowerCase().replaceAll(RegExp('[^a-z0-9_]'), '_');
+  return text.length > 64 ? text.substring(0, 64) : text;
 }
 
-_Kind _valueKind(String value) {
-  if (value == '!') return _Kind.neutral;
-  if (value.toLowerCase() == 'true' || value.toLowerCase() == 'false') return _Kind.boolean;
-  if (value == '++' || value == '--' || value.startsWith('+:') || value.startsWith('-:') || value.startsWith('*:') || value.startsWith('/:') || _full('-?[0-9]+', value)) {
-    return _Kind.integer;
+/// The execution variable holding a Denizen definition.
+String _definitionVariable(String name) => _variable('d_', name);
+
+/// The definition names a task or procedure declares, in order: `definitions: a|b` or `a[description]|b`.
+List<String> _definitionNames(DenizenContainer container) {
+  final List<String> names = <String>[];
+  final String? text = container.body.text('definitions');
+  if (text == null || javaIsBlank(text)) return names;
+  for (final String piece in text.split('|')) {
+    final String name = piece.contains('[') ? piece.substring(0, piece.indexOf('[')) : piece;
+    if (javaTrim(name).isNotEmpty) names.add(javaTrim(name).toLowerCase());
   }
-  return _Kind.other;
+  return names;
 }
 
-bool _playerTarget(String value) {
-  final String lowered = value.toLowerCase();
-  return lowered == '<player>' || lowered == 'player';
-}
-
-bool _npcTarget(String value) {
-  final String lowered = value.toLowerCase();
-  return lowered == '<npc>' || lowered == 'npc';
-}
-
-List<double>? _location(String value) {
-  String text = value;
-  if (text.toLowerCase().startsWith('l@')) text = text.substring(2);
-  if (text.toLowerCase().startsWith('<location[') && text.endsWith(']>')) text = text.substring(10, text.length - 2);
-  final List<String> parts = text.split(',');
-  if (parts.length < 3 || parts.length > 6) return null;
-  final List<double> coordinates = <double>[];
-  for (int index = 0; index < 3; index++) {
-    if (!_full(r'-?[0-9]{1,8}(?:\.[0-9]{1,6})?', parts[index])) return null;
-    coordinates.add(javaParseDouble(parts[index]));
-  }
-  return coordinates;
-}
-
-double? _number(String value, double minimum, double maximum) {
-  if (!_full(r'[0-9]{1,4}(?:\.[0-9]{1,6})?', value)) return null;
-  final double number = javaParseDouble(value);
-  return number < minimum || number > maximum ? null : number;
-}
-
-/// A Bukkit sound name such as `ENTITY_VILLAGER_YES` becomes `minecraft:entity.villager.yes`.
-String? denizenSoundKey(String name, bool custom) {
-  final String lowered = name.toLowerCase();
-  final String key;
-  if (lowered.contains(':')) {
-    key = lowered;
-  } else if (lowered.contains('.') || custom) {
-    key = 'minecraft:$lowered';
-  } else {
-    final int first = lowered.indexOf('_');
-    final int last = lowered.lastIndexOf('_');
-    if (first < 0 || first == last) return null;
-    key = 'minecraft:${lowered.substring(0, first)}.${lowered.substring(first + 1, last)}.${lowered.substring(last + 1)}';
-  }
-  return _full(r'[a-z0-9_.-]+:[a-z0-9_./-]+', key) ? key : null;
-}
-
-JObject _commandAction(String line) => _action('animus:command', JObject()..addString('command', line));
-
-String _component(String text) => (JObject()..addString('text', text)).toString();
-
-List<JObject> _copies(List<JObject> steps) => <JObject>[for (final JObject step in steps) step.deepCopy()];
-
-List<JObject> _joined(_Block block, _Block rest) => <JObject>[...block.steps, if (!block.stops) ..._copies(rest.steps)];
-
-bool _controlsLoop(DenizenSequence sequence) {
-  for (final DenizenItem item in sequence.items) {
-    final DenizenCommand command = denizenCommand(item.text);
-    if (command.name == 'repeat' && item.children == null) return true;
-    if (item.children != null && _controlsLoop(item.children!)) return true;
-  }
-  return false;
-}
+String _scopeOf(String target) => switch (target) { 'npc' => 'npc', 'server' => 'global', _ => 'player' };
 
 DenizenSequence? _scriptOf(DenizenNode node) {
   if (node is DenizenSequence) return node;
@@ -393,24 +260,57 @@ bool _reserve(LinkedHashMap<String, JObject> routines, String routine) {
   return true;
 }
 
-String _worldReason(String event) {
-  if (event.contains('delta time') || event.contains('system time') || event.contains('server start')) {
-    return 'Animus timers run per NPC; there is no server-wide timer or startup trigger';
+/// One step, or a sequence; more than 128 steps nest in sequences of at most 128.
+JObject _sequence(List<JObject> steps) {
+  if (steps.length == 1) return steps.first;
+  List<JObject> current = steps;
+  while (current.length > 128) {
+    final List<JObject> grouped = <JObject>[];
+    for (int index = 0; index < current.length; index += 128) {
+      grouped.add(_plainSequence(current.sublist(index, index + 128 < current.length ? index + 128 : current.length)));
+    }
+    current = grouped;
   }
-  if (event.contains('npc')) return 'this event covers every NPC; Animus binds a behavior to each NPC instead';
-  return 'Animus has no trigger for this event; its triggers belong to NPCs';
+  return _plainSequence(current);
 }
 
-String _statePath(String scope, String? npc, String? player, String kind) {
+JObject _plainSequence(List<JObject> steps) {
+  if (steps.length == 1) return steps.first;
+  return JObject()
+    ..addString('type', 'sequence')
+    ..add('steps', JArray(<JElement>[...steps]));
+}
+
+/// A Bukkit sound name such as `ENTITY_VILLAGER_YES` becomes `minecraft:entity.villager.yes`: the first and last
+/// underscores become dots and the middle words keep theirs. Names written as keys keep their key.
+String? denizenSoundKey(String name, bool custom) {
+  final String lowered = name.toLowerCase();
+  final String key;
+  if (lowered.contains(':')) {
+    key = lowered;
+  } else if (lowered.contains('.') || custom) {
+    key = 'minecraft:$lowered';
+  } else {
+    final int first = lowered.indexOf('_');
+    final int last = lowered.lastIndexOf('_');
+    if (first < 0 || first == last) return null;
+    key = 'minecraft:${lowered.substring(0, first)}.${lowered.substring(first + 1, last)}.${lowered.substring(last + 1)}';
+  }
+  return _full(r'[a-z0-9_.-]+:[a-z0-9_./-]+', key) ? key : null;
+}
+
+/// The staged flag document of one subject.
+String _statePath(String scope, String? npc, String? player) {
   final StringBuffer path = StringBuffer(_stateRoot)
     ..write(scope)
     ..write('/');
   if (npc != null) path.write('$npc/');
   if (player != null) path.write('$player/');
-  path.write('animus/$kind/$_namespace.json');
+  path.write('animus/flags/$_namespace.json');
   return path.toString();
 }
 
+/// The same document `BehaviorStateStore` writes for these values.
 String _stateDocument(String path, SplayTreeMap<String, JObject> values) {
   final List<String> parts = path.substring(_stateRoot.length).split('/');
   final String scope = parts[0];
@@ -429,17 +329,57 @@ String _stateDocument(String path, SplayTreeMap<String, JObject> values) {
   return writeJson(root);
 }
 
+/// The `[item]` cells of a slot row; `[]` is an empty cell.
+List<String>? _cells(String line) {
+  final List<String> cells = <String>[];
+  int depth = 0;
+  final StringBuffer current = StringBuffer();
+  final String trimmed = javaTrim(line);
+  for (int index = 0; index < trimmed.length; index++) {
+    final String at = trimmed[index];
+    if (at == '[') {
+      if (depth++ > 0) current.write(at);
+      continue;
+    }
+    if (at == ']') {
+      if (depth == 0) return null;
+      if (--depth == 0) {
+        cells.add(current.toString());
+        current.clear();
+      } else {
+        current.write(at);
+      }
+      continue;
+    }
+    if (depth > 0) {
+      current.write(at);
+    } else if (at != ' ') {
+      return null;
+    }
+  }
+  return depth == 0 ? cells : null;
+}
+
 class _Converter {
+  _Converter() {
+    expressions = _Expressions(this);
+    commands = _Commands(this, expressions);
+  }
+
   final SplayTreeMap<String, DenizenContainer> containers = SplayTreeMap<String, DenizenContainer>();
   final SplayTreeMap<String, _Interact> interacts = SplayTreeMap<String, _Interact>();
-  final SplayTreeMap<String, _Kind> kinds = SplayTreeMap<String, _Kind>();
+  final SplayTreeMap<String, String> sounds = SplayTreeMap<String, String>();
   final SplayTreeMap<String, _Outcome> outcomes = SplayTreeMap<String, _Outcome>();
   final List<String> issues = <String>[];
-  final SplayTreeMap<String, String> sounds = SplayTreeMap<String, String>();
   final JArray preserved = JArray();
   final SplayTreeMap<String, String> slugs = SplayTreeMap<String, String>();
   final Set<String> usedSlugs = <String>{};
   final List<_Npc> npcs = <_Npc>[];
+  final SplayTreeMap<String, String> guis = SplayTreeMap<String, String>();
+  final SplayTreeSet<String> serverBehaviors = SplayTreeSet<String>();
+  final SplayTreeMap<String, List<String>> guards = SplayTreeMap<String, List<String>>();
+  late final _Expressions expressions;
+  late final _Commands commands;
 
   DenizenPreview run(DenizenInput input) {
     if (input.scripts.length > denizenMaximumFiles) throw const DenizenImportException('More than $denizenMaximumFiles Denizen script files');
@@ -481,40 +421,53 @@ class _Converter {
       playerValues[file.key] = denizenFlagFile(file.value);
     }
     final DenizenFlagValues? serverValues = input.serverFlags == null ? null : denizenFlagFile(input.serverFlags!);
-    for (final DenizenContainer container in containers.values) {
-      for (final DenizenEntry entry in container.body.entries) {
-        scanKinds(entry.value);
-      }
-    }
-    for (final DenizenFlagValues values in playerValues.values) {
-      dataKinds(values);
-    }
-    if (serverValues != null) dataKinds(serverValues);
-    for (final _Npc npc in npcs) {
-      dataKinds(denizenFlagMapping(npc.flags));
-    }
 
     final SplayTreeMap<String, String> files = SplayTreeMap<String, String>();
     final SplayTreeMap<String, List<String>> bindings = SplayTreeMap<String, List<String>>();
     final JObject behaviorStatus = JObject();
     final SplayTreeMap<String, String> documents = SplayTreeMap<String, String>();
+    // Values come first: other scripts read data, give items and books and open inventories by name.
     for (final DenizenContainer container in containers.values) {
       switch (container.type) {
+        case 'data':
+          record(container, container.line, 'container', 'data', container.name, true, '');
+        case 'item':
+          itemContainer(container);
+        case 'book':
+          bookContainer(container, documents);
+        case 'inventory':
+          inventoryContainer(container);
+        default:
+          break;
+      }
+    }
+    for (final DenizenContainer container in containers.values) {
+      switch (container.type) {
+        case 'data':
+        case 'item':
+        case 'book':
+        case 'inventory':
+          break;
         case 'task':
           task(container, documents);
+        case 'procedure':
+          procedureContainer(container);
         case 'assignment':
           assignment(container, documents);
         case 'interact':
           interactDocument(interacts[container.name.toLowerCase()]!, documents);
         case 'world':
-          world(container);
+          world(container, documents);
+        case 'command':
+          commandContainer(container, documents);
         default:
           preserveContainer(
               container,
               switch (container.type) {
-                'procedure' => 'procedure scripts return values to tags; behaviors have no expressions',
-                'command' => 'behaviors do not register commands',
-                'data' => 'data scripts hold values; literal values that converted text reads were copied into it',
+                'format' => "format scripts shape Denizen's own chat output; Animus messages are written out in full",
+                'economy' => 'economy scripts provide a Vault economy; Animus has none to provide',
+                'enchantment' => 'custom enchantments have no Animus equivalent',
+                'map' => 'map scripts draw on map items; Animus has no map renderer',
                 _ => 'no Animus equivalent for ${container.type} scripts',
               });
       }
@@ -542,6 +495,9 @@ class _Converter {
     for (final MapEntry<String, String> document in documents.entries) {
       files['behaviors/${document.key.replaceAll(':', '/')}.json'] = document.value;
     }
+    for (final MapEntry<String, String> gui in guis.entries) {
+      files['$_guiRoot${gui.key}.json'] = gui.value;
+    }
 
     final SplayTreeMap<String, SplayTreeMap<String, JObject>> state = SplayTreeMap<String, SplayTreeMap<String, JObject>>();
     final SplayTreeMap<String, int> imported = SplayTreeMap<String, int>();
@@ -566,6 +522,19 @@ class _Converter {
       if (npc.flags.isEmpty) continue;
       preservedFlags += importFlags('citizens:${npc.id}', denizenFlagMapping(npc.flags), 'npc', npc.uuid, null, state, imported);
     }
+    for (final MapEntry<String, List<String>> guard in guards.entries) {
+      final SplayTreeMap<String, JObject> document = state.putIfAbsent(_statePath('npc', guard.key, null), () => SplayTreeMap<String, JObject>());
+      for (final String flag in guard.value) {
+        if (document.length >= _maximumStateKeys && !document.containsKey(flag)) {
+          issues.add('${guard.key}: no room for the guard flag $flag; its on assignment runs again on the next spawn');
+          continue;
+        }
+        document[flag] = JObject()
+          ..addString('type', 'boolean')
+          ..addBool('value', true);
+        imported['npc'] = imported['npc']! + 1;
+      }
+    }
     for (final MapEntry<String, SplayTreeMap<String, JObject>> document in state.entries) {
       files[document.key] = _stateDocument(document.key, document.value);
     }
@@ -574,7 +543,8 @@ class _Converter {
       ..addInt('schemaVersion', 1)
       ..addInt('converterVersion', denizenConverterVersion)
       ..addString('importId', id)
-      ..addString('notice', 'Data conversion only. Generated behaviors are listed on no NPC until the denizen review is accepted, and commands stay denied until allow-listed.')
+      ..addString('notice',
+          'Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.')
       ..add('sources', sources)
       ..addInt('behaviors', documents.length)
       ..add('containers', containerCounts())
@@ -585,9 +555,11 @@ class _Converter {
     for (final MapEntry<String, int> count in imported.entries) {
       importedCounts.addInt(count.key, count.value);
     }
-    report.add('flags', JObject()
-      ..add('imported', importedCounts)
-      ..addInt('preserved', preservedFlags));
+    report.add(
+        'flags',
+        JObject()
+          ..add('imported', importedCounts)
+          ..addInt('preserved', preservedFlags));
     final JObject bound = JObject();
     for (final MapEntry<String, List<String>> binding in bindings.entries) {
       bound.add(binding.key, JArray(<JElement>[for (final String behavior in binding.value) JString(behavior)]));
@@ -602,10 +574,14 @@ class _Converter {
       behaviorStatus.addString(document, partial(document) ? 'partial' : 'complete');
     }
     report.add('behaviorStatus', behaviorStatus);
-    report.add('commandBehaviors', JArray(<JElement>[
-      for (final MapEntry<String, String> document in documents.entries)
-        if (document.value.contains('"animus:command"')) JString(document.key),
-    ]));
+    report.add(
+        'commandBehaviors',
+        JArray(<JElement>[
+          for (final MapEntry<String, String> document in documents.entries)
+            if (document.value.contains('"animus:command"')) JString(document.key),
+        ]));
+    report.add('serverBehaviors', JArray(<JElement>[for (final String behavior in serverBehaviors) if (documents.containsKey(behavior)) JString(behavior)]));
+    report.add('guis', JArray(<JElement>[for (final String gui in guis.keys) JString('$_guiRoot$gui.json')]));
     final JObject soundMap = JObject();
     for (final MapEntry<String, String> sound in sounds.entries) {
       soundMap.addString(sound.key, sound.value);
@@ -684,6 +660,7 @@ class _Converter {
     return value is JPrimitive ? value.asString : null;
   }
 
+  /// NPCs whose assignments reach the container: the assignment itself or an assignment listing this interact script.
   List<_Npc> boundNpcs(DenizenContainer container) {
     final String name = container.name.toLowerCase();
     final List<_Npc> bound = <_Npc>[];
@@ -706,14 +683,7 @@ class _Converter {
     return bound;
   }
 
-  String? npcName(DenizenContainer container) {
-    final SplayTreeSet<String> names = SplayTreeSet<String>();
-    for (final _Npc npc in boundNpcs(container)) {
-      names.add(npc.name);
-    }
-    return names.length == 1 ? names.first : null;
-  }
-
+  /// The trigger setting of the NPCs reached by the container: enabled when any has it on, otherwise Denizen's defaults.
   bool enabled(DenizenContainer container, String trigger, DenizenSequence? onAssignment) {
     bool known = false;
     for (final _Npc npc in boundNpcs(container)) {
@@ -736,6 +706,7 @@ class _Converter {
     return trigger == 'click' || trigger == 'chat';
   }
 
+  /// A number of seconds stored per trigger in the NPCs' triggers trait, from the first NPC that has one.
   double? triggerSetting(DenizenContainer container, String field, String trigger) {
     for (final _Npc npc in boundNpcs(container)) {
       final JElement? section = npc.triggers.get(field);
@@ -792,6 +763,7 @@ class _Converter {
 
   // ---- Names ----
 
+  /// A path segment for a script name: lowercase, other characters as dashes, at most 64 characters, unique.
   String slug(String name) {
     final String key = name.toLowerCase();
     final String? known = slugs[key];
@@ -810,79 +782,23 @@ class _Converter {
 
   String behaviorId(String kind, DenizenContainer container) => '$_namespace:$kind/${slug(container.name)}';
 
-  // ---- Flag kinds ----
+  // ---- Variables ----
 
-  void kind(String flag, _Kind kind) {
-    final String name = flag.toLowerCase();
-    final _Kind current = kinds[name] ?? _Kind.neutral;
-    final _Kind merged;
-    if (current == _Kind.other || kind == _Kind.other) {
-      merged = _Kind.other;
-    } else if (current == _Kind.neutral) {
-      merged = kind;
-    } else if (kind == _Kind.neutral || kind == current) {
-      merged = current;
-    } else {
-      merged = _Kind.other;
-    }
-    kinds[name] = merged;
+  /// Declares an execution variable of the document once; `any` holds every value, `integer` loop counters.
+  void declare(_Scope scope, String name, String type) => scope.doc.variables.putIfAbsent(name, () => type);
+
+  /// A fresh temporary variable of the document.
+  String temporary(_Scope scope) {
+    final String name = 't_${++scope.doc.temporaries}';
+    declare(scope, name, 'any');
+    return name;
   }
 
-  _Kind kindOf(String flag) {
-    final _Kind kind = kinds[flag.toLowerCase()] ?? _Kind.neutral;
-    return kind == _Kind.neutral ? _Kind.boolean : kind;
-  }
-
-  void scanKinds(DenizenNode node) {
-    if (node is DenizenMapping) {
-      for (final DenizenEntry entry in node.entries) {
-        scanKinds(entry.value);
-      }
-    }
-    if (node is! DenizenSequence) return;
-    for (final DenizenItem item in node.items) {
-      final DenizenCommand command = denizenCommand(item.text);
-      if (command.name == 'flag' && command.args.length >= 2) {
-        final String raw = _raw(command.args[1]);
-        final int colon = raw.indexOf(':');
-        final String name = colon < 0 ? raw : raw.substring(0, colon);
-        if (!name.contains('<')) kind(name, colon < 0 ? _Kind.boolean : _valueKind(raw.substring(colon + 1)));
-      }
-      if (command.name == 'if' || command.name == 'else' || command.name == 'choose') {
-        final List<String> tokens = <String>[];
-        denizenSplit(item.text, tokens, <bool>[]);
-        for (int index = 1; index < tokens.length; index++) {
-          final String token = tokens[index].startsWith('!') ? tokens[index].substring(1) : tokens[index];
-          final List<String>? flag = _flagTag(token);
-          if (flag == null) continue;
-          final String operator = index + 1 < tokens.length ? tokens[index + 1] : '';
-          final String operand = index + 2 < tokens.length ? tokens[index + 2] : '';
-          if (command.name == 'choose') {
-            kind(flag[1], _Kind.integer);
-          } else if (<String>['==', '!='].contains(operator) && (operand.toLowerCase() == 'true' || operand.toLowerCase() == 'false')) {
-            kind(flag[1], _Kind.boolean);
-          } else if (<String>['==', '!=', '>=', '<=', '>', '<'].contains(operator) && _full('-?[0-9]+', operand)) {
-            kind(flag[1], _Kind.integer);
-          } else {
-            kind(flag[1], _Kind.neutral);
-          }
-        }
-      }
-      if (item.children != null) scanKinds(item.children!);
-    }
-  }
-
-  void dataKinds(DenizenFlagValues values) {
-    for (final DenizenFlag flag in values.flags.values) {
-      if (flag.name.startsWith('__') || flag.expires) continue;
-      if (flag.value == 'true' || flag.value == 'false') {
-        kind(flag.name, _Kind.boolean);
-      } else if (denizenStage(flag.value) != null) {
-        kind(flag.name, _Kind.integer);
-      } else {
-        kind(flag.name, _Kind.other);
-      }
-    }
+  /// A fresh loop counter of the document; each loop has its own, since every routine of a run shares variables.
+  String loopIndex(_Scope scope) {
+    final String name = 'i_${++scope.doc.loops}';
+    declare(scope, name, 'integer');
+    return name;
   }
 
   // ---- Outcomes ----
@@ -909,22 +825,11 @@ class _Converter {
     preserved.add(entry);
   }
 
-  void preserveTree(_Scope scope, DenizenItem item, String reason) {
-    outcome(scope, item, 'command', denizenCommand(item.text).name, false, reason);
-    if (item.children != null) preserveItems(scope, item.children!.items, 0, reason.startsWith('inside ') ? reason : 'inside a block that is kept: $reason');
-  }
-
-  void preserveItems(_Scope scope, List<DenizenItem> items, int from, String reason) {
-    for (int index = from; index < items.length; index++) {
-      preserveTree(scope, items[index], reason);
-    }
-  }
-
   void preserveContainer(DenizenContainer container, String reason) {
     record(container, container.line, 'container', container.type, container.name, false, reason);
     // Only script-running containers hold command lines; lists in data, book or inventory scripts are values.
     if (!_scriptTypes.contains(container.type)) return;
-    final _Scope scope = _Scope(LinkedHashMap<String, JObject>(), <String>{}, null, true, container, null, -1);
+    final _Scope scope = _Scope.of(_Doc(false), true, container, null, -1, const <String, String>{});
     preserveNode(scope, container.body, reason);
   }
 
@@ -935,7 +840,7 @@ class _Converter {
       }
     } else if (node is DenizenSequence) {
       for (final DenizenItem item in node.items) {
-        preserveTree(scope, item, reason);
+        commands.preserveTree(scope, item, reason);
       }
     }
   }
@@ -951,14 +856,26 @@ class _Converter {
     final DenizenContainer? container = containers[outcome.container.toLowerCase()];
     if (container == null) return '';
     return switch (container.type) {
-      'task' => behaviorId('task', container),
-      'assignment' => behaviorId('assignment', container),
-      'interact' => behaviorId('interact', container),
+      'task' || 'assignment' || 'interact' || 'world' || 'command' || 'book' => behaviorId(container.type, container),
       _ => '',
     };
   }
 
-  // ---- Containers ----
+  List<_Outcome> outcomesOf(DenizenContainer container) => <_Outcome>[
+        for (final _Outcome outcome in outcomes.values)
+          if (outcome.container.toLowerCase() == container.name.toLowerCase() && outcome.file == container.file) outcome,
+      ];
+
+  /// Records every key of a container outside [allowed] as kept, with a reason naming it.
+  void otherKeys(DenizenContainer container, List<String> allowed, String what) {
+    for (final DenizenEntry entry in container.body.entries) {
+      final String key = entry.key.toLowerCase();
+      if (allowed.contains(key)) continue;
+      record(container, entry.line, 'event', key, entry.key, false, '$what setting $key has no Animus equivalent');
+    }
+  }
+
+  // ---- Tasks and procedures ----
 
   void task(DenizenContainer container, SplayTreeMap<String, String> documents) {
     final DenizenNode? script = container.body.get('script');
@@ -966,33 +883,79 @@ class _Converter {
       preserveContainer(container, 'task script without a script list');
       return;
     }
-    final LinkedHashMap<String, JObject> routines = LinkedHashMap<String, JObject>();
-    final Set<String> calling = <String>{routineFor(container, null)};
-    routines['main'] = JObject();
-    final _Scope scope = _Scope(routines, calling, null, true, container, null, -1);
+    final _Doc doc = _Doc(false);
+    final _Scope scope = _Scope.of(doc, true, container, null, -1, const <String, String>{});
+    scope.calling.add(routineFor(container, null));
+    doc.routines['main'] = JObject();
+    // Other lists in a task are paths that run with path:; each becomes a routine of the task's own behavior.
     for (final DenizenEntry entry in container.body.entries) {
       final String key = entry.key.toLowerCase();
       final DenizenNode path = entry.value;
       if (key == 'script' || path is! DenizenSequence) continue;
       final String routine = routineFor(container, key);
-      if (!_reserve(routines, routine)) {
+      if (!_reserve(doc.routines, routine)) {
         record(container, entry.line, 'event', 'task path', entry.key, false, 'more than 32 routines in one behavior');
-        preserveItems(scope, path.items, 0, 'inside a task path past the routine limit');
+        commands.preserveItems(scope, path.items, 0, 'inside a task path past the routine limit');
         continue;
       }
-      calling.add(routine);
-      routines[routine] = _sequence(block(path.items, 0, scope).steps);
-      calling.remove(routine);
+      scope.calling.add(routine);
+      doc.routines[routine] = _sequence(commands.block(path.items, 0, scope));
+      scope.calling.remove(routine);
     }
-    final _Block body = block(script.items, 0, scope);
-    routines['main'] = _sequence(body.steps);
+    doc.routines['main'] = _sequence(commands.block(script.items, 0, scope));
     final String empty = _sequence(<JObject>[]).toString();
-    if (routines.values.every((JObject routine) => routine.toString() == empty)) return;
-    document(behaviorId('task', container), container, routines, JArray(), documents);
+    bool allEmpty = true;
+    for (final JObject routine in doc.routines.values) {
+      if (routine.toString() != empty) allEmpty = false;
+    }
+    if (allEmpty) return;
+    document(behaviorId('task', container), doc, container, JArray(), documents);
   }
 
+  String routineFor(DenizenContainer task, String? path) {
+    final String routine = 'task-${slug(task.name)}${path == null ? '' : '-${path.toLowerCase().replaceAll(RegExp('[^a-z0-9_-]+'), '-')}'}';
+    return routine.length > 64 ? routine.substring(0, 64) : routine;
+  }
+
+  /// A procedure's own lines are converted once to record what converts; its routine is made in each document that reads it.
+  void procedureContainer(DenizenContainer container) {
+    final DenizenNode? script = container.body.get('script');
+    if (script is! DenizenSequence) {
+      preserveContainer(container, 'procedure script without a script list');
+      return;
+    }
+    final _Doc doc = _Doc(false);
+    final _Scope scope = _Scope.of(doc, true, container, null, -1, const <String, String>{});
+    scope.calling.add(procedureName(container));
+    commands.block(script.items, 0, scope);
+    otherKeys(container, <String>['type', 'script', 'definitions', 'debug'], 'procedure');
+    if (outcomesOf(container).isEmpty) record(container, container.line, 'container', 'procedure', container.name, true, '');
+  }
+
+  String procedureName(DenizenContainer procedure) {
+    final String routine = 'proc-${slug(procedure.name)}';
+    return routine.length > 64 ? routine.substring(0, 64) : routine;
+  }
+
+  /// The routine of a procedure in the scope's document, made on first use. Its value comes back with `return`.
+  _Result<String> procedureRoutine(DenizenContainer procedure, _Scope scope) {
+    final String routine = procedureName(procedure);
+    if (scope.calling.contains(routine)) return const _Result<String>.fail('recursive procedure calls have no Animus equivalent');
+    if (scope.doc.routines.containsKey(routine)) return _Result<String>.ok(routine);
+    final DenizenNode? script = procedure.body.get('script');
+    if (script is! DenizenSequence) return _Result<String>.fail('procedure ${procedure.name} has no script list');
+    if (!_reserve(scope.doc.routines, routine)) return const _Result<String>.fail('more than 32 routines in one behavior');
+    scope.calling.add(routine);
+    final List<JObject> steps = commands.block(script.items, 0, scope.inContainer(procedure));
+    scope.calling.remove(routine);
+    scope.doc.routines[routine] = _sequence(steps);
+    return _Result<String>.ok(routine);
+  }
+
+  // ---- Assignments ----
+
   void assignment(DenizenContainer container, SplayTreeMap<String, String> documents) {
-    final LinkedHashMap<String, JObject> routines = LinkedHashMap<String, JObject>();
+    final _Doc doc = _Doc(false);
     final JArray triggers = JArray();
     final DenizenNode? actions = container.body.get('actions');
     DenizenSequence? onAssignment;
@@ -1000,26 +963,18 @@ class _Converter {
       final DenizenNode? assigned = actions.get('on assignment');
       if (assigned is DenizenSequence) onAssignment = assigned;
     }
-    final String? name = npcName(container);
     final int range = radius(container, onAssignment);
     if (actions is DenizenMapping) {
       for (final DenizenEntry entry in actions.entries) {
-        final String event = javaTrim(entry.key.toLowerCase().replaceAll(_javaSpaces, ' '));
+        final String event = _collapse(entry.key);
         final DenizenNode sequence = entry.value;
         if (sequence is! DenizenSequence) {
           record(container, entry.line, 'event', event, entry.key, false, 'action without a script list');
           continue;
         }
-        final _Scope scope = _Scope(routines, <String>{}, name, true, container, null, -1);
+        final _Scope scope = _Scope.of(doc, true, container, null, -1, const <String, String>{});
         if (event == 'on assignment') {
-          record(container, entry.line, 'event', event, entry.key, true, '');
-          for (final DenizenItem item in sequence.items) {
-            if (denizenCommand(item.text).name == 'trigger' && item.children == null) {
-              outcome(scope, item, 'command', 'trigger', true, '');
-            } else {
-              preserveTree(scope, item, "on assignment runs once, when Denizen assigns the script; its trigger settings are read from the NPC's saved triggers");
-            }
-          }
+          assignmentAction(container, entry, sequence, scope, triggers);
           continue;
         }
         final List<String>? mapped = switch (event) {
@@ -1034,23 +989,22 @@ class _Converter {
         };
         if (mapped == null) {
           record(container, entry.line, 'event', event, entry.key, false, 'no Animus trigger for this action');
-          preserveItems(scope, sequence.items, 0, 'inside an action that is kept: no Animus trigger for this action');
+          commands.preserveItems(scope, sequence.items, 0, 'inside an action that is kept: no Animus trigger for this action');
           continue;
         }
         if (mapped[2].isNotEmpty && !enabled(container, mapped[2], onAssignment)) {
           record(container, entry.line, 'event', event, entry.key, false, 'the ${mapped[2]} trigger is off on every NPC with this assignment');
-          preserveItems(scope, sequence.items, 0, 'inside an action whose trigger is off');
+          commands.preserveItems(scope, sequence.items, 0, 'inside an action whose trigger is off');
           continue;
         }
         final String routine = event.replaceAll(' ', '-');
-        if (routines.length >= behaviorMaximumRoutines) {
+        if (doc.routines.length >= behaviorMaximumRoutines) {
           record(container, entry.line, 'event', event, entry.key, false, 'more than 32 routines in one behavior');
-          preserveItems(scope, sequence.items, 0, 'inside an action past the routine limit');
+          commands.preserveItems(scope, sequence.items, 0, 'inside an action past the routine limit');
           continue;
         }
-        routines[routine] = JObject();
-        final _Block body = block(sequence.items, 0, scope);
-        routines[routine] = _sequence(body.steps);
+        doc.routines[routine] = JObject();
+        doc.routines[routine] = _sequence(commands.block(sequence.items, 0, scope));
         record(container, entry.line, 'event', event, entry.key, true, '');
         final JObject trigger = JObject()
           ..addString('id', routine)
@@ -1075,23 +1029,62 @@ class _Converter {
         record(container, item.line, 'event', 'interact script', item.text, found, found ? '' : 'no interact script with this name');
       }
     }
-    for (final DenizenEntry entry in container.body.entries) {
-      final String key = entry.key.toLowerCase();
-      if (<String>['type', 'actions', 'interact scripts', 'debug'].contains(key)) continue;
-      record(container, entry.line, 'event', key, entry.key, false, 'assignment setting $key has no Animus equivalent');
-    }
-    if (routines.isEmpty) {
+    otherKeys(container, <String>['type', 'actions', 'interact scripts', 'debug'], 'assignment');
+    if (doc.routines.isEmpty) {
       if (outcomesOf(container).isEmpty) record(container, container.line, 'container', 'assignment', container.name, true, '');
       return;
     }
-    document(behaviorId('assignment', container), container, routines, triggers, documents);
+    if (document(behaviorId('assignment', container), doc, container, triggers, documents) && doc.routines.containsKey('on-assignment')) {
+      for (final _Npc npc in npcs) {
+        if (npc.assignments.contains(container.name.toLowerCase())) guards.putIfAbsent(npc.uuid, () => <String>[]).add(guardFlag(container));
+      }
+    }
   }
 
-  List<_Outcome> outcomesOf(DenizenContainer container) => <_Outcome>[
-        for (final _Outcome outcome in outcomes.values)
-          if (outcome.container.toLowerCase() == container.name.toLowerCase() && outcome.file == container.file) outcome,
-      ];
+  String guardFlag(DenizenContainer container) {
+    final String flag = 'assigned-${slug(container.name)}';
+    return flag.length > 64 ? flag.substring(0, 64) : flag;
+  }
 
+  /// `on assignment`: trigger lines are read as settings; any other commands become the `on-assignment` routine, run
+  /// by a spawn trigger and guarded by the NPC flag `assigned-<slug>`, so it runs once per NPC. The import sets that
+  /// flag on the NPCs that already had the assignment.
+  void assignmentAction(DenizenContainer container, DenizenEntry entry, DenizenSequence sequence, _Scope scope, JArray triggers) {
+    record(container, entry.line, 'event', 'on assignment', entry.key, true, '');
+    final List<DenizenItem> rest = <DenizenItem>[];
+    for (final DenizenItem item in sequence.items) {
+      if (denizenCommand(item.text).name == 'trigger' && item.children == null) {
+        outcome(scope, item, 'command', 'trigger', true, '');
+      } else {
+        rest.add(item);
+      }
+    }
+    if (rest.isEmpty) return;
+    if (!_reserve(scope.doc.routines, 'on-assignment')) {
+      commands.preserveItems(scope, rest, 0, 'inside on assignment past the routine limit');
+      return;
+    }
+    final String flag = guardFlag(container);
+    final List<JObject> steps = <JObject>[
+      _action(
+          'animus:set-flag',
+          JObject()
+            ..addString('name', flag)
+            ..addString('scope', 'npc')),
+      ...commands.block(rest, 0, scope),
+    ];
+    final JObject guard = JObject()
+      ..addString('type', 'condition')
+      ..addString('expression', "!has_flag('npc', ${_quote(flag)})")
+      ..add('then', _sequence(steps));
+    scope.doc.routines['on-assignment'] = guard;
+    triggers.add(JObject()
+      ..addString('id', 'on-assignment')
+      ..addString('event', 'spawn')
+      ..addString('routine', 'on-assignment'));
+  }
+
+  /// The interact scripts an assignment lists, in order, as `- name` or `- 10 name`.
   List<DenizenContainer> interactList(DenizenContainer assignment) {
     final List<DenizenContainer> found = <DenizenContainer>[];
     final DenizenNode? list = assignment.body.get('interact scripts');
@@ -1109,6 +1102,8 @@ class _Converter {
     final DenizenContainer? container = containers[name.toLowerCase()];
     return container != null && container.type == 'interact' ? container : null;
   }
+
+  // ---- Interact scripts ----
 
   _Interact interact(DenizenContainer container) {
     final List<String> order = <String>[];
@@ -1142,14 +1137,9 @@ class _Converter {
       preserveContainer(container, 'interact script without steps');
       return;
     }
-    for (final String flag in kinds.keys) {
-      if (_flagName(flag) != null && _flagName(flag) == interact.quest) {
-        issues.add('${container.name}: the step quest ${interact.quest} shares its name with the flag $flag');
-      }
-    }
-    final LinkedHashMap<String, JObject> routines = LinkedHashMap<String, JObject>();
+    final _Doc doc = _Doc(false);
+    final LinkedHashMap<String, JObject> routines = doc.routines;
     final JArray triggers = JArray();
-    final String? name = npcName(container);
     final DenizenSequence? assigned = onAssignmentFor(container);
     final int range = radius(container, assigned);
     final SplayTreeMap<String, List<int>> dispatch = SplayTreeMap<String, List<int>>();
@@ -1166,12 +1156,12 @@ class _Converter {
         record(container, step.line, 'event', 'step', step.key, false, 'step is not a list of triggers');
         continue;
       }
-      final _Scope scope = _Scope(routines, <String>{}, name, true, container, interact, position);
+      final _Scope scope = _Scope.of(doc, true, container, interact, position, const <String, String>{});
       final List<JObject> clickSteps = <JObject>[];
       bool click = false;
       final JArray options = JArray();
       for (final DenizenEntry trigger in body.entries) {
-        final String triggerName = javaTrim(trigger.key.toLowerCase().replaceAll(_javaSpaces, ' '));
+        final String triggerName = _collapse(trigger.key);
         switch (triggerName) {
           case 'click trigger':
             final DenizenSequence? script = _scriptOf(trigger.value);
@@ -1181,10 +1171,10 @@ class _Converter {
             }
             if (!enabled(container, 'click', assigned)) {
               record(container, trigger.line, 'event', triggerName, trigger.key, false, 'the click trigger is off on every NPC with this script');
-              preserveItems(scope, script.items, 0, 'inside a trigger that is off');
+              commands.preserveItems(scope, script.items, 0, 'inside a trigger that is off');
               continue;
             }
-            clickSteps.addAll(block(script.items, 0, scope).steps);
+            clickSteps.addAll(commands.block(script.items, 0, scope));
             click = true;
             record(container, trigger.line, 'event', triggerName, trigger.key, true, '');
           case 'proximity trigger':
@@ -1201,21 +1191,21 @@ class _Converter {
               if (which != 'entry' && which != 'exit' || script == null) {
                 record(container, phase.line, 'event', label, phase.key, false,
                     which == 'move' ? 'no Animus trigger for movement inside the radius' : 'no Animus trigger for this proximity phase');
-                if (script != null) preserveItems(scope, script.items, 0, 'inside a proximity phase that is kept');
+                if (script != null) commands.preserveItems(scope, script.items, 0, 'inside a proximity phase that is kept');
                 continue;
               }
               if (!on) {
                 record(container, phase.line, 'event', label, phase.key, false, 'the proximity trigger is off on every NPC with this script');
-                preserveItems(scope, script.items, 0, 'inside a trigger that is off');
+                commands.preserveItems(scope, script.items, 0, 'inside a trigger that is off');
                 continue;
               }
               final String routine = 's$stage-${which == 'entry' ? 'enter' : 'exit'}';
               if (!_reserve(routines, routine)) {
                 record(container, phase.line, 'event', label, phase.key, false, 'more than 32 routines in one behavior');
-                preserveItems(scope, script.items, 0, 'inside a trigger past the routine limit');
+                commands.preserveItems(scope, script.items, 0, 'inside a trigger past the routine limit');
                 continue;
               }
-              routines[routine] = _sequence(block(script.items, 0, scope).steps);
+              routines[routine] = _sequence(commands.block(script.items, 0, scope));
               dispatch[which == 'entry' ? 'enter' : 'exit']!.add(stage);
               record(container, phase.line, 'event', label, phase.key, true, '');
             }
@@ -1250,10 +1240,10 @@ class _Converter {
               if (reason != null) {
                 routines.remove(routine);
                 record(container, chat.line, 'event', 'chat trigger', chat.key, false, reason);
-                if (script != null) preserveItems(scope, script.items, 0, 'inside a chat answer that is kept');
+                if (script != null) commands.preserveItems(scope, script.items, 0, 'inside a chat answer that is kept');
                 continue;
               }
-              routines[routine] = _sequence(block(script!.items, 0, scope).steps);
+              routines[routine] = _sequence(commands.block(script!.items, 0, scope));
               final String choice = 'c$index';
               options.add(JObject()
                 ..addString('id', choice)
@@ -1269,11 +1259,11 @@ class _Converter {
           case 'damage trigger':
             record(container, trigger.line, 'event', triggerName, trigger.key, false, 'Animus damage triggers carry no player, so player steps cannot follow them');
             final DenizenSequence? script = _scriptOf(trigger.value);
-            if (script != null) preserveItems(scope, script.items, 0, 'inside a damage trigger that is kept');
+            if (script != null) commands.preserveItems(scope, script.items, 0, 'inside a damage trigger that is kept');
           default:
             record(container, trigger.line, 'event', triggerName, trigger.key, false, 'no Animus trigger for $triggerName');
             final DenizenSequence? script = _scriptOf(trigger.value);
-            if (script != null) preserveItems(scope, script.items, 0, 'inside a trigger that is kept');
+            if (script != null) commands.preserveItems(scope, script.items, 0, 'inside a trigger that is kept');
         }
       }
       if (options.isNotEmpty) {
@@ -1315,7 +1305,7 @@ class _Converter {
           final JObject call = JObject()
             ..addString('type', 'call')
             ..addString('routine', 's${stages[index]}-$phase');
-          chain = _conditionNode('animus:quest-state', arguments, call, chain);
+          chain = _build(_Capability('animus:quest-state', arguments), call, chain);
         }
         routines[routine] = chain!;
       }
@@ -1338,15 +1328,12 @@ class _Converter {
     for (final JObject choice in choiceTriggers) {
       triggers.add(choice);
     }
-    for (final DenizenEntry entry in container.body.entries) {
-      final String key = entry.key.toLowerCase();
-      if (<String>['type', 'steps', 'debug'].contains(key)) continue;
-      record(container, entry.line, 'event', key, entry.key, false, 'interact setting $key has no Animus equivalent');
-    }
+    otherKeys(container, <String>['type', 'steps', 'debug'], 'interact');
     if (routines.isEmpty) {
       record(container, container.line, 'container', 'interact', container.name, false, 'no step trigger converts');
       return;
     }
+    // Dispatchers go first so the behavior's entry is the click dispatcher when there is one.
     final LinkedHashMap<String, JObject> sorted = LinkedHashMap<String, JObject>();
     for (final String first in <String>['click', 'enter', 'exit']) {
       if (routines.containsKey(first)) sorted[first] = routines[first]!;
@@ -1354,9 +1341,13 @@ class _Converter {
     for (final MapEntry<String, JObject> routine in routines.entries) {
       if (!sorted.containsKey(routine.key)) sorted[routine.key] = routine.value;
     }
-    document(behaviorId('interact', container), container, sorted, triggers, documents);
+    routines
+      ..clear()
+      ..addAll(sorted);
+    document(behaviorId('interact', container), doc, container, triggers, documents);
   }
 
+  /// The on assignment action of the first assignment, by name, that is this script or lists it.
   DenizenSequence? onAssignmentFor(DenizenContainer container) {
     final String name = container.name.toLowerCase();
     for (final DenizenContainer assignment in containers.values) {
@@ -1374,30 +1365,425 @@ class _Converter {
     return null;
   }
 
-  void world(DenizenContainer container) {
-    record(container, container.line, 'container', 'world', container.name, false, 'world scripts react to server-wide events; Animus triggers belong to NPCs');
+  // ---- Server behaviors ----
+
+  /// A world script: one server behavior whose routines are its events, each run by the matching server trigger.
+  void world(DenizenContainer container, SplayTreeMap<String, String> documents) {
     final DenizenNode? events = container.body.get('events');
-    final _Scope scope = _Scope(LinkedHashMap<String, JObject>(), <String>{}, null, true, container, null, -1);
+    final _Doc doc = _Doc(true);
+    final JArray triggers = JArray();
     if (events is DenizenMapping) {
       for (final DenizenEntry entry in events.entries) {
-        final String event = 'world ${javaTrim(entry.key.toLowerCase().replaceAll(_javaSpaces, ' '))}';
-        record(container, entry.line, 'event', event, entry.key, false, _worldReason(entry.key.toLowerCase()));
-        preserveNode(scope, entry.value, 'inside a world event that is kept');
+        final String key = _collapse(entry.key);
+        final String label = 'world $key';
+        final _Scope kept = _Scope.of(doc, true, container, null, -1, const <String, String>{});
+        final DenizenNode sequence = entry.value;
+        if (sequence is! DenizenSequence) {
+          record(container, entry.line, 'event', label, entry.key, false, 'event without a script list');
+          preserveNode(kept, entry.value, 'inside a world event that is kept');
+          continue;
+        }
+        final _Mapped mapped = _denizenEvent(key);
+        String? reason = mapped.reason;
+        String base = 'on-${_eventPhrase(key).replaceAll(RegExp('[^a-z0-9_-]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '')}';
+        if (base.length > 60) base = base.substring(0, 60);
+        String routine = base;
+        for (int suffix = 2; doc.routines.containsKey(routine); suffix++) {
+          routine = '$base-$suffix';
+        }
+        if (reason == null && triggers.length >= behaviorMaximumTriggers) reason = 'more than 32 triggers in one behavior';
+        if (reason == null && !_reserve(doc.routines, routine)) reason = 'more than 32 routines in one behavior';
+        if (reason != null) {
+          record(container, entry.line, 'event', label, entry.key, false, reason);
+          commands.preserveItems(kept, sequence.items, 0, 'inside a world event that is kept');
+          continue;
+        }
+        record(container, entry.line, 'event', label, entry.key, true, '');
+        final _Scope scope = _Scope.of(doc, true, container, null, -1, mapped.context);
+        JObject body = _sequence(commands.block(sequence.items, 0, scope));
+        for (int index = mapped.guards.length - 1; index >= 0; index--) {
+          body = _build(mapped.guards[index], body, null);
+        }
+        doc.routines[routine] = body;
+        final JObject trigger = JObject()..addString('id', routine);
+        for (final MapEntry<String, JElement> field in mapped.trigger!.entries) {
+          trigger.add(field.key, field.value);
+        }
+        trigger.addString('routine', routine);
+        triggers.add(trigger);
+      }
+    } else {
+      record(container, container.line, 'container', 'world', container.name, false, 'world script without events');
+    }
+    otherKeys(container, <String>['type', 'events', 'debug', 'enabled'], 'world');
+    if (doc.routines.isEmpty) return;
+    document(behaviorId('world', container), doc, container, triggers, documents);
+  }
+
+  /// A command script: a server behavior with a `command` trigger whose run reads `context.args`.
+  void commandContainer(DenizenContainer container, SplayTreeMap<String, String> documents) {
+    final DenizenNode? script = container.body.get('script');
+    final String? written = container.body.text('name');
+    final String? name = written == null ? null : javaTrim(written).toLowerCase();
+    if (script is! DenizenSequence) {
+      preserveContainer(container, 'command script without a script list');
+      return;
+    }
+    if (name == null || !_full('[a-z0-9_-]{1,32}', name)) {
+      preserveContainer(container, 'command name ${name ?? '(none)'} is not 1-32 lowercase letters, digits, _ or -');
+      return;
+    }
+    final JObject trigger = JObject()
+      ..addString('id', 'command')
+      ..addString('event', 'command')
+      ..addString('name', name);
+    final DenizenNode? aliases = container.body.get('aliases');
+    if (aliases != null) {
+      final JArray list = JArray();
+      final List<String> names = <String>[];
+      if (aliases is DenizenSequence) {
+        for (final DenizenItem item in aliases.items) {
+          names.add(item.text);
+        }
+      } else if (aliases is DenizenScalar) {
+        names.addAll(aliases.text.split('|'));
+      }
+      for (final String alias in names) {
+        final String lowered = javaTrim(alias).toLowerCase();
+        if (!_full('[a-z0-9_-]{1,32}', lowered) || list.length >= 8) {
+          issues.add('${container.file}:${aliases.line}: command alias $alias is not used; Animus takes up to 8 lowercase aliases');
+        } else {
+          list.addString(lowered);
+        }
+      }
+      if (list.isNotEmpty) trigger.add('aliases', list);
+    }
+    for (final String field in <String>['permission', 'description', 'usage']) {
+      final String? value = container.body.text(field);
+      if (value == null || javaIsBlank(value)) continue;
+      if (value.length > 256) {
+        issues.add('${container.file}:${container.line}: command $field is longer than 256 characters and is not used');
+        continue;
+      }
+      trigger.addString(field, javaTrim(value));
+    }
+    trigger.addString('routine', 'main');
+    final _Doc doc = _Doc(true);
+    doc.routines['main'] = JObject();
+    final _Scope scope = _Scope.of(doc, true, container, null, -1, _commandContext());
+    doc.routines['main'] = _sequence(commands.block(script.items, 0, scope));
+    otherKeys(container, <String>['type', 'name', 'script', 'aliases', 'permission', 'description', 'usage', 'debug'], 'command');
+    document(behaviorId('command', container), doc, container, JArray()..add(trigger), documents);
+  }
+
+  // ---- Books, items and inventories ----
+
+  /// A book script as an `animus:give-book` action, or the reason it has none.
+  _Result<JObject> bookAction(DenizenContainer book, _Scope scope, _Pending pending) {
+    final _Action action = _Action();
+    for (final String field in <String>['title', 'author']) {
+      final String? value = book.body.text(field);
+      if (value == null) return _Result<JObject>.fail('book script without a $field');
+      final _Result<_Text> text = expressions.text(value, scope, pending, false, 0);
+      if (text.failed) return _Result<JObject>.fail(text.reason!);
+      if (!text.value!.isDynamic && text.value!.literal!.length > 32) return _Result<JObject>.fail('book $field longer than 32 characters');
+      action.text(field, text.value!);
+    }
+    final DenizenNode? pages = book.body.get('text');
+    if (pages is! DenizenSequence || pages.items.isEmpty) return const _Result<JObject>.fail('book script without text pages');
+    if (pages.items.length > 50) return const _Result<JObject>.fail('book with more than 50 pages');
+    final JArray list = JArray();
+    for (int index = 0; index < pages.items.length; index++) {
+      final _Result<_Text> text = expressions.text(pages.items[index].text, scope, pending, false, 0);
+      if (text.failed) return _Result<JObject>.fail(text.reason!);
+      if (!text.value!.isDynamic) {
+        if (text.value!.literal!.length > 1024) return const _Result<JObject>.fail('book page longer than 1024 characters');
+        list.addString(text.value!.literal!);
+      } else {
+        list.add(JNull.instance);
+        action.templates.addString('/pages/$index', text.value!.template);
       }
     }
-    for (final DenizenEntry entry in container.body.entries) {
-      if (entry.key.toLowerCase() != 'events') preserveNode(scope, entry.value, 'inside a world script that is kept');
+    action.put('pages', list);
+    return _Result<JObject>.ok(action.node('animus:give-book'));
+  }
+
+  JObject? book(DenizenContainer book, _Scope scope, _Pending pending) {
+    final _Result<JObject> action = bookAction(book, scope, pending);
+    return action.failed ? null : action.value;
+  }
+
+  void bookContainer(DenizenContainer container, SplayTreeMap<String, String> documents) {
+    final _Doc doc = _Doc(true);
+    final _Scope scope = _Scope.of(doc, true, container, null, -1, const <String, String>{});
+    final _Pending pending = _Pending();
+    final _Result<JObject> action = bookAction(container, scope, pending);
+    if (action.failed) {
+      preserveContainer(container, action.reason!);
+      return;
+    }
+    doc.routines['main'] = _sequence(<JObject>[...pending.steps, action.value!]);
+    record(container, container.line, 'container', 'book', container.name, true, '');
+    otherKeys(container, <String>['type', 'title', 'author', 'signed', 'text', 'debug'], 'book');
+    document(behaviorId('book', container), doc, container, JArray(), documents);
+  }
+
+  /// Fills a give-item action from an item script with only a material, a display name and lore; otherwise the reason.
+  String? itemScript(DenizenContainer item, _Action action, _Scope scope, _Pending pending) {
+    for (final DenizenEntry entry in item.body.entries) {
+      if (!_itemKeys.contains(entry.key.toLowerCase())) return 'item script ${item.name} sets ${entry.key}, which Animus items lack';
+    }
+    final String? written = item.body.text('material');
+    final String? material = written == null ? null : commands.material(written);
+    if (material == null) return 'item script ${item.name} has no plain material';
+    action.put('item', JString(material));
+    final String? name = item.body.text('display name');
+    if (name != null) {
+      final _Result<_Text> text = expressions.text(name, scope, pending, false, 0);
+      if (text.failed) return text.reason;
+      action.text('name', text.value!);
+    }
+    final DenizenNode? lore = item.body.get('lore');
+    if (lore != null) {
+      if (lore is! DenizenSequence || lore.items.length > 16) return 'item lore must be a list of up to 16 lines';
+      final JArray list = JArray();
+      for (final DenizenItem line in lore.items) {
+        final _Result<_Text> text = expressions.text(line.text, scope, pending, false, 0);
+        if (text.failed) return text.reason;
+        if (text.value!.isDynamic) return 'item lore with tags has no Animus equivalent';
+        list.addString(text.value!.literal!);
+      }
+      action.put('lore', list);
+    }
+    return null;
+  }
+
+  void itemContainer(DenizenContainer container) {
+    final String? problem =
+        itemScript(container, _Action(), _Scope.of(_Doc(false), false, container, null, -1, const <String, String>{}), _Pending());
+    if (problem != null) {
+      record(container, container.line, 'container', 'item', container.name, false, '$problem; only give converts item scripts');
+    } else {
+      record(container, container.line, 'container', 'item', container.name, true, '');
     }
   }
 
-  void document(String id, DenizenContainer container, LinkedHashMap<String, JObject> routines, JArray triggers, SplayTreeMap<String, String> documents) {
+  String? guiId(DenizenContainer inventory) {
+    final String slugged = slug(inventory.name);
+    return guis.containsKey(slugged) ? '$_namespace:$slugged' : null;
+  }
+
+  /// An inventory script as a chest GUI: its title, size and fixed items as a mask of decoration keys.
+  void inventoryContainer(DenizenContainer container) {
+    final _Scope scope = _Scope.of(_Doc(false), true, container, null, -1, const <String, String>{});
+    final _Pending pending = _Pending();
+    final String type = javaTrim(container.body.text('inventory') ?? 'chest').toLowerCase();
+    int width = 9;
+    int rows;
+    String? resolution;
+    switch (type) {
+      case 'chest':
+        resolution = null;
+      case 'hopper':
+        width = 5;
+        resolution = '5x1';
+      case 'dropper':
+      case 'dispenser':
+        width = 3;
+        resolution = '3x3';
+      default:
+        preserveContainer(container, 'inventory type $type has no Animus chest GUI');
+        return;
+    }
+    final DenizenNode? slots = container.body.get('slots');
+    final List<List<String>> lines = <List<String>>[];
+    if (slots != null) {
+      if (slots is! DenizenSequence) {
+        preserveContainer(container, 'slots is not a list of rows');
+        return;
+      }
+      for (final DenizenItem line in slots.items) {
+        final List<String>? cells = _cells(line.text);
+        if (cells == null || cells.length > width) {
+          preserveContainer(container, 'slot row ${line.text} is not up to $width [item] cells');
+          return;
+        }
+        lines.add(cells);
+      }
+    }
+    if (resolution == null) {
+      final String? size = container.body.text('size');
+      rows = lines.length > 1 ? lines.length : 1;
+      if (size != null) {
+        final String trimmed = javaTrim(size);
+        if (!_full('[0-9]{1,2}', trimmed) || int.parse(trimmed) % 9 != 0 || int.parse(trimmed) < 9 || int.parse(trimmed) > 54) {
+          preserveContainer(container, 'size $size is not 9 to 54 in rows of 9');
+          return;
+        }
+        rows = int.parse(trimmed) ~/ 9;
+      } else if (lines.isEmpty) {
+        rows = 3;
+      }
+      if (lines.length > rows) {
+        preserveContainer(container, 'more slot rows than the size holds');
+        return;
+      }
+      if (rows > 6) {
+        preserveContainer(container, 'more than 6 rows');
+        return;
+      }
+      resolution = '9x$rows';
+    } else if (lines.length > (width == 5 ? 1 : 3)) {
+      preserveContainer(container, 'more slot rows than a $type holds');
+      return;
+    }
+    final SplayTreeMap<String, String> definitions = SplayTreeMap<String, String>();
+    final DenizenNode? defined = container.body.get('definitions');
+    if (defined is DenizenMapping) {
+      for (final DenizenEntry entry in defined.entries) {
+        final DenizenNode value = entry.value;
+        if (value is DenizenScalar) definitions[entry.key.toLowerCase()] = value.text;
+      }
+    }
+    final LinkedHashMap<String, String> keys = LinkedHashMap<String, String>();
+    final JObject keyObjects = JObject();
+    final JArray mask = JArray();
+    for (final List<String> line in lines) {
+      final StringBuffer row = StringBuffer();
+      for (final String cell in line) {
+        final String value = javaTrim(definitions[cell.toLowerCase()] ?? cell);
+        if (value.isEmpty || value.toLowerCase() == 'air') {
+          row.write(' ');
+          continue;
+        }
+        final _Result<JObject> icon = this.icon(value, scope, pending);
+        if (icon.failed) {
+          preserveContainer(container, icon.reason!);
+          return;
+        }
+        final String text = icon.value!.toString();
+        if (!keys.containsKey(text)) {
+          if (keys.length >= _keyCharacters.length) {
+            preserveContainer(container, 'more distinct items than mask keys');
+            return;
+          }
+          final String key = _keyCharacters[keys.length];
+          keys[text] = key;
+          keyObjects.add(
+              key,
+              JObject()
+                ..addString('type', 'decoration')
+                ..add('icon', icon.value));
+        }
+        row.write(keys[text]);
+      }
+      while (row.length < width) {
+        row.write(' ');
+      }
+      mask.addString(row.toString());
+    }
+    final int height = int.parse(resolution.substring(resolution.indexOf('x') + 1));
+    while (mask.isNotEmpty && mask.length < height) {
+      mask.addString(' ' * width);
+    }
+    final JObject gui = JObject()
+      ..addInt('schemaVersion', 1)
+      ..addInt('revision', 1);
+    final String? title = container.body.text('title');
+    if (title != null) {
+      final _Result<_Text> text = expressions.text(title, scope, pending, false, 0);
+      if (text.failed) {
+        preserveContainer(container, 'title: ${text.reason}');
+        return;
+      }
+      if (text.value!.isDynamic) {
+        preserveContainer(container, 'a title with tags has no chest GUI equivalent');
+        return;
+      }
+      gui.addString('title', text.value!.literal!);
+    }
+    gui.addString('resolution', resolution);
+    if (mask.isNotEmpty) {
+      gui
+        ..add('mask', mask)
+        ..add('keys', keyObjects);
+    }
+    if (pending.steps.isNotEmpty) {
+      preserveContainer(container, 'inventory items read map constants or procedures');
+      return;
+    }
+    record(container, container.line, 'container', 'inventory', container.name, true, '');
+    for (final DenizenEntry entry in container.body.entries) {
+      final String key = entry.key.toLowerCase();
+      if (<String>['type', 'inventory', 'title', 'size', 'slots', 'definitions', 'debug'].contains(key)) continue;
+      final DenizenNode value = entry.value;
+      if (key == 'gui' && value is DenizenScalar && javaTrim(value.text).toLowerCase() == 'true') continue;
+      final String reason = switch (key) {
+        'gui' => 'gui: false lets players move items; Animus windows never let items move',
+        'procedural items' => 'procedural items run a script to fill slots; Animus chest GUIs draw fixed items',
+        _ => 'inventory setting $key has no Animus equivalent',
+      };
+      record(container, entry.line, 'event', key, entry.key, false, reason);
+    }
+    guis[slug(container.name)] = writeJson(gui);
+  }
+
+  /// A GUI icon: a material, a material with `[quantity=n]`, or a simple item script.
+  _Result<JObject> icon(String value, _Scope scope, _Pending pending) {
+    String name = value;
+    int count = 1;
+    if (name.endsWith(']') && name.contains('[')) {
+      final String properties = name.substring(name.indexOf('[') + 1, name.length - 1);
+      name = name.substring(0, name.indexOf('['));
+      if (!_full('quantity=[0-9]{1,2}', properties.toLowerCase())) return _Result<JObject>.fail('item property $properties has no chest GUI equivalent');
+      count = int.parse(properties.substring(9));
+      if (count < 1 || count > 64) return const _Result<JObject>.fail('item quantity must be from 1 to 64');
+    }
+    final JObject icon = JObject()..addString('type', 'item');
+    final DenizenContainer? script = containers[name.toLowerCase()];
+    if (script != null && script.type == 'item') {
+      final _Action action = _Action();
+      final String? problem = itemScript(script, action, scope, pending);
+      if (problem != null) return _Result<JObject>.fail(problem);
+      if (action.templates.isNotEmpty) return _Result<JObject>.fail('item script ${script.name} has a name with tags');
+      icon.add('item', action.arguments.get('item'));
+      if (count > 1) icon.addInt('count', count);
+      if (action.arguments.has('name')) icon.add('name', action.arguments.get('name'));
+      if (action.arguments.has('lore')) icon.add('lore', action.arguments.get('lore'));
+      return _Result<JObject>.ok(icon);
+    }
+    final String? material = commands.material(name);
+    if (material == null) return _Result<JObject>.fail('slot item $value is not a material or a simple item script');
+    icon.addString('item', material);
+    if (count > 1) icon.addInt('count', count);
+    return _Result<JObject>.ok(icon);
+  }
+
+  // ---- Documents ----
+
+  /// Writes the document when it fits the compiler's limits; otherwise records why the container is kept.
+  bool document(String id, _Doc doc, DenizenContainer container, JArray triggers, SplayTreeMap<String, String> documents) {
     final JObject document = JObject()
       ..addInt('schemaVersion', 1)
       ..addInt('revision', 1)
-      ..addString('id', id)
-      ..addString('entry', routines.keys.first);
+      ..addString('id', id);
+    if (doc.server) document.addBool('server', true);
+    document.addString('entry', doc.routines.keys.first);
+    if (doc.variables.isNotEmpty) {
+      final JObject variables = JObject();
+      for (final MapEntry<String, String> variable in doc.variables.entries) {
+        final JObject declaration = JObject()..addString('type', variable.value);
+        if (variable.value == 'integer') {
+          declaration.addInt('initial', 0);
+        } else {
+          declaration.addString('initial', '');
+        }
+        variables.add(variable.key, declaration);
+      }
+      document.add('variables', variables);
+    }
     final JObject body = JObject();
-    for (final MapEntry<String, JObject> routine in routines.entries) {
+    for (final MapEntry<String, JObject> routine in doc.routines.entries) {
       body.add(routine.key, routine.value);
     }
     document.add('routines', body);
@@ -1407,886 +1793,17 @@ class _Converter {
     if (problem != null) {
       issues.add('${container.name}: the converted behavior $problem; it is not generated');
       record(container, container.line, 'container', container.type, container.name, false, 'the converted behavior $problem');
-      return;
+      return false;
     }
     documents[id] = text;
-  }
-
-  // ---- Commands ----
-
-  _Block block(List<DenizenItem> items, int from, _Scope scope) {
-    final List<JObject> steps = <JObject>[];
-    for (int index = from; index < items.length; index++) {
-      final DenizenItem item = items[index];
-      final DenizenCommand command = denizenCommand(item.text);
-      switch (command.name) {
-        case 'stop':
-          outcome(scope, item, 'command', 'stop', true, '');
-          preserveItems(scope, items, index + 1, 'never runs: after stop');
-          return _Block(steps, true);
-        case 'determine':
-          bool passive = false;
-          for (final DenizenArg arg in command.args) {
-            if (arg.isWord('passively')) passive = true;
-          }
-          outcome(scope, item, 'command', 'determine', false, 'determine returns a value to Denizen; behaviors return none');
-          if (!passive) {
-            preserveItems(scope, items, index + 1, 'never runs: after determine');
-            return _Block(steps, true);
-          }
-        case 'if':
-        case 'choose':
-          int end = index + 1;
-          if (command.name == 'if') {
-            while (end < items.length && denizenCommand(items[end].text).name == 'else') {
-              end++;
-            }
-          }
-          final _Chain? result = chain(items, index, end, scope);
-          index = end - 1;
-          if (result == null) continue;
-          steps.add(result.node);
-          if (result.tail) return _Block(steps, result.stops);
-        case 'else':
-          preserveTree(scope, item, 'else without a matching if');
-        case 'repeat':
-          final JObject? node = repeat(item, command, scope);
-          if (node != null) steps.add(node);
-        default:
-          if (item.children != null) {
-            preserveTree(scope, item,
-                command.name == 'foreach' || command.name == 'while' ? 'loops over computed values have no Animus equivalent' : 'no Animus equivalent for the ${command.name} block');
-            continue;
-          }
-          final _Converted converted = simple(command, scope);
-          outcome(scope, item, 'command', command.name, converted.reason.isEmpty, converted.reason);
-          steps.addAll(converted.steps);
-      }
-    }
-    return _Block(steps, false);
-  }
-
-  _Chain? chain(List<DenizenItem> items, int start, int end, _Scope scope) {
-    final DenizenItem head = items[start];
-    final DenizenCommand command = denizenCommand(head.text);
-    final List<_Condition> conditions = <_Condition>[];
-    final List<DenizenItem> bodies = <DenizenItem>[];
-    DenizenItem? otherwise;
-    String? reason;
-    if (command.name == 'choose') {
-      final List<String>? flag = command.args.length == 1 ? _flagTag(command.args.first.value) : null;
-      if (flag == null || flag[2] != 'flag' || kindOf(flag[1]) != _Kind.integer || _flagName(flag[1]) == null) {
-        reason = 'choose works only on a whole-number flag';
-      } else if (head.children == null) {
-        reason = 'choose without cases';
-      } else {
-        for (final DenizenItem option in head.children!.items) {
-          final DenizenCommand when = denizenCommand(option.text);
-          if (option.children == null) {
-            reason = 'case without commands';
-            break;
-          }
-          if (when.name == 'default' && when.args.isEmpty) {
-            otherwise = option;
-            continue;
-          }
-          if (when.name != 'case' || when.args.length != 1 || denizenStage(when.args.first.value) == null) {
-            reason = 'case values must be whole numbers';
-            break;
-          }
-          conditions.add(_atom(
-              'animus:quest-state',
-              JObject()
-                ..addString('name', _flagName(flag[1])!)
-                ..addString('scope', _scopeOf(flag[0]))
-                ..addInt('equals', denizenStage(when.args.first.value)!),
-              false));
-          bodies.add(option);
-        }
-      }
-    } else {
-      for (int index = start; index < end; index++) {
-        final DenizenItem branch = items[index];
-        final List<String> tokens = <String>[];
-        denizenSplit(branch.text, tokens, <bool>[]);
-        final bool isElse = index > start;
-        if (branch.children == null) {
-          reason = 'if without a block';
-          break;
-        }
-        if (isElse && tokens.length == 1) {
-          if (index != end - 1) {
-            reason = 'else before else if';
-            break;
-          }
-          otherwise = branch;
-          continue;
-        }
-        final List<String> expression = tokens.sublist(isElse ? 2 : 1);
-        if (isElse && tokens[1].toLowerCase() != 'if') {
-          reason = 'unknown else form';
-          break;
-        }
-        final _Result condition = parseCondition(expression);
-        if (condition.reason != null) {
-          reason = condition.reason;
-          break;
-        }
-        conditions.add(condition.value!);
-        bodies.add(branch);
-      }
-    }
-    if (reason != null || conditions.isEmpty) {
-      final String why = reason ?? 'nothing to choose between';
-      for (int index = start; index < end; index++) {
-        preserveTree(scope, items[index], why);
-      }
-      return null;
-    }
-    for (int index = start; index < end; index++) {
-      outcome(scope, items[index], 'command', denizenCommand(items[index].text).name, true, '');
-    }
-    if (command.name == 'choose') {
-      for (final DenizenItem option in head.children!.items) {
-        outcome(scope, option, 'command', denizenCommand(option.text).name, true, '');
-      }
-    }
-    final List<_Block> blocks = <_Block>[];
-    bool anyStop = false;
-    for (final DenizenItem body in bodies) {
-      final _Block result = block(body.children!.items, 0, scope);
-      blocks.add(result);
-      anyStop |= result.stops;
-    }
-    final _Block? elseBlock = otherwise == null ? null : block(otherwise.children!.items, 0, scope);
-    if (elseBlock != null) anyStop |= elseBlock.stops;
-    if (!anyStop) {
-      JObject? tail = elseBlock == null ? null : _sequence(elseBlock.steps);
-      for (int index = conditions.length - 1; index >= 0; index--) {
-        tail = conditions[index](_sequence(blocks[index].steps), tail);
-      }
-      return _Chain(tail!, false, false);
-    }
-    final _Block rest = block(items, end, scope);
-    bool allStop;
-    JObject? tail;
-    if (elseBlock != null) {
-      tail = _sequence(_joined(elseBlock, rest));
-      allStop = elseBlock.stops || rest.stops;
-    } else {
-      tail = rest.steps.isEmpty ? null : _sequence(_copies(rest.steps));
-      allStop = rest.stops;
-    }
-    for (int index = conditions.length - 1; index >= 0; index--) {
-      allStop &= blocks[index].stops || rest.stops;
-      tail = conditions[index](_sequence(_joined(blocks[index], rest)), tail);
-    }
-    return _Chain(tail!, true, allStop);
-  }
-
-  JObject? repeat(DenizenItem item, DenizenCommand command, _Scope scope) {
-    if (item.children == null) {
-      preserveTree(scope, item, 'repeat without a block');
-      return null;
-    }
-    if (command.args.length != 1 || !_full('[0-9]{1,3}', command.args.first.value) || int.parse(command.args.first.value) > 128) {
-      preserveTree(scope, item, 'repeat needs a literal count from 0 to 128');
-      return null;
-    }
-    if (_controlsLoop(item.children!)) {
-      preserveTree(scope, item, 'repeat stop and repeat next have no Animus equivalent');
-      return null;
-    }
-    outcome(scope, item, 'command', 'repeat', true, '');
-    final _Block body = block(item.children!.items, 0, scope);
-    if (body.stops) issues.add('${scope.container.file}:${item.line}: stop inside repeat only ends the current pass in the converted behavior');
-    return JObject()
-      ..addString('type', 'repeat')
-      ..addInt('count', int.parse(command.args.first.value))
-      ..add('body', _sequence(body.steps));
-  }
-
-  _Result parseCondition(List<String> tokens) {
-    if (tokens.isEmpty) return const _Result(null, 'if without a condition');
-    bool and = false;
-    bool or = false;
-    final List<List<String>> groups = <List<String>>[];
-    List<String> current = <String>[];
-    for (final String token in tokens) {
-      if (token == '&&' || token == '||') {
-        if (token == '&&') {
-          and = true;
-        } else {
-          or = true;
-        }
-        groups.add(current);
-        current = <String>[];
-      } else if (token.startsWith('(') || token.endsWith(')')) {
-        return const _Result(null, 'grouped conditions have no Animus equivalent');
-      } else {
-        current.add(token);
-      }
-    }
-    groups.add(current);
-    if (and && or) return const _Result(null, 'mixed && and || conditions have no Animus equivalent');
-    final List<_Condition> atoms = <_Condition>[];
-    for (final List<String> group in groups) {
-      final _Result atom = comparison(group);
-      if (atom.reason != null) return atom;
-      atoms.add(atom.value!);
-    }
-    _Condition combined = atoms.last;
-    for (int index = atoms.length - 2; index >= 0; index--) {
-      final _Condition left = atoms[index];
-      final _Condition right = combined;
-      combined = and
-          ? (JObject then, JObject? otherwise) => left(right(then, otherwise?.deepCopy()), otherwise)
-          : (JObject then, JObject? otherwise) => left(then, right(then.deepCopy(), otherwise));
-    }
-    return _Result(combined, null);
-  }
-
-  _Result comparison(List<String> group) {
-    if (group.length != 1 && group.length != 3) return const _Result(null, 'condition form has no Animus equivalent');
-    String left = group.first;
-    final bool negated = left.startsWith('!');
-    if (negated) left = left.substring(1);
-    if (!left.startsWith('<') || !left.endsWith('>') || denizenTagEnd(left, 0) != left.length - 1) {
-      return _Result(null, 'condition ${group.first} has no Animus equivalent');
-    }
-    final DenizenTag tag = denizenTag(left.substring(1, left.length - 1));
-    if (group.length == 1) {
-      if (tag.parts.length == 2 &&
-          tag.base.toLowerCase() == 'player' &&
-          tag.parts[1].name.toLowerCase() == 'has_permission' &&
-          tag.parts[1].parameter != null &&
-          !tag.parts[1].parameter!.contains('<')) {
-        return _Result(_atom('animus:has-permission', JObject()..addString('permission', tag.parts[1].parameter!), negated), null);
-      }
-      if (tag.parts.length == 2 && tag.base.toLowerCase() == 'npc' && tag.parts[1].name.toLowerCase() == 'is_spawned' && tag.parts[1].parameter == null) {
-        return _Result(_atom('animus:npc-state', JObject()..addBool('spawned', true), negated), null);
-      }
-    }
-    final List<String>? flag = _flagTag(left);
-    if (flag == null) return _Result(null, 'condition tag ${tag.label} has no Animus equivalent');
-    final String? name = _flagName(flag[1]);
-    if (name == null) return _Result(null, 'flag name ${flag[1]} cannot be an Animus flag name');
-    final _Kind kind = kindOf(flag[1]);
-    final JObject arguments = JObject()
-      ..addString('name', name)
-      ..addString('scope', _scopeOf(flag[0]));
-    if (group.length == 1) {
-      if (kind == _Kind.boolean) return _Result(_atom('animus:flag-state', arguments, negated), null);
-      if (kind == _Kind.integer) {
-        arguments.addInt('atLeast', 1);
-        return _Result(_atom('animus:quest-state', arguments, negated), null);
-      }
-      return _Result(null, 'flag ${flag[1]} holds values Animus flags cannot');
-    }
-    if (negated) return const _Result(null, 'negated comparison has no Animus equivalent');
-    final String operator = group[1];
-    final String operand = group[2];
-    if (kind == _Kind.boolean && (operator == '==' || operator == '!=') && (operand.toLowerCase() == 'true' || operand.toLowerCase() == 'false')) {
-      final bool wanted = (operand.toLowerCase() == 'true') == (operator == '==');
-      if (!wanted) arguments.addBool('value', false);
-      return _Result(_atom('animus:flag-state', arguments, false), null);
-    }
-    if (kind != _Kind.integer || !_full('[0-9]{1,13}', operand) || int.parse(operand) > 1000000000000) {
-      return _Result(null, 'comparison with $operand has no Animus equivalent');
-    }
-    final int number = int.parse(operand);
-    switch (operator) {
-      case '==':
-        arguments.addInt('equals', number);
-      case '!=':
-        arguments.addInt('equals', number);
-        return _Result(_atom('animus:quest-state', arguments, true), null);
-      case '>=':
-        arguments.addInt('atLeast', number);
-      case '<=':
-        arguments.addInt('atMost', number);
-      case '>':
-        arguments.addInt('atLeast', number + 1);
-      case '<':
-        if (number == 0) return const _Result(null, 'a quest stage is never below 0');
-        arguments.addInt('atMost', number - 1);
-      default:
-        return _Result(null, 'operator $operator has no Animus equivalent');
-    }
-    return _Result(_atom('animus:quest-state', arguments, false), null);
-  }
-
-  _Converted simple(DenizenCommand command, _Scope scope) => switch (command.name) {
-        'narrate' => say(command, scope, 'trigger'),
-        'chat' => say(command, scope, 'nearby'),
-        'wait' => waitFor(command),
-        'flag' => flag(command),
-        'zap' => zap(command, scope),
-        'run' || 'inject' => call(command, scope),
-        'execute' => execute(command, scope),
-        'give' => give(command),
-        'take' => take(command),
-        'look' => look(command),
-        'walk' => walk(command),
-        'equip' => equip(command),
-        'playsound' => sound(command),
-        'playeffect' => particle(command),
-        'actionbar' => actionbar(command, scope),
-        'title' => title(command, scope),
-        'debug' => const _Converted(<JObject>[], ''),
-        'define' => const _Converted.kept('definitions hold computed values; behaviors have no expressions'),
-        'trigger' => const _Converted.kept("trigger settings change only in on assignment; the NPC's saved triggers are used"),
-        'teleport' => const _Converted.kept('no Animus teleport action; an allow-listed animus:command with tp can replace it'),
-        '' => const _Converted.kept('empty command line'),
-        _ => _Converted.kept('no Animus equivalent for ${command.name}'),
-      };
-
-  _Converted say(DenizenCommand command, _Scope scope, String audience) {
-    final List<String> words = <String>[];
-    String chosen = audience;
-    for (final DenizenArg arg in command.args) {
-      if (arg.prefix.isEmpty) {
-        if (!arg.isWord('per_player')) words.add(arg.value);
-        continue;
-      }
-      if (arg.prefix == 'targets' && _playerTarget(arg.value)) {
-        chosen = 'trigger';
-        continue;
-      }
-      return _Converted.kept('argument ${arg.prefix}: has no Animus equivalent');
-    }
-    if (words.isEmpty) return const _Converted.kept('nothing to say');
-    final _Mapped text = mapText(words.join(' '), scope, false, 0);
-    if (text.reason != null) return _Converted.kept(text.reason!);
-    if (javaIsBlank(text.value!)) return const _Converted.kept('nothing to say');
-    if (text.value!.length > _maximumText) return const _Converted.kept('text longer than 1024 characters');
-    final JObject arguments = JObject()..addString('text', text.value!);
-    if (chosen == 'nearby') arguments.addString('audience', 'nearby');
-    return _Converted.of(<JObject>[_action('animus:say', arguments)]);
-  }
-
-  _Converted waitFor(DenizenCommand command) {
-    if (command.args.length > 1 || command.args.length == 1 && command.args.first.prefix.isNotEmpty) return const _Converted.kept('wait argument has no Animus equivalent');
-    final int? ticks = command.args.isEmpty ? 60 : denizenTicks(command.args.first.value);
-    if (ticks == null) return const _Converted.kept('wait needs a literal duration');
-    if (ticks == 0) return const _Converted(<JObject>[], '');
-    if (ticks > 72000) return const _Converted.kept('wait longer than an hour');
-    return _Converted.of(<JObject>[
-      JObject()
-        ..addString('type', 'wait')
-        ..addInt('ticks', ticks),
-    ]);
-  }
-
-  _Converted flag(DenizenCommand command) {
-    if (command.args.length < 2) return const _Converted.kept('flag needs a target and a name');
-    if (command.args.length > 2) {
-      return _Converted.kept(command.args[2].prefix == 'expire' ? 'expiring flags have no Animus equivalent' : 'flag argument has no Animus equivalent');
-    }
-    final String target = command.args.first.value.toLowerCase().replaceAll('<', '').replaceAll('>', '');
-    if (command.args.first.prefix.isNotEmpty || !<String>['player', 'npc', 'server'].contains(target)) {
-      return const _Converted.kept('flags on other objects have no Animus equivalent');
-    }
-    final String raw = _raw(command.args[1]);
-    final int colon = raw.indexOf(':');
-    final String denizen = (colon < 0 ? raw : raw.substring(0, colon)).toLowerCase();
-    final String value = colon < 0 ? '' : raw.substring(colon + 1);
-    final String? name = _flagName(denizen);
-    if (denizen.contains('<') || name == null) return _Converted.kept('flag name $denizen cannot be an Animus flag name');
-    final JObject arguments = JObject()
-      ..addString('name', name)
-      ..addString('scope', _scopeOf(target));
-    final _Kind kind = kindOf(denizen);
-    if (kind == _Kind.boolean) {
-      if (colon < 0 || value.toLowerCase() == 'true') return _Converted.of(<JObject>[_action('animus:set-flag', arguments)]);
-      if (value == '!' || value.toLowerCase() == 'false') {
-        arguments.addBool('value', false);
-        return _Converted.of(<JObject>[_action('animus:set-flag', arguments)]);
-      }
-    }
-    if (kind == _Kind.integer) {
-      if (value == '!') {
-        arguments.addInt('value', 0);
-        return _Converted.of(<JObject>[_action('animus:set-quest-state', arguments)]);
-      }
-      final int? stage = denizenStage(value);
-      if (stage != null) {
-        arguments.addInt('value', stage);
-        return _Converted.of(<JObject>[_action('animus:set-quest-state', arguments)]);
-      }
-      if (value == '++') return _Converted.of(<JObject>[_action('animus:advance-quest-state', arguments)]);
-      if (value.startsWith('+:') && _full('[0-9]{1,7}', value.substring(2)) && int.parse(value.substring(2)) >= 1 && int.parse(value.substring(2)) <= 1000000) {
-        arguments.addInt('by', int.parse(value.substring(2)));
-        return _Converted.of(<JObject>[_action('animus:advance-quest-state', arguments)]);
-      }
-      return const _Converted.kept('quest stages only rise or are set; this flag change has no Animus equivalent');
-    }
-    return _Converted.kept('flag $denizen holds values Animus flags cannot');
-  }
-
-  _Converted zap(DenizenCommand command, _Scope scope) {
-    _Interact? target = scope.interact;
-    String? step;
-    for (final DenizenArg arg in command.args) {
-      if (arg.prefix == 'script') {
-        target = interacts[arg.value.toLowerCase()];
-        continue;
-      }
-      if (arg.prefix == 'step') {
-        step = arg.value;
-        continue;
-      }
-      if (arg.prefix.isNotEmpty) return _Converted.kept('zap argument ${arg.prefix}: has no Animus equivalent');
-      if (interacts.containsKey(arg.value.toLowerCase()) && step == null && identical(target, scope.interact)) {
-        target = interacts[arg.value.toLowerCase()];
-        continue;
-      }
-      if (step != null) return const _Converted.kept('zap with a duration has no Animus equivalent');
-      step = arg.value;
-    }
-    if (target == null) return const _Converted.kept("zap outside an interact script needs the script's name");
-    final _Interact interact = target;
-    final int stage;
-    if (step == null) {
-      if (scope.interact == null || !identical(scope.interact, interact) || scope.step < 0 || scope.step + 1 >= interact.order.length) {
-        return const _Converted.kept('zap to the next step needs a following step');
-      }
-      stage = interact.stage(interact.order[scope.step + 1])!;
-    } else {
-      if (step.contains('<')) return const _Converted.kept('zap to a computed step has no Animus equivalent');
-      final int? found = interact.stage(step);
-      if (found == null) return _Converted.kept('no step $step in ${interact.container.name}');
-      stage = found;
-    }
-    return _Converted.of(<JObject>[
-      _action(
-          'animus:set-quest-state',
-          JObject()
-            ..addString('name', interact.quest)
-            ..addString('scope', 'relationship')
-            ..addInt('value', stage)),
-    ]);
-  }
-
-  _Converted call(DenizenCommand command, _Scope scope) {
-    String? name;
-    String? path;
-    for (final DenizenArg arg in command.args) {
-      if (arg.prefix.isEmpty) {
-        if (arg.isWord('instantly') || arg.isWord('local')) continue;
-        if (name != null) return _Converted.kept('argument ${arg.value} has no Animus equivalent');
-        name = arg.value;
-        continue;
-      }
-      switch (arg.prefix) {
-        case 'path':
-          path = arg.value;
-        case 'npc':
-          if (arg.value.toLowerCase() != '<npc>') return const _Converted.kept('running for another NPC has no Animus equivalent');
-        case 'player':
-          if (arg.value.toLowerCase() != '<player>') return const _Converted.kept('running for another player has no Animus equivalent');
-        case 'def':
-        case 'defmap':
-        case 'definitions':
-          return const _Converted.kept('definitions passed to a task have no Animus equivalent');
-        default:
-          return _Converted.kept('argument ${arg.prefix}: has no Animus equivalent');
-      }
-    }
-    if (name == null || name.contains('<')) return const _Converted.kept('running a computed script has no Animus equivalent');
-    final DenizenContainer? task = containers[name.toLowerCase()];
-    if (task == null) return _Converted.kept('no script named $name');
-    if (task.type != 'task') return const _Converted.kept('only task scripts can become routines');
-    final String key = path?.toLowerCase() ?? 'script';
-    final DenizenNode? body = task.body.get(key);
-    if (body is! DenizenSequence) return _Converted.kept('task ${task.name} has no $key list');
-    final String routine = routineFor(task, path);
-    if (scope.calling.contains(routine)) return const _Converted.kept('recursive task calls have no Animus equivalent');
-    final JObject call = JObject()
-      ..addString('type', 'call')
-      ..addString('routine', routine);
-    if (scope.routines.containsKey(routine)) return _Converted.of(<JObject>[call]);
-    if (scope.routines.length >= behaviorMaximumRoutines) return const _Converted.kept('more than 32 routines in one behavior');
-    scope.routines[routine] = JObject();
-    scope.calling.add(routine);
-    final _Block result = block(body.items, 0, scope.inContainer(task));
-    scope.calling.remove(routine);
-    scope.routines[routine] = _sequence(result.steps);
-    return _Converted.of(<JObject>[call]);
-  }
-
-  String routineFor(DenizenContainer task, String? path) {
-    final String routine = 'task-${slug(task.name)}${path == null ? '' : '-${path.toLowerCase().replaceAll(RegExp('[^a-z0-9_-]+'), '-')}'}';
-    return routine.length > 64 ? routine.substring(0, 64) : routine;
-  }
-
-  _Converted execute(DenizenCommand command, _Scope scope) {
-    String? as;
-    final List<String> words = <String>[];
-    for (final DenizenArg arg in command.args) {
-      if (arg.isWord('as_server') || arg.isWord('as_op')) {
-        as = 'console';
-        continue;
-      }
-      if (arg.isWord('as_player')) {
-        as = 'player';
-        continue;
-      }
-      if (arg.isWord('as_npc')) return const _Converted.kept('commands run as the NPC have no Animus equivalent');
-      if (arg.isWord('silent')) continue;
-      words.add(_raw(arg));
-    }
-    if (as == null) return const _Converted.kept('execute needs as_server, as_op or as_player');
-    final _Mapped text = mapText(words.join(' '), scope, true, 0);
-    if (text.reason != null) return _Converted.kept(text.reason!);
-    String line = javaTrim(text.value!);
-    if (line.startsWith('/')) line = line.substring(1);
-    if (line.isEmpty || line.length > 1024) return const _Converted.kept('command is empty or longer than 1024 characters');
-    final JObject arguments = JObject()..addString('command', line);
-    if (as == 'player') arguments.addString('as', 'player');
-    return _Converted.of(<JObject>[_action('animus:command', arguments)]);
-  }
-
-  String? material(String value) {
-    String lowered = value.toLowerCase();
-    if (lowered.startsWith('minecraft:')) lowered = lowered.substring(10);
-    if (!_full('[a-z0-9_]{1,64}', lowered) || containers.containsKey(lowered)) return null;
-    return 'minecraft:$lowered';
-  }
-
-  _Converted give(DenizenCommand command) {
-    String? item;
-    int quantity = 1;
-    for (final DenizenArg arg in command.args) {
-      if (arg.prefix == 'quantity') {
-        if (!_full('[0-9]{1,4}', arg.value) || int.parse(arg.value) < 1) return const _Converted.kept('quantity needs a literal number');
-        quantity = int.parse(arg.value);
-      } else if (arg.prefix.isEmpty && item == null) {
-        if (arg.value.toLowerCase() == 'xp' || arg.value.toLowerCase() == 'money') return _Converted.kept('giving ${arg.value} has no Animus equivalent');
-        item = material(arg.value);
-        if (item == null) return const _Converted.kept('only plain materials can be given; item scripts and tags have no Animus equivalent');
-      } else {
-        return const _Converted.kept('give argument has no Animus equivalent');
-      }
-    }
-    if (item == null) return const _Converted.kept('nothing to give');
-    return _Converted.of(<JObject>[_commandAction('give {player} $item $quantity')]);
-  }
-
-  _Converted take(DenizenCommand command) {
-    String? item;
-    int quantity = 1;
-    for (final DenizenArg arg in command.args) {
-      if (arg.prefix == 'quantity') {
-        if (!_full('[0-9]{1,4}', arg.value) || int.parse(arg.value) < 1) return const _Converted.kept('quantity needs a literal number');
-        quantity = int.parse(arg.value);
-      } else if ((arg.prefix == 'item' || arg.prefix.isEmpty) && item == null) {
-        item = material(arg.value);
-        if (item == null) return const _Converted.kept('only plain materials can be taken; item scripts, flags and tags have no Animus equivalent');
-      } else {
-        return const _Converted.kept('take argument has no Animus equivalent');
-      }
-    }
-    if (item == null) return const _Converted.kept('nothing to take');
-    return _Converted.of(<JObject>[_commandAction('clear {player} $item $quantity')]);
-  }
-
-  _Converted look(DenizenCommand command) {
-    List<DenizenArg> plain = command.plain();
-    if (plain.length != command.args.length) return const _Converted.kept('look argument has no Animus equivalent');
-    if (plain.length == 2 && _npcTarget(plain.first.value)) plain = plain.sublist(1, 2);
-    if (plain.length != 1) return const _Converted.kept('look at more than one target has no Animus equivalent');
-    final String target = plain.first.value.toLowerCase();
-    final JObject arguments = JObject();
-    if (target == '<player>' || target == '<player.location>' || target == '<player.eye_location>') {
-      arguments.addString('target', 'player');
-    } else {
-      final List<double>? at = _location(plain.first.value);
-      if (at == null) return const _Converted.kept('look target must be the player or a literal location');
-      arguments
-        ..addDouble('x', at[0])
-        ..addDouble('y', at[1])
-        ..addDouble('z', at[2]);
-    }
-    return _Converted.of(<JObject>[_action('animus:look', arguments)]);
-  }
-
-  _Converted walk(DenizenCommand command) {
-    List<DenizenArg> plain = command.plain();
-    if (plain.length != command.args.length) return const _Converted.kept('walk argument has no Animus equivalent');
-    if (plain.length == 2 && _npcTarget(plain.first.value)) plain = plain.sublist(1, 2);
-    if (plain.length != 1) return const _Converted.kept('walk needs one literal location');
-    final List<double>? at = _location(plain.first.value);
-    if (at == null) return const _Converted.kept('walk needs a literal location');
-    return _Converted.of(<JObject>[
-      _action(
-          'animus:navigate',
-          JObject()
-            ..addDouble('x', at[0])
-            ..addDouble('y', at[1])
-            ..addDouble('z', at[2])),
-    ]);
-  }
-
-  _Converted equip(DenizenCommand command) {
-    final SplayTreeMap<int, JObject> slots = SplayTreeMap<int, JObject>();
-    for (final DenizenArg arg in command.args) {
-      if (arg.prefix.isEmpty) {
-        if (_npcTarget(arg.value)) continue;
-        return const _Converted.kept('equipping another entity has no Animus equivalent');
-      }
-      final (int, String)? slot = switch (arg.prefix) {
-        'hand' => (0, 'main_hand'),
-        'offhand' => (1, 'off_hand'),
-        'head' => (2, 'head'),
-        'chest' => (3, 'chest'),
-        'legs' => (4, 'legs'),
-        'boots' => (5, 'feet'),
-        _ => null,
-      };
-      if (slot == null) return _Converted.kept('equipment slot ${arg.prefix} has no Animus equivalent');
-      final JObject arguments = JObject()..addString('slot', slot.$2);
-      if (arg.value.toLowerCase() != 'air') {
-        final String? item = material(arg.value);
-        if (item == null) return const _Converted.kept('only plain materials can be equipped');
-        arguments.addString('item', item);
-      }
-      slots[slot.$1] = _action('animus:set-equipment', arguments);
-    }
-    if (slots.isEmpty) return const _Converted.kept('nothing to equip');
-    return _Converted(slots.values.toList(), '');
-  }
-
-  _Converted sound(DenizenCommand command) {
-    String? sound;
-    String? audience;
-    bool custom = false;
-    final JObject arguments = JObject();
-    double? volume;
-    double? pitch;
-    for (final DenizenArg arg in command.args) {
-      if (arg.isWord('custom')) {
-        custom = true;
-        continue;
-      }
-      switch (arg.prefix) {
-        case 'sound':
-          sound = arg.value;
-        case 'volume':
-          volume = _number(arg.value, 0, 4);
-          if (volume == null) return const _Converted.kept('volume must be a number from 0 to 4');
-        case 'pitch':
-          pitch = _number(arg.value, 0.5, 2);
-          if (pitch == null) return const _Converted.kept('pitch must be a number from 0.5 to 2');
-        case '':
-          final String target = arg.value.toLowerCase();
-          if (audience != null) return const _Converted.kept('sound for several targets has no Animus equivalent');
-          if (target == '<player>' || target == '<player.location>') {
-            audience = 'trigger';
-          } else if (target == '<npc>' || target == '<npc.location>') {
-            audience = 'nearby';
-          } else if (sound == null && !target.startsWith('<')) {
-            sound = arg.value;
-          } else {
-            return const _Converted.kept('sound location must be the NPC or the player');
-          }
-        default:
-          return _Converted.kept('playsound argument ${arg.prefix}: has no Animus equivalent');
-      }
-    }
-    if (sound == null || sound.contains('<')) return const _Converted.kept('playsound needs a literal sound');
-    final String? key = denizenSoundKey(sound, custom);
-    if (key == null) return _Converted.kept('sound $sound has no resource key');
-    sounds[sound] = key;
-    arguments.addString('sound', key);
-    if (volume != null) arguments.addDouble('volume', volume);
-    if (pitch != null) arguments.addDouble('pitch', pitch);
-    if (audience == 'nearby') arguments.addString('audience', 'nearby');
-    return _Converted.of(<JObject>[_action('animus:play-sound', arguments)]);
-  }
-
-  _Converted particle(DenizenCommand command) {
-    String? effect;
-    String audience = 'nearby';
-    final JObject arguments = JObject();
-    int? count;
-    double? spread;
-    for (final DenizenArg arg in command.args) {
-      switch (arg.prefix) {
-        case 'effect':
-          effect = arg.value.toLowerCase();
-        case 'at':
-          final String at = arg.value.toLowerCase();
-          if (at != '<npc>' && at != '<npc.location>' && at != '<npc.eye_location>' && !_full(r'<npc\.location\.above(\[[0-9.]{1,6}])?>', at)) {
-            return const _Converted.kept('particles show only at the NPC in Animus');
-          }
-        case 'quantity':
-          if (!_full('[0-9]{1,2}', arg.value) || int.parse(arg.value) < 1 || int.parse(arg.value) > 64) return const _Converted.kept('quantity must be from 1 to 64');
-          count = int.parse(arg.value);
-        case 'offset':
-          double widest = 0;
-          for (final String part in arg.value.split(',')) {
-            final double? value = _number(part, 0, 8);
-            if (value == null) return const _Converted.kept('offset must be from 0 to 8 blocks');
-            if (value > widest) widest = value;
-          }
-          spread = widest;
-        case 'targets':
-          if (!_playerTarget(arg.value)) return const _Converted.kept('particles for other targets have no Animus equivalent');
-          audience = 'trigger';
-        case 'visibility':
-        case 'data':
-          break;
-        default:
-          return _Converted.kept('playeffect argument ${arg.prefix.isEmpty ? arg.value : '${arg.prefix}:'} has no Animus equivalent');
-      }
-    }
-    if (effect == null || effect.contains('<')) return const _Converted.kept('playeffect needs a literal effect');
-    String name = effect.startsWith('minecraft:') ? effect.substring(10) : effect;
-    if (_dataParticles.contains(name)) return const _Converted.kept('particles that need extra data have no Animus equivalent');
-    name = _particleNames[name] ?? name;
-    if (!_full('[a-z0-9_]{1,64}', name)) return _Converted.kept('effect $effect has no particle key');
-    arguments.addString('particle', 'minecraft:$name');
-    if (count != null) arguments.addInt('count', count);
-    if (spread != null) arguments.addDouble('spread', spread);
-    if (audience == 'nearby') arguments.addString('audience', 'nearby');
-    return _Converted.of(<JObject>[_action('animus:spawn-particle', arguments)]);
-  }
-
-  _Converted actionbar(DenizenCommand command, _Scope scope) {
-    final List<String> words = <String>[];
-    for (final DenizenArg arg in command.args) {
-      if (arg.prefix.isEmpty) {
-        words.add(arg.value);
-        continue;
-      }
-      if (arg.prefix == 'targets' && _playerTarget(arg.value)) continue;
-      return _Converted.kept('actionbar argument ${arg.prefix}: has no Animus equivalent');
-    }
-    final _Mapped text = mapText(words.join(' '), scope, true, 0);
-    if (text.reason != null) return _Converted.kept(text.reason!);
-    return _Converted.of(<JObject>[_commandAction('minecraft:title {player} actionbar ${_component(text.value!)}')]);
-  }
-
-  _Converted title(DenizenCommand command, _Scope scope) {
-    String? title;
-    String? subtitle;
-    final List<int> times = <int>[10, 70, 20];
-    bool timed = false;
-    for (final DenizenArg arg in command.args) {
-      switch (arg.prefix) {
-        case 'title':
-          title = arg.value;
-        case 'subtitle':
-          subtitle = arg.value;
-        case 'fade_in':
-        case 'stay':
-        case 'fade_out':
-          final int? ticks = denizenTicks(arg.value);
-          if (ticks == null || ticks > 72000) return const _Converted.kept('title timing needs a literal duration');
-          times[arg.prefix == 'fade_in' ? 0 : arg.prefix == 'stay' ? 1 : 2] = ticks;
-          timed = true;
-        case 'targets':
-          if (!_playerTarget(arg.value)) return const _Converted.kept('titles for other targets have no Animus equivalent');
-        default:
-          return _Converted.kept('title argument ${arg.prefix.isEmpty ? arg.value : '${arg.prefix}:'} has no Animus equivalent');
-      }
-    }
-    if (title == null && subtitle == null) return const _Converted.kept('title without text');
-    final List<JObject> steps = <JObject>[];
-    if (timed) steps.add(_commandAction('minecraft:title {player} times ${times[0]} ${times[1]} ${times[2]}'));
-    if (subtitle != null) {
-      final _Mapped text = mapText(subtitle, scope, true, 0);
-      if (text.reason != null) return _Converted.kept(text.reason!);
-      steps.add(_commandAction('minecraft:title {player} subtitle ${_component(text.value!)}'));
-    }
-    final _Mapped main = mapText(title ?? '', scope, true, 0);
-    if (main.reason != null) return _Converted.kept(main.reason!);
-    steps.add(_commandAction('minecraft:title {player} title ${_component(main.value!)}'));
-    for (final JObject step in steps) {
-      if (step.object('arguments')!.get('command')!.asPrimitive.asString.length > 1024) return const _Converted.kept('command longer than 1024 characters');
-    }
-    return _Converted(steps, '');
-  }
-
-  // ---- Text and tags ----
-
-  _Mapped mapText(String raw, _Scope scope, bool command, int depth) {
-    final StringBuffer out = StringBuffer();
-    for (final DenizenSegment segment in denizenSegments(raw)) {
-      if (!segment.tag) {
-        out.write(segment.text);
-        continue;
-      }
-      final DenizenTag tag = denizenTag(segment.text);
-      final String? mapped = mapTag(tag, scope, command, depth);
-      if (mapped == null) return _Mapped(null, 'tag ${tag.label} has no Animus placeholder');
-      out.write(mapped);
-    }
-    return _Mapped(out.toString(), null);
-  }
-
-  String? mapTag(DenizenTag tag, _Scope scope, bool command, int depth) {
-    final List<DenizenPart> parts = tag.parts;
-    final String base = tag.base.toLowerCase();
-    final String code = command ? '§' : '&';
-    if (parts.length == 1 && parts.first.parameter == null) {
-      if (_full('&[0-9a-fk-or]', base)) return '$code${base[1]}';
-      if (_escapes.containsKey(base)) return _escapes[base];
-      if (_colors.containsKey(base)) return '$code${_colors[base]}';
-    }
-    if (parts.length == 1 && parts.first.parameter != null) {
-      final String parameter = parts.first.parameter!;
-      if (base == '&color') {
-        if (_full('#[0-9a-fA-F]{6}', parameter)) {
-          if (!command) return '&$parameter';
-          final StringBuffer hex = StringBuffer('§x');
-          for (final String digit in parameter.substring(1).toLowerCase().split('')) {
-            hex
-              ..write('§')
-              ..write(digit);
-          }
-          return hex.toString();
-        }
-        if (_colors.containsKey(parameter.toLowerCase())) return '$code${_colors[parameter.toLowerCase()]}';
-        return null;
-      }
-      if (base == '&chr' && _full('[0-9a-fA-F]{1,6}', parameter)) {
-        final int point = int.parse(parameter, radix: 16);
-        if (point > 0x10FFFF || point >= 0xD800 && point <= 0xDFFF || point < 0x20) return null;
-        return String.fromCharCode(point);
-      }
-    }
-    if (parts.length == 2 && parts.first.parameter == null && parts[1].parameter == null) {
-      final String attribute = parts[1].name.toLowerCase();
-      if (base == 'player' && attribute == 'name') return '{player_name}';
-      if (base == 'player' && attribute == 'uuid' && command) return '{player}';
-      if (base == 'npc' && attribute == 'name' && scope.npcName != null) return scope.npcName;
-    }
-    if (base == 'script' && depth < 4) {
-      DenizenContainer? target = scope.container;
-      const int next = 1;
-      if (parts.first.parameter != null) {
-        target = containers[parts.first.parameter!.toLowerCase()];
-        if (target == null) return null;
-      }
-      if (parts.length != 2 || !<String>['data_key', 'yaml_key'].contains(parts[next].name.toLowerCase()) || parts[next].parameter == null) return null;
-      DenizenNode node = target.body;
-      for (final String key in parts[next].parameter!.split('.')) {
-        if (node is! DenizenMapping) return null;
-        final DenizenNode? child = node.get(key.toLowerCase());
-        if (child == null) return null;
-        node = child;
-      }
-      if (node is! DenizenScalar) return null;
-      final _Mapped mapped = mapText(node.text, _Scope(scope.routines, scope.calling, scope.npcName, false, target, scope.interact, scope.step), command, depth + 1);
-      return mapped.reason == null ? mapped.value : null;
-    }
-    return null;
+    if (doc.server) serverBehaviors.add(id);
+    return true;
   }
 
   // ---- Flag data ----
 
+  /// Writes one subject's flags into staged state documents with their typed values and expiry, and returns how many
+  /// were kept instead.
   int importFlags(String source, DenizenFlagValues values, String scope, String? npc, String? player,
       SplayTreeMap<String, SplayTreeMap<String, JObject>> state, SplayTreeMap<String, int> imported) {
     int kept = 0;
@@ -2300,31 +1817,26 @@ class _Converter {
       }
       String? reason;
       final String? name = _flagName(flag.name);
-      final _Kind kind = kindOf(flag.name);
-      final JObject value = JObject();
+      DenizenTyped? typed;
       if (flag.name.startsWith('__')) {
         reason = "Denizen's own bookkeeping flag";
-      } else if (flag.expires) {
-        reason = 'expiring flags have no Animus equivalent';
       } else if (name == null) {
         reason = 'the name cannot be an Animus flag name';
-      } else if (kind == _Kind.boolean && (flag.value == 'true' || flag.value == 'false')) {
-        value
-          ..addString('type', 'boolean')
-          ..addBool('value', flag.value == 'true');
-      } else if (kind == _Kind.integer && denizenStage(flag.value) != null) {
-        value
-          ..addString('type', 'integer')
-          ..addInt('value', denizenStage(flag.value)!);
+      } else if (flag.expires && flag.expiresAt == 0) {
+        reason = 'the expiration time cannot be read';
       } else {
-        reason = 'the value is not true, false or a whole number from 0 to 10^12 used the same way everywhere';
+        typed = denizenTyped(flag.value);
+        if (typed.reason.isNotEmpty) reason = typed.reason;
       }
       if (reason == null) {
-        final String path = _statePath(scope, npc, player, kind == _Kind.boolean ? 'flags' : 'quests');
-        final SplayTreeMap<String, JObject> document = state.putIfAbsent(path, () => SplayTreeMap<String, JObject>());
+        final SplayTreeMap<String, JObject> document = state.putIfAbsent(_statePath(scope, npc, player), () => SplayTreeMap<String, JObject>());
         if (document.length >= _maximumStateKeys && !document.containsKey(name)) {
           reason = 'more than 128 flags for one subject';
         } else {
+          final JObject value = JObject()
+            ..addString('type', typed!.type)
+            ..add('value', typed.value);
+          if (flag.expires) value.addInt('expires', flag.expiresAt);
           document[name!] = value;
         }
       }
@@ -2358,7 +1870,8 @@ class _Converter {
       return 1;
     }
     for (final _Npc npc in bound) {
-      final SplayTreeMap<String, JObject> document = state.putIfAbsent(_statePath('relationship', npc.uuid, player, 'quests'), () => SplayTreeMap<String, JObject>());
+      final String path = '${_stateRoot}relationship/${npc.uuid}/$player/animus/quests/$_namespace.json';
+      final SplayTreeMap<String, JObject> document = state.putIfAbsent(path, () => SplayTreeMap<String, JObject>());
       document[interact!.quest] = JObject()
         ..addString('type', 'integer')
         ..addInt('value', stage!);
@@ -2393,11 +1906,13 @@ class _Converter {
     }
     final JObject result = JObject();
     for (final MapEntry<String, List<int>> count in counts.entries) {
-      result.add(count.key, JObject()
-        ..addInt('total', count.value[0])
-        ..addInt('converted', count.value[1])
-        ..addInt('partial', count.value[2])
-        ..addInt('preserved', count.value[3]));
+      result.add(
+          count.key,
+          JObject()
+            ..addInt('total', count.value[0])
+            ..addInt('converted', count.value[1])
+            ..addInt('partial', count.value[2])
+            ..addInt('preserved', count.value[3]));
     }
     return result;
   }
@@ -2410,9 +1925,11 @@ class _Converter {
     }
     final JObject result = JObject();
     for (final MapEntry<String, List<int>> count in counts.entries) {
-      result.add(count.key, JObject()
-        ..addInt(yes, count.value[0])
-        ..addInt(no, count.value[1]));
+      result.add(
+          count.key,
+          JObject()
+            ..addInt(yes, count.value[0])
+            ..addInt(no, count.value[1]));
     }
     return result;
   }
@@ -2427,9 +1944,11 @@ class _Converter {
     }
     final JObject result = JObject();
     for (final MapEntry<String, List<int>> count in counts.entries) {
-      result.add(count.key, JObject()
-        ..addInt('mapped', count.value[0])
-        ..addInt('unmapped', count.value[1]));
+      result.add(
+          count.key,
+          JObject()
+            ..addInt('mapped', count.value[0])
+            ..addInt('unmapped', count.value[1]));
     }
     return result;
   }

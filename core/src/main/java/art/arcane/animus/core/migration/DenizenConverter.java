@@ -2,7 +2,9 @@ package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.migration.DenizenArgs.Arg;
 import art.arcane.animus.core.migration.DenizenArgs.Command;
-import art.arcane.animus.core.migration.DenizenArgs.Tag;
+import art.arcane.animus.core.migration.DenizenExpressions.Pending;
+import art.arcane.animus.core.migration.DenizenExpressions.Result;
+import art.arcane.animus.core.migration.DenizenExpressions.Text;
 import art.arcane.animus.core.migration.DenizenScripts.Container;
 import art.arcane.animus.core.migration.DenizenScripts.Entry;
 import art.arcane.animus.core.migration.DenizenScripts.Item;
@@ -13,6 +15,7 @@ import art.arcane.animus.core.migration.DenizenScripts.Sequence;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,25 +26,27 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 
 /**
- * Converts Denizen scripts and flags into Animus behavior documents and behavior state. It is a pure function of its
- * input, so the server and the browser converter (a line-for-line copy) stage the same bytes. Assignment and interact
- * scripts become behaviors in the {@code denizen} namespace, bound to the Citizens NPCs that had the assignment; task
- * scripts become routines and manual-run behaviors; flags become {@code denizen} flags (true or false) and quest stages
- * (whole numbers), and interact steps become relationship quest stages. Everything else is kept and listed in the
- * report with its reason. Conversion describes data; generated behaviors stay off until the review accepts them.
+ * Converts Denizen scripts and flags into Animus behavior documents, chest GUIs and behavior state. It is a pure
+ * function of its input, so the server and the browser converter (a line-for-line copy) stage the same bytes.
+ * Assignment and interact scripts become NPC behaviors in the {@code denizen} namespace, bound to the Citizens NPCs that
+ * had the assignment; task scripts become routines and manual-run behaviors, procedures routines that return a value;
+ * world, command and book scripts become server behaviors; inventory scripts chest GUIs. Tags become expressions and
+ * templates. Flags become typed {@code denizen} flags with their expiry, and interact steps relationship quest stages.
+ * Everything else is kept and listed in the report with its reason. Generated behaviors stay off until the review
+ * accepts them.
  */
 final class DenizenConverter {
-    static final int CONVERTER_VERSION = 1;
+    static final int CONVERTER_VERSION = 2;
     static final String NAMESPACE = "denizen";
     static final int MAXIMUM_FILES = 512, MAXIMUM_PLAYERS = 10_000, MAXIMUM_STATE_KEYS = 128, MAXIMUM_TEXT = 1024, DEFAULT_RADIUS = 5;
-    static final String STATE_ROOT = "state/behavior-state/";
+    static final String STATE_ROOT = "state/behavior-state/", GUI_ROOT = "guis/denizen/";
+    static final String NO_NPC = "server behaviors have no NPC";
     private static final String NAME = "[a-z0-9][a-z0-9_-]{0,63}";
     private static final String UUID_PATTERN = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
@@ -50,18 +55,11 @@ final class DenizenConverter {
     /** The staged files by path relative to the import directory, and the report also written as {@code report.json}. */
     record Output(String id, TreeMap<String, String> files, JsonObject report) {}
 
-    private enum Kind { NEUTRAL, BOOLEAN, INTEGER, OTHER }
-
     private record Npc(String key, String id, String uuid, String name, List<String> assignments, JsonObject triggers, Map<String, String> flags, List<String> problems) {}
 
     private record Outcome(String file, int line, String container, String kind, String name, String text, boolean converted, String reason) {}
 
-    private record Block(List<JsonObject> steps, boolean stops) {}
-
-    /** A condition that builds a condition node around given branches. */
-    private interface Condition { JsonObject build(JsonObject then, Optional<JsonObject> otherwise); }
-
-    private record Interact(Container container, String slug, String quest, List<String> steps, List<String> order, int defaultIndex) {
+    record Interact(Container container, String slug, String quest, List<String> steps, List<String> order, int defaultIndex) {
         /** Stage of a step by its name, ignoring case and the default marker. */
         Optional<Integer> stage(String name) {
             String wanted = stepName(name);
@@ -70,33 +68,62 @@ final class DenizenConverter {
         }
     }
 
-    /** A document under construction and where the commands being converted come from. */
-    private final class Scope {
-        final LinkedHashMap<String, JsonObject> routines;
+    /** One behavior document under construction: its routines, declared variables and counters for generated names. */
+    static final class Doc {
+        final boolean server;
+        final LinkedHashMap<String, JsonObject> routines = new LinkedHashMap<>();
+        final TreeMap<String, String> variables = new TreeMap<>();
+        int temporaries, loops;
+
+        Doc(boolean server) { this.server = server; }
+    }
+
+    /** Where the commands being converted come from and what they may read. */
+    static final class Scope {
+        final Doc doc;
         final Set<String> calling;
-        final Optional<String> npcName;
-        final boolean record;
+        final boolean record, server;
         final Container container;
         final Optional<Interact> interact;
         final int step;
+        /** Definitions a loop gives another meaning, such as {@code loop_index}, by lowercase name. */
+        final Map<String, String> definitions;
+        /** The kinds of the enclosing loops, innermost last. */
+        final List<String> loops;
+        /** {@code save:} names of converted runs and the variables holding their results. */
+        final Map<String, String> saves;
+        /** Denizen context keys the trigger passes, and their Animus names. */
+        final Map<String, String> context;
 
-        Scope(LinkedHashMap<String, JsonObject> routines, Set<String> calling, Optional<String> npcName, boolean record, Container container, Optional<Interact> interact, int step) {
-            this.routines = routines; this.calling = calling; this.npcName = npcName; this.record = record; this.container = container; this.interact = interact; this.step = step;
+        Scope(Doc doc, Set<String> calling, boolean record, Container container, Optional<Interact> interact, int step, Map<String, String> definitions, List<String> loops, Map<String, String> saves, Map<String, String> context) {
+            this.doc = doc; this.calling = calling; this.record = record; this.server = doc.server; this.container = container; this.interact = interact; this.step = step;
+            this.definitions = definitions; this.loops = loops; this.saves = saves; this.context = context;
         }
 
-        Scope in(Container other) { return new Scope(routines, calling, npcName, false, other, Optional.empty(), -1); }
+        static Scope of(Doc doc, boolean record, Container container, Optional<Interact> interact, int step, Map<String, String> context) {
+            return new Scope(doc, new HashSet<>(), record, container, interact, step, new TreeMap<>(), List.of(), new TreeMap<>(), context);
+        }
+
+        /** The scope of another script run from this one: same document, its own definitions, no loops and no event context. */
+        Scope in(Container other) { return new Scope(doc, calling, false, other, Optional.empty(), -1, new TreeMap<>(), List.of(), new TreeMap<>(), Map.of()); }
+
+        Scope loop(Map<String, String> inner, List<String> kinds) { return new Scope(doc, calling, record, container, interact, step, inner, kinds, saves, context); }
     }
 
-    private final TreeMap<String, Container> containers = new TreeMap<>();
-    private final TreeMap<String, Interact> interacts = new TreeMap<>();
-    private final TreeMap<String, Kind> kinds = new TreeMap<>();
+    final TreeMap<String, Container> containers = new TreeMap<>();
+    final TreeMap<String, Interact> interacts = new TreeMap<>();
+    final TreeMap<String, String> sounds = new TreeMap<>();
     private final TreeMap<String, Outcome> outcomes = new TreeMap<>();
     private final List<String> issues = new ArrayList<>();
-    private final TreeMap<String, String> sounds = new TreeMap<>();
     private final JsonArray preserved = new JsonArray();
     private final TreeMap<String, String> slugs = new TreeMap<>();
     private final Set<String> usedSlugs = new HashSet<>();
     private final List<Npc> npcs = new ArrayList<>();
+    private final TreeMap<String, String> guis = new TreeMap<>();
+    private final TreeSet<String> serverBehaviors = new TreeSet<>();
+    private final TreeMap<String, List<String>> guards = new TreeMap<>();
+    private final DenizenExpressions expressions = new DenizenExpressions(this);
+    private final DenizenCommands commands = new DenizenCommands(this, expressions);
 
     private DenizenConverter() {}
 
@@ -134,25 +161,35 @@ final class DenizenConverter {
         TreeMap<String, DenizenFlags.Values> playerValues = new TreeMap<>();
         for (Map.Entry<String, String> file : input.playerFlags().entrySet()) playerValues.put(file.getKey(), DenizenFlags.file(file.getValue()));
         Optional<DenizenFlags.Values> serverValues = input.serverFlags().map(DenizenFlags::file);
-        for (Container container : containers.values()) for (Entry entry : container.body().entries()) scanKinds(entry.value());
-        for (DenizenFlags.Values values : playerValues.values()) dataKinds(values);
-        serverValues.ifPresent(this::dataKinds);
-        for (Npc npc : npcs) dataKinds(DenizenFlags.mapping(npc.flags()));
 
         TreeMap<String, String> files = new TreeMap<>();
         TreeMap<String, List<String>> bindings = new TreeMap<>();
         JsonObject behaviorStatus = new JsonObject();
         TreeMap<String, String> documents = new TreeMap<>();
+        // Values come first: other scripts read data, give items and books and open inventories by name.
         for (Container container : containers.values()) {
             switch (container.type()) {
+                case "data" -> record(container, container.line(), "container", "data", container.name(), true, "");
+                case "item" -> itemContainer(container);
+                case "book" -> bookContainer(container, documents);
+                case "inventory" -> inventoryContainer(container);
+                default -> { }
+            }
+        }
+        for (Container container : containers.values()) {
+            switch (container.type()) {
+                case "data", "item", "book", "inventory" -> { }
                 case "task" -> task(container, documents);
+                case "procedure" -> procedureContainer(container);
                 case "assignment" -> assignment(container, documents);
                 case "interact" -> interactDocument(interacts.get(container.name().toLowerCase(Locale.ROOT)), documents);
-                case "world" -> world(container);
+                case "world" -> world(container, documents);
+                case "command" -> commandContainer(container, documents);
                 default -> preserveContainer(container, switch (container.type()) {
-                    case "procedure" -> "procedure scripts return values to tags; behaviors have no expressions";
-                    case "command" -> "behaviors do not register commands";
-                    case "data" -> "data scripts hold values; literal values that converted text reads were copied into it";
+                    case "format" -> "format scripts shape Denizen's own chat output; Animus messages are written out in full";
+                    case "economy" -> "economy scripts provide a Vault economy; Animus has none to provide";
+                    case "enchantment" -> "custom enchantments have no Animus equivalent";
+                    case "map" -> "map scripts draw on map items; Animus has no map renderer";
                     default -> "no Animus equivalent for " + container.type() + " scripts";
                 });
             }
@@ -175,10 +212,8 @@ final class DenizenConverter {
             for (String problem : npc.problems()) issues.add(npc.id() + ": " + problem);
             if (!bound.isEmpty()) bindings.put(npc.id(), bound);
         }
-        for (Map.Entry<String, String> document : documents.entrySet()) {
-            String path = "behaviors/" + document.getKey().replace(':', '/') + ".json";
-            files.put(path, document.getValue());
-        }
+        for (Map.Entry<String, String> document : documents.entrySet()) files.put("behaviors/" + document.getKey().replace(':', '/') + ".json", document.getValue());
+        for (Map.Entry<String, String> gui : guis.entrySet()) files.put(GUI_ROOT + gui.getKey() + ".json", gui.getValue());
 
         TreeMap<String, TreeMap<String, JsonObject>> state = new TreeMap<>();
         TreeMap<String, Integer> imported = new TreeMap<>();
@@ -199,15 +234,24 @@ final class DenizenConverter {
             if (npc.flags().isEmpty()) continue;
             preservedFlags += importFlags("citizens:" + npc.id(), DenizenFlags.mapping(npc.flags()), "npc", Optional.of(npc.uuid()), Optional.empty(), state, imported);
         }
-        for (Map.Entry<String, TreeMap<String, JsonObject>> document : state.entrySet()) {
-            files.put(document.getKey(), stateDocument(document.getKey(), document.getValue()));
+        for (Map.Entry<String, List<String>> guard : guards.entrySet()) {
+            TreeMap<String, JsonObject> document = state.computeIfAbsent(statePath("npc", Optional.of(guard.getKey()), Optional.empty()), (String ignored) -> new TreeMap<>());
+            for (String flag : guard.getValue()) {
+                if (document.size() >= MAXIMUM_STATE_KEYS && !document.containsKey(flag)) { issues.add(guard.getKey() + ": no room for the guard flag " + flag + "; its on assignment runs again on the next spawn"); continue; }
+                JsonObject value = new JsonObject();
+                value.addProperty("type", "boolean");
+                value.addProperty("value", true);
+                document.put(flag, value);
+                imported.merge("npc", 1, Integer::sum);
+            }
         }
+        for (Map.Entry<String, TreeMap<String, JsonObject>> document : state.entrySet()) files.put(document.getKey(), stateDocument(document.getKey(), document.getValue()));
 
         JsonObject report = new JsonObject();
         report.addProperty("schemaVersion", 1);
         report.addProperty("converterVersion", CONVERTER_VERSION);
         report.addProperty("importId", id);
-        report.addProperty("notice", "Data conversion only. Generated behaviors are listed on no NPC until the denizen review is accepted, and commands stay denied until allow-listed.");
+        report.addProperty("notice", "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.");
         report.add("sources", sources);
         report.addProperty("behaviors", documents.size());
         report.add("containers", containerCounts());
@@ -235,6 +279,12 @@ final class DenizenConverter {
         JsonArray commandBehaviors = new JsonArray();
         for (Map.Entry<String, String> document : documents.entrySet()) if (document.getValue().contains("\"animus:command\"")) commandBehaviors.add(document.getKey());
         report.add("commandBehaviors", commandBehaviors);
+        JsonArray serverList = new JsonArray();
+        for (String behavior : serverBehaviors) if (documents.containsKey(behavior)) serverList.add(behavior);
+        report.add("serverBehaviors", serverList);
+        JsonArray guiList = new JsonArray();
+        for (String gui : guis.keySet()) guiList.add(GUI_ROOT + gui + ".json");
+        report.add("guis", guiList);
         JsonObject soundMap = new JsonObject();
         for (Map.Entry<String, String> sound : sounds.entrySet()) soundMap.addProperty(sound.getKey(), sound.getValue());
         report.add("sounds", soundMap);
@@ -310,12 +360,6 @@ final class DenizenConverter {
             }
         }
         return bound;
-    }
-
-    private Optional<String> npcName(Container container) {
-        TreeSet<String> names = new TreeSet<>();
-        for (Npc npc : boundNpcs(container)) names.add(npc.name());
-        return names.size() == 1 ? Optional.of(names.first()) : Optional.empty();
     }
 
     /** The trigger setting of the NPCs reached by the container: enabled when any has it on, otherwise Denizen's defaults. */
@@ -409,92 +453,59 @@ final class DenizenConverter {
         return mapped.matches(NAME) ? Optional.of(mapped) : Optional.empty();
     }
 
+    /** A variable name from a prefix and a Denizen name: lowercase, other characters as {@code _}, at most 64 characters. */
+    static String variable(String prefix, String name) {
+        String text = prefix + name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
+        return text.length() > 64 ? text.substring(0, 64) : text;
+    }
+
+    /** The execution variable holding a Denizen definition. */
+    static String definitionVariable(String name) { return variable("d_", name); }
+
+    /** The definition names a task or procedure declares, in order: {@code definitions: a|b} or {@code a[description]|b}. */
+    static List<String> definitionNames(Container container) {
+        List<String> names = new ArrayList<>();
+        Optional<String> text = container.body().text("definitions");
+        if (text.isEmpty() || text.get().isBlank()) return names;
+        for (String piece : text.get().split("\\|", -1)) {
+            String name = piece.contains("[") ? piece.substring(0, piece.indexOf('[')) : piece;
+            if (!name.trim().isEmpty()) names.add(name.trim().toLowerCase(Locale.ROOT));
+        }
+        return names;
+    }
+
     private static String stepName(String name) { return name.toLowerCase(Locale.ROOT).replace("*", "").trim(); }
 
-    // ---- Flag kinds ----
-
-    private void kind(String flag, Kind kind) {
-        String name = flag.toLowerCase(Locale.ROOT);
-        Kind current = kinds.getOrDefault(name, Kind.NEUTRAL);
-        Kind merged;
-        if (current == Kind.OTHER || kind == Kind.OTHER) merged = Kind.OTHER;
-        else if (current == Kind.NEUTRAL) merged = kind;
-        else if (kind == Kind.NEUTRAL || kind == current) merged = current;
-        else merged = Kind.OTHER;
-        kinds.put(name, merged);
+    static String scopeOf(String target) {
+        return switch (target) {
+            case "npc" -> "npc";
+            case "server" -> "global";
+            default -> "player";
+        };
     }
 
-    private Kind kindOf(String flag) {
-        Kind kind = kinds.getOrDefault(flag.toLowerCase(Locale.ROOT), Kind.NEUTRAL);
-        return kind == Kind.NEUTRAL ? Kind.BOOLEAN : kind;
+    // ---- Variables ----
+
+    /** Declares an execution variable of the document once; {@code any} holds every value, {@code integer} loop counters. */
+    void declare(Scope scope, String name, String type) { scope.doc.variables.putIfAbsent(name, type); }
+
+    /** A fresh temporary variable of the document. */
+    String temporary(Scope scope) {
+        String name = "t_" + (++scope.doc.temporaries);
+        declare(scope, name, "any");
+        return name;
     }
 
-    private void scanKinds(Node node) {
-        if (node instanceof Mapping mapping) for (Entry entry : mapping.entries()) scanKinds(entry.value());
-        if (!(node instanceof Sequence sequence)) return;
-        for (Item item : sequence.items()) {
-            Command command = DenizenArgs.command(item.text());
-            if (command.name().equals("flag") && command.args().size() >= 2) {
-                String raw = raw(command.args().get(1));
-                int colon = raw.indexOf(':');
-                String name = colon < 0 ? raw : raw.substring(0, colon);
-                if (!name.contains("<")) kind(name, colon < 0 ? Kind.BOOLEAN : valueKind(raw.substring(colon + 1)));
-            }
-            if (command.name().equals("if") || command.name().equals("else") || command.name().equals("choose")) {
-                List<String> tokens = new ArrayList<>();
-                DenizenArgs.split(item.text(), tokens, new ArrayList<>());
-                for (int index = 1; index < tokens.size(); index++) {
-                    String token = tokens.get(index).startsWith("!") ? tokens.get(index).substring(1) : tokens.get(index);
-                    Optional<String[]> flag = flagTag(token);
-                    if (flag.isEmpty()) continue;
-                    String operator = index + 1 < tokens.size() ? tokens.get(index + 1) : "";
-                    String operand = index + 2 < tokens.size() ? tokens.get(index + 2) : "";
-                    if (command.name().equals("choose")) kind(flag.get()[1], Kind.INTEGER);
-                    else if (List.of("==", "!=").contains(operator) && (operand.equalsIgnoreCase("true") || operand.equalsIgnoreCase("false"))) kind(flag.get()[1], Kind.BOOLEAN);
-                    else if (List.of("==", "!=", ">=", "<=", ">", "<").contains(operator) && operand.matches("-?[0-9]+")) kind(flag.get()[1], Kind.INTEGER);
-                    else kind(flag.get()[1], Kind.NEUTRAL);
-                }
-            }
-            if (item.children().isPresent()) scanKinds(item.children().get());
-        }
+    /** A fresh loop counter of the document; each loop has its own, since every routine of a run shares variables. */
+    String loopIndex(Scope scope) {
+        String name = "i_" + (++scope.doc.loops);
+        declare(scope, name, "integer");
+        return name;
     }
-
-    private static Kind valueKind(String value) {
-        if (value.equals("!")) return Kind.NEUTRAL;
-        if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false")) return Kind.BOOLEAN;
-        if (value.equals("++") || value.equals("--") || value.startsWith("+:") || value.startsWith("-:") || value.startsWith("*:") || value.startsWith("/:") || value.matches("-?[0-9]+")) return Kind.INTEGER;
-        return Kind.OTHER;
-    }
-
-    private void dataKinds(DenizenFlags.Values values) {
-        for (DenizenFlags.Flag flag : values.flags().values()) {
-            if (flag.name().startsWith("__") || flag.expires()) continue;
-            if (flag.value().equals("true") || flag.value().equals("false")) kind(flag.name(), Kind.BOOLEAN);
-            else if (DenizenFlags.stage(flag.value()).isPresent()) kind(flag.name(), Kind.INTEGER);
-            else kind(flag.name(), Kind.OTHER);
-        }
-    }
-
-    /** A flag tag such as {@code <player.has_flag[name]>} or {@code <npc.flag[name]||0>}: {target, name, attribute}. */
-    private static Optional<String[]> flagTag(String token) {
-        if (!token.startsWith("<") || !token.endsWith(">") || DenizenArgs.tagEnd(token, 0) != token.length() - 1) return Optional.empty();
-        Tag tag = DenizenArgs.tag(token.substring(1, token.length() - 1));
-        List<DenizenArgs.Part> parts = new ArrayList<>(tag.parts());
-        if (parts.size() == 3 && parts.get(2).name().equals("if_null")) parts.removeLast();
-        if (parts.size() != 2 || parts.getFirst().parameter().isPresent()) return Optional.empty();
-        String target = parts.getFirst().name().toLowerCase(Locale.ROOT);
-        String attribute = parts.get(1).name().toLowerCase(Locale.ROOT);
-        if (!List.of("player", "npc", "server").contains(target) || !List.of("flag", "has_flag").contains(attribute) || parts.get(1).parameter().isEmpty()) return Optional.empty();
-        String name = parts.get(1).parameter().get();
-        if (name.contains("<")) return Optional.empty();
-        return Optional.of(new String[] {target, name.toLowerCase(Locale.ROOT), attribute});
-    }
-
-    private static String raw(Arg arg) { return arg.prefix().isEmpty() ? arg.value() : arg.prefix() + ":" + arg.value(); }
 
     // ---- Outcomes ----
 
-    private void outcome(Scope scope, Item item, String kind, String name, boolean converted, String reason) {
+    void outcome(Scope scope, Item item, String kind, String name, boolean converted, String reason) {
         if (!scope.record) return;
         record(scope.container, item.line(), kind, name, item.text(), converted, reason);
     }
@@ -516,20 +527,11 @@ final class DenizenConverter {
         preserved.add(entry);
     }
 
-    private void preserveTree(Scope scope, Item item, String reason) {
-        outcome(scope, item, "command", DenizenArgs.command(item.text()).name(), false, reason);
-        if (item.children().isPresent()) preserveItems(scope, item.children().get().items(), 0, reason.startsWith("inside ") ? reason : "inside a block that is kept: " + reason);
-    }
-
-    private void preserveItems(Scope scope, List<Item> items, int from, String reason) {
-        for (int index = from; index < items.size(); index++) preserveTree(scope, items.get(index), reason);
-    }
-
     private void preserveContainer(Container container, String reason) {
         record(container, container.line(), "container", container.type(), container.name(), false, reason);
         // Only script-running containers hold command lines; lists in data, book or inventory scripts are values.
         if (!SCRIPT_TYPES.contains(container.type())) return;
-        Scope scope = new Scope(new LinkedHashMap<>(), new HashSet<>(), Optional.empty(), true, container, Optional.empty(), -1);
+        Scope scope = Scope.of(new Doc(false), true, container, Optional.empty(), -1, Map.of());
         preserveNode(scope, container.body(), reason);
     }
 
@@ -537,7 +539,7 @@ final class DenizenConverter {
 
     private void preserveNode(Scope scope, Node node, String reason) {
         if (node instanceof Mapping mapping) for (Entry entry : mapping.entries()) preserveNode(scope, entry.value(), reason);
-        else if (node instanceof Sequence sequence) for (Item item : sequence.items()) preserveTree(scope, item, reason);
+        else if (node instanceof Sequence sequence) for (Item item : sequence.items()) commands.preserveTree(scope, item, reason);
     }
 
     private boolean partial(String document) {
@@ -549,14 +551,27 @@ final class DenizenConverter {
         Container container = containers.get(outcome.container().toLowerCase(Locale.ROOT));
         if (container == null) return "";
         return switch (container.type()) {
-            case "task" -> behaviorId("task", container);
-            case "assignment" -> behaviorId("assignment", container);
-            case "interact" -> behaviorId("interact", container);
+            case "task", "assignment", "interact", "world", "command", "book" -> behaviorId(container.type(), container);
             default -> "";
         };
     }
 
-    // ---- Containers ----
+    private List<Outcome> outcomesOf(Container container) {
+        List<Outcome> found = new ArrayList<>();
+        for (Outcome outcome : outcomes.values()) if (outcome.container().equalsIgnoreCase(container.name()) && outcome.file().equals(container.file())) found.add(outcome);
+        return found;
+    }
+
+    /** Records every key of a container outside {@code allowed} as kept, with a reason naming it. */
+    private void otherKeys(Container container, List<String> allowed, String what) {
+        for (Entry entry : container.body().entries()) {
+            String key = entry.key().toLowerCase(Locale.ROOT);
+            if (allowed.contains(key)) continue;
+            record(container, entry.line(), "event", key, entry.key(), false, what + " setting " + key + " has no Animus equivalent");
+        }
+    }
+
+    // ---- Tasks and procedures ----
 
     private void task(Container container, TreeMap<String, String> documents) {
         Optional<Node> script = container.body().get("script");
@@ -564,35 +579,75 @@ final class DenizenConverter {
             preserveContainer(container, "task script without a script list");
             return;
         }
-        LinkedHashMap<String, JsonObject> routines = new LinkedHashMap<>();
-        Set<String> calling = new HashSet<>();
-        calling.add(routineFor(container, Optional.empty()));
-        routines.put("main", new JsonObject());
-        Scope scope = new Scope(routines, calling, Optional.empty(), true, container, Optional.empty(), -1);
+        Doc doc = new Doc(false);
+        Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, Map.of());
+        scope.calling.add(routineFor(container, Optional.empty()));
+        doc.routines.put("main", new JsonObject());
         // Other lists in a task are paths that run with path:; each becomes a routine of the task's own behavior.
         for (Entry entry : container.body().entries()) {
             String key = entry.key().toLowerCase(Locale.ROOT);
             if (key.equals("script") || !(entry.value() instanceof Sequence path)) continue;
             String routine = routineFor(container, Optional.of(key));
-            if (!reserve(routines, routine)) {
+            if (!reserve(doc.routines, routine)) {
                 record(container, entry.line(), "event", "task path", entry.key(), false, "more than 32 routines in one behavior");
-                preserveItems(scope, path.items(), 0, "inside a task path past the routine limit");
+                commands.preserveItems(scope, path.items(), 0, "inside a task path past the routine limit");
                 continue;
             }
-            calling.add(routine);
-            routines.put(routine, sequence(block(path.items(), 0, scope).steps()));
-            calling.remove(routine);
+            scope.calling.add(routine);
+            doc.routines.put(routine, sequence(commands.block(path.items(), 0, scope)));
+            scope.calling.remove(routine);
         }
-        Block block = block(sequence.items(), 0, scope);
-        routines.put("main", sequence(block.steps()));
+        doc.routines.put("main", sequence(commands.block(sequence.items(), 0, scope)));
         boolean empty = true;
-        for (JsonObject routine : routines.values()) if (!routine.equals(sequence(List.of()))) empty = false;
+        for (JsonObject routine : doc.routines.values()) if (!routine.equals(sequence(List.of()))) empty = false;
         if (empty) return;
-        document(behaviorId("task", container), container, routines, new JsonArray(), documents);
+        document(behaviorId("task", container), doc, container, new JsonArray(), documents);
     }
 
+    String routineFor(Container task, Optional<String> path) {
+        String routine = "task-" + slug(task.name()) + path.map((String value) -> "-" + value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-")).orElse("");
+        return routine.length() > 64 ? routine.substring(0, 64) : routine;
+    }
+
+    /** A procedure's own lines are converted once to record what converts; its routine is made in each document that reads it. */
+    private void procedureContainer(Container container) {
+        Optional<Node> script = container.body().get("script");
+        if (script.isEmpty() || !(script.get() instanceof Sequence sequence)) {
+            preserveContainer(container, "procedure script without a script list");
+            return;
+        }
+        Doc doc = new Doc(false);
+        Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, Map.of());
+        scope.calling.add(procedureName(container));
+        commands.block(sequence.items(), 0, scope);
+        otherKeys(container, List.of("type", "script", "definitions", "debug"), "procedure");
+        if (outcomesOf(container).isEmpty()) record(container, container.line(), "container", "procedure", container.name(), true, "");
+    }
+
+    private String procedureName(Container procedure) {
+        String routine = "proc-" + slug(procedure.name());
+        return routine.length() > 64 ? routine.substring(0, 64) : routine;
+    }
+
+    /** The routine of a procedure in the scope's document, made on first use. Its value comes back with {@code return}. */
+    Result<String> procedureRoutine(Container procedure, Scope scope) {
+        String routine = procedureName(procedure);
+        if (scope.calling.contains(routine)) return Result.fail("recursive procedure calls have no Animus equivalent");
+        if (scope.doc.routines.containsKey(routine)) return Result.ok(routine);
+        Optional<Node> script = procedure.body().get("script");
+        if (script.isEmpty() || !(script.get() instanceof Sequence sequence)) return Result.fail("procedure " + procedure.name() + " has no script list");
+        if (!reserve(scope.doc.routines, routine)) return Result.fail("more than 32 routines in one behavior");
+        scope.calling.add(routine);
+        List<JsonObject> steps = commands.block(sequence.items(), 0, scope.in(procedure));
+        scope.calling.remove(routine);
+        scope.doc.routines.put(routine, sequence(steps));
+        return Result.ok(routine);
+    }
+
+    // ---- Assignments ----
+
     private void assignment(Container container, TreeMap<String, String> documents) {
-        LinkedHashMap<String, JsonObject> routines = new LinkedHashMap<>();
+        Doc doc = new Doc(false);
         JsonArray triggers = new JsonArray();
         Optional<Node> actions = container.body().get("actions");
         Optional<Sequence> onAssignment = Optional.empty();
@@ -600,7 +655,6 @@ final class DenizenConverter {
             Optional<Node> assigned = mapping.get("on assignment");
             if (assigned.isPresent() && assigned.get() instanceof Sequence sequence) onAssignment = Optional.of(sequence);
         }
-        Optional<String> npcName = npcName(container);
         int radius = radius(container, onAssignment);
         if (actions.isPresent() && actions.get() instanceof Mapping mapping) {
             for (Entry entry : mapping.entries()) {
@@ -609,13 +663,9 @@ final class DenizenConverter {
                     record(container, entry.line(), "event", event, entry.key(), false, "action without a script list");
                     continue;
                 }
-                Scope scope = new Scope(routines, new HashSet<>(), npcName, true, container, Optional.empty(), -1);
+                Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, Map.of());
                 if (event.equals("on assignment")) {
-                    record(container, entry.line(), "event", event, entry.key(), true, "");
-                    for (Item item : sequence.items()) {
-                        if (DenizenArgs.command(item.text()).name().equals("trigger") && item.children().isEmpty()) outcome(scope, item, "command", "trigger", true, "");
-                        else preserveTree(scope, item, "on assignment runs once, when Denizen assigns the script; its trigger settings are read from the NPC's saved triggers");
-                    }
+                    onAssignment(container, entry, sequence, scope, triggers);
                     continue;
                 }
                 String[] mapped = switch (event) {
@@ -630,23 +680,22 @@ final class DenizenConverter {
                 };
                 if (mapped == null) {
                     record(container, entry.line(), "event", event, entry.key(), false, "no Animus trigger for this action");
-                    preserveItems(scope, sequence.items(), 0, "inside an action that is kept: no Animus trigger for this action");
+                    commands.preserveItems(scope, sequence.items(), 0, "inside an action that is kept: no Animus trigger for this action");
                     continue;
                 }
                 if (!mapped[2].isEmpty() && !enabled(container, mapped[2], onAssignment)) {
                     record(container, entry.line(), "event", event, entry.key(), false, "the " + mapped[2] + " trigger is off on every NPC with this assignment");
-                    preserveItems(scope, sequence.items(), 0, "inside an action whose trigger is off");
+                    commands.preserveItems(scope, sequence.items(), 0, "inside an action whose trigger is off");
                     continue;
                 }
                 String routine = event.replace(' ', '-');
-                if (routines.size() >= BehaviorLimits.ROUTINES) {
+                if (doc.routines.size() >= BehaviorLimits.ROUTINES) {
                     record(container, entry.line(), "event", event, entry.key(), false, "more than 32 routines in one behavior");
-                    preserveItems(scope, sequence.items(), 0, "inside an action past the routine limit");
+                    commands.preserveItems(scope, sequence.items(), 0, "inside an action past the routine limit");
                     continue;
                 }
-                routines.put(routine, new JsonObject());
-                Block block = block(sequence.items(), 0, scope);
-                routines.put(routine, sequence(block.steps()));
+                doc.routines.put(routine, new JsonObject());
+                doc.routines.put(routine, sequence(commands.block(sequence.items(), 0, scope)));
                 record(container, entry.line(), "event", event, entry.key(), true, "");
                 JsonObject trigger = new JsonObject();
                 trigger.addProperty("id", routine);
@@ -664,22 +713,54 @@ final class DenizenConverter {
                 boolean found = interactFor(item.text()).isPresent();
                 record(container, item.line(), "event", "interact script", item.text(), found, found ? "" : "no interact script with this name");
             }
-        for (Entry entry : container.body().entries()) {
-            String key = entry.key().toLowerCase(Locale.ROOT);
-            if (List.of("type", "actions", "interact scripts", "debug").contains(key)) continue;
-            record(container, entry.line(), "event", key, entry.key(), false, "assignment setting " + key + " has no Animus equivalent");
-        }
-        if (routines.isEmpty()) {
+        otherKeys(container, List.of("type", "actions", "interact scripts", "debug"), "assignment");
+        if (doc.routines.isEmpty()) {
             if (outcomesOf(container).isEmpty()) record(container, container.line(), "container", "assignment", container.name(), true, "");
             return;
         }
-        document(behaviorId("assignment", container), container, routines, triggers, documents);
+        if (document(behaviorId("assignment", container), doc, container, triggers, documents) && doc.routines.containsKey("on-assignment"))
+            for (Npc npc : npcs) if (npc.assignments().contains(container.name().toLowerCase(Locale.ROOT))) guards.computeIfAbsent(npc.uuid(), (String ignored) -> new ArrayList<>()).add(guardFlag(container));
     }
 
-    private List<Outcome> outcomesOf(Container container) {
-        List<Outcome> found = new ArrayList<>();
-        for (Outcome outcome : outcomes.values()) if (outcome.container().equalsIgnoreCase(container.name()) && outcome.file().equals(container.file())) found.add(outcome);
-        return found;
+    private String guardFlag(Container container) {
+        String flag = "assigned-" + slug(container.name());
+        return flag.length() > 64 ? flag.substring(0, 64) : flag;
+    }
+
+    /**
+     * {@code on assignment}: trigger lines are read as settings; any other commands become the {@code on-assignment}
+     * routine, run by a spawn trigger and guarded by the NPC flag {@code assigned-<slug>}, so it runs once per NPC. The
+     * import sets that flag on the NPCs that already had the assignment.
+     */
+    private void onAssignment(Container container, Entry entry, Sequence sequence, Scope scope, JsonArray triggers) {
+        record(container, entry.line(), "event", "on assignment", entry.key(), true, "");
+        List<Item> rest = new ArrayList<>();
+        for (Item item : sequence.items()) {
+            if (DenizenArgs.command(item.text()).name().equals("trigger") && item.children().isEmpty()) outcome(scope, item, "command", "trigger", true, "");
+            else rest.add(item);
+        }
+        if (rest.isEmpty()) return;
+        if (!reserve(scope.doc.routines, "on-assignment")) {
+            commands.preserveItems(scope, rest, 0, "inside on assignment past the routine limit");
+            return;
+        }
+        String flag = guardFlag(container);
+        List<JsonObject> steps = new ArrayList<>();
+        JsonObject arguments = new JsonObject();
+        arguments.addProperty("name", flag);
+        arguments.addProperty("scope", "npc");
+        steps.add(DenizenCommands.action("animus:set-flag", arguments));
+        steps.addAll(commands.block(rest, 0, scope));
+        JsonObject guard = new JsonObject();
+        guard.addProperty("type", "condition");
+        guard.addProperty("expression", "!has_flag('npc', " + DenizenExpressions.quote(flag) + ")");
+        guard.add("then", sequence(steps));
+        scope.doc.routines.put("on-assignment", guard);
+        JsonObject trigger = new JsonObject();
+        trigger.addProperty("id", "on-assignment");
+        trigger.addProperty("event", "spawn");
+        trigger.addProperty("routine", "on-assignment");
+        triggers.add(trigger);
     }
 
     /** The interact scripts an assignment lists, in order, as {@code - name} or {@code - 10 name}. */
@@ -697,6 +778,8 @@ final class DenizenConverter {
         Container container = containers.get(name.toLowerCase(Locale.ROOT));
         return container != null && container.type().equals("interact") ? Optional.of(container) : Optional.empty();
     }
+
+    // ---- Interact scripts ----
 
     private Interact interact(Container container) {
         List<String> order = new ArrayList<>();
@@ -719,12 +802,9 @@ final class DenizenConverter {
             preserveContainer(container, "interact script without steps");
             return;
         }
-        for (String flag : kinds.keySet())
-            if (flagName(flag).isPresent() && flagName(flag).get().equals(interact.quest()))
-                issues.add(container.name() + ": the step quest " + interact.quest() + " shares its name with the flag " + flag);
-        LinkedHashMap<String, JsonObject> routines = new LinkedHashMap<>();
+        Doc doc = new Doc(false);
+        LinkedHashMap<String, JsonObject> routines = doc.routines;
         JsonArray triggers = new JsonArray();
-        Optional<String> npcName = npcName(container);
         Optional<Sequence> assigned = onAssignmentFor(container);
         int radius = radius(container, assigned);
         TreeMap<String, List<Integer>> dispatch = new TreeMap<>();
@@ -738,7 +818,7 @@ final class DenizenConverter {
                 record(container, step.line(), "event", "step", step.key(), false, "step is not a list of triggers");
                 continue;
             }
-            Scope scope = new Scope(routines, new HashSet<>(), npcName, true, container, Optional.of(interact), position);
+            Scope scope = Scope.of(doc, true, container, Optional.of(interact), position, Map.of());
             List<JsonObject> clickSteps = new ArrayList<>();
             boolean click = false;
             JsonArray options = new JsonArray();
@@ -750,10 +830,10 @@ final class DenizenConverter {
                         if (script.isEmpty()) { record(container, trigger.line(), "event", name, trigger.key(), false, "trigger without a script list"); continue; }
                         if (!enabled(container, "click", assigned)) {
                             record(container, trigger.line(), "event", name, trigger.key(), false, "the click trigger is off on every NPC with this script");
-                            preserveItems(scope, script.get().items(), 0, "inside a trigger that is off");
+                            commands.preserveItems(scope, script.get().items(), 0, "inside a trigger that is off");
                             continue;
                         }
-                        clickSteps.addAll(block(script.get().items(), 0, scope).steps());
+                        clickSteps.addAll(commands.block(script.get().items(), 0, scope));
                         click = true;
                         record(container, trigger.line(), "event", name, trigger.key(), true, "");
                     }
@@ -766,21 +846,21 @@ final class DenizenConverter {
                             String label = name + " " + which;
                             if (!which.equals("entry") && !which.equals("exit") || script.isEmpty()) {
                                 record(container, phase.line(), "event", label, phase.key(), false, which.equals("move") ? "no Animus trigger for movement inside the radius" : "no Animus trigger for this proximity phase");
-                                if (script.isPresent()) preserveItems(scope, script.get().items(), 0, "inside a proximity phase that is kept");
+                                if (script.isPresent()) commands.preserveItems(scope, script.get().items(), 0, "inside a proximity phase that is kept");
                                 continue;
                             }
                             if (!on) {
                                 record(container, phase.line(), "event", label, phase.key(), false, "the proximity trigger is off on every NPC with this script");
-                                preserveItems(scope, script.get().items(), 0, "inside a trigger that is off");
+                                commands.preserveItems(scope, script.get().items(), 0, "inside a trigger that is off");
                                 continue;
                             }
                             String routine = "s" + stage + "-" + (which.equals("entry") ? "enter" : "exit");
                             if (!reserve(routines, routine)) {
                                 record(container, phase.line(), "event", label, phase.key(), false, "more than 32 routines in one behavior");
-                                preserveItems(scope, script.get().items(), 0, "inside a trigger past the routine limit");
+                                commands.preserveItems(scope, script.get().items(), 0, "inside a trigger past the routine limit");
                                 continue;
                             }
-                            routines.put(routine, sequence(block(script.get().items(), 0, scope).steps()));
+                            routines.put(routine, sequence(commands.block(script.get().items(), 0, scope)));
                             dispatch.get(which.equals("entry") ? "enter" : "exit").add(stage);
                             record(container, phase.line(), "event", label, phase.key(), true, "");
                         }
@@ -806,10 +886,10 @@ final class DenizenConverter {
                             if (reason != null) {
                                 routines.remove(routine);
                                 record(container, chat.line(), "event", "chat trigger", chat.key(), false, reason);
-                                if (script.isPresent()) preserveItems(scope, script.get().items(), 0, "inside a chat answer that is kept");
+                                if (script.isPresent()) commands.preserveItems(scope, script.get().items(), 0, "inside a chat answer that is kept");
                                 continue;
                             }
-                            routines.put(routine, sequence(block(script.get().items(), 0, scope).steps()));
+                            routines.put(routine, sequence(commands.block(script.get().items(), 0, scope)));
                             String choice = "c" + index;
                             JsonObject option = new JsonObject();
                             option.addProperty("id", choice);
@@ -827,24 +907,20 @@ final class DenizenConverter {
                     }
                     case "damage trigger" -> {
                         record(container, trigger.line(), "event", name, trigger.key(), false, "Animus damage triggers carry no player, so player steps cannot follow them");
-                        scriptOf(trigger.value()).ifPresent((Sequence script) -> preserveItems(scope, script.items(), 0, "inside a damage trigger that is kept"));
+                        scriptOf(trigger.value()).ifPresent((Sequence script) -> commands.preserveItems(scope, script.items(), 0, "inside a damage trigger that is kept"));
                     }
                     default -> {
                         record(container, trigger.line(), "event", name, trigger.key(), false, "no Animus trigger for " + name);
-                        scriptOf(trigger.value()).ifPresent((Sequence script) -> preserveItems(scope, script.items(), 0, "inside a trigger that is kept"));
+                        scriptOf(trigger.value()).ifPresent((Sequence script) -> commands.preserveItems(scope, script.items(), 0, "inside a trigger that is kept"));
                     }
                 }
             }
             if (!options.isEmpty()) {
-                JsonObject choices = new JsonObject();
-                choices.addProperty("type", "action");
-                choices.addProperty("capability", "animus:choices");
                 JsonObject arguments = new JsonObject();
                 arguments.addProperty("id", prefix + "-s" + stage);
                 arguments.addProperty("prompt", "Choose a reply");
                 arguments.add("options", options);
-                choices.add("arguments", arguments);
-                clickSteps.add(choices);
+                clickSteps.add(DenizenCommands.action("animus:choices", arguments));
                 click = true;
             }
             if (click) {
@@ -872,7 +948,7 @@ final class DenizenConverter {
                     JsonObject call = new JsonObject();
                     call.addProperty("type", "call");
                     call.addProperty("routine", "s" + stages.get(index) + "-" + phase);
-                    chain = Optional.of(condition("animus:quest-state", arguments, call, chain));
+                    chain = Optional.of(DenizenExpressions.build(new DenizenExpressions.Capability("animus:quest-state", arguments), call, chain));
                 }
                 routines.put(routine, chain.orElseThrow());
             }
@@ -892,12 +968,7 @@ final class DenizenConverter {
             triggers.add(trigger);
         }
         for (JsonObject choice : choiceTriggers) triggers.add(choice);
-        JsonArray ordered = triggers;
-        for (Entry entry : container.body().entries()) {
-            String key = entry.key().toLowerCase(Locale.ROOT);
-            if (List.of("type", "steps", "debug").contains(key)) continue;
-            record(container, entry.line(), "event", key, entry.key(), false, "interact setting " + key + " has no Animus equivalent");
-        }
+        otherKeys(container, List.of("type", "steps", "debug"), "interact");
         if (routines.isEmpty()) {
             record(container, container.line(), "container", "interact", container.name(), false, "no step trigger converts");
             return;
@@ -906,7 +977,9 @@ final class DenizenConverter {
         LinkedHashMap<String, JsonObject> sorted = new LinkedHashMap<>();
         for (String first : List.of("click", "enter", "exit")) if (routines.containsKey(first)) sorted.put(first, routines.get(first));
         for (Map.Entry<String, JsonObject> routine : routines.entrySet()) if (!sorted.containsKey(routine.getKey())) sorted.put(routine.getKey(), routine.getValue());
-        document(behaviorId("interact", container), container, sorted, ordered, documents);
+        routines.clear();
+        routines.putAll(sorted);
+        document(behaviorId("interact", container), doc, container, triggers, documents);
     }
 
     /** The on assignment action of the first assignment, by name, that is this script or lists it. */
@@ -941,34 +1014,361 @@ final class DenizenConverter {
         return true;
     }
 
-    private void world(Container container) {
-        record(container, container.line(), "container", "world", container.name(), false, "world scripts react to server-wide events; Animus triggers belong to NPCs");
+    // ---- Server behaviors ----
+
+    /** A world script: one server behavior whose routines are its events, each run by the matching server trigger. */
+    private void world(Container container, TreeMap<String, String> documents) {
         Optional<Node> events = container.body().get("events");
-        Scope scope = new Scope(new LinkedHashMap<>(), new HashSet<>(), Optional.empty(), true, container, Optional.empty(), -1);
+        Doc doc = new Doc(true);
+        JsonArray triggers = new JsonArray();
         if (events.isPresent() && events.get() instanceof Mapping mapping) {
             for (Entry entry : mapping.entries()) {
-                String event = "world " + entry.key().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
-                record(container, entry.line(), "event", event, entry.key(), false, worldReason(entry.key().toLowerCase(Locale.ROOT)));
-                preserveNode(scope, entry.value(), "inside a world event that is kept");
+                String key = entry.key().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+                String label = "world " + key;
+                Scope kept = Scope.of(doc, true, container, Optional.empty(), -1, Map.of());
+                if (!(entry.value() instanceof Sequence sequence)) {
+                    record(container, entry.line(), "event", label, entry.key(), false, "event without a script list");
+                    preserveNode(kept, entry.value(), "inside a world event that is kept");
+                    continue;
+                }
+                DenizenEvents.Mapped mapped = DenizenEvents.event(key);
+                String reason = mapped.reason();
+                String base = "on-" + DenizenEvents.phrase(key).replaceAll("[^a-z0-9_-]+", "-").replaceAll("^-+|-+$", "");
+                if (base.length() > 60) base = base.substring(0, 60);
+                String routine = base;
+                for (int suffix = 2; doc.routines.containsKey(routine); suffix++) routine = base + "-" + suffix;
+                if (reason == null && triggers.size() >= BehaviorLimits.TRIGGERS) reason = "more than 32 triggers in one behavior";
+                if (reason == null && !reserve(doc.routines, routine)) reason = "more than 32 routines in one behavior";
+                if (reason != null) {
+                    record(container, entry.line(), "event", label, entry.key(), false, reason);
+                    commands.preserveItems(kept, sequence.items(), 0, "inside a world event that is kept");
+                    continue;
+                }
+                record(container, entry.line(), "event", label, entry.key(), true, "");
+                Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, mapped.context());
+                JsonObject body = sequence(commands.block(sequence.items(), 0, scope));
+                for (int index = mapped.guards().size() - 1; index >= 0; index--) body = DenizenExpressions.build(mapped.guards().get(index), body, Optional.empty());
+                doc.routines.put(routine, body);
+                JsonObject trigger = new JsonObject();
+                trigger.addProperty("id", routine);
+                for (Map.Entry<String, JsonElement> field : mapped.trigger().entrySet()) trigger.add(field.getKey(), field.getValue());
+                trigger.addProperty("routine", routine);
+                triggers.add(trigger);
+            }
+        } else record(container, container.line(), "container", "world", container.name(), false, "world script without events");
+        otherKeys(container, List.of("type", "events", "debug", "enabled"), "world");
+        if (doc.routines.isEmpty()) return;
+        document(behaviorId("world", container), doc, container, triggers, documents);
+    }
+
+    /** A command script: a server behavior with a {@code command} trigger whose run reads {@code context.args}. */
+    private void commandContainer(Container container, TreeMap<String, String> documents) {
+        Optional<Node> script = container.body().get("script");
+        Optional<String> name = container.body().text("name").map((String text) -> text.trim().toLowerCase(Locale.ROOT));
+        if (script.isEmpty() || !(script.get() instanceof Sequence sequence)) { preserveContainer(container, "command script without a script list"); return; }
+        if (name.isEmpty() || !name.get().matches("[a-z0-9_-]{1,32}")) {
+            preserveContainer(container, "command name " + name.orElse("(none)") + " is not 1-32 lowercase letters, digits, _ or -");
+            return;
+        }
+        JsonObject trigger = new JsonObject();
+        trigger.addProperty("id", "command");
+        trigger.addProperty("event", "command");
+        trigger.addProperty("name", name.get());
+        Optional<Node> aliases = container.body().get("aliases");
+        if (aliases.isPresent()) {
+            JsonArray list = new JsonArray();
+            List<String> written = new ArrayList<>();
+            if (aliases.get() instanceof Sequence items) for (Item item : items.items()) written.add(item.text());
+            else if (aliases.get() instanceof Scalar scalar) for (String alias : scalar.text().split("\\|", -1)) written.add(alias);
+            for (String alias : written) {
+                String lowered = alias.trim().toLowerCase(Locale.ROOT);
+                if (!lowered.matches("[a-z0-9_-]{1,32}") || list.size() >= 8) issues.add(container.file() + ":" + aliases.get().line() + ": command alias " + alias + " is not used; Animus takes up to 8 lowercase aliases");
+                else list.add(lowered);
+            }
+            if (!list.isEmpty()) trigger.add("aliases", list);
+        }
+        for (String field : List.of("permission", "description", "usage")) {
+            Optional<String> value = container.body().text(field);
+            if (value.isEmpty() || value.get().isBlank()) continue;
+            if (value.get().length() > 256) { issues.add(container.file() + ":" + container.line() + ": command " + field + " is longer than 256 characters and is not used"); continue; }
+            trigger.addProperty(field, value.get().trim());
+        }
+        trigger.addProperty("routine", "main");
+        Doc doc = new Doc(true);
+        doc.routines.put("main", new JsonObject());
+        Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, DenizenEvents.commandContext());
+        doc.routines.put("main", sequence(commands.block(sequence.items(), 0, scope)));
+        otherKeys(container, List.of("type", "name", "script", "aliases", "permission", "description", "usage", "debug"), "command");
+        JsonArray triggers = new JsonArray();
+        triggers.add(trigger);
+        document(behaviorId("command", container), doc, container, triggers, documents);
+    }
+
+    // ---- Books, items and inventories ----
+
+    /** A book script as an {@code animus:give-book} action, or the reason it has none. */
+    Result<JsonObject> bookAction(Container book, Scope scope, Pending pending) {
+        DenizenCommands.Action action = new DenizenCommands.Action();
+        for (String field : List.of("title", "author")) {
+            Optional<String> value = book.body().text(field);
+            if (value.isEmpty()) return Result.fail("book script without a " + field);
+            Result<Text> text = expressions.text(value.get(), scope, pending, false, 0);
+            if (text.failed()) return Result.fail(text.reason());
+            if (!text.value().dynamic() && text.value().literal().length() > 32) return Result.fail("book " + field + " longer than 32 characters");
+            action.text(field, text.value());
+        }
+        Optional<Node> pages = book.body().get("text");
+        if (pages.isEmpty() || !(pages.get() instanceof Sequence sequence) || sequence.items().isEmpty()) return Result.fail("book script without text pages");
+        if (sequence.items().size() > 50) return Result.fail("book with more than 50 pages");
+        JsonArray list = new JsonArray();
+        for (int index = 0; index < sequence.items().size(); index++) {
+            Result<Text> text = expressions.text(sequence.items().get(index).text(), scope, pending, false, 0);
+            if (text.failed()) return Result.fail(text.reason());
+            if (!text.value().dynamic()) {
+                if (text.value().literal().length() > 1024) return Result.fail("book page longer than 1024 characters");
+                list.add(text.value().literal());
+            } else {
+                list.add(JsonNull.INSTANCE);
+                action.templates.addProperty("/pages/" + index, text.value().template());
             }
         }
-        for (Entry entry : container.body().entries()) if (!entry.key().equalsIgnoreCase("events")) preserveNode(scope, entry.value(), "inside a world script that is kept");
+        action.put("pages", list);
+        return Result.ok(action.node("animus:give-book"));
     }
 
-    private static String worldReason(String event) {
-        if (event.contains("delta time") || event.contains("system time") || event.contains("server start")) return "Animus timers run per NPC; there is no server-wide timer or startup trigger";
-        if (event.contains("npc")) return "this event covers every NPC; Animus binds a behavior to each NPC instead";
-        return "Animus has no trigger for this event; its triggers belong to NPCs";
+    Optional<JsonObject> book(Container book, Scope scope, Pending pending) {
+        Result<JsonObject> action = bookAction(book, scope, pending);
+        return action.failed() ? Optional.empty() : Optional.of(action.value());
     }
 
-    private void document(String id, Container container, LinkedHashMap<String, JsonObject> routines, JsonArray triggers, TreeMap<String, String> documents) {
+    private void bookContainer(Container container, TreeMap<String, String> documents) {
+        Doc doc = new Doc(true);
+        Scope scope = Scope.of(doc, true, container, Optional.empty(), -1, Map.of());
+        Pending pending = new Pending();
+        Result<JsonObject> action = bookAction(container, scope, pending);
+        if (action.failed()) { preserveContainer(container, action.reason()); return; }
+        List<JsonObject> steps = new ArrayList<>(pending.steps);
+        steps.add(action.value());
+        doc.routines.put("main", sequence(steps));
+        record(container, container.line(), "container", "book", container.name(), true, "");
+        otherKeys(container, List.of("type", "title", "author", "signed", "text", "debug"), "book");
+        document(behaviorId("book", container), doc, container, new JsonArray(), documents);
+    }
+
+    private static final List<String> ITEM_KEYS = List.of("type", "material", "display name", "lore", "debug");
+
+    /** Fills a give-item action from an item script with only a material, a display name and lore; otherwise the reason. */
+    Optional<String> itemScript(Container item, DenizenCommands.Action action, Scope scope, Pending pending) {
+        for (Entry entry : item.body().entries()) if (!ITEM_KEYS.contains(entry.key().toLowerCase(Locale.ROOT))) return Optional.of("item script " + item.name() + " sets " + entry.key() + ", which Animus items lack");
+        Optional<String> material = item.body().text("material").flatMap(commands::material);
+        if (material.isEmpty()) return Optional.of("item script " + item.name() + " has no plain material");
+        action.put("item", material.get());
+        Optional<String> name = item.body().text("display name");
+        if (name.isPresent()) {
+            Result<Text> text = expressions.text(name.get(), scope, pending, false, 0);
+            if (text.failed()) return Optional.of(text.reason());
+            action.text("name", text.value());
+        }
+        Optional<Node> lore = item.body().get("lore");
+        if (lore.isPresent()) {
+            if (!(lore.get() instanceof Sequence lines) || lines.items().size() > 16) return Optional.of("item lore must be a list of up to 16 lines");
+            JsonArray list = new JsonArray();
+            for (Item line : lines.items()) {
+                Result<Text> text = expressions.text(line.text(), scope, pending, false, 0);
+                if (text.failed()) return Optional.of(text.reason());
+                if (text.value().dynamic()) return Optional.of("item lore with tags has no Animus equivalent");
+                list.add(text.value().literal());
+            }
+            action.put("lore", list);
+        }
+        return Optional.empty();
+    }
+
+    private void itemContainer(Container container) {
+        Optional<String> problem = itemScript(container, new DenizenCommands.Action(), Scope.of(new Doc(false), false, container, Optional.empty(), -1, Map.of()), new Pending());
+        if (problem.isPresent()) record(container, container.line(), "container", "item", container.name(), false, problem.get() + "; only give converts item scripts");
+        else record(container, container.line(), "container", "item", container.name(), true, "");
+    }
+
+    Optional<String> guiId(Container inventory) {
+        String slug = slug(inventory.name());
+        return guis.containsKey(slug) ? Optional.of(NAMESPACE + ":" + slug) : Optional.empty();
+    }
+
+    private static final String KEY_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+    /** An inventory script as a chest GUI: its title, size and fixed items as a mask of decoration keys. */
+    private void inventoryContainer(Container container) {
+        Scope scope = Scope.of(new Doc(false), true, container, Optional.empty(), -1, Map.of());
+        Pending pending = new Pending();
+        String type = container.body().text("inventory").orElse("chest").trim().toLowerCase(Locale.ROOT);
+        int width = 9, rows;
+        String resolution;
+        switch (type) {
+            case "chest" -> { resolution = null; }
+            case "hopper" -> { width = 5; resolution = "5x1"; }
+            case "dropper", "dispenser" -> { width = 3; resolution = "3x3"; }
+            default -> { preserveContainer(container, "inventory type " + type + " has no Animus chest GUI"); return; }
+        }
+        Optional<Node> slots = container.body().get("slots");
+        List<List<String>> lines = new ArrayList<>();
+        if (slots.isPresent()) {
+            if (!(slots.get() instanceof Sequence sequence)) { preserveContainer(container, "slots is not a list of rows"); return; }
+            for (Item line : sequence.items()) {
+                Optional<List<String>> cells = cells(line.text());
+                if (cells.isEmpty() || cells.get().size() > width) { preserveContainer(container, "slot row " + line.text() + " is not up to " + width + " [item] cells"); return; }
+                lines.add(cells.get());
+            }
+        }
+        if (resolution == null) {
+            Optional<String> size = container.body().text("size");
+            rows = Math.max(1, lines.size());
+            if (size.isPresent()) {
+                if (!size.get().trim().matches("[0-9]{1,2}") || Integer.parseInt(size.get().trim()) % 9 != 0 || Integer.parseInt(size.get().trim()) < 9 || Integer.parseInt(size.get().trim()) > 54) {
+                    preserveContainer(container, "size " + size.get() + " is not 9 to 54 in rows of 9"); return;
+                }
+                rows = Integer.parseInt(size.get().trim()) / 9;
+            } else if (lines.isEmpty()) rows = 3;
+            if (lines.size() > rows) { preserveContainer(container, "more slot rows than the size holds"); return; }
+            if (rows > 6) { preserveContainer(container, "more than 6 rows"); return; }
+            resolution = "9x" + rows;
+        } else if (lines.size() > (width == 5 ? 1 : 3)) { preserveContainer(container, "more slot rows than a " + type + " holds"); return; }
+        TreeMap<String, String> definitions = new TreeMap<>();
+        Optional<Node> defined = container.body().get("definitions");
+        if (defined.isPresent() && defined.get() instanceof Mapping mapping)
+            for (Entry entry : mapping.entries()) if (entry.value() instanceof Scalar scalar) definitions.put(entry.key().toLowerCase(Locale.ROOT), scalar.text());
+        LinkedHashMap<String, String> keys = new LinkedHashMap<>();
+        JsonObject keyObjects = new JsonObject();
+        JsonArray mask = new JsonArray();
+        for (List<String> line : lines) {
+            StringBuilder row = new StringBuilder();
+            for (String cell : line) {
+                String value = definitions.getOrDefault(cell.toLowerCase(Locale.ROOT), cell).trim();
+                if (value.isEmpty() || value.equalsIgnoreCase("air")) { row.append(' '); continue; }
+                Result<JsonObject> icon = icon(value, scope, pending);
+                if (icon.failed()) { preserveContainer(container, icon.reason()); return; }
+                String text = icon.value().toString();
+                if (!keys.containsKey(text)) {
+                    if (keys.size() >= KEY_CHARACTERS.length()) { preserveContainer(container, "more distinct items than mask keys"); return; }
+                    String key = String.valueOf(KEY_CHARACTERS.charAt(keys.size()));
+                    keys.put(text, key);
+                    JsonObject component = new JsonObject();
+                    component.addProperty("type", "decoration");
+                    component.add("icon", icon.value());
+                    keyObjects.add(key, component);
+                }
+                row.append(keys.get(text));
+            }
+            while (row.length() < width) row.append(' ');
+            mask.add(row.toString());
+        }
+        int height = Integer.parseInt(resolution.substring(resolution.indexOf('x') + 1));
+        while (!mask.isEmpty() && mask.size() < height) mask.add(" ".repeat(width));
+        JsonObject gui = new JsonObject();
+        gui.addProperty("schemaVersion", 1);
+        gui.addProperty("revision", 1);
+        Optional<String> title = container.body().text("title");
+        if (title.isPresent()) {
+            Result<Text> text = expressions.text(title.get(), scope, pending, false, 0);
+            if (text.failed()) { preserveContainer(container, "title: " + text.reason()); return; }
+            if (text.value().dynamic()) { preserveContainer(container, "a title with tags has no chest GUI equivalent"); return; }
+            gui.addProperty("title", text.value().literal());
+        }
+        gui.addProperty("resolution", resolution);
+        if (!mask.isEmpty()) {
+            gui.add("mask", mask);
+            gui.add("keys", keyObjects);
+        }
+        if (!pending.steps.isEmpty()) { preserveContainer(container, "inventory items read map constants or procedures"); return; }
+        record(container, container.line(), "container", "inventory", container.name(), true, "");
+        for (Entry entry : container.body().entries()) {
+            String key = entry.key().toLowerCase(Locale.ROOT);
+            if (List.of("type", "inventory", "title", "size", "slots", "definitions", "debug").contains(key)) continue;
+            if (key.equals("gui") && entry.value() instanceof Scalar scalar && scalar.text().trim().equalsIgnoreCase("true")) continue;
+            String reason = switch (key) {
+                case "gui" -> "gui: false lets players move items; Animus windows never let items move";
+                case "procedural items" -> "procedural items run a script to fill slots; Animus chest GUIs draw fixed items";
+                default -> "inventory setting " + key + " has no Animus equivalent";
+            };
+            record(container, entry.line(), "event", key, entry.key(), false, reason);
+        }
+        guis.put(slug(container.name()), JsonDocuments.write(gui));
+    }
+
+    /** The {@code [item]} cells of a slot row; {@code []} is an empty cell. */
+    private static Optional<List<String>> cells(String line) {
+        List<String> cells = new ArrayList<>();
+        int depth = 0;
+        StringBuilder current = new StringBuilder();
+        for (char at : line.trim().toCharArray()) {
+            if (at == '[') { if (depth++ > 0) current.append(at); continue; }
+            if (at == ']') {
+                if (depth == 0) return Optional.empty();
+                if (--depth == 0) { cells.add(current.toString()); current.setLength(0); }
+                else current.append(at);
+                continue;
+            }
+            if (depth > 0) current.append(at);
+            else if (at != ' ') return Optional.empty();
+        }
+        return depth == 0 ? Optional.of(cells) : Optional.empty();
+    }
+
+    /** A GUI icon: a material, a material with {@code [quantity=n]}, or a simple item script. */
+    private Result<JsonObject> icon(String value, Scope scope, Pending pending) {
+        String name = value;
+        int count = 1;
+        if (name.endsWith("]") && name.contains("[")) {
+            String properties = name.substring(name.indexOf('[') + 1, name.length() - 1);
+            name = name.substring(0, name.indexOf('['));
+            if (!properties.toLowerCase(Locale.ROOT).matches("quantity=[0-9]{1,2}")) return Result.fail("item property " + properties + " has no chest GUI equivalent");
+            count = Integer.parseInt(properties.substring(9));
+            if (count < 1 || count > 64) return Result.fail("item quantity must be from 1 to 64");
+        }
+        JsonObject icon = new JsonObject();
+        icon.addProperty("type", "item");
+        Container script = containers.get(name.toLowerCase(Locale.ROOT));
+        if (script != null && script.type().equals("item")) {
+            DenizenCommands.Action action = new DenizenCommands.Action();
+            Optional<String> problem = itemScript(script, action, scope, pending);
+            if (problem.isPresent()) return Result.fail(problem.get());
+            if (!action.templates.isEmpty()) return Result.fail("item script " + script.name() + " has a name with tags");
+            icon.add("item", action.arguments.get("item"));
+            if (count > 1) icon.addProperty("count", count);
+            if (action.arguments.has("name")) icon.add("name", action.arguments.get("name"));
+            if (action.arguments.has("lore")) icon.add("lore", action.arguments.get("lore"));
+            return Result.ok(icon);
+        }
+        Optional<String> material = commands.material(name);
+        if (material.isEmpty()) return Result.fail("slot item " + value + " is not a material or a simple item script");
+        icon.addProperty("item", material.get());
+        if (count > 1) icon.addProperty("count", count);
+        return Result.ok(icon);
+    }
+
+    // ---- Documents ----
+
+    /** Writes the document when it fits the compiler's limits; otherwise records why the container is kept. */
+    private boolean document(String id, Doc doc, Container container, JsonArray triggers, TreeMap<String, String> documents) {
         JsonObject document = new JsonObject();
         document.addProperty("schemaVersion", 1);
         document.addProperty("revision", 1);
         document.addProperty("id", id);
-        document.addProperty("entry", routines.keySet().iterator().next());
+        if (doc.server) document.addProperty("server", true);
+        document.addProperty("entry", doc.routines.keySet().iterator().next());
+        if (!doc.variables.isEmpty()) {
+            JsonObject variables = new JsonObject();
+            for (Map.Entry<String, String> variable : doc.variables.entrySet()) {
+                JsonObject declaration = new JsonObject();
+                declaration.addProperty("type", variable.getValue());
+                if (variable.getValue().equals("integer")) declaration.addProperty("initial", 0);
+                else declaration.addProperty("initial", "");
+                variables.add(variable.getKey(), declaration);
+            }
+            document.add("variables", variables);
+        }
         JsonObject body = new JsonObject();
-        for (Map.Entry<String, JsonObject> routine : routines.entrySet()) body.add(routine.getKey(), routine.getValue());
+        for (Map.Entry<String, JsonObject> routine : doc.routines.entrySet()) body.add(routine.getKey(), routine.getValue());
         document.add("routines", body);
         if (!triggers.isEmpty()) document.add("triggers", triggers);
         String text = JsonDocuments.write(document);
@@ -976,304 +1376,11 @@ final class DenizenConverter {
         if (problem.isPresent()) {
             issues.add(container.name() + ": the converted behavior " + problem.get() + "; it is not generated");
             record(container, container.line(), "container", container.type(), container.name(), false, "the converted behavior " + problem.get());
-            return;
+            return false;
         }
         documents.put(id, text);
-    }
-
-    // ---- Commands ----
-
-    private Block block(List<Item> items, int from, Scope scope) {
-        List<JsonObject> steps = new ArrayList<>();
-        for (int index = from; index < items.size(); index++) {
-            Item item = items.get(index);
-            Command command = DenizenArgs.command(item.text());
-            switch (command.name()) {
-                case "stop" -> {
-                    outcome(scope, item, "command", "stop", true, "");
-                    preserveItems(scope, items, index + 1, "never runs: after stop");
-                    return new Block(steps, true);
-                }
-                case "determine" -> {
-                    boolean passive = false;
-                    for (Arg arg : command.args()) if (arg.is("passively")) passive = true;
-                    outcome(scope, item, "command", "determine", false, "determine returns a value to Denizen; behaviors return none");
-                    if (!passive) {
-                        preserveItems(scope, items, index + 1, "never runs: after determine");
-                        return new Block(steps, true);
-                    }
-                }
-                case "if", "choose" -> {
-                    int end = index + 1;
-                    if (command.name().equals("if")) while (end < items.size() && DenizenArgs.command(items.get(end).text()).name().equals("else")) end++;
-                    Optional<Chain> chain = chain(items, index, end, scope);
-                    index = end - 1;
-                    if (chain.isEmpty()) continue;
-                    steps.add(chain.get().node());
-                    if (chain.get().tail()) return new Block(steps, chain.get().stops());
-                }
-                case "else" -> preserveTree(scope, item, "else without a matching if");
-                case "repeat" -> repeat(item, command, scope).ifPresent(steps::add);
-                default -> {
-                    if (item.children().isPresent()) {
-                        preserveTree(scope, item, command.name().equals("foreach") || command.name().equals("while")
-                                ? "loops over computed values have no Animus equivalent" : "no Animus equivalent for the " + command.name() + " block");
-                        continue;
-                    }
-                    Converted converted = simple(command, scope);
-                    outcome(scope, item, "command", command.name(), converted.reason().isEmpty(), converted.reason());
-                    steps.addAll(converted.steps());
-                }
-            }
-        }
-        return new Block(steps, false);
-    }
-
-    private record Converted(List<JsonObject> steps, String reason) {
-        static Converted of(JsonObject... steps) { return new Converted(List.of(steps), ""); }
-        static Converted kept(String reason) { return new Converted(List.of(), reason); }
-    }
-
-    /** A converted chain. {@code tail} means it took in the rest of the block; {@code stops} that every path ends in stop. */
-    private record Chain(JsonObject node, boolean tail, boolean stops) {}
-
-    /**
-     * An if/else-if/else chain or a choose block. When a branch ends in stop, the commands after the chain run only
-     * in the branches that do not stop, so they move into those branches and the chain becomes the end of the block.
-     */
-    private Optional<Chain> chain(List<Item> items, int start, int end, Scope scope) {
-        Item head = items.get(start);
-        Command command = DenizenArgs.command(head.text());
-        List<Condition> conditions = new ArrayList<>();
-        List<Item> bodies = new ArrayList<>();
-        Optional<Item> otherwise = Optional.empty();
-        String reason = null;
-        if (command.name().equals("choose")) {
-            Optional<String[]> flag = command.args().size() == 1 ? flagTag(command.args().getFirst().value()) : Optional.empty();
-            if (flag.isEmpty() || !flag.get()[2].equals("flag") || kindOf(flag.get()[1]) != Kind.INTEGER || flagName(flag.get()[1]).isEmpty()) reason = "choose works only on a whole-number flag";
-            else if (head.children().isEmpty()) reason = "choose without cases";
-            else {
-                for (Item option : head.children().get().items()) {
-                    Command when = DenizenArgs.command(option.text());
-                    if (option.children().isEmpty()) { reason = "case without commands"; break; }
-                    if (when.name().equals("default") && when.args().isEmpty()) { otherwise = Optional.of(option); continue; }
-                    if (!when.name().equals("case") || when.args().size() != 1 || DenizenFlags.stage(when.args().getFirst().value()).isEmpty()) { reason = "case values must be whole numbers"; break; }
-                    JsonObject arguments = new JsonObject();
-                    arguments.addProperty("name", flagName(flag.get()[1]).get());
-                    arguments.addProperty("scope", scopeOf(flag.get()[0]));
-                    arguments.addProperty("equals", DenizenFlags.stage(when.args().getFirst().value()).get());
-                    conditions.add(atom("animus:quest-state", arguments, false));
-                    bodies.add(option);
-                }
-            }
-        } else {
-            for (int index = start; index < end; index++) {
-                Item branch = items.get(index);
-                List<String> tokens = new ArrayList<>();
-                DenizenArgs.split(branch.text(), tokens, new ArrayList<>());
-                boolean isElse = index > start;
-                if (branch.children().isEmpty()) { reason = "if without a block"; break; }
-                if (isElse && tokens.size() == 1) {
-                    if (index != end - 1) { reason = "else before else if"; break; }
-                    otherwise = Optional.of(branch);
-                    continue;
-                }
-                List<String> expression = tokens.subList(isElse ? 2 : 1, tokens.size());
-                if (isElse && !tokens.get(1).equalsIgnoreCase("if")) { reason = "unknown else form"; break; }
-                Result<Condition> condition = condition(expression);
-                if (condition.reason() != null) { reason = condition.reason(); break; }
-                conditions.add(condition.value());
-                bodies.add(branch);
-            }
-        }
-        if (reason != null || conditions.isEmpty()) {
-            String why = reason == null ? "nothing to choose between" : reason;
-            for (int index = start; index < end; index++) preserveTree(scope, items.get(index), why);
-            return Optional.empty();
-        }
-        for (int index = start; index < end; index++) outcome(scope, items.get(index), "command", DenizenArgs.command(items.get(index).text()).name(), true, "");
-        if (command.name().equals("choose")) for (Item option : head.children().get().items()) outcome(scope, option, "command", DenizenArgs.command(option.text()).name(), true, "");
-        List<Block> blocks = new ArrayList<>();
-        boolean anyStop = false;
-        for (Item body : bodies) { Block block = block(body.children().get().items(), 0, scope); blocks.add(block); anyStop |= block.stops(); }
-        Optional<Block> elseBlock = otherwise.map((Item body) -> block(body.children().get().items(), 0, scope));
-        if (elseBlock.isPresent()) anyStop |= elseBlock.get().stops();
-        if (!anyStop) {
-            Optional<JsonObject> tail = elseBlock.map((Block block) -> sequence(block.steps()));
-            for (int index = conditions.size() - 1; index >= 0; index--) tail = Optional.of(conditions.get(index).build(sequence(blocks.get(index).steps()), tail));
-            return Optional.of(new Chain(tail.orElseThrow(), false, false));
-        }
-        Block rest = block(items, end, scope);
-        boolean allStop;
-        Optional<JsonObject> tail;
-        if (elseBlock.isPresent()) {
-            tail = Optional.of(sequence(joined(elseBlock.get(), rest)));
-            allStop = elseBlock.get().stops() || rest.stops();
-        } else {
-            tail = rest.steps().isEmpty() ? Optional.empty() : Optional.of(sequence(copies(rest.steps())));
-            allStop = rest.stops();
-        }
-        for (int index = conditions.size() - 1; index >= 0; index--) {
-            allStop &= blocks.get(index).stops() || rest.stops();
-            tail = Optional.of(conditions.get(index).build(sequence(joined(blocks.get(index), rest)), tail));
-        }
-        return Optional.of(new Chain(tail.orElseThrow(), true, allStop));
-    }
-
-    private static List<JsonObject> joined(Block block, Block rest) {
-        List<JsonObject> steps = new ArrayList<>(block.steps());
-        if (!block.stops()) steps.addAll(copies(rest.steps()));
-        return steps;
-    }
-
-    private static List<JsonObject> copies(List<JsonObject> steps) {
-        List<JsonObject> copied = new ArrayList<>();
-        for (JsonObject step : steps) copied.add(step.deepCopy());
-        return copied;
-    }
-
-    private Optional<JsonObject> repeat(Item item, Command command, Scope scope) {
-        if (item.children().isEmpty()) { preserveTree(scope, item, "repeat without a block"); return Optional.empty(); }
-        if (command.args().size() != 1 || !command.args().getFirst().value().matches("[0-9]{1,3}") || Integer.parseInt(command.args().getFirst().value()) > 128) {
-            preserveTree(scope, item, "repeat needs a literal count from 0 to 128");
-            return Optional.empty();
-        }
-        if (controlsLoop(item.children().get())) { preserveTree(scope, item, "repeat stop and repeat next have no Animus equivalent"); return Optional.empty(); }
-        outcome(scope, item, "command", "repeat", true, "");
-        Block body = block(item.children().get().items(), 0, scope);
-        if (body.stops()) {
-            issues.add(scope.container.file() + ":" + item.line() + ": stop inside repeat only ends the current pass in the converted behavior");
-        }
-        JsonObject node = new JsonObject();
-        node.addProperty("type", "repeat");
-        node.addProperty("count", Integer.parseInt(command.args().getFirst().value()));
-        node.add("body", sequence(body.steps()));
-        return Optional.of(node);
-    }
-
-    private static boolean controlsLoop(Sequence sequence) {
-        for (Item item : sequence.items()) {
-            Command command = DenizenArgs.command(item.text());
-            if (command.name().equals("repeat") && item.children().isEmpty()) return true;
-            if (item.children().isPresent() && controlsLoop(item.children().get())) return true;
-        }
-        return false;
-    }
-
-    private record Result<T>(T value, String reason) {
-        static <T> Result<T> ok(T value) { return new Result<>(value, null); }
-        static <T> Result<T> fail(String reason) { return new Result<>(null, reason); }
-    }
-
-    private Result<Condition> condition(List<String> tokens) {
-        if (tokens.isEmpty()) return Result.fail("if without a condition");
-        boolean and = false, or = false;
-        List<List<String>> groups = new ArrayList<>();
-        List<String> current = new ArrayList<>();
-        for (String token : tokens) {
-            if (token.equals("&&") || token.equals("||")) {
-                if (token.equals("&&")) and = true; else or = true;
-                groups.add(current);
-                current = new ArrayList<>();
-            } else if (token.startsWith("(") || token.endsWith(")")) return Result.fail("grouped conditions have no Animus equivalent");
-            else current.add(token);
-        }
-        groups.add(current);
-        if (and && or) return Result.fail("mixed && and || conditions have no Animus equivalent");
-        List<Condition> atoms = new ArrayList<>();
-        for (List<String> group : groups) {
-            Result<Condition> atom = comparison(group);
-            if (atom.reason() != null) return atom;
-            atoms.add(atom.value());
-        }
-        Condition combined = atoms.getLast();
-        for (int index = atoms.size() - 2; index >= 0; index--) {
-            Condition left = atoms.get(index), right = combined;
-            combined = and ? (JsonObject then, Optional<JsonObject> otherwise) -> left.build(right.build(then, otherwise.map(JsonObject::deepCopy)), otherwise)
-                    : (JsonObject then, Optional<JsonObject> otherwise) -> left.build(then, Optional.of(right.build(then.deepCopy(), otherwise)));
-        }
-        return Result.ok(combined);
-    }
-
-    private Result<Condition> comparison(List<String> group) {
-        if (group.size() != 1 && group.size() != 3) return Result.fail("condition form has no Animus equivalent");
-        String left = group.getFirst();
-        boolean negated = left.startsWith("!");
-        if (negated) left = left.substring(1);
-        if (!left.startsWith("<") || !left.endsWith(">") || DenizenArgs.tagEnd(left, 0) != left.length() - 1) return Result.fail("condition " + group.getFirst() + " has no Animus equivalent");
-        Tag tag = DenizenArgs.tag(left.substring(1, left.length() - 1));
-        if (group.size() == 1) {
-            if (tag.parts().size() == 2 && tag.base().equalsIgnoreCase("player") && tag.parts().get(1).name().equalsIgnoreCase("has_permission") && tag.parts().get(1).parameter().isPresent() && !tag.parts().get(1).parameter().get().contains("<")) {
-                JsonObject arguments = new JsonObject();
-                arguments.addProperty("permission", tag.parts().get(1).parameter().get());
-                return Result.ok(atom("animus:has-permission", arguments, negated));
-            }
-            if (tag.parts().size() == 2 && tag.base().equalsIgnoreCase("npc") && tag.parts().get(1).name().equalsIgnoreCase("is_spawned") && tag.parts().get(1).parameter().isEmpty()) {
-                JsonObject arguments = new JsonObject();
-                arguments.addProperty("spawned", true);
-                return Result.ok(atom("animus:npc-state", arguments, negated));
-            }
-        }
-        Optional<String[]> flag = flagTag(left);
-        if (flag.isEmpty()) return Result.fail("condition tag " + tag.label() + " has no Animus equivalent");
-        Optional<String> name = flagName(flag.get()[1]);
-        if (name.isEmpty()) return Result.fail("flag name " + flag.get()[1] + " cannot be an Animus flag name");
-        Kind kind = kindOf(flag.get()[1]);
-        String scope = scopeOf(flag.get()[0]);
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("name", name.get());
-        arguments.addProperty("scope", scope);
-        if (group.size() == 1) {
-            if (kind == Kind.BOOLEAN) return Result.ok(atom("animus:flag-state", arguments, negated));
-            if (kind == Kind.INTEGER) { arguments.addProperty("atLeast", 1); return Result.ok(atom("animus:quest-state", arguments, negated)); }
-            return Result.fail("flag " + flag.get()[1] + " holds values Animus flags cannot");
-        }
-        if (negated) return Result.fail("negated comparison has no Animus equivalent");
-        String operator = group.get(1), operand = group.get(2);
-        if (kind == Kind.BOOLEAN && (operator.equals("==") || operator.equals("!=")) && (operand.equalsIgnoreCase("true") || operand.equalsIgnoreCase("false"))) {
-            boolean wanted = operand.equalsIgnoreCase("true") == operator.equals("==");
-            if (!wanted) arguments.addProperty("value", false);
-            return Result.ok(atom("animus:flag-state", arguments, false));
-        }
-        if (kind != Kind.INTEGER || !operand.matches("[0-9]{1,13}") || Long.parseLong(operand) > 1_000_000_000_000L) return Result.fail("comparison with " + operand + " has no Animus equivalent");
-        long number = Long.parseLong(operand);
-        switch (operator) {
-            case "==" -> arguments.addProperty("equals", number);
-            case "!=" -> { arguments.addProperty("equals", number); return Result.ok(atom("animus:quest-state", arguments, true)); }
-            case ">=" -> arguments.addProperty("atLeast", number);
-            case "<=" -> arguments.addProperty("atMost", number);
-            case ">" -> arguments.addProperty("atLeast", number + 1);
-            case "<" -> {
-                if (number == 0) return Result.fail("a quest stage is never below 0");
-                arguments.addProperty("atMost", number - 1);
-            }
-            default -> { return Result.fail("operator " + operator + " has no Animus equivalent"); }
-        }
-        return Result.ok(atom("animus:quest-state", arguments, false));
-    }
-
-    private static Condition atom(String capability, JsonObject arguments, boolean negated) {
-        return (JsonObject then, Optional<JsonObject> otherwise) -> negated
-                ? condition(capability, arguments.deepCopy(), otherwise.orElseGet(() -> sequence(List.of())), Optional.of(then))
-                : condition(capability, arguments.deepCopy(), then, otherwise);
-    }
-
-    private static JsonObject condition(String capability, JsonObject arguments, JsonObject then, Optional<JsonObject> otherwise) {
-        JsonObject node = new JsonObject();
-        node.addProperty("type", "condition");
-        node.addProperty("capability", capability);
-        node.add("arguments", arguments);
-        node.add("then", then);
-        otherwise.ifPresent((JsonObject value) -> node.add("else", value));
-        return node;
-    }
-
-    private static String scopeOf(String target) {
-        return switch (target) {
-            case "npc" -> "npc";
-            case "server" -> "global";
-            default -> "player";
-        };
+        if (doc.server) serverBehaviors.add(id);
+        return true;
     }
 
     /** One step, or a sequence; more than 128 steps nest in sequences of at most 128. */
@@ -1298,373 +1405,6 @@ final class DenizenConverter {
         return node;
     }
 
-    private static JsonObject action(String capability, JsonObject arguments) {
-        JsonObject node = new JsonObject();
-        node.addProperty("type", "action");
-        node.addProperty("capability", capability);
-        node.add("arguments", arguments);
-        return node;
-    }
-
-    private Converted simple(Command command, Scope scope) {
-        return switch (command.name()) {
-            case "narrate" -> say(command, scope, "trigger");
-            case "chat" -> say(command, scope, "nearby");
-            case "wait" -> waitFor(command);
-            case "flag" -> flag(command);
-            case "zap" -> zap(command, scope);
-            case "run", "inject" -> call(command, scope);
-            case "execute" -> execute(command, scope);
-            case "give" -> give(command);
-            case "take" -> take(command);
-            case "look" -> look(command);
-            case "walk" -> walk(command);
-            case "equip" -> equip(command);
-            case "playsound" -> sound(command);
-            case "playeffect" -> particle(command);
-            case "actionbar" -> actionbar(command, scope);
-            case "title" -> title(command, scope);
-            case "debug" -> Converted.of();
-            case "define" -> Converted.kept("definitions hold computed values; behaviors have no expressions");
-            case "trigger" -> Converted.kept("trigger settings change only in on assignment; the NPC's saved triggers are used");
-            case "teleport" -> Converted.kept("no Animus teleport action; an allow-listed animus:command with tp can replace it");
-            case "" -> Converted.kept("empty command line");
-            default -> Converted.kept("no Animus equivalent for " + command.name());
-        };
-    }
-
-    private static boolean playerTarget(String value) {
-        String lowered = value.toLowerCase(Locale.ROOT);
-        return lowered.equals("<player>") || lowered.equals("player");
-    }
-
-    private Converted say(Command command, Scope scope, String audience) {
-        List<String> words = new ArrayList<>();
-        String chosen = audience;
-        for (Arg arg : command.args()) {
-            if (arg.prefix().isEmpty()) { if (!arg.is("per_player")) words.add(arg.value()); continue; }
-            if (arg.prefix().equals("targets") && playerTarget(arg.value())) { chosen = "trigger"; continue; }
-            return Converted.kept("argument " + arg.prefix() + ": has no Animus equivalent");
-        }
-        if (words.isEmpty()) return Converted.kept("nothing to say");
-        Mapped text = text(String.join(" ", words), scope, false, 0);
-        if (text.reason() != null) return Converted.kept(text.reason());
-        if (text.value().isBlank()) return Converted.kept("nothing to say");
-        if (text.value().length() > MAXIMUM_TEXT) return Converted.kept("text longer than 1024 characters");
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("text", text.value());
-        if (chosen.equals("nearby")) arguments.addProperty("audience", "nearby");
-        return Converted.of(action("animus:say", arguments));
-    }
-
-    private static Converted waitFor(Command command) {
-        if (command.args().size() > 1 || command.args().size() == 1 && !command.args().getFirst().prefix().isEmpty()) return Converted.kept("wait argument has no Animus equivalent");
-        OptionalLong ticks = command.args().isEmpty() ? OptionalLong.of(60) : DenizenArgs.ticks(command.args().getFirst().value());
-        if (ticks.isEmpty()) return Converted.kept("wait needs a literal duration");
-        if (ticks.getAsLong() == 0) return Converted.of();
-        if (ticks.getAsLong() > 72_000) return Converted.kept("wait longer than an hour");
-        JsonObject node = new JsonObject();
-        node.addProperty("type", "wait");
-        node.addProperty("ticks", ticks.getAsLong());
-        return Converted.of(node);
-    }
-
-    private Converted flag(Command command) {
-        if (command.args().size() < 2) return Converted.kept("flag needs a target and a name");
-        if (command.args().size() > 2)
-            return Converted.kept(command.args().get(2).prefix().equals("expire") ? "expiring flags have no Animus equivalent" : "flag argument has no Animus equivalent");
-        String target = command.args().getFirst().value().toLowerCase(Locale.ROOT).replace("<", "").replace(">", "");
-        if (!command.args().getFirst().prefix().isEmpty() || !List.of("player", "npc", "server").contains(target)) return Converted.kept("flags on other objects have no Animus equivalent");
-        String raw = raw(command.args().get(1));
-        int colon = raw.indexOf(':');
-        String denizen = (colon < 0 ? raw : raw.substring(0, colon)).toLowerCase(Locale.ROOT);
-        String value = colon < 0 ? "" : raw.substring(colon + 1);
-        Optional<String> name = flagName(denizen);
-        if (denizen.contains("<") || name.isEmpty()) return Converted.kept("flag name " + denizen + " cannot be an Animus flag name");
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("name", name.get());
-        arguments.addProperty("scope", scopeOf(target));
-        Kind kind = kindOf(denizen);
-        if (kind == Kind.BOOLEAN) {
-            if (colon < 0 || value.equalsIgnoreCase("true")) return Converted.of(action("animus:set-flag", arguments));
-            if (value.equals("!") || value.equalsIgnoreCase("false")) { arguments.addProperty("value", false); return Converted.of(action("animus:set-flag", arguments)); }
-        }
-        if (kind == Kind.INTEGER) {
-            if (value.equals("!")) { arguments.addProperty("value", 0); return Converted.of(action("animus:set-quest-state", arguments)); }
-            if (DenizenFlags.stage(value).isPresent()) { arguments.addProperty("value", DenizenFlags.stage(value).get()); return Converted.of(action("animus:set-quest-state", arguments)); }
-            if (value.equals("++")) return Converted.of(action("animus:advance-quest-state", arguments));
-            if (value.startsWith("+:") && value.substring(2).matches("[0-9]{1,7}") && Integer.parseInt(value.substring(2)) >= 1 && Integer.parseInt(value.substring(2)) <= 1_000_000) {
-                arguments.addProperty("by", Integer.parseInt(value.substring(2)));
-                return Converted.of(action("animus:advance-quest-state", arguments));
-            }
-            return Converted.kept("quest stages only rise or are set; this flag change has no Animus equivalent");
-        }
-        return Converted.kept("flag " + denizen + " holds values Animus flags cannot");
-    }
-
-    private Converted zap(Command command, Scope scope) {
-        Optional<Interact> target = scope.interact;
-        String step = null;
-        for (Arg arg : command.args()) {
-            if (arg.prefix().equals("script")) { target = Optional.ofNullable(interacts.get(arg.value().toLowerCase(Locale.ROOT))); continue; }
-            if (arg.prefix().equals("step")) { step = arg.value(); continue; }
-            if (!arg.prefix().isEmpty()) return Converted.kept("zap argument " + arg.prefix() + ": has no Animus equivalent");
-            if (interacts.containsKey(arg.value().toLowerCase(Locale.ROOT)) && step == null && target.equals(scope.interact)) { target = Optional.of(interacts.get(arg.value().toLowerCase(Locale.ROOT))); continue; }
-            if (step != null) return Converted.kept("zap with a duration has no Animus equivalent");
-            step = arg.value();
-        }
-        if (target.isEmpty()) return Converted.kept("zap outside an interact script needs the script's name");
-        Interact interact = target.get();
-        int stage;
-        if (step == null) {
-            if (scope.interact.isEmpty() || scope.interact.get() != interact || scope.step < 0 || scope.step + 1 >= interact.order().size()) return Converted.kept("zap to the next step needs a following step");
-            stage = interact.stage(interact.order().get(scope.step + 1)).orElseThrow();
-        } else {
-            if (step.contains("<")) return Converted.kept("zap to a computed step has no Animus equivalent");
-            Optional<Integer> found = interact.stage(step);
-            if (found.isEmpty()) return Converted.kept("no step " + step + " in " + interact.container().name());
-            stage = found.get();
-        }
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("name", interact.quest());
-        arguments.addProperty("scope", "relationship");
-        arguments.addProperty("value", stage);
-        return Converted.of(action("animus:set-quest-state", arguments));
-    }
-
-    private Converted call(Command command, Scope scope) {
-        Optional<String> name = Optional.empty();
-        Optional<String> path = Optional.empty();
-        for (Arg arg : command.args()) {
-            if (arg.prefix().isEmpty()) {
-                if (arg.is("instantly") || arg.is("local")) continue;
-                if (name.isPresent()) return Converted.kept("argument " + arg.value() + " has no Animus equivalent");
-                name = Optional.of(arg.value());
-                continue;
-            }
-            switch (arg.prefix()) {
-                case "path" -> path = Optional.of(arg.value());
-                case "npc" -> { if (!arg.value().equalsIgnoreCase("<npc>")) return Converted.kept("running for another NPC has no Animus equivalent"); }
-                case "player" -> { if (!arg.value().equalsIgnoreCase("<player>")) return Converted.kept("running for another player has no Animus equivalent"); }
-                case "def", "defmap", "definitions" -> { return Converted.kept("definitions passed to a task have no Animus equivalent"); }
-                default -> { return Converted.kept("argument " + arg.prefix() + ": has no Animus equivalent"); }
-            }
-        }
-        if (name.isEmpty() || name.get().contains("<")) return Converted.kept("running a computed script has no Animus equivalent");
-        Container task = containers.get(name.get().toLowerCase(Locale.ROOT));
-        if (task == null) return Converted.kept("no script named " + name.get());
-        if (!task.type().equals("task")) return Converted.kept("only task scripts can become routines");
-        String key = path.map((String value) -> value.toLowerCase(Locale.ROOT)).orElse("script");
-        Optional<Node> body = task.body().get(key);
-        if (body.isEmpty() || !(body.get() instanceof Sequence sequence)) return Converted.kept("task " + task.name() + " has no " + key + " list");
-        String routine = routineFor(task, path);
-        if (scope.calling.contains(routine)) return Converted.kept("recursive task calls have no Animus equivalent");
-        JsonObject call = new JsonObject();
-        call.addProperty("type", "call");
-        call.addProperty("routine", routine);
-        if (scope.routines.containsKey(routine)) return Converted.of(call);
-        if (scope.routines.size() >= BehaviorLimits.ROUTINES) return Converted.kept("more than 32 routines in one behavior");
-        scope.routines.put(routine, new JsonObject());
-        scope.calling.add(routine);
-        Block block = block(sequence.items(), 0, scope.in(task));
-        scope.calling.remove(routine);
-        scope.routines.put(routine, sequence(block.steps()));
-        return Converted.of(call);
-    }
-
-    private String routineFor(Container task, Optional<String> path) {
-        String routine = "task-" + slug(task.name()) + path.map((String value) -> "-" + value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-")).orElse("");
-        return routine.length() > 64 ? routine.substring(0, 64) : routine;
-    }
-
-    private Converted execute(Command command, Scope scope) {
-        String as = null;
-        List<String> words = new ArrayList<>();
-        for (Arg arg : command.args()) {
-            if (arg.is("as_server") || arg.is("as_op")) { as = "console"; continue; }
-            if (arg.is("as_player")) { as = "player"; continue; }
-            if (arg.is("as_npc")) return Converted.kept("commands run as the NPC have no Animus equivalent");
-            if (arg.is("silent")) continue;
-            words.add(raw(arg));
-        }
-        if (as == null) return Converted.kept("execute needs as_server, as_op or as_player");
-        Mapped text = text(String.join(" ", words), scope, true, 0);
-        if (text.reason() != null) return Converted.kept(text.reason());
-        String line = text.value().trim();
-        if (line.startsWith("/")) line = line.substring(1);
-        if (line.isEmpty() || line.length() > 1024) return Converted.kept("command is empty or longer than 1024 characters");
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("command", line);
-        if (as.equals("player")) arguments.addProperty("as", "player");
-        return Converted.of(action("animus:command", arguments));
-    }
-
-    private Optional<String> material(String value) {
-        String lowered = value.toLowerCase(Locale.ROOT);
-        if (lowered.startsWith("minecraft:")) lowered = lowered.substring(10);
-        if (!lowered.matches("[a-z0-9_]{1,64}") || containers.containsKey(lowered)) return Optional.empty();
-        return Optional.of("minecraft:" + lowered);
-    }
-
-    private Converted give(Command command) {
-        Optional<String> item = Optional.empty();
-        long quantity = 1;
-        for (Arg arg : command.args()) {
-            if (arg.prefix().equals("quantity")) {
-                if (!arg.value().matches("[0-9]{1,4}") || Long.parseLong(arg.value()) < 1) return Converted.kept("quantity needs a literal number");
-                quantity = Long.parseLong(arg.value());
-            } else if (arg.prefix().isEmpty() && item.isEmpty()) {
-                if (arg.value().equalsIgnoreCase("xp") || arg.value().equalsIgnoreCase("money")) return Converted.kept("giving " + arg.value() + " has no Animus equivalent");
-                item = material(arg.value());
-                if (item.isEmpty()) return Converted.kept("only plain materials can be given; item scripts and tags have no Animus equivalent");
-            } else return Converted.kept("give argument has no Animus equivalent");
-        }
-        if (item.isEmpty()) return Converted.kept("nothing to give");
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("command", "give {player} " + item.get() + " " + quantity);
-        return Converted.of(action("animus:command", arguments));
-    }
-
-    private Converted take(Command command) {
-        Optional<String> item = Optional.empty();
-        long quantity = 1;
-        for (Arg arg : command.args()) {
-            if (arg.prefix().equals("quantity")) {
-                if (!arg.value().matches("[0-9]{1,4}") || Long.parseLong(arg.value()) < 1) return Converted.kept("quantity needs a literal number");
-                quantity = Long.parseLong(arg.value());
-            } else if ((arg.prefix().equals("item") || arg.prefix().isEmpty()) && item.isEmpty()) {
-                item = material(arg.value());
-                if (item.isEmpty()) return Converted.kept("only plain materials can be taken; item scripts, flags and tags have no Animus equivalent");
-            } else return Converted.kept("take argument has no Animus equivalent");
-        }
-        if (item.isEmpty()) return Converted.kept("nothing to take");
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("command", "clear {player} " + item.get() + " " + quantity);
-        return Converted.of(action("animus:command", arguments));
-    }
-
-    private static boolean npcTarget(String value) {
-        String lowered = value.toLowerCase(Locale.ROOT);
-        return lowered.equals("<npc>") || lowered.equals("npc");
-    }
-
-    private static Optional<double[]> location(String value) {
-        String text = value;
-        if (text.toLowerCase(Locale.ROOT).startsWith("l@")) text = text.substring(2);
-        if (text.toLowerCase(Locale.ROOT).startsWith("<location[") && text.endsWith("]>")) text = text.substring(10, text.length() - 2);
-        String[] parts = text.split(",", -1);
-        if (parts.length < 3 || parts.length > 6) return Optional.empty();
-        double[] coordinates = new double[3];
-        for (int index = 0; index < 3; index++) {
-            if (!parts[index].matches("-?[0-9]{1,8}(?:\\.[0-9]{1,6})?")) return Optional.empty();
-            coordinates[index] = Double.parseDouble(parts[index]);
-        }
-        return Optional.of(coordinates);
-    }
-
-    private static Converted look(Command command) {
-        List<Arg> plain = command.plain();
-        if (plain.size() != command.args().size()) return Converted.kept("look argument has no Animus equivalent");
-        if (plain.size() == 2 && npcTarget(plain.getFirst().value())) plain = plain.subList(1, 2);
-        if (plain.size() != 1) return Converted.kept("look at more than one target has no Animus equivalent");
-        String target = plain.getFirst().value().toLowerCase(Locale.ROOT);
-        JsonObject arguments = new JsonObject();
-        if (target.equals("<player>") || target.equals("<player.location>") || target.equals("<player.eye_location>")) arguments.addProperty("target", "player");
-        else {
-            Optional<double[]> at = location(plain.getFirst().value());
-            if (at.isEmpty()) return Converted.kept("look target must be the player or a literal location");
-            arguments.addProperty("x", at.get()[0]);
-            arguments.addProperty("y", at.get()[1]);
-            arguments.addProperty("z", at.get()[2]);
-        }
-        return Converted.of(action("animus:look", arguments));
-    }
-
-    private static Converted walk(Command command) {
-        List<Arg> plain = command.plain();
-        if (plain.size() != command.args().size()) return Converted.kept("walk argument has no Animus equivalent");
-        if (plain.size() == 2 && npcTarget(plain.getFirst().value())) plain = plain.subList(1, 2);
-        if (plain.size() != 1) return Converted.kept("walk needs one literal location");
-        Optional<double[]> at = location(plain.getFirst().value());
-        if (at.isEmpty()) return Converted.kept("walk needs a literal location");
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("x", at.get()[0]);
-        arguments.addProperty("y", at.get()[1]);
-        arguments.addProperty("z", at.get()[2]);
-        return Converted.of(action("animus:navigate", arguments));
-    }
-
-    private Converted equip(Command command) {
-        TreeMap<Integer, JsonObject> slots = new TreeMap<>();
-        for (Arg arg : command.args()) {
-            if (arg.prefix().isEmpty()) {
-                if (npcTarget(arg.value())) continue;
-                return Converted.kept("equipping another entity has no Animus equivalent");
-            }
-            int order;
-            String slot;
-            switch (arg.prefix()) {
-                case "hand" -> { order = 0; slot = "main_hand"; }
-                case "offhand" -> { order = 1; slot = "off_hand"; }
-                case "head" -> { order = 2; slot = "head"; }
-                case "chest" -> { order = 3; slot = "chest"; }
-                case "legs" -> { order = 4; slot = "legs"; }
-                case "boots" -> { order = 5; slot = "feet"; }
-                default -> { return Converted.kept("equipment slot " + arg.prefix() + " has no Animus equivalent"); }
-            }
-            JsonObject arguments = new JsonObject();
-            arguments.addProperty("slot", slot);
-            if (!arg.value().equalsIgnoreCase("air")) {
-                Optional<String> item = material(arg.value());
-                if (item.isEmpty()) return Converted.kept("only plain materials can be equipped");
-                arguments.addProperty("item", item.get());
-            }
-            slots.put(order, action("animus:set-equipment", arguments));
-        }
-        if (slots.isEmpty()) return Converted.kept("nothing to equip");
-        return new Converted(new ArrayList<>(slots.values()), "");
-    }
-
-    private Converted sound(Command command) {
-        Optional<String> sound = Optional.empty();
-        String audience = null;
-        boolean custom = false;
-        JsonObject arguments = new JsonObject();
-        Double volume = null, pitch = null;
-        for (Arg arg : command.args()) {
-            if (arg.is("custom")) { custom = true; continue; }
-            switch (arg.prefix()) {
-                case "sound" -> sound = Optional.of(arg.value());
-                case "volume" -> { volume = number(arg.value(), 0, 4); if (volume == null) return Converted.kept("volume must be a number from 0 to 4"); }
-                case "pitch" -> { pitch = number(arg.value(), 0.5, 2); if (pitch == null) return Converted.kept("pitch must be a number from 0.5 to 2"); }
-                case "" -> {
-                    String target = arg.value().toLowerCase(Locale.ROOT);
-                    if (audience != null) return Converted.kept("sound for several targets has no Animus equivalent");
-                    if (target.equals("<player>") || target.equals("<player.location>")) audience = "trigger";
-                    else if (target.equals("<npc>") || target.equals("<npc.location>")) audience = "nearby";
-                    else if (sound.isEmpty() && !target.startsWith("<")) sound = Optional.of(arg.value());
-                    else return Converted.kept("sound location must be the NPC or the player");
-                }
-                default -> { return Converted.kept("playsound argument " + arg.prefix() + ": has no Animus equivalent"); }
-            }
-        }
-        if (sound.isEmpty() || sound.get().contains("<")) return Converted.kept("playsound needs a literal sound");
-        Optional<String> key = soundKey(sound.get(), custom);
-        if (key.isEmpty()) return Converted.kept("sound " + sound.get() + " has no resource key");
-        sounds.put(sound.get(), key.get());
-        arguments.addProperty("sound", key.get());
-        if (volume != null) arguments.addProperty("volume", volume);
-        if (pitch != null) arguments.addProperty("pitch", pitch);
-        if ("nearby".equals(audience)) arguments.addProperty("audience", "nearby");
-        return Converted.of(action("animus:play-sound", arguments));
-    }
-
-    private static Double number(String value, double minimum, double maximum) {
-        if (!value.matches("[0-9]{1,4}(?:\\.[0-9]{1,6})?")) return null;
-        double number = Double.parseDouble(value);
-        return number < minimum || number > maximum ? null : number;
-    }
-
     /**
      * A Bukkit sound name such as {@code ENTITY_VILLAGER_YES} becomes {@code minecraft:entity.villager.yes}: the first
      * and last underscores become dots and the middle words keep theirs, which is how most sound names are built.
@@ -1683,216 +1423,9 @@ final class DenizenConverter {
         return key.matches("[a-z0-9_.-]+:[a-z0-9_./-]+") ? Optional.of(key) : Optional.empty();
     }
 
-    private static final Map<String, String> PARTICLE_NAMES = Map.ofEntries(
-            Map.entry("villager_happy", "happy_villager"), Map.entry("villager_angry", "angry_villager"), Map.entry("spell_witch", "witch"),
-            Map.entry("smoke_normal", "smoke"), Map.entry("smoke_large", "large_smoke"), Map.entry("explosion_normal", "poof"),
-            Map.entry("explosion_large", "explosion"), Map.entry("explosion_huge", "explosion_emitter"), Map.entry("water_splash", "splash"),
-            Map.entry("water_bubble", "bubble"), Map.entry("water_wake", "fishing"), Map.entry("suspended", "underwater"),
-            Map.entry("suspended_depth", "underwater"), Map.entry("crit_magic", "enchanted_hit"), Map.entry("spell", "effect"),
-            Map.entry("spell_instant", "instant_effect"), Map.entry("drip_water", "dripping_water"), Map.entry("drip_lava", "dripping_lava"),
-            Map.entry("enchantment_table", "enchant"), Map.entry("town_aura", "mycelium"), Map.entry("snowball", "item_snowball"),
-            Map.entry("snow_shovel", "item_snowball"), Map.entry("slime", "item_slime"), Map.entry("fireworks_spark", "firework"),
-            Map.entry("totem", "totem_of_undying"), Map.entry("mob_appearance", "elder_guardian"), Map.entry("water_drop", "rain"));
-    private static final Set<String> DATA_PARTICLES = Set.of("dust", "redstone", "block", "block_crack", "block_dust", "item", "item_crack", "falling_dust", "dust_color_transition",
-            "vibration", "entity_effect", "spell_mob", "spell_mob_ambient", "block_marker", "sculk_charge", "shriek", "dust_pillar", "trail", "legacy_block_marker");
-
-    private static Converted particle(Command command) {
-        Optional<String> effect = Optional.empty();
-        String audience = "nearby";
-        JsonObject arguments = new JsonObject();
-        Long count = null;
-        Double spread = null;
-        for (Arg arg : command.args()) {
-            switch (arg.prefix()) {
-                case "effect" -> effect = Optional.of(arg.value().toLowerCase(Locale.ROOT));
-                case "at" -> {
-                    String at = arg.value().toLowerCase(Locale.ROOT);
-                    if (!at.equals("<npc>") && !at.equals("<npc.location>") && !at.equals("<npc.eye_location>") && !at.matches("<npc\\.location\\.above(\\[[0-9.]{1,6}])?>"))
-                        return Converted.kept("particles show only at the NPC in Animus");
-                }
-                case "quantity" -> {
-                    if (!arg.value().matches("[0-9]{1,2}") || Long.parseLong(arg.value()) < 1 || Long.parseLong(arg.value()) > 64) return Converted.kept("quantity must be from 1 to 64");
-                    count = Long.parseLong(arg.value());
-                }
-                case "offset" -> {
-                    double widest = 0;
-                    for (String part : arg.value().split(",", -1)) {
-                        Double value = number(part, 0, 8);
-                        if (value == null) return Converted.kept("offset must be from 0 to 8 blocks");
-                        widest = Math.max(widest, value);
-                    }
-                    spread = widest;
-                }
-                case "targets" -> { if (!playerTarget(arg.value())) return Converted.kept("particles for other targets have no Animus equivalent"); audience = "trigger"; }
-                case "visibility", "data" -> { /* range and particle speed are not carried; the docs list this */ }
-                default -> { return Converted.kept("playeffect argument " + (arg.prefix().isEmpty() ? arg.value() : arg.prefix() + ":") + " has no Animus equivalent"); }
-            }
-        }
-        if (effect.isEmpty() || effect.get().contains("<")) return Converted.kept("playeffect needs a literal effect");
-        String name = effect.get().startsWith("minecraft:") ? effect.get().substring(10) : effect.get();
-        if (DATA_PARTICLES.contains(name)) return Converted.kept("particles that need extra data have no Animus equivalent");
-        name = PARTICLE_NAMES.getOrDefault(name, name);
-        if (!name.matches("[a-z0-9_]{1,64}")) return Converted.kept("effect " + effect.get() + " has no particle key");
-        arguments.addProperty("particle", "minecraft:" + name);
-        if (count != null) arguments.addProperty("count", count);
-        if (spread != null) arguments.addProperty("spread", spread);
-        if (audience.equals("nearby")) arguments.addProperty("audience", "nearby");
-        return Converted.of(action("animus:spawn-particle", arguments));
-    }
-
-    private Converted actionbar(Command command, Scope scope) {
-        List<String> words = new ArrayList<>();
-        for (Arg arg : command.args()) {
-            if (arg.prefix().isEmpty()) { words.add(arg.value()); continue; }
-            if (arg.prefix().equals("targets") && playerTarget(arg.value())) continue;
-            return Converted.kept("actionbar argument " + arg.prefix() + ": has no Animus equivalent");
-        }
-        Mapped text = text(String.join(" ", words), scope, true, 0);
-        if (text.reason() != null) return Converted.kept(text.reason());
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("command", "minecraft:title {player} actionbar " + component(text.value()));
-        return Converted.of(action("animus:command", arguments));
-    }
-
-    private Converted title(Command command, Scope scope) {
-        String title = null, subtitle = null;
-        List<Long> times = new ArrayList<>(List.of(10L, 70L, 20L));
-        boolean timed = false;
-        for (Arg arg : command.args()) {
-            switch (arg.prefix()) {
-                case "title" -> title = arg.value();
-                case "subtitle" -> subtitle = arg.value();
-                case "fade_in", "stay", "fade_out" -> {
-                    OptionalLong ticks = DenizenArgs.ticks(arg.value());
-                    if (ticks.isEmpty() || ticks.getAsLong() > 72_000) return Converted.kept("title timing needs a literal duration");
-                    times.set(arg.prefix().equals("fade_in") ? 0 : arg.prefix().equals("stay") ? 1 : 2, ticks.getAsLong());
-                    timed = true;
-                }
-                case "targets" -> { if (!playerTarget(arg.value())) return Converted.kept("titles for other targets have no Animus equivalent"); }
-                default -> { return Converted.kept("title argument " + (arg.prefix().isEmpty() ? arg.value() : arg.prefix() + ":") + " has no Animus equivalent"); }
-            }
-        }
-        if (title == null && subtitle == null) return Converted.kept("title without text");
-        List<JsonObject> steps = new ArrayList<>();
-        if (timed) steps.add(commandAction("minecraft:title {player} times " + times.get(0) + " " + times.get(1) + " " + times.get(2)));
-        if (subtitle != null) {
-            Mapped text = text(subtitle, scope, true, 0);
-            if (text.reason() != null) return Converted.kept(text.reason());
-            steps.add(commandAction("minecraft:title {player} subtitle " + component(text.value())));
-        }
-        Mapped main = text(title == null ? "" : title, scope, true, 0);
-        if (main.reason() != null) return Converted.kept(main.reason());
-        steps.add(commandAction("minecraft:title {player} title " + component(main.value())));
-        for (JsonObject step : steps) if (step.getAsJsonObject("arguments").get("command").getAsString().length() > 1024) return Converted.kept("command longer than 1024 characters");
-        return new Converted(steps, "");
-    }
-
-    private static JsonObject commandAction(String line) {
-        JsonObject arguments = new JsonObject();
-        arguments.addProperty("command", line);
-        return action("animus:command", arguments);
-    }
-
-    /** A JSON text component; section colour codes inside it still colour the text. */
-    private static String component(String text) {
-        JsonObject component = new JsonObject();
-        component.addProperty("text", text);
-        return component.toString();
-    }
-
-    // ---- Text and tags ----
-
-    private record Mapped(String value, String reason) {}
-
-    private static final Map<String, String> ESCAPES = Map.ofEntries(
-            Map.entry("&nl", "\n"), Map.entry("n", "\n"), Map.entry("&sp", " "), Map.entry("&co", ":"), Map.entry("&sc", ";"), Map.entry("&pipe", "|"),
-            Map.entry("&lt", "<"), Map.entry("&gt", ">"), Map.entry("&amp", "&"), Map.entry("&lb", "["), Map.entry("&rb", "]"), Map.entry("&dq", "\""),
-            Map.entry("&quo", "\""), Map.entry("&sq", "'"), Map.entry("&pc", "%"), Map.entry("&ns", "#"), Map.entry("&hash", "#"), Map.entry("&at", "@"),
-            Map.entry("&dot", "."), Map.entry("&cm", ","), Map.entry("&exc", "!"), Map.entry("&ss", "§"), Map.entry("&bs", "\\"), Map.entry("&fs", "/"),
-            Map.entry("&lc", "{"), Map.entry("&rc", "}"), Map.entry("&eq", "="), Map.entry("&nbsp", " "), Map.entry("&hrt", "❤"));
-    private static final Map<String, String> COLORS = Map.ofEntries(
-            Map.entry("black", "0"), Map.entry("dark_blue", "1"), Map.entry("dark_green", "2"), Map.entry("dark_aqua", "3"), Map.entry("dark_red", "4"),
-            Map.entry("dark_purple", "5"), Map.entry("gold", "6"), Map.entry("gray", "7"), Map.entry("dark_gray", "8"), Map.entry("blue", "9"),
-            Map.entry("green", "a"), Map.entry("aqua", "b"), Map.entry("red", "c"), Map.entry("light_purple", "d"), Map.entry("yellow", "e"),
-            Map.entry("white", "f"), Map.entry("magic", "k"), Map.entry("bold", "l"), Map.entry("strikethrough", "m"), Map.entry("underline", "n"),
-            Map.entry("italic", "o"), Map.entry("reset", "r"));
-
-    /**
-     * Text with its tags mapped: colour and escape tags become formatting codes ({@code &} for spoken text, section
-     * signs inside commands), {@code <player.name>} becomes {@code {player_name}}, {@code <npc.name>} the NPC's name
-     * when every NPC the behavior serves has the same one, and {@code <script.data_key[...]>} its literal value. Any
-     * other tag keeps the whole line, named in the reason.
-     */
-    private Mapped text(String raw, Scope scope, boolean command, int depth) {
-        StringBuilder out = new StringBuilder();
-        for (DenizenArgs.Segment segment : DenizenArgs.segments(raw)) {
-            if (!segment.tag()) { out.append(segment.text()); continue; }
-            Tag tag = DenizenArgs.tag(segment.text());
-            Optional<String> mapped = tag(tag, scope, command, depth);
-            if (mapped.isEmpty()) return new Mapped(null, "tag " + tag.label() + " has no Animus placeholder");
-            out.append(mapped.get());
-        }
-        return new Mapped(out.toString(), null);
-    }
-
-    private Optional<String> tag(Tag tag, Scope scope, boolean command, int depth) {
-        List<DenizenArgs.Part> parts = tag.parts();
-        String base = tag.base().toLowerCase(Locale.ROOT);
-        String code = command ? "§" : "&";
-        if (parts.size() == 1 && parts.getFirst().parameter().isEmpty()) {
-            if (base.matches("&[0-9a-fk-or]")) return Optional.of(code + base.charAt(1));
-            if (ESCAPES.containsKey(base)) return Optional.of(ESCAPES.get(base));
-            if (COLORS.containsKey(base)) return Optional.of(code + COLORS.get(base));
-        }
-        if (parts.size() == 1 && parts.getFirst().parameter().isPresent()) {
-            String parameter = parts.getFirst().parameter().get();
-            if (base.equals("&color")) {
-                if (parameter.matches("#[0-9a-fA-F]{6}")) {
-                    if (!command) return Optional.of("&" + parameter);
-                    StringBuilder hex = new StringBuilder("§x");
-                    for (char digit : parameter.substring(1).toLowerCase(Locale.ROOT).toCharArray()) hex.append('§').append(digit);
-                    return Optional.of(hex.toString());
-                }
-                if (COLORS.containsKey(parameter.toLowerCase(Locale.ROOT))) return Optional.of(code + COLORS.get(parameter.toLowerCase(Locale.ROOT)));
-                return Optional.empty();
-            }
-            if (base.equals("&chr") && parameter.matches("[0-9a-fA-F]{1,6}")) {
-                int point = Integer.parseInt(parameter, 16);
-                if (point > 0x10FFFF || point >= 0xD800 && point <= 0xDFFF || point < 0x20) return Optional.empty();
-                return Optional.of(new String(Character.toChars(point)));
-            }
-        }
-        if (parts.size() == 2 && parts.getFirst().parameter().isEmpty() && parts.get(1).parameter().isEmpty()) {
-            String attribute = parts.get(1).name().toLowerCase(Locale.ROOT);
-            if (base.equals("player") && attribute.equals("name")) return Optional.of("{player_name}");
-            if (base.equals("player") && attribute.equals("uuid") && command) return Optional.of("{player}");
-            if (base.equals("npc") && attribute.equals("name") && scope.npcName.isPresent()) return Optional.of(scope.npcName.get());
-        }
-        if (base.equals("script") && depth < 4) {
-            Container target = scope.container;
-            int next = 1;
-            if (parts.getFirst().parameter().isPresent()) {
-                target = containers.get(parts.getFirst().parameter().get().toLowerCase(Locale.ROOT));
-                if (target == null) return Optional.empty();
-            }
-            if (parts.size() != 2 || !List.of("data_key", "yaml_key").contains(parts.get(next).name().toLowerCase(Locale.ROOT)) || parts.get(next).parameter().isEmpty()) return Optional.empty();
-            Node node = target.body();
-            for (String key : parts.get(next).parameter().get().split("\\.", -1)) {
-                if (!(node instanceof Mapping mapping)) return Optional.empty();
-                Optional<Node> child = mapping.get(key.toLowerCase(Locale.ROOT));
-                if (child.isEmpty()) return Optional.empty();
-                node = child.get();
-            }
-            if (!(node instanceof Scalar scalar)) return Optional.empty();
-            Mapped mapped = text(scalar.text(), new Scope(scope.routines, scope.calling, scope.npcName, false, target, scope.interact, scope.step), command, depth + 1);
-            return mapped.reason() == null ? Optional.of(mapped.value()) : Optional.empty();
-        }
-        return Optional.empty();
-    }
-
     // ---- Flag data ----
 
-    /** Writes one subject's flags into staged state documents and returns how many were kept instead. */
+    /** Writes one subject's flags into staged state documents with their typed values and expiry, and returns how many were kept instead. */
     private int importFlags(String source, DenizenFlags.Values values, String scope, Optional<String> npc, Optional<String> player,
                             TreeMap<String, TreeMap<String, JsonObject>> state, TreeMap<String, Integer> imported) {
         int kept = 0;
@@ -1901,20 +1434,24 @@ final class DenizenConverter {
             if (flag.name().startsWith("__interact_step.") && player.isPresent()) { kept += interactStep(source, flag, player.get(), state, imported); continue; }
             String reason = null;
             Optional<String> name = flagName(flag.name());
-            Kind kind = kindOf(flag.name());
-            JsonObject value = new JsonObject();
+            DenizenFlags.Typed typed = null;
             if (flag.name().startsWith("__")) reason = "Denizen's own bookkeeping flag";
-            else if (flag.expires()) reason = "expiring flags have no Animus equivalent";
             else if (name.isEmpty()) reason = "the name cannot be an Animus flag name";
-            else if (kind == Kind.BOOLEAN && (flag.value().equals("true") || flag.value().equals("false"))) { value.addProperty("type", "boolean"); value.addProperty("value", flag.value().equals("true")); }
-            else if (kind == Kind.INTEGER && DenizenFlags.stage(flag.value()).isPresent()) { value.addProperty("type", "integer"); value.addProperty("value", DenizenFlags.stage(flag.value()).get()); }
-            else reason = "the value is not true, false or a whole number from 0 to 10^12 used the same way everywhere";
-            String path = null;
+            else if (flag.expires() && flag.expiresAt() == 0) reason = "the expiration time cannot be read";
+            else {
+                typed = DenizenFlags.typed(flag.value());
+                if (!typed.reason().isEmpty()) reason = typed.reason();
+            }
             if (reason == null) {
-                path = statePath(scope, npc, player, kind == Kind.BOOLEAN ? "flags" : "quests");
-                TreeMap<String, JsonObject> document = state.computeIfAbsent(path, (String ignored) -> new TreeMap<>());
+                TreeMap<String, JsonObject> document = state.computeIfAbsent(statePath(scope, npc, player), (String ignored) -> new TreeMap<>());
                 if (document.size() >= MAXIMUM_STATE_KEYS && !document.containsKey(name.get())) reason = "more than 128 flags for one subject";
-                else document.put(name.get(), value);
+                else {
+                    JsonObject value = new JsonObject();
+                    value.addProperty("type", typed.type());
+                    value.add("value", typed.value());
+                    if (flag.expires()) value.addProperty("expires", flag.expiresAt());
+                    document.put(name.get(), value);
+                }
             }
             if (reason != null) { kept++; preserve(source, 0, "", "flag", flag.name(), "", reason); }
             else imported.merge(scope, 1, Integer::sum);
@@ -1937,7 +1474,8 @@ final class DenizenConverter {
         if (reason == null && bound.isEmpty()) reason = "no NPC is assigned " + script;
         if (reason != null) { preserve(source, 0, "", "flag", flag.name(), "", reason); return 1; }
         for (Npc npc : bound) {
-            TreeMap<String, JsonObject> document = state.computeIfAbsent(statePath("relationship", Optional.of(npc.uuid()), Optional.of(player), "quests"), (String ignored) -> new TreeMap<>());
+            String path = STATE_ROOT + "relationship/" + npc.uuid() + "/" + player + "/animus/quests/" + NAMESPACE + ".json";
+            TreeMap<String, JsonObject> document = state.computeIfAbsent(path, (String ignored) -> new TreeMap<>());
             JsonObject value = new JsonObject();
             value.addProperty("type", "integer");
             value.addProperty("value", (long) stage.get());
@@ -1947,11 +1485,12 @@ final class DenizenConverter {
         return 0;
     }
 
-    private static String statePath(String scope, Optional<String> npc, Optional<String> player, String kind) {
+    /** The staged flag document of one subject. */
+    private static String statePath(String scope, Optional<String> npc, Optional<String> player) {
         StringBuilder path = new StringBuilder(STATE_ROOT).append(scope).append('/');
         npc.ifPresent((String uuid) -> path.append(uuid).append('/'));
         player.ifPresent((String uuid) -> path.append(uuid).append('/'));
-        return path.append("animus/").append(kind).append('/').append(NAMESPACE).append(".json").toString();
+        return path.append("animus/flags/").append(NAMESPACE).append(".json").toString();
     }
 
     /** The same document {@code BehaviorStateStore} writes for these values. */
@@ -2019,7 +1558,7 @@ final class DenizenConverter {
         TreeMap<String, int[]> counts = new TreeMap<>();
         for (Outcome outcome : outcomes.values()) {
             if (!outcome.kind().equals("command")) continue;
-            for (Tag tag : DenizenArgs.tags(outcome.text())) counts.computeIfAbsent(tag.label(), (String ignored) -> new int[2])[outcome.converted() ? 0 : 1]++;
+            for (DenizenArgs.Tag tag : DenizenArgs.tags(outcome.text())) counts.computeIfAbsent(tag.label(), (String ignored) -> new int[2])[outcome.converted() ? 0 : 1]++;
         }
         JsonObject result = new JsonObject();
         for (Map.Entry<String, int[]> count : counts.entrySet()) {

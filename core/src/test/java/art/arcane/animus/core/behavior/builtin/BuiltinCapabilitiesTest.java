@@ -45,7 +45,7 @@ class BuiltinCapabilitiesTest {
     };
     private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "look", "pose", "set-appearance",
             "set-equipment", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
-            "play-animation", "stop-animation");
+            "play-animation", "stop-animation", "message", "title", "actionbar", "teleport", "give-item", "take-item", "give-book");
     private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state");
 
     private final RecordingPlatform platform = new RecordingPlatform();

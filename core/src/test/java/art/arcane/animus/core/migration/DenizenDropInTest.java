@@ -53,7 +53,7 @@ class DenizenDropInTest {
             CitizensDropIn flow = dropIn(store, npcs);
             assertTrue(flow.startupNotice().orElseThrow().contains("plugins/Denizen/scripts"));
             String staged = joined(flow.execute(new String[0]));
-            assertTrue(staged.contains("Denizen plugins/Denizen: 8 scripts; 4 behaviors for 1 NPCs; 7 flag values imported, 4 kept"), staged);
+            assertTrue(staged.contains("Denizen plugins/Denizen: 13 scripts; 8 behaviors for 1 NPCs; 15 flag values imported, 2 kept"), staged);
             assertTrue(staged.contains("commandNamespaces = [\"denizen\"]"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
 
@@ -67,6 +67,8 @@ class DenizenDropInTest {
             assertTrue(applied.contains("Denizen behaviors installed in behaviors/denizen/"), applied);
             assertTrue(applied.contains("1 NPCs wait for accept denizen"), applied);
             assertNotNull(store.read("behaviors/denizen/interact/guard_quest.json"));
+            assertNotNull(store.read("behaviors/denizen/world/lantern_world.json"));
+            assertNotNull(store.read("gui/inventories/denizen/gate_menu.json"), "staged GUIs install in the chest GUI folder");
             assertNotNull(store.read(STATE));
             NpcDefinition guard = npcs.all().stream().filter((NpcDefinition npc) -> npc.id().equals("citizens-0")).findFirst().orElseThrow();
             assertTrue(guard.behaviors().stream().noneMatch((String id) -> id.startsWith("denizen:")), "behaviors stay off until accepted");
@@ -89,9 +91,40 @@ class DenizenDropInTest {
 
             flow.execute(new String[]{"rollback"});
             assertNull(store.read("behaviors/denizen/interact/guard_quest.json"));
+            assertNull(store.read("gui/inventories/denizen/gate_menu.json"));
             assertNull(store.read(STATE));
             assertTrue(npcs.all().isEmpty());
             assertEquals("rolled-back", flow.status().getAsJsonObject("denizen").get("state").getAsString());
+        }
+    }
+
+    @Test void acceptingDenizenEnablesTheImportsServerBehaviorsAndRollbackRemovesThem() throws Exception {
+        leaveServerFolders();
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            flow.execute(new String[0]);
+            String reportPath = flow.status().getAsJsonObject("denizen").get("report").getAsString();
+            JsonObject report = art.arcane.animus.core.storage.JsonDocuments.object(store.read(reportPath));
+            JsonArray servers = new JsonArray();
+            servers.add("denizen:world/welcome");
+            servers.add("Not An Id");
+            report.add("serverBehaviors", servers);
+            DocumentStore.atomic(store.resolve(reportPath), art.arcane.animus.core.storage.JsonDocuments.write(report));
+            DocumentStore.atomic(store.resolve("server-behaviors.json"), "{\"schemaVersion\":1,\"behaviors\":[\"town:clock\"]}\n");
+
+            flow.execute(new String[]{"apply"});
+            String receipt = store.read(reportPath.replace("report.json", "receipt.json"));
+            assertTrue(receipt.contains("\"serverBehaviors\": [\n    \"denizen:world/welcome\"\n  ]"), receipt);
+            assertEquals(List.of("town:clock"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")), "apply enables nothing");
+
+            String accepted = joined(flow.execute(new String[]{"accept", "denizen"}));
+            assertTrue(accepted.contains("Denizen server behaviors enabled in server-behaviors.json"), accepted);
+            assertEquals(List.of("town:clock", "denizen:world/welcome"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")));
+            assertTrue(joined(flow.execute(new String[]{"accept", "denizen"})).contains("Nothing waiting in denizen"));
+
+            flow.execute(new String[]{"rollback"});
+            assertEquals(List.of("town:clock"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")));
         }
     }
 

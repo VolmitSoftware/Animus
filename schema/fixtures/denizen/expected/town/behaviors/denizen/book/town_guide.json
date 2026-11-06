@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:book/town_guide",
+  "server": true,
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "action",
+      "capability": "animus:give-book",
+      "arguments": {
+        "title": "Town guide",
+        "author": "The Mayor",
+        "pages": [
+          null,
+          "The gate closes at dusk."
+        ]
+      },
+      "templates": {
+        "/pages/0": "Welcome to town, {{ player.name }}."
+      }
+    }
+  }
+}

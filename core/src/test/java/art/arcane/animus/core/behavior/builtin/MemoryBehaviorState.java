@@ -10,6 +10,9 @@ import java.util.Map;
 public final class MemoryBehaviorState implements BehaviorState {
     private record Key(String behavior, ScopedVariable declaration, Object npc, Object player, String name) {}
     private final Map<Key, Value> values = new HashMap<>();
+    private final Map<Key, Long> expiries = new HashMap<>();
+    /** Epoch milliseconds that expiring values are compared with. */
+    volatile long now = 1_000_000L;
 
     private static Key key(Subject subject, String name, ScopedVariable declaration) {
         boolean npc = declaration.scope() == art.arcane.animus.core.behavior.BehaviorProgram.Scope.NPC || declaration.scope() == art.arcane.animus.core.behavior.BehaviorProgram.Scope.RELATIONSHIP;
@@ -19,10 +22,30 @@ public final class MemoryBehaviorState implements BehaviorState {
     }
 
     @Override public synchronized Value read(Subject subject, String variable, ScopedVariable declaration, Value initial) {
-        return values.getOrDefault(key(subject, variable, declaration), initial);
+        return read(subject, variable, declaration, initial, initial.type());
+    }
+
+    /** A declared {@code any} accepts every stored type; other declarations refuse a stored value of another type. */
+    @Override public synchronized Value read(Subject subject, String variable, ScopedVariable declaration, Value initial, art.arcane.animus.core.behavior.BehaviorProgram.Type declared) {
+        Key key = key(subject, variable, declaration);
+        Long expires = expiries.get(key);
+        if (expires != null && expires <= now) return initial;
+        Value stored = values.get(key);
+        if (stored == null) return initial;
+        if (declared != art.arcane.animus.core.behavior.BehaviorProgram.Type.ANY && stored.type() != declared) throw new Rejected(art.arcane.animus.api.Outcome.Status.CONFLICT, "behavior-state-type-mismatch", "$.variables." + variable + ".type", "Other type");
+        return stored;
     }
 
     @Override public synchronized void write(Subject subject, Map<String, Value> writes, Map<String, ScopedVariable> declarations) {
-        writes.forEach((name, value) -> values.put(key(subject, name, declarations.get(name)), value));
+        write(subject, writes, declarations, Map.of());
+    }
+
+    @Override public synchronized void write(Subject subject, Map<String, Value> writes, Map<String, ScopedVariable> declarations, Map<String, Long> expiresAtMillis) {
+        writes.forEach((name, value) -> {
+            Key key = key(subject, name, declarations.get(name));
+            values.put(key, value);
+            Long expires = expiresAtMillis.get(name);
+            if (expires == null) expiries.remove(key); else expiries.put(key, expires);
+        });
     }
 }

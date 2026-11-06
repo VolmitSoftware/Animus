@@ -27,7 +27,7 @@ class ContextualDiagnosticsTest {
     @Test void unknownNodeTypeListsTheLanguage() {
         Diagnostic diagnostic = compile("{\"type\":\"sequense\"}", "");
         assertEquals("$.routines.main.type", diagnostic.field());
-        assertTrue(diagnostic.message().contains("sequence, action, condition, wait, repeat, parallel, call, set"), diagnostic.message());
+        assertTrue(diagnostic.message().contains("sequence, action, condition, wait, repeat, foreach, while, break, continue, parallel, call, return, set"), diagnostic.message());
         assertTrue(diagnostic.message().contains("did you mean sequence?"), diagnostic.message());
     }
 

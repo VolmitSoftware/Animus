@@ -17,6 +17,9 @@ import java.util.function.Supplier;
 final class RecordingPlatform implements BehaviorPlatform {
     final List<String> calls = new CopyOnWriteArrayList<>();
     final List<String> targets = new CopyOnWriteArrayList<>();
+    /** Where each piece of owner work was placed: npc, player:<uuid> or global. */
+    final List<String> routes = new CopyOnWriteArrayList<>();
+    volatile int taken = 3;
     final AtomicInteger closedTicks = new AtomicInteger();
     volatile Optional<String> unavailable = Optional.empty();
     volatile NpcStatus status = new NpcStatus(true, 20);
@@ -63,6 +66,19 @@ final class RecordingPlatform implements BehaviorPlatform {
         tick = next;
         return () -> { tick = null; closedTicks.incrementAndGet(); };
     }
+    @Override public boolean onNpcOwner(NpcHandle npc, Runnable work, java.util.function.Consumer<String> refused) { routes.add("npc"); work.run(); return true; }
+    @Override public boolean onPlayerOwner(UUID player, Runnable work, java.util.function.Consumer<String> refused) { routes.add("player:" + player); work.run(); return true; }
+    @Override public boolean onGlobalOwner(Runnable work, java.util.function.Consumer<String> refused) { routes.add("global"); work.run(); return true; }
+    @Override public int message(NpcHandle npc, Optional<UUID> player, MessageTarget to, String text) { record("message:" + to + ":" + player.isPresent() + ":" + text); return delivered; }
+    @Override public int title(UUID player, Title title) { record("title:" + title.title().orElse("") + ":" + title.subtitle().orElse("") + ":" + title.fadeIn() + ":" + title.stay() + ":" + title.fadeOut()); return delivered; }
+    @Override public int actionbar(UUID player, String text) { record("actionbar:" + text); return delivered; }
+    @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) { record("sound-at-player:" + sound.sound()); return delivered; }
+    @Override public int spawnParticleAtPlayer(UUID player, Audience audience, ParticleEffect particle) { record("particle-at-player:" + particle.particle()); return delivered; }
+    @Override public boolean teleportPlayer(UUID player, NpcHandle npc, Destination to) { record("teleport-player:" + to.getClass().getSimpleName()); return true; }
+    @Override public void teleportNpc(NpcHandle npc, Destination to) { record("teleport-npc:" + to.getClass().getSimpleName()); }
+    @Override public int giveItem(UUID player, ItemGift gift) { record("give:" + gift.item() + ":" + gift.amount() + ":" + gift.name().orElse("") + ":" + gift.lore().size()); return gift.amount(); }
+    @Override public int takeItem(UUID player, String item, int amount) { record("take:" + item + ":" + amount); return Math.min(amount, taken); }
+    @Override public int giveBook(UUID player, Book book) { record("book:" + book.title() + ":" + book.pages().size()); return 1; }
     @Override public boolean hasPermission(UUID player, String node) { record("permission:" + node); return permission; }
     @Override public NpcStatus npcStatus(NpcHandle npc) { record("status"); return status; }
     @Override public boolean playerInRange(NpcHandle npc, Optional<UUID> player, double radius) {

@@ -296,8 +296,11 @@ public final class BehaviorCatalog {
         while(!pending.isEmpty())switch(pending.removeFirst()){
             case Action action->result.add(new Requirement(action.capability(),Kind.ACTION));
             case Condition condition->{result.add(new Requirement(condition.capability(),Kind.CONDITION));pending.add(condition.thenNode());pending.add(condition.elseNode());}
+            case ExpressionCondition test->{pending.add(test.thenNode());pending.add(test.elseNode());}
             case Sequence sequence->pending.addAll(sequence.steps());
             case Repeat repeat->pending.add(repeat.body());
+            case Foreach loop->pending.add(loop.body());
+            case While loop->pending.add(loop.body());
             case Parallel parallel->pending.addAll(parallel.branches());
             default->{} // Calls name routines already scanned once; do not recursively follow them.
         }
@@ -311,8 +314,11 @@ public final class BehaviorCatalog {
         while(!pending.isEmpty())switch(pending.removeFirst()){
             case Action action->checkArguments(action.path(),new Requirement(action.capability(),Kind.ACTION),action.arguments(),problems);
             case Condition condition->{checkArguments(condition.path(),new Requirement(condition.capability(),Kind.CONDITION),condition.arguments(),problems);pending.add(condition.thenNode());pending.add(condition.elseNode());}
+            case ExpressionCondition test->{pending.add(test.thenNode());pending.add(test.elseNode());}
             case Sequence sequence->pending.addAll(sequence.steps());
             case Repeat repeat->pending.add(repeat.body());
+            case Foreach loop->pending.add(loop.body());
+            case While loop->pending.add(loop.body());
             case Parallel parallel->pending.addAll(parallel.branches());
             default->{}
         }

@@ -2,6 +2,28 @@
   "schemaVersion": 1,
   "capabilities": [
     {
+      "id": "animus:actionbar",
+      "kind": "action",
+      "description": "Shows action bar text to the triggering player, or the player named by player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "text": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
       "id": "animus:advance-quest-state",
       "kind": "action",
       "description": "Advances a quest stage, by one unless by says otherwise, without passing maximum.",
@@ -218,13 +240,19 @@
             "console",
             "player"
           ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
     {
       "id": "animus:flag-state",
       "kind": "condition",
-      "description": "Compares a flag. An unset flag is false.",
+      "description": "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else.",
       "privileged": false,
       "available": true,
       "reason": "available",
@@ -246,8 +274,79 @@
           ]
         },
         "value": {
-          "type": "boolean",
+          "type": "any",
+          "required": false,
+          "description": "Any JSON value: true, false, a number, text, a list or a map"
+        }
+      }
+    },
+    {
+      "id": "animus:give-book",
+      "kind": "action",
+      "description": "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "title": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "author": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "pages": {
+          "type": "array",
+          "required": true
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
+      "id": "animus:give-item",
+      "kind": "action",
+      "description": "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name and lore. Reports given.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "item": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "amount": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 6400
+        },
+        "name": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "lore": {
+          "type": "array",
           "required": false
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -309,6 +408,38 @@
           "z"
         ]
       ]
+    },
+    {
+      "id": "animus:message",
+      "kind": "action",
+      "description": "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), or the console. {player_name} becomes the player's name.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "text": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "to": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "trigger",
+            "all",
+            "world",
+            "console"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
     },
     {
       "id": "animus:navigate",
@@ -439,6 +570,12 @@
             "shop",
             "gloss"
           ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -455,6 +592,12 @@
           "required": true,
           "minLength": 1,
           "maxLength": 256
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -499,7 +642,7 @@
     {
       "id": "animus:play-sound",
       "kind": "action",
-      "description": "Plays a sound at the NPC for the triggering player or nearby players.",
+      "description": "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -535,6 +678,20 @@
           "required": false,
           "minimum": 1.0,
           "maximum": 64.0
+        },
+        "at": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "npc",
+            "player"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -632,7 +789,7 @@
     {
       "id": "animus:say",
       "kind": "action",
-      "description": "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name.",
+      "description": "Sends dialogue text to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -656,6 +813,12 @@
           "required": false,
           "minimum": 1.0,
           "maximum": 64.0
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -728,7 +891,7 @@
     {
       "id": "animus:set-flag",
       "kind": "action",
-      "description": "Sets a flag, true unless value says otherwise.",
+      "description": "Sets a flag to value (true by default: any JSON value), optionally for expireSeconds; clear: true unsets it.",
       "privileged": false,
       "available": true,
       "reason": "available",
@@ -750,8 +913,20 @@
           ]
         },
         "value": {
-          "type": "boolean",
-          "required": false
+          "type": "any",
+          "required": false,
+          "description": "Any JSON value: true, false, a number, text, a list or a map"
+        },
+        "expireSeconds": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 31536000
+        },
+        "clear": {
+          "type": "string",
+          "required": false,
+          "const": true
         }
       }
     },
@@ -804,7 +979,7 @@
     {
       "id": "animus:spawn-particle",
       "kind": "action",
-      "description": "Shows a particle effect at the NPC to the triggering player or nearby players.",
+      "description": "Shows a particle effect at the NPC, or with at: player at the player, to the triggering player or nearby players. Server behaviors show it at the player.",
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
@@ -840,6 +1015,20 @@
           "required": false,
           "minimum": 1.0,
           "maximum": 64.0
+        },
+        "at": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "npc",
+            "player"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
         }
       }
     },
@@ -873,12 +1062,173 @@
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
       "arguments": {}
+    },
+    {
+      "id": "animus:take-item",
+      "kind": "action",
+      "description": "Takes up to amount (1 by default) of an item from the triggering player, or the player named by player. Reports taken, never more than held.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "item": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "amount": {
+          "type": "integer",
+          "required": false,
+          "minimum": 1,
+          "maximum": 6400
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      }
+    },
+    {
+      "id": "animus:teleport",
+      "kind": "action",
+      "description": "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, or to the NPC or the player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "target": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "player",
+            "npc"
+          ]
+        },
+        "x": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "y": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "z": {
+          "type": "number",
+          "required": false,
+          "minimum": -3.0E+7,
+          "maximum": 3.0E+7
+        },
+        "world": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "yaw": {
+          "type": "number",
+          "required": false,
+          "minimum": -360.0,
+          "maximum": 360.0
+        },
+        "pitch": {
+          "type": "number",
+          "required": false,
+          "minimum": -90.0,
+          "maximum": 90.0
+        },
+        "to": {
+          "type": "string",
+          "required": false,
+          "enum": [
+            "npc",
+            "player"
+          ]
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      },
+      "oneOfRequired": [
+        [
+          "x",
+          "y",
+          "z"
+        ],
+        [
+          "to"
+        ]
+      ]
+    },
+    {
+      "id": "animus:title",
+      "kind": "action",
+      "description": "Shows a title and subtitle to the triggering player, or the player named by player.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "title": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "subtitle": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "fadeIn": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000
+        },
+        "stay": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000
+        },
+        "fadeOut": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000
+        },
+        "player": {
+          "type": "string",
+          "required": false,
+          "minLength": 1,
+          "maxLength": 36
+        }
+      },
+      "oneOfRequired": [
+        [
+          "title"
+        ],
+        [
+          "subtitle"
+        ]
+      ]
     }
   ],
   "triggers": {
     "interaction": {
       "description": "A viewer's validated hit on the NPC.",
       "carriesPlayer": true,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -917,6 +1267,7 @@
     "proximity": {
       "description": "A viewer crosses a radius around the NPC.",
       "carriesPlayer": true,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -961,6 +1312,7 @@
     "spawn": {
       "description": "The runtime first presents the NPC.",
       "carriesPlayer": false,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -989,6 +1341,7 @@
     "despawn": {
       "description": "A spawned NPC is despawned.",
       "carriesPlayer": false,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1017,6 +1370,7 @@
     "damage": {
       "description": "Authoritative NPC health falls.",
       "carriesPlayer": false,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1045,6 +1399,7 @@
     "death": {
       "description": "Authoritative NPC health reaches zero.",
       "carriesPlayer": false,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1073,6 +1428,7 @@
     "waypoint": {
       "description": "The NPC arrives at a route point.",
       "carriesPlayer": false,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1106,8 +1462,9 @@
       }
     },
     "timer": {
-      "description": "An interval passes while the NPC is active.",
+      "description": "An interval passes while the NPC is active, or while the server runs in a server behavior.",
       "carriesPlayer": false,
+      "reach": "both",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1136,13 +1493,14 @@
           "required": true,
           "minimum": 1,
           "maximum": 72000,
-          "description": "Ticks between firings while the NPC is active."
+          "description": "Ticks between firings while the NPC is active. Server behaviors use at least 20."
         }
       }
     },
     "dialogue_choice": {
       "description": "A viewer clicks an option of an animus:choices prompt from this NPC.",
       "carriesPlayer": true,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1181,6 +1539,7 @@
     "module": {
       "description": "The owning module publishes a trigger.",
       "carriesPlayer": true,
+      "reach": "both",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1215,6 +1574,7 @@
     "build_finished": {
       "description": "A build this NPC works on places its last block.",
       "carriesPlayer": false,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1243,6 +1603,7 @@
     "build_paused": {
       "description": "A build this NPC works on is paused by command or starts waiting for terrain, materials or builders.",
       "carriesPlayer": false,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1271,6 +1632,7 @@
     "animation_finished": {
       "description": "An animation started by animus:play-animation reaches its end: a once clip stops, a hold clip starts holding.",
       "carriesPlayer": false,
+      "reach": "npc",
       "fields": {
         "id": {
           "type": "identifier",
@@ -1299,6 +1661,295 @@
           "required": false,
           "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$",
           "description": "An animation id under animations/. Omit for any played animation."
+        }
+      }
+    },
+    "player_join": {
+      "description": "A player joins the server. first: true matches only first joins, false only returning players.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_join"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "first": {
+          "type": "boolean",
+          "required": false,
+          "description": "true fires only on first joins, false only for returning players. Omit for every join."
+        }
+      }
+    },
+    "player_quit": {
+      "description": "A player leaves the server.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_quit"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "player_chat": {
+      "description": "A player sends a chat message, optionally matching a case-insensitive pattern with * wildcards.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_chat"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "pattern": {
+          "type": "string",
+          "required": false,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "description": "Case-insensitive match of the whole message; * matches any text. Omit for every message."
+        }
+      }
+    },
+    "command": {
+      "description": "A player or the console runs the Animus-managed command this trigger registers.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "command"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "name": {
+          "type": "string",
+          "required": true,
+          "pattern": "^[a-z0-9_-]{1,32}$",
+          "description": "The command to register, without a slash."
+        },
+        "aliases": {
+          "type": "array",
+          "required": false,
+          "description": "Other names for the command, at most 8."
+        },
+        "permission": {
+          "type": "string",
+          "required": false,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*$",
+          "description": "A permission node the sender must hold. Omit to let everyone run it."
+        },
+        "description": {
+          "type": "string",
+          "required": false,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "description": "Shown in the server's command help."
+        },
+        "usage": {
+          "type": "string",
+          "required": false,
+          "maxLength": 256,
+          "pattern": "\\S",
+          "description": "Usage text shown in the server's command help."
+        }
+      }
+    },
+    "server_start": {
+      "description": "The server behavior is first enabled after the server starts.",
+      "carriesPlayer": false,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "server_start"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "player_death": {
+      "description": "A player dies.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_death"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "player_respawn": {
+      "description": "A player respawns.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_respawn"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        }
+      }
+    },
+    "player_world_change": {
+      "description": "A player moves to another world, optionally only from or to named worlds.",
+      "carriesPlayer": true,
+      "reach": "server",
+      "fields": {
+        "id": {
+          "type": "identifier",
+          "required": true,
+          "description": "Unique within this document."
+        },
+        "event": {
+          "type": "event",
+          "required": true,
+          "const": "player_world_change"
+        },
+        "routine": {
+          "type": "routine",
+          "required": false,
+          "description": "Starts this routine instead of entry."
+        },
+        "cooldownTicks": {
+          "type": "integer",
+          "required": false,
+          "minimum": 0,
+          "maximum": 72000,
+          "description": "Overrides the configured cooldown, per trigger on each NPC."
+        },
+        "from": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "Fires only when leaving this world. Omit for any world."
+        },
+        "to": {
+          "type": "string",
+          "required": false,
+          "maxLength": 64,
+          "pattern": "\\S",
+          "description": "Fires only when entering this world. Omit for any world."
         }
       }
     }
@@ -1331,15 +1982,25 @@
           "bindings": {
             "type": "bindings",
             "required": false
+          },
+          "expressions": {
+            "type": "expressions",
+            "required": false,
+            "description": "Fills null placeholders in arguments with expression results, keyed by JSON Pointer."
+          },
+          "templates": {
+            "type": "templates",
+            "required": false,
+            "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer."
           }
         }
       },
       "condition": {
-        "description": "Tests a capability, then runs then or else.",
+        "description": "Tests a capability or an expression, then runs then or else.",
         "fields": {
           "capability": {
             "type": "capability",
-            "required": true,
+            "required": false,
             "description": "A condition capability, namespace:name."
           },
           "arguments": {
@@ -1350,6 +2011,23 @@
           "bindings": {
             "type": "bindings",
             "required": false
+          },
+          "expressions": {
+            "type": "expressions",
+            "required": false,
+            "description": "Fills null placeholders in arguments with expression results, keyed by JSON Pointer."
+          },
+          "templates": {
+            "type": "templates",
+            "required": false,
+            "description": "Fills null placeholders in arguments with template text, keyed by JSON Pointer."
+          },
+          "expression": {
+            "type": "expression",
+            "required": false,
+            "maxLength": 4096,
+            "pattern": "\\S",
+            "description": "Tested instead of a capability; must be true or false."
           },
           "then": {
             "type": "node",
@@ -1376,14 +2054,24 @@
         }
       },
       "repeat": {
-        "description": "Runs its body a fixed number of times.",
+        "description": "Runs its body a fixed or computed number of times.",
         "fields": {
           "count": {
             "type": "integer",
             "required": true,
-            "minimum": 0,
-            "maximum": 128,
-            "description": "How many times the body runs."
+            "description": "How many times the body runs: 0 to 128, or an operand computed when the loop starts."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "index": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives the 0-based pass number."
           },
           "body": {
             "type": "node",
@@ -1391,6 +2079,75 @@
             "description": "The repeated step."
           }
         }
+      },
+      "foreach": {
+        "description": "Runs its body once for each item of a list or map.",
+        "fields": {
+          "list": {
+            "type": "value",
+            "required": true,
+            "description": "An operand that evaluates to a list or map."
+          },
+          "as": {
+            "type": "variable",
+            "required": true,
+            "description": "An execution variable that receives each item."
+          },
+          "index": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives the 0-based pass number."
+          },
+          "key": {
+            "type": "variable",
+            "required": false,
+            "description": "An execution variable that receives each map key."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "body": {
+            "type": "node",
+            "required": true,
+            "description": "The repeated step."
+          }
+        }
+      },
+      "while": {
+        "description": "Runs its body while an expression is true.",
+        "fields": {
+          "expression": {
+            "type": "expression",
+            "required": true,
+            "maxLength": 4096,
+            "pattern": "\\S",
+            "description": "Checked before every pass; must be true or false."
+          },
+          "maximum": {
+            "type": "integer",
+            "required": false,
+            "minimum": 1,
+            "maximum": 1024,
+            "description": "The most passes before the run fails; 128 by default."
+          },
+          "body": {
+            "type": "node",
+            "required": true,
+            "description": "The repeated step."
+          }
+        }
+      },
+      "break": {
+        "description": "Leaves the innermost loop.",
+        "fields": {}
+      },
+      "continue": {
+        "description": "Starts the next pass of the innermost loop.",
+        "fields": {}
       },
       "parallel": {
         "description": "Runs independent branches, then joins them.",
@@ -1409,6 +2166,26 @@
             "type": "routine",
             "required": true,
             "description": "A routine of this document."
+          },
+          "arguments": {
+            "type": "arguments",
+            "required": false,
+            "description": "Declared variables assigned before the routine runs, each from a literal or operand."
+          },
+          "result": {
+            "type": "variable",
+            "required": false,
+            "description": "A declared variable that receives the routine's return value."
+          }
+        }
+      },
+      "return": {
+        "description": "Ends the current routine, optionally with a value.",
+        "fields": {
+          "value": {
+            "type": "value",
+            "required": false,
+            "description": "The value the routine returns to its call's result."
           }
         }
       },
@@ -1424,7 +2201,7 @@
           "value": {
             "type": "value",
             "required": true,
-            "description": "A literal of the variable's type, or {\"variable\": \"name\"} of the same type."
+            "description": "A literal of the variable's type, or an operand converted to it."
           }
         }
       }
@@ -1433,7 +2210,10 @@
       "boolean",
       "integer",
       "decimal",
-      "string"
+      "string",
+      "list",
+      "map",
+      "any"
     ],
     "variableScopes": [
       "execution",
@@ -1450,6 +2230,7 @@
       "schemaVersion",
       "revision",
       "id",
+      "server",
       "entry",
       "variables",
       "routines",

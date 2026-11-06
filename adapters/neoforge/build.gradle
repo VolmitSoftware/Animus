@@ -15,3 +15,5 @@ neoForge {
         }
     }
 }
+/** The mod-common tests use Brigadier, which only the game classpath provides. */
+neoForge.addModdingDependenciesTo(sourceSets.test)
