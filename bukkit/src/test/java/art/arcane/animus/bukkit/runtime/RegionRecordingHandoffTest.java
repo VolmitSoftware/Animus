@@ -178,4 +178,32 @@ class RegionRecordingHandoffTest {
         while (body.playback.run.phase() != RecordingRun.Phase.PLAYING) regions.tick(1);
         assertEquals(refused + RecordingRun.CATCH_UP_TICKS, body.cursor());
     }
+
+    @Test void aRouteStepCarriesItsSegmentAcrossAHandoffAndEndsOnToTick() {
+        FakeRegions regions = new FakeRegions().assign(1, A, B);
+        Performer body = new Performer(regions, budget(regions));
+        RegionOwner owner = new RegionOwner(UUID.randomUUID(), regions, body.budget, 8, 8, body);
+        regions.execute(A, () -> { owner.wake(); body.playback.start(RecordingRun.step(LINE, 1, 20, 140)); });
+        regions.tick(1);
+        assertEquals(10.5, body.goal.point().x(), 1e-9, "the walk in goes to the segment's first frame");
+        while (body.playback.run.phase() != RecordingRun.Phase.PLAYING) regions.tick(1);
+        while (body.at.point().x() < 16) regions.tick(1);
+        RecordingPlayback.State carried = body.playback.run.state();
+        regions.assign(2, B);
+        regions.tick(1);
+        regions.assign(2, A);
+        regions.tick(2);
+        assertTrue(body.events.contains("adopted@2"), body.events.toString());
+        RecordingRun adopted = body.playback.run;
+        assertTrue(adopted.step(), "the new owner plays a step, not the whole recording");
+        assertEquals(1, adopted.point());
+        assertEquals(140, adopted.playback().end());
+        assertEquals(carried, adopted.state());
+        assertEquals("step=recording:walk cursor=" + carried.cursor() + "/140 state=playing", adopted.describe());
+        for (int i = 0; i < 400 && body.playback.run != null; i++) regions.tick(2);
+        assertNull(body.playback.run, "the step ended");
+        assertEquals("finished", body.status);
+        assertEquals(140, body.playback.held.playback().cursor(), "the segment ends on toTick");
+        assertEquals(18.5, body.at.point().x(), 1e-9, "the body stands on the frame at toTick");
+    }
 }

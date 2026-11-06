@@ -12,6 +12,8 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
                                List<Vec3> guides, double linkDistance, Wander wander, Seed seed, StartOffset startOffset, int jitter) {
     public static final int MAXIMUM_WAIT = 12_000, DEFAULT_WAIT = 20;
     public static final int MAXIMUM_JITTER = 8, MAXIMUM_WEIGHT = 1000, MAXIMUM_JUNCTIONS = 8;
+    /** The highest fromTick or toTick a step may name; the recording itself is the real bound. */
+    public static final int MAXIMUM_STEP_TICK = 72_000;
     public static final int MAXIMUM_POINTS = 256, MAXIMUM_WANDER_CENTRES = 64, MAXIMUM_GUIDES = 1024, MAXIMUM_NODES = 1280;
     public static final double DEFAULT_LINK_DISTANCE = 32, MINIMUM_LINK_DISTANCE = 1, MAXIMUM_LINK_DISTANCE = 256;
     /** How the route chooses its next point. */
@@ -43,17 +45,42 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         }
     }
     /**
-     * One route point. A null wait or a negative jitter means the route's own value applies here. Weight steers order
-     * random; next, when not empty, replaces index + 1 in order sequence.
+     * A route point that plays the ticks {@code fromTick..toTick} of {@code recordings/<recording>.json} once. A negative
+     * toTick means the recording's durationTicks; the range is checked against the recording when it is read.
      */
-    public record Waypoint(Vec3 position, Wait waitTicks, int jitter, int weight, List<Junction> next) {
+    public record Step(String recording, int fromTick, int toTick) {
+        public static final String ID = "[a-z0-9][a-z0-9_-]{0,63}";
+        public Step {
+            if (recording == null || !recording.matches(ID) || fromTick < 0 || fromTick > MAXIMUM_STEP_TICK || toTick > MAXIMUM_STEP_TICK
+                    || (toTick >= 0 && fromTick >= toTick))
+                throw new IllegalArgumentException("Recording step exceeds native execution bounds");
+        }
+        /** The tick the segment ends on in a recording of {@code durationTicks}. */
+        public int end(int durationTicks) { return toTick < 0 ? durationTicks : toTick; }
+        /** Why the segment does not fit a recording of {@code durationTicks}, naming point {@code index}; empty when it fits. */
+        public Optional<String> problem(int index, int durationTicks) {
+            String field = "$.points[" + index + "]";
+            if (fromTick >= durationTicks)
+                return Optional.of(field + ".fromTick: " + fromTick + " is not below the durationTicks " + durationTicks + " of recording " + recording);
+            if (toTick > durationTicks)
+                return Optional.of(field + ".toTick: " + toTick + " is past the durationTicks " + durationTicks + " of recording " + recording);
+            return Optional.empty();
+        }
+    }
+    /**
+     * One route point: a position, or a recording step with no position of its own. A null wait or a negative jitter
+     * means the route's own value applies here; a step has no jitter. Weight steers order random; next, when not empty,
+     * replaces index + 1 in order sequence.
+     */
+    public record Waypoint(Vec3 position, Step step, Wait waitTicks, int jitter, int weight, List<Junction> next) {
         public Waypoint {
-            Objects.requireNonNull(position); Objects.requireNonNull(next);
-            if (jitter < -1 || jitter > MAXIMUM_JITTER || weight < 1 || weight > MAXIMUM_WEIGHT || next.size() > MAXIMUM_JUNCTIONS)
+            Objects.requireNonNull(next);
+            if ((position == null) == (step == null) || (step != null && jitter != -1)
+                    || jitter < -1 || jitter > MAXIMUM_JITTER || weight < 1 || weight > MAXIMUM_WEIGHT || next.size() > MAXIMUM_JUNCTIONS)
                 throw new IllegalArgumentException("Point settings exceed native execution bounds");
             next = List.copyOf(next);
         }
-        public Waypoint(Vec3 position) { this(position, null, -1, 1, List.of()); }
+        public Waypoint(Vec3 position) { this(position, null, null, -1, 1, List.of()); }
     }
     /** Random walking around a centre: block x and z within radius, feet height within height of the centre. */
     public record Wander(int radius, int height) {
@@ -67,6 +94,7 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
     public static final List<String> ROUTE_FIELDS = List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander",
             "seed", "startOffset", "jitter");
     private static final Set<String> POINT_FIELDS = Set.of("x", "y", "z", "waitTicks", "jitter", "weight", "next");
+    private static final Set<String> STEP_FIELDS = Set.of("recording", "fromTick", "toTick", "playback", "waitTicks", "weight", "next");
 
     public WaypointSettings {
         Objects.requireNonNull(mode); Objects.requireNonNull(order); Objects.requireNonNull(points); Objects.requireNonNull(guides);
@@ -74,7 +102,7 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         int maximum = order == Order.WANDER ? MAXIMUM_WANDER_CENTRES : MAXIMUM_POINTS;
         for (Waypoint point : points) {
             if ((point.weight() != 1 && order != Order.RANDOM) || (!point.next().isEmpty() && order != Order.SEQUENCE)
-                    || (point.jitter() > 0 && order == Order.WANDER))
+                    || (point.jitter() > 0 && order == Order.WANDER) || (point.step() != null && order == Order.WANDER))
                 throw new IllegalArgumentException("Point settings do not apply to order " + order.key());
             for (Junction junction : point.next())
                 if (junction.to() >= points.size()) throw new IllegalArgumentException("Junction leads past the last point");
@@ -92,10 +120,17 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         Wait own = points.get(point).waitTicks();
         return own != null ? own : waitTicks;
     }
-    /** The jitter radius of a point's leg goal: its own, or the route's. */
+    /** The jitter radius of a point's leg goal: its own, or the route's. A recording step has none. */
     public int jitterAt(int point) {
-        int own = points.get(point).jitter();
-        return own >= 0 ? own : jitter;
+        Waypoint at = points.get(point);
+        if (at.step() != null) return 0;
+        return at.jitter() >= 0 ? at.jitter() : jitter;
+    }
+    /** The distinct recordings the route's steps play, in point order. */
+    public Set<String> recordings() {
+        Set<String> recordings = new LinkedHashSet<>();
+        for (Waypoint point : points) if (point.step() != null) recordings.add(point.step().recording());
+        return recordings;
     }
     /**
      * Every order but a once sequence, and a pingpong over more than one point, keeps walking forever. A once sequence
@@ -212,9 +247,18 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
         for (int index = 0; index < array.size(); index++) {
             String field = "points[" + index + "]";
             JsonObject point = object(array.get(index), field);
-            for (String key : point.keySet())
-                if (!POINT_FIELDS.contains(key)) throw new IllegalArgumentException(field + "." + key + ": unknown field");
-            Vec3 position = coordinate(point, field, mode);
+            boolean recording = point.has("recording");
+            if (recording && order == Order.WANDER) throw new IllegalArgumentException(field + ".recording: a recording step is not allowed with order wander");
+            for (String key : point.keySet()) {
+                if (recording && (key.equals("x") || key.equals("y") || key.equals("z")))
+                    throw new IllegalArgumentException(field + "." + key + ": a recording step has no position; it starts at the segment's first frame");
+                if (recording && key.equals("jitter")) throw new IllegalArgumentException(field + ".jitter: a recording step has no jitter");
+                if (!recording && (key.equals("fromTick") || key.equals("toTick") || key.equals("playback")))
+                    throw new IllegalArgumentException(field + "." + key + ": requires recording");
+                if (!(recording ? STEP_FIELDS : POINT_FIELDS).contains(key)) throw new IllegalArgumentException(field + "." + key + ": unknown field");
+            }
+            Vec3 position = recording ? null : coordinate(point, field, mode);
+            Step step = recording ? step(point, field) : null;
             Wait own = point.has("waitTicks") ? wait(point.get("waitTicks"), field + ".waitTicks") : null;
             if (point.has("jitter") && order == Order.WANDER) throw new IllegalArgumentException(field + ".jitter is not allowed with order wander");
             int ownJitter = point.has("jitter") ? jitter(point.get("jitter"), field + ".jitter") : -1;
@@ -222,7 +266,7 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             int weight = point.has("weight") ? weight(point.get("weight"), field + ".weight") : 1;
             if (point.has("next") && order != Order.SEQUENCE) throw new IllegalArgumentException(field + ".next is only allowed with order sequence");
             List<Junction> next = point.has("next") ? junctions(point.get("next"), field + ".next", array.size()) : List.of();
-            points.add(new Waypoint(position, own, ownJitter, weight, next));
+            points.add(new Waypoint(position, step, own, ownJitter, weight, next));
         }
         List<Vec3> guides = new ArrayList<>();
         if (data.has("guides")) {
@@ -276,6 +320,25 @@ public record WaypointSettings(MovementProfile.Mode mode, double speed, Order or
             junctions.add(new Junction(to, junction.has("weight") ? weight(junction.get("weight"), entry + ".weight") : 1));
         }
         return junctions;
+    }
+    private static Step step(JsonObject point, String field) {
+        JsonElement reference = point.get("recording");
+        if (!reference.isJsonPrimitive() || !reference.getAsJsonPrimitive().isString() || !reference.getAsString().matches(Step.ID))
+            throw new IllegalArgumentException(field + ".recording: expected 1-64 lowercase letters, digits, _ or -");
+        int from = point.has("fromTick") ? stepTick(point.get("fromTick"), field + ".fromTick") : 0;
+        int to = point.has("toTick") ? stepTick(point.get("toTick"), field + ".toTick") : -1;
+        if (to >= 0 && from >= to) throw new IllegalArgumentException(field + ".fromTick: must be below toTick");
+        if (point.has("playback")) {
+            JsonElement playback = point.get("playback");
+            if (!playback.isJsonPrimitive() || !playback.getAsJsonPrimitive().isString() || !playback.getAsString().equals("once"))
+                throw new IllegalArgumentException(field + ".playback: a recording step plays once; loop and pingpong never end, and a route must go on");
+        }
+        return new Step(reference.getAsString(), from, to);
+    }
+    private static int stepTick(JsonElement value, String field) {
+        int tick = whole(value, field);
+        if (tick < 0 || tick > MAXIMUM_STEP_TICK) throw new IllegalArgumentException(field + " must be 0.." + MAXIMUM_STEP_TICK);
+        return tick;
     }
     private static <E extends Enum<E>> E choice(JsonElement value, String field, Class<E> type, String allowed) {
         if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString() || !value.getAsString().matches("[a-z]+"))

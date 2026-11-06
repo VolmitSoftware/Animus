@@ -151,6 +151,56 @@ class WaypointSettingsTest {
         assertTrue(WaypointSettings.document("{\"schemaVersion\":1,\"points\":[{\"x\":0,\"y\":1,\"z\":0},{\"x\":1,\"y\":1,\"z\":0,\"next\":[{\"to\":0}]},"+end+"]}").endless());
         assertTrue(WaypointSettings.document("{\"schemaVersion\":1,\"loop\":true,\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"next\":[{\"to\":1}]},"+end+"]}").endless());
     }
+    private static final String STEP="{\"recording\":\"walk\",\"fromTick\":40,\"toTick\":400,\"playback\":\"once\"}";
+    @Test void aRecordingStepIsAPointWithoutAPositionAndTakesItsDefaults() throws Exception {
+        WaypointSettings mixed=WaypointSettings.document("{\"schemaVersion\":1,\"loop\":true,\"jitter\":2,\"points\":[{\"x\":0,\"y\":1,\"z\":0},"+STEP
+                +",{\"recording\":\"market-loop\",\"waitTicks\":[5,9]},{\"x\":4,\"y\":1,\"z\":0}]}");
+        assertEquals(4,mixed.points().size());
+        WaypointSettings.Waypoint step=mixed.points().get(1);
+        assertNull(step.position());assertEquals(new WaypointSettings.Step("walk",40,400),step.step());
+        assertEquals(new WaypointSettings.Step("market-loop",0,-1),mixed.points().get(2).step());
+        assertEquals(new WaypointSettings.Wait(5,9),mixed.waitAfter(2));
+        assertEquals(0,mixed.jitterAt(1),"a step has no jitter, not even the route's");assertEquals(2,mixed.jitterAt(0));
+        assertEquals(java.util.List.of("walk","market-loop"),java.util.List.copyOf(mixed.recordings()));
+        assertEquals(1200,mixed.points().get(2).step().end(1200));assertEquals(400,step.step().end(1200));
+        assertTrue(WaypointSettings.document("{\"schemaVersion\":1,\"order\":\"random\",\"points\":[{\"x\":0,\"y\":1,\"z\":0},{\"recording\":\"walk\",\"weight\":7}]}")
+                .points().get(1).weight()==7);
+        assertTrue(WaypointSettings.document("{\"schemaVersion\":1,\"order\":\"pingpong\",\"points\":[{\"x\":0,\"y\":1,\"z\":0},"+STEP+"]}").endless());
+        assertEquals(1,WaypointSettings.document("{\"schemaVersion\":1,\"points\":[{\"recording\":\"walk\",\"next\":[{\"to\":1}]},{\"x\":0,\"y\":1,\"z\":0}]}")
+                .points().getFirst().next().getFirst().to());
+        assertTrue(WaypointSettings.parse(definition("{\"enabled\":true,\"points\":["+STEP+"]}",false)).orElseThrow().points().getFirst().step()!=null,
+                "inline routes take steps too");
+        assertTrue(WaypointSettings.document("{\"schemaVersion\":1,\"mode\":\"walk\",\"points\":["+STEP+",{\"x\":0,\"y\":1,\"z\":0}]}").points().size()==2,
+                "a step needs no whole-block height");
+    }
+    @Test void recordingStepShapeErrorsNameTheField() {
+        String one="{\"x\":0,\"y\":1,\"z\":0}";
+        assertEquals("$.points[1].fromTick: must be below toTick",route("\"points\":["+one+",{\"recording\":\"walk\",\"fromTick\":40,\"toTick\":40}]"));
+        assertTrue(route("\"points\":["+one+",{\"recording\":\"walk\",\"fromTick\":-1}]").startsWith("$.points[1].fromTick"));
+        assertTrue(route("\"points\":["+one+",{\"recording\":\"walk\",\"toTick\":2.5}]").startsWith("$.points[1].toTick"));
+        assertTrue(route("\"points\":["+one+",{\"recording\":\"walk\",\"toTick\":72001}]").startsWith("$.points[1].toTick"));
+        assertTrue(route("\"points\":[{\"recording\":\"walk\",\"playback\":\"loop\"}]").startsWith("$.points[0].playback: a recording step plays once"));
+        assertTrue(route("\"points\":[{\"recording\":\"walk\",\"playback\":\"pingpong\"}]").startsWith("$.points[0].playback"));
+        assertTrue(route("\"points\":[{\"recording\":\"../walk\"}]").startsWith("$.points[0].recording"));
+        assertTrue(route("\"points\":[{\"recording\":\"walk\",\"x\":0}]").startsWith("$.points[0].x: a recording step has no position"));
+        assertEquals("$.points[0].jitter: a recording step has no jitter",route("\"points\":[{\"recording\":\"walk\",\"jitter\":2}]"));
+        assertEquals("$.points[0].toTick: requires recording",route("\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"toTick\":4}]"));
+        assertEquals("$.points[0].speed: unknown field",route("\"points\":[{\"recording\":\"walk\",\"speed\":2}]"));
+        assertTrue(route("\"order\":\"wander\",\"points\":[{\"recording\":\"walk\"}]").startsWith("$.points[0].recording: a recording step is not allowed with order wander"));
+        assertTrue(route("\"points\":[{\"recording\":\"walk\",\"weight\":2}]").startsWith("$.points[0].weight is only allowed with order random"));
+    }
+    @Test void recordingStepsCountTowardsThePointAndNodeCaps() throws Exception {
+        String steps=String.join(",",java.util.Collections.nCopies(128,"{\"recording\":\"walk\"}"));
+        assertEquals(256,WaypointSettings.document("{\"schemaVersion\":1,\"order\":\"random\",\"points\":["+steps+","+points(128)+"],\"guides\":["+points(1024)+"]}").points().size());
+        assertTrue(route("\"points\":["+steps+","+points(129)+"]").startsWith("$.points requires"));
+    }
+    @Test void aStepRangeIsCheckedAgainstTheRecording() {
+        WaypointSettings.Step step=new WaypointSettings.Step("walk",40,400);
+        assertTrue(step.problem(1,400).isEmpty());
+        assertEquals("$.points[1].toTick: 400 is past the durationTicks 300 of recording walk",step.problem(1,300).orElseThrow());
+        assertEquals("$.points[2].fromTick: 40 is not below the durationTicks 40 of recording walk",new WaypointSettings.Step("walk",40,-1).problem(2,40).orElseThrow());
+        assertEquals("$.points[2].fromTick: 50 is not below the durationTicks 40 of recording walk",new WaypointSettings.Step("walk",50,-1).problem(2,40).orElseThrow());
+    }
     private static String route(String fields) {
         return assertThrows(IllegalArgumentException.class,()->WaypointSettings.document("{\"schemaVersion\":1,"+fields+"}"),fields).getMessage();
     }

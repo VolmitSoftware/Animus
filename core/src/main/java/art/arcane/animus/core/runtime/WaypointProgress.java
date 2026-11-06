@@ -1,6 +1,7 @@
 package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.navigation.WaypointSettings;
+import art.arcane.animus.core.recording.RouteRecordings;
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.*;
 import java.util.random.RandomGenerator;
@@ -15,12 +16,18 @@ public final class WaypointProgress {
     public static final String INLINE = "inline";
     /**
      * One leg: walk to goal after waitTicks, then report arrival. Goal is the route node's point, or that point moved by
-     * the route's jitter. A pause leg has no goal; once its wait ends the runtime asks {@link #resume} for a fresh leg.
+     * the route's jitter. A pause leg has no goal; once its wait ends the runtime asks {@link #resume} for a fresh leg. A
+     * step leg has no goal either: after its wait the runtime walks to the segment's first frame, plays the segment and
+     * reports arrival where it ends.
      */
-    public record Leg(Vec3 goal, Vec3 point, int arrival, int waitTicks) {
-        public Leg { if (waitTicks < 0) throw new IllegalArgumentException("Negative wait"); }
+    public record Leg(Vec3 goal, Vec3 point, int arrival, int waitTicks, WaypointSettings.Step step) {
+        public Leg {
+            if (waitTicks < 0) throw new IllegalArgumentException("Negative wait");
+            if (step != null && (goal != null || arrival < 0)) throw new IllegalArgumentException("A step leg has no goal of its own");
+        }
+        public Leg(Vec3 goal, Vec3 point, int arrival, int waitTicks) { this(goal, point, arrival, waitTicks, null); }
         public static Leg pause(int waitTicks) { return new Leg(null, null, -1, waitTicks); }
-        public boolean pause() { return goal == null; }
+        public boolean pause() { return goal == null && step == null; }
         /** The goal lies off the point, so a goal that cannot be planned falls back to the point once. */
         public boolean jittered() { return goal != null && !goal.equals(point); }
     }
@@ -33,6 +40,7 @@ public final class WaypointProgress {
     private int next, step = 1, node = -1, wanderCentre;
     private final ArrayDeque<Integer> path = new ArrayDeque<>();
     private int[][] links;
+    private RouteRecordings recordings;
 
     public WaypointProgress(WaypointSettings settings, Vec3 home, RandomGenerator random) {
         this.settings = Objects.requireNonNull(settings); this.home = Objects.requireNonNull(home); this.random = Objects.requireNonNull(random);
@@ -47,7 +55,12 @@ public final class WaypointProgress {
         return new WaypointProgress(settings, home, new SplittableRandom(seed));
     }
     public WaypointSettings settings() { return settings; }
+    /** The recordings this route load read for its steps; null until they are read. */
+    public RouteRecordings recordings() { return recordings; }
+    public void recordings(RouteRecordings loaded) { recordings = Objects.requireNonNull(loaded); }
     public boolean complete() { return complete; }
+    /** The leg is the one this progress expects an arrival or failure for. */
+    public boolean current(Leg leg) { return !complete && leg != null && leg == current; }
     /** Random and wander routes retry a failed leg instead of halting. */
     public boolean retries() { return settings.order() == WaypointSettings.Order.RANDOM || settings.order() == WaypointSettings.Order.WANDER; }
     public boolean reload(WaypointSettings replacement) {
@@ -119,7 +132,11 @@ public final class WaypointProgress {
     }
     private Optional<Leg> issue(Leg leg) { current = leg; return Optional.of(leg); }
     private Optional<Leg> finish() { complete = true; current = null; return Optional.empty(); }
-    private Leg point(int index, int wait) { Vec3 at = settings.points().get(index).position(); return new Leg(jitter(at, settings.jitterAt(index)), at, index, wait); }
+    private Leg point(int index, int wait) {
+        WaypointSettings.Waypoint point = settings.points().get(index);
+        if (point.step() != null) return new Leg(null, null, index, wait, point.step());
+        return new Leg(jitter(point.position(), settings.jitterAt(index)), point.position(), index, wait);
+    }
     /** A fixed wait draws nothing, so routes without ranges keep the choices they made before ranges existed. */
     private int draw(WaypointSettings.Wait wait) { return wait.min() == wait.max() ? wait.min() : random.nextInt(wait.min(), wait.max() + 1); }
     /** A whole-block x and z offset within the radius; the height stays the point's. */
@@ -139,6 +156,9 @@ public final class WaypointProgress {
 
     // ---- Guided random destinations ----
 
+    /** A recording step has no position, so it is no link node: a route goes to it directly and leaves it from where it ended. */
+    private boolean step(int index) { return index >= 0 && index < settings.points().size() && settings.points().get(index).step() != null; }
+    /** The node's position; null for a recording step. */
     private Vec3 nodePosition(int index) {
         int points = settings.points().size();
         return index < points ? settings.points().get(index).position() : settings.guides().get(index - points);
@@ -149,10 +169,11 @@ public final class WaypointProgress {
     }
     private Leg choose(Vec3 position, int wait) {
         path.clear();
-        int points = settings.points().size();
-        int destination = points == 1 ? 0 : weighted(node >= 0 && node < points ? node : -1);
-        if (destination == node) return Leg.pause(retryDelay());
-        List<Integer> found = route(position, destination);
+        int points = settings.points().size(), excluded = node >= 0 && node < points ? node : -1;
+        if (step(node)) node = -1;
+        int destination = points == 1 ? 0 : weighted(excluded);
+        if (destination == excluded) return Leg.pause(retryDelay());
+        List<Integer> found = step(destination) ? List.of(destination) : route(position, destination);
         if (found.isEmpty()) return Leg.pause(retryDelay());
         path.addAll(found);
         return hop(wait);
@@ -175,7 +196,7 @@ public final class WaypointProgress {
         List<List<Integer>> adjacent = new ArrayList<>(count);
         for (int i = 0; i < count; i++) adjacent.add(new ArrayList<>());
         for (int i = 0; i < count; i++) for (int j = i + 1; j < count; j++)
-            if (linked(nodes[i], nodes[j])) { adjacent.get(i).add(j); adjacent.get(j).add(i); }
+            if (nodes[i] != null && nodes[j] != null && linked(nodes[i], nodes[j])) { adjacent.get(i).add(j); adjacent.get(j).add(i); }
         int[][] built = new int[count][];
         for (int i = 0; i < count; i++) built[i] = adjacent.get(i).stream().mapToInt(Integer::intValue).toArray();
         links = built;
@@ -202,7 +223,7 @@ public final class WaypointProgress {
             boolean guided = !settings.guides().isEmpty();
             for (int i = guided ? points : 0; i < count; i++) {
                 Vec3 at = nodePosition(i);
-                if (!linked(position, at)) continue;
+                if (at == null || !linked(position, at)) continue;
                 double start = position.distance(at);
                 if (start < cost[i]) { cost[i] = start; open.add(new double[]{start + at.distance(goal), i}); }
             }
@@ -226,6 +247,7 @@ public final class WaypointProgress {
         if (closest == node && node < 0) {
             // A free position linked to nothing: first the guide (or point) nearest to it, then on to the destination.
             for (int i = guidesFrom; i < count; i++) {
+                if (step(i)) continue;
                 double distance = position.distance(nodePosition(i));
                 if (closest < 0 || distance < nearest) { nearest = distance; closest = i; }
             }

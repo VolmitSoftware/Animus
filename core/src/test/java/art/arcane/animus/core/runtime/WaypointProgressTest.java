@@ -249,4 +249,53 @@ class WaypointProgressTest {
         WaypointProgress once = progress(route("\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"next\":[{\"to\":2}]},{\"x\":2,\"y\":1,\"z\":0},{\"x\":4,\"y\":1,\"z\":0}]"), 1);
         assertEquals(List.of(0, 2), walk(once, 10)); assertTrue(once.complete());
     }
+    private static final String STEP = "{\"recording\":\"walk\",\"fromTick\":10,\"toTick\":50}";
+    /** Like {@link #walk}, but a step leg arrives where its segment ended, here at x 100. */
+    private static List<String> legs(WaypointProgress progress, int legs) {
+        List<String> walked = new ArrayList<>();
+        Optional<WaypointProgress.Leg> leg = progress.start(HOME);
+        while (leg.isPresent() && walked.size() < legs) {
+            WaypointProgress.Leg current = leg.get();
+            if (current.pause()) { leg = progress.resume(current, HOME); continue; }
+            walked.add((current.step() == null ? "p" : "s") + current.arrival());
+            leg = progress.arrived(current, current.step() == null ? current.goal() : new Vec3(100, 1, 0));
+        }
+        return walked;
+    }
+    @Test void aStepLegHasNoGoalAndCarriesItsSegmentInSequence() throws Exception {
+        WaypointSettings mixed = route("\"waitTicks\":5,\"jitter\":3,\"points\":[{\"x\":0,\"y\":1,\"z\":0}," + STEP.replace("}", ",\"waitTicks\":30}") + ",{\"x\":4,\"y\":1,\"z\":0}]");
+        WaypointProgress progress = progress(mixed, 1);
+        WaypointProgress.Leg first = progress.start(HOME).orElseThrow();
+        WaypointProgress.Leg step = progress.arrived(first, first.goal()).orElseThrow();
+        assertEquals(1, step.arrival()); assertNull(step.goal()); assertFalse(step.pause()); assertFalse(step.jittered());
+        assertEquals(new WaypointSettings.Step("walk", 10, 50), step.step()); assertEquals(5, step.waitTicks(), "the wait before a step is the previous point's");
+        assertTrue(progress.current(step)); assertTrue(progress.exact(step).isEmpty(), "a step has no exact-point fallback");
+        WaypointProgress.Leg last = progress.arrived(step, new Vec3(100, 1, 0)).orElseThrow();
+        assertEquals(2, last.arrival()); assertEquals(30, last.waitTicks(), "the step's own wait applies after it");
+        assertFalse(progress.current(step));
+        assertEquals(List.of("p0", "s1", "p2", "p0", "s1"), legs(progress(route("\"loop\":true,\"points\":[{\"x\":0,\"y\":1,\"z\":0}," + STEP + ",{\"x\":4,\"y\":1,\"z\":0}]"), 1), 5));
+        WaypointProgress halted = progress(mixed, 1);
+        WaypointProgress.Leg start = halted.start(HOME).orElseThrow();
+        WaypointProgress.Leg blocked = halted.arrived(start, start.goal()).orElseThrow();
+        assertTrue(halted.failed(blocked).isEmpty(), "a blocked step halts a sequence like any failed leg");
+    }
+    @Test void stepsTakePartInPingpongAndJunctions() throws Exception {
+        assertEquals(List.of("s0", "p1", "s2", "p1", "s0", "p1"),
+                legs(progress(route("\"order\":\"pingpong\",\"points\":[" + STEP + ",{\"x\":0,\"y\":1,\"z\":0}," + STEP + "]"), 1), 6));
+        WaypointSettings fork = route("\"loop\":true,\"points\":[{\"x\":0,\"y\":1,\"z\":0,\"next\":[{\"to\":1},{\"to\":2}]}," + STEP.replace("}", ",\"next\":[{\"to\":0}]}")
+                + ",{\"x\":4,\"y\":1,\"z\":0}]");
+        List<String> walked = legs(progress(fork, 13), 200);
+        assertTrue(walked.contains("s1") && walked.contains("p2"), walked.toString());
+        for (int i = 0; i + 1 < walked.size(); i++) if (walked.get(i).equals("s1")) assertEquals("p0", walked.get(i + 1), "the step's junction leads back to 0");
+    }
+    @Test void randomOrderGoesToAStepDirectlyAndLeavesItFromWhereItEnded() throws Exception {
+        WaypointSettings guided = route("\"order\":\"random\",\"linkDistance\":3,\"points\":[{\"x\":0,\"y\":1,\"z\":0},{\"x\":8,\"y\":1,\"z\":0},"
+                + STEP.replace("}", ",\"weight\":5}") + "],\"guides\":[{\"x\":2,\"y\":1,\"z\":0},{\"x\":4,\"y\":1,\"z\":0},{\"x\":6,\"y\":1,\"z\":0}]");
+        List<String> walked = legs(progress(guided, 3), 300);
+        long steps = walked.stream().filter((String leg) -> leg.equals("s2")).count();
+        assertTrue(steps > 40, "the heavy step is chosen often: " + walked);
+        for (int i = 0; i + 1 < walked.size(); i++) assertFalse(walked.get(i).equals("s2") && walked.get(i + 1).equals("s2"), "a step never follows itself");
+        assertEquals(walked, legs(progress(guided, 3), 300));
+        assertEquals(List.of("s0"), legs(progress(route("\"order\":\"random\",\"points\":[" + STEP + "]"), 1), 1));
+    }
 }
