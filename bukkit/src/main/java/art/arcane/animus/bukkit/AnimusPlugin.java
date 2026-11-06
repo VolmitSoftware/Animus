@@ -27,6 +27,8 @@ import art.arcane.animus.bukkit.gui.BukkitGlossBridge;
 import art.arcane.animus.bukkit.gui.BukkitHoloEvents;
 import art.arcane.animus.bukkit.gui.BukkitScreens;
 import art.arcane.animus.bukkit.packet.NativeDisplayAdapter;
+import art.arcane.animus.bukkit.recording.RecordCommand;
+import art.arcane.animus.bukkit.recording.RecordingSessions;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.presentation.DisplayTransport;
 import art.arcane.animus.bukkit.runtime.BukkitRuntimeHost;
@@ -91,6 +93,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private Executor commands;
     private ReplyScheduler replies;
     private PacketProofService proof;
+    private RecordingSessions recordings;
     private FoliaStationaryProofService foliaProof;
     private NpcRuntime<Player, ItemStack> living;
     private RuntimeCombatService combat;
@@ -233,6 +236,8 @@ public final class AnimusPlugin extends JavaPlugin {
             if (foliaProof != null) extras.put("foliaproof", new FoliaProofCommand());
             extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsRefusal())));
             extras.put("editor", new EditorCommands(() -> editor, commands));
+            recordings = new RecordingSessions(this, runtime, commands, regions, environment.minecraftVersion());
+            extras.put("record", new RecordCommand(recordings, getServer()::getPlayer));
             AnimusRuntime measuredRuntime = runtime;
             extras.put("debug", new DebugCommands(() -> metrics, debugWatch,
                     (String id) -> measuredRuntime.isRunning() ? measuredRuntime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
@@ -282,6 +287,7 @@ public final class AnimusPlugin extends JavaPlugin {
         editor = null;
         if (activeEditor != null) activeEditor.close();
         animusCommands = null;
+        if (recordings != null) { recordings.close(); recordings = null; }
         ReactBridge bridge = react;
         react = null;
         if (bridge != null) bridge.close();
