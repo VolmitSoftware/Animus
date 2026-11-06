@@ -178,6 +178,7 @@
 
 ### Fixed
 
+- NPC previews in the web editor wear their real skin, fetched from the skin's texture URL.
 - A builder standing inside its target block walks aside instead of teleporting.
 - A valid NPC edit is no longer refused because another NPC file is invalid.
 - Imported Citizens routes with no saved `avoidwater` swim across water as Citizens does.

@@ -304,6 +304,24 @@ class LiveSession {
         _notice(NoticeLevel.success, 'Opened ${changes.length} document${changes.length == 1 ? '' : 's'} from the server.');
       });
 
+  final Set<String> _skinsAsked = <String>{};
+
+  /// Adds the skin document an opened NPC names, once per session and
+  /// without a notice, so its preview can read the model and texture URL.
+  /// Waits for the connection; a transport failure lets a later call retry.
+  Future<void> openSkin(String hash) async {
+    if (!online || store.document(DocumentKind.skin, hash) != null || !_skinsAsked.add(hash)) return;
+    final (ServerBase?, List<Diagnostic>)? fetched = await _fetch(DocumentKind.skin, hash);
+    if (fetched == null) _skinsAsked.remove(hash);
+    final ServerBase? base = fetched?.$1;
+    if (base == null || store.document(DocumentKind.skin, hash) != null) return;
+    await store.commit(
+      documents: <DocumentChange>[DocumentChange(DocumentKind.skin, hash, prettyJson(base.source), path: base.path)],
+      server: (ServerBinding binding) => binding.copyWith(bases: <String, ServerBase>{...binding.bases, documentKey(DocumentKind.skin, hash): base}),
+      undoable: false,
+    );
+  }
+
   List<Map<String, Object?>> _changes(List<DraftChange> drafts) =>
       <Map<String, Object?>>[for (final DraftChange draft in drafts) if (draft.change != null) draft.change!];
 
