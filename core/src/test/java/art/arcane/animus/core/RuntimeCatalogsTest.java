@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
@@ -17,7 +18,7 @@ class RuntimeCatalogsTest {
         try (AnimusRuntime runtime = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root))) {
             runtime.start();
             RuntimeCatalogs catalogs = new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> ran.add("refresh"), () -> null,
-                    () -> ran.add("shops"), () -> ran.add("holograms"), (String line) -> {}));
+                    () -> queued(ran, "shops"), () -> queued(ran, "holograms"), (String line) -> {}));
             catalogs.reload(new CatalogChange(Set.of(DocumentKind.SHOP), Set.of(), false));
             assertEquals(List.of("shops"), ran);
             ran.clear();
@@ -29,6 +30,26 @@ class RuntimeCatalogsTest {
             ran.clear();
             catalogs.reload(new CatalogChange(Set.of(DocumentKind.NPC), Set.of(), false));
             assertEquals(List.of("refresh"), ran);
+        }
+    }
+
+    private static CompletableFuture<?> queued(List<String> ran, String name) {
+        ran.add(name);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Test void theResultCompletesOnlyOnceEveryQueuedReloadIsLive() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(RuntimeEnvironment.bukkit("26.3", root))) {
+            runtime.start();
+            CompletableFuture<Void> shops = new CompletableFuture<>(), holograms = new CompletableFuture<>();
+            RuntimeCatalogs catalogs = new RuntimeCatalogs(new RuntimeCatalogs.Parts(runtime, () -> {}, () -> null, () -> shops, () -> holograms, (String line) -> {}));
+            CompletableFuture<Void> live = catalogs.reloaded(new CatalogChange(Set.of(DocumentKind.SHOP, DocumentKind.MENU), Set.of(), false), (String problem) -> {});
+            assertFalse(live.isDone());
+            shops.complete(null);
+            assertFalse(live.isDone());
+            holograms.complete(null);
+            assertTrue(live.isDone());
+            assertTrue(catalogs.reloaded(new CatalogChange(Set.of(DocumentKind.NPC), Set.of(), false), (String problem) -> {}).isDone());
         }
     }
 
