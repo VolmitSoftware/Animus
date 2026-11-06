@@ -565,14 +565,15 @@ async function local(browser, viewport, tag, theme) {
   await shot(page, `${tag}-12-skin`);
   await noSidewaysScroll(page, `${tag} skin`);
 
-  // Conversation of the ferryman's behavior.
+  // The ferryman's behavior opens on its Conversation tab.
   await page.goto(`${site}/${base}/behavior/harbor%3Aferryman`);
-  const conversation = page.getByRole('group', {name: 'Conversation'});
-  await conversation.waitFor();
-  assert.equal(await conversation.getByLabel('Prompt ferry', {exact: true}).inputValue(), 'Need a crossing?');
-  assert.equal(await conversation.getByLabel('Prompt fare', {exact: true}).inputValue(), 'Pay now or later?');
-  await conversation.getByText('trigger pay runs paid').waitFor();
-  await conversation.getByLabel('Answer no of ferry', {exact: true}).fill('Not today');
+  await page.waitForFunction(() => location.hash.includes('view=conversation'));
+  const conversation = page.getByRole('region', {name: 'Conversation'});
+  await conversation.locator('[data-block="main"]').waitFor();
+  assert.equal(await page.locator('[id="conv-prompt:main:2"]').inputValue(), 'Need a crossing?');
+  assert.equal(await page.locator('[id="conv-prompt:cross:1"]').inputValue(), 'Pay now or later?');
+  await conversation.locator('[data-block="cross"] [data-option="now"] [data-block="paid"]').waitFor();
+  await page.locator('[id="conv-option:main:2:1"]').fill('Not today');
   await settle(page);
   await shot(page, `${tag}-13-dialogue`);
   json = await codeOf(page);

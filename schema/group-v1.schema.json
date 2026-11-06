@@ -35,6 +35,7 @@
         "usingItem": {"type": "boolean"},
         "listed": {"type": "boolean"},
         "gravity": {"type": "boolean"},
+        "attributes": {"type": "object", "description": "Vanilla attribute ids mapped to base values; merged attribute by attribute with the NPC's, minecraft: ids counting as bare ones."},
         "skin": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "skins": {
           "type": "array",

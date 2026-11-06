@@ -110,6 +110,11 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset);
     void setEquipment(String id, EquipmentSlot slot, I item);
     /**
+     * Sets one vanilla attribute for the running NPC, or with an empty value returns it to the definition's value. The
+     * change lasts until the definition is applied again; see {@link RuntimeAttributes}.
+     */
+    void setAttribute(String id, String attribute, java.util.OptionalDouble value);
+    /**
      * Plays an animation of the NPC's rig on a layer (0-3) at a speed (0.25-4), optionally overriding its loop mode
      * ({@code once}, {@code loop}, {@code pingpong} or {@code hold}). Throws {@link IllegalStateException} when the NPC
      * has no rig and {@link IllegalArgumentException} for an unknown animation.

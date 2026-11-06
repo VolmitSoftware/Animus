@@ -250,8 +250,13 @@ class _ShellSidebarState extends State<ShellSidebar> {
           dom.nav(classes: 'animus-new', attributes: const <String, String>{'aria-label': 'Workspace'}, <Widget>[
             dom.a(
               href: NewDocumentRoute(workspace.id).format(),
-              classes: 'animus-side-link is-primary${route is NewDocumentRoute ? ' is-selected' : ''}',
+              classes: 'animus-side-link is-primary${route is NewDocumentRoute && !route.conversation ? ' is-selected' : ''}',
               const <Widget>[Component.text('New document')],
+            ),
+            dom.a(
+              href: NewDocumentRoute.conversation(workspace.id).format(),
+              classes: 'animus-side-link${route is NewDocumentRoute && route.conversation ? ' is-selected' : ''}',
+              const <Widget>[Component.text('New conversation')],
             ),
             if (workspace.server == null)
               dom.a(

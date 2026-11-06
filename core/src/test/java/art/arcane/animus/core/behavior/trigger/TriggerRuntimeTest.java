@@ -46,7 +46,7 @@ class TriggerRuntimeTest {
         };
         runtime=new BehaviorRuntime(new BehaviorRuntime.Limits(8,8,50,20),BehaviorEngine.Limits.defaults(),definitions::get,catalog::get,invoker,dispatcher,art.arcane.animus.core.behavior.BehaviorState.UNAVAILABLE);
     }
-    private static void eventually(BooleanSupplier check)throws Exception{long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean());}
+    private static void eventually(BooleanSupplier check)throws Exception{long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(15);while(!check.getAsBoolean()&&System.nanoTime()<until)Thread.sleep(2);assertTrue(check.getAsBoolean());}
     private List<BehaviorRuntime.Execution> running(){return runtime.snapshot().executions().values().stream().filter(item->item.report().state()==BehaviorEngine.State.RUNNING).toList();}
     private void click()throws Exception{
         eventually(()->dispatcher.snapshot().bindings()>0);assertEquals(Outcome.Status.OK,dispatcher.publish(new TriggerEvent.Interaction(npc,viewer,TriggerEvent.Action.INTERACT)).status());

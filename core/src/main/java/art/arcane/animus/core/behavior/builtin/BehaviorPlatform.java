@@ -125,6 +125,8 @@ public interface BehaviorPlatform {
     void setAppearance(NpcHandle npc, AppearanceChange change);
     /** An empty item clears the slot. */
     void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item);
+    /** Sets one vanilla attribute (a bare id) until the definition is applied again; an empty value returns it to the definition's. */
+    void setAttribute(NpcHandle npc, String attribute, java.util.OptionalDouble value);
     int playSound(NpcHandle npc, Audience audience, SoundEffect sound);
     int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect particle);
     void combat(NpcHandle npc, CombatOperation operation, Optional<UUID> target);

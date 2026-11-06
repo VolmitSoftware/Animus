@@ -29,6 +29,11 @@ public record NpcAppearance(Map<EquipmentSlot, NpcItem> equipment, List<String> 
         this(equipment, hologram, nameplateVisible, pose, armorStand, HologramStyle.DEFAULT, BodyTraits.DEFAULT);
     }
 
+    /** This appearance with other attributes, as a runtime attribute change presents it. */
+    public NpcAppearance withAttributes(NpcAttributes attributes) {
+        return new NpcAppearance(equipment, hologram, nameplateVisible, pose, armorStand, hologramStyle, traits.withAttributes(attributes));
+    }
+
     /** Names and text lines: at most 256 UTF-16 units, no control characters. */
     public static boolean displayText(String text) {
         return text != null && text.length() <= MAX_TEXT && text.codePoints().noneMatch(Character::isISOControl);

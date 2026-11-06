@@ -186,7 +186,7 @@ class NpcAppearanceTest {
     @Test void bodyTraitsParseAndValidate() throws IOException {
         NpcAppearance look = NpcAppearance.of(NpcDefinition.parse(JsonDocuments.write(definition("minecraft:cow",
                 "\"glowing\":true,\"teamColor\":\"dark_red\",\"baby\":true,\"usingItem\":true,\"listed\":true,\"gravity\":false"))));
-        assertEquals(new BodyTraits(true, Optional.of("dark_red"), true, true, true, false), look.traits());
+        assertEquals(new BodyTraits(true, Optional.of("dark_red"), true, true, true, false, NpcAttributes.NONE), look.traits());
         assertEquals(BodyTraits.DEFAULT, NpcAppearance.PLAIN.traits());
         assertEquals(List.of("$.glowing: expected boolean", "$.teamColor: expected a team colour such as red, dark_aqua or gold"),
                 errors("minecraft:cow", "\"glowing\":1,\"teamColor\":\"pink\""));

@@ -437,6 +437,7 @@ class _EditorShellState extends State<EditorShell> {
         if (store.canUndo) PaletteCommand('Edit', 'Undo ${store.undoLabel}', _undo, hint: 'Ctrl+Z', keywords: const <String>['undo']),
         if (store.canRedo) PaletteCommand('Edit', 'Redo ${store.redoLabel}', _redo, hint: 'Ctrl+Shift+Z', keywords: const <String>['redo']),
         PaletteCommand('Workspace', 'New document', () => component.onNavigate(NewDocumentRoute(workspace.id)), keywords: const <String>['create', 'add']),
+        PaletteCommand('Workspace', 'New conversation', () => component.onNavigate(NewDocumentRoute.conversation(workspace.id)), keywords: const <String>['dialogue', 'talk', 'create']),
         PaletteCommand('Workspace', 'Export the data folder zip', () => exportWorkspace(workspace), keywords: const <String>['download', 'save']),
         PaletteCommand('Workspace', 'Export a Gloss bundle', () => _exportGloss(workspace), keywords: const <String>['download']),
         PaletteCommand('Workspace', 'Import a Blockbench model', () => _importBbmodel(workspace), keywords: const <String>['bbmodel', 'rig']),
@@ -540,6 +541,9 @@ class _EditorShellState extends State<EditorShell> {
             liveSchemas: session?.schemas,
             workspaceDocuments: workspace.documents,
             onOpen: (DocumentKind kind, String id) => component.onNavigate(DocumentRoute(workspace.id, kind, id)),
+            onCommit: (List<DocumentChange> changes, String label) => component.store.commit(documents: changes, label: label),
+            onServerPreview: session == null ? null : () => session.startPreview(),
+            newConversationHref: NewDocumentRoute.conversation(workspace.id).format(),
           )
         else if (selected != null)
           dom.section(classes: 'animus-panel is-error', <Widget>[
@@ -559,12 +563,13 @@ class _EditorShellState extends State<EditorShell> {
           KindListPage(key: ValueKey<String>('list:${workspace.id}:${route.kind.wireName}'), workspace: workspace, kind: route.kind)
         else if (route is NewDocumentRoute)
           NewDocumentPage(
-            key: ValueKey<String>('new:${workspace.id}:${route.folder ?? ''}:${route.name ?? ''}'),
+            key: ValueKey<String>('new:${workspace.id}:${route.folder ?? ''}:${route.name ?? ''}:${route.conversation}'),
             store: component.store,
             workspace: workspace,
             kind: route.kind,
             folder: route.folder,
             name: route.name,
+            conversation: route.conversation,
             onNavigate: component.onNavigate,
           )
         else if (route is SyncRoute && workspace.server == null)

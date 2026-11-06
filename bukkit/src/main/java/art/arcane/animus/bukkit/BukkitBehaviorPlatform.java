@@ -226,6 +226,11 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         PlatformRefusals.mapped(() -> { living.setEquipment(active.id(), slot, stack); return true; });
     }
 
+    @Override public void setAttribute(NpcHandle npc, String attribute, java.util.OptionalDouble value) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.setAttribute(active.id(), attribute, value); return true; });
+    }
+
     private static Material material(String key) {
         Material material = Material.matchMaterial(key);
         if (material == null || !material.isItem()) throw PlatformRefusals.unknownItem(key);
