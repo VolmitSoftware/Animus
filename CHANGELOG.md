@@ -316,6 +316,9 @@
 - Web editor: the NPC preview wears a placeholder skin instead of the default one when no skin texture is loaded, offline or online, and its skin line names it.
 - The Denizen importer converts world comparisons and `in:<world>` switches to `same_world`.
 - Animation events refuse `player`, `at: player` and `audience: trigger`, and the web editor's event form no longer offers them.
+- Combat NPCs ask protection before choosing a target and every 10 ticks while chasing it, and never choose an invincible NPC or an invulnerable entity.
+- A protected or cancelled hit, melee or projectile, ends the fight at once and leaves that target alone for 5 seconds.
+- Hits on an NPC with `defense.invincible` report `PROTECTED` instead of `NO_CHANGE`.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -469,6 +472,8 @@
 - Validate, Preview and Apply in the web editor include every edit made before they were pressed.
 - An editor request queued before its token was revoked or expired no longer reads or writes.
 - An editor browser that stops reading events no longer stalls event delivery to other editors.
+- A respawned combat NPC refills its ammunition, forgets old refusals and greetings, and walks back to its post.
+- On Folia, an NPC's projectiles now hit NPCs that other regions own, credited to the NPC that fired them.
 
 ### Notes
 
