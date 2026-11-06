@@ -77,7 +77,11 @@ class FieldSpec {
   }
 
   /// Help text: the description, then the bounds.
-  String get help => <String>[if (description != null && description!.isNotEmpty) description!, if (bounds.isNotEmpty) bounds.endsWith('.') ? bounds : '$bounds.'].join(' ');
+  /// The description, then the bounds as their own sentence ("At most 64 characters.").
+  String get help {
+    final String sentence = bounds.isEmpty ? '' : '${bounds[0].toUpperCase()}${bounds.substring(1)}${bounds.endsWith('.') ? '' : '.'}';
+    return <String>[if (description != null && description!.isNotEmpty) description!, if (sentence.isNotEmpty) sentence].join(' ');
+  }
 
   /// A problem with [value] against the bounds, or null.
   String? check(Object? value) {

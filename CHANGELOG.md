@@ -330,7 +330,10 @@
 - Pack manifests open in their typed editor instead of the read-only field list.
 - The Sync page keeps the push result on screen once the new compare has nothing left to send.
 - A second tab that waits for live editing says so when it takes over.
-- On phones the top bar leaves the connection state to the live bar, so More stays on screen.
+- Inside a server workspace the top bar leaves the connection state to the live bar instead of showing it twice, and on phones More stays on screen.
+- NPC browser rows and a skin's wearers show names without legacy colour codes.
+- Field help gives the bounds as their own sentence ("At most 64 characters.").
+- GUI editor section tabs use the same selected style as the view tabs.
 
 ### Notes
 

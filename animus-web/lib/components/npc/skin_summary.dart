@@ -7,6 +7,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../logic/gui/gui_text.dart';
 import '../../logic/npc/npc_catalog.dart';
 import '../../mc/npc/npc_skin.dart';
 import '../../model/animus_document.dart';
@@ -117,12 +118,12 @@ class _SkinSummaryState extends State<SkinSummary> {
                   dom.li(<Widget>[
                     if (component.onOpen != null)
                       Button.ghost(
-                        label: '${entry.name} (${entry.key})',
+                        label: '${guiPlainText(entry.name)} (${entry.key})',
                         size: ButtonSize.small,
                         onPressed: () => component.onOpen!(DocumentKind.npc, entry.key),
                       )
                     else
-                      Component.text('${entry.name} (${entry.key})'),
+                      Component.text('${guiPlainText(entry.name)} (${entry.key})'),
                   ]),
               ]),
           ],
