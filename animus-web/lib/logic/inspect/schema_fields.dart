@@ -171,10 +171,12 @@ class SchemaView {
 
   /// Whether [value] passes an `if` schema, checking the parts the shared
   /// schemas discriminate on: `required`, property `const` and `enum`,
-  /// `type` and `minProperties`. Anything else counts as passing.
+  /// `type`, `minProperties` and `anyOf`. Anything else counts as passing.
   bool matches(Map<String, Object?> condition, Object? value) {
     final Object? type = condition['type'];
     if (type is String && !_isType(value, type)) return false;
+    final Object? alternatives = condition['anyOf'];
+    if (alternatives is List<Object?> && !alternatives.any((Object? alternative) => matches(resolve(alternative), value))) return false;
     if (condition.containsKey('const') && condition['const'] != value) return false;
     final Object? options = condition['enum'];
     if (options is List<Object?> && !options.contains(value)) return false;
