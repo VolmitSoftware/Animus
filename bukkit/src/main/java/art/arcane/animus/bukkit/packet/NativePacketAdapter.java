@@ -357,7 +357,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         return result;
     }
 
-    /** One metadata packet with the body's shared flags and pose from {@code look}; nothing without presentation support. */
+    /** One metadata packet with the body's shared flags, pose and item use from {@code look}; nothing without presentation support. */
     @Override public CompletionStage<Void> look(Player viewer, BodyTransport.Body presented, BodyLook look) {
         Body body = checkBody(presented);
         Objects.requireNonNull(look);

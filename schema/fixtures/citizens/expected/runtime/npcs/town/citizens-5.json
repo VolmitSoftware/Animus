@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000305",
+  "id": "citizens-5",
+  "group": "town",
+  "name": "Square Statue",
+  "type": "minecraft:armor_stand",
+  "spawned": false,
+  "migration": {
+    "importId": "8c17aa71272e5e65c1ba102be83b976a93eae88ac21618da606ed06331ba36aa",
+    "citizensId": 5,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "town",
+    "x": 12.5,
+    "y": 64.0,
+    "z": 12.5,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "animus:look-close": {
+      "enabled": false,
+      "range": 10.0,
+      "lineOfSight": false,
+      "whileNavigating": false,
+      "randomLook": {
+        "enabled": false,
+        "delayTicks": 60,
+        "yaw": [
+          0.0,
+          360.0
+        ],
+        "pitch": [
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "citizens:review": {
+      "type": "ARMOR_STAND",
+      "location": {
+        "world": "town",
+        "x": 12.5,
+        "y": 64.0,
+        "z": 12.5
+      },
+      "lookclose": {
+        "randomPitchRange": [
+          0.0,
+          0.0
+        ],
+        "randomYawRange": [
+          0.0,
+          360.0
+        ]
+      }
+    }
+  }
+}

@@ -118,8 +118,8 @@ async function run(browser, width, height, label, scratch, theme) {
 
   await page.getByRole('button', {name: /Upload and stage/}).click();
   await state(page, 'Staged, not installed');
-  assert.equal(await stat(page, 'Citizens records'), '5');
-  assert.equal(await stat(page, 'valid'), '5');
+  assert.equal(await stat(page, 'Citizens records'), '6');
+  assert.equal(await stat(page, 'valid'), '6');
   const importId = (await page.locator('[data-testid="import-id"]').textContent()).trim();
   assert.match(importId, /^[0-9a-f]{64}$/);
   await page.locator('[data-testid="import-lines"] li', {hasText: 'Nothing installed'}).waitFor();
@@ -134,7 +134,7 @@ async function run(browser, width, height, label, scratch, theme) {
   await page.getByRole('button', {name: /^\W*Apply$/}).click();
   await confirm(page, 'Install this import on the server?', 'Install import');
   await state(page, 'Installed, waiting for review');
-  assert.equal(await stat(page, 'NPCs installed'), '5');
+  assert.equal(await stat(page, 'NPCs installed'), '6');
   assert.ok((await control('state')).documents.length > before, 'apply installs documents on the server');
   const categories = page.locator('[data-testid="import-categories"]');
   await categories.waitFor();

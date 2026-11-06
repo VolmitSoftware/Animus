@@ -1,0 +1,23 @@
+{
+  "name": "Square Statue",
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000305",
+  "traits": {
+    "type": "ARMOR_STAND",
+    "location": {
+      "world": "old_town",
+      "x": 12.5,
+      "y": 64.0,
+      "z": 12.5
+    },
+    "lookclose": {
+      "randomPitchRange": [
+        0.0,
+        0.0
+      ],
+      "randomYawRange": [
+        0.0,
+        360.0
+      ]
+    }
+  }
+}

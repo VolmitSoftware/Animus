@@ -200,6 +200,8 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
         catch (IllegalArgumentException | IllegalStateException ignored) { /* facing is cosmetic */ }
     }
     @Override public double yaw(UUID npc) { return npc.equals(actor.uuid) ? actor.yaw : 0; }
+    @Override public void swing(UUID npc) { if (npc.equals(actor.uuid)) actor.attackSwing(); }
+    @Override public void drawing(UUID npc, boolean drawing) { if (npc.equals(actor.uuid)) actor.drawing(drawing); }
     @Override public void knockback(UUID npc, Vec3 direction, double strength) { if (npc.equals(actor.uuid)) actor.combatKnockback(direction, strength); }
     @Override public void heal(UUID npc, double amount) {
         if (npc.equals(actor.uuid)) { actor.combatHeal(amount); return; }
