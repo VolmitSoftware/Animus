@@ -378,7 +378,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     public static CombatTarget npcTarget(UUID npc, String name, VirtualNpcState.Snapshot snapshot, String handle, CombatSettings settings, CombatLoadout loadout) {
         List<String> worn = new ArrayList<>();
         for (String slot : List.of("head", "chest", "legs", "feet")) if (!loadout.item(slot).equals(CombatLoadout.EMPTY)) worn.add(loadout.item(slot));
-        CombatTarget.Details details = new CombatTarget.Details(settings.defense().maximumHealth(), loadout.item("main_hand"), loadout.item("off_hand"), worn, Set.of());
+        CombatTarget.Details details = new CombatTarget.Details(settings.defense().maximumHealth(), loadout.item("main_hand"), loadout.item("off_hand"), worn, Set.of(),
+                settings.defense().invincible());
         return new CombatTarget(new TargetRef(TargetKind.NPC, npc), "animus:npc", name, snapshot.position(),
                 snapshot.bounds(), snapshot.health(), Set.of(TargetCategory.NPCS), handle, settings.squad().name(), details);
     }
@@ -517,12 +518,19 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         return outcome;
     }
     private CombatWorld.DamageOutcome strike(CombatBrain defender, TargetRef attacker, WorldPosition from, CombatTarget target, double amount, double knockback) {
+        if (defender.settings().defense().invincible()) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.PROTECTED, 0, false);
         double mitigated = defender.mitigate(attacker, from, amount, resolve(attacker));
         if (mitigated <= 0) return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
         CombatWorld.DamageOutcome outcome = world.damageVirtual(defender.npc(), attacker, mitigated);
         if (outcome.status() != CombatWorld.DamageStatus.APPLIED) return outcome;
         afterVirtualHit(defender, attacker, from, target, knockback, outcome.killed());
         return outcome;
+    }
+
+    /** Whether this NPC may hit the target from where it stands: an invulnerable one never, anything else as protection says. */
+    boolean permits(CombatBrain brain, VirtualNpcState.Snapshot self, CombatTarget target) {
+        if (target.details().invulnerable()) return false;
+        return allowed(new TargetRef(TargetKind.NPC, brain.npc()), self.position(), target);
     }
 
     private boolean allowed(TargetRef attacker, WorldPosition from, CombatTarget target) {
@@ -615,22 +623,21 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         SpatialNpcIndex.Scan near = world.nearbyNpcs(new WorldPosition(self.get().position().world(), middle), length / 2 + 4, null,
                 new SpatialNpcIndex.Budget(budgets.scanCells(), budgets.scanCandidates()));
         Vec3 direction = position.subtract(from);
-        CombatBrain struck = null;
-        VirtualNpcState.Snapshot struckState = null;
+        CombatTarget struck = null;
         double nearest = Double.POSITIVE_INFINITY;
         for (VirtualNpcState.Snapshot candidate : near.candidates()) {
-            CombatBrain other = brains.get(candidate.npcId());
-            if (other == null || !reaches(shot, owner, new TargetRef(TargetKind.NPC, other.npc()), other.settings().squad().name())) continue;
             OptionalDouble distance = candidate.bounds().rayDistance(from, direction, length);
-            if (distance.isPresent() && distance.getAsDouble() < nearest) {
-                nearest = distance.getAsDouble();
-                struck = other;
-                struckState = candidate;
-            }
+            if (distance.isEmpty() || distance.getAsDouble() >= nearest) continue;
+            // An NPC another engine holds is reached through the view its owner published.
+            CombatBrain other = brains.get(candidate.npcId());
+            Optional<CombatTarget> seen = other != null ? Optional.of(view(other, candidate)) : world.peer(candidate.npcId());
+            if (seen.isEmpty() || !reaches(shot, owner, seen.get().ref(), seen.get().squad())) continue;
+            nearest = distance.getAsDouble();
+            struck = seen.get();
         }
         if (struck == null || helpers.claim(shot.helper()).isEmpty()) return false;
         world.removeHelper(shot.helper());
-        land(shot, owner, self.get().position(), view(struck, struckState));
+        land(shot, owner, self.get().position(), struck);
         return true;
     }
 
@@ -656,11 +663,15 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private void land(HelperLedger.Shot shot, CombatBrain owner, WorldPosition from, CombatTarget target) {
         TargetRef attacker = new TargetRef(TargetKind.NPC, shot.owner());
         if (shot.effect().isEmpty()) {
-            hit(attacker, from, target, shot.damage(), CombatWorld.DamageKind.PROJECTILE, 0, shot.knockback(), owner.settings().death().victimDrops());
+            CombatWorld.DamageOutcome outcome = hit(attacker, from, target, shot.damage(), CombatWorld.DamageKind.PROJECTILE, 0, shot.knockback(), owner.settings().death().victimDrops());
+            if (outcome.status() == CombatWorld.DamageStatus.PROTECTED || outcome.status() == CombatWorld.DamageStatus.CANCELLED) owner.refuse(target.ref());
             return;
         }
         CombatSettings.Effect effect = shot.effect().get();
-        if (!effect.helpful() && !allowed(attacker, from, target)) return;
+        if (!effect.helpful() && !allowed(attacker, from, target)) {
+            owner.refuse(target.ref());
+            return;
+        }
         if (target.ref().kind() != TargetKind.NPC) {
             if (world.applyEffect(shot.owner(), target, effect) && !effect.helpful()) realDamaged(target.ref(), attacker);
             return;

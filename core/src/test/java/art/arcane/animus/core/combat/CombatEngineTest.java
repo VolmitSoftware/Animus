@@ -370,9 +370,9 @@ class CombatEngineTest {
         assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine().playerAttack(plain, player(UUID.randomUUID()), near(), 5).status());
         assertEquals(20, world.npc(plain).orElseThrow().health());
     }
-    @Test void invincibleNpcTakesNoDamage() {
+    @Test void invincibleNpcIsProtectedFromDamage() {
         UUID npc = combatant(0, 0, "{\"defense\":{\"invincible\":true}}");
-        assertEquals(CombatWorld.DamageStatus.NO_CHANGE, engine().playerAttack(npc, player(UUID.randomUUID()), near(), 5).status());
+        assertEquals(CombatWorld.DamageStatus.PROTECTED, engine().playerAttack(npc, player(UUID.randomUUID()), near(), 5).status());
     }
     @Test void knockbackCanBeRefused() {
         UUID npc = combatant(0, 0, "{\"defense\":{\"knockback\":false}}");
@@ -723,14 +723,14 @@ class CombatEngineTest {
         run(1);
         assertTrue(status(npc).target().isEmpty());
     }
-    @Test void aCancelledRealHitStillSpendsItsCooldown() {
+    @Test void aCancelledRealHitIsNotRetriedWhileItsTargetIsRefused() {
         world.realStatus = CombatWorld.DamageStatus.CANCELLED;
         combatant(0, 0, HUNT_MONSTERS);
         world.monster("minecraft:zombie", 2, 0);
         run(2);
         assertTrue(world.realDamage.isEmpty());
-        assertEquals(1, protectionCalls.size());
+        assertEquals(2, protectionCalls.size(), "One check to choose the target, one for the hit");
         run(10);
-        assertEquals(1, protectionCalls.size());
+        assertEquals(2, protectionCalls.size());
     }
 }

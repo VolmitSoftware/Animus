@@ -24,9 +24,13 @@ public record CombatTarget(TargetRef ref, String type, String name, WorldPositio
      * @param mainHand      namespaced item id, {@link CombatLoadout#EMPTY} when nothing is held
      * @param worn          namespaced ids of worn armor pieces
      * @param effects       namespaced ids of active status effects
+     * @param invulnerable  nothing can hurt it, such as an invincible NPC or an invulnerable entity, so it is never chosen as a target
      */
-    public record Details(double maximumHealth, String mainHand, String offHand, List<String> worn, Set<String> effects) {
+    public record Details(double maximumHealth, String mainHand, String offHand, List<String> worn, Set<String> effects, boolean invulnerable) {
         public static final Details NONE = new Details(0, CombatLoadout.EMPTY, CombatLoadout.EMPTY, List.of(), Set.of());
+        public Details(double maximumHealth, String mainHand, String offHand, List<String> worn, Set<String> effects) {
+            this(maximumHealth, mainHand, offHand, worn, effects, false);
+        }
         public Details {
             Objects.requireNonNull(mainHand, "mainHand");
             Objects.requireNonNull(offHand, "offHand");

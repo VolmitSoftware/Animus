@@ -38,6 +38,11 @@ final class CombatBrain {
     static final long STALL_TICKS = 60;
     private static final double PROGRESS = 1;
     private static final int GREETING_MEMORY = 256;
+    /** How long a target that protection or a cancelled hit refused is passed over. */
+    static final long REFUSAL_TICKS = 100;
+    /** How often a chase asks protection again whether its target may still be hit. */
+    private static final long PROTECTION_INTERVAL = 10;
+    private static final int REFUSAL_MEMORY = 32;
 
     private final CombatEngine engine;
     private final CombatWorld world;
@@ -53,6 +58,8 @@ final class CombatBrain {
     private final StrikeWindow rangedWindow = new StrikeWindow();
     private final Set<UUID> greeted = new HashSet<>();
     private final Map<UUID, Long> lastGreeting = new HashMap<>();
+    /** Targets left alone until the tick given, because protection or a cancelled hit refused them. */
+    private final Map<TargetRef, Long> refusals = new HashMap<>();
     private final GuardFollow follow = new GuardFollow();
     private WorldPosition progressFrom;
     private long progressAt;
@@ -90,10 +97,12 @@ final class CombatBrain {
     private long nextPlan;
     private long nextHeal;
     private long nextRegionCheck;
+    private long nextProtectionCheck;
     private long invulnerableUntil;
     private long respawnAt = -1;
     private int stuck;
     private int ammunition;
+    private final int fullAmmunition;
 
     CombatBrain(CombatEngine engine, CombatWorld world, UUID npc, String handle, CombatSettings settings, CombatLoadout loadout) {
         this.engine = engine;
@@ -109,7 +118,8 @@ final class CombatBrain {
         meleeDamage = EquipmentStats.melee(settings.melee(), loadout);
         rangedDamage = EquipmentStats.ranged(settings.ranged(), settings.melee(), loadout);
         armor = EquipmentStats.armor(settings.defense(), loadout);
-        ammunition = settings.ranged().useAmmo() && !settings.ranged().weapon().ammunition().isEmpty() ? loadout.count(settings.ranged().weapon().ammunition()) : -1;
+        fullAmmunition = settings.ranged().useAmmo() && !settings.ranged().weapon().ammunition().isEmpty() ? loadout.count(settings.ranged().weapon().ammunition()) : -1;
+        ammunition = fullAmmunition;
         guarded = settings.guard().player().map((UUID id) -> new TargetRef(TargetKind.PLAYER, id))
                 .or(() -> settings.guard().npc().map((UUID id) -> new TargetRef(TargetKind.NPC, id))).orElse(null);
     }
@@ -297,7 +307,7 @@ final class CombatBrain {
         List<CombatTarget> eligible = new ArrayList<>();
         for (CombatTarget candidate : lastSeen) {
             if (!(settings.targets().matches(candidate, context) || grouped.contains(candidate.ref())) || settings.ignores().matches(candidate, context)) continue;
-            if (candidate.ref().id().equals(npc) || !helpful && friendly(candidate.ref(), candidate.squad())) continue;
+            if (candidate.ref().id().equals(npc) || !helpful && friendly(candidate.ref(), candidate.squad()) || refused(candidate.ref())) continue;
             if (candidate.position().point().distance(point) > scanRange()) continue;
             if (anchor != null && guarded == null && anchor.point().distance(candidate.position().point()) > settings.pursuit().leashRange()) continue;
             eligible.add(candidate);
@@ -306,8 +316,9 @@ final class CombatBrain {
         int checks = 0;
         for (CombatTarget candidate : eligible) {
             if (checks++ >= VISIBILITY_CANDIDATES) break;
-            if (!insideRegion(candidate.position())) continue;
-            if (noticeable(self, candidate)) return Optional.of(candidate);
+            if (!insideRegion(candidate.position()) || !noticeable(self, candidate)) continue;
+            if (helpful || engine.permits(this, self, candidate)) return Optional.of(candidate);
+            remember(candidate.ref());
         }
         return Optional.empty();
     }
@@ -354,6 +365,13 @@ final class CombatBrain {
             nextRegionCheck = now + REGION_INTERVAL;
             if (!insideRegion(seen.get().position())) return lose(self);
         }
+        if (now >= nextProtectionCheck && !(settings.ranged().enabled() && settings.ranged().helpful())) {
+            nextProtectionCheck = now + PROTECTION_INTERVAL;
+            if (!engine.permits(this, self, seen.get())) {
+                refuse(target);
+                return 1;
+            }
+        }
         boolean visible = true;
         if (settings.targeting().lineOfSight() != CombatSettings.LineOfSight.IGNORED) {
             CombatWorld.Visibility visibility = world.lineOfSight(self.position().world(), eye(self), CombatGeometry.center(seen.get().bounds()));
@@ -372,6 +390,7 @@ final class CombatBrain {
             if (nearer.isPresent() && !nearer.get().ref().equals(target)) {
                 target = nearer.get().ref();
                 seen = nearer;
+                nextProtectionCheck = now + PROTECTION_INTERVAL;
             }
         }
         return engaged(now, self, seen.get(), visible);
@@ -387,12 +406,14 @@ final class CombatBrain {
         boolean rangedUsable = !inMelee && ranged.enabled() && ammunition != 0 && visible && distance <= ranged.range() && distance >= ranged.minimumRange();
         if (inMelee && visible) {
             if (ready && meleeWindow.reserve(now, melee.cooldownTicks())) {
+                CombatWorld.DamageOutcome outcome;
                 try {
                     world.face(npc, CombatGeometry.center(foe.bounds()));
-                    engine.melee(this, self, foe);
+                    outcome = engine.melee(this, self, foe);
                 } finally {
                     meleeWindow.release();
                 }
+                if (refusal(outcome.status())) refuse(foe.ref());
                 if (target == null || state == CombatState.DEAD) return 1;
             }
             state = CombatState.ATTACKING;
@@ -675,6 +696,7 @@ final class CombatBrain {
         target = ref;
         seenAt = now;
         reactionUntil = now + settings.targeting().reactionTicks();
+        nextProtectionCheck = now + PROTECTION_INTERVAL;
         alertPending = true;
         stuck = 0;
         nextPlan = 0;
@@ -694,6 +716,7 @@ final class CombatBrain {
         threat = null;
         seenAt = now;
         reactionUntil = now + settings.targeting().reactionTicks();
+        nextProtectionCheck = now;
         nextPlan = 0;
         stuck = 0;
         if (anchor == null) anchor = anchorFor(self.get().position());
@@ -701,13 +724,14 @@ final class CombatBrain {
 
     void force(TargetRef ref) {
         disengaged = false;
+        refusals.remove(ref);
         adopt(ref, true);
         alertPending = settings.squad().name().isPresent();
     }
 
     /** A squad mate or guarded participant named this target. Only an NPC with no target takes it. */
     void alerted(TargetRef ref) {
-        if (!awaitsTarget() || ref.id().equals(npc)) return;
+        if (!awaitsTarget() || ref.id().equals(npc) || refused(ref)) return;
         Optional<CombatTarget> seen = engine.resolve(ref);
         if (seen.isEmpty() || friendly(ref, seen.get().squad())) return;
         adopt(ref, false);
@@ -727,7 +751,7 @@ final class CombatBrain {
         if (!subject.position().world().equals(self.position().world())) return;
         double distance = subject.position().point().distance(self.position().point());
         boolean fear = asThreat && threat == null && distance <= settings.avoidance().range();
-        boolean attack = asTarget && awaitsTarget() && threat == null && distance <= scanRange();
+        boolean attack = asTarget && awaitsTarget() && threat == null && distance <= scanRange() && !refused(subject.ref());
         if (!fear && !attack || !engine.takeSight() || !noticeable(self, subject)) return;
         if (fear) beginFlight(subject.ref(), self);
         else {
@@ -765,7 +789,7 @@ final class CombatBrain {
             beginFlight(attacker, self.get());
             return;
         }
-        if (settings.targeting().fightBack() && target == null) {
+        if (settings.targeting().fightBack() && target == null && !refused(attacker)) {
             adopt(attacker, false);
             alertPending = settings.squad().name().isPresent();
         }
@@ -843,7 +867,61 @@ final class CombatBrain {
         nextScan = now;
         backoff = 0;
         nextHeal = 0;
+        invulnerableUntil = 0;
+        ammunition = fullAmmunition;
+        refusals.clear();
+        greeted.clear();
+        lastSeen = List.of();
+        follow.reset();
+        progressFrom = null;
+        stallReported = false;
+        homeward(at.get());
         return 1;
+    }
+
+    /** A respawn away from the post walks back to it, as the end of a fight does. */
+    private void homeward(WorldPosition here) {
+        if (guarded != null || !settings.pursuit().returnToPost()) return;
+        Optional<WorldPosition> post = world.post(npc).filter((WorldPosition at) -> at.world().equals(here.world()));
+        if (post.isEmpty() || on(post.get(), here)) return;
+        anchor = post.get();
+        state = CombatState.RETURNING;
+        nextPlan = 0;
+        stuck = 0;
+        returnFrom = null;
+        moving = false;
+    }
+
+    /** Whether a hit with this result was refused rather than merely ineffective. */
+    private static boolean refusal(CombatWorld.DamageStatus status) {
+        return status == CombatWorld.DamageStatus.PROTECTED || status == CombatWorld.DamageStatus.CANCELLED;
+    }
+    private boolean refused(TargetRef ref) {
+        Long until = refusals.get(ref);
+        if (until == null) return false;
+        if (engine.now() < until) return true;
+        refusals.remove(ref);
+        return false;
+    }
+    private void remember(TargetRef ref) {
+        if (refusals.size() >= REFUSAL_MEMORY) {
+            long now = engine.now();
+            refusals.values().removeIf((Long until) -> until <= now);
+            if (refusals.size() >= REFUSAL_MEMORY) return;
+        }
+        refusals.put(ref, engine.now() + REFUSAL_TICKS);
+    }
+    /**
+     * Protection or a cancelled hit refused this target: it is passed over for {@link #REFUSAL_TICKS}, and a fight with
+     * it ends now, mid-swing or mid-path, the way any lost target ends.
+     */
+    void refuse(TargetRef ref) {
+        remember(ref);
+        if (!ref.equals(target)) return;
+        Optional<VirtualNpcState.Snapshot> self = world.npc(npc);
+        if (self.isPresent()) lose(self.get());
+        else target = null;
+        engine.wake(this);
     }
 
     void engage() {
