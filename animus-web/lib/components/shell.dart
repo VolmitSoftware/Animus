@@ -30,12 +30,13 @@ import 'server/connection_pill.dart';
 import 'server/live_bar.dart';
 import 'server/pair_page.dart';
 import 'server/server_overview.dart';
+import '../logic/inspect/server_behaviors.dart';
 import 'rig/rig_actions.dart';
 import 'rig/rig_editor.dart';
 
 /// Kinds whose Visual view edits the parsed JSON (GUI editors, the
 /// schema-driven NPC and behavior inspectors and the route editor).
-const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.behavior, DocumentKind.route};
+const Set<DocumentKind> jsonEditedKinds = <DocumentKind>{...guiKinds, DocumentKind.npc, DocumentKind.behavior, DocumentKind.route, DocumentKind.serverBehaviors};
 
 /// Kinds listed in the sidebar, in this order.
 const List<DocumentKind> listedKinds = <DocumentKind>[
@@ -52,6 +53,7 @@ const List<DocumentKind> listedKinds = <DocumentKind>[
   DocumentKind.skin,
   DocumentKind.textAnimation,
   DocumentKind.presets,
+  DocumentKind.serverBehaviors,
 ];
 
 class EditorShell extends StatefulWidget {
@@ -307,7 +309,7 @@ class _EditorShellState extends State<EditorShell> {
 
   /// Kinds whose id the user picks (a skin's is its content hash, presets
   /// have one fixed id).
-  bool _movable(DocumentKind kind) => kind != DocumentKind.skin && kind != DocumentKind.presets;
+  bool _movable(DocumentKind kind) => kind != DocumentKind.skin && kind != DocumentKind.presets && kind != DocumentKind.serverBehaviors;
 
   Widget _workspace(WorkspaceSnapshot workspace) {
     final EditorRoute route = component.route;
@@ -453,10 +455,16 @@ class _EditorShellState extends State<EditorShell> {
         dom.div(classes: 'animus-stats', <Widget>[
           for (final DocumentKind kind in listedKinds)
             if (workspace.documents.any((AnimusDocument document) => document.kind == kind))
-              dom.div(classes: 'animus-stat', <Widget>[
-                dom.strong(<Widget>[Component.text('${workspace.documents.where((AnimusDocument document) => document.kind == kind).length}')]),
-                dom.span(<Widget>[Component.text(kind.label)]),
-              ]),
+              if (kind == DocumentKind.serverBehaviors)
+                dom.div(classes: 'animus-stat', <Widget>[
+                  dom.strong(<Widget>[Component.text('${listedServerBehaviors(workspace.documents).length}')]),
+                  const dom.span(<Widget>[Component.text('Server behaviors listed to run')]),
+                ])
+              else
+                dom.div(classes: 'animus-stat', <Widget>[
+                  dom.strong(<Widget>[Component.text('${workspace.documents.where((AnimusDocument document) => document.kind == kind).length}')]),
+                  dom.span(<Widget>[Component.text(kind.label)]),
+                ]),
         ]),
         if (workspace.documents.isEmpty) ...<Widget>[
           const dom.p(<Widget>[Component.text('Nothing here yet. An NPC is a good first document: pick its body, name and skin, then give it a behavior.')]),
