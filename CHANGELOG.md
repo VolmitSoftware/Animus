@@ -455,6 +455,10 @@
 - Bukkit NPC positions, admin create, teleports, combat locations, GUI teleports, shop chests and WorldGuard checks accept dimension keys such as `minecraft:the_nether`.
 - `npc.world` gives the same form as `player.world`: the world name on Bukkit, the dimension key on mods.
 - Clicks on NPC-bound holograms count only in the NPC's world.
+- The web editor's hologram stage draws the text rows as one text display with the hologram style: background (clear unless set), shadow in the glyph colour, alignment, opacity, line width, scale and fixed light.
+- Editor GUI text reads colour codes and MiniMessage tags exactly as the server does: a colour clears the decorations before it, a closing tag resets and reopens the tags still open, and `&x` hex, `<color:...>` and backslash-u escapes work.
+- Two edits made in quick succession in the web editor both stay, each as its own undo step, and an edit made while an apply is on its way stays a draft instead of being overwritten.
+- Validate, Preview and Apply in the web editor include every edit made before they were pressed.
 
 ### Notes
 

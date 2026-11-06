@@ -35,7 +35,14 @@ class BehaviorEditor extends StatelessWidget {
   JsonMap get _doc => asMap(document.json);
   CompletionCatalog get _catalog => schemas.catalog;
 
-  void _write(List<JsonStep> steps, Object? value) => onJson(writeIn(_doc, steps, value), coalesce: 'behavior:${steps.join('.')}');
+  /// Renames the [field] entry at [index] of the latest document. It is found
+  /// by position: a quicker keystroke may have renamed it already.
+  static JsonUpdate _renameAt(String field, int index, JsonMap Function(JsonMap latest, String from) rename) => (Object? latest) {
+        final List<String> keys = asMap(asMap(latest)[field]).keys.toList();
+        return index < keys.length ? rename(asMap(latest), keys[index]) : latest;
+      };
+
+  void _write(List<JsonStep> steps, Object? value) => onJson(writeAt(_doc, steps, value), coalesce: 'behavior:${steps.join('.')}');
 
   FieldSpec _spec(String key) =>
       schemas.behavior.fields(schemas.behavior.root, _doc).where((FieldSpec field) => field.key == key).firstOrNull ?? FieldSpec(key: key, kind: FieldKind.any);
@@ -51,7 +58,7 @@ class BehaviorEditor extends StatelessWidget {
       document: doc,
       diagnostics: diagnostics,
       write: _write,
-      writeDocument: (JsonMap next) => onJson(next, coalesce: 'behavior:document'),
+      writeDocument: (JsonMap next) => onJson(writeAt(doc, const <JsonStep>[], next), coalesce: 'behavior:document'),
     );
     final bool server = behavior.server;
     return dom.section(classes: 'animus-panel animus-inspector animus-behavior-editor', attributes: const <String, String>{'aria-label': 'Behavior editor'}, <Widget>[
@@ -80,7 +87,7 @@ class BehaviorEditor extends StatelessWidget {
           child: GuiSwitch(
             value: server,
             label: 'Run on the server with no NPC',
-            onChanged: (bool on) => onJson(setServerBehavior(doc, on), coalesce: 'behavior:server'),
+            onChanged: (bool on) => onJson((Object? latest) => setServerBehavior(asMap(latest), on), coalesce: 'behavior:server'),
           ),
         ),
         for (final MapEntry<String, Object?> entry in doc.entries)
@@ -128,7 +135,8 @@ class BehaviorEditor extends StatelessWidget {
           name: name,
           taken: <String>[for (final String other in variables.keys) if (other != name) other],
           label: 'Variable ${index + 1} name',
-          onRename: (String next) => onJson(renameVariable(doc, name, next, _catalog), coalesce: 'behavior:rename-variable:$index'),
+          onRename: (String next) =>
+              onJson(_renameAt('variables', index, (JsonMap latest, String from) => renameVariable(latest, from, next, _catalog)), coalesce: 'behavior:rename-variable:$index'),
         ),
         GuiSelect(
           value: type,
@@ -198,7 +206,7 @@ class BehaviorEditor extends StatelessWidget {
                 label: 'Routine ${index + 1} name',
                 onChanged: (String next) {
                   if (behaviorIdentifier.hasMatch(next) && !routines.containsKey(next)) {
-                    onJson(renameRoutine(doc, names[index], next, _catalog), coalesce: 'behavior:rename:$index');
+                    onJson(_renameAt('routines', index, (JsonMap latest, String from) => renameRoutine(latest, from, next, _catalog)), coalesce: 'behavior:rename:$index');
                   }
                 },
               ),

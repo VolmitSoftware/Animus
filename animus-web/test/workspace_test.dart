@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
@@ -95,6 +96,29 @@ void main() {
       expect(store.problem, contains('Another tab'));
       expect(store.workspace!.name, 'Other tab');
       expect(store.workspace!.generation, 2);
+    });
+
+    test('should keep both of two quick edits worked out from the document as shown', () async {
+      await openExport();
+      final AnimusDocument shown = store.document(DocumentKind.npc, 'examples/greeter')!;
+      // The second edit is made before the first is saved, from the same
+      // document the editor still shows.
+      final Future<void> first = store.commit(
+        documents: <DocumentChange>[DocumentChange.update(DocumentKind.npc, shown.id, writeAt(shown.json, <JsonStep>['name'], 'First'))],
+        coalesce: 'name',
+      );
+      final Future<void> second = store.commit(
+        documents: <DocumentChange>[DocumentChange.update(DocumentKind.npc, shown.id, writeAt(shown.json, <JsonStep>['spawned'], false))],
+        coalesce: 'spawned',
+      );
+      await Future.wait(<Future<void>>[first, second]);
+      final Map<String, Object?> json = store.document(DocumentKind.npc, shown.id)!.json! as Map<String, Object?>;
+      expect(json['name'], 'First');
+      expect(json['spawned'], isFalse);
+      await store.undo();
+      expect((store.document(DocumentKind.npc, shown.id)!.json! as Map<String, Object?>)['name'], 'First', reason: 'two undo steps');
+      await store.undo();
+      expect(store.document(DocumentKind.npc, shown.id)!.source, shown.source);
     });
 
     test('should redo an undone edit and say what each step did', () async {

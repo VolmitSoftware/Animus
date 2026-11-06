@@ -464,7 +464,8 @@ class _McStageState extends State<McStage> {
     for (final NpcText text in _c.texts) {
       final McVec3? at = mcProjectToPixels(_c.camera, text.anchor, widthPx: _widthPx, heightPx: _heightPx);
       if (at == null) continue;
-      final double fontPx = mcTextFontPx(_heightPx, at.z);
+      final double fontPx = mcTextFontPx(_heightPx, at.z) * text.scaleY;
+      final double stretch = text.scaleX / text.scaleY;
       out.add(dom.div(
         classes: 'animus-mc-text${text.nameplate ? ' is-nameplate' : ''}${text.dim ? ' is-dim' : ''}',
         attributes: const <String, String>{'data-text': 'true'},
@@ -476,7 +477,9 @@ class _McStageState extends State<McStage> {
           'max-width': '${(fontPx * text.lineWidth / 8).toStringAsFixed(1)}px',
           'z-index': '${(1000 - at.z * 10).round().clamp(0, 1000)}',
           if (text.background != null) 'background': _argb(text.background!),
-          if (text.shadow) 'text-shadow': '0.125em 0.125em 0 rgba(0, 0, 0, 0.75)',
+          if (text.alignment != McTextAlign.center) 'text-align': text.alignment.name,
+          if (stretch != 1) ...<String, String>{'transform': 'translate(-50%, -100%) scaleX(${stretch.toStringAsFixed(3)})', 'transform-origin': '50% 100%'},
+          if (text.brightness != null) 'filter': 'brightness(${text.brightness!.toStringAsFixed(3)})',
         }),
         <Widget>[
           for (final List<McTextRun> runs in text.styled ?? <List<McTextRun>>[for (final String line in text.lines) mcLegacyRuns(line)])
@@ -485,7 +488,10 @@ class _McStageState extends State<McStage> {
                 dom.span(
                   classes: run.obfuscated ? 'is-obfuscated' : null,
                   styles: dom.Styles(raw: <String, String>{
-                    'color': run.cssColor,
+                    'color': text.opacity == 1 ? run.cssColor : _rgba(run.color, text.opacity),
+                    // The client's shadow is the glyph colour at a quarter
+                    // brightness, one font pixel down and right.
+                    if (text.shadow) 'text-shadow': '0.125em 0.125em 0 ${_rgba(_quarter(run.color), text.opacity)}',
                     if (run.bold) 'font-weight': '700',
                     if (run.italic) 'font-style': 'italic',
                     if (run.underlined || run.strikethrough)
@@ -500,6 +506,10 @@ class _McStageState extends State<McStage> {
     }
     return out;
   }
+
+  static String _rgba(int rgb, double alpha) => 'rgba(${(rgb >> 16) & 0xFF}, ${(rgb >> 8) & 0xFF}, ${rgb & 0xFF}, ${alpha.toStringAsFixed(3)})';
+
+  static int _quarter(int rgb) => (((rgb >> 16) & 0xFF) ~/ 4) << 16 | (((rgb >> 8) & 0xFF) ~/ 4) << 8 | (rgb & 0xFF) ~/ 4;
 
   /// `#AARRGGBB` as a CSS colour.
   static String _argb(String hex) {

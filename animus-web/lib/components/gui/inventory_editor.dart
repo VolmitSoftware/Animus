@@ -79,7 +79,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
   List<Diagnostic> get _diagnostics => component.document.diagnostics;
 
   void _write(List<JsonStep> steps, Object? value, {String? coalesce}) =>
-      component.onJson(writeIn(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
+      component.onJson(writeAt(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
 
   List<String> get _namedLists => asMap(_doc['actions']).keys.toList();
 
@@ -382,7 +382,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
                   Object? doc = writeIn(_doc, owner, renameKey(keys, entry.key, next));
                   final List<JsonStep> maskOwner = <JsonStep>[...chestFieldOwner(_doc, _variant, 'mask'), 'mask'];
                   doc = writeIn(doc, maskOwner, <String>[for (final String row in stringList(readIn(doc, maskOwner))) row.replaceAll(entry.key, next)]);
-                  component.onJson(doc);
+                  component.onJson(writeAt(_doc, const <JsonStep>[], doc));
                 },
               ),
               GuiIconButton(icon: ArcaneIcon.trash(size: IconSize.sm), label: 'Remove key ${entry.key}', onPressed: () => _write(<JsonStep>[...owner, entry.key], null)),

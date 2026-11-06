@@ -3,6 +3,8 @@
 /// the way the server stacks them. Sample viewer values fill expressions.
 library;
 
+import 'dart:math' as math;
+
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
@@ -14,12 +16,10 @@ import '../npc/npc_scene.dart';
 import '../scene/mc_camera.dart';
 import '../scene/mc_math.dart';
 import '../scene/mc_scene.dart';
+import 'hologram_style.dart';
 
 /// Blocks one text row takes (a text display line at scale 1).
 const double guiTextRowBlocks = 0.25;
-
-/// Blocks an item or block row takes.
-const double guiItemRowBlocks = 0.55;
 
 /// Something the stage can pick and ring: a menu component by id.
 final class GuiSceneTarget {
@@ -45,7 +45,7 @@ final class GuiScene {
   final List<GuiSceneTarget> targets;
 }
 
-List<List<McTextRun>> _styled(String text) => <List<McTextRun>>[for (final String line in text.split('\n')) guiTextRuns(line)];
+List<List<McTextRun>> _styled(String text) => guiTextLines(guiTextRuns(text));
 
 /// The text animations a preview plays: `|animation.<id>|` tokens in text
 /// show the frame each animation shows at [nowMs], ids resolved from the
@@ -97,77 +97,108 @@ JsonList hologramLines(JsonMap doc, {int? page, int? variant}) {
   return asList(doc['lines']);
 }
 
+/// A hologram laid out as the server lays it out (HologramRender): every
+/// text row in one text display whose bottom sits on the anchor and which
+/// carries the hologram's style, object lines in blank rows of their own
+/// height, a hidden text row keeping its space only while there are object
+/// lines.
 GuiScene hologramScene(JsonMap doc, {int? page, int? variant, GuiAnimationClock clock = GuiAnimationClock.none}) {
   final Set<String> missing = <String>{};
   final JsonList lines = hologramLines(doc, page: page, variant: variant);
   final List<McSceneNode> nodes = <McSceneNode>[];
   final List<NpcText> texts = <NpcText>[];
   final List<String> notes = <String>[];
-  final JsonMap style = hologramStyle(doc, variant: variant);
-  final double styleScale = asDouble(style['scaleY']) ?? 1;
-  double height = 0;
-  for (final Object? line in lines) {
-    height += _rowHeight(line) * styleScale;
-  }
-  // Rows stack downward from the top; the anchor sits 1.2 blocks above the
-  // grass so the stack reads at eye level. Yaw and pitch turn the stack
-  // about the anchor, as the server turns its displays.
-  const double base = 1.2;
-  final McMat4 turn = McMat4.rotationY(-(asDouble(doc['yaw']) ?? 0)).multiply(McMat4.rotationX(asDouble(doc['pitch']) ?? 0));
-  McVec3 at(double y) {
-    final McVec3 turned = turn.transformPoint(McVec3(0, y - base, 0));
-    return McVec3(turned.x, turned.y + base, turned.z);
-  }
-
-  McMat4 placed(McVec3 centre, double scale) =>
-      McMat4.translation(centre.x, centre.y, centre.z).multiply(turn).multiply(McMat4.scale(scale, scale, scale));
-  double top = base + height;
+  final HologramTextStyle style = HologramTextStyle.of(hologramStyle(doc, variant: variant));
+  final double rowHeight = guiTextRowBlocks * style.scaleY;
+  bool isText(Object? line) => line is! Map<String, Object?> || line['text'] is String;
+  final bool objects = lines.any((Object? line) => !isText(line));
+  final List<String> rows = <String>[];
+  final List<String> coloured = <String>[];
+  final List<({int index, JsonMap line, int first, int count})> placed = <({int index, JsonMap line, int first, int count})>[];
   for (int index = 0; index < lines.length; index++) {
     final Object? line = lines[index];
-    final double row = _rowHeight(line) * styleScale;
-    final double bottom = top - row;
-    final double scale = (line is Map<String, Object?> ? asDouble(line['scale']) ?? 1 : 1) * styleScale;
-    if (line == null || line is String) {
-      final String text = line is String ? line : '';
-      texts.add(_shownText(at(bottom), text, clock, missing));
-    } else if (line is Map<String, Object?>) {
-      final McVec3 centre = at(bottom + row / 2);
-      if (!sampleCondition(line['show'])) {
-        notes.add('Row ${index + 1} is hidden for the sample viewer (show is false).');
-        top = bottom;
-        continue;
+    final bool shown = line is! Map<String, Object?> || sampleCondition(line['show']);
+    if (!shown) notes.add('Row ${index + 1} is hidden for the sample viewer (show is false).');
+    if (isText(line)) {
+      final String raw = line is String ? line : (line is Map<String, Object?> ? line['text']! as String : '');
+      missing.addAll(clock.missing(raw));
+      final String text = clock.apply(raw);
+      final List<String> parts = text.split('\n');
+      final List<String> styledParts = guiColorize(renderTemplate(text)).split('\n');
+      if (shown) {
+        rows.addAll(parts);
+        coloured.addAll(styledParts);
+      } else if (objects) {
+        rows.addAll(<String>[for (final String _ in parts) '']);
+        coloured.addAll(<String>[for (final String _ in parts) '']);
       }
-      if (line['text'] is String) {
-        texts.add(_shownText(at(bottom), line['text']! as String, clock, missing));
-      } else if (line['item'] is Map<String, Object?>) {
-        final JsonMap icon = asMap(line['item']);
-        final String? item = _bareItem(asString(icon['item']));
-        if (item != null) {
-          nodes.add(McItemNode(key: 'line-$index', itemId: item, pose: McDisplayPose.fixed, transform: placed(centre, scale)));
-        } else {
-          notes.add('Row ${index + 1}: the item comes from an expression, which needs the server.');
-        }
-      } else if (line['block'] is String) {
-        final String? block = _bareItem(line['block']! as String);
-        if (block != null) {
-          nodes.add(McItemNode(key: 'line-$index', itemId: block, pose: McDisplayPose.none, transform: placed(centre, 0.5 * scale)));
-        }
-      } else if (line['head'] is String) {
-        nodes.add(McItemNode(key: 'line-$index', itemId: 'player_head', pose: McDisplayPose.fixed, transform: placed(centre, scale)));
-        notes.add('Row ${index + 1}: the head is drawn without a skin; the server shows ${line['head']}\'s.');
-      } else if (line['entity'] is String) {
-        final String entity = line['entity']! as String;
-        nodes.add(McItemNode(key: 'line-$index', itemId: 'glass', pose: McDisplayPose.none, transform: placed(centre, 0.45 * scale)));
-        texts.add(_shownText(centre + const McVec3(0, -0.05, 0), '&7${entity.contains(':') ? entity : 'minecraft:$entity'}', clock, missing));
-        notes.add('Row ${index + 1}: entity rows are drawn as a labelled box; the server shows the entity.');
-      }
+      continue;
     }
-    top = bottom;
+    final JsonMap object = line! as JsonMap;
+    final int count = math.max(1, ((asDouble(object['scale']) ?? 1) / rowHeight - 1e-9).ceil());
+    if (shown) placed.add((index: index, line: object, first: rows.length, count: count));
+    for (int row = 0; row < count; row++) {
+      rows.add(' ');
+      coloured.add(' ');
+    }
   }
-  _styleNotes(style, notes);
+  // The anchor sits 1.2 blocks above the grass so the stack reads at eye
+  // level. Yaw and pitch turn each display about its own position, as the
+  // server sends them; a centre or horizontal billboard keeps text upright.
+  const double base = 1.2;
+  final double total = rows.length * rowHeight;
+  final McMat4 turn = McMat4.rotationY(-(asDouble(doc['yaw']) ?? 0)).multiply(McMat4.rotationX(asDouble(doc['pitch']) ?? 0));
+  if (rows.isNotEmpty) {
+    McVec3 anchor = const McVec3(0, base, 0);
+    if (style.tilts) {
+      final McVec3 middle = turn.transformPoint(McVec3(0, total / 2, 0));
+      anchor = McVec3(middle.x, base + middle.y - total / 2, middle.z);
+    }
+    texts.add(NpcText(
+      anchor: anchor,
+      lines: rows,
+      nameplate: false,
+      styled: guiTextLines(guiSectionRuns(guiColorize(coloured.join('\n')))),
+      lineWidth: style.lineWidth,
+      background: style.background,
+      shadow: style.shadow,
+      alignment: style.alignment,
+      opacity: style.opacity,
+      scaleX: style.scaleX,
+      scaleY: style.scaleY,
+      brightness: style.brightness,
+    ));
+  }
+  McMat4 at(McVec3 centre, double scale) => McMat4.translation(centre.x, centre.y, centre.z).multiply(turn).multiply(McMat4.scale(scale, scale, scale));
+  for (final ({int index, JsonMap line, int first, int count}) object in placed) {
+    final JsonMap line = object.line;
+    final int row = object.index + 1;
+    final McVec3 centre = McVec3(0, base + total - (object.first + object.count / 2) * rowHeight, 0);
+    final double scale = asDouble(line['scale']) ?? 1;
+    if (line['item'] is Map<String, Object?>) {
+      final String? item = _bareItem(asString(asMap(line['item'])['item']));
+      if (item != null) {
+        nodes.add(McItemNode(key: 'line-${object.index}', itemId: item, pose: McDisplayPose.fixed, transform: at(centre, scale)));
+      } else {
+        notes.add('Row $row: the item comes from an expression, which needs the server.');
+      }
+    } else if (line['block'] is String) {
+      final String? block = _bareItem(line['block']! as String);
+      if (block != null) nodes.add(McItemNode(key: 'line-${object.index}', itemId: block, pose: McDisplayPose.none, transform: at(centre, 0.5 * scale)));
+    } else if (line['head'] is String) {
+      nodes.add(McItemNode(key: 'line-${object.index}', itemId: 'player_head', pose: McDisplayPose.fixed, transform: at(centre, scale)));
+      notes.add('Row $row: the head is drawn without a skin; the server shows ${line['head']}\'s.');
+    } else if (line['entity'] is String) {
+      final String entity = line['entity']! as String;
+      nodes.add(McItemNode(key: 'line-${object.index}', itemId: 'glass', pose: McDisplayPose.none, transform: at(centre, 0.45 * scale)));
+      texts.add(_shownText(centre + const McVec3(0, -0.05, 0), '&7${entity.contains(':') ? entity : 'minecraft:$entity'}', clock, missing));
+      notes.add('Row $row: entity rows are drawn as a labelled box; the server shows the entity.');
+    }
+  }
+  notes.addAll(style.notes);
   _missingNotes(missing, notes);
   return GuiScene(
-    scene: McScene(nodes, frame: _corners(McBounds(const McVec3(-1, 0.8, -0.5), McVec3(1, 1.4 + height, 0.5)))),
+    scene: McScene(nodes, frame: _corners(McBounds(const McVec3(-1, 0.8, -0.5), McVec3(1, 1.4 + total, 0.5)))),
     texts: texts,
     notes: notes,
   );
@@ -180,22 +211,6 @@ JsonMap hologramStyle(JsonMap doc, {int? variant}) {
   if (variant == null) return own;
   final JsonMap over = asMap(asMap(asMap(asList(doc['variants']).elementAtOrNull(variant))['presentation'])['style']);
   return <String, Object?>{...own, ...over};
-}
-
-/// What the text layer cannot show of a style yet.
-void _styleNotes(JsonMap style, List<String> notes) {
-  final List<String> unshown = <String>[
-    for (final String key in const <String>['backgroundArgb', 'shadow', 'billboard', 'textOpacity', 'glowColor'])
-      if (style.containsKey(key)) key,
-  ];
-  if (unshown.isNotEmpty) notes.add('Style ${unshown.join(', ')} is saved and used by the server; the preview text does not show it yet.');
-}
-
-double _rowHeight(Object? line) {
-  if (line == null) return guiTextRowBlocks;
-  if (line is String) return guiTextRowBlocks * line.split('\n').length;
-  if (line is Map<String, Object?> && line['text'] is String) return guiTextRowBlocks * (line['text']! as String).split('\n').length;
-  return line is Map<String, Object?> ? (asDouble(line['scale']) ?? guiItemRowBlocks) : guiItemRowBlocks;
 }
 
 /// A holographic menu in front of a viewer: the menu centre is [offset] from

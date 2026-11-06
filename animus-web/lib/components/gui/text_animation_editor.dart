@@ -149,7 +149,7 @@ class TextAnimationEditor extends StatelessWidget {
 
   JsonMap get _doc => asMap(document.json);
 
-  void _write(List<JsonStep> steps, Object? value, {String? coalesce}) => onJson(writeIn(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
+  void _write(List<JsonStep> steps, Object? value, {String? coalesce}) => onJson(writeAt(_doc, steps, value), coalesce: coalesce ?? steps.join('.'));
 
   @override
   Widget build(BuildContext context) {

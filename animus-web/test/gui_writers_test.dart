@@ -3,6 +3,7 @@ import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/gui/gui_presets.dart';
 import 'package:animus_editor/logic/gui/hologram_lines.dart';
 import 'package:animus_editor/mc/gui/gui_scene.dart';
+import 'package:animus_editor/mc/npc/npc_scene.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
@@ -155,16 +156,72 @@ void main() {
       expect(scene.notes.any((String note) => note.contains('labelled box')), isTrue);
     });
 
-    test('should turn hologram rows by pitch and note entity rows', () {
+    test('should tilt a fixed hologram by pitch, keep a facing one upright and note entity rows', () {
       final GuiScene flat = hologramScene(<String, Object?>{'lines': <Object?>['a', 'b']});
-      final GuiScene tilted = hologramScene(<String, Object?>{'pitch': 90, 'lines': <Object?>['a', 'b']});
-      expect(flat.texts.first.anchor.z, closeTo(0, 1e-9));
-      expect(tilted.texts.first.anchor.z.abs(), greaterThan(0.1));
+      final GuiScene facing = hologramScene(<String, Object?>{'pitch': 90, 'lines': <Object?>['a', 'b']});
+      final GuiScene tilted = hologramScene(<String, Object?>{
+        'pitch': 90,
+        'style': <String, Object?>{'billboard': 'fixed'},
+        'lines': <Object?>['a', 'b'],
+      });
+      expect(flat.texts.single.anchor.z, closeTo(0, 1e-9));
+      expect(facing.texts.single.anchor.z, closeTo(0, 1e-9), reason: 'a centre billboard faces the viewer whatever the pitch');
+      expect(tilted.texts.single.anchor.z.abs(), greaterThan(0.1));
+      expect(tilted.notes.where((String note) => note.contains('billboard')), hasLength(1));
       final GuiScene entity = hologramScene(<String, Object?>{
         'lines': <Object?>[<String, Object?>{'entity': 'cow', 'show': false}, <String, Object?>{'entity': 'pig'}],
       });
       expect(entity.notes.where((String note) => note.contains('hidden')), hasLength(1));
-      expect(entity.texts.single.lines.single, contains('minecraft:pig'));
+      expect(entity.texts.where((NpcText text) => text.lines.join().contains('minecraft:pig')), hasLength(1));
+    });
+
+    test('should draw hologram text rows as one text display with the hologram style', () {
+      final GuiScene scene = hologramScene(<String, Object?>{
+        'lines': <Object?>[
+          '&6Title',
+          'plain',
+          <String, Object?>{'item': <String, Object?>{'type': 'item', 'item': 'minecraft:map'}, 'scale': 0.6},
+          '<bold>Bold',
+        ],
+        'style': <String, Object?>{
+          'backgroundArgb': '#80112233',
+          'shadow': true,
+          'textAlignment': 'left',
+          'textOpacity': 128,
+          'lineWidth': 120,
+          'scaleX': 2,
+          'scaleY': 1.5,
+          'blockLight': 4,
+          'skyLight': 2,
+        },
+      });
+      final NpcText text = scene.texts.single;
+      expect(text.background, '#80112233');
+      expect(text.shadow, isTrue);
+      expect(text.alignment, McTextAlign.left);
+      expect(text.opacity, closeTo(128 / 255, 1e-9));
+      expect(text.lineWidth, 120);
+      expect(text.scaleX, 2);
+      expect(text.scaleY, 1.5);
+      expect(text.brightness, lessThan(0.5));
+      // An item 0.6 tall takes two blank rows of 0.375 blocks.
+      expect(text.lines, <String>['&6Title', 'plain', ' ', ' ', '<bold>Bold']);
+      expect(text.styled![1].single.color, 0xFFAA00, reason: 'a colour carries to the next row of one text display');
+      expect(text.styled![4].single.bold, isTrue);
+      expect(scene.notes.where((String note) => note.contains('Style')), isEmpty);
+    });
+
+    test('should draw an unstyled hologram as the server sends it', () {
+      final NpcText text = hologramScene(<String, Object?>{'lines': <Object?>['a']}).texts.single;
+      expect(text.background, '#00000000', reason: 'no background unless backgroundArgb sets one');
+      expect(text.shadow, isFalse);
+      expect(text.alignment, McTextAlign.center);
+      expect(text.opacity, 1);
+      expect(text.brightness, isNull);
+      expect(hologramScene(<String, Object?>{'style': <String, Object?>{'textOpacity': 2}, 'lines': <Object?>['a']}).texts.single.opacity, 1,
+          reason: 'the client draws opacity 3 and below fully opaque');
+      final GuiScene hidden = hologramScene(<String, Object?>{'style': <String, Object?>{'seeThrough': false}, 'lines': <Object?>['a']});
+      expect(hidden.notes.where((String note) => note.contains('seeThrough')), hasLength(1));
     });
   });
 }

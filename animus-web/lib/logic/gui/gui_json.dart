@@ -5,6 +5,8 @@ library;
 
 import 'dart:convert';
 
+import '../json_merge.dart';
+
 typedef JsonMap = Map<String, Object?>;
 typedef JsonList = List<Object?>;
 
@@ -57,6 +59,17 @@ Object? readIn(Object? root, List<JsonStep> steps) {
   }
   return current;
 }
+
+/// An edit to a document, run on the document as it is when the edit is
+/// saved.
+typedef JsonUpdate = Object? Function(Object? latest);
+
+/// Writes [value] at [steps] of [shown], the document the editor drew, as an
+/// edit on the latest document: the parts [shown] and the latest differ in
+/// keep the latest's, so a quick edit saved in between is not lost
+/// ([rebaseJson]). Empty [steps] replace the whole document that way.
+JsonUpdate writeAt(Object? shown, List<JsonStep> steps, Object? value) =>
+    (Object? latest) => rebaseJson(shown, writeIn(shown, steps, value), latest, written: steps);
 
 /// [root] with the value at [steps] replaced by [value]; a null [value]
 /// removes a map key (or a list item). Missing maps along the way are created.

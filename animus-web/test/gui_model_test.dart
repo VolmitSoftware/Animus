@@ -337,6 +337,21 @@ void main() {
       expect(runs.firstWhere((McTextRun run) => run.text == 'red').color, 0xFF5555);
       expect(guiPlainText('<unknown>&ax'), '<unknown>x');
     });
+
+    test('should read colour codes and tags the way the server formats them', () {
+      McTextRun only(String text) => guiTextRuns(text).single;
+      List<McTextRun> runs(String text) => guiTextRuns(text);
+      expect(only('<bold><red>x').bold, isFalse, reason: 'a colour code clears the styles before it');
+      expect(only('<red><bold>x'), const McTextRun('x', color: 0xFF5555, bold: true));
+      expect(runs('&6a<bold>b</bold>c').last, const McTextRun('c'), reason: 'a closing tag resets, then reopens the tags still open');
+      expect(runs('<red>a<bold>b</bold>c').last, const McTextRun('c', color: 0xFF5555));
+      expect(only('&x&f&f&0&0&0&0x').color, 0xFF0000);
+      expect(only('<color:#00ff00>g').color, 0x00FF00);
+      expect(only('<colour:aqua>g').color, 0x55FFFF);
+      expect(only('[112233]x').color, 0x112233);
+      expect(only(r'\u2764').text, '\u2764');
+      expect(guiPlainText('§zq &#12345x'), '§zq &#12345x', reason: 'unknown codes and short hex stay as text');
+    });
   });
 
   group('Gloss bundles', () {

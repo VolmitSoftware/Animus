@@ -24,6 +24,9 @@ const int mcLeatherColor = 0xA06540;
 /// framing, blocks.
 const double mcFramedTextGap = 1.0;
 
+/// How a text display lines up its lines against the widest one.
+enum McTextAlign { center, left, right }
+
 /// Text the client draws in world space, as the server lays it out.
 final class NpcText {
   const NpcText({
@@ -35,7 +38,25 @@ final class NpcText {
     this.lineWidth = 200,
     this.background,
     this.shadow = false,
+    this.alignment = McTextAlign.center,
+    this.opacity = 1,
+    this.scaleX = 1,
+    this.scaleY = 1,
+    this.brightness,
   });
+
+  final McTextAlign alignment;
+
+  /// How opaque the glyphs are, 0 to 1; the background keeps its own alpha.
+  final double opacity;
+
+  /// A text display's scale across and up.
+  final double scaleX;
+  final double scaleY;
+
+  /// How bright the text is drawn, 0 to 1, from a display's fixed block and
+  /// sky light; null for full light.
+  final double? brightness;
 
   /// A sneaking player's nameplate: the client draws it faded and hides it
   /// behind blocks.
