@@ -65,7 +65,7 @@ class BuildServiceLiveSettingsTest {
                     return null;
                 });
         builds = new BuildService<>(runtime, harness.service, Runnable::run, platform, art.arcane.animus.core.building.BuildProtection.NONE, "none",
-                ticks, () -> null, (String line) -> {}, null);
+                ticks, () -> null, (String line) -> {}, null, null);
     }
 
     /** Planning runs on the build worker; its answer lands on a later owner tick. */

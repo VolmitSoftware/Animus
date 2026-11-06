@@ -57,6 +57,11 @@ final class ScaffoldCrew {
     boolean holds(BlockPos at) { return standing.contains(at); }
     /** Scaffolding blocks standing now. */
     int standing() { return standing.size(); }
+    /** Some block of scaffolding still to come down, if any. */
+    Optional<BlockPos> anyCell() {
+        if (!orphans.isEmpty()) return Optional.of(orphans.getFirst().at());
+        return standing.stream().findFirst();
+    }
 
     /** Plans a scaffold for a block no ground reaches. False when no place fits. */
     boolean start(BuildCrew.Member member, BlockPos target, List<BlockPos> upcoming, BuildPlan plan, BuildSession.Context context) {
@@ -146,7 +151,7 @@ final class ScaffoldCrew {
     private String put(BuildCrew.Member member, Scaffold scaffold, Scaffold.Put put, BuildSession.Context context, long tick) {
         if (tick < nextPlace.getOrDefault(member.id(), 0L) || !context.budget().place()) return null;
         BlockPos at = put.at();
-        if (!context.world().chunkLoaded(world, Math.floorDiv(at.x(), 16), Math.floorDiv(at.z(), 16))) return "waiting for an unloaded chunk at " + at.x() + " " + at.z();
+        if (!context.world().chunkLoaded(world, Math.floorDiv(at.x(), 16), Math.floorDiv(at.z(), 16))) return BuildSession.waitingFor(context.world(), world, at);
         Optional<String> before = context.world().block(world, at);
         Optional<String> state = state(put.distance(), context.world());
         if (before.isEmpty() || !BuildSession.air(before.get()) || state.isEmpty()
@@ -157,7 +162,7 @@ final class ScaffoldCrew {
         }
         if (options.materials() != BuildOptions.Materials.CREATIVE) {
             long have = available(context.world());
-            if (have < 0) return "the material container at " + options.container().orElseThrow() + " is not loaded or not a container";
+            if (have < 0) return BuildSession.containerMissing(context.world(), world, options.container().orElseThrow());
             if (have < 1) return "needs 1 " + ScaffoldPlanner.BLOCK + " to put up scaffolding (have 0)";
         }
         if (!context.world().place(world, at, state.get())) { scaffold.abort(); return null; }
