@@ -224,6 +224,9 @@
 - Denizen converter v5 converts projectile launch, hit and collide events and bow shots, with their switches and `determine cancelled`.
 - Animation events play during playback: each sound or particle runs at the NPC for nearby players when its clip reaches the event's tick, every cycle, and stops when the clip stops or starts fading.
 - Rig sockets show the NPC's item for each socketed equipment slot on that bone, posed like a held or worn item, and follow the bone's animation; the body no longer shows that slot.
+- Rollback receipts rotate at startup by `files.backupsKept` and `files.backupDays`, removing stored copies only they used.
+- Schema migrations cover routes, recordings, groups, chest GUIs, holograms, text animations, rigs, animations, pack manifests and `server-behaviors.json`.
+- Web editor: the live bar shows Resyncing after a reconnect, then one line saying what changed.
 
 ### Changed
 
@@ -464,6 +467,8 @@
 - Editor GUI text reads colour codes and MiniMessage tags exactly as the server does: a colour clears the decorations before it, a closing tag resets and reopens the tags still open, and `&x` hex, `<color:...>` and backslash-u escapes work.
 - Two edits made in quick succession in the web editor both stay, each as its own undo step, and an edit made while an apply is on its way stays a draft instead of being overwritten.
 - Validate, Preview and Apply in the web editor include every edit made before they were pressed.
+- An editor request queued before its token was revoked or expired no longer reads or writes.
+- An editor browser that stops reading events no longer stalls event delivery to other editors.
 
 ### Notes
 

@@ -17,9 +17,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Upgrades stored NPC definitions, behavior documents and shops to the schema version this build reads. Each document
- * kind has an ordered chain: the first entry is the version1 identity, and entry N turns a version N document into
- * version N+1. Rewrites are committed in one {@link DocumentStore} transaction, so they are journaled, recover after a
+ * Upgrades every versioned document kind to the schema version this build reads. Each kind has an ordered chain: the
+ * first entry is the identity at the kind's first version (1, or 3 for holograms, which keep Gloss's numbering), and
+ * each later entry turns a document of one version into the next. Rewrites are committed in one {@link DocumentStore} transaction, so they are journaled, recover after a
  * crash and leave a rollback receipt holding the original bytes. A document newer than the chain, or one whose step
  * fails, is reported and left byte-for-byte in place.
  */
@@ -28,7 +28,7 @@ public final class SchemaMigrations {
     @FunctionalInterface
     public interface Step { JsonObject migrate(JsonObject previous) throws IOException; }
 
-    /** A document kind and the data folders that hold it. A {@code packs/*} prefix covers every pack. */
+    /** A document kind and the data folders, or single {@code .json} files, that hold it. A {@code packs/*} prefix covers every pack. */
     public record Kind(String name, List<String> roots) {
         public Kind { roots = List.copyOf(roots); }
     }
@@ -41,39 +41,56 @@ public final class SchemaMigrations {
     public static final Kind NPC = new Kind("NPC definition", List.of("npcs"));
     public static final Kind BEHAVIOR = new Kind("behavior", List.of("behaviors", "packs/*/behaviors"));
     public static final Kind SHOP = new Kind("shop", List.of("shops"));
+    public static final Kind ROUTE = new Kind("route", List.of("routes"));
+    public static final Kind RECORDING = new Kind("recording", List.of("recordings"));
+    public static final Kind GROUP = new Kind("group", List.of("groups"));
+    public static final Kind INVENTORY = new Kind("chest GUI", List.of("gui/inventories"));
+    public static final Kind HOLOGRAM = new Kind("hologram", List.of("gui/holograms"));
+    public static final Kind TEXT_ANIMATION = new Kind("text animation", List.of("gui/text-animations"));
+    public static final Kind RIG = new Kind("rig", List.of("rigs"));
+    public static final Kind ANIMATION = new Kind("animation", List.of("animations"));
+    public static final Kind SERVER_BEHAVIORS = new Kind("server behavior list", List.of("server-behaviors.json"));
+    public static final Kind PACK = new Kind("pack manifest", List.of("packs/*/pack.json"));
     private static final Step IDENTITY = (JsonObject previous) -> previous;
-    private static final SchemaMigrations STANDARD = builder().identity(NPC).identity(BEHAVIOR).identity(SHOP).build();
+    private static final SchemaMigrations STANDARD = builder().identity(NPC).identity(BEHAVIOR).identity(SHOP).identity(ROUTE).identity(RECORDING)
+            .identity(GROUP).identity(INVENTORY).identity(HOLOGRAM, 3).identity(TEXT_ANIMATION).identity(RIG).identity(ANIMATION)
+            .identity(SERVER_BEHAVIORS).identity(PACK).build();
+
+    /** One kind's steps, the first being the identity at version {@code first}. */
+    private record Chain(int first, List<Step> steps) {
+        int current() { return first + steps.size() - 1; }
+    }
 
     /** In registration order, so a pass visits kinds and reports paths in a stable order. */
-    private final Map<Kind, List<Step>> chains;
+    private final Map<Kind, Chain> chains;
 
-    private SchemaMigrations(Map<Kind, List<Step>> chains) {
-        Map<Kind, List<Step>> copy = new LinkedHashMap<>();
-        for (Map.Entry<Kind, List<Step>> chain : chains.entrySet()) copy.put(chain.getKey(), List.copyOf(chain.getValue()));
+    private SchemaMigrations(Map<Kind, Chain> chains) {
+        Map<Kind, Chain> copy = new LinkedHashMap<>();
+        for (Map.Entry<Kind, Chain> chain : chains.entrySet()) copy.put(chain.getKey(), new Chain(chain.getValue().first(), List.copyOf(chain.getValue().steps())));
         this.chains = Collections.unmodifiableMap(copy);
     }
 
-    /** The chains this build ships: every kind is at version 1. */
+    /** The chains this build ships: every kind at its first version. */
     public static SchemaMigrations standard() { return STANDARD; }
     public static Builder builder() { return new Builder(); }
 
     /** The version a kind is written at. */
-    public int current(Kind kind) { return chain(kind).size(); }
+    public int current(Kind kind) { return chain(kind).current(); }
 
     /**
-     * The document at the current version. A missing or non-integer {@code schemaVersion}, or one below 1, is returned
-     * unchanged for the document's own parser to report. A newer version is refused.
+     * The document at the current version. A missing or non-integer {@code schemaVersion}, or one below the kind's first
+     * version, is returned unchanged for the document's own parser to report. A newer version is refused.
      */
     public JsonObject migrate(Kind kind, JsonObject document) throws IOException {
-        List<Step> chain = chain(kind);
+        Chain chain = chain(kind);
         int version = version(document);
-        if (version < 1) return document;
-        if (version > chain.size())
-            throw new IOException(kind.name() + " schemaVersion " + version + " is newer than this Animus reads (" + chain.size()
+        if (version < chain.first()) return document;
+        if (version > chain.current())
+            throw new IOException(kind.name() + " schemaVersion " + version + " is newer than this Animus reads (" + chain.current()
                     + "); update Animus or restore an older copy");
         JsonObject result = document;
-        for (int next = version; next < chain.size(); next++) {
-            result = Objects.requireNonNull(chain.get(next).migrate(result.deepCopy()), "migration step returned null");
+        for (int next = version; next < chain.current(); next++) {
+            result = Objects.requireNonNull(chain.steps().get(next - chain.first() + 1).migrate(result.deepCopy()), "migration step returned null");
             result.addProperty("schemaVersion", next + 1);
         }
         return result;
@@ -83,25 +100,25 @@ public final class SchemaMigrations {
     public Report apply(DocumentStore store) throws IOException {
         List<DocumentStore.Change> changes = new ArrayList<>();
         List<String> migrated = new ArrayList<>(), problems = new ArrayList<>();
-        for (Map.Entry<Kind, List<Step>> chain : chains.entrySet()) {
+        for (Map.Entry<Kind, Chain> chain : chains.entrySet()) {
             Kind kind = chain.getKey();
-            for (String folder : folders(store, kind)) {
-                Path root = store.resolve(folder);
-                for (Path file : JsonDocumentTree.files(root, kind.equals(NPC) ? NpcPaths.TREE_DEPTH : 8)) {
-                    String path = folder + "/" + root.relativize(file).toString().replace('\\', '/');
-                    String before = store.read(path);
-                    JsonObject document;
-                    try { document = JsonDocuments.object(before); }
-                    catch (IOException | RuntimeException malformed) { continue; }
-                    int version = version(document);
-                    if (version < 1 || version == chain.getValue().size()) continue;
-                    try {
-                        JsonObject after = migrate(kind, document);
-                        changes.add(new DocumentStore.Change(path, JsonDocuments.hash(before), JsonDocuments.write(after)));
-                        migrated.add(path);
-                    } catch (IOException | RuntimeException refused) {
-                        problems.add(path + ": " + refused.getMessage() + "; file left unchanged");
-                    }
+            for (String path : paths(store, kind)) {
+                String before;
+                JsonObject document;
+                // An unreadable or malformed file is the loader's to report.
+                try {
+                    before = store.read(path);
+                    if (before == null) continue;
+                    document = JsonDocuments.object(before);
+                } catch (IOException | RuntimeException unreadable) { continue; }
+                int version = version(document);
+                if (version < chain.getValue().first() || version == chain.getValue().current()) continue;
+                try {
+                    JsonObject after = migrate(kind, document);
+                    changes.add(new DocumentStore.Change(path, JsonDocuments.hash(before), JsonDocuments.write(after)));
+                    migrated.add(path);
+                } catch (IOException | RuntimeException refused) {
+                    problems.add(path + ": " + refused.getMessage() + "; file left unchanged");
                 }
             }
         }
@@ -109,13 +126,28 @@ public final class SchemaMigrations {
         return new Report(transaction, migrated, problems);
     }
 
-    private List<Step> chain(Kind kind) {
-        List<Step> chain = chains.get(kind);
+    private Chain chain(Kind kind) {
+        Chain chain = chains.get(kind);
         if (chain == null) throw new IllegalArgumentException("No migration chain for " + kind.name());
         return chain;
     }
 
-    private static List<String> folders(DocumentStore store, Kind kind) throws IOException {
+    /** Every document path of a kind: the files under its folders, and its single files that exist. */
+    private static List<String> paths(DocumentStore store, Kind kind) throws IOException {
+        List<String> paths = new ArrayList<>();
+        for (String location : locations(store, kind)) {
+            Path resolved = store.resolve(location);
+            if (location.endsWith(".json")) {
+                if (Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) paths.add(location);
+                continue;
+            }
+            for (Path file : JsonDocumentTree.files(resolved, kind.equals(NPC) ? NpcPaths.TREE_DEPTH : 8))
+                paths.add(location + "/" + resolved.relativize(file).toString().replace('\\', '/'));
+        }
+        return paths;
+    }
+
+    private static List<String> locations(DocumentStore store, Kind kind) throws IOException {
         List<String> folders = new ArrayList<>();
         for (String root : kind.roots()) {
             if (!root.startsWith("packs/*/")) { folders.add(root); continue; }
@@ -141,23 +173,27 @@ public final class SchemaMigrations {
     }
 
     public static final class Builder {
-        private final Map<Kind, List<Step>> chains = new LinkedHashMap<>();
+        private final Map<Kind, Chain> chains = new LinkedHashMap<>();
         private Builder() {}
 
         /** Starts a kind's chain at version 1. */
-        public Builder identity(Kind kind) {
+        public Builder identity(Kind kind) { return identity(kind, 1); }
+
+        /** Starts a kind's chain at {@code first}, for a format whose numbering began elsewhere. */
+        public Builder identity(Kind kind, int first) {
             if (chains.containsKey(kind)) throw new IllegalStateException(kind.name() + " already has a chain");
-            List<Step> chain = new ArrayList<>();
-            chain.add(IDENTITY);
-            chains.put(kind, chain);
+            if (first < 1) throw new IllegalArgumentException("A chain starts at version 1 or later");
+            List<Step> steps = new ArrayList<>();
+            steps.add(IDENTITY);
+            chains.put(kind, new Chain(first, steps));
             return this;
         }
 
         /** Appends the step from the kind's current last version to the next one. */
         public Builder step(Kind kind, Step step) {
-            List<Step> chain = chains.get(kind);
-            if (chain == null) throw new IllegalStateException(kind.name() + " needs its version 1 identity first");
-            chain.add(Objects.requireNonNull(step));
+            Chain chain = chains.get(kind);
+            if (chain == null) throw new IllegalStateException(kind.name() + " needs its identity first");
+            chain.steps().add(Objects.requireNonNull(step));
             return this;
         }
 

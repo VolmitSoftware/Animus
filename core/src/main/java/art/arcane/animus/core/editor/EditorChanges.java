@@ -9,6 +9,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -160,6 +162,8 @@ public final class EditorChanges {
         List<DocumentStore.Change> writes = new ArrayList<>();
         JsonArray conflicts = new JsonArray(), catalog = new JsonArray(), deleted = new JsonArray(), touched = new JsonArray();
         Map<String, JsonObject> result = new LinkedHashMap<>();
+        if (!Files.exists(store.resolve("backups/" + changeId + ".json"), LinkOption.NOFOLLOW_LINKS))
+            throw new EditorError(EditorError.Code.NOT_FOUND, "Change " + changeId + " can no longer be undone: backup rotation removed its rollback receipt.");
         for (DocumentStore.Change inverse : store.inverse(changeId)) {
             EditorDocuments.Location location = byPath.get(inverse.path());
             // The editor record and NPC checkpoint pointers are engine state; the commit invalidates stale checkpoints itself.

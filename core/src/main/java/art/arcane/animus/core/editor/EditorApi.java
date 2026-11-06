@@ -227,12 +227,18 @@ public final class EditorApi implements EditorRequestHandler {
 
     @FunctionalInterface private interface FileWork { EditorResponse run() throws EditorError, IOException; }
 
-    /** Runs on the shared file lane; a full lane answers busy at once. */
-    private CompletionStage<EditorResponse> files(FileWork work) throws EditorError {
+    /**
+     * Runs on the shared file lane; a full lane answers busy at once. The token is checked again as the work starts, so a
+     * session revoked or expired while its request waited neither reads nor writes.
+     */
+    private CompletionStage<EditorResponse> files(EditorTokens.Token token, FileWork work) throws EditorError {
         CompletableFuture<EditorResponse> result = new CompletableFuture<>();
         try {
             parts.host().files().execute(() -> {
-                try { result.complete(work.run()); }
+                try {
+                    parts.tokens().stillValid(token.id());
+                    result.complete(work.run());
+                }
                 catch (EditorError refused) { result.complete(EditorReplies.error(refused)); }
                 catch (IOException | RuntimeException failure) { result.complete(internal(failure)); }
             });
@@ -320,7 +326,7 @@ public final class EditorApi implements EditorRequestHandler {
     }
 
     private CompletionStage<EditorResponse> schemas(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
-        return files(() -> EditorResponse.json(200, schemas.response(parts.host().capabilities())));
+        return files(token, () -> EditorResponse.json(200, schemas.response(parts.host().capabilities())));
     }
 
     private CompletionStage<EditorResponse> catalog(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
@@ -333,7 +339,7 @@ public final class EditorApi implements EditorRequestHandler {
         String rawAfter = query.get("after");
         Optional<String> after = rawAfter == null || rawAfter.isEmpty() ? Optional.empty() : Optional.of(cursor(rawAfter));
         Set<DocumentKind> chosen = kinds;
-        return files(() -> {
+        return files(token, () -> {
             JsonArray documents = new JsonArray();
             String next = null;
             int page = 1000;
@@ -404,7 +410,7 @@ public final class EditorApi implements EditorRequestHandler {
         String id = String.join("/", pieces);
         if (!id.matches(EditorMessages.DOCUMENT_ID)) throw EditorMessages.invalid("'" + id + "' is not a document id.");
         group(token, kind, id);
-        return files(() -> {
+        return files(token, () -> {
             EditorDocuments.Stored stored = parts.documents().read(parts.documents().locate(kind, id));
             if (!stored.exists()) throw new EditorError(EditorError.Code.NOT_FOUND, "No " + kind.wireName() + " " + id + ".");
             JsonObject body = EditorChanges.catalogEntry(kind, id, stored.location().path(), stored.revision(), stored.hash());
@@ -433,7 +439,7 @@ public final class EditorApi implements EditorRequestHandler {
         EditorMessages.fields(body, "$", Set.of("documents"));
         List<EditorMessages.Change> changes = EditorMessages.changes(body, parts.settings().changeSetDocuments());
         for (EditorMessages.Change change : changes) reach(token, change);
-        return files(() -> {
+        return files(token, () -> {
             JsonArray documents = new JsonArray();
             boolean valid = true;
             Set<String> behaviors = new java.util.HashSet<>();
@@ -553,7 +559,7 @@ public final class EditorApi implements EditorRequestHandler {
         String requestHash = EditorTokens.sha256(body.toString());
         parts.changes().queued(set.idempotencyKey());
         try {
-            return files(() -> {
+            return files(token, () -> {
                 try {
                     EditorChanges.Outcome outcome = parts.changes().apply(set, requestHash, token.id());
                     published(outcome);
@@ -587,7 +593,7 @@ public final class EditorApi implements EditorRequestHandler {
             body.addProperty("status", "pending");
             return done(EditorResponse.json(200, body));
         }
-        return files(() -> EditorResponse.json(200, parts.changes().status(key)));
+        return files(token, () -> EditorResponse.json(200, parts.changes().status(key)));
     }
 
     private CompletionStage<EditorResponse> undo(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
@@ -598,7 +604,7 @@ public final class EditorApi implements EditorRequestHandler {
         String key = EditorMessages.string(body, "idempotencyKey", EditorMessages.KEY, "$.idempotencyKey");
         parts.changes().queued(key);
         try {
-            return files(() -> {
+            return files(token, () -> {
                 try {
                     EditorChanges.Outcome outcome = parts.changes().undo(changeId, key, token.id(), (Set<DocumentKind> kinds, List<String> ids) -> scopes(token, kinds, ids));
                     published(outcome);
@@ -621,7 +627,7 @@ public final class EditorApi implements EditorRequestHandler {
 
     /** {@code GET /v1/imports}: where the import stands. */
     private CompletionStage<EditorResponse> importStatus(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
-        return files(() -> EditorResponse.json(200, imports().status()));
+        return files(token, () -> EditorResponse.json(200, imports().status()));
     }
 
     /** {@code POST /v1/imports?file=...&name=...}: the file's bytes, or over the relay a base64 JSON string. */
@@ -642,7 +648,7 @@ public final class EditorApi implements EditorRequestHandler {
         if (upload.length == 0) throw EditorMessages.invalid("The uploaded file is empty.");
         if (upload.length > parts.settings().importBodyBytes()) throw new EditorError(EditorError.Code.TOO_LARGE, "Imports are limited to " + parts.settings().importBodyBytes() + " bytes.");
         byte[] bytes = upload;
-        return files(() -> {
+        return files(token, () -> {
             try {
                 JsonObject review = imports().upload(kind, name, bytes);
                 audit("import-upload", Optional.of(token.id()), token.admin(), request, List.of(target), "uploaded");
@@ -672,7 +678,7 @@ public final class EditorApi implements EditorRequestHandler {
                 worlds.put(from, EditorMessages.string(map, from, "[A-Za-z0-9_.-]{1,64}", "$.worlds." + from));
             }
         }
-        return files(() -> {
+        return files(token, () -> {
             try {
                 JsonObject review = imports().stage(mode, label, worlds);
                 audit("import-stage", Optional.of(token.id()), token.admin(), request, staged(review), "staged");
@@ -703,7 +709,7 @@ public final class EditorApi implements EditorRequestHandler {
                 categories.add(category.getAsString());
             }
         }
-        return files(() -> {
+        return files(token, () -> {
             Map<String, String> before = hashes();
             JsonObject review;
             try {
@@ -790,7 +796,7 @@ public final class EditorApi implements EditorRequestHandler {
         group(token, DocumentKind.NPC, id);
         String shortId = id.substring(id.lastIndexOf('/') + 1);
         CompletableFuture<EditorResponse> answer = new CompletableFuture<>();
-        CompletionStage<EditorResponse> prepared = files(() -> {
+        CompletionStage<EditorResponse> prepared = files(token, () -> {
             NpcRepository repository = parts.npcs().get();
             NpcRepository.Draft before;
             try { before = repository.draft(shortId); }
@@ -811,7 +817,7 @@ public final class EditorApi implements EditorRequestHandler {
                     return;
                 }
                 try {
-                    files(() -> {
+                    files(token, () -> {
                         try { repository.apply(draft); }
                         catch (IOException conflict) { throw new EditorError(EditorError.Code.CONFLICT, conflict.getMessage()); }
                         parts.host().applied(EnumSet.of(DocumentKind.NPC), Set.of(), false);

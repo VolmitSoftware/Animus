@@ -6,6 +6,8 @@ import art.arcane.animus.core.config.ModuleSettings;
 import art.arcane.animus.core.config.BehaviorSettings;
 import art.arcane.animus.core.config.BuildSettings;
 import art.arcane.animus.core.config.CombatBudgets;
+import art.arcane.animus.core.config.FileWorkSettings;
+import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.behavior.state.BehaviorStateStore;
 import art.arcane.animus.core.extension.DefinitionGateway;
 import art.arcane.animus.core.extension.MutationLane;
@@ -18,12 +20,18 @@ import art.arcane.animus.core.rig.RigLibrary;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 
 /** Owns durable state and the one file-mutation lane used by platform commands and extensions. */
 public final class AnimusRuntime implements AutoCloseable {
+    private static final Pattern TRANSACTION_ID = Pattern.compile("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}");
     private final RuntimeEnvironment environment;
     private final Consumer<Throwable> cleanupFailureObserver;
     private volatile PluginSettings settings;
@@ -66,6 +74,7 @@ public final class AnimusRuntime implements AutoCloseable {
         try {
             PluginSettings loaded = PluginSettings.load(opened);
             migrateSchemas(opened);
+            rotateBackups(opened, loaded.files());
             NpcRepository repository = new NpcRepository(opened);
             repository.loadForStartup();
             BehaviorStateStore state = BehaviorStateStore.open(opened, loaded.behaviors().state());
@@ -95,6 +104,22 @@ public final class AnimusRuntime implements AutoCloseable {
         if (!report.migrated().isEmpty())
             log.log(System.Logger.Level.INFO, "Migrated " + report.migrated().size() + " documents to the current schema; rollback " + report.transaction());
         for (String problem : report.problems()) log.log(System.Logger.Level.WARNING, "Schema migration: " + problem);
+    }
+
+    /** Drops old rollback receipts after migration, so the migration's own receipt counts as the newest. An import awaiting review keeps its receipts. */
+    private static void rotateBackups(DocumentStore store, FileWorkSettings files) {
+        System.Logger log = System.getLogger("Animus");
+        try {
+            Set<String> pinned = new HashSet<>();
+            String state = store.read(CitizensDropIn.STATE);
+            if (state != null) for (Matcher found = TRANSACTION_ID.matcher(state); found.find(); ) pinned.add(found.group());
+            DocumentStore.Rotation rotation = store.rotateBackups(files.backupsKept(), Duration.ofDays(files.backupDays()), pinned, Instant.now());
+            if (rotation.receipts() > 0)
+                log.log(System.Logger.Level.INFO, "Removed " + rotation.receipts() + " rollback receipts older than " + files.backupDays() + " days beyond the newest "
+                        + files.backupsKept() + ", and " + rotation.objects() + " stored copies only they used");
+        } catch (IOException | RuntimeException failure) {
+            log.log(System.Logger.Level.WARNING, "Backup rotation skipped: " + failure.getMessage());
+        }
     }
 
     /** Initiate shutdown without blocking a platform owner. A running durable operation is not interrupted. */

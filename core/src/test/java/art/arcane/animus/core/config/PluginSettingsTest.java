@@ -75,6 +75,18 @@ class PluginSettingsTest {
             assertTrue(error.getMessage().contains("ding is not a hotload setting"), error.getMessage());
         }
     }
+    @Test void backupRotationIsReadFromFilesTableAndBounded() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            assertEquals(200, FileWorkSettings.DEFAULT.backupsKept());
+            assertEquals(14, FileWorkSettings.DEFAULT.backupDays());
+            assertEquals(FileWorkSettings.DEFAULT, PluginSettings.load(store).files());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[files]\nbackupsKept = 50\nbackupDays = 3\n");
+            assertEquals(new FileWorkSettings(32, 250, 50, 3), PluginSettings.load(store).files());
+            Files.writeString(root.resolve("config.toml"), "statusMessage = 'Test'\n[files]\nbackupsKept = 0\n");
+            IOException error = assertThrows(IOException.class, () -> PluginSettings.load(store));
+            assertTrue(error.getMessage().contains("backupsKept=1..100000"), error.getMessage());
+        }
+    }
     @Test void parsedTextNamesTheLabelAndTheField() {
         IOException error = assertThrows(IOException.class, () -> PluginSettings.parse("statusMessage = 'x'\n[npcs]\nviewDistance = 'far'\n", Path.of("config.toml")));
         assertEquals("config.toml: npcs: viewDistance must be an integer", error.getMessage());
@@ -167,7 +179,7 @@ class PluginSettingsTest {
             Files.writeString(root.resolve("config.toml"), toml);
             DocumentStore.atomic(store.resolve("npcs/default/future.json"), "{\"modules\":{\"missing:feature\":{\"keep\":true}}}");
             PluginSettings settings = PluginSettings.load(store);
-            assertEquals(new FileWorkSettings(8, 250), settings.files());
+            assertEquals(new FileWorkSettings(8, 250, 200, 14), settings.files());
             assertEquals(new ModuleSettings(false, 12, 1500, 250), settings.modules());
             assertEquals(toml, Files.readString(root.resolve("config.toml")));
             assertEquals("{\"modules\":{\"missing:feature\":{\"keep\":true}}}", store.read("npcs/default/future.json"));
