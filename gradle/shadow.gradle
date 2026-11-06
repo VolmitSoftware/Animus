@@ -26,6 +26,16 @@ tasks.named('shadowJar').configure {
     relocate('net.kyori', "${animus.projectGroup}.internal.kyori")
     relocate('com.moandjiezana.toml', "${animus.projectGroup}.internal.toml")
     exclude('META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class')
+    // VolmLib's shared jar is bundled for Director alone; its other packages need Bukkit and libraries Animus does not ship.
+    List<String> volmLibKept = ['art/arcane/volmlib/util/localization/', 'art/arcane/volmlib/util/director/',
+        'art/arcane/volmlib/util/config/ConfigDescription', 'art/arcane/volmlib/util/config/ConfigDoc', 'art/arcane/volmlib/util/config/ConfigExposePolicy',
+        'art/arcane/volmlib/util/config/ConfigJson', 'art/arcane/volmlib/util/config/TomlCodec', 'art/arcane/volmlib/util/format/ColorFormatter',
+        'art/arcane/volmlib/util/io/AtomicFileIO', 'art/arcane/volmlib/util/plugin/ComponentText', 'art/arcane/volmlib/util/plugin/SplashScreenSupport',
+        'art/arcane/volmlib/util/plugin/ComponentMessenger']
+    exclude { FileTreeElement entry ->
+        String path = entry.relativePath.pathString
+        path.startsWith('art/arcane/volmlib/') && !entry.directory && !volmLibKept.any { String kept -> path.startsWith(kept) }
+    }
     from(new File(animusRoot, 'LICENSE'))
     archiveClassifier.set('')
 }

@@ -28,7 +28,7 @@ class DefinitionRecoveryTest {
         String valid;
         try (AnimusRuntime runtime = runtime()) {
             runtime.start(); seed(runtime.npcs());
-            new Administration(runtime).execute(new String[]{"spawn", "guard"});
+            List.of(new Administration(runtime).spawned("guard", true));
             valid = Files.readString(root.resolve(PATH));
         }
         String broken = valid.replace("\"y\": 64", "\"y\": \"broken\"");
@@ -42,7 +42,7 @@ class DefinitionRecoveryTest {
             assertEquals(broken, Files.readString(root.resolve(PATH)));
             assertThrows(IOException.class, () -> rename(runtime.npcs(), "guard", "Do not overwrite"));
             assertEquals(broken, Files.readString(root.resolve(PATH)));
-            assertTrue(new Administration(runtime).execute(new String[]{"status"}).stream().anyMatch(line -> line.contains("Definition file problems: 1")));
+            assertTrue(new Administration(runtime).status().stream().anyMatch(line -> line.contains("Definition file problems: 1")));
             Files.writeString(root.resolve(PATH), valid);
             assertTrue(runtime.npcs().reload().isEmpty()); assertTrue(runtime.npcs().diagnostics().isEmpty());
         }
