@@ -2909,6 +2909,7 @@
         "npc": [
           "name",
           "id",
+          "citizens_id",
           "uuid",
           "spawned",
           "health",
@@ -2920,6 +2921,7 @@
         ],
         "server": [
           "online_players",
+          "players",
           "max_players",
           "tick",
           "time_millis"
@@ -2965,7 +2967,11 @@
         "pick",
         "flag",
         "has_flag",
-        "quest"
+        "quest",
+        "players",
+        "player_info",
+        "player_flag",
+        "player_has_flag"
       ],
       "standardFunctions": [
         "abs",

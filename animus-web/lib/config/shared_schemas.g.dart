@@ -846,7 +846,20 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "server_start",
                     "player_death",
                     "player_respawn",
-                    "player_world_change"
+                    "player_world_change",
+                    "player_area",
+                    "player_inventory_open",
+                    "player_inventory_close",
+                    "player_inventory_click",
+                    "player_item_drop",
+                    "player_item_pickup",
+                    "player_item_consume",
+                    "player_block_click",
+                    "player_block_place",
+                    "player_block_break",
+                    "player_damaged",
+                    "player_damage_entity",
+                    "player_kill"
                   ],
                   "description": "A server behavior uses server events only."
                 }
@@ -9690,6 +9703,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "npc": [
           "name",
           "id",
+          "citizens_id",
           "uuid",
           "spawned",
           "health",
@@ -9701,6 +9715,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         ],
         "server": [
           "online_players",
+          "players",
           "max_players",
           "tick",
           "time_millis"
@@ -9746,7 +9761,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "pick",
         "flag",
         "has_flag",
-        "quest"
+        "quest",
+        "players",
+        "player_info",
+        "player_flag",
+        "player_has_flag"
       ],
       "standardFunctions": [
         "abs",
