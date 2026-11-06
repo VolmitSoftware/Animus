@@ -329,6 +329,8 @@ class GuiSelect extends StatelessWidget {
     this.allowNone = false,
     this.noneLabel = 'default',
     this.labels = const <String, String>{},
+    this.id,
+    this.label,
     super.key,
   });
 
@@ -339,11 +341,20 @@ class GuiSelect extends StatelessWidget {
   final String noneLabel;
   final Map<String, String> labels;
 
+  /// The element id, so a [GuiRow] label can point at it with `for`.
+  final String? id;
+
+  /// A visible label rendered by the select itself; use it where no row label
+  /// names the control.
+  final String? label;
+
   @override
   Widget build(BuildContext context) {
     final List<String> all = <String>[...options, if (value != null && !options.contains(value)) value!];
     return ArcaneSelect(
       size: ComponentSize.sm,
+      id: id,
+      label: label,
       value: value ?? '',
       options: <ArcaneSelectOption>[
         if (allowNone || value == null) ArcaneSelectOption(label: noneLabel, value: ''),
