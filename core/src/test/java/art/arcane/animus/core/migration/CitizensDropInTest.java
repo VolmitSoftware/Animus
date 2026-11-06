@@ -325,6 +325,53 @@ class CitizensDropInTest {
         }
     }
 
+    /** The preview names the namespaces command behaviors need; accept commands adds them to config.toml, and rollback takes them out. */
+    @Test void acceptCommandsAllowsTheImportedCommandNamespacesAndRollbackRemovesThem() throws Exception {
+        Files.createDirectories(root.resolve("plugins/Animus/imports"));
+        Files.writeString(root.resolve("plugins/Animus/imports/saves.yml"), PATROLS);
+        Path config = root.resolve("plugins/Animus/config.toml");
+        String original = """
+                # Server notes stay.
+                statusMessage = "Hello"
+
+                [behaviors.actions]
+                # Who may run commands.
+                commandNamespaces = ["quests"]
+                actionsPerTick = 64
+                """;
+        Files.writeString(config, original);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            String staged = joined(flow.execute(new String[0]));
+            assertTrue(staged.contains("needs command namespace citizens") && staged.contains("accept commands"), staged);
+            flow.execute(new String[]{"apply"});
+            String review = joined(flow.execute(new String[]{"review"}));
+            assertTrue(review.contains("accept commands"), review);
+            assertEquals(original, Files.readString(config), "nothing changes before accept commands");
+
+            String accepted = joined(flow.execute(new String[]{"accept", "commands"}));
+            assertTrue(accepted.contains("commandNamespaces") && accepted.contains("citizens"), accepted);
+            assertTrue(flow.settingsChanged());
+            String allowed = Files.readString(config);
+            assertTrue(allowed.contains("commandNamespaces = [\"quests\", \"citizens\"]"), allowed);
+            assertTrue(allowed.contains("# Server notes stay.") && allowed.contains("# Who may run commands.") && allowed.contains("actionsPerTick = 64"), allowed);
+            assertEquals(List.of("quests", "citizens"), art.arcane.animus.core.config.PluginSettings.parse(allowed, config).behaviors().actions().commandNamespaces());
+            assertTrue(joined(flow.execute(new String[]{"accept", "commands"})).contains("already allowed"));
+
+            flow.execute(new String[]{"rollback"});
+            assertEquals(original, Files.readString(config), "rollback takes out only what accept added");
+        }
+    }
+
+    @Test void acceptCommandsAddsTheActionsTableWhenConfigHasNone() throws Exception {
+        assertEquals("statusMessage = \"Hi\"\n\n[behaviors.actions]\ncommandNamespaces = [\"citizens\", \"denizen\"]\n",
+                CommandAllowList.with("statusMessage = \"Hi\"\n", List.of("citizens", "denizen")));
+        assertEquals("[behaviors.actions]\ncommandNamespaces = []\nqueuedActions = 9\n",
+                CommandAllowList.with("[behaviors.actions]\ncommandNamespaces = [\n  \"citizens\",\n]\nqueuedActions = 9\n", List.of()));
+        assertEquals(List.of("citizens", "denizen"), CommandAllowList.namespaces(List.of("denizen:a", "citizens:commands-1", "denizen:b")));
+    }
+
     @Test void importCommandsReloadTheCatalogsTheyWriteAndForgetDeletedBehaviors() throws Exception {
         Files.createDirectories(root.resolve("plugins/Animus/imports/dtltraders/shops/Bakery"));
         Files.writeString(root.resolve("plugins/Animus/imports/dtltraders/shops/Bakery/Bakery.yml"), ShopImporterTest.BAKERY);
