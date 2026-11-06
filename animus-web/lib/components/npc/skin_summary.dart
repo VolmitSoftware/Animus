@@ -44,7 +44,7 @@ class _SkinSummaryState extends State<SkinSummary> {
       if (skin != null) ArcaneSonner.success('Skin loaded from ${skin.source}.');
       component.onLoaded?.call();
     } on Object catch (failure) {
-      if (mounted) setState(() => _failure = 'Could not load the PNG: $failure. Pick a 64 by 64 skin file, or a URL that allows cross-origin reads.');
+      if (mounted) setState(() => _failure = 'Could not load the PNG: $failure. Pick a 64x64 skin PNG.');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -78,16 +78,16 @@ class _SkinSummaryState extends State<SkinSummary> {
             const dom.dt(<Widget>[Component.text('Model')]),
             dom.dd(<Widget>[Component.text(info == null ? 'Unreadable texture data' : (info.slim ? 'Slim arms (Alex)' : 'Classic arms (Steve)'))]),
             const dom.dt(<Widget>[Component.text('Signature')]),
-            dom.dd(<Widget>[Component.text(info?.signed == true ? 'Signed by Mojang; players see it as is' : 'Unsigned; the server signs it when it can')]),
+            dom.dd(<Widget>[Component.text(info?.signed == true ? 'Signed by Mojang' : 'Unsigned; the server signs it')]),
             const dom.dt(<Widget>[Component.text('Preview')]),
-            dom.dd(<Widget>[Component.text(loaded == null ? 'No PNG loaded in this page yet' : 'PNG loaded from ${loaded.source}')]),
+            dom.dd(<Widget>[Component.text(loaded == null ? 'Not loaded' : 'PNG loaded from ${loaded.source}')]),
           ]),
         ]),
         GuiSection(
           title: 'Load the PNG',
           children: <Widget>[
             const dom.p(classes: 'animus-gui-help', <Widget>[
-              Component.text('The document holds the texture reference, not the image. Load the PNG to see the face here and on every stage in this page.'),
+              Component.text('The document stores no image. Load the PNG to preview it.'),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
               Button.secondary(label: 'Load skin PNG', size: ButtonSize.small, disabled: _loading, onPressed: () => _load(SkinImages.pickFile)),
@@ -111,7 +111,7 @@ class _SkinSummaryState extends State<SkinSummary> {
           count: wearers.length,
           children: <Widget>[
             if (wearers.isEmpty)
-              const dom.p(classes: 'animus-muted', <Widget>[Component.text('No NPC in this workspace wears this skin. Pick it under Appearance in an NPC.')])
+              const dom.p(classes: 'animus-muted', <Widget>[Component.text('No NPC wears this skin. Set it under Appearance.')])
             else
               dom.ul(classes: 'animus-skin-wearers', <Widget>[
                 for (final NpcEntry entry in wearers)

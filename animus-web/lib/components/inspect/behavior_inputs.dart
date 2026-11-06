@@ -267,7 +267,7 @@ class TypedValueEditor extends StatelessWidget {
       case 'list':
         final JsonList items = asList(value);
         return dom.div(classes: 'animus-value-list', attributes: <String, String>{'role': 'group', 'aria-label': label}, <Widget>[
-          if (items.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('An empty list. Add the items it starts with, or leave it empty.')]),
+          if (items.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Empty list')]),
           for (int index = 0; index < items.length; index++)
             dom.div(key: ValueKey<String>('item-$index'), classes: 'animus-value-row', <Widget>[
               dom.span(classes: 'animus-value-key', <Widget>[Component.text('${index + 1}')]),
@@ -280,7 +280,7 @@ class TypedValueEditor extends StatelessWidget {
         final JsonMap entries = asMap(value);
         final List<String> keys = entries.keys.toList();
         return dom.div(classes: 'animus-value-list', attributes: <String, String>{'role': 'group', 'aria-label': label}, <Widget>[
-          if (entries.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('An empty map. Add the keys it starts with, or leave it empty.')]),
+          if (entries.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Empty map')]),
           for (int index = 0; index < keys.length; index++)
             dom.div(key: ValueKey<String>('entry-$index'), classes: 'animus-value-row', <Widget>[
               GuiTextInput(

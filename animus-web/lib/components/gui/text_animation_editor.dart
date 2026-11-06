@@ -112,9 +112,9 @@ class _TextAnimationPreviewState extends State<TextAnimationPreview> {
     return dom.div(classes: 'animus-gui-anim-preview', <Widget>[
       dom.div(classes: 'animus-gui-anim-stage', attributes: const <String, String>{'aria-live': 'off'}, <Widget>[
         if (frames.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No frames yet. Add a frame to see it play here.')])
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No frames yet. Add one below.')])
         else if (hidden)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('show is false for the sample viewer, so the animation shows nothing.')])
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('Hidden: show is false for the sample viewer.')])
         else
           GuiStyledText(frame is String ? frame : ''),
       ]),
@@ -133,7 +133,7 @@ class _TextAnimationPreviewState extends State<TextAnimationPreview> {
         ]),
       ]),
       if (!_playing && prefersReducedMotion())
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Paused because your system asks for reduced motion. Play runs it anyway.')]),
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Paused for reduced motion.')]),
     ]);
   }
 }
@@ -164,14 +164,13 @@ class TextAnimationEditor extends StatelessWidget {
       dom.section(classes: 'animus-panel animus-gui-stage', attributes: const <String, String>{'aria-label': 'Preview'}, <Widget>[
         TextAnimationPreview(id: document.id, document: doc),
         dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Holograms and menus show it with |animation.${document.id.substring(document.id.indexOf(':') + 1)}| in their text, '
-              'or the whole id from another namespace. Chest windows cannot show animations.'),
+          Component.text('Use |animation.${document.id.substring(document.id.indexOf(':') + 1)}| in hologram or menu text. Not in chest GUIs.'),
         ]),
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
         PresetFix(document: document, presets: presets, kind: DocumentKind.textAnimation, onJson: onJson),
         GuiSection(title: 'Frames', count: frames.length, children: <Widget>[
-          if (frames.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No frames. The server refuses an animation without one; add a frame.')]),
+          if (frames.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Needs at least one frame. Add one.')]),
           for (final Diagnostic problem in diagnosticsAt(diagnostics, r'$.frames'))
             dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
           GuiLinesEditor(
@@ -196,14 +195,14 @@ class TextAnimationEditor extends StatelessWidget {
           GuiRow(
             label: 'Frame interval *',
             forId: intervalId,
-            help: '1 to 60000 milliseconds per frame.',
+            help: '1 to 60000 ms per frame',
             problems: diagnosticsAt(diagnostics, r'$.frameIntervalMs'),
             child: GuiNumberInput(id: intervalId, value: asInt(doc['frameIntervalMs']), label: 'Frame interval in milliseconds', onChanged: (num? v) => _write(<JsonStep>['frameIntervalMs'], v)),
           ),
           GuiRow(
             label: 'Show when',
             forId: showId,
-            help: 'When false the animation shows as empty text.',
+            help: 'False shows empty text',
             problems: diagnosticsAt(diagnostics, r'$.show'),
             child: GuiTextInput(
               id: showId,

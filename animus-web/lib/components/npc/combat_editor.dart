@@ -50,23 +50,23 @@ class CombatEditor extends StatefulWidget {
 
 /// What each advanced rule holds, for its help line.
 const Map<String, String> _advancedHelp = <String, String>{
-  'patterns': 'players, npcs and names: lists of regular expressions of at most 128 characters, matched anywhere ignoring case.',
-  'items': 'mainHand, offHand and worn: lists of patterns matched against item ids such as minecraft:diamond_sword.',
+  'patterns': 'players, npcs, names: regex lists.',
+  'items': 'mainHand, offHand, worn: item id patterns.',
   'permissions': 'Permission nodes an online player has.',
   'groups': 'Permission groups an online player is in.',
-  'effects': 'Status effect ids such as minecraft:strength.',
-  'all': 'Up to 16 rule sets that one candidate must match completely.',
-  'together': 'Up to 16 groups of 2 to 8 rule sets that different candidates match at the same scan.',
-  'events': 'kinds of fights nearby, playerAttacks and anyAttacks rule sets; the attacker becomes a target.',
-  'chat': 'Text of 1 to 128 characters that, in a nearby player\'s chat, makes that player a target.',
+  'effects': 'Status effect ids.',
+  'all': 'One candidate matches every set.',
+  'together': 'Sets matched by different candidates together.',
+  'events': 'Attackers in nearby fights become targets.',
+  'chat': 'Chat text that targets the speaker.',
 };
 
 const List<String> _advancedRules = <String>['patterns', 'items', 'permissions', 'groups', 'effects', 'all', 'together', 'events', 'chat'];
 
 const Map<String, String> _ruleHelp = <String, String>{
-  'targets': 'Who the NPC attacks. A candidate matching any one rule is a target.',
-  'ignores': 'Who the NPC never targets. An ignore always beats a target. together, events and chat are not available here.',
-  'avoids': 'What the NPC runs from, within avoidance.range.',
+  'targets': 'Any matching rule makes a target.',
+  'ignores': 'Never targeted. Beats targets.',
+  'avoids': 'Runs from these within avoidance.range.',
 };
 
 const List<String> _commonItems = <String>[
@@ -161,7 +161,7 @@ class _CombatEditorState extends State<CombatEditor> {
           for (final String name in combatRuleSections) _rules(name),
           _targeting(),
           _avoidance(),
-          _section('squad', 'Squad', 'Members never target each other; a member that picks a target alerts idle members within alertRange.', <Widget>[
+          _section('squad', 'Squad', 'Members never target each other.', <Widget>[
             _text(
               'squad',
               'name',
@@ -169,20 +169,20 @@ class _CombatEditorState extends State<CombatEditor> {
             ),
             _number('squad', 'alertRange'),
           ]),
-          _section('guard', 'Guard', 'Follows and protects one player or NPC, given by UUID. Set player or npc, not both.', <Widget>[
-            _text('guard', 'player', placeholder: '00000000-0000-0000-0000-000000000000', help: 'Canonical lowercase UUID of the guarded player.'),
-            _text('guard', 'npc', placeholder: '00000000-0000-0000-0000-000000000000', help: 'Canonical lowercase UUID of the guarded NPC.'),
+          _section('guard', 'Guard', 'Set player or npc, not both.', <Widget>[
+            _text('guard', 'player', placeholder: '00000000-0000-0000-0000-000000000000', help: 'Lowercase UUID.'),
+            _text('guard', 'npc', placeholder: '00000000-0000-0000-0000-000000000000', help: 'Lowercase UUID.'),
             for (final String key in const <String>['followDistance', 'pointRange', 'catchUpDistance', 'replanDistance']) _number('guard', key),
             _switches('guard'),
           ]),
-          _section('pursuit', 'Pursuit', 'How far and how fast the NPC chases. leashRange is measured from where the fight began.', <Widget>[
+          _section('pursuit', 'Pursuit', 'leashRange counts from the fight start.', <Widget>[
             for (final String key in const <String>['speed', 'giveUpRange', 'leashRange', 'replanTicks']) _number('pursuit', key),
-            _text('pursuit', 'region', help: "A protection region name of 1 to 64 letters, digits or _,'+/-; targets outside it are not chosen."),
+            _text('pursuit', 'region', help: 'Protection region. Targets outside it are skipped.'),
             _switches('pursuit'),
           ]),
           _melee(),
           _ranged(),
-          _section('defense', 'Defense', 'Health, armor and what can hurt the NPC.', <Widget>[
+          _section('defense', 'Defense', '', <Widget>[
             for (final String key in const <String>['maximumHealth', 'armor', 'protectFromRange', 'healRateTicks', 'invulnerableTicks'])
               _number('defense', key),
             _switches('defense'),
@@ -192,10 +192,10 @@ class _CombatEditorState extends State<CombatEditor> {
           _section(
             'greetings',
             'Greetings',
-            'Said to a player the NPC can see within range: hostile to one it would target, friendly to anyone else.',
+            'Hostile to targets, friendly to others.',
             <Widget>[
-              _text('greetings', 'friendly', help: 'Text without control characters, at most 256 characters.'),
-              _text('greetings', 'hostile', help: 'Text without control characters, at most 256 characters.'),
+              _text('greetings', 'friendly', help: 'Up to 256 characters.'),
+              _text('greetings', 'hostile', help: 'Up to 256 characters.'),
               _number('greetings', 'range'),
               _number('greetings', 'cooldownTicks'),
             ],
@@ -218,7 +218,7 @@ class _CombatEditorState extends State<CombatEditor> {
           _checkbox(
             label: 'enabled',
             value: module['enabled'] == true,
-            description: 'Combat runs only when this is the JSON value true.',
+            description: 'Combat runs only when true.',
             problems: _at(const <JsonStep>['enabled']),
             onChanged: (bool next) => _put(const <JsonStep>['enabled'], next),
           ),
@@ -226,7 +226,7 @@ class _CombatEditorState extends State<CombatEditor> {
             _checkbox(
               label: 'reviewAccepted',
               value: module['reviewAccepted'] == true,
-              description: 'An imported NPC fights only after its settings were reviewed and this is true.',
+              description: 'Imported NPCs fight only once reviewed.',
               problems: _at(const <JsonStep>['reviewAccepted']),
               onChanged: (bool next) => _put(const <JsonStep>['reviewAccepted'], next),
             ),
@@ -247,7 +247,7 @@ class _CombatEditorState extends State<CombatEditor> {
       count: fields.isEmpty ? null : fields.length,
       open: value != null,
       children: <Widget>[
-        dom.p(classes: 'animus-gui-help', <Widget>[Component.text(help)]),
+        if (help.isNotEmpty) dom.p(classes: 'animus-gui-help', <Widget>[Component.text(help)]),
         if (value != null && value is! Map<String, Object?>)
           _keptRow(<JsonStep>[name], name)
         else ...<Widget>[
@@ -286,10 +286,10 @@ class _CombatEditorState extends State<CombatEditor> {
           _strings(
             <JsonStep>[name, 'entityTypes'],
             'entityTypes',
-            help: 'Namespaced entity types such as minecraft:zombie.',
+            help: 'Such as minecraft:zombie.',
             suggestions: <FieldOption>[for (final String type in combatCommonEntityTypes) FieldOption(type)],
           ),
-          _strings(<JsonStep>[name, 'players'], 'players', help: 'Player names or UUIDs; names ignore case.'),
+          _strings(<JsonStep>[name, 'players'], 'players', help: 'Names (any case) or UUIDs.'),
           _strings(
             <JsonStep>[name, 'npcs'],
             'npcs',
@@ -307,7 +307,7 @@ class _CombatEditorState extends State<CombatEditor> {
             _checkbox(
               label: '$name.owner',
               value: rules['owner'] == true,
-              description: "Matches the player in the definition's owner field.",
+              description: 'Matches the NPC owner.',
               problems: _at(<JsonStep>[name, 'owner']),
               onChanged: (bool next) => _put(<JsonStep>[name, 'owner'], next ? true : null),
             ),
@@ -317,14 +317,14 @@ class _CombatEditorState extends State<CombatEditor> {
             'healthAbove',
             steps: <JsonStep>[name, 'healthAbove'],
             label: '$name.healthAbove',
-            help: 'Percent of maximum health the target is above, 0 to 100.',
+            help: 'Percent of max health, 0-100.',
           ),
           _number(
             'rule',
             'healthBelow',
             steps: <JsonStep>[name, 'healthBelow'],
             label: '$name.healthBelow',
-            help: 'Percent of maximum health the target is below, 0 to 100.',
+            help: 'Percent of max health, 0-100.',
           ),
           GuiSection(
             key: ValueKey<String>('combat:$name:advanced'),
@@ -333,7 +333,7 @@ class _CombatEditorState extends State<CombatEditor> {
             open: advancedCount > 0,
             children: <Widget>[
               const dom.p(classes: 'animus-gui-help', <Widget>[
-                Component.text('Edited as JSON; null removes a rule. Sets inside all, together and events hold only plain rules.'),
+                Component.text('Edited as JSON. null removes a rule.'),
               ]),
               for (final String key in advanced)
                 GuiRow(
@@ -354,11 +354,11 @@ class _CombatEditorState extends State<CombatEditor> {
 
   Widget _targeting() {
     final Object? rule = _read(const <JsonStep>['targeting', 'lineOfSight']);
-    return _section('targeting', 'Targeting', 'How the NPC finds targets. scanRange is limited further by maximumScanRange in config.toml.', <Widget>[
+    return _section('targeting', 'Targeting', 'Capped by maximumScanRange in config.toml.', <Widget>[
       for (final String key in const <String>['scanRange', 'scanIntervalTicks', 'reactionTicks', 'memoryTicks']) _number('targeting', key),
       GuiRow(
         label: 'lineOfSight',
-        help: 'required, ignored or field_of_view (a 140-degree cone plus line of sight); default required.',
+        help: 'field_of_view is a 140-degree cone plus line of sight.',
         problems: _at(const <JsonStep>['targeting', 'lineOfSight']),
         child: rule == null || rule is String
             ? _choice(
@@ -381,11 +381,11 @@ class _CombatEditorState extends State<CombatEditor> {
   Widget _avoidance() {
     final Object? point = _read(const <JsonStep>['avoidance', 'returnPoint']);
     const List<JsonStep> at = <JsonStep>['avoidance', 'returnPoint'];
-    return _section('avoidance', 'Avoidance', 'The NPC runs from anything in avoids within range, toward returnPoint when set.', <Widget>[
+    return _section('avoidance', 'Avoidance', 'Runs toward returnPoint when set.', <Widget>[
       _number('avoidance', 'range'),
       GuiRow(
         label: 'returnPoint',
-        help: 'Where the NPC runs to; world and x, y, z within 30000000.',
+        help: 'Where the NPC flees to.',
         problems: _at(at, nested: true),
         child: point == null
             ? dom.div(classes: 'animus-row', <Widget>[
@@ -410,12 +410,12 @@ class _CombatEditorState extends State<CombatEditor> {
     final List<String> items = map.keys.toList();
     const String addLabel = 'melee.weaponDamage';
     final String draft = _drafts[addLabel] ?? '';
-    return _section('melee', 'Melee', 'Reach is measured from the body center to the nearest point of the target.', <Widget>[
+    return _section('melee', 'Melee', 'Reach counts from the body center.', <Widget>[
       for (final String key in const <String>['damage', 'reach', 'cooldownTicks', 'knockback']) _number('melee', key),
       _switches('melee'),
       GuiRow(
         label: 'weaponDamage',
-        help: 'Damage by held item, 0 to 100, at most 64 items. Replaces any other damage, melee and ranged, while that item is held.',
+        help: 'Damage per held item, 0-100. Overrides melee and ranged damage.',
         problems: _at(at),
         child: raw != null && raw is! Map<String, Object?>
             ? KeptJsonEditor(value: raw, label: addLabel, onChanged: (Object? next) => _put(at, next))
@@ -484,10 +484,10 @@ class _CombatEditorState extends State<CombatEditor> {
       _put(const <JsonStep>['ranged'], ranged);
     }
 
-    return _section('ranged', 'Ranged', 'Every shot is a real projectile; its own damage, explosion and fire never happen.', <Widget>[
+    return _section('ranged', 'Ranged', 'Shots use the configured damage only.', <Widget>[
       GuiRow(
         label: 'weapon',
-        help: 'Default arrow. A potion needs an effect.',
+        help: 'Default arrow.',
         problems: _at(const <JsonStep>['ranged', 'weapon']),
         child: weapon == null || weapon is String
             ? _choice('ranged.weapon', weapon as String?, combatWeapons, 'arrow', choose)
@@ -496,7 +496,7 @@ class _CombatEditorState extends State<CombatEditor> {
       if (potion || effect != null)
         GuiRow(
           label: 'effect',
-          help: potion ? 'What the potion applies once to whatever it hits.' : 'Only a potion has an effect.',
+          help: potion ? 'Applied once on hit.' : 'Only a potion has an effect.',
           problems: _at(const <JsonStep>['ranged', 'effect']),
           child: effect is Map<String, Object?> && potion
               ? dom.div(classes: 'animus-combat-fields', <Widget>[
@@ -530,10 +530,10 @@ class _CombatEditorState extends State<CombatEditor> {
     const List<JsonStep> at = <JsonStep>['death', 'drops'];
     final Object? raw = _read(at);
     final List<Object?> drops = asList(raw);
-    return _section('death', 'Death', 'Items drop with independent chances. victimDrops off stops mobs this NPC kills from dropping loot.', <Widget>[
+    return _section('death', 'Death', 'Each drop rolls its own chance.', <Widget>[
       GuiRow(
         label: 'drops',
-        help: 'At most 32: item id, amount 1 to 64, chance 0 to 1.',
+        help: 'Amount 1-64, chance 0-1.',
         problems: _at(at),
         child: raw != null && raw is! List<Object?>
             ? KeptJsonEditor(value: raw, label: 'death.drops', onChanged: (Object? next) => _put(at, next))
@@ -588,12 +588,12 @@ class _CombatEditorState extends State<CombatEditor> {
     return _section(
       'respawn',
       'Respawn',
-      'delayTicks -1 never respawns. Otherwise the NPC returns at full health at a random listed location, or where it died.',
+      'delayTicks -1 never respawns.',
       <Widget>[
         _number('respawn', 'delayTicks'),
         GuiRow(
           label: 'locations',
-          help: 'At most 16; world and x, y, z within 30000000.',
+          help: 'Up to 16.',
           problems: _at(at),
           child: raw != null && raw is! List<Object?>
               ? KeptJsonEditor(value: raw, label: 'respawn.locations', onChanged: (Object? next) => _put(at, next))
@@ -626,7 +626,7 @@ class _CombatEditorState extends State<CombatEditor> {
         _switches(
           'respawn',
           disabled: <String>{if (delay != -1 && !deleting) 'deleteOnDeath'},
-          notes: const <String, String>{'deleteOnDeath': 'Deletes the definition when the NPC dies; needs delayTicks -1.'},
+          notes: const <String, String>{'deleteOnDeath': 'Deletes the NPC on death; needs delayTicks -1.'},
         ),
       ],
     );
@@ -725,7 +725,7 @@ class _CombatEditorState extends State<CombatEditor> {
     final List<String> chosen = stringList(raw);
     return GuiRow(
       label: 'categories',
-      help: 'Broad groups; a real mob is in mobs plus monsters or animals.',
+      help: 'A mob is in mobs plus monsters or animals.',
       problems: _at(at, nested: true),
       child: raw != null && (raw is! List<Object?> || raw.any((Object? item) => item is! String))
           ? KeptJsonEditor(value: raw, label: '$name.categories', onChanged: (Object? next) => _put(at, next))

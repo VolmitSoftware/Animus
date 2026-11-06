@@ -51,7 +51,7 @@ class ShopBindingEditor extends StatelessWidget {
     if (value == null) {
       if (shops.isEmpty) return const dom.div(<Widget>[]);
       return dom.div(classes: 'animus-npc-module', <Widget>[
-        const NpcSubhead('Shop', help: 'No shop opens on click.'),
+        const NpcSubhead('Shop', help: 'No shop.'),
         const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': shopId}, <Widget>[Component.text('Open a workspace shop on click')]),
         GuiSelect(
           id: shopId,
@@ -71,7 +71,7 @@ class ShopBindingEditor extends StatelessWidget {
       const NpcSubhead('Shop'),
       GuiRow(
         label: 'Shop',
-        help: 'The shop a click opens. A sneaking administrator selects the NPC instead.',
+        help: 'Opens on click. Sneaking admins select the NPC.',
         problems: diagnosticsAt(diagnostics, '$path.shop'),
         child: dom.div(classes: 'animus-gui-line', <Widget>[
           SuggestInput(
@@ -171,9 +171,9 @@ class NavigationEditor extends StatelessWidget {
   };
 
   static const Map<String, String> _playbackHelp = <String, String>{
-    'once': 'Plays one time and stops at the last frame.',
-    'loop': 'Starts again from the first frame after the last. End the recording near where it started for a clean loop.',
-    'pingpong': 'Plays forward, then backward, then forward again, forever.',
+    'once': 'Plays once, stops on the last frame.',
+    'loop': 'Repeats. End near the start for a clean loop.',
+    'pingpong': 'Forward, then backward, forever.',
   };
 
   /// The module moved to [source]: the old source's fields go, enabled,
@@ -204,7 +204,7 @@ class NavigationEditor extends StatelessWidget {
     if (value == null) {
       return dom.div(classes: 'animus-npc-route', <Widget>[
         const dom.p(classes: 'animus-gui-help', <Widget>[
-          Component.text('The NPC stands still. Give it waypoints of its own, a reusable route under routes/, or a recording under recordings/ to play.'),
+          Component.text('Stands still.'),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
           Button.secondary(
@@ -254,7 +254,7 @@ class NavigationEditor extends StatelessWidget {
       InspectRow(
         label: 'Moves by',
         labelFor: sourceId,
-        help: 'One source at a time: the server refuses a module that mixes them.',
+        help: 'One source at a time.',
         problems: diagnosticsAt(diagnostics, path),
         child: GuiSelect(
           id: sourceId,
@@ -273,7 +273,7 @@ class NavigationEditor extends StatelessWidget {
             InspectRow(
               label: 'Route',
               labelFor: routeId,
-              help: 'Follows routes/<id>.json; edit the route there.',
+              help: 'Edit it in routes/<id>.json.',
               problems: diagnosticsAt(diagnostics, childPath(path, 'route')),
               child: routeIds.isEmpty
                   ? GuiTextInput(id: routeId, value: reference ?? '', label: 'Route id', placeholder: 'town-patrol', onChanged: (String id) => onChanged(<String, Object?>{...module, 'route': id.trim()}))
@@ -314,8 +314,8 @@ class NavigationEditor extends StatelessWidget {
         label: 'Recording',
         labelFor: recordingId,
         help: recordings.isEmpty
-            ? 'No recordings in this workspace. Record one in game with /animus record start <id>, or type the id of one on the server.'
-            : (duration == null ? 'A recording under recordings/.' : '$duration ticks, ${(duration / 20).toStringAsFixed(1)} seconds.'),
+            ? 'No recordings. Record with /animus record start <id>, or type an id.'
+            : (duration == null ? '' : '$duration ticks, ${(duration / 20).toStringAsFixed(1)} seconds.'),
         problems: at('recording'),
         child: recordings.isEmpty
             ? GuiTextInput(id: recordingId, value: recording, label: 'Recording id', placeholder: 'market-loop', onChanged: (String id) => onChanged(<String, Object?>{...module, 'recording': id.trim()}))
@@ -355,7 +355,7 @@ class NavigationEditor extends StatelessWidget {
         ),
       ),
       const dom.p(classes: 'animus-gui-help', <Widget>[
-        Component.text('The NPC first walks to the first frame on a planned path, then plays the recording at the speed it was made. Combat and /animus navigate interrupt it.'),
+        Component.text('Walks to the first frame, then plays. Combat and /animus navigate interrupt it.'),
       ]),
     ];
   }
@@ -379,7 +379,7 @@ class MountEditor extends StatelessWidget {
     if (value == null) {
       if (vehicles.isEmpty) return const dom.div(<Widget>[]);
       return dom.div(classes: 'animus-npc-module', <Widget>[
-        const NpcSubhead('Mount', help: 'The NPC rides nothing.'),
+        const NpcSubhead('Mount', help: 'Rides nothing.'),
         const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': vehicleId}, <Widget>[Component.text('Ride another NPC')]),
         GuiSelect(
           id: vehicleId,
@@ -408,7 +408,7 @@ class MountEditor extends StatelessWidget {
       InspectRow(
         label: 'Vehicle',
         labelFor: vehicleId,
-        help: 'The NPC this one rides, by its id.',
+        help: 'NPC id to ride.',
         problems: diagnosticsAt(diagnostics, path, nested: true),
         child: GuiSelect(
           id: vehicleId,

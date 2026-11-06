@@ -64,27 +64,27 @@ String extractPairingCode(String text) {
 /// payload schema, and that the fingerprint is the server key's SHA-256,
 /// which pins the server for every later connection.
 PairingPayload decodePairingCode(String code, SharedSchemas schemas) {
-  if (!code.startsWith(pairingPrefix)) throw const PairingCodeError('A pairing code starts with ANM1.');
+  if (!code.startsWith(pairingPrefix)) throw const PairingCodeError('Pairing code must start with ANM1.');
   final String body = code.substring(pairingPrefix.length);
   if (body.isEmpty || !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(body)) {
-    throw const PairingCodeError('The pairing code is not unpadded base64url.');
+    throw const PairingCodeError('Pairing code is not valid base64url.');
   }
   final Object? json;
   try {
     json = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(body))));
   } on FormatException {
-    throw const PairingCodeError('The pairing code does not hold JSON.');
+    throw const PairingCodeError('Pairing code holds no JSON.');
   }
   final List<SchemaError> errors = schemas.validateMessage('pairing-payload', json);
-  if (errors.isNotEmpty) throw PairingCodeError('The pairing code is invalid: ${errors.first.path} ${errors.first.message}');
+  if (errors.isNotEmpty) throw PairingCodeError('Invalid pairing code: ${errors.first.path} ${errors.first.message}');
   final Map<String, Object?> payload = json! as Map<String, Object?>;
   final String serverKey = payload['serverKey']! as String;
   final String fingerprint = payload['fingerprint']! as String;
   if (fingerprintOf(serverKey) != fingerprint) {
-    throw const PairingCodeError('The pairing code fingerprint does not match its server key.');
+    throw const PairingCodeError('Pairing code fingerprint does not match its key.');
   }
   final DateTime? expires = DateTime.tryParse(payload['expiresAt']! as String);
-  if (expires == null) throw const PairingCodeError('The pairing code expiry is not a time.');
+  if (expires == null) throw const PairingCodeError('Pairing code expiry is not a time.');
   return PairingPayload(
     directUrl: payload['directUrl'] as String?,
     relayUrl: payload['relayUrl'] as String?,

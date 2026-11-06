@@ -7,8 +7,10 @@ import 'package:arcane_jaspr/arcane_jaspr.dart' hide Easing;
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 
+import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
 import '../../logic/rig_sampler.dart';
+import '../info_tip.dart';
 
 typedef KeyframeEdit = void Function(JsonMap Function(JsonMap animation) change, {String? coalesce});
 
@@ -88,9 +90,7 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
           onChanged: (String value) => component.onEdit((JsonMap json) => setTrackBlend(json, index, Blend.values.byName(value))),
         ),
       ]),
-      dom.span(classes: 'animus-muted', <Widget>[
-        Component.text(visible ? 'Visible tracks always replace.' : blendDescriptions[blend] ?? ''),
-      ]),
+      InfoTip(text: visible ? 'Visible tracks always replace.' : blendDescriptions[blend] ?? '', topic: 'Blend', docs: Docs.animations),
       Button.ghost(
         label: 'Move up',
         size: ButtonSize.small,

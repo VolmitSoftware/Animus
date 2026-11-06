@@ -130,12 +130,6 @@
   line-height: 1.15;
 }
 
-.animus-start-lede {
-  margin: 0;
-  max-width: 38rem;
-  color: var(--animus-muted);
-}
-
 .animus-start-ways {
   list-style: none;
   margin: 0;

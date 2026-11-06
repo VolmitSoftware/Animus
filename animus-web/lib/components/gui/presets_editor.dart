@@ -12,6 +12,8 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_presets.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../config/docs_links.dart';
+import '../info_tip.dart';
 import 'gui_fields.dart';
 
 /// The `preset` refusal with the fix: copy the preset's fields in.
@@ -36,17 +38,17 @@ class PresetFix extends StatelessWidget {
       if (inlined != null)
         dom.div(classes: 'animus-row', <Widget>[
           Button.primary(
-            label: "Copy this preset's fields into the document",
+            label: 'Inline preset',
             size: ButtonSize.small,
             onPressed: () => onJson(writeAt(doc, const <JsonStep>[], inlined)),
           ),
           dom.span(classes: 'animus-muted', <Widget>[
-            Component.text('Copies defaults.${presetKindFor(kind)} and preset ${doc['preset']} under this document\'s own fields, then removes preset.'),
+            Component.text('Copies defaults.${presetKindFor(kind)} and ${doc['preset']} in, then removes preset.'),
           ]),
         ])
       else
         dom.div(classes: 'animus-row', <Widget>[
-          dom.span(classes: 'animus-muted', <Widget>[Component.text('The fields cannot be copied: $problem. Remove preset and set the fields here.')]),
+          dom.span(classes: 'animus-muted', <Widget>[Component.text('Cannot inline: $problem. Remove preset and set the fields here.')]),
           Button.secondary(label: 'Remove preset', size: ButtonSize.small, onPressed: () => onJson(writeAt(doc, const <JsonStep>['preset'], null))),
         ]),
     ]);
@@ -87,21 +89,20 @@ class _PresetsEditorState extends State<PresetsEditor> {
     return dom.div(classes: 'animus-gui-editor is-single', <Widget>[
       dom.section(classes: 'animus-panel animus-gui-inspector', attributes: const <String, String>{'aria-label': 'Presets'}, <Widget>[
         dom.p(classes: 'animus-muted', <Widget>[
-          const Component.text('Gloss applies these to documents that name a preset. Animus does not: a chest GUI, hologram or text animation '
-              'that names one is refused, and its editor offers to copy the preset\'s fields in. Kinds in use: '),
-          Component.text(_used.isEmpty ? 'none yet.' : '${_used.join(', ')}.'),
+          Component.text('Kinds in use: ${_used.isEmpty ? 'none' : _used.join(', ')} '),
+          const InfoTip(text: 'Only Gloss applies presets. Animus refuses documents that name one; their editors can inline it.', topic: 'Presets', docs: Docs.gloss),
         ]),
         GuiRow(
           label: 'Revision',
           forId: guiPathId(r'$.revision'),
-          help: 'Raise it when you change the file; 1 or more.',
+          help: 'Raise on each change',
           problems: diagnosticsAt(_diagnostics, r'$.revision'),
           child: GuiNumberInput(id: guiPathId(r'$.revision'), value: asInt(doc['revision']), label: 'Revision', onChanged: (num? v) => _write(<JsonStep>['revision'], v)),
         ),
         GuiRow(
           label: 'Kind',
           forId: kindId,
-          help: 'Which Gloss document kind the defaults and presets below apply to.',
+          help: 'Kind the presets apply to',
           child: GuiSelect(
             id: kindId,
             value: _kind,
@@ -114,7 +115,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
           GuiRow(
             label: 'Values',
             forId: guiPathId(defaultsPath),
-            help: 'A JSON object of fields every $_kind document starts from.',
+            help: 'Base fields for every $_kind',
             problems: diagnosticsAt(_diagnostics, defaultsPath, nested: true),
             child: GuiJsonObjectInput(
               key: ValueKey<String>('defaults-$_kind'),
@@ -127,7 +128,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
           ),
         ]),
         GuiSection(title: 'Presets for $_kind', count: named.length, children: <Widget>[
-          if (named.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text('No $_kind presets. Add one to name a set of fields.')]),
+          if (named.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text('No $_kind presets yet.')]),
           for (final MapEntry<String, Object?> entry in named.entries) _preset(named, entry.key, asMap(entry.value)),
           Button.secondary(
             label: 'Add a preset',
@@ -154,7 +155,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
       GuiRow(
         label: 'Name',
         forId: nameId,
-        help: 'No .., / or \\, and no leading space. Renaming updates the presets that extend it.',
+        help: 'No .., / or \\, or leading space. Renaming updates presets that extend it.',
         problems: diagnosticsAt(_diagnostics, path),
         child: dom.div(classes: 'animus-row', <Widget>[
           GuiTextInput(
@@ -180,7 +181,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
       GuiRow(
         label: 'Extends',
         forId: extendsId,
-        help: 'Starts from that preset\'s values; this one\'s win.',
+        help: 'This preset overrides it',
         problems: diagnosticsAt(_diagnostics, '$path.extends'),
         child: GuiSelect(
           id: extendsId,
@@ -194,7 +195,7 @@ class _PresetsEditorState extends State<PresetsEditor> {
       GuiRow(
         label: 'Values',
         forId: valuesId,
-        help: 'A JSON object; schemaVersion, revision, id, uuid and preset are not allowed.',
+        help: 'JSON object. No schemaVersion, revision, id, uuid or preset.',
         problems: diagnosticsAt(_diagnostics, '$path.values', nested: true),
         child: GuiJsonObjectInput(
           key: ValueKey<String>('$path.values'),

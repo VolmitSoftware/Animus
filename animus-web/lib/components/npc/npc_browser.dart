@@ -97,7 +97,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
       };
       final String message = summary ?? describeBulk(action, result);
       if (result.skipped.isEmpty) {
-        ArcaneSonner.success('$message Undo reverts it in one step.');
+        ArcaneSonner.success(message);
       } else {
         ArcaneSonner.warning(message);
       }
@@ -153,7 +153,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
               key: ValueKey<String>('npc-search:$_searchEpoch'),
               value: _search,
               label: 'Search NPCs',
-              placeholder: 'Name, id, tag:guard, folder:town, folder:=town, has:combat',
+              placeholder: 'Name, id, tag:guard, has:combat',
               onChanged: _typeSearch,
             ),
             if (_search.isNotEmpty) Button.ghost(label: 'Clear search', size: ButtonSize.small, onPressed: () => _setSearch('')),
@@ -282,7 +282,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
     setState(() => _busy = true);
     try {
       await component.store.commit(documents: result.changes, label: '${assign ? 'assign' : 'unassign'} group $group');
-      ArcaneSonner.success('$summary Undo reverts it in one step.');
+      ArcaneSonner.success(summary);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -380,9 +380,9 @@ class _NpcBrowserState extends State<NpcBrowser> {
           ),
           dom.span(classes: 'animus-muted', attributes: const <String, String>{'role': 'status', 'data-npc': 'group-assign-reach'}, <Widget>[
             Component.text(switch ((group, target)) {
-              (null, _) => 'Pick a group to assign or unassign.',
-              (_, null) => _assignBy == 'selection' ? 'Select NPCs in the list, or pick a folder or tag.' : 'Pick the ${_assignBy == 'folder' ? 'folder' : 'tag'}.',
-              _ => '$reached NPC${reached == 1 ? '' : 's'} reached. A folder means that folder only; a tag counts tags from groups too.',
+              (null, _) => 'Pick a group.',
+              (_, null) => _assignBy == 'selection' ? 'Select NPCs in the list.' : 'Pick the ${_assignBy == 'folder' ? 'folder' : 'tag'}.',
+              _ => '$reached NPC${reached == 1 ? '' : 's'} affected.',
             }),
           ]),
         ]),
@@ -443,7 +443,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
         dom.div(classes: 'animus-npc-bulk-group', <Widget>[
           const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Module')]),
           if (modules.isEmpty)
-            const dom.span(classes: 'animus-muted', <Widget>[Component.text('The selection has no modules.')])
+            const dom.span(classes: 'animus-muted', <Widget>[Component.text('No modules.')])
           else
             GuiSelect(value: module, options: modules, label: 'Module to change', noneLabel: 'Pick a module', onChanged: (String? value) => setState(() => _module = value)),
           Button.secondary(
@@ -495,7 +495,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
           ],
           if (session != null && !canSpawn)
             const dom.span(classes: 'animus-muted', <Widget>[
-              Component.text('Spawning on the server needs the spawn scope; pair again with it to spawn and despawn from here.'),
+              Component.text('Spawning needs the spawn scope. Pair again with it.'),
             ]),
         ]),
         dom.div(classes: 'animus-npc-bulk-group', <Widget>[
@@ -504,14 +504,14 @@ class _NpcBrowserState extends State<NpcBrowser> {
           else ...<Widget>[
             Button.destructive(label: 'Delete $count', size: ButtonSize.small, disabled: _busy, onPressed: () => _bulk('Deleted', deleteNpcs(selected))),
             Button.ghost(label: 'Keep them', size: ButtonSize.small, onPressed: () => setState(() => _confirm = _Confirm.none)),
-            const dom.span(classes: 'animus-muted', <Widget>[Component.text('Escape keeps them. Undo brings deleted NPCs back.')]),
+            const dom.span(classes: 'animus-muted', <Widget>[Component.text('Undo restores them.')]),
           ],
         ]),
         if (_confirm == _Confirm.despawn)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('Despawning acts on the server at once and is not part of undo. Escape keeps them spawned.')]),
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('Acts on the server now. Undo cannot revert it.')]),
         if (session != null)
           const dom.p(classes: 'animus-muted', <Widget>[
-            Component.text('Edits join the drafts; Apply sends them as one change set. Spawn and despawn act on the server at once.'),
+            Component.text('Apply sends edits. Spawn and despawn act now.'),
           ]),
       ],
     );
@@ -553,7 +553,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
     if (shown.isEmpty) {
       if (_all.isEmpty) {
         return dom.div(classes: 'animus-npc-empty', <Widget>[
-          const dom.p(<Widget>[Component.text('This workspace has no NPCs yet.')]),
+          const dom.p(<Widget>[Component.text('No NPCs yet.')]),
           dom.a(
             classes: 'animus-npc-empty-action',
             href: NewDocumentRoute(component.workspace.id, DocumentKind.npc).format(),
@@ -564,7 +564,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
       final String folder = _selectedFolder;
       if (folder.isNotEmpty && NpcQuery.parse(_search).terms.length == 1) {
         return dom.div(classes: 'animus-npc-empty', <Widget>[
-          dom.p(<Widget>[Component.text('npcs/$folder/ holds no NPCs yet. Select NPCs and move them here, or create one in it.')]),
+          dom.p(<Widget>[Component.text('npcs/$folder/ is empty.')]),
           dom.a(
             classes: 'animus-npc-empty-action',
             href: NewDocumentRoute.inFolder(component.workspace.id, DocumentKind.npc, folder).format(),
@@ -662,7 +662,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
             dom.span(
               classes: 'animus-badge is-error',
               attributes: <String, String>{
-                'title': '${entry.errors} error${entry.errors == 1 ? '' : 's'} in this definition; open it to see them',
+                'title': '${entry.errors} error${entry.errors == 1 ? '' : 's'}',
                 'aria-label': '${entry.errors} error${entry.errors == 1 ? '' : 's'}',
               },
               <Widget>[Component.text('${entry.errors}')],

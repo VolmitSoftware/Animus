@@ -236,7 +236,7 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
         continue;
       }
       if (slot == NpcSlot.head && mcSkullItem(item)) {
-        notes.add('$where is worn on the head in game; the preview does not draw heads and skulls, so the head shows bare.');
+        notes.add('$where is worn on the head; the preview does not draw heads.');
         continue;
       }
       if (slot == NpcSlot.head) {
@@ -248,7 +248,7 @@ NpcScene npcScene(NpcLook look, {NpcSkinChoice skin = NpcSkinChoice.steve}) {
         continue;
       }
       if (slot == NpcSlot.body) {
-        notes.add('$where is not drawn: ${look.isPlayer ? 'players' : 'armor stands'} do not show the body slot. It holds horse armor and llama carpets.');
+        notes.add('$where is not drawn: ${look.isPlayer ? 'players' : 'armor stands'} do not show the body slot.');
         continue;
       }
       notes.add('$where is not drawn: the client shows only ${armor == null ? 'armour' : '${armor.slot.key} armour'} in this slot.');

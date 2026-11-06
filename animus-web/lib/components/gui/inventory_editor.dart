@@ -13,6 +13,7 @@ import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_validation.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../info_tip.dart';
 import 'actions_editor.dart';
 import 'chest_window.dart';
 import 'component_editor.dart';
@@ -48,7 +49,7 @@ class _InventoryPreviewState extends State<InventoryPreview> {
         onSlot: (int slot) => setState(() => _slot = _slot == slot ? null : slot),
       ),
       const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Sample viewer: Steve at 12:00. Values only the server knows show as ?. Tap or focus a slot to read its name and lore.'),
+        Component.text('Sample viewer: Steve at 12:00. Server-only values show as ?.'),
       ]),
     ]);
   }
@@ -165,11 +166,10 @@ class _InventoryEditorState extends State<InventoryEditor> {
             });
           },
         ),
-        dom.p(classes: 'animus-muted', <Widget>[
-          Component.text(_brush == null
-              ? 'Click a slot, or Tab to it and press Enter, to edit it. Letters mark mask keys; numbers mark list cells.'
-              : 'Press and drag across slots to paint ${_brush == ' ' ? 'empty cells' : 'key $_brush'} into the mask; Enter paints the focused slot.'),
-        ]),
+        if (_brush != null)
+          dom.p(classes: 'animus-muted', <Widget>[
+            Component.text('Painting ${_brush == ' ' ? 'empty cells' : 'key $_brush'}'),
+          ]),
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
         PresetFix(document: component.document, presets: component.presets, kind: DocumentKind.inventory, onJson: component.onJson),
@@ -210,19 +210,19 @@ class _InventoryEditorState extends State<InventoryEditor> {
     final List<JsonStep>? definition = cell.definition;
     final List<JsonStep> slotsOwner = <JsonStep>[...chestFieldOwner(_doc, _variant, 'slots'), 'slots'];
     final String where = switch (cell.source) {
-      ChestCellSource.mask => 'Drawn by mask key ${cell.maskChar}. Editing it changes every slot with that key.',
-      ChestCellSource.slot => 'An explicit slot; it draws over the mask.',
-      ChestCellSource.list => 'A list cell (entry ${cell.label}); edit the list template.',
+      ChestCellSource.mask => 'Drawn by mask key ${cell.maskChar}. Edits apply to every slot with that key.',
+      ChestCellSource.slot => 'Explicit slot, drawn over the mask.',
+      ChestCellSource.list => 'List cell (entry ${cell.label}). Edit the list template.',
       _ => cell.maskChar == null
-          ? 'An empty slot. Give it its own component, or put a mask key here.'
-          : 'Mask character ${cell.maskChar} has no key, so it draws nothing. Add key ${cell.maskChar} under Keys, or give this slot its own component.',
+          ? 'Empty slot. Add a component or mask key.'
+          : 'Mask character ${cell.maskChar} has no key. Add it under Keys.',
     };
     final List<Widget> controls = <Widget>[
       dom.p(classes: 'animus-muted', <Widget>[Component.text(where)]),
       dom.div(classes: 'animus-row', <Widget>[
         if (cell.source != ChestCellSource.slot && cell.source != ChestCellSource.list)
           Button.secondary(
-            label: 'Give this slot its own component',
+            label: 'Make explicit slot',
             size: ButtonSize.small,
             onPressed: () => _write(
               <JsonStep>[...slotsOwner, '$slot'],
@@ -232,7 +232,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
             ),
           ),
         if (cell.source == ChestCellSource.slot)
-          Button.ghost(label: 'Remove the explicit slot', size: ButtonSize.small, onPressed: () => _write(<JsonStep>[...slotsOwner, '$slot'], null)),
+          Button.ghost(label: 'Remove explicit slot', size: ButtonSize.small, onPressed: () => _write(<JsonStep>[...slotsOwner, '$slot'], null)),
       ]),
     ];
     if (definition == null) {
@@ -300,11 +300,11 @@ class _InventoryEditorState extends State<InventoryEditor> {
             label: 'Title',
             onChanged: (String value) => _write(<JsonStep>[...titleOwner, 'title'], value.isEmpty ? null : value),
           )),
-      guiFieldRow('Size', r'$.resolution', d, help: '5x1 (hopper) and 3x3 (dropper) do not open on mod servers.',
+      guiFieldRow('Size', r'$.resolution', d, help: '5x1 and 3x3 fail on mod servers',
           (String id) => GuiSelect(id: id, value: asString(doc['resolution']) ?? '9x3', options: chestResolutions, onChanged: (String? value) => _write(<JsonStep>['resolution'], value))),
       GuiRow(
         label: 'Mask',
-        help: 'One row per window row; each character draws the key with that name, a space is empty.',
+        help: 'One line per row. Each character draws that key; a space is empty.',
         problems: diagnosticsAt(d, formatPath(maskSteps), nested: true),
         child: GuiLinesEditor(
           lines: stringList(readIn(doc, maskSteps)),
@@ -315,9 +315,9 @@ class _InventoryEditorState extends State<InventoryEditor> {
       ),
       if (maskRows != rows && maskRows > 0)
         dom.p(classes: 'animus-gui-problem is-warning', <Widget>[
-          Component.text('The mask has $maskRows rows and the window $rows; the server refuses a mask that does not match.'),
+          Component.text('Mask has $maskRows rows, window has $rows. They must match.'),
         ]),
-      guiFieldRow('Show when', r'$.show', d, help: 'When false, the GUI does not open for that viewer.', (String id) => GuiTextInput(
+      guiFieldRow('Show when', r'$.show', d, help: 'False keeps it closed', (String id) => GuiTextInput(
             id: id,
             value: conditionText(doc['show']),
             mode: GuiTextMode.expression,
@@ -335,21 +335,19 @@ class _InventoryEditorState extends State<InventoryEditor> {
         ),
       ),
       GuiSection(title: 'Refresh', open: refresh.isNotEmpty, children: <Widget>[
-        guiFieldRow('Mode', r'$.refresh.mode', d, help: 'dynamic redraws what changed; always redraws every slot.',
+        guiFieldRow('Mode', r'$.refresh.mode', d, help: 'dynamic redraws changes, always redraws all',
             (String id) => GuiSelect(id: id, value: asString(refresh['mode']), options: const <String>['dynamic', 'always'], allowNone: true, noneLabel: 'dynamic', onChanged: (String? v) => setRefresh('mode', v))),
-        guiFieldRow('Title', r'$.refresh.titleTicks', d, help: '0 to 1200 ticks between title redraws; 20 by default, 0 turns it off.',
+        guiFieldRow('Title', r'$.refresh.titleTicks', d, help: '0 to 1200 ticks, 0 is off',
             (String id) => GuiNumberInput(id: id, value: asInt(refresh['titleTicks']), label: 'Title refresh ticks', onChanged: (num? v) => setRefresh('titleTicks', v))),
-        guiFieldRow('Slots', r'$.refresh.slotsTicks', d, help: '0 to 1200 ticks between slot redraws; 20 by default.',
+        guiFieldRow('Slots', r'$.refresh.slotsTicks', d, help: '0 to 1200 ticks, default 20',
             (String id) => GuiNumberInput(id: id, value: asInt(refresh['slotsTicks']), label: 'Slot refresh ticks', onChanged: (num? v) => setRefresh('slotsTicks', v))),
-        guiFieldRow('Conditions', r'$.refresh.conditionsTicks', d, help: '0 to 1200 ticks between show checks; slots redraw at least this often.',
+        guiFieldRow('Conditions', r'$.refresh.conditionsTicks', d, help: '0 to 1200 ticks between checks',
             (String id) => GuiNumberInput(id: id, value: asInt(refresh['conditionsTicks']), label: 'Condition refresh ticks', onChanged: (num? v) => setRefresh('conditionsTicks', v))),
-        guiFieldRow('List', r'$.refresh.listTicks', d, help: '0 to 1200. Read for Gloss; Animus uses the list\'s own refresh.',
+        guiFieldRow('List', r'$.refresh.listTicks', d, help: 'Gloss only',
             (String id) => GuiNumberInput(id: id, value: asInt(refresh['listTicks']), label: 'List refresh ticks', onChanged: (num? v) => setRefresh('listTicks', v))),
       ]),
       GuiSection(title: 'Select', open: select.isNotEmpty, children: <Widget>[
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Gloss picks one GUI among several for the same opener with these. Animus checks when as an expression and ignores priority.'),
-        ]),
+        const InfoTip(text: 'Gloss uses these to pick one GUI per opener. Animus checks when and ignores priority.', topic: 'Select'),
         guiFieldRow('Priority', r'$.select.priority', d,
             (String id) => GuiNumberInput(id: id, value: asInt(select['priority']), label: 'Select priority', onChanged: (num? v) => setSelect('priority', v))),
         guiFieldRow('When', r'$.select.when', d, (String id) => GuiTextInput(
@@ -372,7 +370,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
         GuiSection(title: 'Key ${entry.key}', open: false, children: <Widget>[
           GuiRow(
             label: 'Character',
-            help: 'One character; renaming updates the mask.',
+            help: 'One character, updates the mask',
             child: dom.div(classes: 'animus-row', <Widget>[
               GuiTextInput(
                 value: entry.key,
@@ -413,9 +411,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
     final JsonMap list = asMap(doc['list']);
     if (list.isEmpty) {
       return dom.div(classes: 'animus-gui-fields', <Widget>[
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('A list fills the slots of one mask character with pages of a template, one per entry of a source expression.'),
-        ]),
+        const InfoTip(text: 'Fills one mask character\'s slots with a template, one per entry of a source expression.', topic: 'List'),
         Button.secondary(
           label: 'Add a list',
           size: ButtonSize.small,
@@ -432,14 +428,14 @@ class _InventoryEditorState extends State<InventoryEditor> {
     return dom.div(classes: 'animus-gui-fields', <Widget>[
       GuiRow(
         label: 'Area',
-        help: 'The mask character whose slots the list fills.',
+        help: 'Mask character to fill',
         problems: diagnosticsAt(_diagnostics, r'$.list.area'),
         child: GuiTextInput(value: asString(list['area']) ?? '', label: 'Area', onChanged: (String v) => set('area', v.isEmpty ? null : v.substring(0, 1))),
       ),
-      GuiRow(label: 'Variable', help: 'Each entry is readable under this name.', child: GuiTextInput(value: asString(list['var']) ?? '', label: 'Variable', onChanged: (String v) => set('var', v.isEmpty ? null : v))),
+      GuiRow(label: 'Variable', help: 'Name for each entry', child: GuiTextInput(value: asString(list['var']) ?? '', label: 'Variable', onChanged: (String v) => set('var', v.isEmpty ? null : v))),
       GuiRow(
         label: 'Source',
-        help: 'An expression that gives a list.',
+        help: 'Expression giving a list',
         problems: diagnosticsAt(_diagnostics, r'$.list.source'),
         child: GuiTextInput(
           value: list['source'] is String ? list['source']! as String : '',
@@ -461,9 +457,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
           onChanged: (JsonMap next) => set('template', next),
         ),
       ]),
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Page buttons use navigate with mode page and target next or prev; page and pages give the position.'),
-      ]),
+      const InfoTip(text: 'Page buttons use navigate with mode page and target next or prev. page and pages give the position.', topic: 'List pages'),
       Button.ghost(label: 'Remove the list', size: ButtonSize.small, onPressed: () => _write(<JsonStep>['list'], null)),
     ]);
   }
@@ -471,9 +465,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
   Widget _variants(JsonMap doc) {
     final JsonList variants = asList(doc['variants']);
     return dom.div(classes: 'animus-gui-fields', <Widget>[
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('The highest priority variant whose condition is true replaces the title, mask, keys or slots it names. Nothing merges.'),
-      ]),
+      const InfoTip(text: 'The highest-priority variant whose condition holds replaces the title, mask, keys or slots it names. Nothing merges.', topic: 'Variants'),
       for (int index = 0; index < variants.length; index++)
         GuiSection(title: 'Variant ${asString(asMap(variants[index])['id']) ?? index}', open: _variant == index, children: <Widget>[
           GuiRow(
@@ -497,7 +489,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
           ),
           GuiRow(
             label: 'Replaces',
-            help: 'Pick what this variant replaces; the window then edits the variant\'s copy.',
+            help: 'Fields this variant overrides',
             child: dom.div(classes: 'animus-row', <Widget>[
               for (final String field in const <String>['title', 'mask', 'keys', 'slots'])
                 GuiSwitch(
@@ -536,9 +528,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
   Widget _actions(JsonMap doc) {
     final JsonMap named = asMap(doc['actions']);
     return dom.div(classes: 'animus-gui-fields', <Widget>[
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Named lists run from any action with call. Calls must exist and must not loop.'),
-      ]),
+      const InfoTip(text: 'Run a named list from any action with call. Calls must exist and must not loop.', topic: 'Named actions'),
       for (final MapEntry<String, Object?> entry in named.entries)
         GuiSection(title: entry.key, count: asList(entry.value).length, children: <Widget>[
           GuiRow(

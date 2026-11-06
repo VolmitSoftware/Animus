@@ -173,10 +173,10 @@ void main() {
 
   test('should not report a spawn the connection cut short as a success', () {
     expect(spawnLine(spawn: true, total: 3, sent: 1, accepted: 1, refused: const <String>[]),
-        'Spawned 1 of 3 NPCs. The connection failed before 2 could be sent; select them again once it reconnects.');
+        'Spawned 1 of 3 NPCs. Connection failed with 2 unsent. Select them again after reconnecting.');
     expect(spawnLine(spawn: false, total: 2, sent: 2, accepted: 2, refused: const <String>[]), 'Despawned 2 NPCs on the server.');
     expect(spawnLine(spawn: true, total: 2, sent: 2, accepted: 1, refused: const <String>['town/a'], reason: serverErrorCopy['scope-missing']),
-        startsWith('Spawned 1 of 2 NPCs. The server refused town/a: This pairing does not allow that action.'));
+        startsWith('Spawned 1 of 2 NPCs. The server refused town/a: This pairing lacks that scope.'));
   });
 
   test('should report a lost connection once, without a doubled period', () async {

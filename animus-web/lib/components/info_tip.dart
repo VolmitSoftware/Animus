@@ -163,5 +163,7 @@ class _InfoTipState extends State<InfoTip> {
 /// [label] followed by an [InfoTip] when there is [tip] text.
 Widget labelWithTip(Widget label, String? tip, String topic, {DocLink? docs}) {
   if (tip == null || tip.trim().isEmpty) return label;
-  return dom.span(classes: 'animus-label-tip', <Widget>[label, InfoTip(text: tip, topic: topic, docs: docs)]);
+  // The required marker is not part of the topic's name.
+  final String name = topic.replaceFirst(RegExp(r'\s*\*$'), '');
+  return dom.span(classes: 'animus-label-tip', <Widget>[label, InfoTip(text: tip, topic: name, docs: docs)]);
 }

@@ -101,7 +101,7 @@ class _RecordingViewState extends State<RecordingView> {
     final Recording? recording = _recording;
     if (recording == null) {
       return const dom.section(classes: 'animus-panel animus-recording', <Widget>[
-        dom.p(<Widget>[Component.text('This recording is not a JSON object, so there is no path to draw. Its problems are listed above.')]),
+        dom.p(<Widget>[Component.text('Not a JSON object, so there is no path to draw.')]),
       ]);
     }
     final double tick = _tick.clamp(0, math.max(0, recording.durationTicks)).toDouble();
@@ -138,9 +138,6 @@ class _RecordingViewState extends State<RecordingView> {
       ('Flag changes', changes.isEmpty ? 'none' : '${changes.length}, at ticks ${changes.take(12).map((RecordingFrame frame) => frame.tick).join(', ')}${changes.length > 12 ? ', ...' : ''}'),
     ];
     return dom.div(classes: 'animus-recording-facts', <Widget>[
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Made in game with /animus record. Only rename and delete apply here; record again under the same id to replace it.'),
-      ]),
       dom.dl(attributes: const <String, String>{'data-recording': 'facts'}, <Widget>[
         for (final (String label, String value) in facts) ...<Widget>[
           dom.dt(<Widget>[Component.text(label)]),
@@ -155,7 +152,7 @@ class _RecordingViewState extends State<RecordingView> {
   Widget _path(Recording recording, double tick) {
     if (recording.frames.isEmpty) {
       return const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-recording': 'empty'}, <Widget>[
-        Component.text('No readable frames, so there is no path to draw. A recording needs at least two frames of [tick, dx, dy, dz, yaw, pitch, flags].'),
+        Component.text('No readable frames to draw.'),
       ]);
     }
     final (double minX, double minZ, double maxX, double maxZ) = recording.bounds();
@@ -212,7 +209,7 @@ class _RecordingViewState extends State<RecordingView> {
         },
       ),
       const dom.p(classes: 'animus-recording-legend animus-muted', <Widget>[
-        Component.text('North is up. The square marks the first frame, small squares mark events, and the pink dot is the scrub position with a line for its facing.'),
+        Component.text('North up. Square: first frame. Small squares: events. Pink dot: scrub position and facing.'),
       ]),
       dom.div(classes: 'animus-recording-scrub', <Widget>[
         Button.secondary(
@@ -247,7 +244,7 @@ class _RecordingViewState extends State<RecordingView> {
         ]),
       ]),
       if (!_playing && prefersReducedMotion())
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Your system asks for reduced motion, so nothing plays until you press Play. Drag the scrub to step through instead.')]),
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Reduced motion is on. Press Play or drag the scrub.')]),
     ]);
   }
 
@@ -255,7 +252,7 @@ class _RecordingViewState extends State<RecordingView> {
     return dom.div(classes: 'animus-recording-events', <Widget>[
       const dom.h2(<Widget>[Component.text('Events')]),
       if (recording.events.isEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No arm swings, equipment changes or door uses were recorded.')])
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No events recorded.')])
       else
         dom.ol(attributes: const <String, String>{'aria-label': 'Recorded events', 'data-recording': 'events'}, <Widget>[
           for (final RecordingEvent event in recording.events)

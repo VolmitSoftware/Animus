@@ -17,6 +17,7 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import 'actions_editor.dart';
 import 'component_editor.dart';
+import '../info_tip.dart';
 import 'gui_fields.dart';
 import 'gui_stage_preview.dart';
 import 'presets_editor.dart';
@@ -129,7 +130,7 @@ class _HologramEditorState extends State<HologramEditor> {
         PresetFix(document: component.document, presets: component.presets, kind: DocumentKind.hologram, onJson: component.onJson),
         GuiSection(title: _page != null ? 'Lines of page ${_page! + 1}' : (_variant != null ? 'Lines of variant ${_variant! + 1}' : 'Lines'), children: <Widget>[
           if (_page == null && _variant == null && pages.isNotEmpty)
-            const dom.p(classes: 'animus-muted', <Widget>[Component.text('This hologram has pages, so it shows those instead. Pick a page above to edit its lines.')])
+            const dom.p(classes: 'animus-muted', <Widget>[Component.text('Pages replace these lines. Pick a page above.')])
           else
             _lines(asList(readIn(doc, _linesSteps))),
         ]),
@@ -138,13 +139,11 @@ class _HologramEditorState extends State<HologramEditor> {
           style: asMap(doc['style']),
           path: r'$.style',
           diagnostics: _diagnostics,
-          note: 'Every row uses this style. Holograms face the viewer (billboard center) and show through blocks unless set here.',
+          note: 'Applies to every row. Default: billboard center, see-through.',
           onChanged: (JsonMap? next, String field) => _write(<JsonStep>['style'], next, coalesce: 'style.$field'),
         ),
         GuiSection(title: 'Click actions', count: asList(doc['actions']).length, open: asList(doc['actions']).isNotEmpty, children: <Widget>[
-          const dom.p(classes: 'animus-muted', <Widget>[
-            Component.text('Run when a viewer clicks the hologram\'s box. navigate with mode page and target next, prev or a page id turns pages.'),
-          ]),
+          const InfoTip(text: 'Runs when a viewer clicks the box. navigate with mode page and target next, prev or a page id turns pages.', topic: 'Click actions'),
           ActionsEditor(
             actions: asList(doc['actions']),
             path: r'$.actions',
@@ -152,8 +151,8 @@ class _HologramEditorState extends State<HologramEditor> {
             unavailable: hologramRefusedActions,
             onChanged: (JsonList next) => _write(<JsonStep>['actions'], next.isEmpty ? null : next),
           ),
-          _number('Box width', r'$.hitbox.width', asDouble(asMap(doc['hitbox'])['width']), (num? v) => _hitbox('width', v), help: '0.01 to 64 blocks; 1.2 by default.', integer: false),
-          _number('Row height', r'$.hitbox.height', asDouble(asMap(doc['hitbox'])['height']), (num? v) => _hitbox('height', v), help: '0.01 to 64 blocks; 0.35 by default.', integer: false),
+          _number('Box width', r'$.hitbox.width', asDouble(asMap(doc['hitbox'])['width']), (num? v) => _hitbox('width', v), help: '0.01 to 64 blocks, default 1.2', integer: false),
+          _number('Row height', r'$.hitbox.height', asDouble(asMap(doc['hitbox'])['height']), (num? v) => _hitbox('height', v), help: '0.01 to 64 blocks, default 0.35', integer: false),
           GuiRow(
             label: 'Per line',
             child: GuiSwitch(value: asMap(doc['hitbox'])['perLine'] == true, label: 'One box per row', onChanged: (bool on) => _hitbox('perLine', on ? true : null)),
@@ -185,7 +184,7 @@ class _HologramEditorState extends State<HologramEditor> {
     final String base = formatPath(_linesSteps);
     void setLines(JsonList next) => _write(_linesSteps, next, coalesce: '$base-structure');
     return dom.div(classes: 'animus-gui-lines', <Widget>[
-      if (lines.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No rows yet. Add a text row to give the hologram something to show.')]),
+      if (lines.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No rows yet. Add one below.')]),
       for (int index = 0; index < lines.length; index++) _line(lines, index, '$base[$index]', setLines),
       dom.div(classes: 'animus-row', <Widget>[
         for (final String kind in hologramLineKinds)
@@ -258,7 +257,7 @@ class _HologramEditorState extends State<HologramEditor> {
             onChanged: (String v) => set(withHologramLineField(line, 'show', v.trim().isEmpty ? null : (v.trim() == 'false' ? false : (v.trim() == 'true' ? true : v)))),
           ),
         ),
-        _number('Scale', '$path.scale', asDouble(object['scale']), (num? v) => set(withHologramLineField(line, 'scale', v)), help: '0.01 to 64; 1 by default.', integer: false),
+        _number('Scale', '$path.scale', asDouble(object['scale']), (num? v) => set(withHologramLineField(line, 'scale', v)), help: '0.01 to 64, default 1', integer: false),
       ]),
       for (final Diagnostic problem in diagnosticsAt(_diagnostics, path))
         dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text('${problem.path} ${problem.message}')]),
@@ -276,15 +275,15 @@ class _HologramEditorState extends State<HologramEditor> {
 
     return dom.div(classes: 'animus-gui-fields animus-gui-holo-item', <Widget>[
       row('Item', 'item', (String id) => GuiTextInput(id: id, value: asString(icon['item']) ?? '', mode: GuiTextMode.template, names: _names, label: 'Row ${index + 1} item', onChanged: (String v) => field('item', v)),
-          help: 'An item id such as minecraft:diamond.'),
-      row('Count', 'count', (String id) => GuiNumberInput(id: id, value: asInt(icon['count']), label: 'Row ${index + 1} count', onChanged: (num? v) => field('count', v)), help: '1 to 99.'),
+          help: 'Such as minecraft:diamond'),
+      row('Count', 'count', (String id) => GuiNumberInput(id: id, value: asInt(icon['count']), label: 'Row ${index + 1} count', onChanged: (num? v) => field('count', v)), help: '1 to 99'),
       row('Name', 'name', (String id) => GuiTextInput(id: id, value: asString(icon['name']) ?? '', mode: GuiTextMode.template, names: _names, label: 'Row ${index + 1} name', onChanged: (String v) => field('name', v))),
       row('Lore', 'lore', (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: _names, onChanged: (List<String> lines) => field('lore', lines))),
       row('Custom model', 'customModelValue', (String id) => GuiNumberInput(id: id, value: asInt(icon['customModelValue']), label: 'Row ${index + 1} custom model value', onChanged: (num? v) => field('customModelValue', v))),
       if (icon.containsKey('style'))
         dom.p(classes: 'animus-gui-note', <Widget>[
           dom.code(<Widget>[Component.text('$itemPath.style')]),
-          const Component.text(' is read but not used on hologram rows; the hologram style applies. '),
+          const Component.text(' is ignored on rows; the hologram style applies. '),
           Button.ghost(label: 'Remove it', size: ButtonSize.small, onPressed: () => field('style', null)),
         ]),
     ]);
@@ -321,13 +320,13 @@ class _HologramEditorState extends State<HologramEditor> {
           for (int i = 0; i < 3; i++) GuiNumberInput(value: axis(i), integer: false, label: 'Position ${'xyz'[i]}', placeholder: 'xyz'[i], onChanged: (num? v) => setAxis(i, v)),
         ]),
       ),
-      _number('Yaw', r'$.yaw', asDouble(doc['yaw']), (num? v) => _write(<JsonStep>['yaw'], v), help: '-180 to 180 degrees; turns the whole hologram.', integer: false),
-      _number('Pitch', r'$.pitch', asDouble(doc['pitch']), (num? v) => _write(<JsonStep>['pitch'], v), help: '-90 to 90 degrees.', integer: false),
-      _number('View distance', r'$.viewDistance', asDouble(doc['viewDistance']), (num? v) => _write(<JsonStep>['viewDistance'], v), help: '4 to 128 blocks; 48 by default.', integer: false),
-      _number('Refresh', r'$.refreshTicks', asInt(doc['refreshTicks']), (num? v) => _write(<JsonStep>['refreshTicks'], v), help: '1 to 200 ticks between text updates; 10 by default.'),
-      _number('Content refresh', r'$.refresh.contentTicks', asInt(refresh['contentTicks']), (num? v) => setRefresh('contentTicks', v), help: '1 to 1200 ticks; replaces the refresh above when set.'),
-      _number('Visibility refresh', r'$.refresh.visibilityTicks', asInt(refresh['visibilityTicks']), (num? v) => setRefresh('visibilityTicks', v), help: '1 to 1200 ticks between show checks.'),
-      _number('Motion refresh', r'$.refresh.motionTicks', asInt(refresh['motionTicks']), (num? v) => setRefresh('motionTicks', v), help: '1 to 1200. Checked; the server does not use it yet.'),
+      _number('Yaw', r'$.yaw', asDouble(doc['yaw']), (num? v) => _write(<JsonStep>['yaw'], v), help: '-180 to 180 degrees', integer: false),
+      _number('Pitch', r'$.pitch', asDouble(doc['pitch']), (num? v) => _write(<JsonStep>['pitch'], v), help: '-90 to 90 degrees', integer: false),
+      _number('View distance', r'$.viewDistance', asDouble(doc['viewDistance']), (num? v) => _write(<JsonStep>['viewDistance'], v), help: '4 to 128 blocks, default 48', integer: false),
+      _number('Refresh', r'$.refreshTicks', asInt(doc['refreshTicks']), (num? v) => _write(<JsonStep>['refreshTicks'], v), help: '1 to 200 ticks, default 10'),
+      _number('Content refresh', r'$.refresh.contentTicks', asInt(refresh['contentTicks']), (num? v) => setRefresh('contentTicks', v), help: '1 to 1200 ticks, overrides Refresh'),
+      _number('Visibility refresh', r'$.refresh.visibilityTicks', asInt(refresh['visibilityTicks']), (num? v) => setRefresh('visibilityTicks', v), help: '1 to 1200 ticks between checks'),
+      _number('Motion refresh', r'$.refresh.motionTicks', asInt(refresh['motionTicks']), (num? v) => setRefresh('motionTicks', v), help: '1 to 1200, not used yet'),
       GuiRow(
         label: 'Show when',
         forId: showId,
@@ -352,7 +351,7 @@ class _HologramEditorState extends State<HologramEditor> {
   }
 
   List<Widget> _pages(JsonList pages) => <Widget>[
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Pages replace the lines; each viewer reads one page.')]),
+        const InfoTip(text: 'Pages replace the lines. Each viewer sees one page.', topic: 'Pages'),
         for (int index = 0; index < pages.length; index++)
           GuiSection(title: 'Page ${asString(asMap(pages[index])['id']) ?? index + 1}', open: _page == index, children: <Widget>[
             GuiRow(
@@ -369,7 +368,7 @@ class _HologramEditorState extends State<HologramEditor> {
             GuiRow(
               label: 'Show when',
               forId: guiPathId('\$.pages[$index].show'),
-              help: 'A hidden page is skipped for that viewer.',
+              help: 'Hidden pages are skipped',
               problems: diagnosticsAt(_diagnostics, '\$.pages[$index].show'),
               child: GuiTextInput(
                 id: guiPathId('\$.pages[$index].show'),
@@ -414,9 +413,7 @@ class _HologramEditorState extends State<HologramEditor> {
       ];
 
   List<Widget> _variants(JsonList variants) => <Widget>[
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('The first variant whose condition holds, by descending priority, replaces the lines or style it names.'),
-        ]),
+        const InfoTip(text: 'The highest-priority variant whose condition holds replaces the lines or style it names.', topic: 'Variants'),
         for (int index = 0; index < variants.length; index++) _variantSection(variants, index),
         Button.secondary(
           label: 'Add variant',
@@ -444,7 +441,7 @@ class _HologramEditorState extends State<HologramEditor> {
         problems: diagnosticsAt(_diagnostics, '$path.id'),
         child: GuiTextInput(id: guiPathId('$path.id'), value: asString(variant['id']) ?? '', label: 'Variant id', onChanged: (String v) => _write(<JsonStep>['variants', index, 'id'], v)),
       ),
-      _number('Priority', '$path.priority', asInt(variant['priority']), (num? v) => _write(<JsonStep>['variants', index, 'priority'], v), help: '-1000 to 1000; higher wins.'),
+      _number('Priority', '$path.priority', asInt(variant['priority']), (num? v) => _write(<JsonStep>['variants', index, 'priority'], v), help: '-1000 to 1000, higher wins'),
       GuiRow(
         label: 'When *',
         forId: guiPathId('$path.when'),
@@ -462,7 +459,7 @@ class _HologramEditorState extends State<HologramEditor> {
         style: asMap(asMap(variant['presentation'])['style']),
         path: '$path.presentation.style',
         diagnostics: _diagnostics,
-        note: 'Laid over the hologram style while this variant shows.',
+        note: 'Overrides the hologram style while shown.',
         onChanged: (JsonMap? next, String field) => _write(<JsonStep>['variants', index, 'presentation', 'style'], next, coalesce: 'variants.$index.style.$field'),
       ),
       dom.div(classes: 'animus-row', <Widget>[

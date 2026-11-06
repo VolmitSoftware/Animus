@@ -85,8 +85,8 @@ const List<String> guiTriggers = <String>['any', 'left_click', 'right_click', 's
 
 /// Fields every action may carry.
 const List<GuiField> commonActionFields = <GuiField>[
-  GuiField('trigger', GuiFieldKind.choice, choices: guiTriggers, help: 'Which click runs it; any by default.'),
-  GuiField('when', GuiFieldKind.expression, help: 'Runs only when this condition is true.'),
+  GuiField('trigger', GuiFieldKind.choice, choices: guiTriggers, help: 'Click that runs it, default any'),
+  GuiField('when', GuiFieldKind.expression, help: 'Runs only when true'),
   GuiField('cooldownTicks', GuiFieldKind.integer, help: 'Per-viewer cooldown in ticks.'),
 ];
 
@@ -95,11 +95,11 @@ const List<String> _hudPriorities = <String>['ambient', 'notice', 'status', 'pro
 /// The type-specific fields of each offered action.
 const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
   'command': <GuiField>[
-    GuiField('command', GuiFieldKind.template, required: true, help: 'Without the leading slash. Needs the GUI on the command allow-list.'),
-    GuiField('source', GuiFieldKind.choice, choices: <String>['server', 'player'], help: 'server (default) or the viewer.'),
+    GuiField('command', GuiFieldKind.template, required: true, help: 'No leading slash. Needs the command allow-list.'),
+    GuiField('source', GuiFieldKind.choice, choices: <String>['server', 'player'], help: 'server (default) or the viewer'),
   ],
   'sound': <GuiField>[
-    GuiField('sound', GuiFieldKind.text, required: true, help: 'Sound key, such as minecraft:ui.button.click.'),
+    GuiField('sound', GuiFieldKind.text, required: true, help: 'Such as minecraft:ui.button.click'),
     GuiField('source', GuiFieldKind.choice, choices: <String>['master', 'music', 'record', 'weather', 'block', 'hostile', 'neutral', 'player', 'ambient', 'voice']),
     GuiField('volume', GuiFieldKind.number),
     GuiField('pitch', GuiFieldKind.number),
@@ -115,9 +115,9 @@ const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
   ],
   'actionbar': <GuiField>[
     GuiField('text', GuiFieldKind.template, required: true),
-    GuiField('ticks', GuiFieldKind.integer, help: 'Read for Gloss; Animus shows the bar for the client\'s usual time.'),
-    GuiField('slots', GuiFieldKind.multiChoice, choices: <String>['left', 'center', 'right'], help: 'Gloss compositor slots; Animus shows the bar centred.'),
-    GuiField('priority', GuiFieldKind.choice, choices: _hudPriorities, help: 'Read for Gloss; Animus does not rank bars.'),
+    GuiField('ticks', GuiFieldKind.integer, help: 'Gloss only'),
+    GuiField('slots', GuiFieldKind.multiChoice, choices: <String>['left', 'center', 'right'], help: 'Gloss only; Animus centres it'),
+    GuiField('priority', GuiFieldKind.choice, choices: _hudPriorities, help: 'Gloss only'),
   ],
   'close': <GuiField>[],
   'navigate': <GuiField>[
@@ -126,8 +126,8 @@ const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
     GuiField('list', GuiFieldKind.text),
   ],
   'inventory': <GuiField>[
-    GuiField('id', GuiFieldKind.text, required: true, help: 'The chest GUI to open, such as town:menu.'),
-    GuiField('args', GuiFieldKind.object, help: 'Values readable as args.<name>; names start with a lowercase letter.'),
+    GuiField('id', GuiFieldKind.text, required: true, help: 'Such as town:menu'),
+    GuiField('args', GuiFieldKind.object, help: 'Read as args.<name>, lowercase names'),
   ],
   'setSession': <GuiField>[
     GuiField('var', GuiFieldKind.text, required: true, help: 'Readable as session.<var>.'),
@@ -174,7 +174,7 @@ const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
   'stop': <GuiField>[],
   'call': <GuiField>[GuiField('action', GuiFieldKind.text, required: true, help: 'A named list under actions.')],
   'teleport': <GuiField>[
-    GuiField('world', GuiFieldKind.text, required: true, help: 'A world key, such as minecraft:the_nether. A world that is not loaded stops the list.'),
+    GuiField('world', GuiFieldKind.text, required: true, help: 'Such as minecraft:the_nether. An unloaded world stops the list.'),
     GuiField('x', GuiFieldKind.number, required: true),
     GuiField('y', GuiFieldKind.number, required: true),
     GuiField('z', GuiFieldKind.number, required: true),
@@ -182,39 +182,39 @@ const Map<String, List<GuiField>> actionFields = <String, List<GuiField>>{
     GuiField('pitch', GuiFieldKind.number, required: true),
   ],
   'bossbar': <GuiField>[
-    GuiField('id', GuiFieldKind.text, required: true, help: 'The lane; a new bar on the same lane replaces the old one.'),
+    GuiField('id', GuiFieldKind.text, required: true, help: 'Lane. New bars replace the old one.'),
     GuiField('title', GuiFieldKind.template, required: true),
     GuiField('progress', GuiFieldKind.expression, help: '0 to 1.'),
     GuiField('color', GuiFieldKind.choice, choices: <String>['pink', 'blue', 'red', 'green', 'yellow', 'purple', 'white']),
     GuiField('style', GuiFieldKind.choice, choices: <String>['solid', 'segmented_6', 'segmented_10', 'segmented_12', 'segmented_20']),
-    GuiField('ticks', GuiFieldKind.integer, help: 'Default 100; 0 hides the lane.'),
-    GuiField('priority', GuiFieldKind.choice, choices: _hudPriorities, help: 'Read and checked; Animus shows every lane.'),
+    GuiField('ticks', GuiFieldKind.integer, help: 'Default 100, 0 hides it'),
+    GuiField('priority', GuiFieldKind.choice, choices: _hudPriorities, help: 'Gloss only; Animus shows all'),
   ],
   'broadcast': <GuiField>[
     GuiField('message', GuiFieldKind.template, required: true),
     GuiField('scope', GuiFieldKind.choice, choices: <String>['server', 'world', 'radius']),
     GuiField('radius', GuiFieldKind.number, help: 'Blocks, with scope radius.'),
-    GuiField('permission', GuiFieldKind.text, help: 'Only players with it see the message.'),
+    GuiField('permission', GuiFieldKind.text, help: 'Required to see it'),
   ],
   'effect': <GuiField>[
-    GuiField('effect', GuiFieldKind.text, required: true, help: 'A potion effect key, such as minecraft:speed.'),
+    GuiField('effect', GuiFieldKind.text, required: true, help: 'Such as minecraft:speed'),
     GuiField('ticks', GuiFieldKind.integer, required: true),
     GuiField('amplifier', GuiFieldKind.integer, help: '0 to 255.'),
   ],
   'particle': <GuiField>[
-    GuiField('particle', GuiFieldKind.text, required: true, help: 'A particle key, such as minecraft:flame. Only the viewer sees them.'),
+    GuiField('particle', GuiFieldKind.text, required: true, help: 'Such as minecraft:flame, viewer only'),
     GuiField('count', GuiFieldKind.integer),
     GuiField('offset', GuiFieldKind.number, help: 'Spread in blocks.'),
-    GuiField('at', GuiFieldKind.choice, choices: <String>['viewer', 'location'], help: 'location is the hologram or menu; a chest window has none.'),
+    GuiField('at', GuiFieldKind.choice, choices: <String>['viewer', 'location'], help: 'location: the hologram or menu'),
   ],
-  'parallel': <GuiField>[GuiField('branches', GuiFieldKind.branches, required: true, help: 'Each list runs side by side.')],
+  'parallel': <GuiField>[GuiField('branches', GuiFieldKind.branches, required: true, help: 'Lists run side by side')],
   'repeat': <GuiField>[
     GuiField('times', GuiFieldKind.integer, required: true),
     GuiField('everyTicks', GuiFieldKind.integer, help: '0 runs every pass at once.'),
-    GuiField('while', GuiFieldKind.expression, help: 'Checked before each pass; false ends the loop.'),
+    GuiField('while', GuiFieldKind.expression, help: 'False ends the loop'),
     GuiField('steps', GuiFieldKind.actions, required: true),
   ],
-  'animus:open-shop': <GuiField>[GuiField('shop', GuiFieldKind.text, required: true, help: 'A shop id, such as town:baker.')],
+  'animus:open-shop': <GuiField>[GuiField('shop', GuiFieldKind.text, required: true, help: 'Such as town:baker')],
 };
 
 /// Fields that hold nested action lists.

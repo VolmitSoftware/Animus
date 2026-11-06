@@ -104,7 +104,7 @@ class _ShopPreviewState extends State<ShopPreview> {
         selected: _slot,
         onSlot: (int slot) => setState(() => _slot = _slot == slot ? null : slot),
       ),
-      const dom.p(classes: 'animus-muted', <Widget>[Component.text('Tap or focus a slot to read its name and lore.')]),
+      const dom.p(classes: 'animus-muted', <Widget>[Component.text('Select a slot for its name and lore.')]),
     ]);
   }
 }
@@ -194,7 +194,7 @@ class _ShopEditorState extends State<ShopEditor> {
           }),
         ),
         const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('The bottom row holds previous page (slot 2), close (4), next page (6) and the mode switch (8); each shows only when it does something.'),
+          Component.text('Bottom row: previous (2), close (4), next (6), mode (8).'),
         ]),
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
@@ -221,10 +221,10 @@ class _ShopEditorState extends State<ShopEditor> {
     return dom.div(classes: 'animus-gui-fields', <Widget>[
       _row('Title', r'$.title', (String id) => GuiTextInput(id: id, value: asString(shop['title']) ?? '', mode: GuiTextMode.template, label: 'Shop title', onChanged: (String v) => _write(<JsonStep>['title'], v.isEmpty ? null : v))),
       _row('Permission', r'$.permission', (String id) => GuiTextInput(id: id, value: asString(shop['permission']) ?? '', label: 'Shop permission', placeholder: 'town.shop.baker', onChanged: (String v) => _write(<JsonStep>['permission'], v.isEmpty ? null : v)),
-          help: 'Needed to open the shop.'),
+          help: 'Needed to open'),
       GuiRow(
         label: 'Modes',
-        help: 'Ticked modes, in the order the mode switch cycles them. None ticked means buy, sell, trade.',
+        help: 'Cycle order. None means buy, sell, trade.',
         problems: diagnosticsAt(_diagnostics, r'$.modes', nested: true),
         child: dom.div(classes: 'animus-gui-lines', <Widget>[
           for (int index = 0; index < ordered.length; index++)
@@ -251,7 +251,7 @@ class _ShopEditorState extends State<ShopEditor> {
       ),
       _row('First mode', r'$.defaultMode', (String id) => GuiSelect(id: id, value: asString(shop['defaultMode']), options: _enabledModes(shop), allowNone: true, noneLabel: 'first in modes', labels: _modeLabels, onChanged: (String? v) => _write(<JsonStep>['defaultMode'], v))),
       _row('Item matching', r'$.match', (String id) => GuiSelect(id: id, value: asString(shop['match']), options: const <String>['strict', 'legacy'], allowNone: true, noneLabel: 'strict', onChanged: (String? v) => _write(<JsonStep>['match'], v)),
-          help: 'strict compares every piece of item data; legacy is what imports use.'),
+          help: 'strict checks all data; legacy for imports'),
       GuiRow(
         label: 'Purchases',
         child: dom.div(classes: 'animus-row', <Widget>[
@@ -275,10 +275,10 @@ class _ShopEditorState extends State<ShopEditor> {
 
     return GuiSection(title: 'Owner', open: owner.isNotEmpty || _container, children: <Widget>[
       const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('The player whose chests stock the shop and who receives its takings. A shop with containers needs one.'),
+        Component.text('Owns the stock chests and gets the takings. Required with containers.'),
       ]),
       _row('UUID', r'$.owner.uuid', (String id) => GuiTextInput(id: id, value: asString(owner['uuid']) ?? '', label: 'Owner UUID', placeholder: '00000000-0000-0000-0000-000000000000', onChanged: (String v) => set('uuid', v)),
-          help: 'The canonical form, lowercase with dashes.'),
+          help: 'Lowercase with dashes'),
       _row('Name', r'$.owner.name', (String id) => GuiTextInput(id: id, value: asString(owner['name']) ?? '', label: 'Owner name', onChanged: (String v) => set('name', v))),
       for (final Diagnostic problem in diagnosticsAt(_diagnostics, r'$.owner'))
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
@@ -290,8 +290,8 @@ class _ShopEditorState extends State<ShopEditor> {
     void setAll(JsonList next) => _write(<JsonStep>['containers'], next.isEmpty ? null : next, coalesce: 'containers-structure');
     return GuiSection(title: 'Containers', count: containers.length, open: containers.isNotEmpty, children: <Widget>[
       const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Chests the shop takes stock from and pays into. With containers the shop only trades items for items: '
-            'entries are trade or static, with no price and no stock of their own.'),
+        Component.text('Stock and payment chests. With containers, entries are trade or static, '
+            'with no price or stock.'),
       ]),
       for (final Diagnostic problem in diagnosticsAt(_diagnostics, r'$.containers'))
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
@@ -325,14 +325,14 @@ class _ShopEditorState extends State<ShopEditor> {
 
   Widget _pageFields(JsonList pages) {
     if (pages.isEmpty) {
-      return const dom.p(classes: 'animus-muted', <Widget>[Component.text('This shop has no pages. Use Add page above the window to make the first.')]);
+      return const dom.p(classes: 'animus-muted', <Widget>[Component.text('No pages yet. Use Add page.')]);
     }
     final JsonMap page = asMap(pages[_page]);
     final String path = '\$.pages[$_page]';
     final int rows = asInt(page['rows']) ?? 3;
     final List<String> outside = shopEntriesOutside(page, rows);
     return dom.div(classes: 'animus-gui-fields', <Widget>[
-      dom.p(classes: 'animus-muted', <Widget>[Component.text('Page ${_page + 1}. Click a slot in the window to edit or add an entry.')]),
+      dom.p(classes: 'animus-muted', <Widget>[Component.text('Page ${_page + 1}. Select a slot to edit.')]),
       _row('Name', '$path.name', (String id) => GuiTextInput(id: id, value: asString(page['name']) ?? '', label: 'Page name', onChanged: (String v) => _write(<JsonStep>['pages', _page, 'name'], v.isEmpty ? null : v))),
       _row('Rows', '$path.rows', (String id) => GuiSelect(
             id: id,
@@ -342,11 +342,11 @@ class _ShopEditorState extends State<ShopEditor> {
           )),
       if (outside.isNotEmpty)
         dom.p(classes: 'animus-gui-problem is-warning', attributes: const <String, String>{'role': 'alert'}, <Widget>[
-          Component.text('${outside.length} ${outside.length == 1 ? 'entry sits' : 'entries sit'} outside a $rows-row page (${outside.join(', ')}); '
-              'the server refuses the shop until you raise the rows or move ${outside.length == 1 ? 'it' : 'them'}.'),
+          Component.text('${outside.length} ${outside.length == 1 ? 'entry is' : 'entries are'} outside $rows rows (${outside.join(', ')}). '
+              'Add rows or move ${outside.length == 1 ? 'it' : 'them'}.'),
         ]),
       _row('Permission', '$path.permission', (String id) => GuiTextInput(id: id, value: asString(page['permission']) ?? '', label: 'Page permission', onChanged: (String v) => _write(<JsonStep>['pages', _page, 'permission'], v.isEmpty ? null : v)),
-          help: 'Players without it skip this page.'),
+          help: 'Others skip this page'),
       dom.div(classes: 'animus-row', <Widget>[
         ...guiMoveButtons(index: _page, length: pages.length, noun: 'page', onMove: (int to) {
           _write(<JsonStep>['pages'], moveItem(pages, _page, to));
@@ -376,7 +376,7 @@ class _ShopEditorState extends State<ShopEditor> {
     final bool container = _container;
     if (cell.source == ChestCellSource.control) {
       return const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('A shop control. An entry under a shown control is hidden; pick another slot for entries.'),
+        Component.text('Shop control slot. Pick another slot for entries.'),
       ]);
     }
     final JsonMap entry = asMap(readIn(_shop, steps));
@@ -384,8 +384,8 @@ class _ShopEditorState extends State<ShopEditor> {
       final List<String> types = shopTypesFor(mode, container: container).where((String type) => type != 'static').toList();
       return dom.div(classes: 'animus-gui-fields', <Widget>[
         dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Slot $slot of the ${_modeLabels[mode]} grid is empty. Add an entry for it.'
-              '${container && mode != 'trade' ? ' A shop with containers sells through trades, so this grid takes decorations only.' : ''}'),
+          Component.text('Slot $slot is empty. Add an entry.'
+              '${container && mode != 'trade' ? ' Container shops take decorations only here.' : ''}'),
         ]),
         for (final String type in types)
           Button.secondary(
@@ -420,7 +420,7 @@ class _ShopEditorState extends State<ShopEditor> {
       for (final Diagnostic problem in diagnosticsAt(_diagnostics, path))
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
       _row('Id *', '$path.id', (String id) => GuiTextInput(id: id, value: asString(entry['id']) ?? '', label: 'Entry id', onChanged: (String v) => set('id', v)),
-          help: 'Unique in the shop; limits and stock are kept under it.'),
+          help: 'Unique; keys limits and stock'),
       _row('Type', '$path.type', (String id) => GuiSelect(
             id: id,
             value: type,
@@ -434,13 +434,13 @@ class _ShopEditorState extends State<ShopEditor> {
               _write(steps, withShopEntryType(entry, v, container: container));
             },
           ),
-          help: 'Changing it removes the fields the new type does not use.'),
+          help: 'Drops fields the new type lacks'),
       GuiSection(title: 'Item', children: <Widget>[
         _row('Item *', '$path.item.id', (String id) => GuiTextInput(id: id, value: asString(item['id']) ?? '', label: 'Item id', onChanged: (String v) => setIn('item', 'id', v))),
         _row('Count', '$path.item.count', (String id) => GuiNumberInput(id: id, value: asInt(item['count']), label: 'Item count', onChanged: (num? v) => setIn('item', 'count', v)),
-            help: '1 to 99; the price is for this many.'),
+            help: '1 to 99, priced per this many'),
         _row('Components', '$path.item.components', (String id) => GuiTextInput(id: id, value: asString(item['components']) ?? '', label: 'Item components', onChanged: (String v) => setIn('item', 'components', v)),
-            help: 'In /give syntax, such as [custom_name="Fresh"].'),
+            help: '/give syntax: [custom_name="Fresh"]'),
       ]),
       GuiSection(title: 'Display', open: display.isNotEmpty, children: <Widget>[
         _row('Name', '$path.display.name', (String id) => GuiTextInput(id: id, value: asString(display['name']) ?? '', mode: GuiTextMode.template, label: 'Display name', onChanged: (String v) => setIn('display', 'name', v))),
@@ -455,7 +455,7 @@ class _ShopEditorState extends State<ShopEditor> {
       ]),
       if (showPrice)
         _row(type == 'trade' ? 'Money price' : 'Price *', '$path.price', (String id) => GuiNumberInput(id: id, value: asDouble(entry['price']), integer: false, label: 'Price', onChanged: (num? v) => set('price', v)),
-            help: container ? 'A shop with containers takes no money; clear the price.' : 'For item.count items, 0 to 1,000,000,000,000 with at most 4 decimals.'),
+            help: container ? 'Container shops take no money. Clear it.' : 'Up to 4 decimals'),
       if (type == 'trade') ...<Widget>[
         _goods(entry, steps, 'needs', 'Needs'),
         _goods(entry, steps, 'gives', 'Gives'),
@@ -473,32 +473,32 @@ class _ShopEditorState extends State<ShopEditor> {
       if (priced) ...<Widget>[
         GuiSection(title: 'Limit', open: limit.isNotEmpty, children: <Widget>[
           const dom.p(classes: 'animus-muted', <Widget>[
-            Component.text('Items for buy and sell entries, purchases for trades and commands. A window starts at the first purchase after the last one ended.'),
+            Component.text('Counts items for buy and sell, purchases otherwise.'),
           ]),
           _row('Per player', '$path.limit.perPlayer', (String id) => GuiNumberInput(id: id, value: asInt(limit['perPlayer']), label: 'Per player limit', onChanged: (num? v) => setIn('limit', 'perPlayer', v))),
           _row('Global', '$path.limit.global', (String id) => GuiNumberInput(id: id, value: asInt(limit['global']), label: 'Global limit', onChanged: (num? v) => setIn('limit', 'global', v))),
           _row('Resets after', '$path.limit.resetSeconds', (String id) => GuiNumberInput(id: id, value: asInt(limit['resetSeconds']), label: 'Limit reset seconds', onChanged: (num? v) => setIn('limit', 'resetSeconds', v)),
-              help: 'Seconds; 86400 is a day.'),
+              help: 'Seconds, 86400 is a day'),
         ]),
         if (showStock)
           GuiSection(title: 'Stock', open: stock.isNotEmpty, children: <Widget>[
             _row('Maximum', '$path.stock.maximum', (String id) => GuiNumberInput(id: id, value: asInt(stock['maximum']), label: 'Stock maximum', onChanged: (num? v) => setIn('stock', 'maximum', v)),
-                help: '1 to 1,000,000,000.'),
+                help: '1 to 1,000,000,000'),
             _row('Restock after', '$path.stock.restockSeconds', (String id) => GuiNumberInput(id: id, value: asInt(stock['restockSeconds']), label: 'Restock seconds', onChanged: (num? v) => setIn('stock', 'restockSeconds', v)),
-                help: 'Seconds.'),
+                help: 'Seconds'),
           ]),
         GuiSection(title: 'Discount', open: discount.isNotEmpty, children: <Widget>[
           _row('Price', '$path.discount.price', (String id) => GuiNumberInput(id: id, value: asDouble(discount['price']), integer: false, label: 'Discount price', onChanged: (num? v) => setIn('discount', 'price', v))),
           _row('Starts', '$path.discount.start', (String id) => GuiTextInput(id: id, value: asString(discount['start']) ?? '', label: 'Discount start', placeholder: '2026-12-20T00:00:00Z', onChanged: (String v) => setIn('discount', 'start', v)),
-              help: 'ISO-8601, such as 2026-12-20T00:00:00Z.'),
+              help: 'ISO-8601 time'),
           _row('Ends', '$path.discount.end', (String id) => GuiTextInput(id: id, value: asString(discount['end']) ?? '', label: 'Discount end', onChanged: (String v) => setIn('discount', 'end', v))),
         ]),
       ],
       GuiSection(title: 'Access and messages', open: entry['permission'] != null || entry['broadcast'] != null, children: <Widget>[
         _row('Permission', '$path.permission', (String id) => GuiTextInput(id: id, value: asString(entry['permission']) ?? '', label: 'Entry permission', onChanged: (String v) => set('permission', v.isEmpty ? null : v)),
-            help: 'Needed to buy; others see a needs-permission line.'),
+            help: 'Needed to buy'),
         _row('Broadcast', '$path.broadcast', (String id) => GuiTextInput(id: id, value: asString(entry['broadcast']) ?? '', label: 'Broadcast', onChanged: (String v) => set('broadcast', v.isEmpty ? null : v)),
-            help: '{player}, {item} and {price} are filled in.'),
+            help: 'Uses {player}, {item}, {price}'),
         GuiRow(label: 'After buying', child: GuiSwitch(value: entry['closeAfterPurchase'] == true, label: 'Close the shop', onChanged: (bool on) => set('closeAfterPurchase', on ? true : null))),
         _row('Matching', '$path.match', (String id) => GuiSelect(id: id, value: asString(entry['match']), options: const <String>['strict', 'legacy'], allowNone: true, noneLabel: 'as the shop', onChanged: (String? v) => set('match', v))),
       ]),
@@ -540,8 +540,8 @@ class _ShopEditorState extends State<ShopEditor> {
     final JsonList commands = asList(entry['commands']);
     return GuiSection(title: 'Commands', count: commands.length, children: <Widget>[
       const dom.p(classes: 'animus-gui-note', <Widget>[
-        Component.text('Run after the purchase completes. The shop loads only when its id or namespace is on commandBehaviors or '
-            'commandNamespaces under [behaviors.actions], the allow-list behaviors use. {player}, {uuid}, {amount} and {price} are filled in.'),
+        Component.text('Run after purchase. The shop loads only if on commandBehaviors or '
+            'commandNamespaces under [behaviors.actions]. Uses {player}, {uuid}, {amount}, {price}.'),
       ]),
       for (final Diagnostic problem in diagnosticsAt(_diagnostics, '$path.commands'))
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
@@ -550,7 +550,7 @@ class _ShopEditorState extends State<ShopEditor> {
           GuiTextInput(
             value: asString(asMap(commands[index])['command']) ?? '',
             label: 'Command ${index + 1}',
-            placeholder: 'without the leading slash',
+            placeholder: 'no leading slash',
             onChanged: (String v) => _write(<JsonStep>[...steps, 'commands', index, 'command'], v),
           ),
           GuiSelect(

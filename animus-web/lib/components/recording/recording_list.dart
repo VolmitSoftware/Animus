@@ -6,12 +6,14 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/recording/recording_model.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../services/browser.dart' show mainHeadingId;
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
+import '../info_tip.dart';
 
 class RecordingList extends StatelessWidget {
   const RecordingList({required this.workspace, super.key});
@@ -27,19 +29,20 @@ class RecordingList extends StatelessWidget {
         if (document.kind == DocumentKind.recording) document,
     ]..sort((AnimusDocument a, AnimusDocument b) => a.id.compareTo(b.id));
     return dom.section(classes: 'animus-panel animus-recording-list', attributes: const <String, String>{'aria-labelledby': mainHeadingId}, <Widget>[
-      dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
-        const Component.text('Recordings'),
-        dom.span(classes: 'animus-count', <Widget>[Component.text('${recordings.length}')]),
-      ]),
+      labelWithTip(
+        dom.h1(id: mainHeadingId, attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
+          const Component.text('Recordings'),
+          dom.span(classes: 'animus-count', <Widget>[Component.text('${recordings.length}')]),
+        ]),
+        'Made in game with /animus record. Only rename and delete apply here.',
+        'Recordings',
+        docs: Docs.recordings,
+      ),
       if (recordings.isEmpty)
         const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-recording': 'list-empty'}, <Widget>[
-          Component.text('No recordings in this workspace. Recordings are made in game: run /animus record start <id>, walk the performance, then /animus record stop. '
-              'Open the data folder or connect the server to see them here.'),
+          Component.text('No recordings in this workspace. Record one in game with /animus record start <id>.'),
         ])
       else ...<Widget>[
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Made in game with /animus record. Open one to see its path and events; only rename and delete apply here.'),
-        ]),
         dom.div(classes: 'animus-recording-table-wrap', <Widget>[
           dom.table(classes: 'animus-recording-table', attributes: const <String, String>{'data-recording': 'list'}, <Widget>[
             dom.thead(<Widget>[

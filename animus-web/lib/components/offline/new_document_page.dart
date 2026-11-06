@@ -21,7 +21,9 @@ import '../../services/skin_images.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
+import '../../config/docs_links.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import 'offline_fields.dart';
 
 /// Body types by plain name, for the NPC step.
@@ -113,7 +115,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   Set<String> _taken(DocumentKind kind) => <String>{for (final AnimusDocument document in _of(kind)) document.id};
 
-  static const String _recordingNote = 'Recordings are made in game with /animus record start <id>.';
+  static const String _recordingNote = 'Record in game with /animus record start <id>.';
 
   String get _namespace => slug(component.workspace.name, fallback: 'local');
 
@@ -152,19 +154,19 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     final AnimusDocument? made = component.store.document(kind, id);
     if (made == null) {
       setState(() => _problem = component.store.problem ??
-          'The document was not created: the workspace changed before it could be written. Check the workspace, then press Create again.');
+          'Not created: the workspace changed. Press Create again.');
       return;
     }
     if (component.store.hasUnsavedEdit) {
-      ArcaneSonner.warning('Created ${made.id} on this page, but the browser did not store it. The banner above says why.');
+      ArcaneSonner.warning('Created ${made.id}, but the browser did not store it. See the banner.');
     } else if (!made.valid) {
-      ArcaneSonner.warning('Created ${made.id} with ${made.diagnostics.length} problem(s); its page offers fixes.');
+      ArcaneSonner.warning('Created ${made.id} with ${made.diagnostics.length} problem(s).');
     } else {
       ArcaneSonner.success(kind == DocumentKind.presets
-          ? 'Created gui/presets.json. Undo removes it.'
+          ? 'Created gui/presets.json.'
           : kind == DocumentKind.serverBehaviors
-              ? 'Created server-behaviors.json. Undo removes it.'
-              : 'Created ${_inSentence(kind)} ${guiPlainText(made.title)}. Undo removes it.');
+              ? 'Created server-behaviors.json.'
+              : 'Created ${_inSentence(kind)} ${guiPlainText(made.title)}.');
     }
     component.onNavigate(DocumentRoute(component.workspace.id, kind, id));
     focusMainHeading();
@@ -195,7 +197,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       final LoadedSkin? loaded = fromUrl ? await SkinImages.fetchUrl(key, _skinUrl) : await SkinImages.pickFile(key);
       if (loaded != null) setState(() => _skin = loaded);
     } on Object catch (failure) {
-      ArcaneSonner.error('The skin did not load ($failure). Use a 64x64 skin PNG, or an address that allows loading from other sites.');
+      ArcaneSonner.error('Skin did not load ($failure). Use a 64x64 PNG or a cross-origin address.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -247,7 +249,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         case DocumentKind.animation:
           final AnimusDocument? rig = _rig == null ? null : component.store.document(DocumentKind.rig, _rig!);
           if (rig == null) {
-            setState(() => _problem = 'Pick the rig this animation moves.');
+            setState(() => _problem = 'Pick a rig.');
             return;
           }
           final JsonMap animation = newRigAnimation(id, rig.id, asMap(rig.json), starter: _motion, durationTicks: _duration.toInt().clamp(1, 1200), loop: _loop);
@@ -352,9 +354,6 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     return dom.div(classes: 'animus-new-page${kind == null ? '' : ' has-kind'}', <Widget>[
       dom.nav(classes: 'animus-panel animus-kind-list', attributes: const <String, String>{'aria-label': 'Document kinds'}, <Widget>[
         const dom.h2(<Widget>[Component.text('New document')]),
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Everything here is made and checked in this browser. Pair a server later to send it.'),
-        ]),
         dom.ul(attributes: const <String, String>{'role': 'list'}, <Widget>[
           for (final DocumentKind option in creatableKinds)
             dom.li(<Widget>[
@@ -391,14 +390,14 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
             label: 'Mode',
             child: GuiSelect(value: _mode, options: const <String>['walk', 'swim', 'fly'], onChanged: (String? value) => setState(() => _mode = value ?? 'walk')),
           ),
-          _position(help: 'The first of four points in a square; drag them on the route grid afterwards.'),
+          _position(help: 'first of four'),
         ],
       DocumentKind.recording => const <Widget>[dom.p(classes: 'animus-muted', <Widget>[Component.text(_recordingNote)])],
       DocumentKind.shop || DocumentKind.inventory || DocumentKind.menu || DocumentKind.hologram => <Widget>[
           OfflineTextField(
             label: kind == DocumentKind.hologram ? 'First line' : 'Title',
             value: _title,
-            help: '& colour codes work, such as &6Market.',
+            help: '& colour codes work',
             onChanged: (String value) => setState(() => _title = value),
           ),
           _idField(kind),
@@ -412,7 +411,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
             options: <CardOption<RigStarter>>[for (final RigStarter starter in RigStarter.values) CardOption<RigStarter>(starter, starter.label, starter.description)],
             onChanged: (RigStarter value) => setState(() => _rigStarter = value),
           ),
-          GuiSwitch(value: _bodyShown, label: 'Show the NPC\'s own body under the rig', onChanged: (bool value) => setState(() => _bodyShown = value)),
+          GuiSwitch(value: _bodyShown, label: 'Show NPC body', onChanged: (bool value) => setState(() => _bodyShown = value)),
         ],
       DocumentKind.animation => _animationFields(),
       DocumentKind.skin => <Widget>[..._skinFields(), if (_skin != null) _skinNote()],
@@ -420,36 +419,36 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           OfflineTextField(label: 'Name', value: _name, onChanged: (String value) => setState(() => _name = value)),
           _idField(kind),
           FieldRow(
-            label: 'Frames, one per line',
+            label: 'Frames',
+            help: 'One per line',
             child: GuiTextInput(value: _frames, multiline: true, label: 'Frames', onChanged: (String value) => setState(() => _frames = value)),
           ),
           FieldRow(
-            label: 'Milliseconds per frame',
-            child: GuiNumberInput(value: _interval, label: 'Milliseconds per frame', onChanged: (num? value) => setState(() => _interval = value ?? 500)),
+            label: 'Frame time (ms)',
+            child: GuiNumberInput(value: _interval, label: 'Frame time (ms)', onChanged: (num? value) => setState(() => _interval = value ?? 500)),
           ),
         ],
       DocumentKind.presets => <Widget>[
           dom.p(classes: 'animus-muted', <Widget>[
             Component.text(component.store.document(kind, 'presets') == null
-                ? 'A workspace has one presets document, gui/presets.json, with defaults for Gloss GUI documents.'
-                : 'This workspace already has gui/presets.json; Open it to edit.'),
+                ? 'Creates gui/presets.json.'
+                : 'gui/presets.json already exists.'),
           ]),
         ],
       DocumentKind.serverBehaviors => <Widget>[
           dom.p(classes: 'animus-muted', <Widget>[
             Component.text(component.store.document(kind, DocumentKind.serverBehaviorsId) != null
-                ? 'This workspace already has server-behaviors.json; open it to edit the list.'
+                ? 'server-behaviors.json already exists.'
                 : _serverBehaviorIds.isEmpty
-                    ? 'Creates server-behaviors.json with an empty list. No behavior here has "server": true yet; turn it on in a behavior\'s Document section, then add it to the list.'
-                    : 'Creates server-behaviors.json listing the ${_serverBehaviorIds.length} server behavior${_serverBehaviorIds.length == 1 ? '' : 's'} in this workspace: ${_serverBehaviorIds.join(', ')}.'),
+                    ? 'Creates an empty server-behaviors.json. No behavior has "server": true yet.'
+                    : 'Creates server-behaviors.json with ${_serverBehaviorIds.join(', ')}.'),
           ]),
         ],
     };
     final bool exists = (kind == DocumentKind.presets && component.store.document(kind, 'presets') != null) ||
         (kind == DocumentKind.serverBehaviors && component.store.document(kind, DocumentKind.serverBehaviorsId) != null);
     return dom.section(classes: 'animus-panel animus-new-form', attributes: <String, String>{'aria-label': 'New ${_inSentence(kind)}'}, <Widget>[
-      dom.h2(<Widget>[Component.text('New ${_inSentence(kind)}')]),
-      dom.p(classes: 'animus-muted', <Widget>[Component.text(kindPurpose(kind))]),
+      labelWithTip(dom.h2(<Widget>[Component.text('New ${_inSentence(kind)}')]), '${kindPurpose(kind)}.', _singular(kind), docs: Docs.forKind(kind)),
       ...fields,
       if (_problem != null) dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_problem!)]),
       dom.div(classes: 'animus-row', <Widget>[
@@ -468,14 +467,14 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     return OfflineTextField(
       label: kind == DocumentKind.npc ? 'File id' : 'Id',
       value: _idFor(kind),
-      help: 'Written ${idHint(kind)}; it is also the file name.',
+      help: idHint(kind),
       error: problem,
       onChanged: (String value) => setState(() => _id = value),
     );
   }
 
   Widget _position({String? help}) => dom.fieldset(classes: 'animus-position', <Widget>[
-        dom.legend(<Widget>[Component.text(help == null ? 'Position' : 'Position. $help')]),
+        dom.legend(<Widget>[Component.text(help == null ? 'Position' : 'Position ($help)')]),
         FieldRow(label: 'World', child: TextInput(value: _world, size: ComponentSize.sm, onChanged: (String value) => setState(() => _world = value))),
         dom.div(classes: 'animus-position-numbers', <Widget>[
           for (final (String axis, num value, void Function(num) set) in <(String, num, void Function(num))>[
@@ -498,10 +497,10 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         label: 'Name',
         value: _name,
         placeholder: 'Old Tom',
-        help: 'Shown above the NPC; & colour codes work.',
+        help: '& colour codes work',
         onChanged: (String value) => setState(() => _name = value),
       ),
-      OfflineTextField(label: 'Folder', value: _group, help: 'NPCs in one folder are listed together, such as town.', onChanged: (String value) => setState(() => _group = value)),
+      OfflineTextField(label: 'Folder', value: _group, help: 'such as town', onChanged: (String value) => setState(() => _group = value)),
       _idField(DocumentKind.npc),
       FieldRow(
         label: 'Body',
@@ -516,7 +515,6 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       _position(),
       FieldRow(
         label: 'Behavior',
-        help: 'What it does when clicked or approached. More can be added later.',
         child: GuiSelect(
           value: _behavior.isEmpty ? null : _behavior,
           allowNone: true,
@@ -525,7 +523,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
             for (final BehaviorTemplate template in BehaviorTemplate.values) 'new:${template.name}',
             for (final AnimusDocument behavior in behaviors) behavior.id,
           ],
-          labels: <String, String>{for (final BehaviorTemplate template in BehaviorTemplate.values) 'new:${template.name}': 'New from template: ${template.label}'},
+          labels: <String, String>{for (final BehaviorTemplate template in BehaviorTemplate.values) 'new:${template.name}': 'New: ${template.label}'},
           onChanged: (String? value) => setState(() => _behavior = value ?? ''),
         ),
       ),
@@ -542,8 +540,8 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         value: _skinSource,
         options: <CardOption<_SkinSource>>[
           if (withExisting) const CardOption<_SkinSource>(_SkinSource.none, 'Default skin', 'Steve or Alex'),
-          const CardOption<_SkinSource>(_SkinSource.file, 'PNG file', 'A 64x64 skin from this computer'),
-          const CardOption<_SkinSource>(_SkinSource.url, 'PNG address', 'A skin URL that allows cross-origin reads'),
+          const CardOption<_SkinSource>(_SkinSource.file, 'PNG file', '64x64, from this computer'),
+          const CardOption<_SkinSource>(_SkinSource.url, 'PNG address', 'Must allow cross-origin reads'),
           if (withExisting && skins.isNotEmpty) CardOption<_SkinSource>(_SkinSource.existing, 'Workspace skin', '${skins.length} in this workspace'),
         ],
         onChanged: (_SkinSource value) => setState(() => _skinSource = value),
@@ -584,8 +582,8 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   Widget _skinNote() => dom.p(classes: 'animus-muted', <Widget>[
         Component.text(_skinSource == _SkinSource.url && isMojangSkinUrl(_skinUrl)
-            ? 'The skin document names this textures.minecraft.net address without a signature. The preview wears the PNG; a server may need a signed texture to show it.'
-            : 'The preview wears this PNG, kept in the workspace. A server shows the default skin until the skin document gets a signed texture.'),
+            ? 'Unsigned texture. A server may need a signed one to show it.'
+            : 'Servers show the default skin until this skin has a signed texture.'),
       ]);
 
   List<Widget> _behaviorFields() {
@@ -603,13 +601,13 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       _idField(DocumentKind.behavior),
       if (_template == BehaviorTemplate.shop && shops.isEmpty)
         dom.p(classes: 'animus-muted', <Widget>[
-          const Component.text('This workspace has no shop yet, so the behavior opens example:shop. '),
+          const Component.text('No shop yet, so it opens example:shop. '),
           dom.a(href: NewDocumentRoute(component.workspace.id, DocumentKind.shop).format(), const <Widget>[Component.text('Make a shop')]),
-          const Component.text(' and change it in the behavior editor.'),
+          const Component.text('.'),
         ])
       else if (_template == BehaviorTemplate.shop)
         FieldRow(
-          label: 'Shop it opens',
+          label: 'Shop',
           child: GuiSelect(
             value: _shop ??= shops.first.id,
             options: <String>[for (final AnimusDocument shop in shops) shop.id],
@@ -617,8 +615,8 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           ),
         ),
       FieldRow(
-        label: 'Give it to an NPC',
-        help: _template == BehaviorTemplate.patrol ? 'The patrol walks a square around this NPC\'s position.' : null,
+        label: 'Give to NPC',
+        help: _template == BehaviorTemplate.patrol ? 'Patrols around this NPC' : null,
         child: GuiSelect(
           value: _attachTo,
           allowNone: true,
@@ -636,7 +634,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     if (rigs.isEmpty) {
       return <Widget>[
         dom.p(<Widget>[
-          const Component.text('An animation moves the bones of a rig, and this workspace has no rig yet. '),
+          const Component.text('Animations need a rig. '),
           dom.a(href: NewDocumentRoute(component.workspace.id, DocumentKind.rig).format(), const <Widget>[Component.text('Make a rig first')]),
           const Component.text('.'),
         ]),

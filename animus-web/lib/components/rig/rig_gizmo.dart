@@ -156,7 +156,7 @@ class GizmoOverlay {
           attributes: <String, String>{
             'data-gizmo': 'handle',
             'data-axis': name,
-            'aria-label': '${mode.label} ${name.toUpperCase()}: drag, or press the arrow keys (Shift for finer steps)',
+            'aria-label': '${mode.label} ${name.toUpperCase()}',
             'role': 'button',
             'tabindex': '0',
             'focusable': 'true',

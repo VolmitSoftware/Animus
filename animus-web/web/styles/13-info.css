@@ -53,20 +53,16 @@
 }
 
 @media (hover: hover) {
-  .animus-info:hover .animus-info-pop {
+  .animus-info:not(.is-dismissed):hover .animus-info-pop {
     display: grid;
     gap: 0.25rem;
   }
 }
 
-.animus-info:has(.animus-info-button:focus-visible) .animus-info-pop,
+.animus-info:not(.is-dismissed):has(.animus-info-button:focus-visible) .animus-info-pop,
 .animus-info.is-open .animus-info-pop {
   display: grid;
   gap: 0.25rem;
-}
-
-.animus-info.is-dismissed .animus-info-pop {
-  display: none;
 }
 
 /* The label beside it, as rows lay it out. */

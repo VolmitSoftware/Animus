@@ -52,14 +52,14 @@ class PreviewState {
   /// The state in plain words, for the live bar.
   String get stateLine => switch (state) {
         'running' => 'running',
-        'expired' => 'reached its time limit and ended. Preview again to keep looking',
-        'player-left' => 'ended because your player left the server. Join again, then preview',
+        'expired' => 'timed out. Preview again to continue',
+        'player-left' => 'ended: your player left the server',
         _ => 'ended',
       };
 
   /// The live bar's line about hidden live NPCs, or null when the preview hides none or has ended.
   String? get hiddenLine => running && hidden.isNotEmpty
-      ? 'Live NPC${hidden.length == 1 ? '' : 's'} hidden for you while previewing: ${hidden.join(', ')}'
+      ? 'Hidden while previewing: ${hidden.join(', ')}'
       : null;
 }
 
@@ -159,7 +159,7 @@ class LiveSession {
   /// Another tab of this browser holds the session, so this one waits.
   bool get waiting => owner.waiting;
 
-  static const String otherTab = 'Live editing for this server runs in another tab of this browser. Use that tab, or close it to edit here.';
+  static const String otherTab = 'Live editing runs in another tab. Use that tab, or close it.';
 
   bool _waited = false;
 
@@ -245,7 +245,7 @@ class LiveSession {
     } else if (!status.online && previous == ConnectionPhase.online) {
       // One notice per loss; the closing event that caused it adds none.
       _notice(status.phase == ConnectionPhase.needsPairing ? NoticeLevel.error : NoticeLevel.warning,
-          '${status.message ?? 'The connection to the server was lost.'} Drafts stay in this browser.');
+          '${status.message ?? 'Connection lost.'} Drafts are kept.');
     }
     _changed();
   }
@@ -296,7 +296,7 @@ class LiveSession {
     try {
       return await connection.request(request);
     } on NotConnected catch (offline) {
-      _notice(NoticeLevel.error, 'Could not $what. ${offline.status.message ?? 'The server is not connected. Connect from the server page, then try again.'}');
+      _notice(NoticeLevel.error, 'Could not $what. ${offline.status.message ?? 'Not connected. Connect from the server page.'}');
     } on TransportFailure catch (failure) {
       _notice(NoticeLevel.error, 'Could not $what. ${failure.message}');
     }
@@ -305,7 +305,7 @@ class LiveSession {
 
   Future<T?> _run<T>(String label, Future<T?> Function() task) async {
     if (!owned) {
-      _notice(NoticeLevel.warning, waiting ? otherTab : 'Live editing is still starting in this tab. Try again in a moment.');
+      _notice(NoticeLevel.warning, waiting ? otherTab : 'Live editing is still starting. Try again shortly.');
       return null;
     }
     busy = label;
@@ -338,7 +338,7 @@ class LiveSession {
       final Object? body = response.body;
       if (!response.ok || body is! Map<String, Object?>) {
         catalogProblem = response.problem;
-        _notice(NoticeLevel.error, 'Could not load the catalog. ${response.problem.text}');
+        _notice(NoticeLevel.error, 'Catalog failed. ${response.problem.text}');
         _changed();
         return;
       }
@@ -601,8 +601,8 @@ class LiveSession {
   Future<bool> _recordPending(PendingChange pending) async {
     await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: <PendingChange>[...binding.pending, pending]), undoable: false);
     if (_pendingOf(pending.idempotencyKey) != null) return true;
-    _notice(NoticeLevel.error, 'Nothing was sent: this browser could not store the change record, so its answer could not be recovered. '
-        'Reload this tab and try again.');
+    _notice(NoticeLevel.error, 'Nothing was sent: the change record could not be stored. '
+        'Reload and try again.');
     return false;
   }
 
@@ -637,17 +637,17 @@ class LiveSession {
         // the later edit away, so the server kept them. There is no draft of
         // the undo to merge; refresh the clean copies instead.
         await _dropPending(pending.idempotencyKey);
-        _notice(NoticeLevel.warning, 'Undo stopped: $documents changed on the server after that apply, so nothing was written. '
-            'Edit ${conflicted.conflicts.map((ServerConflict conflict) => conflict.id).join(', ')} by hand to go back.');
+        _notice(NoticeLevel.warning, 'Undo stopped: $documents changed on the server since. Nothing was written. '
+            'Edit ${conflicted.conflicts.map((ServerConflict conflict) => conflict.id).join(', ')} by hand.');
         await _absorb(<String>[for (final ServerConflict conflict in conflicted.conflicts) conflict.key]);
       case final ChangeConflicted conflicted:
         await _dropPending(pending.idempotencyKey);
         _conflicts(conflicted.conflicts);
-        _notice(NoticeLevel.warning, 'Apply stopped: $documents changed on the server, so nothing was written. Merge each one below, then apply again.');
+        _notice(NoticeLevel.warning, 'Apply stopped: $documents changed on the server. Merge below, then apply again.');
       case final ChangeInvalid invalid:
         await _dropPending(pending.idempotencyKey);
         serverDiagnostics.addAll(invalid.diagnostics);
-        _notice(NoticeLevel.error, 'The server refused the change set because $documents have errors, so nothing was written. Fix the marked fields, then apply again.');
+        _notice(NoticeLevel.error, 'Not applied: $documents have errors. Fix the marked fields, then apply again.');
       case null when response.errorCode == 'counter-replayed':
         // A browser resends a request whose connection closed before the
         // answer, under the same counter. The first copy may have applied:
@@ -655,7 +655,7 @@ class LiveSession {
         return await _check(pending) ?? false;
       case null:
         if (response.status >= 500 || response.errorCode == 'busy' || response.errorCode == 'rate-limited') {
-          _notice(NoticeLevel.warning, '${response.problem.cause} The change set is kept; the editor asks what became of it on the next connect.');
+          _notice(NoticeLevel.warning, '${response.problem.cause} Change set kept; checked on next connect.');
           return false;
         }
         await _dropPending(pending.idempotencyKey);
@@ -786,7 +786,7 @@ class LiveSession {
     final Object? body = response.body;
     if (!response.ok || body is! Map<String, Object?>) {
       pendingProblem = response.problem;
-      _notice(NoticeLevel.warning, 'Could not check a change set sent earlier. ${response.problem.cause} Press Check again, or Stop waiting to drop it.');
+      _notice(NoticeLevel.warning, 'Could not check an earlier change set. ${response.problem.cause} Check again, or stop waiting.');
       return false;
     }
     // A change event may have settled it while the status was on its way.
@@ -796,9 +796,9 @@ class LiveSession {
         return _outcome(ApiResponse(200, body['result']), pending, null);
       case 'unknown':
         await _dropPending(pending.idempotencyKey);
-        _notice(NoticeLevel.warning, 'A change set sent before the connection dropped never reached the server. Your drafts are unchanged; apply again.');
+        _notice(NoticeLevel.warning, 'An earlier change set never reached the server. Apply again.');
       default:
-        _notice(NoticeLevel.info, 'A change set is still being written on the server; it settles when the server reports it.');
+        _notice(NoticeLevel.info, 'A change set is still being written on the server.');
     }
     return false;
   }
@@ -811,7 +811,7 @@ class LiveSession {
   Future<void> forgetPending() => _run<void>('Forgetting', () async {
         await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: const <PendingChange>[]), undoable: false);
         pendingProblem = null;
-        _notice(NoticeLevel.info, 'Stopped waiting for the server. Your drafts are unchanged; compare them with the server before applying again.');
+        _notice(NoticeLevel.info, 'Stopped waiting. Compare drafts with the server before applying again.');
       });
 
   PendingChange? _pendingOf(String key) {
