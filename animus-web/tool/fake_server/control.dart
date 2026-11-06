@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:animus_editor/model/document_kind.dart';
+import 'package:animus_editor/services/server/error_copy.dart';
 
 import 'direct.dart';
 import 'documents.dart';
@@ -87,7 +88,9 @@ class ControlPath {
         for (final String scope in extra) {
           if (!const <String>{'import', 'spawn', 'admin'}.contains(scope)) throw invalid('scopes: import, spawn or admin, comma separated');
         }
-        return FakeResponse(200, body: server.pair(chosen, extra));
+        final num? days = uri.queryParameters['days'] == null ? null : num.tryParse(uri.queryParameters['days']!);
+        if (uri.queryParameters['days'] != null && (days == null || days <= 0)) throw invalid('days: a positive token lifetime in days');
+        return FakeResponse(200, body: server.pair(chosen, extra, days));
       case 'POST /edit':
         final Map<String, Object?> edit = _object(body);
         fields(edit, r'$', <String>{'kind', 'id', 'source'});
@@ -113,6 +116,43 @@ class ControlPath {
         final Object? tokenId = revoke['tokenId'];
         if (tokenId is! String) throw invalid('tokenId: a token id or all');
         return FakeResponse(200, body: <String, Object?>{'revoked': server.api.revoke(tokenId)});
+      case 'POST /expire':
+        final Map<String, Object?> expire = body == null ? const <String, Object?>{} : _object(body);
+        final Object tokenId = expire['tokenId'] ?? 'all';
+        if (tokenId is! String) throw invalid('tokenId: a token id or all');
+        final Object? days = expire['inDays'];
+        if (days != null && (days is! num || days < 0)) throw invalid('inDays: a non-negative number of days');
+        final DateTime at = days == null ? now() : now().add(Duration(minutes: ((days as num) * 1440).round()));
+        final List<String> moved = server.api.tokens.expireAt(tokenId, at);
+        // Expired now: close their streams at once rather than at the next tick.
+        if (days == null) server.api.housekeeping();
+        return FakeResponse(200, body: <String, Object?>{'expired': moved, 'expiresAt': instant(at)});
+      case 'POST /fail':
+        final String code = uri.queryParameters['code'] ?? '';
+        final int times = int.tryParse(uri.queryParameters['times'] ?? '1') ?? -1;
+        if (times < 1) throw invalid('times: a positive whole number');
+        try {
+          server.api.failNext(code, times, route: uri.queryParameters['route']);
+        } on Object {
+          throw invalid('code: an error-code from editor-v1.schema.json');
+        }
+        return FakeResponse(200, body: <String, Object?>{'code': code, 'times': times, 'route': ?uri.queryParameters['route']});
+      case 'POST /drop-answer':
+        server.api.dropNextApply = true;
+        return const FakeResponse(200, body: <String, Object?>{'dropNextApply': true});
+      case 'POST /relay-error':
+        final String code = uri.queryParameters['code'] ?? '';
+        // The editor's copy table holds every relay-error code (its test checks the schema).
+        if (!relayErrorCopy.containsKey(code)) throw invalid('code: a relay-error code from editor-v1.schema.json');
+        return FakeResponse(200, body: <String, Object?>{'code': code, 'closed': server.relay.failAll(code)});
+      case 'POST /limit':
+        server.api.events.closeAll('limit');
+        return const FakeResponse(200, body: <String, Object?>{'closed': 'limit'});
+      case 'POST /player':
+        final String? online = uri.queryParameters['online'];
+        if (online != 'true' && online != 'false') throw invalid('online: true or false');
+        server.api.playerOnline = online == 'true';
+        return FakeResponse(200, body: <String, Object?>{'online': server.api.playerOnline});
       case 'POST /restore':
         server.restore();
         return const FakeResponse(200, body: <String, Object?>{'restored': true});

@@ -38,8 +38,27 @@
   --animus-panel: var(--card, #161518);
   --animus-border: var(--border, #343036);
   --animus-muted: var(--muted-foreground, #aba5aa);
-  --animus-error: var(--destructive, #e5484d);
-  --animus-ok: #46a758;
+}
+
+/* Semantic colours, one set per theme, each at 4.5:1 or better on the
+   theme's background and card. Pink stays the accent; these mean yes, no
+   and caution only. */
+html.dark {
+  --animus-error: #f0616a;
+  --animus-error-foreground: #0d0d0f;
+  --animus-ok: #5dbf6e;
+  --animus-ok-foreground: #0d0d0f;
+  --animus-warning: #e2a336;
+  --animus-warning-foreground: #0d0d0f;
+}
+
+html.light {
+  --animus-error: #b42a32;
+  --animus-error-foreground: #ffffff;
+  --animus-ok: #2a7a38;
+  --animus-ok-foreground: #ffffff;
+  --animus-warning: #8a5a00;
+  --animus-warning-foreground: #ffffff;
 }
 
 html,
@@ -69,31 +88,75 @@ textarea {
   font-family: var(--font-mono);
 }
 
+/* Boot splash: the mark with a thin pink line that fills once while the
+   bundle loads. bootstrap.js swaps the line for a message if it never does. */
 .animus-boot {
   position: fixed;
   inset: 0;
   display: grid;
-  place-items: center;
+  place-content: center;
+  justify-items: center;
+  gap: 1.25rem;
   z-index: 999;
 }
 
-.animus-boot-spinner {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid rgba(128, 128, 128, 0.25);
-  border-top-color: currentColor;
-  animation: animus-boot-spin 800ms linear infinite;
+.animus-boot-mark {
+  display: block;
 }
 
-@keyframes animus-boot-spin {
-  to {
-    transform: rotate(360deg);
+.animus-boot-line {
+  width: 7rem;
+  height: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, #ff5fa8 18%, transparent);
+}
+
+.animus-boot-line span {
+  display: block;
+  height: 100%;
+  width: 80%;
+  background: #ff5fa8;
+  transform-origin: left;
+  animation: animus-boot-fill 1.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes animus-boot-fill {
+  from {
+    transform: scaleX(0);
   }
+}
+
+.animus-boot-message {
+  margin: 0;
+  max-width: min(22rem, calc(100vw - 2rem));
+  text-align: center;
+}
+
+.animus-boot-message:empty,
+.animus-boot.is-failed .animus-boot-line {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animus-boot-spinner {
+  .animus-boot-line span {
     animation: none;
   }
+}
+
+/* Visually hidden, still read and focusable. */
+.animus-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+html.animus-scroll-locked,
+html.animus-scroll-locked body {
+  overflow: hidden;
 }

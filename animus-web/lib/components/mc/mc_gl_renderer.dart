@@ -1,6 +1,6 @@
 /// Scene nodes to draw calls for the NPC stage.
 ///
-/// Per frame: clear to the sky, the grass patch, then every node with alpha
+/// Per frame: clear to transparent (the stage paints the sky), the grass patch, then every node with alpha
 /// test 0.1, in the order the scene lists them (armour layers after the
 /// body, so `LEQUAL` lets a layer win on shared faces). A glinting node
 /// draws with a violet overlay. Meshes are cached per node signature and GPU
@@ -30,7 +30,7 @@ import 'mc_gl.dart';
 
 const double _cutoff = 0.1;
 const double _fogOff = 1e6;
-const List<double> _sky = <double>[0.62, 0.75, 0.96];
+const List<double> _fog = <double>[0.62, 0.75, 0.96];
 const List<double> _noOverlay = <double>[0, 0, 0, 0];
 const List<double> _glint = <double>[0.62, 0.32, 0.95, 0.32];
 const List<double> _noFlat = <double>[0, 0, 0, 0];
@@ -80,7 +80,16 @@ final class McGlRenderer {
     _uploadStatics();
   }
 
+  /// Texture ids that failed to decode last frame; their nodes draw white.
+  final Set<String> failedTextures = <String>{};
+
+  /// Item ids the resolver has no geometry for (special renderers such as
+  /// shields, tridents, skulls, banners, chests and beds, or unknown ids),
+  /// with the resolver's reason.
+  final Map<String, String> undrawable = <String, String>{};
+
   McGlTexture? _texture(String id) {
+    if (_pack.failed(id)) return _gl.white;
     if (!_pack.hasImage(id)) {
       _pack.ensure(id);
       return null;
@@ -111,14 +120,15 @@ final class McGlRenderer {
     gl.enable(web.WebGL2RenderingContext.BLEND);
     gl.blendFunc(web.WebGL2RenderingContext.SRC_ALPHA, web.WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA);
     gl.depthMask(true);
-    gl.clearColor(_sky[0], _sky[1], _sky[2], 1);
+    // Transparent: the stage paints its themed sky behind the canvas.
+    gl.clearColor(0, 0, 0, 0);
     gl.clear(web.WebGL2RenderingContext.COLOR_BUFFER_BIT | web.WebGL2RenderingContext.DEPTH_BUFFER_BIT);
 
     final McGlProgram p = _gl.program;
     gl.useProgram(p.program);
     gl.uniformMatrix4fv(p.uniforms['uProjection'], false, mcGlProjection(widthPx: widthPx, heightPx: heightPx).toFloat32().toJS);
     gl.uniformMatrix4fv(p.uniforms['uView'], false, camera.view().toFloat32().toJS);
-    gl.uniform3f(p.uniforms['uFogColor'], _sky[0], _sky[1], _sky[2]);
+    gl.uniform3f(p.uniforms['uFogColor'], _fog[0], _fog[1], _fog[2]);
     gl.uniform1f(p.uniforms['uFogStart'], _fogOff);
     gl.uniform1f(p.uniforms['uFogEnd'], _fogOff + 1);
     gl.uniform1i(p.uniforms['uTexture'], 0);
@@ -186,14 +196,24 @@ final class McGlRenderer {
     for (final String key in _nodes.keys.toList()) {
       if (!scene.byKey.containsKey(key)) _gl.free(_nodes.remove(key)!.buffer);
     }
+    failedTextures.clear();
+    undrawable.clear();
     int waiting = 0;
     for (final McSceneNode node in scene.nodes) {
+      if (node is McItemNode) {
+        final McItemModelResult result = _pack.resolver.resolveItem(node.itemId);
+        if (result is McItemModelSprite) {
+          undrawable[node.itemId] = result.reason;
+          continue;
+        }
+      }
       _Drawable? d = _nodes[node.key];
       final String? runtime = switch (node) {
         McRigNode(:final String textureId) => textureId,
         McModelNode(:final String textureId) => textureId,
         _ => null,
       };
+      if (runtime != null && _pack.failed(runtime)) failedTextures.add(runtime);
       final web.HTMLImageElement? image = runtime != null && _pack.hasImage(runtime) ? _pack.image(runtime) : null;
       if (d == null || d.signature != node.signature || (runtime != null && !identical(d.image, image))) {
         if (d != null) _gl.free(_nodes.remove(node.key)!.buffer);
@@ -216,7 +236,7 @@ final class McGlRenderer {
         final McGlTexture? texture = _texture(textureId);
         if (texture == null) return null;
         final McMesh mesh = _meshCache.putIfAbsent(node.signature, () => mcMeshRig(node.rig, pose: node.pose, tint: node.tint));
-        return _Drawable(_gl.upload(mesh), texture, node.signature, _pack.image(textureId));
+        return _Drawable(_gl.upload(mesh), texture, node.signature, _pack.hasImage(textureId) ? _pack.image(textureId) : null);
       case McItemNode(:final String itemId, :final McDisplayPose pose, :final bool leftHand):
         final McItemModelResult result = _pack.resolver.resolveItem(itemId);
         if (result is! McItemModelResolved) return null;
@@ -268,7 +288,7 @@ final class McGlRenderer {
           node.signature,
           () => mcMeshElements(model, uv: (String _) => const McUvRect(0, 0, 1, 1), tint: (int? _) => mcTintNone),
         );
-        return _Drawable(_gl.upload(mesh), texture, node.signature, _pack.image(textureId));
+        return _Drawable(_gl.upload(mesh), texture, node.signature, _pack.hasImage(textureId) ? _pack.image(textureId) : null);
     }
   }
 

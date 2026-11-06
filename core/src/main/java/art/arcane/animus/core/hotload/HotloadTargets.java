@@ -49,7 +49,7 @@ public final class HotloadTargets {
 
     private static List<String> folders() {
         TreeSet<String> folders = new TreeSet<>();
-        for (DocumentKind kind : DocumentKind.values()) folders.add(kind.folder().split("/")[0]);
+        for (DocumentKind kind : DocumentKind.values()) if (!kind.folder().isEmpty()) folders.add(kind.folder().split("/")[0]);
         folders.add(BuildService.SCHEMATICS);
         return List.copyOf(folders);
     }

@@ -226,7 +226,7 @@ void main() {
     final Reply reply = await call('GET', '/animus/v1/schemas', token: await pairToken());
     expectMessage('schemas-response', reply.body);
     expect((reply.json['schemas']! as Map<String, Object?>).keys.toSet(),
-        <String>{'npc', 'behavior', 'pack', 'completions', 'shop', 'inventory', 'rig', 'animation', 'menu', 'hologram', 'presets'});
+        <String>{'npc', 'behavior', 'pack', 'completions', 'shop', 'inventory', 'rig', 'animation', 'menu', 'hologram', 'presets', 'server-behaviors'});
   });
 
   test('the catalog pages with after and filters by kind', () async {
@@ -543,6 +543,109 @@ void main() {
     expect(after['tokens'], isEmpty);
     expect(after['appliedChanges'], isEmpty);
     expect((await call('GET', '/animus/v1/catalog', token: token)).status, 401);
+  });
+
+  group('test controls', () {
+    test('expire ends tokens now, or moves their expiry', () async {
+      final String token = await pairToken();
+      final Frames events = await directEvents(token);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final Map<String, Object?> later = await control('POST', '/expire', <String, Object?>{'inDays': 2});
+      expect((later['expired']! as List<Object?>), hasLength(1));
+      expect((await call('GET', '/animus/v1/catalog', token: token)).status, 200);
+      await control('POST', '/expire');
+      final Map<String, Object?> closing = await events.nextOf('closing');
+      expect(closing['reason'], 'token-expired');
+      expect((await call('GET', '/animus/v1/catalog', token: token)).errorCode, 'token-revoked');
+    });
+
+    test('fail answers the next requests with a code, on a route when given', () async {
+      final String token = await pairToken();
+      await control('POST', '/fail?code=scope-missing&times=1&route=/v1/changes');
+      expect((await call('GET', '/animus/v1/catalog', token: token)).status, 200, reason: 'another route');
+      expect((await call('GET', '/animus/v1/hello')).status, 200, reason: 'hello never fails');
+      final Reply refused = await call('POST', '/animus/v1/changes', token: token, body: rename(await document(token, 'npc', 'examples/greeter'), 'X', key('fail')));
+      expect(refused.status, 403);
+      expectMessage('error-response', refused.body);
+      expect(refused.errorCode, 'scope-missing');
+      expect((await call('POST', '/animus/v1/changes', token: token, body: rename(await document(token, 'npc', 'examples/greeter'), 'X', key('fail2')))).status, 200);
+      expect((await call('POST', '/__fake/fail?code=nonsense', withOrigin: null)).status, 400);
+    });
+
+    test('drop-answer writes the change set but loses the answer and its change event', () async {
+      final String token = await pairToken();
+      final Frames events = await directEvents(token);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await control('POST', '/drop-answer');
+      await expectLater(
+        call('POST', '/animus/v1/changes', token: token, body: rename(await document(token, 'npc', 'examples/greeter'), 'Lost', key('lost'))),
+        throwsA(isA<Object>()),
+      );
+      expect((await events.nextOf('catalog'))['type'], 'catalog');
+      final Reply status = await call('GET', '/animus/v1/changes/${key('lost')}', token: token);
+      expectMessage('change-status-response', status.body);
+      expect(status.json['status'], 'applied');
+      // Only one change set was dropped; the next answers as usual.
+      expect((await call('POST', '/animus/v1/changes', token: token, body: rename(await document(token, 'npc', 'examples/greeter'), 'Kept', key('kept')))).status, 200);
+      await expectLater(events.nextOf('change').then((Map<String, Object?> event) => ((event['result']! as Map<String, Object?>)['idempotencyKey'])), completion(key('kept')));
+    });
+
+    test('drop-answer over the relay closes the request instead of answering', () async {
+      final String token = await pairToken();
+      final Frames frames = await relay();
+      await control('POST', '/drop-answer');
+      final Map<String, Object?> greeter = await document(token, 'npc', 'examples/greeter');
+      frames.send(<String, Object?>{
+        'type': 'request',
+        'id': 9,
+        'method': 'POST',
+        'path': '/v1/changes',
+        'headers': <String, String>{'Authorization': 'Bearer $token', 'X-Animus-Counter': '500'},
+        'body': rename(greeter, 'Lost', key('relay-lost')),
+      });
+      final Map<String, Object?> closed = await frames.nextOf('close');
+      expectMessage('relay-close', closed);
+      expect(closed['id'], 9);
+    });
+
+    test('relay-error sends the error frame and closes every relay connection', () async {
+      final Frames frames = await relay();
+      final Map<String, Object?> sent = await control('POST', '/relay-error?code=capacity');
+      expect(sent['closed'], 1);
+      final Map<String, Object?> error = await frames.nextOf('error');
+      expectMessage('relay-error', error);
+      expect(error['code'], 'capacity');
+      await frames.closed;
+      expect((await call('POST', '/__fake/relay-error?code=nonsense', withOrigin: null)).status, 400);
+    });
+
+    test('limit closes every event stream with the limit reason', () async {
+      final String token = await pairToken();
+      final Frames events = await directEvents(token);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await control('POST', '/limit');
+      final Map<String, Object?> closing = await events.nextOf('closing');
+      expectMessage('event', closing);
+      expect(closing['reason'], 'limit');
+      await events.closed;
+    });
+
+    test('player online=false refuses previews with player-offline', () async {
+      final String token = await pairToken();
+      final Map<String, Object?> greeter = await document(token, 'npc', 'examples/greeter');
+      Future<Reply> preview() => call('POST', '/animus/v1/previews', token: token, body: <String, Object?>{
+            'documents': <Object?>[
+              <String, Object?>{'kind': 'npc', 'id': 'examples/greeter', 'baseRevision': greeter['revision'], 'baseHash': greeter['hash'], 'source': greeter['source']},
+            ],
+          });
+      await control('POST', '/player?online=false');
+      final Reply refused = await preview();
+      expectMessage('error-response', refused.body);
+      expect(refused.errorCode, 'player-offline');
+      expect((await control('GET', '/state'))['controls'], containsPair('playerOnline', false));
+      await control('POST', '/player?online=true');
+      expect((await preview()).status, 200);
+    });
   });
 
   group('imports', () {

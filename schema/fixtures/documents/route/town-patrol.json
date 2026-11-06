@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "mode": "walk",
+  "speed": 2,
+  "order": "random",
+  "waitTicks": 40,
+  "linkDistance": 12,
+  "points": [
+    {
+      "x": 0,
+      "y": 64,
+      "z": 10
+    },
+    {
+      "x": 10,
+      "y": 64,
+      "z": 10
+    },
+    {
+      "x": 10,
+      "y": 64,
+      "z": 20
+    }
+  ],
+  "guides": [
+    {
+      "x": 5,
+      "y": 64,
+      "z": 15
+    }
+  ]
+}

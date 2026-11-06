@@ -435,7 +435,11 @@ class _Importer {
     }
     final List<JsonMap> clips = <JsonMap>[];
     final Set<String> names = <String>{};
-    final Set<String> approximated = <String>{};
+    final Map<String, int> approximated = <String, int>{};
+    final Map<String, int> dropped = <String, int>{};
+    int split = 0;
+    int splitLost = 0;
+    int sounds = 0;
     for (final Object? entry in raw) {
       if (entry is! JsonMap) continue;
       String name = sanitizeName('${entry['name'] ?? ''}'.replaceAll(RegExp(r'^animation\.[^.]*\.'), ''), 'animation');
@@ -450,11 +454,30 @@ class _Importer {
         _ => 'once',
       };
       final List<Object?> tracks = <Object?>[];
+      final List<Object?> events = <Object?>[];
       final Object? animators = entry['animators'];
       if (animators is JsonMap) {
         for (final MapEntry<String, Object?> animator in animators.entries) {
           final String? bone = boneByGroup[animator.key];
           final Object? body = animator.value;
+          if (body is JsonMap && body['keyframes'] is List<Object?> && (animator.key == 'effects' || body['type'] == 'effect')) {
+            for (final Object? key in body['keyframes']! as List<Object?>) {
+              if (key is! JsonMap) continue;
+              final String channel = '${key['channel'] ?? 'timeline'}';
+              final String? sound = channel == 'sound' ? _vanillaSound(key) : null;
+              if (sound == null || events.length >= maximumEvents) {
+                dropped[channel] = (dropped[channel] ?? 0) + 1;
+                continue;
+              }
+              events.add(<String, Object?>{
+                'tick': (_number(key['time'], 0) * 20).round().clamp(0, duration),
+                'capability': 'animus:play-sound',
+                'arguments': <String, Object?>{'sound': sound},
+              });
+              sounds++;
+            }
+            continue;
+          }
           if (bone == null || body is! JsonMap || body['keyframes'] is! List<Object?>) continue;
           for (final String channel in const <String>['rotation', 'position', 'scale']) {
             final List<JsonMap> keys = <JsonMap>[
@@ -468,28 +491,46 @@ class _Importer {
             keys.sort((JsonMap a, JsonMap b) => _number(a['time'], 0).compareTo(_number(b['time'], 0)));
             final List<Object?> frames = <Object?>[];
             num previous = -1;
+            List<num> converted(List<double> value) => _round(switch (channel) {
+              'rotation' => <double>[value[0], -value[1], -value[2]],
+              'position' => <double>[value[0] / 16, value[1] / 16, -value[2] / 16],
+              _ => value,
+            });
             for (final JsonMap key in keys) {
               final num tick = tickValue(math.min(_number(key['time'], 0) * 20, duration.toDouble()));
               if (tick <= previous) continue;
-              previous = tick;
-              final List<double> value = _point(key, name);
-              final List<double> converted = switch (channel) {
-                'rotation' => <double>[value[0], -value[1], -value[2]],
-                'position' => <double>[value[0] / 16, value[1] / 16, -value[2] / 16],
-                _ => value,
-              };
               final String interpolation = '${key['interpolation'] ?? 'linear'}';
               final String easing = switch (interpolation) {
                 'step' => 'hold',
                 'catmullrom' || 'bezier' => 'ease_in_out',
                 _ => 'linear',
               };
-              if (easing == 'ease_in_out') approximated.add(interpolation);
-              frames.add(<String, Object?>{
-                'tick': tick,
-                'value': _round(converted),
-                if (easing != 'linear') 'easing': easing,
-              });
+              if (easing == 'ease_in_out') approximated[interpolation] = (approximated[interpolation] ?? 0) + 1;
+              final List<num> before = converted(_point(key, name, 0));
+              final Object? points = key['data_points'];
+              final List<num> after = points is List<Object?> && points.length > 1 ? converted(_point(key, name, 1)) : before;
+              // A split key jumps from its first value to its second: the
+              // first lands a thousandth of a tick before the second.
+              if (!_same(before, after)) {
+                split++;
+                final num early = tickValue(tick - 0.001), late = tickValue(tick + 0.001);
+                if (late <= duration) {
+                  frames.add(<String, Object?>{'tick': tick, 'value': before});
+                  previous = late;
+                  frames.add(<String, Object?>{'tick': late, 'value': after, if (easing != 'linear') 'easing': easing});
+                  continue;
+                }
+                if (early > previous) {
+                  frames.add(<String, Object?>{'tick': early, 'value': before});
+                } else {
+                  splitLost++;
+                }
+              }
+              previous = tick;
+              frames.add(<String, Object?>{'tick': tick, 'value': after, if (easing != 'linear') 'easing': easing});
+            }
+            if (frames.length > maximumKeyframes) {
+              throw BbmodelImportException('Animation $name has ${frames.length} $channel keyframes on $bone once split keys are kept; the limit is $maximumKeyframes.');
             }
             tracks.add(<String, Object?>{
               'bone': bone,
@@ -511,20 +552,49 @@ class _Importer {
         'durationTicks': duration,
         'loop': loop,
         'tracks': tracks,
+        if (events.isNotEmpty) 'events': events,
       });
     }
-    for (final String interpolation in approximated) {
-      warnings.add('Blockbench $interpolation keyframes play as ease_in_out.');
+    String keys(int count) => '$count keyframe${count == 1 ? '' : 's'}';
+    for (final MapEntry<String, int> entry in approximated.entries) {
+      warnings.add('${keys(entry.value)} use Blockbench ${entry.key} curves; they play as ease_in_out.');
     }
+    if (split > 0) {
+      warnings.add('${keys(split)} jump between two values; each became two keyframes a thousandth of a tick apart${splitLost > 0 ? ' ($splitLost kept only the second value)' : ''}.');
+    }
+    if (sounds > 0) warnings.add('${keys(sounds)} with vanilla sounds became play-sound events.');
+    final int otherSounds = dropped['sound'] ?? 0;
+    if (otherSounds > 0) warnings.add('${keys(otherSounds)} play sound files that are not vanilla sound ids; they were left out.');
+    final int particles = dropped['particle'] ?? 0;
+    if (particles > 0) warnings.add('${keys(particles)} spawn Bedrock particles, which Java has no match for; they were left out.');
+    final int scripts = dropped['timeline'] ?? 0;
+    if (scripts > 0) warnings.add('${keys(scripts)} run timeline scripts; they were left out.');
     return clips;
   }
 
-  List<double> _point(JsonMap key, String animation) {
+  /// The sound of an effect key when it names a vanilla sound event such as
+  /// `entity.zombie.ambient`, with or without `minecraft:`.
+  static String? _vanillaSound(JsonMap key) {
     final Object? points = key['data_points'];
     final Object? first = points is List<Object?> && points.isNotEmpty ? points.first : null;
-    if (first is! JsonMap) return <double>[0, 0, 0];
+    final Object? effect = first is JsonMap ? first['effect'] : null;
+    if (effect is! String) return null;
+    final String id = effect.trim();
+    return _soundId.hasMatch(id) ? (id.startsWith('minecraft:') ? id : 'minecraft:$id') : null;
+  }
+
+  static final RegExp _soundId = RegExp(r'^(minecraft:)?[a-z0-9_]+(\.[a-z0-9_]+)+$');
+
+  static bool _same(List<num> a, List<num> b) => a.length == b.length && <int>[for (int i = 0; i < a.length; i++) i].every((int i) => a[i] == b[i]);
+
+  /// Data point [index] of a key, falling back to the first: a split key
+  /// keeps its value before the key in point 0 and after it in point 1.
+  List<double> _point(JsonMap key, String animation, int index) {
+    final Object? points = key['data_points'];
+    final Object? point = points is List<Object?> && points.isNotEmpty ? (index < points.length ? points[index] : points.first) : null;
+    if (point is! JsonMap) return <double>[0, 0, 0];
     return <double>[
-      for (final String axis in const <String>['x', 'y', 'z']) _molang(first[axis], animation),
+      for (final String axis in const <String>['x', 'y', 'z']) _molang(point[axis], animation),
     ];
   }
 
