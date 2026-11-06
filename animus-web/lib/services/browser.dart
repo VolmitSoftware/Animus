@@ -221,6 +221,19 @@ void focusMainHeading() => focusWhenShown(mainHeadingId, previous: web.document.
 /// Focuses the element with [id] now, when it exists.
 void focusById(String id) => (web.document.getElementById(id) as web.HTMLElement?)?.focus();
 
+/// Whether [query] matches now, and a callback each time that changes;
+/// returns the current answer and a function that stops watching.
+(bool, void Function()) watchMedia(String query, void Function(bool matches) onChange) {
+  try {
+    final web.MediaQueryList list = web.window.matchMedia(query);
+    final JSFunction callback = ((web.Event _) => onChange(list.matches)).toJS;
+    list.addEventListener('change', callback);
+    return (list.matches, () => list.removeEventListener('change', callback));
+  } on Object {
+    return (false, () {});
+  }
+}
+
 /// Stops the page behind a drawer or dialog from scrolling.
 void setScrollLocked(bool locked) {
   final web.DOMTokenList classes = web.document.documentElement!.classList;

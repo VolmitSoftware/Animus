@@ -33,7 +33,18 @@ class FieldRow extends StatelessWidget {
 
 /// A text box inside a [FieldRow].
 class OfflineTextField extends StatelessWidget {
-  const OfflineTextField({required this.label, required this.value, required this.onChanged, this.help, this.error, this.placeholder, super.key});
+  const OfflineTextField({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.help,
+    this.error,
+    this.placeholder,
+    this.id,
+    this.onSubmit,
+    this.onCancel,
+    super.key,
+  });
 
   final String label;
   final String value;
@@ -41,14 +52,38 @@ class OfflineTextField extends StatelessWidget {
   final String? help;
   final String? error;
   final String? placeholder;
+  final String? id;
+
+  /// Enter in the box.
+  final void Function()? onSubmit;
+
+  /// Escape in the box.
+  final void Function()? onCancel;
+
+  void _keys(web.Event raw) {
+    final web.KeyboardEvent event = raw as web.KeyboardEvent;
+    if (event.key == 'Escape' && onCancel != null) {
+      event.preventDefault();
+      event.stopPropagation();
+      onCancel!();
+    } else if (event.key == 'Enter' && onSubmit != null) {
+      event.preventDefault();
+      onSubmit!();
+    }
+  }
 
   @override
-  Widget build(BuildContext context) => FieldRow(
-        label: label,
-        help: help,
-        error: error,
-        child: TextInput(value: value, placeholder: placeholder, size: ComponentSize.sm, onChanged: onChanged),
-      );
+  Widget build(BuildContext context) {
+    final Widget input = TextInput(id: id, value: value, placeholder: placeholder, size: ComponentSize.sm, onChanged: onChanged);
+    return FieldRow(
+      label: label,
+      help: help,
+      error: error,
+      child: onCancel == null && onSubmit == null
+          ? input
+          : dom.span(classes: 'animus-field-keys', events: <String, void Function(web.Event)>{'keydown': _keys}, <Widget>[input]),
+    );
+  }
 }
 
 /// One option of an [OptionCards] group.
@@ -106,33 +141,33 @@ int _nextConfirmId = 0;
 
 class _ConfirmRowState extends State<ConfirmRow> {
   final String _id = 'animus-confirm-${_nextConfirmId++}';
-  web.EventListener? _keys;
 
   @override
   void initState() {
     super.initState();
-    _keys = ((web.KeyboardEvent event) {
-      if (event.key == 'Escape') component.onCancel();
-    }).toJS;
-    web.window.addEventListener('keydown', _keys);
     // The question takes focus, so Tab reaches its two buttons next.
     web.window.setTimeout((() => (web.document.getElementById(_id) as web.HTMLElement?)?.focus()).toJS, 0.toJS);
   }
 
-  @override
-  void dispose() {
-    web.window.removeEventListener('keydown', _keys);
-    super.dispose();
+  /// Escape counts only while focus is inside this confirmation, so one key
+  /// press never cancels a confirmation elsewhere on the page.
+  void _keys(web.Event raw) {
+    final web.KeyboardEvent event = raw as web.KeyboardEvent;
+    if (event.key != 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    component.onCancel();
   }
 
   @override
   Widget build(BuildContext context) => dom.div(
         id: _id,
         classes: 'animus-confirm',
-        attributes: const <String, String>{'role': 'alertdialog', 'aria-live': 'assertive', 'tabindex': '-1'},
+        attributes: <String, String>{'role': 'alertdialog', 'aria-labelledby': '$_id-question', 'tabindex': '-1'},
+        events: <String, void Function(web.Event)>{'keydown': _keys},
         <Widget>[
           dom.span(<Widget>[
-            dom.strong(<Widget>[Component.text(component.question)]),
+            dom.strong(id: '$_id-question', <Widget>[Component.text(component.question)]),
             if (component.detail != null) dom.span(classes: 'animus-muted', <Widget>[Component.text(' ${component.detail}')]),
           ]),
           dom.div(classes: 'animus-row', <Widget>[

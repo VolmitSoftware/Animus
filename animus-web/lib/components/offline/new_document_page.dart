@@ -10,10 +10,12 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
+import '../../logic/gui/gui_text.dart';
 import '../../logic/offline/new_documents.dart';
 import '../../mc/rigs/mc_rigs.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
+import '../../services/browser.dart';
 import '../../services/skin_images.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
@@ -139,18 +141,22 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   }
 
   Future<void> _write(List<DocumentChange> changes, DocumentKind kind, String id, {Map<String, Uint8List?> resources = const <String, Uint8List?>{}}) async {
-    await component.store.commit(documents: changes, resources: resources);
+    await component.store.commit(documents: changes, resources: resources, label: 'create $id');
     final AnimusDocument? made = component.store.document(kind, id);
     if (made == null) {
-      setState(() => _problem = 'The document was not saved. ${component.store.problem ?? ''}');
+      setState(() => _problem = component.store.problem ??
+          'The document was not created: the workspace changed before it could be written. Check the workspace, then press Create again.');
       return;
     }
-    if (!made.valid) {
+    if (component.store.hasUnsavedEdit) {
+      ArcaneSonner.warning('Created ${made.id} on this page, but the browser did not store it. The banner above says why.');
+    } else if (!made.valid) {
       ArcaneSonner.warning('Created ${made.id} with ${made.diagnostics.length} problem(s); its page offers fixes.');
     } else {
-      ArcaneSonner.success(kind == DocumentKind.presets ? 'Created gui/presets.json. Undo removes it.' : 'Created ${_inSentence(kind)} ${made.title}. Undo removes it.');
+      ArcaneSonner.success(kind == DocumentKind.presets ? 'Created gui/presets.json. Undo removes it.' : 'Created ${_inSentence(kind)} ${guiPlainText(made.title)}. Undo removes it.');
     }
     component.onNavigate(DocumentRoute(component.workspace.id, kind, id));
+    focusMainHeading();
   }
 
   DocumentChange _change(DocumentKind kind, String id, Object? json) => DocumentChange(kind, id, prettyJson(json), path: newDocumentPath(kind, id));
@@ -178,7 +184,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       final LoadedSkin? loaded = fromUrl ? await SkinImages.fetchUrl(key, _skinUrl) : await SkinImages.pickFile(key);
       if (loaded != null) setState(() => _skin = loaded);
     } on Object catch (failure) {
-      ArcaneSonner.error('Could not load the skin: $failure');
+      ArcaneSonner.error('The skin did not load ($failure). Use a 64x64 skin PNG, or an address that allows loading from other sites.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -578,7 +584,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           allowNone: true,
           noneLabel: 'Not yet',
           options: <String>[for (final AnimusDocument npc in npcs) npc.id],
-          labels: <String, String>{for (final AnimusDocument npc in npcs) npc.id: '${npc.title} (${npc.id})'},
+          labels: <String, String>{for (final AnimusDocument npc in npcs) npc.id: '${guiPlainText(npc.title)} (${npc.id})'},
           onChanged: (String? value) => setState(() => _attachTo = value),
         ),
       ),
