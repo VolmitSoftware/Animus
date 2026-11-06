@@ -72,7 +72,7 @@ public final class EditorService implements AutoCloseable {
         EditorTokens tokens = new EditorTokens(runtime.documents(), clock);
         EditorAudit audit = new EditorAudit(runtime.documents(), clock);
         int pruned = audit.prune(settings.auditDays());
-        EditorDocuments documents = new EditorDocuments(runtime.documents());
+        EditorDocuments documents = new EditorDocuments(runtime.documents(), () -> runtime.recordingSettings().maximumFileBytes());
         EditorChanges changes = new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours()));
         EditorEvents events = new EditorEvents();
         EditorPreviews previews = new EditorPreviews(clock, (String id, String reason) -> {

@@ -6,6 +6,7 @@ import java.util.Optional;
 public enum DocumentKind {
     NPC("npc", "npcs", EditorScope.APPLY_NPCS),
     ROUTE("route", "routes", EditorScope.APPLY_NPCS),
+    RECORDING("recording", "recordings", EditorScope.APPLY_NPCS),
     SKIN("skin", "skins", EditorScope.APPLY_NPCS),
     BEHAVIOR("behavior", "behaviors", EditorScope.APPLY_BEHAVIORS),
     PACK("pack", "packs", EditorScope.APPLY_BEHAVIORS),
