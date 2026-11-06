@@ -1,4 +1,4 @@
-/// Expression checks, sample evaluation and completion for GUI documents:
+/// Expression checks and sample evaluation for GUI documents:
 /// `{{ expr }}` holes in text, and whole-expression fields (`show`, `when`,
 /// `condition`, `on`, `source`, `amount`). Limits and names follow wiki animus/11-guis-holograms-menus.
 library;
@@ -186,92 +186,4 @@ bool sampleCondition(Object? condition, {PExprScope? scope}) {
     return value is bool ? value : true;
   }
   return true;
-}
-
-final class ExpressionCompletion {
-  const ExpressionCompletion(this.label, this.insert, this.detail, {required this.replaceFrom, required this.replaceTo});
-
-  final String label;
-
-  /// Replaces the text between [replaceFrom] and [replaceTo].
-  final String insert;
-  final String detail;
-  final int replaceFrom;
-  final int replaceTo;
-
-  /// [text] with this completion applied, and the caret after it.
-  (String, int) applyTo(String text) =>
-      (text.replaceRange(replaceFrom, replaceTo, insert), replaceFrom + insert.length);
-}
-
-final RegExp _identifierTail = RegExp(r'[A-Za-z_][A-Za-z0-9_.]*$');
-final RegExp _animationTail = RegExp(r'\|animation\.([a-z0-9_:/-]*)$');
-final RegExp _animationChar = RegExp(r'[a-z0-9_:/-]');
-
-List<ExpressionCompletion> _completeAnimation(String text, int at, RegExpMatch match, Set<String> animations, int limit) {
-  final String prefix = match.group(1)!;
-  final int from = at - prefix.length;
-  int to = at;
-  while (to < text.length && _animationChar.hasMatch(text[to])) {
-    to++;
-  }
-  if (to < text.length && text[to] == '|') to++;
-  final List<String> ids = animations.where((String id) => id.startsWith(prefix) && id != prefix).toList()..sort();
-  return <ExpressionCompletion>[
-    for (final String id in ids.take(limit)) ExpressionCompletion(id, '$id|', 'text animation', replaceFrom: from, replaceTo: to),
-  ];
-}
-
-/// Completions at [caret]: names and functions matching the identifier being
-/// typed. In a [template] field completions only appear inside `{{ }}`, and
-/// right after an unclosed `{{` with nothing typed every name is offered.
-List<ExpressionCompletion> completeExpression(
-  String text,
-  int caret, {
-  required bool template,
-  ExpressionNames names = ExpressionNames.standard,
-  int limit = 12,
-}) {
-  final int at = caret.clamp(0, text.length);
-  final String before = text.substring(0, at);
-  final RegExpMatch? animation = template && names.animations.isNotEmpty ? _animationTail.firstMatch(before) : null;
-  if (animation != null) return _completeAnimation(text, at, animation, names.animations, limit);
-  if (template) {
-    final int open = before.lastIndexOf('{{');
-    if (open < 0 || before.lastIndexOf('}}') > open) return const <ExpressionCompletion>[];
-  }
-  final RegExpMatch? match = _identifierTail.firstMatch(before);
-  final String prefix = match?.group(0) ?? '';
-  if (prefix.isEmpty && !(template ? before.trimRight().endsWith('{{') : before.trim().isEmpty)) {
-    return const <ExpressionCompletion>[];
-  }
-  final int from = at - prefix.length;
-  int to = at;
-  while (to < text.length && RegExp(r'[A-Za-z0-9_.]').hasMatch(text[to])) {
-    to++;
-  }
-  final List<ExpressionCompletion> out = <ExpressionCompletion>[];
-  for (final String local in names.locals) {
-    if (local.startsWith(prefix) && local != prefix) {
-      out.add(ExpressionCompletion(local, local, 'list entry', replaceFrom: from, replaceTo: to));
-    }
-  }
-  for (final MapEntry<String, String> name in guiExpressionNames.entries) {
-    if (name.key.startsWith(prefix) && name.key != prefix) {
-      out.add(ExpressionCompletion(name.key, name.key, name.value, replaceFrom: from, replaceTo: to));
-    }
-  }
-  for (final String namespace in guiOpenNamespaces) {
-    if (namespace.startsWith(prefix) && namespace != prefix) {
-      out.add(ExpressionCompletion(namespace, namespace, 'values passed at run time', replaceFrom: from, replaceTo: to));
-    }
-  }
-  if (!prefix.contains('.')) {
-    for (final String function in guiExpressionFunctions) {
-      if (function.startsWith(prefix) && prefix.isNotEmpty) {
-        out.add(ExpressionCompletion('$function()', '$function(', 'function', replaceFrom: from, replaceTo: to));
-      }
-    }
-  }
-  return out.take(limit).toList();
 }

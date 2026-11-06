@@ -12,6 +12,9 @@ import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/hologram_lines.dart';
 import '../../logic/gui/text_animation.dart';
+import '../../logic/suggest/completion_sources.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../mc/gui/gui_scene.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
@@ -284,7 +287,7 @@ class _HologramEditorState extends State<HologramEditor> {
     }
 
     return dom.div(classes: 'animus-gui-fields animus-gui-holo-item', <Widget>[
-      row('Item', 'item', (String id) => GuiTextInput(id: id, value: asString(icon['item']) ?? '', mode: GuiTextMode.template, names: _names, label: 'Row ${index + 1} item', onChanged: (String v) => field('item', v)),
+      row('Item', 'item', (String id) => GuiTextInput(id: id, value: asString(icon['item']) ?? '', mode: GuiTextMode.template, profile: guiItemProfile, names: _names, label: 'Row ${index + 1} item', onChanged: (String v) => field('item', v)),
           help: 'Such as minecraft:diamond'),
       row('Count', 'count', (String id) => GuiNumberInput(id: id, value: asInt(icon['count']), label: 'Row ${index + 1} count', onChanged: (num? v) => field('count', v)), help: '1 to 99'),
       row('Name', 'name', (String id) => GuiTextInput(id: id, value: asString(icon['name']) ?? '', mode: GuiTextMode.template, names: _names, label: 'Row ${index + 1} name', onChanged: (String v) => field('name', v))),
@@ -321,7 +324,7 @@ class _HologramEditorState extends State<HologramEditor> {
         label: 'World *',
         forId: worldId,
         problems: diagnosticsAt(_diagnostics, r'$.anchor.world'),
-        child: GuiTextInput(id: worldId, value: asString(anchor['world']) ?? '', label: 'World', onChanged: (String v) => _write(<JsonStep>['anchor', 'world'], v)),
+        child: GuiTextInput(id: worldId, value: asString(anchor['world']) ?? '', label: 'World', profile: idProfile(const ValueRef.registry(RegistryKind.world)), onChanged: (String v) => _write(<JsonStep>['anchor', 'world'], v)),
       ),
       GuiRow(
         label: 'Position *',

@@ -17,7 +17,10 @@ import '../../logic/inspect/json_completion.dart';
 import '../../logic/inspect/json_outline.dart';
 import '../../logic/inspect/json_syntax.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/suggest/completion_item.dart';
 import '../../model/animus_document.dart';
+import '../suggest/suggest_list.dart';
+import '../suggest/suggest_scope.dart';
 
 int _nextEditorId = 0;
 
@@ -161,7 +164,9 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
     final JsonOutline outline = scanJson(text, caret: caret);
     final CaretContext? context = outline.caret;
     final bool wanted = forced || (context != null && (context.prefix.isNotEmpty || (caret > 0 && text[caret - 1] == '"')));
-    final List<JsonSuggestion> next = wanted ? suggestJson(text, caret, schema, catalog: component.catalog, hints: component.hints) : const <JsonSuggestion>[];
+    final List<JsonSuggestion> next = wanted
+        ? suggestJson(text, caret, schema, catalog: component.catalog, hints: component.hints, sources: SuggestScope.sourcesOf(this.context))
+        : const <JsonSuggestion>[];
     _track(area);
     setState(() {
       _suggestions = next;
@@ -186,7 +191,7 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
     area.setSelectionRange(caret, caret);
     area.focus();
     _report(text);
-    if (suggestion.isKey) {
+    if (suggestion.isKey || suggestion.reopen) {
       _suggest(area, forced: true);
     } else {
       _close();
@@ -296,9 +301,12 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
               'wrap': 'off',
               'aria-label': 'Document JSON',
               if (component.readOnly) 'readonly': '',
+              'role': 'combobox',
+              'aria-multiline': 'true',
               'aria-autocomplete': 'list',
-              if (open) 'aria-expanded': 'true',
-              if (open) 'aria-controls': '$_id-list',
+              'aria-expanded': '$open',
+              'aria-controls': '$_id-list',
+              if (open) 'aria-activedescendant': suggestOptionId('$_id-list', _active),
             },
             events: <String, void Function(web.Event)>{
               'input': (web.Event event) {
@@ -327,31 +335,18 @@ class _JsonCodeEditorState extends State<JsonCodeEditor> {
             <Widget>[Component.text(_shown)],
           ),
           if (open)
-            dom.ul(
+            SuggestList(
               id: '$_id-list',
-              classes: 'animus-gui-completions animus-code-completions',
-              attributes: const <String, String>{'role': 'listbox'},
+              classes: 'is-code',
+              title: 'JSON completion',
+              items: <CompletionItem>[for (final JsonSuggestion suggestion in _suggestions) suggestion.item],
+              active: _active,
               styles: dom.Styles(raw: <String, String>{
                 'top': 'calc(${_listTop}px + 0.5rem)',
-                'left': 'max(0px, min(calc(${_caretColumn}ch + 0.75rem), calc(100% - 22rem)))',
+                'left': 'max(0px, min(calc(${_caretColumn}ch + 0.75rem), calc(100% - 28rem)))',
               }),
-              <Widget>[
-                for (int index = 0; index < _suggestions.length; index++)
-                  dom.li(
-                    classes: index == _active ? 'is-active' : null,
-                    attributes: <String, String>{'role': 'option', 'aria-selected': '${index == _active}'},
-                    events: <String, void Function(web.Event)>{
-                      'mousedown': (web.Event event) {
-                        event.preventDefault();
-                        _apply(_suggestions[index]);
-                      },
-                    },
-                    <Widget>[
-                      dom.code(<Widget>[Component.text(_suggestions[index].label)]),
-                      dom.span(<Widget>[Component.text(_suggestions[index].detail)]),
-                    ],
-                  ),
-              ],
+              onPick: (int index) => _apply(_suggestions[index]),
+              onHover: (int index) => setState(() => _active = index),
             ),
         ]),
       ]),

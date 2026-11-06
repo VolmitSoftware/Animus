@@ -13,6 +13,7 @@ import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
@@ -89,11 +90,15 @@ class InspectField extends StatelessWidget {
     this.suggestions = const <FieldOption>[],
     this.schema,
     this.label,
+    this.profile = FieldProfile.none,
     super.key,
   });
 
   final FieldSpec field;
   final Object? value;
+
+  /// What a text value completes beyond [suggestions].
+  final FieldProfile profile;
 
   /// The field's path, as diagnostics name it.
   final String path;
@@ -126,6 +131,7 @@ class InspectField extends StatelessWidget {
         diagnostics: diagnostics,
         suggestions: suggestions,
         schema: schema,
+        profile: profile,
       ),
     );
   }
@@ -141,6 +147,7 @@ class InspectControl extends StatelessWidget {
     this.diagnostics = const <Diagnostic>[],
     this.suggestions = const <FieldOption>[],
     this.schema,
+    this.profile = FieldProfile.none,
     this.references,
     super.key,
   });
@@ -153,6 +160,8 @@ class InspectControl extends StatelessWidget {
   final List<FieldOption> suggestions;
   final SchemaView? schema;
 
+  /// What a text value completes beyond [suggestions].
+  final FieldProfile profile;
   /// The document kind a text value names, for "+ New" and "Manage".
   final DocumentKind? references;
 
@@ -182,6 +191,7 @@ class InspectControl extends StatelessWidget {
             id: controlId(path),
             value: current is String ? current : '',
             label: field.key,
+            profile: profile,
             references: references,
             suggestions: <FieldOption>[...field.options, ...suggestions],
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
@@ -221,6 +231,7 @@ class InspectControl extends StatelessWidget {
             id: controlId(path),
             value: current as String? ?? '',
             label: field.key,
+            profile: profile,
             references: references,
             suggestions: suggestions,
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),

@@ -11,6 +11,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/npc/npc_appearance.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
@@ -64,6 +65,7 @@ class HologramLinesEditor extends StatelessWidget {
             GuiTextInput(
               value: hologramLineText(lines[index]),
               mode: GuiTextMode.plain,
+              profile: FieldProfile.richText,
               label: 'Hologram line ${index + 1}',
               placeholder: '&aWelcome',
               onChanged: (String text) => putLines(setHologramLineText(lines, index, text)),

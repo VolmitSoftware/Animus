@@ -393,40 +393,6 @@ button.animus-chest-slot:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.animus-gui-completions {
-  position: absolute;
-  top: 2.1rem;
-  left: 0;
-  right: 0;
-  z-index: 30;
-  list-style: none;
-  margin: 0;
-  padding: 0.25rem;
-  max-height: 14rem;
-  overflow: auto;
-  border: 1px solid var(--animus-border);
-  background: var(--popover, var(--animus-panel));
-  border-color: var(--input, #7a747b);
-}
-
-.animus-gui-completions li {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.25rem 0.375rem;
-  font-size: 0.8125rem;
-  cursor: pointer;
-}
-
-.animus-gui-completions li span {
-  color: var(--animus-muted);
-}
-
-.animus-gui-completions li.is-active,
-.animus-gui-completions li:hover {
-  background: var(--accent, rgba(128, 128, 128, 0.2));
-}
-
 .animus-gui-line,
 .animus-gui-goods {
   display: flex;

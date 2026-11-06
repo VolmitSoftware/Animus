@@ -10,6 +10,9 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/suggest/completion_sources.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../logic/npc/combat_settings.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
@@ -427,6 +430,7 @@ class _CombatEditorState extends State<CombatEditor> {
                       SuggestInput(
                         value: items[index],
                         label: 'melee.weaponDamage item ${index + 1}',
+                        profile: idProfile(const ValueRef.registry(RegistryKind.item)),
                         suggestions: <FieldOption>[for (final String item in _commonItems) FieldOption(item)],
                         onChanged: (String next) {
                           if (next.isEmpty || (next != items[index] && map.containsKey(next))) return;
@@ -504,6 +508,7 @@ class _CombatEditorState extends State<CombatEditor> {
                   SuggestInput(
                     value: asString(effect['id']) ?? '',
                     label: 'ranged.effect.id',
+                    profile: idProfile(const ValueRef.registry(RegistryKind.effect)),
                     placeholder: 'minecraft:instant_health',
                     suggestions: <FieldOption>[
                       for (final String id in _commonEffects)
@@ -546,6 +551,7 @@ class _CombatEditorState extends State<CombatEditor> {
                         SuggestInput(
                           value: asString(asMap(drops[index])['item']) ?? '',
                           label: 'death.drops[$index].item',
+                          profile: idProfile(const ValueRef.registry(RegistryKind.item)),
                           placeholder: 'minecraft:iron_ingot',
                           suggestions: <FieldOption>[for (final String item in _commonItems) FieldOption(item)],
                           onChanged: (String next) => _put(<JsonStep>[...at, index, 'item'], next.isEmpty ? null : next),
@@ -813,6 +819,7 @@ class _CombatEditorState extends State<CombatEditor> {
         SuggestInput(
           value: world as String? ?? '',
           label: '$label.world',
+          profile: idProfile(const ValueRef.registry(RegistryKind.world)),
           placeholder: 'world',
           onChanged: (String next) => _put(<JsonStep>[...at, 'world'], next.isEmpty ? null : next),
         )
