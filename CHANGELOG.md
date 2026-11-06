@@ -247,6 +247,9 @@
 - Web editor: New conversation in the sidebar and the command palette, and a Conversation behavior template.
 - Web editor: dropdowns that pick a rig, animation, route, recording, group, behavior, skin, shop, chest GUI or menu end with "+ New" (opens the create form with the typed text as the name and the current folder, then returns with the new document picked) and "Manage" (lists that kind). Recordings show how to record one in game instead.
 - Web editor: sidebar sections and NPC folders collapse from their headers, with Collapse all and Expand all; the state is kept per workspace.
+- Chat replies carry click chips: links show as **[Open]** and **[Click to copy]**, wiki pointers as **[Docs]**, transaction ids as a short id that copies the full one plus **[Undo]**, and long status text behind **[Details]**. The console gets the plain values. `ChatLine` and `DocsLink` are shared for other code to use.
+- `/animus editor pair` replies with **[Open editor]** and **[Click to copy]** instead of printing the link, and a token line with **[Revoke]**.
+- Completion values for `type`, `world` and `group` in `/animus create`, and for the build options.
 
 ### Changed
 
@@ -348,6 +351,11 @@
 - `gravity: false` stays the hover switch and wins over the `gravity` attribute, which sets how fast a body falls.
 - Citizens converter version 13: the attribute trait converts to `attributes` instead of only `movement.stepHeight`, and an armor stand without gravity converts to `gravity: false`.
 - Web editor: every select and suggestion list is the editor's own square dropdown. Lists longer than eight entries have a search field, the keyboard works as in a native select, and phones get a full-width sheet with 44 px rows.
+- Every `/animus` reply, error and report is one or two lines with one `[Animus]` prefix; errors are red, finished changes green. Transactions read `tx <id>`.
+- `/animus status` and `/animus editor status` show one headline; counters and budgets move to **[Details]** for players and to two extra lines for the console.
+- `/animus inspect` shows a two-line summary with the id and position as copy chips and the JSON behind **[JSON]** and **[Merged]**, instead of printing the JSON.
+- Shop and GUI lists page with `page=`; long build, hotload and import reports are clipped with a count of the rest.
+- Startup logs one `Enabled` line with the time taken, plus warnings only for parts that are down. A repeated failure logs its stack trace once, then one line.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -386,6 +394,7 @@
 - GUI editor: changing an action's type keeps nested lists the new type has and asks before dropping others.
 - GUI editor: refusal messages for presets, icons and components use the server's wording.
 - Web editor: groups and recordings are listed in the sidebar; a renamed recording or group rewrites its `id`.
+- The startup banner.
 
 ### Fixed
 

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
@@ -20,11 +21,13 @@ import java.util.function.LongSupplier;
  */
 public final class AnimusLog {
     public static final Duration WINDOW = Duration.ofMinutes(5);
+    private static final int MAXIMUM_TRACED = 256;
     private static final AnimusLog SHARED = new AnimusLog(System::nanoTime, WINDOW);
     private final LongSupplier nanos;
     private final Duration span;
     private final long window;
     private final Map<String, Set<String>> pending = new LinkedHashMap<>();
+    private final Set<String> traced = new LinkedHashSet<>();
     private volatile boolean debug;
     private long windowStart;
 
@@ -59,6 +62,28 @@ public final class AnimusLog {
             summary = due();
         }
         if (summary != null) sink.accept(summary);
+    }
+
+    /**
+     * A failure with its stack trace the first time its root cause (class and message) is seen, then as one line
+     * {@code message: Class: detail} every later time, so a repeating fault prints one trace.
+     */
+    public void failure(String message, Throwable failure, Consumer<String> line, BiConsumer<String, Throwable> trace) {
+        String cause = cause(failure);
+        boolean first;
+        synchronized (this) {
+            first = traced.add(cause);
+            if (traced.size() > MAXIMUM_TRACED) traced.remove(traced.iterator().next());
+        }
+        if (first) trace.accept(message, failure);
+        else line.accept(message + ": " + cause);
+    }
+
+    /** The root cause as {@code SimpleName: message}. */
+    public static String cause(Throwable failure) {
+        Throwable root = failure;
+        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        return root.getClass().getSimpleName() + (root.getMessage() == null ? "" : ": " + root.getMessage());
     }
 
     /** The summary line once the window has passed, clearing the counts; otherwise null. */

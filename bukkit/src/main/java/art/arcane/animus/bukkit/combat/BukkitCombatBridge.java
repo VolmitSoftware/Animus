@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.combat;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.bukkit.event.VirtualNpcDamageEvent;
 import art.arcane.animus.bukkit.event.VirtualNpcDamagedByMobEvent;
 import art.arcane.animus.core.combat.*;
@@ -327,7 +328,9 @@ public final class BukkitCombatBridge implements Listener, AutoCloseable {
         try { Class.forName("io.papermc.paper.threadedregions.RegionizedServer"); return true; }
         catch (ClassNotFoundException ignored) { return false; }
     }
-    private void reportFailure(String message, Throwable error) { plugin.getLogger().log(java.util.logging.Level.WARNING, message, error); }
+    private void reportFailure(String message, Throwable error) {
+        AnimusLog.shared().failure(message, error, plugin.getLogger()::warning, (String line, Throwable trace) -> plugin.getLogger().log(java.util.logging.Level.WARNING, line, trace));
+    }
     private void stopClockWhenIdle() { if (combatants.isEmpty() && clock != null) { clock.cancel(); clock = null; } }
     @EventHandler public void onDeath(EntityDeathEvent event) { MobLease lease = controlled.get(event.getEntity().getUniqueId()); if (lease != null) lease.close(); }
     @EventHandler public void onUnload(EntitiesUnloadEvent event) { for (Entity entity : event.getEntities()) { MobLease lease = controlled.get(entity.getUniqueId()); if (lease != null) lease.close(); } }

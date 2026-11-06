@@ -1,5 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.text.RichText;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.bukkit.navigation.LiveMovementProbe;
 import art.arcane.animus.core.control.RideLedger;
 import art.arcane.animus.core.control.RideSession;
@@ -64,7 +66,7 @@ final class ActorRide {
         World world = host.world(at.world());
         if (world == null || !player.getWorld().getUID().toString().equals(at.world())) return "this NPC is in another world";
         RideSteering.Result ground = probe(world).check(at.point(), at.point());
-        if (ground.outcome() != RideSteering.Outcome.MOVED) return "the NPC needs ground or open space with room for its rider (" + ground.detail() + ")";
+        if (ground.outcome() != RideSteering.Outcome.MOVED) return "no room to mount here (" + ground.detail() + ")";
         RegionRides.Admission<RegionActor> admission = host.rides.admit(player.getUniqueId(), actor.uuid, actor);
         if (admission.rejection() != null) return switch (admission.rejection()) {
             case ALREADY_RIDING -> "you are already riding";
@@ -168,7 +170,7 @@ final class ActorRide {
         WorldPosition target = exit == Exit.RESTORE_POSITION && held && current.player.isOnline() && !current.player.isDead() ? standingPlace() : null;
         actor.rideReleased();
         boolean quiet = "shift".equals(reason) || "shutdown".equals(reason) || "death".equals(reason) || "offline".equals(reason);
-        host.dismounted(current.player, actor, target, quiet ? null : "Dismounted: " + reason);
+        host.dismounted(current.player, actor, target, quiet ? null : RichText.colorize(Palette.reply("Dismounted: " + reason.replace('-', ' '))));
     }
     private WorldPosition standingPlace() {
         WorldPosition at = actor.state.snapshot().position();

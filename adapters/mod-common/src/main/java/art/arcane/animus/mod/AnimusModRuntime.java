@@ -8,7 +8,6 @@ import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
-import art.arcane.animus.core.AnimusSplash;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.Platform;
 import art.arcane.animus.core.RuntimeEnvironment;
@@ -114,21 +113,23 @@ public final class AnimusModRuntime {
         RuntimeEnvironment environment = new RuntimeEnvironment(platform, MinecraftVersion.current(), dataDirectory);
         Running next = new Running();
         AnimusMetrics measured = AnimusMetrics.restart();
+        long startedAt = System.nanoTime();
         try {
-            next.runtime = new AnimusRuntime(environment, (Throwable failure) -> LOGGER.error("Animus file cleanup failed", failure));
+            next.runtime = new AnimusRuntime(environment, (Throwable failure) -> LOGGER.error("File cleanup failed", failure));
             next.runtime.start();
-            next.runtime.npcs().diagnostics().stream().limit(20).forEach((String problem) -> LOGGER.warn("NPC definition recovery: {}", problem));
+            List<String> recovered = next.runtime.npcs().diagnostics();
+            recovered.stream().limit(5).forEach((String problem) -> LOGGER.warn("Definition kept at last valid version: {}", problem));
+            if (recovered.size() > 5) LOGGER.warn("{} more definition problems; /animus validate lists them", recovered.size() - 5);
             next.ticks = new ModTicks(LOGGER::warn);
             Executor files = next.runtime.fileExecutor((Runnable task, MutationLane.EngineTaskEvent event, Throwable failure) -> {
-                if (event == MutationLane.EngineTaskEvent.FAILED) LOGGER.warn("Animus file task failed", failure);
+                if (event == MutationLane.EngineTaskEvent.FAILED) LOGGER.warn("File task failed", failure);
             });
             NpcRuntimeSettings npcSettings = next.runtime.npcSettings();
             PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
             next.host = new VanillaRuntimeHost(server, next.ticks, LOGGER::warn, this::interactionAllowed, next.runtime.moduleHooks().buildProtection(BuildProtection.NONE));
             next.living = new PersistedNpcService<>(next.host, next.runtime, files, settings);
-            LOGGER.info(next.living.status());
+            if (!next.living.available()) LOGGER.warn(next.living.status());
             next.combat = new ModCombat(server, next.runtime, next.living, next.host.terrain(), LOGGER::warn);
-            LOGGER.info(next.combat.status());
             next.ticks.every(next.combat::tick);
             Running owner = next;
             next.screens = new ModScreens(server, next.ticks, art.arcane.animus.core.shop.ShopService.economy(next.runtime.shopSettings(),
@@ -142,7 +143,6 @@ public final class AnimusModRuntime {
             art.arcane.animus.core.hire.HireService<ServerPlayer, ItemStack> hires = new art.arcane.animus.core.hire.HireService<>(next.runtime, next.shops.screens(), next.living, files,
                     next.combat.hireGuarding(), LOGGER::info);
             next.ticks.every(measured.timed(Subsystem.BEHAVIORS, hires::tick));
-            LOGGER.info(hires.status());
             art.arcane.animus.core.shop.ShopService<ServerPlayer, ItemStack> screenService = next.shops;
             art.arcane.animus.core.gui.HoloService<ServerPlayer, ItemStack> holoService = next.guis;
             next.living.interactions((ServerPlayer player, UUID npc, boolean attack, boolean sneaking) ->
@@ -156,12 +156,10 @@ public final class AnimusModRuntime {
             }));
             next.shops.reload((art.arcane.animus.core.shop.ShopCatalog catalog) -> {});
             next.guis.reload((art.arcane.animus.core.gui.HoloCatalog catalog) -> {});
-            LOGGER.info(next.shops.status());
-            LOGGER.info(next.guis.status());
             next.builds = new BuildService<>(next.runtime, next.living, files, new VanillaBuildPlatform(server, next.host.terrain()), next.runtime.moduleHooks().buildProtection(BuildProtection.NONE),
                     "none (mod servers have no standard protection API; a module protection hook can deny block changes)", next.ticks::every,
                     () -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); }, LOGGER::info, null, null);
-            LOGGER.info(next.builds.status());
+            if (next.builds.status().startsWith("Builds unavailable") && next.runtime.buildSettings().enabled()) LOGGER.warn(next.builds.status());
             DialogueTriggers dialogue = new DialogueTriggers(() -> { BehaviorCommands current = owner.behaviors; return current == null ? null : current.triggers(); });
             next.builtins = new BuiltinCapabilities(new VanillaBehaviorPlatform(server, next.living, next.combat, next.builds, next.ticks, () -> owner.guis),
                     next.runtime.behaviorState(), dialogue::publish, next.runtime.behaviorSettings().actions(), LOGGER::info);
@@ -215,14 +213,15 @@ public final class AnimusModRuntime {
             startEditor(server, next, files);
             running = next;
             ModHooks.attach(this);
-            LOGGER.info(AnimusSplash.render(environment, platform + " / Minecraft " + environment.minecraftVersion(), true));
+            LOGGER.info("Enabled {} on {} {} in {}ms | {} NPCs | editor {}", BuildIdentity.VERSION, platform.name().toLowerCase(java.util.Locale.ROOT), environment.minecraftVersion(),
+                    (System.nanoTime() - startedAt) / 1_000_000, next.runtime.npcs().all().size(), next.editor == null ? "off" : next.editor.reach());
             AnimusRuntime started = next.runtime;
             files.execute(() -> {
                 try { new art.arcane.animus.core.migration.CitizensDropIn(started.documents(), started.npcs(), started.importHost()).startupNotice().ifPresent(LOGGER::info); }
                 catch (IOException | RuntimeException failure) { LOGGER.warn("Citizens migration check failed: {}", failure.getMessage()); }
             });
         } catch (IOException | RuntimeException | LinkageError failure) {
-            LOGGER.error("Could not start " + BuildIdentity.NAME, failure);
+            LOGGER.error("Failed to start", failure);
             close(next);
         }
     }
@@ -268,9 +267,9 @@ public final class AnimusModRuntime {
         try {
             service.start();
             next.editor = service;
-            service.status().forEach(LOGGER::info);
+            if (!service.problem().isEmpty()) LOGGER.warn("Editor {}", service.problem());
         } catch (IOException | RuntimeException failure) {
-            LOGGER.warn("The web editor API could not start", failure);
+            LOGGER.warn("Editor could not start", failure);
             service.close();
         }
     }

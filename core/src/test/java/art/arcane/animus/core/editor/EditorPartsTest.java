@@ -5,6 +5,8 @@ import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.editor.transport.EditorEventSink;
 import art.arcane.animus.core.storage.DocumentStore;
+import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.text.RichText;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import java.nio.file.Files;
@@ -14,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -128,10 +131,50 @@ class EditorPartsTest {
                 assertTrue(port > 0, direct);
                 assertEquals(Optional.empty(), code.relayUrl(), "the relay is off in this config");
                 assertEquals(EditorIdentity.loadOrCreate(runtime.documents()).fingerprint(), code.fingerprint());
-                assertTrue(service.status().stream().anyMatch((String line) -> line.startsWith("Editor listener http://127.0.0.1:" + port)));
+                assertTrue(service.status().stream().anyMatch((String line) -> line.startsWith("Editor ready | listener 127.0.0.1:" + port + " (http) ")));
                 assertTrue(service.handler().isPresent());
             } finally { service.close(); }
         } finally { runtime.close(); }
+    }
+
+    @Test
+    void pairCommand_isTwoLinesWithOpenAndCopyChipsAndThePlainLinkForTheConsole() throws Exception {
+        Path data = directory.resolve("paired");
+        Files.createDirectories(data);
+        Files.writeString(data.resolve("config.toml"), "statusMessage = \"Hello\"\n[editor]\nlistenerEnabled = true\nrelayEnabled = false\nport = 0\n");
+        art.arcane.animus.core.AnimusRuntime runtime = new art.arcane.animus.core.AnimusRuntime(
+                new art.arcane.animus.core.RuntimeEnvironment(art.arcane.animus.core.Platform.BUKKIT, "26.2", data));
+        runtime.start();
+        try (EditorHarness harness = new EditorHarness(directory.resolve("host"))) {
+            EditorService service = new EditorService(runtime, harness.host, (String line) -> {});
+            try {
+                service.start();
+                EditorCommands commands = new EditorCommands(() -> service, Runnable::run);
+                List<ChatLine> player = new ArrayList<>();
+                commands.pair(recorder(EditorHarness.ADMIN, player), "laptop", "", "", "");
+                assertEquals(2, player.size());
+                String link = player.getFirst().console().substring(player.getFirst().console().indexOf("https://"));
+                assertTrue(link.contains("#/pair/ANM1."), link);
+                assertEquals("[Animus]: Pairing link ready; single use, open within 10 minutes [Open editor] [Click to copy]",
+                        PlainTextComponentSerializer.plainText().serialize(player.getFirst().component()));
+                assertTrue(player.get(1).toString().startsWith("[Animus]: Token "), player.get(1).toString());
+                List<String> console = new ArrayList<>();
+                commands.pair(recorder(null, console), "", "", "", "");
+                assertEquals(2, console.size());
+                assertTrue(RichText.plain(console.getFirst()).matches("\\[Animus]: Pairing link ready; single use, open within 10 minutes https://\\S+#/pair/ANM1\\.\\S+"), console.getFirst());
+            } finally { service.close(); }
+        } finally { runtime.close(); }
+    }
+
+    private static CommandActor recorder(UUID player, List<?> lines) {
+        @SuppressWarnings("unchecked") List<Object> sink = (List<Object>) lines;
+        return new CommandActor() {
+            @Override public boolean permitted(String node) { return true; }
+            @Override public void tell(String message) { sink.add(message); }
+            @Override public void rich(ChatLine line) { sink.add(player == null ? line.console() : line); }
+            @Override public Optional<UUID> player() { return Optional.ofNullable(player); }
+            @Override public boolean reply(Runnable action) { action.run(); return true; }
+        };
     }
 
     private static CommandActor actor(UUID player) {

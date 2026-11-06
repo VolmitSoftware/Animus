@@ -112,25 +112,25 @@ def main():
         command('animus modules capabilities',r'.*reference:hello \| ACTION \| available=true.*');catalog=report['commands'][-1]['output'];assert 'Module capabilities: 13; built-in: 19;' in catalog;assert 'qabroken:partial' not in catalog and 'reference:stolen' not in catalog
         check('failed-and-foreign-namespace-registrations-not-published')
         command(f'animus create {npc_id} minecraft:player world 0 61 3 qa "Module Before"',rf'.*Created dormant {npc_id};.*')
-        command(f'animus edit {npc_id} '+json.dumps({'modules':{'missing:module':{'retained':True}}},separators=(',',':')),r'.*Saved; transaction .*')
+        command(f'animus edit {npc_id} '+json.dumps({'modules':{'missing:module':{'retained':True}}},separators=(',',':')),r'.*Saved[^;]*; tx .*')
         saved=read(npc);report['npcUuid']=saved['uuid'];report['initialRevision']=saved['revision']
         assert action('reference:hello')['message']=='Hello from a trusted external module';assert action('qalink:linked')['linked'] is True
         command(f'animus modules condition qaapi:false {npc_id} {{}}',r'.*Module qaapi:false: OK; result false.*');command(f'animus modules condition qaapi:true {npc_id} {{}}',r'.*Module qaapi:true: OK; result true.*')
         action('qaapi:privileged',status='UNAVAILABLE');action('reference:hello','[]',status='INVALID');action('qabroken:partial',status='UNAVAILABLE');check('typed-dispatch-linkage-privilege-and-json-argument-gates')
         cached=action('qaapi:cache');assert cached['revision']==saved['revision'] and cached['uuid']==saved['uuid'] and cached['sourceSha256']==sha(npc)
-        command(f'animus edit {npc_id} '+json.dumps({'name':'Module Concurrent'},separators=(',',':')),r'.*Saved; transaction .*');before=npc.read_bytes()
+        command(f'animus edit {npc_id} '+json.dumps({'name':'Module Concurrent'},separators=(',',':')),r'.*Saved[^;]*; tx .*');before=npc.read_bytes()
         assert action('qaapi:apply_cached')['status']=='CONFLICT';assert npc.read_bytes()==before;check('api-token-conflicts-with-administrator-edit')
         edited=action('qaapi:edit');current=read(npc);assert edited['status']=='OK' and edited['revision']==saved['revision']+2 and edited['sourceSha256']==sha(npc);assert current['name']=='Module Edited' and current['modules']['missing:module']['retained'] is True and not current['spawned'];check('api-validated-dormant-apply-revision-and-unknown-config-preservation')
         before=npc.read_bytes();assert action('qaapi:invalid')['status']=='INVALID';assert action('qaapi:identity')['status']=='INVALID';assert action('qaapi:activate')['status']=='UNAVAILABLE';assert npc.read_bytes()==before;check('invalid-identity-and-activation-drafts-preserve-exact-bytes')
         replacement=a.module_fixtures/fixtures['replacement']['file'];assert sha(replacement)==fixtures['replacement']['sha256'];shutil.copy2(replacement,directory/a.reference.name)
-        command('animus reload',r'.*reload successful.*');assert action('reference:hello')['message']=='Hello from a trusted external module';assert retained.read_bytes()==retained_bytes;check('binary-replacement-and-file-reload-do-not-reload-java')
+        command('animus reload',r'.*Reloaded; .*');assert action('reference:hello')['message']=='Hello from a trusted external module';assert retained.read_bytes()==retained_bytes;check('binary-replacement-and-file-reload-do-not-reload-java')
         action('qawait:hold',status='TIMED_OUT');command('animus modules status',r'.*Module invocations: .*handlersOutstanding=1.*timedOutHandlers=1.*');action('qawait:hold',status='UNAVAILABLE');check('deadline-suspends-module-and-retains-unfinished-handler')
         report['persistedBeforeRestart']={'definition':npc.read_text(),'checkpoint':checkpoint.read_text()};(evidence/'before-restart-npc.json').write_bytes(npc.read_bytes());(evidence/'before-restart-checkpoint.json').write_bytes(checkpoint.read_bytes())
         stop('prepare');prepare=(evidence/'prepare-server.log').read_text(errors='replace');assert prepare.index('disabled qalink')<prepare.index('disabled qabase');assert 'disabled qawait' in prepare;assert prepare.index('resource qaapi second')<prepare.index('resource qaapi first');check('managed-stop-runs-reverse-module-and-resource-cleanup')
         start('restart-and-disable')
         assert npc.read_text()==report['persistedBeforeRestart']['definition'] and checkpoint.read_text()==report['persistedBeforeRestart']['checkpoint'];assert action('qaapi:inspect')['uuid']==report['npcUuid'];assert action('reference:hello')['message']=='Replacement reference after restart';assert retained.read_bytes()==retained_bytes;check('restart-loads-new-binary-and-preserves-accepted-definition')
         command(f'animus modules action qawait:hold {npc_id} {{}}',r'.*Animus module QA pending qawait.*')
-        command('animus delete '+npc_id,r'.*Deleted; rollback transaction .*');assert_no_sources()
+        command('animus delete '+npc_id,r'.*Deleted [^;]*; tx .*');assert_no_sources()
         command('moduleqa disable '+report['npcUuid'],r'.*Module QA disabled enabled=false admission-closed=true duration-ms=\d+.*');disabled=True
         elapsed=int(re.search(r'duration-ms=(\d+)',report['commands'][-1]['receipt'])[1]);assert elapsed<2000
         wait_log(log,r'.*Module QA post-disable action=UNAVAILABLE.*',timeout=10)
@@ -147,7 +147,7 @@ def main():
     except Exception as error:failure=error;report['status']='failed';report['error']=str(error)
     finally:
         if started and not disabled and npc.exists():
-            try:command('animus delete '+npc_id,r'.*Deleted; rollback transaction .*')
+            try:command('animus delete '+npc_id,r'.*Deleted [^;]*; tx .*')
             except Exception as error:report['commandCleanupError']=str(error)
         if owned:
             report['stop']=run(a,'runtime','stop',name,'--graceful',allow_failure=True);report['runtimeAfter']=run(a,'runtime','status',name,allow_failure=True)

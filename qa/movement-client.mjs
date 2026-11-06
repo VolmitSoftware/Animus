@@ -54,8 +54,8 @@ class Client extends NativeClient {
     throw new Error(`Navigation condition timed out: ${status?.text}`);
   }
   async route(target, mode = 'walk', speed = 2, npc = id) {
-    const e = await this.command(`animus navigate ${npc} ${target.x} ${target.y} ${target.z} mode=${mode} speed=${speed}`, `Navigation requested for ${npc}`);
-    return fields(e.text).route;
+    const e = await this.command(`animus navigate ${npc} ${target.x} ${target.y} ${target.z} mode=${mode} speed=${speed}`, `${npc} heading to`);
+    return e.text.match(/; route (\S+)/)[1];
   }
   async arrive(target, mode = 'walk', speed = 2) {
     const from = this.events.length, route = await this.route(target, mode, speed);
@@ -81,9 +81,9 @@ class Client extends NativeClient {
       assert.equal(definition.id, id); assert.equal(definition.uuid, uuid); assert.equal(definition.spawned, false);
       Object.assign(definition, { position, modules, revision: definition.revision + 1 });
       writeFileSync(source, JSON.stringify(definition, null, 2) + '\n');
-      await this.command('animus reload', 'reload successful');
+      await this.command('animus reload', 'Reloaded; ');
     }
-    await this.command(`animus spawn ${id}`, 'Spawn requested');
+    await this.command(`animus spawn ${id}`, 'Spawning ');
     await this.wait(e => e.event === 'spawn' && e.uuid === uuid, from);
     near(this.body(), position); await delay(150);
   }
@@ -96,10 +96,10 @@ class Client extends NativeClient {
     if (cancel) {
       await this.wait(e => e.event === 'chat' && e.text.includes('QA cancelled'), from);
       await delay(150);
-      assert(!this.events.slice(from).some(e => e.event === 'chat' && e.text.includes(`Selected ${id} via`)));
+      assert(!this.events.slice(from).some(e => e.event === 'chat' && e.text.includes(`Selected ${id}`)));
     } else {
       await this.wait(e => e.event === 'chat' && e.text.includes(`QA production interaction id=${uuid}`) && e.text.includes('preview=false world-registered=0'), from);
-      await this.wait(e => e.event === 'chat' && e.text.includes(`Selected ${id} via INTERACT`), from);
+      await this.wait(e => e.event === 'chat' && e.text.includes(`[Animus]: Selected ${id}`), from);
     }
   }
 }
@@ -114,7 +114,7 @@ try {
   uuid = (await owner.inspect()).document.uuid;
   await owner.command(`animusqa expect ${uuid}`, 'QA production expect');
   await owner.command(`animusqa motion expect ${uuid}`, 'QA motion expect');
-  await owner.command(`animus spawn ${id}`, `Spawn requested for ${id}`);
+  await owner.command(`animus spawn ${id}`, `Spawning ${id}`);
   await owner.wait(e => e.event === 'spawn' && e.uuid === uuid);
   assert((await owner.inspect()).runtime.includes('world-registered=0'));
   passed('production navigation starts with an authoritative virtual body', { version, protocol: toolchain.protocol, uuid });
@@ -192,7 +192,7 @@ try {
   near((await owner.status()).position, { x: 3.5, y: 61, z: 3.5 });
   passed('explicit native waypoint JSON executes ordered points with owner-thread arrival events');
   const completed = await owner.status(), reloadFrom = owner.events.length;
-  await owner.command('animus reload', 'reload successful'); await delay(1200);
+  await owner.command('animus reload', 'Reloaded; '); await delay(1200);
   const unchanged = await owner.status(); near(unchanged.position, completed.position); assert.equal(unchanged.arrivals, completed.arrivals);
   assert(!owner.events.slice(reloadFrom).some(e => e.event === 'chat' && e.text.includes(`QA waypoint npc=${uuid}`)));
   passed('completed once-only waypoint route does not restart after an unchanged reload');
@@ -203,11 +203,11 @@ try {
   await owner.reset(origin, { 'animus:navigation': { enabled: true, route: id } });
   await owner.wait(e => e.event === 'chat' && e.text.includes(`QA waypoint npc=${uuid}`) && e.text.includes('waypoint=0 '), reusableFrom);
   const reusable = await owner.status(); near(reusable.position, { x: 2.5, y: 61, z: 3.5 }); assert(reusable.text.includes('route-source='));
-  await owner.command('animus reload', 'reload successful'); await delay(1000);
+  await owner.command('animus reload', 'Reloaded; '); await delay(1000);
   const sameRoute = await owner.status(); near(sameRoute.position, reusable.position); assert.equal(sameRoute.arrivals, reusable.arrivals);
   const retainedFrom = owner.events.length;
   writeFileSync(routeFile, '{"schemaVersion":1,"points":"invalid"}');
-  await owner.command('animus reload', 'reload successful');
+  await owner.command('animus reload', 'Reloaded; ');
   const retained = await owner.until(s => s.text.includes('route-error='), id, 15_000);
   assert(retained.text.includes('last-valid-route-retained=true'));
   assert.equal(readFileSync(routeFile, 'utf8'), '{"schemaVersion":1,"points":"invalid"}', 'Route reload must preserve invalid source bytes');
@@ -216,7 +216,7 @@ try {
   passed('reusable JSON route executes and invalid replacement preserves its last valid state with diagnostics');
   writeFileSync(routeFile, JSON.stringify({ schemaVersion: 1, mode: 'walk', speed: 3, loop: false, waitTicks: 0, points: [{ x: 4.5, y: 61, z: 3.5 }] }));
   const repairedFrom = owner.events.length;
-  await owner.command('animus reload', 'reload successful');
+  await owner.command('animus reload', 'Reloaded; ');
   await owner.wait(e => e.event === 'chat' && e.text.includes(`QA waypoint npc=${uuid}`) && e.text.includes('waypoint=0 '), repairedFrom);
   const repairedRoute = await owner.status(); near(repairedRoute.position, { x: 4.5, y: 61, z: 3.5 });
   assert(!repairedRoute.text.includes('route-error='));
@@ -248,7 +248,7 @@ try {
   assert(sourceChunk !== undefined, 'QA requires an observed loaded source and absent destination within one bounded leg');
   const farStart = sourceChunk * 16 + 14.5, farGoal = targetChunk * 16 + 2.5;
   await owner.command(`animus create ${farId} minecraft:player world ${farStart} 100 8.5 movementqa "Unloaded Guard"`, `Created dormant ${farId}`);
-  await owner.command(`animus spawn ${farId}`, `Spawn requested for ${farId}`);
+  await owner.command(`animus spawn ${farId}`, `Spawning ${farId}`);
   const sourceBefore = await owner.command(`animusqa motion chunk ${sourceChunk} 0 status`, 'QA chunk');
   assert(sourceBefore.text.includes('loaded=true') && sourceBefore.text.includes('forced=false'), 'Only the destination may be unavailable in this case');
   await owner.route({ x: farGoal, y: 100, z: 8.5 }, 'fly', 2, farId);
@@ -260,7 +260,7 @@ try {
   const sourceAfter = await owner.command(`animusqa motion chunk ${sourceChunk} 0 status`, 'QA chunk');
   assert(sourceAfter.text.includes('loaded=true') && sourceAfter.text.includes('forced=false'));
   assert(suspendedAgain.text.includes('unavailable terrain; no chunk loading requested'));
-  await owner.command(`animus delete ${farId}`, 'Deleted;');
+  await owner.command(`animus delete ${farId}`, /Deleted [^;]*; tx /);
   passed('unavailable destination suspends and retries without loading or forcing its chunk', { sourceChunk, targetChunk });
 
   const cancelFrom = owner.events.length;
@@ -269,14 +269,14 @@ try {
   await owner.wait(e => e.event === 'chat' && e.text.includes(`Despawn requested for ${id}`), cancelFrom);
   await delay(900);
   assert(!owner.body()); assert(!owner.events.slice(cancelFrom).some(e => e.event === 'chat' && e.text.includes(`QA waypoint npc=${uuid}`)));
-  await owner.command(`animus delete ${id}`, 'Deleted;'); live = false;
+  await owner.command(`animus delete ${id}`, /Deleted [^;]*; tx /); live = false;
   passed('despawn invalidates queued planning and prevents late movement or arrival');
 } catch (error) { failure = error; console.error(error.stack); }
 finally {
   if (owner && !owner.fatal) {
     try {
-      if (live) await owner.command(`animus delete ${id}`, 'Deleted;');
-      if (existsSync(path.join(dataDir, 'npcs', 'movementqa', `${id}-unloaded.json`))) await owner.command(`animus delete ${id}-unloaded`, 'Deleted;');
+      if (live) await owner.command(`animus delete ${id}`, /Deleted [^;]*; tx /);
+      if (existsSync(path.join(dataDir, 'npcs', 'movementqa', `${id}-unloaded.json`))) await owner.command(`animus delete ${id}-unloaded`, /Deleted [^;]*; tx /);
       if (uuid) await owner.command(`animusqa forget ${uuid}`, 'QA production forget');
       await owner.command('animusqa motion cleanup', 'QA motion cleanup complete');
       await owner.command('fill -20 61 -20 20 72 20 air', /filled/i);

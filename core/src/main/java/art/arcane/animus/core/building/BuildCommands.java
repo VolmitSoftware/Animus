@@ -2,6 +2,8 @@ package art.arcane.animus.core.building;
 
 import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.navigation.BlockPos;
+import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.text.Palette;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +21,7 @@ import java.util.function.Supplier;
  */
 public final class BuildCommands {
     public static final String DONATE_PERMISSION = "animus.build.donate";
+    private static final int LISTED = 40, CLIPPED = 12;
     private final Supplier<BuildService<?, ?>> service;
     private final Supplier<Optional<String>> unavailable;
 
@@ -36,20 +39,20 @@ public final class BuildCommands {
         });
     }
 
-    public void list(CommandActor actor) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> builds.list().stream().limit(30).forEach(owner::tell)); }
+    public void list(CommandActor actor) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> clipped(owner, builds.list())); }
 
     public void schematics(CommandActor actor) {
         run(actor, (BuildService<?, ?> builds, CommandActor owner) -> {
             List<String> names = builds.schematics();
-            owner.tell(names.isEmpty() ? "No schematics. Put .schem or .nbt files in the " + BuildService.SCHEMATICS + " folder."
-                    : "Schematics (" + names.size() + "): " + String.join(", ", names));
+            owner.tell(names.isEmpty() ? "No schematics; add .schem or .nbt files to " + BuildService.SCHEMATICS + "/"
+                    : "Schematics (" + names.size() + "): " + String.join(", ", names.stream().limit(LISTED).toList()) + (names.size() > LISTED ? ", +" + (names.size() - LISTED) + " more" : ""));
         });
     }
 
     public void inspect(CommandActor actor, String schematic) {
         run(actor, (BuildService<?, ?> builds, CommandActor owner) -> {
             builds.inspect(schematic, (List<String> lines) -> lines.forEach(reply(actor)));
-            owner.tell("Reading " + schematic + "...");
+            owner.tell("Reading " + schematic);
         });
     }
 
@@ -60,14 +63,14 @@ public final class BuildCommands {
     public void start(CommandActor actor, String npc, Optional<String> schematic, Optional<String> at, Map<String, String> options) {
         run(actor, (BuildService<?, ?> builds, CommandActor owner) -> {
             if (schematic.isEmpty()) {
-                if (at.isPresent() || !options.isEmpty()) throw new IllegalArgumentException("Name a schematic= to place it with at= or build options");
+                if (at.isPresent() || !options.isEmpty()) throw new IllegalArgumentException("at= and build options need schematic=");
                 builds.startFromDefinition(npc, actor.player(), reply(actor));
-                owner.tell("Loading the saved build of " + npc + "...");
+                owner.tell("Loading the saved build of " + npc);
                 return;
             }
             Optional<BlockPos> origin = at.map(BuildCommands::position);
             builds.start(new BuildService.Start(npc, schematic.get(), origin, BuildOptions.DEFAULT.with(options), actor.player()), reply(actor));
-            owner.tell("Loading " + schematic.get() + " for " + npc + "...");
+            owner.tell("Loading " + schematic.get() + " for " + npc);
         });
     }
 
@@ -79,16 +82,22 @@ public final class BuildCommands {
 
     public void undo(CommandActor actor, String build) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> owner.tell(builds.undo(build))); }
 
-    public void survey(CommandActor actor, String build) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> builds.survey(build).stream().limit(40).forEach(owner::tell)); }
+    public void survey(CommandActor actor, String build) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> clipped(owner, builds.survey(build))); }
+
+    /** At most {@link #CLIPPED} lines, then how many more there are. */
+    private static void clipped(CommandActor owner, List<String> lines) {
+        lines.stream().limit(CLIPPED).forEach(owner::tell);
+        if (lines.size() > CLIPPED) owner.tell("+" + (lines.size() - CLIPPED) + " more");
+    }
 
     /** The held items go to the build; only a player can donate. Runs on the player's own owner. */
     public void donate(CommandActor actor, String build) {
         Optional<String> refused = unavailable.get();
-        if (refused.isPresent()) { actor.tell("Builds unavailable: " + refused.get()); return; }
+        if (refused.isPresent()) { actor.tell(Palette.error("Builds unavailable: " + refused.get())); return; }
         try {
-            if (actor.player().isEmpty()) throw new IllegalArgumentException("Only a player can donate items");
+            if (actor.player().isEmpty()) throw new IllegalArgumentException("Players only");
             service.get().donateHeld(build, actor.player().get(), actor::tell);
-        } catch (RuntimeException failure) { actor.tell("Animus build: " + failure.getMessage()); }
+        } catch (RuntimeException failure) { actor.tell(Palette.error("Build: " + failure.getMessage())); }
     }
 
     public void team(CommandActor actor, String build, boolean add, String npc) { run(actor, (BuildService<?, ?> builds, CommandActor owner) -> owner.tell(builds.team(build, add, npc))); }
@@ -105,16 +114,16 @@ public final class BuildCommands {
     /** Runs the work on the service's owner; a build out on a region turn ({@link BuildService.Busy}) runs it again later. */
     private void run(CommandActor actor, Work work) {
         Optional<String> refused = unavailable.get();
-        if (refused.isPresent()) { actor.tell("Builds unavailable: " + refused.get()); return; }
+        if (refused.isPresent()) { actor.tell(Palette.error("Builds unavailable: " + refused.get())); return; }
         BuildService<?, ?> builds = service.get();
         Consumer<String> reply = reply(actor);
         CommandActor owner = builds.regionized() ? new Answering(actor, reply) : actor;
         boolean queued = builds.command(() -> {
             try { work.run(builds, owner); }
             catch (BuildService.Busy busy) { throw busy; }
-            catch (IOException | RuntimeException failure) { owner.tell("Animus build: " + failure.getMessage()); }
-        }, (String why) -> reply.accept("Animus build: " + why));
-        if (!queued) actor.tell("Animus build: build commands are busy; try again");
+            catch (IOException | RuntimeException failure) { owner.tell(Palette.error("Build: " + failure.getMessage())); }
+        }, (String why) -> reply.accept(Palette.error("Build: " + why)));
+        if (!queued) actor.tell(Palette.error("Build commands busy; try again in a moment"));
     }
 
     /** The actor as the service's owner may use it: every answer goes through the actor's own owner. */
@@ -122,6 +131,7 @@ public final class BuildCommands {
         @Override public boolean permitted(String node) { return actor.permitted(node); }
         @Override public void tell(String message) { reply.accept(message); }
         @Override public void plain(String line) { if (!actor.reply(() -> actor.plain(line))) actor.plain(line); }
+        @Override public void rich(ChatLine line) { if (!actor.reply(() -> actor.rich(line))) actor.rich(line); }
         @Override public Optional<UUID> player() { return actor.player(); }
         @Override public boolean reply(Runnable action) { return actor.reply(action); }
     }
@@ -133,10 +143,10 @@ public final class BuildCommands {
     private static BlockPos position(String text) {
         Function<String, Integer> whole = (String part) -> {
             try { return Integer.parseInt(part.strip()); }
-            catch (NumberFormatException invalid) { throw new IllegalArgumentException("at must be whole block coordinates"); }
+            catch (NumberFormatException invalid) { throw new IllegalArgumentException("at= takes whole block coordinates"); }
         };
         String[] parts = text.split(",", -1);
-        if (parts.length != 3) throw new IllegalArgumentException("at must be <x>,<y>,<z>");
+        if (parts.length != 3) throw new IllegalArgumentException("at= takes x,y,z");
         return new BlockPos(whole.apply(parts[0]), whole.apply(parts[1]), whole.apply(parts[2]));
     }
 }

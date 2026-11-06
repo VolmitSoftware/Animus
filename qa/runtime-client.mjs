@@ -75,7 +75,7 @@ class Client extends NativeClient {
     this.send(op, { id: body.id });
     const action = op === 'attack' ? 'ATTACK' : 'INTERACT';
     if (args.has('event-fixture')) await this.wait(e => e.event === 'chat' && e.text.includes(`QA production interaction id=${state.uuid}`) && e.text.includes(`action=${action}`) && e.text.includes('preview=false world-registered=0'), from);
-    if (admin) await this.wait(e => e.event === 'chat' && e.text.includes(`Selected ${state.id} via ${action}`), from);
+    if (admin) await this.wait(e => e.event === 'chat' && e.text.includes(`[Animus]: Selected ${state.id}`), from);
     else { await delay(250); assert(!this.events.slice(from).some(e => e.event === 'chat' && e.text.includes('Selected '))); }
   }
 }
@@ -97,7 +97,7 @@ try {
     assert(!owner.current(state.uuid));
     passed('create persists a dormant individually editable definition', { uuid: state.uuid });
     if (args.get('skin')) await owner.command(`animus edit ${state.id} ${JSON.stringify({skin: args.get('skin')})}`, 'Saved;');
-    await owner.command(`animus spawn ${state.id}`, `Spawn requested for ${state.id}`);
+    await owner.command(`animus spawn ${state.id}`, `Spawning ${state.id}`);
   }
   let body = owner.current(state.uuid) ?? await owner.body(state.uuid, 0, 'Town Guard');
   const profile = owner.events.find(e => e.event === 'player_info' && e.uuid === state.uuid && e.actions.includes('ADD_PLAYER'));
@@ -131,7 +131,7 @@ try {
     const valid = readFileSync(state.recovery.validBackup);
     assert.equal(hash(valid), state.recovery.validSha256);
     writeFileSync(source, valid);
-    await owner.command('animus reload', 'reload successful');
+    await owner.command('animus reload', 'Reloaded; ');
     await owner.command(`animus edit ${state.id} ${JSON.stringify({ name: 'Town Guard' })}`, 'Saved;');
     state.revision = (await owner.inspect()).document.revision;
     assert(state.revision > active.document.revision);
@@ -202,7 +202,7 @@ try {
     const forgedFrom = owner.events.length;
     owner.send('use', { id: peerBody.id }); owner.send('attack', { id: 2147483000 });
     await delay(400);
-    assert(!owner.events.slice(forgedFrom).some(e => e.event === 'chat' && (/Selected .* via|QA production interaction/.test(e.text))));
+    assert(!owner.events.slice(forgedFrom).some(e => e.event === 'chat' && (/\[Animus\]: Selected |QA production interaction/.test(e.text))));
     passed('foreign-viewer and forged IDs produce no production interaction');
     if (args.has('event-fixture')) {
       await owner.command('animusqa cancel', 'QA next interaction=cancel');
@@ -210,29 +210,29 @@ try {
       await owner.look(body); owner.send('use', { id: body.id });
       await owner.wait(e => e.event === 'chat' && e.text.includes('QA cancelled'), from);
       await delay(250);
-      assert(!owner.events.slice(from).some(e => e.event === 'chat' && e.text.includes(`Selected ${state.id} via`)));
+      assert(!owner.events.slice(from).some(e => e.event === 'chat' && e.text.includes(`Selected ${state.id}`)));
       passed('third-party cancellation prevents production selection');
     }
     for (const [suffix, type, world, name] of [['world', 'minecraft:player', 'animus_missing_world', 'Missing World'], ['type', 'minecraft:not_a_type', 'world', 'Missing Type']]) {
       const id = `${state.id}-${suffix}`;
       await owner.command(`animus create ${id} ${type} ${world} 0 61 3 ${state.group} "${name}"`, `Created dormant ${id}`);
       const before = (await owner.inspect(id)).document;
-      await owner.command(`animus spawn ${id}`, 'Cannot activate:');
+      await owner.command(`animus spawn ${id}`, 'Cannot spawn ');
       const after = (await owner.inspect(id)).document;
       assert.deepEqual(after, before, 'Rejected activation must preserve revision and spawned flag');
-      await owner.command(`animus delete ${id}`, 'Deleted;');
+      await owner.command(`animus delete ${id}`, /Deleted [^;]*; tx /);
     }
     passed('missing world and unsupported type reject before activation commit');
     // Names longer than a player profile name are presentation text, so they activate.
     const longId = `${state.id}-name`;
     await owner.command(`animus create ${longId} minecraft:player world 0 61 3 ${state.group} "Name Longer Than Sixteen"`, `Created dormant ${longId}`);
     const longBefore = (await owner.inspect(longId)).document;
-    await owner.command(`animus spawn ${longId}`, `Spawn requested for ${longId}`);
+    await owner.command(`animus spawn ${longId}`, `Spawning ${longId}`);
     const longAfter = (await owner.inspect(longId)).document;
     assert.equal(longAfter.spawned, true);
     assert.equal(longAfter.revision, longBefore.revision + 1);
     assert.equal(longAfter.name, 'Name Longer Than Sixteen');
-    await owner.command(`animus delete ${longId}`, 'Deleted;');
+    await owner.command(`animus delete ${longId}`, /Deleted [^;]*; tx /);
     passed('long display name activates and deletes cleanly');
     state.revision = (await owner.inspect()).document.revision;
     writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n');
@@ -252,7 +252,7 @@ try {
     const staleFrom = owner.events.length;
     owner.send('use', { id: old.id });
     await delay(300);
-    assert(!owner.events.slice(staleFrom).some(e => e.event === 'chat' && (/Selected .* via|QA production interaction/.test(e.text))));
+    assert(!owner.events.slice(staleFrom).some(e => e.event === 'chat' && (/\[Animus\]: Selected |QA production interaction/.test(e.text))));
     passed('visibility re-entry allocates fresh IDs and rejects stale IDs');
     from = owner.events.length;
     const priorWorldBody = body;
@@ -295,7 +295,7 @@ try {
       assert.equal(owner.current(state.uuid)?.id, body.id);
       await owner.interaction(body);
       writeFileSync(invalidPath, invalidBackup); invalidBackup = null; unlinkSync(recoveryFile);
-      await owner.command('animus reload', 'reload successful');
+      await owner.command('animus reload', 'Reloaded; ');
       passed('invalid hand edit reports its file and retains the last active definition');
     }
     await owner.command(`animus select ${state.id}`, `Selected ${state.id}`);
@@ -307,10 +307,10 @@ try {
     assert.equal((await owner.inspect()).document.spawned, false);
     passed('selected-ID despawn persists and removes both presentations');
     from = owner.events.length;
-    await owner.command('animus spawn', `Spawn requested for ${state.id}`);
+    await owner.command('animus spawn', `Spawning ${state.id}`);
     body = await owner.body(state.uuid, from, 'Garde Étoile');
     from = owner.events.length;
-    await owner.command('animus delete', 'Deleted;');
+    await owner.command('animus delete', /Deleted [^;]*; tx /);
     await owner.wait(e => e.event === 'remove' && e.ids.includes(body.id), from);
     await delay(300);
     assert(!owner.current(state.uuid) && !peer.current(state.uuid));

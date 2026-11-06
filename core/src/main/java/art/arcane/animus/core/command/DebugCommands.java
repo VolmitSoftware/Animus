@@ -27,7 +27,7 @@ import java.util.function.Supplier;
 public final class DebugCommands {
     public static final String PERMISSION = "animus.debug";
     private static final String HEADER = "&8&m        &r " + Palette.PINK + "Animus debug &8&m        ";
-    private static final String HONEST = "&8Measured on this server. Bytes are estimates from typical packet sizes.";
+    private static final String HONEST = "&8Measured on this server; bytes are estimates from typical packet sizes";
     private final Supplier<AnimusMetrics> metrics;
     private final DebugWatch watch;
     private final Function<String, Optional<UUID>> npcIds;
@@ -72,7 +72,7 @@ public final class DebugCommands {
         RuntimeGauges gauges = snapshot.gauges();
         List<String> lines = new ArrayList<>();
         lines.add(HEADER);
-        if (snapshot.sequence() == 0) lines.add("&7No measurement has completed yet; try again in a second.");
+        if (snapshot.sequence() == 0) lines.add("&7No measurement yet; try again in a second");
         lines.add(fmt("&7NPCs &8(%s)&7: &f%d &7definitions, &f%d &7active, &f%d &7dormant, &f%d &7sleeping patrols",
                 gauges.runtime(), gauges.definitions(), gauges.active(), gauges.dormant(), gauges.sleepingRoutes()));
         lines.add(fmt("&7Viewers: &f%d &7watching, &f%d &7bodies shown", gauges.viewers(), gauges.visible()));
@@ -106,7 +106,7 @@ public final class DebugCommands {
         lines.add(HEADER);
         if (player != null) {
             Optional<Load> viewer = metrics.get().viewerLoads().stream().filter((Load load) -> load.name().equalsIgnoreCase(player) || load.id().toString().equalsIgnoreCase(player)).findFirst();
-            if (viewer.isEmpty()) { lines.add("&7No Animus traffic is recorded for &f" + player + "&7 in the last minute."); return lines; }
+            if (viewer.isEmpty()) { lines.add("&7No traffic recorded for &f" + player + "&7 in the last minute"); return lines; }
             Load load = viewer.get();
             Optional<MetricsSnapshot.LoadRow> row = snapshot.viewers().stream().filter((MetricsSnapshot.LoadRow candidate) -> candidate.id().equals(load.id())).findFirst();
             lines.add(fmt("&7Viewer &f%s&7: last second &f%d &7pkt, &f~%s&7, &f%d &7clicks in", load.name(),
@@ -157,7 +157,7 @@ public final class DebugCommands {
             lines.add(fmt("&8- &7%s: &f%.2f &8/ &f%.2f &8/ &f%.2f &7ms/s", subsystem.label(), snapshot.second().millisPerSecond(subsystem),
                     snapshot.tenSeconds().millisPerSecond(subsystem), snapshot.minute().millisPerSecond(subsystem)));
         }
-        lines.add(fmt("&7Ticks seen: &f%.1f&7/s over %ds. On Folia, region times are summed across regions.", snapshot.tenSeconds().ticksPerSecond(), snapshot.tenSeconds().seconds()));
+        lines.add(fmt("&7Ticks seen: &f%.1f&7/s over %ds; on Folia, region times are summed", snapshot.tenSeconds().ticksPerSecond(), snapshot.tenSeconds().seconds()));
         if (!snapshot.regionNanos().isEmpty()) {
             double ticks = Math.max(1, snapshot.second().ticks());
             lines.add(fmt("&7Folia regions with NPC work: &f%d&7; busiest &f~%.3f &7ms/tick, quietest &f~%.3f &7ms/tick (sampled, last second)",
@@ -178,7 +178,7 @@ public final class DebugCommands {
         Optional<MetricsSnapshot.LoadRow> row = snapshot.npc(uuid.get());
         boolean placed = snapshot.gauges().places().stream().anyMatch((RuntimeGauges.NpcPlace place) -> place.npc().equals(uuid.get()));
         lines.add(fmt("&7NPC &f%s &8(%s)&7: %s", id, uuid.get(), placed ? "active" : "not active"));
-        if (load.isEmpty()) { lines.add("&7No packets or time are recorded for this NPC in the last minute."); lines.add(HONEST); return lines; }
+        if (load.isEmpty()) { lines.add("&7No packets or time recorded for this NPC in the last minute"); lines.add(HONEST); return lines; }
         MetricsSnapshot.Rates second = snapshot.second();
         long packets = row.map(MetricsSnapshot.LoadRow::packets).orElse(0L), bytesSent = row.map(MetricsSnapshot.LoadRow::bytes).orElse(0L);
         long nanos = row.map(MetricsSnapshot.LoadRow::estimatedNanos).orElse(0L);
@@ -198,7 +198,7 @@ public final class DebugCommands {
 
     private List<String> watchToggle(CommandActor actor) {
         Optional<UUID> player = actor.player();
-        if (player.isEmpty()) return List.of("&7The live watch belongs to a player; use &f/animus debug summary &7from the console.");
-        return List.of(watch.toggle(player.get()) ? "&7Animus debug watch &aon&7; run it again to stop." : "&7Animus debug watch &coff&7.");
+        if (player.isEmpty()) return List.of("&7The live watch is for players; use &f/animus debug summary &7from the console");
+        return List.of(watch.toggle(player.get()) ? "&7Debug watch &aon&7; run it again to stop" : "&7Debug watch &coff");
     }
 }

@@ -165,6 +165,6 @@ class GlossExchangeTest {
         exchange.exportFile(actor, "out", Optional.of("bundle"));
         assertTrue(Files.exists(data.resolve("exports/gui/out.json")));
         exchange.importFile(actor, "../escape", "gloss", false, () -> {});
-        assertTrue(told.get(told.size() - 1).startsWith("GUI import: name a folder"));
+        assertEquals(art.arcane.animus.core.text.Palette.error("GUI import takes a folder or .json bundle directly under imports/inbox/"), told.get(told.size() - 1));
     }
 }

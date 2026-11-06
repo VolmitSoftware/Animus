@@ -5,6 +5,7 @@ import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.gui.exchange.GlossExchange;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -567,11 +568,11 @@ public final class HoloService<P, S> implements AutoCloseable {
 
     public void statusCommand(CommandActor actor) { actor.tell(status()); actor.tell(shops.status()); }
 
-    public void problems(CommandActor actor) {
+    /** Shop, chest GUI, menu and hologram files that failed to load, for a paged listing. */
+    public List<String> problemRows() {
         List<String> problems = new ArrayList<>(shops.catalog().problems());
         problems.addAll(catalog.problems());
-        actor.tell("GUI problems: " + problems.size());
-        problems.stream().limit(30).forEach(actor::tell);
+        return problems;
     }
 
     /** Opens a chest GUI for the actor, or for the named player. */
@@ -581,7 +582,7 @@ public final class HoloService<P, S> implements AutoCloseable {
 
     /** Opens a display menu for the actor, or for the named player. */
     public void menu(CommandActor actor, String menu, Optional<String> player) {
-        if (transport.unavailable() != null) { actor.tell("Menus are unavailable: " + transport.unavailable()); return; }
+        if (transport.unavailable() != null) { actor.tell(Palette.error("Menus unavailable: " + transport.unavailable())); return; }
         deliver(actor, player, (P viewer) -> openMenu(viewer, menu, Map.of(), Optional.empty()));
     }
 
@@ -596,17 +597,17 @@ public final class HoloService<P, S> implements AutoCloseable {
     /** What {@code gui list} shows: {@code all}, or one of inventory, menu, hologram and animation. */
     public enum Listing { ALL, INVENTORY, MENU, HOLOGRAM, ANIMATION }
 
-    public void list(CommandActor actor, Listing kind) { list(actor, kind.name().toLowerCase(Locale.ROOT)); }
-
-    private void list(CommandActor actor, String kind) {
-        if (kind.equals("all") || kind.equals("inventory")) actor.tell("Chest GUIs: " + String.join(", ", shops.catalog().guis().keySet().stream().limit(50).toList()));
-        if (kind.equals("all") || kind.equals("menu")) actor.tell("Menus: " + String.join(", ", catalog.menus().keySet().stream().limit(50).toList()));
-        if (kind.equals("all") || kind.equals("hologram")) {
-            actor.tell("Holograms: " + catalog.holograms().size());
-            catalog.holograms().values().stream().limit(50).forEach((HologramDocument hologram) -> actor.tell(hologram.id() + " | " + hologram.world()
-                    + " " + Math.round(hologram.x()) + "," + Math.round(hologram.y()) + "," + Math.round(hologram.z()) + " | revision " + hologram.revision()));
-        }
-        if (kind.equals("all") || kind.equals("animation")) actor.tell("Text animations: " + String.join(", ", catalog.animations().keySet().stream().limit(50).toList()));
+    /** {@code id | kind}, plus place and revision for holograms, for a paged listing. */
+    public List<String> rows(Listing kind) {
+        String chosen = kind.name().toLowerCase(Locale.ROOT);
+        List<String> rows = new ArrayList<>();
+        if (chosen.equals("all") || chosen.equals("inventory")) shops.catalog().guis().keySet().stream().sorted().forEach((String id) -> rows.add(id + " | chest GUI"));
+        if (chosen.equals("all") || chosen.equals("menu")) catalog.menus().keySet().stream().sorted().forEach((String id) -> rows.add(id + " | menu"));
+        if (chosen.equals("all") || chosen.equals("hologram"))
+            catalog.holograms().values().forEach((HologramDocument hologram) -> rows.add(hologram.id() + " | hologram | " + hologram.world()
+                    + " " + Math.round(hologram.x()) + " " + Math.round(hologram.y()) + " " + Math.round(hologram.z()) + " | revision " + hologram.revision()));
+        if (chosen.equals("all") || chosen.equals("animation")) catalog.animations().keySet().stream().sorted().forEach((String id) -> rows.add(id + " | text animation"));
+        return rows;
     }
 
     public void reloadAll(CommandActor actor) {
@@ -617,8 +618,8 @@ public final class HoloService<P, S> implements AutoCloseable {
 
     private void deliver(CommandActor actor, Optional<String> named, Consumer<P> work) {
         Optional<UUID> target = named.isPresent() ? shops.playerNamed(named.get()) : actor.player();
-        if (target.isEmpty()) { actor.tell(named.map((String name) -> "Unknown player: " + name).orElse("Name a player when running this from the console.")); return; }
-        if (!living.players().deliver(target.get(), work)) actor.tell("That player is not online.");
+        if (target.isEmpty()) { actor.tell(Palette.error(named.map((String name) -> "Unknown player " + name).orElse("Give player= from the console"))); return; }
+        if (!living.players().deliver(target.get(), work)) actor.tell(Palette.error("That player is not online"));
     }
 
     private void answer(CommandActor actor, String message) { if (!closed && !actor.reply(() -> actor.tell(message))) log.accept(message); }
