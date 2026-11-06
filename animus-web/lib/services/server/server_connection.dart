@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'error_copy.dart';
 import 'pairing.dart';
 import 'server_profiles.dart';
 import 'transport.dart';
@@ -28,7 +29,7 @@ enum ConnectionPhase {
 }
 
 class ConnectionStatus {
-  const ConnectionStatus(this.phase, {this.path, this.attempt = 0, this.retryAt, this.message, this.hello});
+  const ConnectionStatus(this.phase, {this.path, this.attempt = 0, this.retryAt, this.problem, this.hello});
 
   final ConnectionPhase phase;
   final ConnectionPath? path;
@@ -36,7 +37,11 @@ class ConnectionStatus {
   /// Failed attempts since the last time the connection was online.
   final int attempt;
   final DateTime? retryAt;
-  final String? message;
+
+  /// Why the connection is not online, in plain words.
+  final ErrorCopy? problem;
+
+  String? get message => problem?.text;
 
   /// The last `hello-response` from the server.
   final Map<String, Object?>? hello;
@@ -146,6 +151,10 @@ class ServerConnection {
   /// The profile after a path worked (its [ServerProfile.lastPath]).
   Stream<ServerProfile> get profileChanges => _profiles.stream;
 
+  /// Time left on the token, checked against this computer's clock; null
+  /// without a token.
+  Duration? get tokenLeft => token?.expiresAt.difference(_now().toUtc());
+
   Map<String, Object?>? get hello => _hello;
   Map<String, Object?>? get capabilities => _capabilities;
 
@@ -161,12 +170,25 @@ class ServerConnection {
       return Future<void>.value();
     }
     if (token == null) {
-      _emit(const ConnectionStatus(ConnectionPhase.needsPairing, message: 'No token for this server in this browser.'));
+      _emit(ConnectionStatus(ConnectionPhase.needsPairing, problem: transportCopy('no-token')));
+      return Future<void>.value();
+    }
+    if (!token!.expiresAt.isAfter(_now().toUtc())) {
+      _needsPairing(serverCopy('token-expired'));
       return Future<void>.value();
     }
     _running = true;
     final Completer<void> firstRound = Completer<void>();
-    unawaited(_loop(firstRound));
+    unawaited(_loop(firstRound).catchError((Object error) {
+      // The loop itself failed: say so, and start it again after a wait.
+      _running = false;
+      if (!firstRound.isCompleted) firstRound.complete();
+      final Duration wait = reconnectDelay(1);
+      _emit(ConnectionStatus(ConnectionPhase.reconnecting, retryAt: _now().add(wait), problem: transportCopy('dropped'), hello: _hello));
+      unawaited(delay(wait).then((void _) {
+        if (!_running && token != null && _status.phase == ConnectionPhase.reconnecting) unawaited(connect());
+      }));
+    }));
     return firstRound.future;
   }
 
@@ -211,12 +233,12 @@ class ServerConnection {
   Future<void> _loop(Completer<void> firstRound) async {
     int attempt = 0;
     while (_running) {
-      String? problem;
+      ErrorCopy? problem;
       bool wasOnline = false;
       for (final (ConnectionPath path, String url) in _order()) {
         if (!_running) break;
         _emit(ConnectionStatus(ConnectionPhase.connecting, path: path, attempt: attempt, hello: _hello));
-        final String? result = await _attempt(path, url);
+        final ErrorCopy? result = await _attempt(path, url);
         if (result == null) {
           wasOnline = true;
           attempt = 0;
@@ -232,7 +254,7 @@ class ServerConnection {
       if (wasOnline) continue;
       attempt++;
       final Duration wait = reconnectDelay(attempt);
-      _emit(ConnectionStatus(ConnectionPhase.reconnecting, attempt: attempt, retryAt: _now().add(wait), message: problem, hello: _hello));
+      _emit(ConnectionStatus(ConnectionPhase.reconnecting, attempt: attempt, retryAt: _now().add(wait), problem: problem, hello: _hello));
       final Completer<void> wake = Completer<void>();
       _wake = wake;
       await Future.any(<Future<void>>[delay(wait), wake.future]);
@@ -251,7 +273,8 @@ class ServerConnection {
   }
 
   /// One attempt on one path. Returns null once online, else the problem.
-  Future<String?> _attempt(ConnectionPath path, String url) async {
+  /// Any failure, not only a [TransportFailure], ends as a problem.
+  Future<ErrorCopy?> _attempt(ConnectionPath path, String url) async {
     ServerTransport? transport;
     try {
       transport = await open(path, url);
@@ -259,30 +282,27 @@ class ServerConnection {
       final Object? body = hello.body;
       if (!hello.ok || body is! Map<String, Object?>) {
         await transport.close();
-        return '${path.label}: hello answered ${hello.status}';
+        return hello.problem;
       }
       if (body['fingerprint'] != _profile.fingerprint) {
         await transport.close();
         _running = false;
-        _emit(ConnectionStatus(ConnectionPhase.refused, path: path,
-            message: '${path.label} path answered as ${body['fingerprint']}, not the paired server ${_profile.fingerprint}. Nothing was sent.'));
-        return 'fingerprint mismatch';
+        final ErrorCopy wrong = transportCopy('wrong-server');
+        _emit(ConnectionStatus(ConnectionPhase.refused, path: path, problem: wrong));
+        return wrong;
       }
-      if (body['protocol'] != 1 && !((body['protocols'] as List<Object?>?) ?? const <Object?>[]).contains(1)) {
+      if (!speaksProtocol(body)) {
         await transport.close();
         _running = false;
-        _emit(ConnectionStatus(ConnectionPhase.refused, path: path, message: 'The server does not speak editor protocol 1.'));
-        return 'protocol';
+        final ErrorCopy protocol = serverCopy('unsupported-protocol');
+        _emit(ConnectionStatus(ConnectionPhase.refused, path: path, problem: protocol));
+        return protocol;
       }
       _hello = body;
       final ApiResponse capabilities = await transport.send(_authorized(const ApiRequest('GET', '/v1/capabilities')));
-      if (_tokenRefused(capabilities)) {
+      if (_tokenRefused(capabilities) || !capabilities.ok) {
         await transport.close();
-        return 'token';
-      }
-      if (!capabilities.ok) {
-        await transport.close();
-        return '${path.label}: capabilities answered ${capabilities.status} ${capabilities.errorCode ?? ''}';
+        return capabilities.problem;
       }
       _capabilities = capabilities.body is Map<String, Object?> ? capabilities.body! as Map<String, Object?> : null;
       final EventSubscription subscription;
@@ -290,11 +310,9 @@ class ServerConnection {
         subscription = await transport.subscribe(token!.token);
       } on StreamRefused catch (refused) {
         await transport.close();
-        if (tokenErrorCodes.contains(refused.code)) {
-          _needsPairing('The server refused the token (${refused.code}).');
-          return 'token';
-        }
-        return '${path.label}: events refused (${refused.status} ${refused.code})';
+        final ErrorCopy problem = serverCopy(refused.code, status: refused.status);
+        if (tokenErrorCodes.contains(refused.code)) _needsPairing(problem);
+        return problem;
       }
       _transport = transport;
       _subscription = subscription;
@@ -311,7 +329,11 @@ class ServerConnection {
       return null;
     } on TransportFailure catch (failure) {
       await transport?.close();
-      return failure.toString();
+      return failure.copy;
+    } on Object {
+      // A malformed answer or a bug: reported like a dropped path, then retried.
+      await transport?.close();
+      return transportCopy('dropped');
     }
   }
 
@@ -363,8 +385,7 @@ class ServerConnection {
       if (stale()) return false;
       final ApiResponse hello = await direct.send(const ApiRequest('GET', '/v1/hello'));
       final Object? body = hello.body;
-      if (stale() || !hello.ok || body is! Map<String, Object?> || body['fingerprint'] != _profile.fingerprint) return false;
-      if (body['protocol'] != 1 && !((body['protocols'] as List<Object?>?) ?? const <Object?>[]).contains(1)) return false;
+      if (stale() || !hello.ok || body is! Map<String, Object?> || body['fingerprint'] != _profile.fingerprint || !speaksProtocol(body)) return false;
       final ApiResponse capabilities = await direct.send(_authorized(const ApiRequest('GET', '/v1/capabilities')));
       if (stale() || !capabilities.ok) return false;
       stream = await direct.subscribe(token!.token);
@@ -398,6 +419,8 @@ class ServerConnection {
     } on TransportFailure {
       return false;
     } on StreamRefused {
+      return false;
+    } on Object {
       return false;
     } finally {
       if (!committed) {
@@ -438,34 +461,36 @@ class ServerConnection {
   void _streamEnded(ServerTransport transport, EventSubscription subscription) {
     if (!identical(_subscription, subscription)) return;
     final String? reason = subscription.closeReason;
-    if (reason != null && tokenErrorCodes.any(reason.contains)) {
-      _needsPairing('The server closed the connection: $reason.');
+    final String? tokenCode = reason == null ? null : tokenErrorCodes.where(reason.contains).firstOrNull;
+    if (tokenCode != null) {
+      _needsPairing(serverCopy(tokenCode));
       return;
     }
-    _connectionLost(transport.path, reason == null ? 'the event stream closed' : 'the server closed the stream: $reason');
+    final String? closing = reason == null ? null : closingCopy.keys.where(reason.contains).firstOrNull;
+    _connectionLost(transport.path, closing != null ? closingCopy[closing]! : transportCopy('stream-closed'));
   }
 
-  void _needsPairing(String message) {
+  void _needsPairing(ErrorCopy problem) {
     _running = false;
     token = null;
     unawaited(_drop());
     final Completer<void>? lost = _lost;
     if (lost != null && !lost.isCompleted) lost.complete();
-    _emit(ConnectionStatus(ConnectionPhase.needsPairing, message: message, hello: _hello));
+    _emit(ConnectionStatus(ConnectionPhase.needsPairing, problem: problem, hello: _hello));
   }
 
-  void _connectionLost(ConnectionPath path, String message) {
+  void _connectionLost(ConnectionPath path, ErrorCopy problem) {
     if (_transport == null || _transport!.path != path) return;
     _lostPath = path;
     unawaited(_drop());
-    _emit(ConnectionStatus(ConnectionPhase.reconnecting, path: path, message: message, hello: _hello));
+    _emit(ConnectionStatus(ConnectionPhase.reconnecting, path: path, problem: problem, hello: _hello));
     final Completer<void>? lost = _lost;
     if (lost != null && !lost.isCompleted) lost.complete();
   }
 
   bool _tokenRefused(ApiResponse response) {
     if (response.status != 401 || !tokenErrorCodes.contains(response.errorCode)) return false;
-    _needsPairing('The server refused the token (${response.errorCode}).');
+    _needsPairing(response.problem);
     return true;
   }
 
@@ -489,7 +514,7 @@ class ServerConnection {
       _tokenRefused(response);
       return response;
     } on TransportFailure catch (failure) {
-      if (identical(_transport, transport)) _connectionLost(transport.path, failure.message);
+      if (identical(_transport, transport)) _connectionLost(transport.path, failure.copy);
       rethrow;
     } finally {
       final int left = _inFlight[transport]! - 1;
@@ -503,9 +528,12 @@ class ServerConnection {
   }
 
   /// Exchanges a pairing code's secret for a token over the first path that
-  /// answers with the pinned fingerprint.
+  /// answers as the pinned server. A path that fails or refuses does not stop
+  /// the next one; when every path fails, the server's own refusal is
+  /// reported ahead of a path that could not be reached.
   static Future<(ServerToken, ConnectionPath)> pair(PairingPayload payload, TransportFactory open, {String? client}) async {
-    final List<String> problems = <String>[];
+    PairingRefused? refusal;
+    ErrorCopy? problem;
     for (final (ConnectionPath path, String url) in <(ConnectionPath, String)>[
       if (payload.directUrl != null) (ConnectionPath.direct, payload.directUrl!),
       if (payload.relayUrl != null) (ConnectionPath.relay, payload.relayUrl!),
@@ -515,8 +543,12 @@ class ServerConnection {
         transport = await open(path, url);
         final ApiResponse hello = await transport.send(const ApiRequest('GET', '/v1/hello'));
         final Object? body = hello.body;
-        if (body is! Map<String, Object?> || body['fingerprint'] != payload.fingerprint) {
-          problems.add('${path.label}: answered as another server');
+        if (!hello.ok || body is! Map<String, Object?>) {
+          problem ??= hello.problem;
+          continue;
+        }
+        if (body['fingerprint'] != payload.fingerprint) {
+          problem = transportCopy('wrong-server');
           continue;
         }
         final ApiResponse response = await transport.send(ApiRequest('POST', '/v1/pair', body: <String, Object?>{
@@ -525,24 +557,25 @@ class ServerConnection {
           if (client != null && client.isNotEmpty) 'client': client.length > 128 ? client.substring(0, 128) : client,
         }));
         final Object? answer = response.body;
-        if (!response.ok) throw PairingRefused(response.errorCode ?? 'refused', response.errorMessage);
-        if (answer is! Map<String, Object?> || answer['fingerprint'] != payload.fingerprint) {
-          problems.add('${path.label}: the pairing answer named another server');
+        if (!response.ok) {
+          refusal ??= PairingRefused(response.errorCode ?? codeForStatus(response.status), response.problem);
           continue;
         }
-        final ServerToken? token = ServerToken.fromJson(answer);
+        final ServerToken? token = answer is Map<String, Object?> && answer['fingerprint'] == payload.fingerprint ? ServerToken.fromJson(answer) : null;
         if (token == null) {
-          problems.add('${path.label}: the pairing answer has no token');
+          problem = transportCopy('wrong-server');
           continue;
         }
         return (token, path);
       } on TransportFailure catch (failure) {
-        problems.add(failure.toString());
+        problem ??= failure.copy;
+      } on Object {
+        problem ??= transportCopy('dropped');
       } finally {
         await transport?.close();
       }
     }
-    throw PairingRefused('unreachable', problems.isEmpty ? 'The pairing code names no path.' : problems.join('; '));
+    throw refusal ?? PairingRefused('unreachable', problem ?? transportCopy('no-path'));
   }
 
   Future<void> dispose() async {
@@ -553,14 +586,24 @@ class ServerConnection {
   }
 }
 
+/// Pairing did not produce a token: [code] is the server's `error-code`, or
+/// `unreachable` when no path answered as the paired server.
 class PairingRefused implements Exception {
-  const PairingRefused(this.code, this.message);
+  const PairingRefused(this.code, this.copy);
 
   final String code;
-  final String message;
+  final ErrorCopy copy;
+
+  String get message => copy.text;
 
   @override
-  String toString() => code == 'unreachable' ? 'The server could not be reached: $message' : '$message ($code)';
+  String toString() => message;
+}
+
+/// Whether a `hello-response` offers editor protocol 1.
+bool speaksProtocol(Map<String, Object?> hello) {
+  final Object? protocols = hello['protocols'];
+  return hello['protocol'] == 1 || (protocols is List<Object?> && protocols.contains(1));
 }
 
 /// De-duplicates events while the relay and direct streams both run.

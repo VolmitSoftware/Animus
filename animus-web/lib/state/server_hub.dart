@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../logic/shared_schemas.dart';
 import '../model/server_binding.dart';
+import '../services/server/error_copy.dart';
 import '../services/server/pairing.dart';
 import '../services/server/server_connection.dart';
 import '../services/server/server_profiles.dart';
@@ -12,13 +13,20 @@ typedef HubListener = void Function();
 /// Paired servers and their connections, kept apart from document state.
 /// Opens each path through [open], which in the browser is fetch, WebSocket
 /// and the relay socket.
+///
+/// The saved list is shared by every tab: each change re-reads it before
+/// writing, and another tab's change reloads it here.
 class ServerHub {
-  ServerHub({required this.profiles, required this.open, required this.schemas, this.delay = realDelay, DateTime Function()? now})
+  ServerHub({required this.profiles, required this.open, required this.schemas, this.onForget, this.delay = realDelay, DateTime Function()? now})
       : _now = now ?? DateTime.now {
     _servers = profiles.load();
+    profiles.changes.listen((void _) => _reload());
   }
 
   final ServerProfileStore profiles;
+
+  /// Called with a forgotten server's id, to remove its live workspace.
+  final Future<void> Function(String serverId)? onForget;
 
   /// Opens a path for a server fingerprint.
   final Future<ServerTransport> Function(ConnectionPath path, String url, String fingerprint) open;
@@ -27,6 +35,9 @@ class ServerHub {
   final DateTime Function() _now;
 
   List<ServerProfile> _servers = const <ServerProfile>[];
+
+  /// Set when the browser refused to store the last pairing or server list.
+  bool storageRefused = false;
   final Map<String, ServerConnection> _connections = <String, ServerConnection>{};
   final List<HubListener> _listeners = <HubListener>[];
 
@@ -89,13 +100,22 @@ class ServerHub {
     return profile != null && (_connections[id]?.token ?? profiles.token(profile)) != null;
   }
 
+  /// Another tab saved or forgot a server.
+  void _reload() {
+    _servers = profiles.load();
+    for (final String id in _connections.keys.toList()) {
+      if (server(id) == null) unawaited(_connections.remove(id)!.dispose());
+    }
+    _changed();
+  }
+
   void _store(ServerProfile profile) {
     _servers = <ServerProfile>[
-      for (final ServerProfile existing in _servers)
+      for (final ServerProfile existing in profiles.load())
         if (existing.id != profile.id) existing,
       profile,
     ]..sort((ServerProfile a, ServerProfile b) => a.name.compareTo(b.name));
-    profiles.save(_servers);
+    if (!profiles.save(_servers)) storageRefused = true;
     _changed();
   }
 
@@ -104,7 +124,7 @@ class ServerHub {
   Future<String> pair(String code, {required bool remember, String? client}) async {
     final PairingPayload payload = decodePairingCode(extractPairingCode(code), schemas);
     if (!payload.expiresAt.isAfter(_now().toUtc())) {
-      throw const PairingRefused('pairing-expired', 'This pairing code expired. Run /animus editor pair again.');
+      throw PairingRefused('pairing-expired', serverCopy('pairing-expired'));
     }
     final (ServerToken token, ConnectionPath path) = await ServerConnection.pair(
       payload,
@@ -123,7 +143,8 @@ class ServerHub {
     );
     final ServerConnection? previous = _connections.remove(profile.id);
     await previous?.dispose();
-    profiles.saveToken(profile, token);
+    storageRefused = false;
+    if (!profiles.saveToken(profile, token)) storageRefused = true;
     _store(profile);
     unawaited(connection(profile.id).connect());
     return profile.id;
@@ -137,17 +158,19 @@ class ServerHub {
 
   Future<void> disconnect(String id) async => _connections[id]?.disconnect();
 
-  /// Forgets a server and its token in this browser.
+  /// Forgets a server in this browser: its token, its saved entry and its
+  /// live workspace with any drafts in it.
   Future<void> forget(String id) async {
     final ServerConnection? connection = _connections.remove(id);
     await connection?.dispose();
     final ServerProfile? profile = server(id);
     if (profile != null) profiles.forgetToken(profile);
     _servers = <ServerProfile>[
-      for (final ServerProfile existing in _servers)
+      for (final ServerProfile existing in profiles.load())
         if (existing.id != id) existing,
     ];
-    profiles.save(_servers);
+    if (!profiles.save(_servers)) storageRefused = true;
+    await onForget?.call(id);
     _changed();
   }
 }
