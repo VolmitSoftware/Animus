@@ -53,7 +53,7 @@ class DenizenDropInTest {
             CitizensDropIn flow = dropIn(store, npcs);
             assertTrue(flow.startupNotice().orElseThrow().contains("plugins/Denizen/scripts"));
             String staged = joined(flow.execute(new String[0]));
-            assertTrue(staged.contains("Denizen plugins/Denizen: 14 scripts; 9 behaviors for 1 NPCs; 15 flag values imported, 2 kept"), staged);
+            assertTrue(staged.contains("Denizen plugins/Denizen: 17 scripts; 12 behaviors for 4 NPCs; 16 flag values imported, 2 kept"), staged);
             assertTrue(staged.contains("commandNamespaces = [\"denizen\"]"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
 
@@ -65,7 +65,7 @@ class DenizenDropInTest {
 
             String applied = joined(flow.execute(new String[]{"apply"}));
             assertTrue(applied.contains("Denizen behaviors installed in behaviors/denizen/"), applied);
-            assertTrue(applied.contains("1 NPCs wait for accept denizen"), applied);
+            assertTrue(applied.contains("4 NPCs wait for accept denizen"), applied);
             assertNotNull(store.read("behaviors/denizen/interact/guard_quest.json"));
             assertNotNull(store.read("behaviors/denizen/world/lantern_world.json"));
             assertNotNull(store.read("gui/inventories/denizen/gate_menu.json"), "staged GUIs install in the chest GUI folder");
@@ -75,7 +75,7 @@ class DenizenDropInTest {
             assertTrue(guard.json().getAsJsonObject("modules").has(DenizenImporter.MODULE));
 
             String review = joined(flow.execute(new String[]{"review"}));
-            assertTrue(review.contains("denizen: 1 waiting"), review);
+            assertTrue(review.contains("denizen: 4 waiting"), review);
             assertTrue(review.contains("Denizen import "), review);
             JsonObject status = flow.status();
             assertEquals("applied", status.getAsJsonObject("denizen").get("state").getAsString());
@@ -84,9 +84,9 @@ class DenizenDropInTest {
             assertThrows(IOException.class, () -> flow.execute(new String[]{"accept", "denizen"}));
             denizen.set(false);
             String accepted = joined(flow.execute(new String[]{"accept", "denizen"}));
-            assertTrue(accepted.contains("denizen 1"), accepted);
+            assertTrue(accepted.contains("denizen 4"), accepted);
             guard = npcs.all().stream().filter((NpcDefinition npc) -> npc.id().equals("citizens-0")).findFirst().orElseThrow();
-            assertEquals(List.of("denizen:assignment/guard_assignment", "denizen:interact/guard_quest"), guard.behaviors());
+            assertEquals(List.of("denizen:assignment/guard_assignment", "denizen:interact/guard_quest", "denizen:world-npc/dialogue_starter"), guard.behaviors());
             assertTrue(guard.json().getAsJsonObject("modules").getAsJsonObject(DenizenImporter.MODULE).get("reviewAccepted").getAsBoolean());
 
             flow.execute(new String[]{"rollback"});
