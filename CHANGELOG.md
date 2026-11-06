@@ -231,6 +231,8 @@
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
 - Web editor: an info button beside labels shows a short note on hover, focus or tap and opens the matching wiki section.
+- Web editor: a Conversation tab builds a behavior's lines, questions, conditions and actions as a tree by keyboard, writes the routines, `animus:choices` actions and `dialogue_choice` triggers with ids it keeps, opens matching hand-written behaviors, plays the conversation in the browser and attaches it to NPCs and groups in one undoable step.
+- Web editor: New conversation in the sidebar and the command palette, and a Conversation behavior template.
 
 ### Changed
 
