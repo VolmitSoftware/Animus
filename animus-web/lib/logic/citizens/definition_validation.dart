@@ -1,4 +1,4 @@
-/// Port of core's `NpcDefinition.validate` with `NpcAppearance`, `HologramStyle`, `BodyTraits`, `NpcItem`, `ArmorStandLook`,
+/// Port of core's `NpcDefinition.validate` with `NpcAppearance`, `HologramStyle`, `BodyTraits`, `NpcAttributes`, `NpcItem`, `ArmorStandLook`,
 /// `NpcInventory` and `MovementSettings`.
 ///
 /// The module validators (`WaypointSettings`, `CombatSettings`, `MountDeclaration`, `RideSettings`, `ShopBinding`,
@@ -6,6 +6,8 @@
 /// validates every definition again when an import is applied, so a module the browser accepted wrongly is still refused.
 library;
 
+import '../inspect/inspect_schemas.dart';
+import '../npc/npc_attributes.dart';
 import 'citizens_traits.dart' show teamColors;
 import 'java_json.dart';
 import 'java_lang.dart';
@@ -216,6 +218,33 @@ void _appearance(JObject definition, List<String> errors) {
   }
   final JElement? color = definition.get('teamColor');
   if (color != null && !(color is JString && teamColors.contains(color.value))) errors.add(r'$.teamColor: expected a team colour such as red, dark_aqua or gold');
+  _attributes(definition, errors);
+}
+
+/// `NpcAttributes.read`, against the attribute table of the embedded NPC schema.
+void _attributes(JObject definition, List<String> errors) {
+  final JElement? field = definition.get(attributesField);
+  if (field == null) return;
+  if (field is! JObject) {
+    errors.add(r'$.attributes: expected an object of attribute ids and numbers');
+    return;
+  }
+  final Map<String, AttributeSpec> table = attributeTable(InspectSchemas.embedded.npc);
+  final Set<String> seen = <String>{};
+  for (final MapEntry<String, JElement> entry in field.entries) {
+    final String path = '\$.$attributesField.${entry.key}';
+    final AttributeSpec? spec = table[bareAttributeId(entry.key)];
+    final JElement value = entry.value;
+    if (spec == null) {
+      errors.add('$path: unknown attribute ${entry.key}; expected a vanilla attribute id such as scale, gravity or movement_speed');
+    } else if (value is! JNumber) {
+      errors.add('$path: expected a number');
+    } else if (spec.problem(value.asDouble) case final String problem) {
+      errors.add('$path: $problem');
+    } else if (!seen.add(spec.id)) {
+      errors.add('$path: ${spec.id} is set twice');
+    }
+  }
 }
 
 /// `HologramStyle.line`: a string, or an object with text and margins.

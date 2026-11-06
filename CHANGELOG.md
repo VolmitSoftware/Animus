@@ -232,7 +232,7 @@
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
 - NPC definitions and trait groups take `attributes`: any vanilla attribute id, bare or `minecraft:`, with its vanilla range checked. Viewers get them with the body and on every runtime change on Paper, Spigot, Folia and mod servers.
 - `scale` resizes the body, hitbox, click reach, path clearance, rig bones and text height; movement, gravity, jump, fall, health, armor, knockback, melee and targeting attributes drive Animus's own simulation where the definition sets no field of its own.
-- `/animus npc attribute <npc> <attribute> [value|reset]` with attribute completion, and the behavior action `animus:set-attribute`.
+- `/animus npc attribute <npc> <attribute> [value=<number>|reset]` with attribute completion, and the behavior action `animus:set-attribute`.
 - The vanilla attribute table is generated from the server jars with `./gradlew :core:generateAttributeTable`.
 - Web editor: an Attributes section for NPCs and groups, with range hints, defaults and sources; the preview shows `scale`.
 
