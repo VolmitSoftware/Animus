@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#0D0D0F"/>
-  <rect x="3" y="3" width="58" height="58" rx="11" fill="none" stroke="#E0408C" stroke-width="2" opacity="0.6"/>
+  <rect width="64" height="64" rx="14" fill="#0d0d0f"/>
+  <rect x="3" y="3" width="58" height="58" rx="11" fill="none" stroke="#e0408c" stroke-width="2" opacity="0.6"/>
   <g transform="translate(5.4 5.4) scale(0.104)">
-    <path d="M256 26 L336 106 L256 106 Z" fill="#FF5FA8"/>
-    <path d="M256 26 L256 106 L176 106 Z" fill="#E0408C"/>
-    <path d="M336 106 L256 186 L256 106 Z" fill="#B82E72"/>
-    <path d="M176 106 L256 106 L256 186 Z" fill="#8F2459"/>
-    <path d="M112 210 L240 210 L240 234 L88 234 Z" fill="#48444A"/>
-    <path d="M272 210 L400 210 L424 234 L272 234 Z" fill="#2A282C"/>
-    <path d="M88 234 L240 234 L240 486 Z" fill="#5A565C"/>
-    <path d="M272 234 L424 234 L272 486 Z" fill="#3A373C"/>
-    <path d="M240 234 L272 234 L272 486 L240 486 Z" fill="#FF5FA8"/>
+    <path d="M256 26 L336 106 L256 106 Z" fill="#ff5fa8"/>
+    <path d="M256 26 L256 106 L176 106 Z" fill="#e0408c"/>
+    <path d="M336 106 L256 186 L256 106 Z" fill="#b82e72"/>
+    <path d="M176 106 L256 106 L256 186 Z" fill="#8f2459"/>
+    <path d="M112 210 L240 210 L240 234 L88 234 Z" fill="#48444a"/>
+    <path d="M272 210 L400 210 L424 234 L272 234 Z" fill="#2a282c"/>
+    <path d="M88 234 L240 234 L240 486 Z" fill="#5a565c"/>
+    <path d="M272 234 L424 234 L272 486 Z" fill="#3a373c"/>
+    <path d="M240 234 L272 234 L272 486 L240 486 Z" fill="#ff5fa8"/>
   </g>
 </svg>
