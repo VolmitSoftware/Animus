@@ -1114,7 +1114,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             body.socketRevision = shown.socketRevision();
             rigBudget[0] -= sockets.length;
             try {
-                packets.restyleBones(viewer.player, body.bones, sockets, shown.socketDisplays()).whenComplete((Void nothing, Throwable failure) -> {
+                handOver(viewer, () -> packets.restyleBones(viewer.player, body.bones, sockets, shown.socketDisplays())).whenComplete((Void nothing, Throwable failure) -> {
                     if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) cosmeticFailed(viewer, "socket items", body.value, failure); });
                 });
             } catch (RuntimeException failure) { cosmeticFailed(viewer, "socket items", body.value, failure); }
