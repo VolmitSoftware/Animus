@@ -193,7 +193,7 @@ final class RegionActor implements RegionOwner.Body {
         doors = new DoorPassage(uuid);
         recordingDoors = new RecordingDoors(uuid);
         RegionNpcRuntime.Geometry geometry = host.geometry(spec.type());
-        state = new VirtualNpcState(uuid, spec.position(), geometry.width(), geometry.height(), PersistedNpcService.maximumHealth(spec));
+        state = new VirtualNpcState(uuid, spec.position(), geometry.width() * PersistedNpcService.scale(spec), geometry.height() * PersistedNpcService.scale(spec), PersistedNpcService.maximumHealth(spec));
         state.spawn();
         configure(desired);
         owner = new RegionOwner(uuid, host.regions, host.budget, 32, 8, this);
@@ -388,7 +388,7 @@ final class RegionActor implements RegionOwner.Body {
         cancelReads();
         host.index.remove(uuid);
         RegionNpcRuntime.Geometry geometry = host.geometry(next.spec().type());
-        state = state.reconfigured(position, geometry.width(), geometry.height(), PersistedNpcService.maximumHealth(next.spec()));
+        state = state.reconfigured(position, geometry.width() * PersistedNpcService.scale(next.spec()), geometry.height() * PersistedNpcService.scale(next.spec()), PersistedNpcService.maximumHealth(next.spec()));
         configure(next);
         error = null;
         if (state.snapshot().active()) host.index.upsert(state.snapshot());
@@ -1014,7 +1014,7 @@ final class RegionActor implements RegionOwner.Body {
         if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return false; }
         boolean swims = BodyMobility.forBody(spec.type(), hullWidth(), hullHeight()).supports(MovementProfile.Mode.SWIM);
         WorldPosition at = state.snapshot().position();
-        IdleFall.Step step = IdleFall.step(at.point(), fallSpeed, hullWidth(), hullHeight(), swims, LiveMovementProbe.owned(world, owned));
+        IdleFall.Step step = IdleFall.step(at.point(), fallSpeed, movement.gravity(), hullWidth(), hullHeight(), swims, LiveMovementProbe.owned(world, owned));
         host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted - step.sampled());
         fallSpeed = step.speed();
         boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
@@ -1037,7 +1037,7 @@ final class RegionActor implements RegionOwner.Body {
         ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
         boolean swims = BodyMobility.forBody(spec.type(), hullWidth(), hullHeight()).supports(MovementProfile.Mode.SWIM);
         WorldPosition at = state.snapshot().position();
-        IdleFall.Step step = IdleFall.step(at.point(), fallSpeed, hullWidth(), hullHeight(), swims, LiveMovementProbe.owned(world, owned));
+        IdleFall.Step step = IdleFall.step(at.point(), fallSpeed, movement.gravity(), hullWidth(), hullHeight(), swims, LiveMovementProbe.owned(world, owned));
         host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted - step.sampled());
         fallSpeed = step.speed();
         boolean falling = step.outcome() == IdleFall.Outcome.FALLING;

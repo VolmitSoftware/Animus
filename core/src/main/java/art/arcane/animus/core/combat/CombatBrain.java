@@ -805,7 +805,7 @@ final class CombatBrain {
         if (defense.protectFromRange() > 0 && (!from.world().equals(self.get().position().world())
                 || from.point().distance(self.get().position().point()) > defense.protectFromRange())) return 0;
         if (defense.protectedFromIgnored() && attackerView.isPresent() && settings.ignores().matches(attackerView.get(), context)) return 0;
-        double reduced = amount * (1 - armor);
+        double reduced = defense.armorPoints() > 0 ? CombatAttributes.armored(amount, defense.armorPoints(), defense.armorToughness()) : amount * (1 - armor);
         if (reduced <= 0) return 0;
         invulnerableUntil = now + defense.invulnerableTicks();
         return reduced;
