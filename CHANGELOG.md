@@ -183,6 +183,8 @@
 - Web editor: a Placeholder skins picker in the NPC Appearance section; the choice lasts for the page session and is not saved to the definition.
 - Web editor: `tool/generate_placeholder_skins.dart` draws the placeholder PNGs and their index.
 - Web editor: `test/shape_browser.cjs` walks every page at both widths and themes and fails on a corner radius, an inset or offset shadow, a one-sided accent border or an accent gradient, including hover, focus and active states.
+- `same_world(a, b)` behavior expression function, which matches worlds by name, UUID or dimension key.
+- `viewer.world_key` GUI placeholder.
 
 ### Changed
 
@@ -269,6 +271,7 @@
 - Web editor: the stage loading indicator is a straight pink line instead of a spinning partial ring.
 - Web editor: checkboxes, radios and range thumbs are square; rig keyframes, events and gizmo handles take a 44 px target on phones.
 - Web editor: the NPC preview wears a placeholder skin instead of the default one when no skin texture is loaded, offline or online, and its skin line names it.
+- The Denizen importer converts world comparisons and `in:<world>` switches to `same_world`.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -410,6 +413,10 @@
 - `player_area` triggers naming a Bukkit world such as `world` now fire on Fabric, NeoForge and Forge.
 - `player_world_change` `from` and `to` accept Bukkit world names on mod servers and dimension keys on Bukkit.
 - Hologram anchors on mod servers match `world_nether`, `world_the_end` and bare vanilla dimension names.
+- Folia combat respawn and return points accept world names and dimension keys.
+- Bukkit NPC positions, admin create, teleports, combat locations, GUI teleports, shop chests and WorldGuard checks accept dimension keys such as `minecraft:the_nether`.
+- `npc.world` gives the same form as `player.world`: the world name on Bukkit, the dimension key on mods.
+- Clicks on NPC-bound holograms count only in the NPC's world.
 
 ### Notes
 
