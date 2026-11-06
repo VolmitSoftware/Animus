@@ -6,6 +6,7 @@ import '../../model/document_kind.dart';
 import '../../services/server/error_copy.dart';
 import '../../services/server/server_connection.dart';
 import '../../services/server/server_profiles.dart';
+import '../../state/catalog_entry.dart';
 import '../../state/live_session.dart';
 import '../../state/server_hub.dart';
 import 'connection_pill.dart';

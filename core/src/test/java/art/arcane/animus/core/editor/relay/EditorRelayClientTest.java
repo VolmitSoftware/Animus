@@ -184,6 +184,35 @@ class EditorRelayClientTest {
     }
 
     @Test
+    void shouldEndOnlyTheRevokedSessionsRelayedStream() throws Exception {
+        FakeRelay.Session session = connect();
+        EditorEvents events = new EditorEvents();
+        for (long id : new long[]{7, 8}) {
+            session.send(request(id, "GET", "/v1/events"));
+            FakeHandler.Stream stream = handler.streams.poll(5, TimeUnit.SECONDS);
+            Runnable remove = events.add(id == 7 ? "revoked" : "kept", stream.sink(), (String npc) -> true);
+            stream.opened().complete(new EditorEventStream(EditorResponse.json(200, new JsonObject()), remove));
+            assertEquals(200, session.next(WAIT).get("status").getAsInt());
+        }
+        events.close("revoked", "token-revoked");
+        JsonObject closing = session.next(WAIT);
+        assertEquals(7, closing.get("id").getAsLong());
+        assertEquals("token-revoked", closing.getAsJsonObject("event").get("reason").getAsString());
+        JsonObject close = session.next(WAIT);
+        assertEquals("close", close.get("type").getAsString());
+        assertEquals(7, close.get("id").getAsLong());
+        JsonObject event = new JsonObject();
+        event.addProperty("type", "preview");
+        event.addProperty("previewId", "prev_00000001");
+        event.addProperty("state", "expired");
+        events.publish(event);
+        events.tick();
+        JsonObject next = session.next(WAIT);
+        assertEquals(8, next.get("id").getAsLong(), "the other session keeps streaming");
+        assertEquals(1, events.open());
+    }
+
+    @Test
     void shouldEndARefusedStreamWithItsResponse() throws Exception {
         FakeRelay.Session session = connect();
         session.send(request(5, "GET", "/v1/events"));

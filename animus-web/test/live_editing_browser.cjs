@@ -3,7 +3,8 @@
 // server catalog, edit it, validate on the server, start a viewer-private
 // preview (the live NPC it hides is named until End preview), apply, force a
 // conflict and merge it, drop the direct path (failover to the relay, then
-// back to direct once it recovers) and then every path (reconnect), apply
+// back to direct once it recovers) and then every path (reconnect and its
+// resync line, once with a server edit made meanwhile), apply
 // after recovery and undo through the inline confirm. The second part runs
 // the failure paths through the fake server's test controls: pairing codes
 // that are bad or expired, the expiry note, a forced scope-missing, a lost
@@ -236,8 +237,10 @@ async function run(browser, width, height, label, theme) {
   await status(page, 'reconnecting');
   await editDraft(page, (json) => { json.name = 'After Recovery'; });
   await shot(page, `${label}-06-reconnecting`);
-  await control('restore', {});
-  await page.getByRole('button', {name: 'Retry now'}).first().click().catch(() => {});
+  await expectNotice(page, 'Resynced with the server; nothing changed while disconnected.', async () => {
+    await control('restore', {});
+    await page.getByRole('button', {name: 'Retry now'}).first().click().catch(() => {});
+  });
   await status(page, 'online');
   await expectNotice(page, 'Applied 1 document', () => click(page, 'Apply 1'));
   assert.equal((await fetchSource(npc)).name, 'After Recovery');
@@ -257,6 +260,21 @@ async function run(browser, width, height, label, theme) {
   await expectNotice(page, 'Undid 1 document', () => click(page, 'Undo on the server'));
   assert.equal((await fetchSource(npc)).name, 'Direct Again');
   await shot(page, `${label}-07-undo`);
+
+  // An edit made on the server while this editor is cut off: the reconnect
+  // resyncs, takes the server copy of the clean draft and says so in one line.
+  networkDown = true;
+  await control('drop', {path: 'all', seconds: 4});
+  await status(page, 'reconnecting');
+  await control('edit', {kind: 'npc', id: npc, source: await sourceWith((json) => { json.name = 'Changed While Away'; })});
+  await expectNotice(page, 'Resynced with the server: 1 document refreshed.', async () => {
+    await control('restore', {});
+    await page.getByRole('button', {name: 'Retry now'}).first().click().catch(() => {});
+  });
+  await status(page, 'online');
+  await page.locator('[data-testid="draft-count"]', {hasText: 'No changed drafts'}).waitFor();
+  await shot(page, `${label}-07b-resynced`);
+  networkDown = false;
 
   assert.deepEqual(errors, [], `${label}: console errors`);
   await context.close();

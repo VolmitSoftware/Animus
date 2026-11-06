@@ -25,6 +25,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
@@ -163,6 +164,73 @@ class EditorListenerTest {
             assertEquals(1000, closed.get(5, TimeUnit.SECONDS), "a clean close, not a protocol error");
             assertEquals(0, harness.api.parts().events().open());
         }
+    }
+
+    @Test
+    void websocket_clientThatStopsReading_isDroppedWithoutStallingOtherStreams() throws Exception {
+        EditorSettings settings = settings(freePort(), "", "");
+        try (EditorHarness harness = new EditorHarness(directory, settings);
+             EditorListener listener = new EditorListener(settings, harness.root, harness.api, (String line) -> {})) {
+            listener.start();
+            String token = harness.token();
+            AtomicInteger delivered = new AtomicInteger();
+            WebSocket fast = HttpClient.newHttpClient().newWebSocketBuilder().header("Origin", EditorHarness.ORIGIN)
+                    .buildAsync(URI.create("ws://127.0.0.1:" + listener.port() + "/animus/v1/events"), new WebSocket.Listener() {
+                        @Override public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                            if (last) delivered.incrementAndGet();
+                            webSocket.request(1);
+                            return null;
+                        }
+                    }).get(5, TimeUnit.SECONDS);
+            fast.sendText("{\"type\":\"auth\",\"token\":\"" + token + "\"}", true).get(5, TimeUnit.SECONDS);
+            try (Socket slow = new Socket()) {
+                slow.setReceiveBufferSize(4096);
+                slow.connect(new java.net.InetSocketAddress("127.0.0.1", listener.port()));
+                OutputStream output = slow.getOutputStream();
+                output.write(("GET /animus/v1/events HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: " + EditorHarness.ORIGIN + "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                        + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                output.write(maskedText("{\"type\":\"auth\",\"token\":\"" + token + "\"}"));
+                output.flush();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (harness.api.parts().events().open() < 2 && System.nanoTime() < deadline) Thread.sleep(10);
+                assertEquals(2, harness.api.parts().events().open());
+                // The slow socket never reads again: its send buffers fill while the fast one keeps up.
+                int events = 160;
+                CompletableFuture<Void> pacing = CompletableFuture.runAsync(() -> {
+                    for (int i = 0; i < events; i++) {
+                        JsonObject result = new JsonObject();
+                        result.add("documents", new JsonArray());
+                        result.addProperty("pad", "x".repeat(48 * 1024));
+                        JsonObject event = new JsonObject();
+                        event.addProperty("type", "change");
+                        event.add("result", result);
+                        harness.api.parts().events().publish(event);
+                        harness.api.parts().events().tick();
+                        // Paced like the frame timer: the reading browser stays a few frames behind at most.
+                        long wait = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                        while (delivered.get() < i - 4 && System.nanoTime() < wait) Thread.onSpinWait();
+                    }
+                });
+                pacing.get(20, TimeUnit.SECONDS);
+                deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                while ((delivered.get() < events || harness.api.parts().events().open() != 1) && System.nanoTime() < deadline) Thread.sleep(10);
+                assertEquals(events, delivered.get(), "the reading stream got every event");
+                assertEquals(1, harness.api.parts().events().open(), "the stream that stopped reading was dropped");
+            }
+        }
+    }
+
+    /** One masked client text frame under 64 KiB. */
+    private static byte[] maskedText(String text) {
+        byte[] payload = text.getBytes(StandardCharsets.UTF_8), mask = {1, 2, 3, 4};
+        int head = payload.length < 126 ? 2 : 4;
+        byte[] frame = new byte[head + 4 + payload.length];
+        frame[0] = (byte) 0x81;
+        if (head == 2) frame[1] = (byte) (0x80 | payload.length);
+        else { frame[1] = (byte) (0x80 | 126); frame[2] = (byte) (payload.length >>> 8); frame[3] = (byte) payload.length; }
+        System.arraycopy(mask, 0, frame, head, 4);
+        for (int index = 0; index < payload.length; index++) frame[head + 4 + index] = (byte) (payload[index] ^ mask[index % 4]);
+        return frame;
     }
 
     @Test

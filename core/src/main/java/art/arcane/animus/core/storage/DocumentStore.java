@@ -233,6 +233,75 @@ public final class DocumentStore implements AutoCloseable {
         return List.copyOf(paths);
     }
 
+    /** What one rotation removed: rollback receipts, then stored transaction objects no remaining receipt names. */
+    public record Rotation(int receipts, int objects) {}
+
+    /**
+     * Removes rollback receipts that are neither among the newest {@code keep} nor younger than {@code maxAge}, unless
+     * {@code pinned} names them, then the transaction objects that only removed receipts referred to. A removed
+     * transaction can no longer be rolled back. Settings archives under {@code backups/} are not receipts.
+     */
+    public synchronized Rotation rotateBackups(int keep, java.time.Duration maxAge, Set<String> pinned, java.time.Instant now) throws IOException {
+        ensureWritable();
+        if (keep < 1 || maxAge.isNegative()) throw new IllegalArgumentException("Rotation keeps at least one receipt for a non-negative age");
+        recover();
+        Path backups = resolve("backups");
+        if (!Files.isDirectory(backups, LinkOption.NOFOLLOW_LINKS)) return new Rotation(0, 0);
+        record Receipt(String id, java.time.Instant written) {}
+        List<Receipt> receipts = new ArrayList<>();
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(backups, "*.json")) {
+            for (Path file : files) {
+                String name = file.getFileName().toString(), id = name.substring(0, name.length() - ".json".length());
+                if (!id.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}") || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) continue;
+                receipts.add(new Receipt(id, Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant()));
+            }
+        }
+        receipts.sort(Comparator.comparing(Receipt::written).reversed().thenComparing(Receipt::id));
+        java.time.Instant cutoff = now.minus(maxAge);
+        int removed = 0;
+        for (int index = keep; index < receipts.size(); index++) {
+            Receipt receipt = receipts.get(index);
+            if (pinned.contains(receipt.id()) || !receipt.written().isBefore(cutoff)) continue;
+            delete(resolve("backups/" + receipt.id() + ".json"));
+            removed++;
+        }
+        return new Rotation(removed, removed == 0 ? 0 : collectTransactionObjects(backups));
+    }
+
+    /** Deletes stored transaction contents that no receipt left in {@code backups} names. */
+    private int collectTransactionObjects(Path backups) throws IOException {
+        Path objects = resolve("state/objects/transaction-data");
+        if (!Files.isDirectory(objects, LinkOption.NOFOLLOW_LINKS)) return 0;
+        Set<String> referenced = new HashSet<>();
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(backups, "*.json")) {
+            for (Path file : files) {
+                String name = file.getFileName().toString();
+                if (!name.matches("[a-f0-9-]{36}\\.json") || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) continue;
+                JsonObject journal;
+                int version;
+                try {
+                    journal = JsonDocuments.object(JsonDocuments.read(file));
+                    version = validateJournal(journal);
+                } catch (IOException | RuntimeException unreadable) { return 0; } // Its references are unknown, so every object stays.
+                if (version != 2) continue;
+                for (JsonElement element : journal.getAsJsonArray("entries")) {
+                    JsonObject entry = element.getAsJsonObject();
+                    for (String side : List.of("beforeObject", "afterObject")) if (!entry.get(side).isJsonNull()) referenced.add(entry.get(side).getAsString());
+                }
+            }
+        }
+        int removed = 0;
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(objects, "*.json")) {
+            for (Path file : files) {
+                String name = file.getFileName().toString();
+                if (!name.matches("[a-f0-9]{64}\\.json") || referenced.contains(name.substring(0, 64))) continue;
+                delete(file);
+                removed++;
+            }
+        }
+        return removed;
+    }
+
     private void recover() throws IOException {
         String pending = read("state/pending.json");
         if (pending != null) finish(JsonDocuments.object(pending));

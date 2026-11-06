@@ -7,6 +7,7 @@ import 'package:animus_editor/services/server/error_copy.dart';
 import 'package:animus_editor/services/server/server_connection.dart';
 import 'package:animus_editor/services/server/transport.dart';
 import 'package:animus_editor/state/editor_store.dart';
+import 'package:animus_editor/state/live_lines.dart';
 import 'package:animus_editor/state/live_session.dart';
 import 'package:animus_editor/state/workspace_repository.dart';
 import 'package:test/test.dart';

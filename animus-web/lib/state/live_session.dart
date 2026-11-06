@@ -9,29 +9,11 @@ import '../model/server_binding.dart';
 import '../services/server/error_copy.dart';
 import '../services/server/server_connection.dart';
 import '../services/server/transport.dart';
+import 'catalog_entry.dart';
 import 'editor_store.dart';
+import 'live_lines.dart';
 import 'session_owner.dart';
 import 'workspace_repository.dart';
-
-/// One `documentVersion` from the catalog.
-class CatalogEntry {
-  const CatalogEntry(this.kind, this.id, this.path, this.revision, this.hash);
-
-  final DocumentKind kind;
-  final String id;
-  final String path;
-  final int revision;
-  final String hash;
-
-  String get key => documentKey(kind, id);
-
-  static CatalogEntry? fromJson(Object? json) {
-    if (json is! Map<String, Object?>) return null;
-    final DocumentKind? kind = DocumentKind.parse('${json['kind']}');
-    if (kind == null || json['id'] is! String || json['revision'] is! num || json['hash'] is! String) return null;
-    return CatalogEntry(kind, json['id']! as String, '${json['path']}', (json['revision']! as num).toInt(), json['hash']! as String);
-  }
-}
 
 /// A document whose draft and the server's version both moved: the
 /// three-way merge and the side chosen for each conflicting field.
@@ -268,26 +250,46 @@ class LiveSession {
     _changed();
   }
 
+  /// Whether a catalog load has finished since this session started; the
+  /// next connect after it is a resync and says what it found.
+  bool _synced = false;
+
   /// After every (re)connect: what happened to unanswered change sets, and
   /// what changed on the server meanwhile.
   Future<void> _online() async {
-    if (schemas == null) {
-      final ApiResponse? response = await _call(const ApiRequest('GET', '/v1/schemas'), 'load the server schemas');
-      final Object? body = response?.body;
-      if (response != null && response.ok && body is Map<String, Object?> && body['schemas'] is Map<String, Object?>) {
-        schemas = body['schemas']! as Map<String, Object?>;
+    final bool resync = _synced;
+    if (resync) {
+      busy = 'Resyncing';
+      _changed();
+    }
+    try {
+      if (schemas == null) {
+        final ApiResponse? response = await _call(const ApiRequest('GET', '/v1/schemas'), 'load the server schemas');
+        final Object? body = response?.body;
+        if (response != null && response.ok && body is Map<String, Object?> && body['schemas'] is Map<String, Object?>) {
+          schemas = body['schemas']! as Map<String, Object?>;
+        }
+      }
+      await recoverPending();
+      await loadCatalog();
+      final ServerBinding? server = binding;
+      if (server == null || catalogProblem != null) return;
+      _synced = true;
+      final Map<String, CatalogEntry> byKey = <String, CatalogEntry>{for (final CatalogEntry entry in catalog) entry.key: entry};
+      final List<String> moved = <String>[
+        for (final MapEntry<String, ServerBase> base in server.bases.entries)
+          if (byKey[base.key]?.hash != base.value.hash) base.key,
+      ];
+      final ({int refreshed, int stale})? found = moved.isEmpty ? (refreshed: 0, stale: 0) : await _absorb(moved, announce: !resync);
+      if (resync && found != null) {
+        _notice(found.stale > 0 ? NoticeLevel.warning : NoticeLevel.info, resyncLine(refreshed: found.refreshed, stale: found.stale));
+      }
+    } finally {
+      if (resync) {
+        busy = null;
+        _changed();
       }
     }
-    await recoverPending();
-    await loadCatalog();
-    final ServerBinding? server = binding;
-    if (server == null) return;
-    final Map<String, CatalogEntry> byKey = <String, CatalogEntry>{for (final CatalogEntry entry in catalog) entry.key: entry};
-    final List<String> moved = <String>[
-      for (final MapEntry<String, ServerBase> base in server.bases.entries)
-        if (byKey[base.key]?.hash != base.value.hash) base.key,
-    ];
-    if (moved.isNotEmpty) await _absorb(moved);
   }
 
   Future<ApiResponse?> _call(ApiRequest request, String what) async {
@@ -854,14 +856,18 @@ class LiveSession {
 
   /// Fetches the server's version of [keys]. A clean draft (or every draft
   /// when [replace]) takes it; an edited one is marked stale for a merge.
-  Future<void> _absorb(List<String> keys, {bool replace = false}) async {
+  /// Returns how many copies it replaced and how many drafts are stale, or
+  /// null when the connection failed on the way. With [announce] it logs the
+  /// refresh itself.
+  Future<({int refreshed, int stale})?> _absorb(List<String> keys, {bool replace = false, bool announce = true}) async {
     final List<DocumentChange> documents = <DocumentChange>[];
     final Map<String, ServerBase?> bases = <String, ServerBase?>{};
+    int staleDrafts = 0;
     for (final String key in keys) {
       final (DocumentKind, String)? parsed = parseDocumentKey(key);
       if (parsed == null) continue;
       final (ServerBase?, List<Diagnostic>)? fetched = await _fetch(parsed.$1, parsed.$2);
-      if (fetched == null) return;
+      if (fetched == null) return null;
       final ServerBase? current = fetched.$1;
       // Our own apply already moved the base there.
       if (current != null && binding?.bases[key]?.hash == current.hash) {
@@ -875,11 +881,12 @@ class LiveSession {
         stale.remove(key);
       } else if (binding?.bases[key]?.hash != current?.hash) {
         stale.add(key);
+        staleDrafts++;
       }
     }
     if (documents.isEmpty) {
       _changed();
-      return;
+      return (refreshed: 0, stale: staleDrafts);
     }
     await store.commit(
       documents: documents,
@@ -890,7 +897,9 @@ class LiveSession {
       },
       undoable: false,
     );
-    _notice(NoticeLevel.info, 'Refreshed ${documents.length} document${documents.length == 1 ? '' : 's'} changed on the server.');
+    if (announce) _notice(NoticeLevel.info, 'Refreshed ${documents.length} document${documents.length == 1 ? '' : 's'} changed on the server.');
+    if (!announce) _changed();
+    return (refreshed: documents.length, stale: staleDrafts);
   }
 
   /// Builds the merge view for a stale draft from the server's version now.
@@ -990,31 +999,4 @@ class LiveSession {
     next.sort((CatalogEntry a, CatalogEntry b) => a.path.compareTo(b.path));
     catalog = next;
   }
-}
-
-/// The live log line after an apply or undo, naming the moves in it.
-String appliedLine(ChangeApplied applied, {required bool undo}) {
-  final int count = applied.documents.length;
-  final int moved = applied.documents.where((AppliedDocument document) => document.from != null).length;
-  final String what = '$count document${count == 1 ? '' : 's'}${moved == 0 ? '' : ', $moved moved'}';
-  return '${undo ? 'Undid' : 'Applied'} $what (change ${applied.changeId}).';
-}
-
-/// The live log line after a server validation.
-String validationLine(bool valid, int documents, int errors) {
-  if (valid) return 'The server accepts $documents document${documents == 1 ? '' : 's'}.';
-  if (errors == 0) return 'The server did not accept the drafts but named no error. Check the server console, then validate again.';
-  return 'The server found $errors error${errors == 1 ? '' : 's'}. Fix the marked fields, then validate again.';
-}
-
-/// The live log line after spawning or despawning a selection.
-String spawnLine({required bool spawn, required int total, required int sent, required int accepted, required List<String> refused, ErrorCopy? reason}) {
-  final String verb = spawn ? 'Spawned' : 'Despawned';
-  final String npcs = 'NPC${total == 1 ? '' : 's'}';
-  final List<String> parts = <String>[
-    if (sent == total && refused.isEmpty) '$verb $accepted $npcs on the server.' else '$verb $accepted of $total $npcs.',
-    if (refused.isNotEmpty) 'The server refused ${refused.take(3).join(', ')}${refused.length > 3 ? ' and ${refused.length - 3} more' : ''}: ${reason?.text ?? ''}',
-    if (sent < total) 'The connection failed before ${total - sent} could be sent; select them again once it reconnects.',
-  ];
-  return parts.join(' ').trim();
 }
