@@ -7,6 +7,7 @@ import art.arcane.animus.core.metrics.DebugWatch;
 import art.arcane.animus.core.metrics.MetricsSnapshot;
 import art.arcane.animus.core.metrics.ReactMetricCatalog;
 import art.arcane.animus.core.metrics.Subsystem;
+import art.arcane.animus.core.npc.GroupCommands;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.text.RichText;
 import net.md_5.bungee.api.ChatMessageType;
@@ -238,6 +239,7 @@ public final class AnimusPlugin extends JavaPlugin {
             extras.put("editor", new EditorCommands(() -> editor, commands));
             recordings = new RecordingSessions(this, runtime, commands, regions, environment.minecraftVersion());
             extras.put("record", new RecordCommand(recordings, getServer()::getPlayer));
+            extras.put("groups", new GroupCommands(runtime::npcs, commands, living::selection, living::refresh));
             AnimusRuntime measuredRuntime = runtime;
             extras.put("debug", new DebugCommands(() -> metrics, debugWatch,
                     (String id) -> measuredRuntime.isRunning() ? measuredRuntime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),

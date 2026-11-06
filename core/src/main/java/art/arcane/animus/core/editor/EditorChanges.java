@@ -1,5 +1,6 @@
 package art.arcane.animus.core.editor;
 
+import art.arcane.animus.core.npc.GroupDocuments;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocumentTree;
@@ -87,6 +88,7 @@ public final class EditorChanges {
             JsonArray diagnostics = documents.validate(change.kind(), change.id(), source);
             if (change.kind() == DocumentKind.NPC && current.exists()) identity(current.content(), source, diagnostics);
             if (change.kind() == DocumentKind.NPC && !current.exists() && !EditorDocuments.hasErrors(diagnostics)) collisions(location, source, diagnostics);
+            if (change.kind() == DocumentKind.NPC && !EditorDocuments.hasErrors(diagnostics)) groupReferences(set, source, diagnostics);
             if (EditorDocuments.hasErrors(diagnostics)) invalid.add(documentDiagnostics(change.kind(), change.id(), diagnostics));
             String content = change.kind() == DocumentKind.RECORDING && !EditorDocuments.hasErrors(diagnostics) ? recording(source) : JsonDocuments.write(source);
             String hash = "sha256:" + JsonDocuments.hash(content);
@@ -294,6 +296,19 @@ public final class EditorChanges {
                 diagnostics.add(EditorDocuments.diagnostic("error", "$.uuid", "uuid " + uuid + " is already used by " + other.id(), "identity"));
                 return;
             }
+        }
+    }
+
+    /** Every group an NPC lists exists on the server or is saved by the same change set, and is not deleted by it. */
+    private void groupReferences(EditorMessages.ChangeSet set, JsonObject source, JsonArray diagnostics) throws IOException {
+        if (!source.has("groups") || !source.get("groups").isJsonArray()) return;
+        JsonArray groups = source.getAsJsonArray("groups");
+        for (int i = 0; i < groups.size(); i++) {
+            String id = groups.get(i).getAsString();
+            Optional<EditorMessages.Change> changed = set.documents().stream()
+                    .filter((EditorMessages.Change change) -> change.kind() == DocumentKind.GROUP && change.id().equals(id)).findFirst();
+            boolean exists = changed.isPresent() ? !changed.get().delete() : store.read(GroupDocuments.FOLDER + "/" + id + ".json") != null;
+            if (!exists) diagnostics.add(EditorDocuments.diagnostic("error", "$.groups[" + i + "]", "unknown group " + id, "group-missing"));
         }
     }
 

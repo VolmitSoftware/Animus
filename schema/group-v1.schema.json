@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/group-v1.schema.json",
+  "title": "Animus trait group",
+  "description": "groups/<id>.json. Definition values that NPCs listing this group take before their own fields. The Java validator (GroupDocument) also checks every value with the NPC field validators; this schema checks the shape.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "revision", "id", "values"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$", "description": "Matches the file name."},
+    "description": {"type": "string", "maxLength": 256},
+    "values": {
+      "type": "object",
+      "description": "Any optional NPC definition field, plus skins. Identity and state fields are refused, and a group cannot list other groups.",
+      "propertyNames": {
+        "not": {"enum": ["schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position", "owner", "migration", "groups"]}
+      },
+      "properties": {
+        "modules": {"type": "object", "description": "Module settings keyed by namespace:name; merged key by key with the NPC's."},
+        "behaviors": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9_-]+:[a-z0-9_/-]+$"}, "description": "Appended before the NPC's own, without duplicates."},
+        "tags": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"}},
+        "equipment": {"type": "object"},
+        "hologram": {"type": "object"},
+        "nameplate": {"type": "object"},
+        "pose": {"type": "string"},
+        "poses": {"type": "object"},
+        "movement": {"type": "object"},
+        "rig": {"type": "object"},
+        "armorStand": {"type": "object"},
+        "glowing": {"type": "boolean"},
+        "teamColor": {"type": "string"},
+        "baby": {"type": "boolean"},
+        "usingItem": {"type": "boolean"},
+        "listed": {"type": "boolean"},
+        "gravity": {"type": "boolean"},
+        "skin": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "skins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "description": "A pool of skin hashes; each NPC takes one by a stable hash of its UUID unless it sets skin itself."
+        }
+      }
+    }
+  }
+}
