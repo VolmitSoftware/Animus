@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-5",
   "title": "Old Guard",
+  "style": "native",
   "modes": [
     "trade"
   ],

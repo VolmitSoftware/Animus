@@ -30,7 +30,7 @@ class MovementSettingsTest {
                  "stuck":{"afterTicks":120,"teleport":true}}
                 """));
         assertEquals(new MovementSettings(OptionalDouble.of(1.5), false, true, true, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.of(60), OptionalDouble.of(0.5),
-                Optional.of(new MovementSettings.Stuck(120, true))), movement);
+                Optional.of(new MovementSettings.Stuck(120, true)), OptionalDouble.empty(), IdleFall.GRAVITY), movement);
     }
 
     @Test void errorsNameTheirField() {
@@ -41,13 +41,13 @@ class MovementSettingsTest {
 
     @Test void theRouteProfileTakesStepFallAndWater() {
         MovementSettings movement = new MovementSettings(OptionalDouble.empty(), false, false, false, OptionalDouble.of(1), OptionalInt.of(1), OptionalDouble.empty(),
-                OptionalDouble.empty(), Optional.empty());
+                OptionalDouble.empty(), Optional.empty(), OptionalDouble.empty(), IdleFall.GRAVITY);
         MovementProfile profile = movement.apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
         assertEquals(Set.of(MovementProfile.Mode.WALK, MovementProfile.Mode.SWIM), profile.modes());
         assertEquals(1, profile.stepHeight());
         assertEquals(1, profile.maximumFall());
         MovementProfile flying = new MovementSettings(OptionalDouble.empty(), true, true, true, OptionalDouble.empty(), OptionalInt.empty(), OptionalDouble.empty(),
-                OptionalDouble.empty(), Optional.empty()).apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
+                OptionalDouble.empty(), Optional.empty(), OptionalDouble.empty(), IdleFall.GRAVITY).apply(BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK), "minecraft:player");
         assertEquals(Set.of(MovementProfile.Mode.FLY), flying.modes());
         assertFalse(flying.opensDoors(), "only walking bodies open doors");
         assertFalse(profile.opensDoors());
@@ -73,6 +73,58 @@ class MovementSettingsTest {
         assertFalse(MovementSettings.falls("minecraft:player", floating));
         assertTrue(MovementSettings.falls("minecraft:player", definition(null)));
         assertFalse(MovementSettings.routeDeclaresSpeed(JsonParser.parseString("{\"modules\":{\"animus:navigation\":{\"points\":[]}}}").getAsJsonObject()));
+    }
+
+    private static JsonObject attributed(String type, String movement, String attributes) {
+        JsonObject definition = definition(movement);
+        definition.addProperty("type", type);
+        definition.add("attributes", JsonParser.parseString(attributes));
+        return definition;
+    }
+
+    @Test void movementAttributesFillWhatTheMovementObjectLeavesOut() {
+        MovementSettings player = MovementSettings.parse(attributed("minecraft:player", null,
+                "{\"movement_speed\":0.05,\"step_height\":1,\"safe_fall_distance\":6.5,\"jump_strength\":0.42}"));
+        assertEquals(43.17 * 0.05, player.speed().orElseThrow(), 1e-9, "a player body walks as a player with that speed would");
+        assertEquals(1, player.stepHeight().orElseThrow());
+        assertEquals(6, player.maximumFall().orElseThrow());
+        assertEquals(1.25, player.jumpHeight().orElseThrow(), 0.01, "the vanilla jump reaches about a block and a quarter");
+        MovementSettings zombie = MovementSettings.parse(attributed("minecraft:zombie", null, "{\"movement_speed\":0.3}"));
+        assertEquals(44.05 * 0.09, zombie.speed().orElseThrow(), 1e-9, "a mob body walks with the square of its speed, as vanilla mobs do");
+        MovementSettings fast = MovementSettings.parse(attributed("minecraft:player", null, "{\"movement_speed\":2,\"step_height\":9,\"safe_fall_distance\":-3}"));
+        assertEquals(10, fast.speed().orElseThrow(), "kept within the navigation range");
+        assertEquals(MovementProfile.MAX_STEP, fast.stepHeight().orElseThrow());
+        assertEquals(0, fast.maximumFall().orElseThrow());
+    }
+
+    @Test void theMovementObjectWinsOverAttributes() {
+        MovementSettings movement = MovementSettings.parse(attributed("minecraft:player", "{\"speed\":2,\"stepHeight\":0.5,\"maximumFall\":2}",
+                "{\"movement_speed\":0.2,\"step_height\":1,\"safe_fall_distance\":9}"));
+        assertEquals(2, movement.speed().orElseThrow());
+        assertEquals(0.5, movement.stepHeight().orElseThrow());
+        assertEquals(2, movement.maximumFall().orElseThrow());
+    }
+
+    @Test void gravityAndJumpStrengthShapeTheJumpAndTheFall() {
+        MovementSettings floaty = MovementSettings.parse(attributed("minecraft:player", null, "{\"gravity\":0.02}"));
+        assertEquals(0.02, floaty.gravity());
+        assertEquals(MovementProfile.MAX_JUMP, floaty.jumpHeight().orElseThrow(), "low gravity lets the vanilla jump climb high, up to the planner's limit");
+        MovementProfile walk = BodyMobility.forRoute("minecraft:player", .6, 1.8, MovementProfile.Mode.WALK);
+        assertEquals(MovementProfile.MAX_JUMP, floaty.apply(walk, "minecraft:player").jumpHeight());
+        assertEquals(IdleFall.GRAVITY, MovementSettings.DEFAULT.gravity());
+        assertTrue(MovementSettings.falls("minecraft:player", attributed("minecraft:player", null, "{\"gravity\":0.02}")));
+        assertFalse(MovementSettings.falls("minecraft:player", attributed("minecraft:player", null, "{\"gravity\":0}")), "no gravity hovers");
+        assertFalse(MovementSettings.falls("minecraft:player", attributed("minecraft:player", null, "{\"gravity\":-0.1}")));
+    }
+
+    @Test void aLighterGravityFallsSlower() {
+        MotionValidator.Sampler open = (int x, int y, int z) -> y < 0 ? VoxelSnapshot.Cell.SOLID : VoxelSnapshot.Cell.AIR;
+        IdleFall.Step normal = IdleFall.step(new art.arcane.animus.core.virtual.Vec3(.5, 50, .5), 0, IdleFall.GRAVITY, .6, 1.8, true, open);
+        IdleFall.Step light = IdleFall.step(new art.arcane.animus.core.virtual.Vec3(.5, 50, .5), 0, 0.02, .6, 1.8, true, open);
+        assertEquals((IdleFall.GRAVITY) * IdleFall.DRAG, normal.speed(), 1e-9);
+        assertEquals(0.02 * IdleFall.DRAG, light.speed(), 1e-9);
+        IdleFall.Step terminal = IdleFall.step(new art.arcane.animus.core.virtual.Vec3(.5, 50, .5), 5, 0.02, .6, 1.8, true, open);
+        assertEquals(0.02 * IdleFall.DRAG / (1 - IdleFall.DRAG), terminal.speed(), 1e-9, "terminal speed follows gravity");
     }
 
     @Test void aWalkingRouteThatMayEnterWaterSwimsAcrossAPondAndWalksOnLand() {

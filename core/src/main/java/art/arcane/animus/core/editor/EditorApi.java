@@ -3,6 +3,7 @@ package art.arcane.animus.core.editor;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.BuildIdentity;
+import art.arcane.animus.core.config.EditorNotifySettings;
 import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -56,11 +57,11 @@ public final class EditorApi implements EditorRequestHandler {
 
     /** What the API holds. {@code npcs} reaches the live NPC registry for spawn, despawn and imports; {@code importHost} says whether Citizens or Shopkeepers still run. */
     public record Parts(EditorSettings settings, boolean relayEnabled, EditorHost host, EditorIdentity identity, EditorTokens tokens, EditorAudit audit,
-                        EditorDocuments documents, EditorChanges changes, EditorPreviews previews, EditorEvents events,
+                        EditorDocuments documents, EditorChanges changes, EditorPreviews previews, EditorEvents events, EditorNotices notices,
                         Supplier<NpcRepository> npcs, Supplier<CitizensDropIn.Host> importHost, ScheduledExecutorService timers, Clock clock, String minecraftVersion) {
         /** The same parts under hotloaded {@code [editor]} settings. */
         public Parts with(EditorSettings next, boolean relay) {
-            return new Parts(Objects.requireNonNull(next), relay, host, identity, tokens, audit, documents, changes, previews, events, npcs, importHost, timers, clock, minecraftVersion);
+            return new Parts(Objects.requireNonNull(next), relay, host, identity, tokens, audit, documents, changes, previews, events, notices, npcs, importHost, timers, clock, minecraftVersion);
         }
     }
 
@@ -144,9 +145,27 @@ public final class EditorApi implements EditorRequestHandler {
             throw new EditorError(EditorError.Code.RATE_LIMITED, "At most " + parts.settings().concurrentRequestsPerToken() + " requests run at once per token.", 250, null);
         }
         CompletionStage<EditorResponse> result;
+        Optional<String> action = action(method, segments);
         try { result = route.handler().handle(request, token, segments); }
-        catch (EditorError | RuntimeException refused) { running.decrementAndGet(); throw refused; }
-        return result.whenComplete((EditorResponse response, Throwable failure) -> running.decrementAndGet());
+        catch (EditorError refused) {
+            running.decrementAndGet();
+            action.ifPresent((String name) -> parts.notices().record(EditorNotices.refusal(EditorNotices.Who.of(token), name, refused.code().wireName(), refused.getMessage())));
+            throw refused;
+        }
+        catch (RuntimeException failure) { running.decrementAndGet(); throw failure; }
+        return result.whenComplete((EditorResponse response, Throwable failure) -> {
+            running.decrementAndGet();
+            if (action.isPresent() && response != null && response.status() >= 400) parts.notices().record(EditorNotices.refusal(EditorNotices.Who.of(token), action.get(), response));
+        });
+    }
+
+    /** The server-changing endpoints whose refusals are announced in game: apply, undo, import steps, spawn and despawn. */
+    private static Optional<String> action(String method, String[] segments) {
+        if (!method.equals("POST")) return Optional.empty();
+        if (segments[0].equals("changes")) return Optional.of(segments.length == 1 ? "apply" : "undo");
+        if (segments[0].equals("imports") && segments.length == 3) return Optional.of("import " + segments[2]);
+        if (segments[0].equals("npcs") && segments.length == 3) return Optional.of(segments[2]);
+        return Optional.empty();
     }
 
     @FunctionalInterface private interface Endpoint { CompletionStage<EditorResponse> handle(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError; }
@@ -280,6 +299,7 @@ public final class EditorApi implements EditorRequestHandler {
         }
         EditorTokens.Token token = issued.getValue();
         audit("pair", Optional.of(token.id()), token.admin(), request, List.of(), "paired");
+        parts.notices().record(new EditorNotices.Event(EditorNotifySettings.Kind.PAIR, EditorNotices.Who.of(token), "paired", "", List.of(), Optional.empty(), List.of()));
         JsonObject response = new JsonObject();
         response.addProperty("token", issued.getKey());
         response.addProperty("tokenId", token.id());
@@ -562,7 +582,7 @@ public final class EditorApi implements EditorRequestHandler {
             return files(token, () -> {
                 try {
                     EditorChanges.Outcome outcome = parts.changes().apply(set, requestHash, token.id());
-                    published(outcome);
+                    published(outcome, token, EditorNotifySettings.Kind.APPLY, "applied");
                     audit("apply", Optional.of(token.id()), token.admin(), request, names(set.documents()), outcome.body().get("status").getAsString());
                     return EditorResponse.json(outcome.status(), outcome.body());
                 } finally { parts.changes().finished(set.idempotencyKey()); }
@@ -570,9 +590,14 @@ public final class EditorApi implements EditorRequestHandler {
         } catch (EditorError busy) { parts.changes().finished(set.idempotencyKey()); throw busy; }
     }
 
-    private void published(EditorChanges.Outcome outcome) {
+    /** Reloads, announces in game once the reload is live, and sends the change and catalog events of a committed change. */
+    private void published(EditorChanges.Outcome outcome, EditorTokens.Token token, EditorNotifySettings.Kind kind, String verb) {
         if (!outcome.committed()) return;
-        parts.host().applied(outcome.kinds(), removedBehaviors(outcome.deleted()), outcome.rollback());
+        List<String> touched = new ArrayList<>();
+        for (JsonElement version : outcome.body().getAsJsonArray("documents")) touched.add(EditorNotices.reference(version.getAsJsonObject()));
+        for (JsonElement deleted : outcome.deleted()) touched.add(EditorNotices.reference(deleted.getAsJsonObject()));
+        Optional<String> transaction = Optional.of(outcome.body().get("changeId").getAsString());
+        announce(parts.host().applied(outcome.kinds(), removedBehaviors(outcome.deleted()), outcome.rollback()), token, kind, verb, touched, transaction);
         JsonObject change = new JsonObject();
         change.addProperty("type", "change");
         change.add("result", outcome.body());
@@ -582,6 +607,14 @@ public final class EditorApi implements EditorRequestHandler {
         catalog.add("documents", outcome.catalog());
         if (!outcome.deleted().isEmpty()) catalog.add("deleted", outcome.deleted());
         parts.events().publish(catalog);
+    }
+
+    /** Records the notice once the reload completes, with the problems it reported. */
+    private void announce(CompletionStage<List<String>> reload, EditorTokens.Token token, EditorNotifySettings.Kind kind, String verb, List<String> documents,
+                          Optional<String> transaction) {
+        EditorNotices.Who who = EditorNotices.Who.of(token);
+        reload.whenComplete((List<String> problems, Throwable failure) -> parts.notices().record(new EditorNotices.Event(kind, who, verb, "", documents, transaction,
+                failure != null ? List.of("reload failed: " + failure.getMessage()) : problems)));
     }
 
     private CompletionStage<EditorResponse> changeStatus(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {
@@ -607,7 +640,7 @@ public final class EditorApi implements EditorRequestHandler {
             return files(token, () -> {
                 try {
                     EditorChanges.Outcome outcome = parts.changes().undo(changeId, key, token.id(), (Set<DocumentKind> kinds, List<String> ids) -> scopes(token, kinds, ids));
-                    published(outcome);
+                    published(outcome, token, EditorNotifySettings.Kind.ROLLBACK, "undid");
                     audit("undo", Optional.of(token.id()), token.admin(), request, List.of(changeId), outcome.body().get("status").getAsString());
                     return EditorResponse.json(outcome.status(), outcome.body());
                 } finally { parts.changes().finished(key); }
@@ -723,7 +756,9 @@ public final class EditorApi implements EditorRequestHandler {
                 throw refused;
             }
             List<String> documents = new ArrayList<>(List.of("import:" + id));
-            importPublished(before, hashes(), step.equals("rollback")).stream().limit(64).forEach(documents::add);
+            EditorNotifySettings.Kind kind = step.equals("rollback") ? EditorNotifySettings.Kind.ROLLBACK : EditorNotifySettings.Kind.IMPORT;
+            String verb = step.equals("rollback") ? "rolled back an import of" : step.equals("apply") ? "applied an import of" : "accepted an import of";
+            importPublished(before, hashes(), step.equals("rollback"), token, kind, verb).stream().limit(64).forEach(documents::add);
             audit("import-" + step, Optional.of(token.id()), token.admin(), request, documents, step.equals("rollback") ? "rolled-back" : step.equals("apply") ? "applied" : "accepted");
             return EditorResponse.json(200, review);
         });
@@ -737,7 +772,8 @@ public final class EditorApi implements EditorRequestHandler {
     }
 
     /** Reloads what an import step changed and sends one catalog event; returns the changed documents as {@code kind:id}. */
-    private List<String> importPublished(Map<String, String> before, Map<String, String> after, boolean rollback) throws IOException {
+    private List<String> importPublished(Map<String, String> before, Map<String, String> after, boolean rollback, EditorTokens.Token token,
+                                         EditorNotifySettings.Kind notice, String verb) throws IOException {
         JsonArray catalog = new JsonArray(), deleted = new JsonArray();
         List<String> touched = new ArrayList<>();
         Set<DocumentKind> kinds = EnumSet.noneOf(DocumentKind.class);
@@ -761,7 +797,7 @@ public final class EditorApi implements EditorRequestHandler {
             deleted.add(reference);
         }
         if (kinds.isEmpty()) return touched;
-        parts.host().applied(kinds, removedBehaviors(deleted), rollback);
+        announce(parts.host().applied(kinds, removedBehaviors(deleted), rollback), token, notice, verb, touched, Optional.empty());
         JsonObject event = new JsonObject();
         event.addProperty("type", "catalog");
         event.add("documents", catalog);
@@ -820,7 +856,8 @@ public final class EditorApi implements EditorRequestHandler {
                     files(token, () -> {
                         try { repository.apply(draft); }
                         catch (IOException conflict) { throw new EditorError(EditorError.Code.CONFLICT, conflict.getMessage()); }
-                        parts.host().applied(EnumSet.of(DocumentKind.NPC), Set.of(), false);
+                        announce(parts.host().applied(EnumSet.of(DocumentKind.NPC), Set.of(), false), token,
+                                spawn ? EditorNotifySettings.Kind.SPAWN : EditorNotifySettings.Kind.DESPAWN, spawn ? "spawned" : "despawned", List.of("npc:" + id), Optional.empty());
                         audit(spawn ? "spawn" : "despawn", Optional.of(token.id()), token.admin(), request, List.of("npc:" + id), "applied");
                         JsonObject body = new JsonObject();
                         body.addProperty("id", id);
@@ -870,12 +907,20 @@ public final class EditorApi implements EditorRequestHandler {
         }
     }
 
-    /** Revokes tokens, closes their streams and ends their previews. */
-    public List<String> revoke(String idOrAll, String reason) throws IOException {
+    /** Revokes tokens by command, closes their streams and ends their previews. */
+    public List<String> revoke(String idOrAll, String reason) throws IOException { return revoke(idOrAll, reason, "by command"); }
+
+    /** {@code cause} ends the in-game notice, such as {@code by command}. */
+    private List<String> revoke(String idOrAll, String reason, String cause) throws IOException {
+        Map<String, EditorTokens.Token> known = new HashMap<>();
+        for (EditorTokens.Token token : parts.tokens().list()) known.put(token.id(), token);
         List<String> ids = parts.tokens().revoke(idOrAll);
         for (String id : ids) {
             parts.events().close(id, reason);
             parts.previews().endToken(id);
+            EditorTokens.Token token = known.get(id);
+            EditorNotices.Who who = token == null ? new EditorNotices.Who(id, "", Optional.empty()) : EditorNotices.Who.of(token);
+            parts.notices().record(new EditorNotices.Event(EditorNotifySettings.Kind.REVOKE, who, "was revoked", cause, List.of(), Optional.empty(), List.of()));
         }
         return ids;
     }
@@ -895,7 +940,7 @@ public final class EditorApi implements EditorRequestHandler {
             token.admin().ifPresent((UUID admin) -> parts.host().admin(admin, (EditorHost.Admin status) -> {
                 if (status != EditorHost.Admin.NOT_ADMIN) return;
                 try {
-                    if (!revoke(token.id(), "token-revoked").isEmpty())
+                    if (!revoke(token.id(), "token-revoked", "after losing animus.admin").isEmpty())
                         parts.audit().record(new EditorAudit.Entry("revoke", Optional.of(token.id()), Optional.of(admin), "server", "admin-check", List.of(), "animus.admin removed"));
                 } catch (IOException failure) {
                     System.getLogger("Animus").log(System.Logger.Level.WARNING, "Editor token revoke failed: " + failure.getMessage());

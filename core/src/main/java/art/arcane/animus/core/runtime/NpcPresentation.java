@@ -2,6 +2,7 @@ package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAppearance;
+import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.BodySkin;
 import art.arcane.animus.core.presentation.BodyTransport;
@@ -18,9 +19,9 @@ import java.util.function.UnaryOperator;
 public final class NpcPresentation {
     private NpcPresentation() {}
 
-    /** Call where the viewer is owned. */
-    public static <I> BodyTransport.Body body(BodyTransport<?, ?> packets, DefinitionSpec<I> spec, String name, BodySkin skin) {
-        return packets.createBody(spec.definition().uuid(), spec.type(), name, spec.appearance(), skin);
+    /** Call where the viewer is owned. {@code attributes} are the definition's with any runtime change on top. */
+    public static <I> BodyTransport.Body body(BodyTransport<?, ?> packets, DefinitionSpec<I> spec, String name, BodySkin skin, NpcAttributes attributes) {
+        return packets.createBody(spec.definition().uuid(), spec.type(), name, spec.appearance().withAttributes(attributes), skin);
     }
     /** Native IDs the body reserves: its type's own plus the text display and seat. */
     public static <I> int nativeIds(BodyTransport<?, ?> packets, DefinitionSpec<I> spec, String name, int typeIds) {

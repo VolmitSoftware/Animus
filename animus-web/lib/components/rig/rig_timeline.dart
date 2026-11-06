@@ -168,7 +168,9 @@ class _RigTimelineState extends State<RigTimeline> {
     return dom.div(classes: 'animus-rig-timeline', attributes: const <String, String>{'aria-label': 'Timeline'}, <Widget>[
       dom.div(classes: 'animus-rig-toolbar', <Widget>[
         dom.label(classes: 'animus-rig-field', <Widget>[
-          const dom.span(<Widget>[Component.text('Animation')]),
+          const dom.span(<Widget>[
+            InfoTip(tip: 'Behaviors play animations by name. idle and walk play on their own.', docs: Docs.rigs, child: Component.text('Animation')),
+          ]),
           ArcaneSelect(
             size: ComponentSize.sm,
             value: component.selected,
@@ -200,7 +202,6 @@ class _RigTimelineState extends State<RigTimeline> {
             const Component.text('Animation names'),
           ],
         ),
-        const InfoTip(text: 'Behaviors play animations by name. idle and walk play on their own.', topic: 'Animation names', docs: Docs.rigs),
         if (_namesOpen) dom.div(id: 'animus-rig-names', <Widget>[component.names]),
       ]),
       if (animation == null)
@@ -242,7 +243,7 @@ class _RigTimelineState extends State<RigTimeline> {
           ),
         ]),
         dom.label(key: ValueKey<String>('loop:$loop'), classes: 'animus-rig-field is-inline', <Widget>[
-          const dom.span(<Widget>[Component.text('Loop')]),
+          dom.span(<Widget>[InfoTip(tip: loopDescriptions[loop] ?? loop, docs: Docs.animations, child: const Component.text('Loop'))]),
           ArcaneSelect(
             size: ComponentSize.sm,
             value: loop,
@@ -255,7 +256,6 @@ class _RigTimelineState extends State<RigTimeline> {
             onChanged: (String value) => component.onEdit((JsonMap json) => cloneJson(json)..['loop'] = value),
           ),
         ]),
-        InfoTip(text: loopDescriptions[loop] ?? loop, topic: 'Loop', docs: Docs.animations),
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Duration (ticks)')]),
           TextInput(

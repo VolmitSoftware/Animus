@@ -123,12 +123,13 @@ class _RigEventEditorState extends State<RigEventEditor> {
   Widget build(BuildContext context) {
     final List<FieldSpec> fields = _fields;
     return dom.div(classes: 'animus-rig-keyframe animus-rig-event-editor', attributes: <String, String>{'aria-label': 'Event at tick $_tick'}, <Widget>[
-      labelWithTip(
-        dom.strong(<Widget>[Component.text('Event at tick $_tick')]),
-        'Plays at the NPC for nearby players each time the clip reaches this tick.',
-        'Animation events',
-        docs: Docs.animationEvents,
-      ),
+      dom.strong(<Widget>[
+        InfoTip(
+          tip: 'Plays at the NPC for nearby players each time the clip reaches this tick.',
+          docs: Docs.animationEvents,
+          child: Component.text('Event at tick $_tick'),
+        ),
+      ]),
       _input('Tick', 'tick', '$_tick', _commitTick, number: true),
       dom.label(key: ValueKey<String>('runs:${component.index}:$_capability'), classes: 'animus-rig-field is-inline', <Widget>[
         const dom.span(<Widget>[Component.text('Runs')]),

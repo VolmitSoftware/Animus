@@ -4,6 +4,8 @@
 /// refuse them for; the document's own diagnostics report them.
 library;
 
+import '../../logic/npc/npc_attributes.dart';
+
 /// `NpcPose`.
 enum NpcPose {
   standing,
@@ -204,6 +206,7 @@ final class NpcLook {
     this.armorStand,
     this.skin,
     this.yawDeg = 0,
+    this.scale = 1,
   });
 
   static const String player = 'minecraft:player';
@@ -247,6 +250,7 @@ final class NpcLook {
       armorStand: type == 'minecraft:armor_stand' ? NpcArmorStand.parse(json['armorStand']) : null,
       skin: skin is String && _skin.hasMatch(skin) ? skin : null,
       yawDeg: yaw is num && yaw.isFinite ? yaw.toDouble() : 0,
+      scale: definitionScale(json),
     );
   }
 
@@ -261,6 +265,10 @@ final class NpcLook {
   /// SHA-256 of a skin document under `skins/`.
   final String? skin;
   final double yawDeg;
+
+  /// The `scale` attribute: the body and everything it wears, and the text
+  /// over it, grow with it.
+  final double scale;
 
   bool get isPlayer => type == player;
 

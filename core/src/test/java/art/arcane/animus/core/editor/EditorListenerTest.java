@@ -47,7 +47,7 @@ class EditorListenerTest {
 
     private static EditorSettings settings(int port, String certificate, String key) {
         EditorSettings d = EditorSettings.DEFAULT;
-        return new EditorSettings(true, d.editorUrl(), true, "127.0.0.1", port, "", certificate, key, d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24);
+        return new EditorSettings(true, d.editorUrl(), true, "127.0.0.1", port, "", certificate, key, d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT);
     }
 
     @Test
@@ -338,9 +338,9 @@ class EditorListenerTest {
     void settings_plainHttpOffLoopback_isRefused() {
         EditorSettings d = EditorSettings.DEFAULT;
         IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, d.editorUrl(), true, "0.0.0.0", 9797, "", "", "",
-                d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24));
+                d.allowedOrigins(), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT));
         assertTrue(refused.getMessage().contains("not loopback"));
         assertThrows(IllegalArgumentException.class, () -> new EditorSettings(true, d.editorUrl(), false, "127.0.0.1", 9797, "", "", "",
-                List.of("http://example.net"), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24));
+                List.of("http://example.net"), 7, 30, 4096, 16384, 512, 8, 20, 10, 64, 20, 4, 64, 15, 24, art.arcane.animus.core.config.EditorNotifySettings.DEFAULT));
     }
 }

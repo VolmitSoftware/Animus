@@ -3,7 +3,9 @@
 /// order, owner and containers) and for the selected entry (prices, limits
 /// with resets, stock, permissions, discounts, trades and command entries).
 /// A shop with containers trades items for items, so the editor offers
-/// only trade and static entries there, without price or stock.
+/// only trade and static entries there, without price or stock. A shop
+/// set to the native style also shows its offers as the villager trading
+/// screen.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -14,10 +16,14 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_validation.dart';
 import '../../logic/gui/shop_entries.dart';
+import '../../logic/gui/shop_offers.dart';
+import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
+import '../inspect/inspect_fields.dart';
 import 'chest_window.dart';
 import 'component_editor.dart';
 import 'gui_fields.dart';
+import 'merchant_window.dart';
 
 const Map<String, String> _modeLabels = <String, String>{'buy': 'Buy', 'sell': 'Sell', 'trade': 'Trade'};
 
@@ -29,9 +35,21 @@ const Map<String, String> _typeLabels = <String, String>{
   'static': 'static (decoration)',
 };
 
+const Map<String, String> _styleLabels = <String, String>{'native': 'native (villager trading screen)', 'chest': 'chest (chest window)'};
+
 List<String> _enabledModes(JsonMap shop) {
   final List<String> modes = stringList(shop['modes']);
   return modes.isEmpty ? shopModes : modes;
+}
+
+/// The shop's offers as a native shop shows them.
+Widget _merchantWindow(AnimusDocument document) {
+  final JsonMap shop = asMap(document.json);
+  return MerchantWindow(
+    title: asString(shop['title']) ?? document.id,
+    offers: nativeShopOffers(shop),
+    label: 'Villager trading screen ${document.id}',
+  );
 }
 
 /// The page and mode tabs over a shop window.
@@ -80,6 +98,13 @@ class _ShopPreviewState extends State<ShopPreview> {
   @override
   Widget build(BuildContext context) {
     final JsonMap shop = asMap(component.document.json);
+    final String? style = asString(shop['style']);
+    if (style == 'native') {
+      return dom.section(classes: 'animus-panel animus-gui-preview', <Widget>[
+        _merchantWindow(component.document),
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Native style: the villager trading screen, offers in mode, page and slot order.')]),
+      ]);
+    }
     final int pages = asList(shop['pages']).length;
     if (_page >= pages) _page = pages == 0 ? 0 : pages - 1;
     final List<String> modes = _enabledModes(shop);
@@ -104,16 +129,21 @@ class _ShopPreviewState extends State<ShopPreview> {
         selected: _slot,
         onSlot: (int slot) => setState(() => _slot = _slot == slot ? null : slot),
       ),
-      const dom.p(classes: 'animus-muted', <Widget>[Component.text('Select a slot for its name and lore.')]),
+      dom.p(classes: 'animus-muted', <Widget>[
+        Component.text('${style == null ? 'Server default style. ' : ''}Select a slot for its name and lore.'),
+      ]),
     ]);
   }
 }
 
 class ShopEditor extends StatefulWidget {
-  const ShopEditor({required this.document, required this.onJson, super.key});
+  const ShopEditor({required this.document, required this.onJson, this.layouts = const <String>[], super.key});
 
   final AnimusDocument document;
   final JsonEdit onJson;
+
+  /// Chest GUI ids in the workspace, offered for the layout.
+  final List<String> layouts;
 
   @override
   State<ShopEditor> createState() => _ShopEditorState();
@@ -196,6 +226,10 @@ class _ShopEditorState extends State<ShopEditor> {
         const dom.p(classes: 'animus-muted', <Widget>[
           Component.text('Bottom row: previous (2), close (4), next (6), mode (8).'),
         ]),
+        if (shop['style'] == 'native') ...<Widget>[
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('Native style: players see these offers on the villager trading screen.')]),
+          _merchantWindow(component.document),
+        ],
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
         GuiTabs(
@@ -222,6 +256,20 @@ class _ShopEditorState extends State<ShopEditor> {
       _row('Title', r'$.title', (String id) => GuiTextInput(id: id, value: asString(shop['title']) ?? '', mode: GuiTextMode.template, label: 'Shop title', onChanged: (String v) => _write(<JsonStep>['title'], v.isEmpty ? null : v))),
       _row('Permission', r'$.permission', (String id) => GuiTextInput(id: id, value: asString(shop['permission']) ?? '', label: 'Shop permission', placeholder: 'town.shop.baker', onChanged: (String v) => _write(<JsonStep>['permission'], v.isEmpty ? null : v)),
           help: 'Needed to open'),
+      _row('Style', r'$.style', (String id) => GuiSelect(id: id, value: asString(shop['style']), options: const <String>['native', 'chest'], allowNone: true, noneLabel: 'server default', labels: _styleLabels, onChanged: (String? v) => _write(<JsonStep>['style'], v)),
+          help: 'Unset uses the server default'),
+      GuiRow(
+        label: 'Layout',
+        help: 'Chest style only',
+        problems: diagnosticsAt(_diagnostics, r'$.layout'),
+        child: SuggestInput(
+          value: asString(shop['layout']) ?? '',
+          label: 'Layout',
+          placeholder: 'town:shop-list',
+          suggestions: <FieldOption>[for (final String id in component.layouts) FieldOption(id, description: 'chest GUI')],
+          onChanged: (String v) => _write(<JsonStep>['layout'], v.trim().isEmpty ? null : v.trim()),
+        ),
+      ),
       GuiRow(
         label: 'Modes',
         help: 'Cycle order. None means buy, sell, trade.',

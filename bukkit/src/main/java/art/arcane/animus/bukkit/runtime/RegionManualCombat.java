@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
+import art.arcane.animus.bukkit.combat.MobAttackAnimation;
 import art.arcane.animus.bukkit.combat.MobProfile;
 import art.arcane.animus.bukkit.combat.NativeMobController;
 import art.arcane.animus.bukkit.event.VirtualNpcDamageEvent;
@@ -297,7 +298,7 @@ public final class RegionManualCombat implements AutoCloseable {
             double amount = event.getDamage(), reach = profile.attack().reach() + HIT_SLACK;
             TargetRef attacker = new TargetRef(TargetKind.MOB, mob.getUniqueId());
             WorldPosition origin = new WorldPosition(npc.position().world(), from);
-            mob.swingMainHand();
+            MobAttackAnimation.show(mob);
             boolean sent = actor.owner.submit(new OwnerMailbox.Work() {
                 @Override public void run() {
                     try { struck(attacker, origin, amount, reach); }

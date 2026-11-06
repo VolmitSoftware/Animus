@@ -89,8 +89,11 @@ class _PresetsEditorState extends State<PresetsEditor> {
     return dom.div(classes: 'animus-gui-editor is-single', <Widget>[
       dom.section(classes: 'animus-panel animus-gui-inspector', attributes: const <String, String>{'aria-label': 'Presets'}, <Widget>[
         dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('Kinds in use: ${_used.isEmpty ? 'none' : _used.join(', ')} '),
-          const InfoTip(text: 'Only Gloss applies presets. Animus refuses documents that name one; their editors can inline it.', topic: 'Presets', docs: Docs.gloss),
+          InfoTip(
+            tip: 'Only Gloss applies presets. Animus refuses documents that name one; their editors can inline it.',
+            docs: Docs.gloss,
+            child: Component.text('Kinds in use: ${_used.isEmpty ? 'none' : _used.join(', ')}'),
+          ),
         ]),
         GuiRow(
           label: 'Revision',

@@ -36,8 +36,9 @@ final class ServiceCommands {
 
         @Director(description = "Open a shop for yourself or a player")
         void open(@Param(name = "shop", description = "The shop id") String shop,
-                  @Param(name = "player", defaultValue = "", description = "Who sees it; you when left out") String player) {
-            services.shops().open(actor(), shop, given(player));
+                  @Param(name = "player", defaultValue = "", description = "Who sees it; you when left out") String player,
+                  @Param(name = "style", defaultValue = "", description = "native or chest; the shop's own style when left out") String style) {
+            services.shops().open(actor(), shop, given(player), given(style));
         }
 
         @Director(description = "Reload shops and chest GUIs from disk")

@@ -352,9 +352,12 @@ final class CitizensPresentation {
             look.add(part, degrees);
             for (String axis : List.of("x", "y", "z")) converted.add(path + "/" + axis);
         }
-        List<String> kept = new ArrayList<>();
-        for (String key : List.of("marker", "gravity")) if (stand.has(key)) kept.add(key);
-        if (!kept.isEmpty()) warnings.add("/traits/armorstandtrait: " + String.join(" and ", kept) + (kept.size() == 1 ? " is" : " are") + " kept for review");
+        Boolean gravity = bool(stand.get("gravity"));
+        if (gravity != null) {
+            if (!gravity) fields.addProperty("gravity", false);
+            converted.add("/traits/armorstandtrait/gravity");
+        }
+        if (stand.has("marker")) warnings.add("/traits/armorstandtrait: marker is kept for review");
         fields.add("armorStand", look);
     }
 

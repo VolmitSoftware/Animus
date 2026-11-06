@@ -43,6 +43,13 @@
   min-width: 0;
 }
 
+.animus-rig-gizmo-caption {
+  align-self: center;
+  padding-inline: 0.375rem;
+  color: var(--animus-muted);
+  font-size: 0.875rem;
+}
+
 .animus-rig-pane {
   min-width: 0;
 }
