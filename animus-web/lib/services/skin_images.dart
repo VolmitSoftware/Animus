@@ -1,7 +1,7 @@
 /// Skin PNGs the user loads into the preview (from a file or a URL), kept for
 /// this page session and keyed by skin hash, or by NPC when the definition
-/// names no skin. Signed skins reach the browser through the Animus server
-/// once connected; until then this is how a preview wears one.
+/// names no skin. Signed skins also load on their own from their texture URL
+/// (see [SkinImages.textures]).
 library;
 
 import 'dart:async';
@@ -12,6 +12,7 @@ import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
 import '../components/mc/mc_asset_loader.dart';
+import 'skin_textures.dart';
 
 final class LoadedSkin {
   const LoadedSkin({required this.textureId, required this.source, required this.dataUrl});
@@ -70,10 +71,21 @@ final class SkinImages {
     if (uri.scheme != 'https' && uri.scheme != 'http') throw const FormatException('Use an http or https address.');
     final web.Response response = await web.window.fetch(uri.toString().toJS).toDart;
     if (!response.ok) throw StateError('HTTP ${response.status}');
-    final web.Blob blob = await response.blob().toDart;
+    return _keepBlob(key, await response.blob().toDart, uri.toString());
+  }
+
+  /// Signed skins' textures, fetched from their documents' texture URLs and
+  /// kept under the skin hash.
+  static final SkinTextures textures = SkinTextures((String hash, Uri address) async {
+    final web.Response response = await web.window.fetch(address.toString().toJS).toDart;
+    if (!response.ok) throw SkinTextureRefused(response.status);
+    await _keepBlob(hash, await response.blob().toDart, 'textures.minecraft.net');
+  });
+
+  static Future<LoadedSkin> _keepBlob(String key, web.Blob blob, String source) async {
     final String url = web.URL.createObjectURL(blob);
     try {
-      return await _keep(key, url, uri.toString());
+      return await _keep(key, url, source);
     } finally {
       web.URL.revokeObjectURL(url);
     }

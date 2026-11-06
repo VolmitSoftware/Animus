@@ -568,7 +568,10 @@ class _EditorShellState extends State<EditorShell> {
   AnimusDocument? _skinOf(AnimusDocument document) {
     final Object? json = document.json;
     if (document.kind != DocumentKind.npc || json is! Map<String, Object?> || json['skin'] is! String) return null;
-    return component.store.document(DocumentKind.skin, json['skin']! as String);
+    final String hash = json['skin']! as String;
+    final AnimusDocument? skin = component.store.document(DocumentKind.skin, hash);
+    if (skin == null && component.store.workspace?.server != null) component.session?.openSkin(hash);
+    return skin;
   }
 }
 

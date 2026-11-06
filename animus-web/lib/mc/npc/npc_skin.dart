@@ -1,10 +1,9 @@
 /// Skin documents (`skins/<sha256>.json`, read by `SkinDocuments`): the
 /// signed Mojang `textures` property, kept opaque by the server. The preview
 /// reads only the skin model (classic or slim) and the texture URL from it.
-/// The PNG itself never comes from `textures.minecraft.net` in the browser
-/// (WebGL needs CORS headers it does not send); it comes from the server's
-/// `GET /v1/skins/{hash}/texture.png` once connected, or from a PNG the user
-/// loads.
+/// The PNG comes from that URL (Mojang's texture host allows cross-origin
+/// reads, see `SkinTextures`), from a PNG the workspace keeps, or from one the
+/// user loads. The server keeps no decoded textures.
 library;
 
 import 'dart:convert';

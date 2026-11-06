@@ -24,6 +24,7 @@ import '../mc/npc/npc_skin.dart';
 import '../mc/npc/route_overlay.dart';
 import '../model/animus_document.dart';
 import '../services/skin_images.dart';
+import '../services/skin_textures.dart';
 import 'mc/mc_asset_loader.dart';
 import 'mc/mc_stage.dart';
 
@@ -65,6 +66,7 @@ class _NpcPreviewState extends State<NpcPreview> {
   final McStageController _stage = McStageController();
   final Map<String, (Uint8List, String)> _textures = <String, (Uint8List, String)>{};
   bool? _slim;
+  String? _awaitingSkin;
   String _url = '';
   bool _loading = false;
   String? _shown;
@@ -146,6 +148,7 @@ class _NpcPreviewState extends State<NpcPreview> {
   /// playhead changed.
   void _sync({bool frame = false}) {
     final NpcLook look = _look;
+    _fetchSkin(look);
     final NpcSkinChoice skin = _skinFor(look);
     final JsonMap? route = _showRoute ? component.route : null;
     final AnimusDocument? rig = component.rig;
@@ -168,6 +171,23 @@ class _NpcPreviewState extends State<NpcPreview> {
         ? body
         : withRoute(body, RouteSpec(route), (asDouble(position['x']) ?? 0, asDouble(position['y']) ?? 0, asDouble(position['z']) ?? 0));
     _stage.show(scene.scene, scene.texts, yawDeg: look.yawDeg, frame: frame);
+  }
+
+  /// Fetches a signed skin's texture once its document is here, and redraws
+  /// when it settles. A failed one waits for Retry.
+  void _fetchSkin(NpcLook look, {bool retry = false}) {
+    final String? hash = look.skin;
+    final NpcSkinInfo? info = _skinInfo;
+    if (hash == null || info == null || hash == _awaitingSkin || _loaded(look) != null) return;
+    if (!retry && SkinImages.textures.stateOf(hash)?.status == SkinTextureStatus.failed) return;
+    _awaitingSkin = hash;
+    final Future<void> settled = retry ? SkinImages.textures.retry(hash, info.textureUrl) : SkinImages.textures.load(hash, info.textureUrl);
+    settled.then((void _) {
+      if (_awaitingSkin == hash) _awaitingSkin = null;
+      if (!mounted) return;
+      setState(() {});
+      _sync();
+    });
   }
 
   void _play() {
@@ -327,7 +347,14 @@ class _NpcPreviewState extends State<NpcPreview> {
         if (component.rig != null)
           ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}'}'),
         if (player) ..._fact('Pose', look.pose.name),
-        if (player) ..._fact('Skin', _skinText(look, info, loaded, slim)),
+        if (player) ...<Widget>[
+          const dom.dt(<Widget>[Component.text('Skin')]),
+          dom.dd(attributes: const <String, String>{'data-testid': 'npc-skin-state'}, <Widget>[
+            Component.text(_skinText(look, info, loaded, slim)),
+            if (loaded == null && look.skin != null && SkinImages.textures.stateOf(look.skin!)?.status == SkinTextureStatus.failed)
+              Button.ghost(label: 'Retry texture', size: ButtonSize.small, onPressed: () => _fetchSkin(look, retry: true)),
+          ]),
+        ],
         if (look.armorStand != null) ..._fact('Armor stand', _armorStandText(look.armorStand!)),
         ..._fact(
           'Equipment',
@@ -348,8 +375,12 @@ class _NpcPreviewState extends State<NpcPreview> {
     final String model = slim ? 'slim' : 'classic';
     if (loaded != null) return '${loaded.source} ($model)';
     if (look.skin == null) return 'default ${slim ? 'Alex' : 'Steve'} ($model); the definition names no skin';
-    if (info == null) return 'skins/${look.skin}.json is not in this workspace; default skin ($model)';
-    return 'signed skin ${look.skin!.substring(0, 12)} ($model); the server supplies its texture once connected, or load a PNG';
+    final String fallback = 'default ${slim ? 'Alex' : 'Steve'} skin ($model)';
+    if (info == null) return 'skins/${look.skin}.json is not in this workspace; showing the $fallback';
+    final String signed = 'signed skin ${look.skin!.substring(0, look.skin!.length.clamp(0, 12))} ($model)';
+    final SkinTextureState? state = SkinImages.textures.stateOf(look.skin!);
+    if (state?.status == SkinTextureStatus.failed) return '$signed; texture not loaded: ${state!.message}. Showing the $fallback; retry or load a PNG';
+    return '$signed; loading its texture from textures.minecraft.net, showing the $fallback until then';
   }
 
   String _armorStandText(NpcArmorStand stand) => <String>[
