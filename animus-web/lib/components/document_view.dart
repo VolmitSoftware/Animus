@@ -24,7 +24,9 @@ import 'gui/shop_editor.dart';
 import 'inspect/behavior_editor.dart';
 import 'inspect/json_code_editor.dart';
 import 'inspect/npc_inspector.dart';
+import 'npc/pack_editor.dart';
 import 'npc/route_editor.dart';
+import 'npc/skin_summary.dart';
 import 'npc_preview.dart';
 
 /// Kinds with a visual editor and a painted or 3D preview.
@@ -308,6 +310,12 @@ class _DocumentPaneState extends State<DocumentPane> {
     }
     if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.behavior) {
       return BehaviorEditor(document: document, onJson: onJson, schemas: _schemas, diagnostics: _allDiagnostics(document));
+    }
+    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.pack) {
+      return PackEditor(document: document, schema: _schemas.pack, onJson: onJson, diagnostics: _allDiagnostics(document));
+    }
+    if (json is Map<String, Object?> && document.kind == DocumentKind.skin) {
+      return SkinSummary(document: document, workspaceDocuments: component.workspaceDocuments, onOpen: component.onOpen, onLoaded: () => setState(() {}));
     }
     if (json is! Map<String, Object?>) {
       return const dom.section(classes: 'animus-panel', <Widget>[Component.text('The document is not a JSON object.')]);
