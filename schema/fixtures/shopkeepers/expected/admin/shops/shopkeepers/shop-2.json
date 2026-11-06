@@ -4,6 +4,7 @@
   "id": "shopkeepers:shop-2",
   "title": "VIP Trader",
   "permission": "town.shop.vip",
+  "style": "native",
   "modes": [
     "trade"
   ],

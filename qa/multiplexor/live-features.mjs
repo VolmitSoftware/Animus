@@ -40,7 +40,7 @@ const scenarios = (args.get('scenarios') ?? defaultScenarios).split(',');
 const dashed = version.replaceAll('.', '-');
 const name = args.get('instance-name') ?? (MOD ? `animus-mod-${project}-${dashed}` : `animus-live-${project}-${dashed}`);
 // A Folia run may also use the animus-folia-paper-<version> instance a Folia check was asked to run on.
-assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges)-${project}-${dashed}$`).test(name)
+assert(new RegExp(MOD ? `^animus-mod-${project}-${dashed}$` : `^animus-(?:live|gate-live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle)-${project}-${dashed}$`).test(name)
   || project === 'folia' && name === `animus-folia-paper-${dashed}`, 'Instance name must bind the requested platform/version');
 assert(!MOD || !fixture, 'The QA event fixture is a Bukkit plugin; mod servers run without it');
 const instances = path.join(workspace, `consumers/${MOD ? `${project}-mod` : 'plugin'}-consumers/instances`);
@@ -118,7 +118,7 @@ class Server {
     writeFileSync(path.join(instance, 'eula.txt'), existsSync(path.join(template, 'eula.txt')) ? readFileSync(path.join(template, 'eula.txt')) : 'eula=true\n');
     const plugins = path.join(instance, MOD ? 'mods' : 'plugins');
     // Every run starts from empty plugin data so no earlier revision, checkpoint or state answers for this run.
-    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|mod|folia-paper)-/.test(path.basename(instance)));
+    assert(data.startsWith(instances) && /^animus-(?:(?:gate-)?live|guarddebug|foliafinal|builderscaffold|combatedges|shopstyle|mod|folia-paper)-/.test(path.basename(instance)));
     rmSync(data, { recursive: true, force: true });
     mkdirSync(data, { recursive: true });
     mkdirSync(plugins, { recursive: true });
@@ -2357,6 +2357,53 @@ async function shops() {
     } finally {
       if (open) await closeWindow(owner, open.container).catch(() => {});
       if (created) await server.cmd(`animus delete ${SHOP.npc}`, /Deleted|Unknown/);
+      if (existsSync(file)) unlinkSync(file);
+      await server.cmd('animus shop reload', /Reloaded \d+ shops/);
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+    }
+  });
+  await check('shop trade in the villager trading screen', async () => {
+    const file = path.join(data, 'shops', 'live', 'native.json');
+    let open = null;
+    const counts = async () => ({ emerald: await itemCount(OWNER.name, 'minecraft:emerald'), diamond: await itemCount(OWNER.name, 'minecraft:diamond') });
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, JSON.stringify({ ...swapShop(), id: 'live:native', title: '&bNative', style: 'native' }, null, 1) + '\n');
+      await server.cmd('animus shop reload', /Reloaded \d+ shops/);
+      await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);
+      await server.cmd(`give ${OWNER.name} minecraft:emerald 2`, /Gave/);
+      assert.deepEqual(await counts(), { emerald: 2, diamond: 0 });
+      let from = owner.events.length;
+      await server.cmd(`animus shop open live:native player=${OWNER.name}`);
+      const opened = await owner.wait(e => e.event === 'open_screen', from, 10_000);
+      assert.equal(opened.menu, 'minecraft:merchant', JSON.stringify(opened));
+      assert.equal(opened.title, 'Native');
+      open = opened.container;
+      const offers = await owner.wait(e => e.event === 'merchant_offers' && e.container === open, from, 10_000);
+      assert.deepEqual(offers.offers.map(o => [o.costA, o.result]), [['minecraft:emerald', 'minecraft:diamond']], JSON.stringify(offers));
+      // Choose the offer: the result slot shows the diamond and no emerald leaves the inventory.
+      from = owner.events.length;
+      owner.send('select_trade', { offer: 0 });
+      await owner.wait(e => e.container === open && (e.event === 'container_slot' && e.slot === 2 && e.item === 'minecraft:diamond'
+        || e.event === 'container_content' && e.items.some(i => i.slot === 2 && i.item === 'minecraft:diamond')), from, 8000);
+      assert.deepEqual(await counts(), { emerald: 2, diamond: 0 });
+      from = await clickSlot(owner, open, 2);
+      const traded = await owner.chat('Traded for', from, 8000);
+      const paid = await until(async () => { const c = await counts(); return { ok: c.emerald === 0 && c.diamond === 1, ...c }; }, 5000, 'trade did not change the inventory');
+      assert(!owner.has(e => e.event === 'container_slot' && e.container === -1 && e.item !== 'empty', from), 'an item reached the cursor');
+      // The chest style of the same shop, chosen by the command, trades the same way.
+      await server.cmd(`give ${OWNER.name} minecraft:emerald 2`, /Gave/);
+      from = owner.events.length;
+      await server.cmd(`animus shop open live:native player=${OWNER.name} style=chest`);
+      const chest = await windowOpened(owner, from);
+      assert.equal(chest.menu, 'minecraft:generic_9x3', JSON.stringify(chest));
+      open = chest.container;
+      from = await clickSlot(owner, open, SHOP.slot);
+      await owner.chat('Traded for', from, 8000);
+      const again = await until(async () => { const c = await counts(); return { ok: c.emerald === 0 && c.diamond === 2, ...c }; }, 5000, 'chest trade did not change the inventory');
+      return `"${traded.text}" -> emerald=${paid.emerald} diamond=${paid.diamond}; chest style -> diamond=${again.diamond}`;
+    } finally {
+      if (open) await closeWindow(owner, open).catch(() => {});
       if (existsSync(file)) unlinkSync(file);
       await server.cmd('animus shop reload', /Reloaded \d+ shops/);
       await server.cmd(`clear ${OWNER.name}`, /Removed|No items/);

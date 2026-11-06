@@ -432,6 +432,9 @@ final class _Checker {
       error(r'$.defaultMode', "defaultMode '$defaultMode' is not one of the enabled modes", code: layoutCode);
     }
     if (modes.toSet().length != modes.length) error(r'$.modes', 'each mode may appear once', code: layoutCode);
+    if (json['style'] == 'native' && json['layout'] != null) {
+      warning(r'$.layout', 'only the chest style uses a layout; the villager trading screen ignores it', layoutCode);
+    }
     final bool container = isContainerShop(json);
     _owner(json, container);
     final Map<String, String> entryIds = <String, String>{};

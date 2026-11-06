@@ -1,7 +1,8 @@
 // Opens test/fixtures/gui_editors in the built site at desktop and phone
 // widths, in the dark and light themes, and checks each GUI editor: the
 // chest GUI (keyboard to a slot, brush drag, lore in slot names), shop
-// (entry type change strips fields, container shop round trip), hologram
+// (entry type change strips fields, container shop round trip, native style
+// offers and layout), hologram
 // (rows keep show and scale, two quick style edits both kept and undone one
 // at a time, rows drawn as one styled text display), menu (stage pick,
 // motion and tooltip), text
@@ -226,6 +227,38 @@ async function run(browser, viewport, tag, theme) {
   await (await openSection(page.locator('.animus-gui-inspector'), 'Containers')).getByRole('button', {name: 'Remove container 1'}).click();
   await page.waitForTimeout(200);
 
+  // Style and layout: native adds the villager screen in mode, page and slot order.
+  await page.getByLabel('Style', {exact: true}).selectOption('native');
+  await settle(page);
+  const offers = page.locator('.animus-gui-stage .animus-merchant-offer');
+  await offers.first().waitFor();
+  assert.deepEqual(await offers.evaluateAll(rows => rows.map(row => row.getAttribute('data-offer'))), ['bread', 'town-kit', 'iron-pickaxe', 'wheat', 'emerald-for-diamond'], 'the static golden apple is left out');
+  assert.equal(await offers.first().locator('.animus-merchant-price').innerText(), '15');
+  assert.equal(await offers.nth(3).locator('.animus-merchant-price').innerText(), 'Pays 4');
+  await page.getByLabel('Layout', {exact: true}).fill('town:board');
+  await settle(page);
+  await page.waitForTimeout(300);
+  await page.locator('.animus-gui-inspector').getByText('only the chest style uses a layout').first().waitFor();
+  await shot(page, `${tag}-shop-native`);
+  await noSideways(page, `${tag} shop native`);
+  json = await codeOf(page);
+  assert.equal(json.style, 'native');
+  assert.equal(json.layout, 'town:board');
+  await page.getByRole('tab', {name: 'Preview'}).click();
+  await page.locator('.animus-gui-preview .animus-merchant-offer').first().waitFor();
+  assert.equal(await page.locator('.animus-gui-preview .animus-chest-slot[data-slot]').count(), 0, 'native preview shows no chest window');
+  await page.getByRole('tab', {name: 'Visual'}).click();
+  await page.getByRole('tab', {name: 'Shop', exact: true}).click();
+  await page.getByLabel('Layout', {exact: true}).fill('');
+  await settle(page);
+  await page.getByLabel('Style', {exact: true}).selectOption('');
+  await settle(page);
+  await page.waitForTimeout(300);
+  json = await codeOf(page);
+  assert.equal(json.style, undefined);
+  assert.equal(json.layout, undefined);
+  assert.equal(await page.locator('.animus-merchant-offer').count(), 0);
+
   // Hologram: 3D stage, add a line.
   await open(page, 'town:welcome');
   const hologramCanvas = page.locator('.animus-mc-gl-host');
@@ -438,6 +471,7 @@ async function run(browser, viewport, tag, theme) {
   await open(page, 'town:market');
   await page.getByRole('tab', {name: 'Preview'}).click();
   await page.locator('.animus-gui-preview .animus-chest-slot').first().waitFor();
+  await page.locator('.animus-gui-preview').getByText('Server default style').waitFor();
   await page.locator('.animus-gui-preview').getByRole('tab', {name: 'Sell'}).click();
   await page.locator('.animus-gui-preview').getByRole('tab', {name: 'Sell', selected: true}).waitFor();
   await shot(page, `${tag}-shop-preview`);

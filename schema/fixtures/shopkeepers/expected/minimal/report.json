@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "importerVersion": 1,
-  "importId": "ab16161aa47ba56239f749a2dda40fcc4c264cada17c8b335154cadb2f8c18ab",
+  "importerVersion": 2,
+  "importId": "adfd9abeb1bda7862328cb01e90379d6842e36e5d2b5653c124a22426e7765d4",
   "sourceSha256": "3d59da66139f158cc1de8432c42fe8b4e2dc8399138186f6ed1913914b8e06fa",
   "notice": "Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.",
   "dataVersion": null,
@@ -55,7 +55,7 @@
   },
   "issues": [],
   "documents": {
-    "shops/shopkeepers/shop-1.json": "7c546a66c5aa38dd2132e2cd81dcf821e0f4a9a757d621db8ecab28a8d20f05d",
-    "npcs/shopkeepers/shopkeeper-1.json": "0e575d50058bff8c6ad37ac0ae99239fb0b93573df7cd441012b87da6dc1534d"
+    "shops/shopkeepers/shop-1.json": "4f5371221f920398d0f04addad1503150e876f355784ab1b0f6487ff26b7de7c",
+    "npcs/shopkeepers/shopkeeper-1.json": "a622df2a953975fd9ee5928dd5d71369cb547e5834de9dc27ea9c174239f4aec"
   }
 }
