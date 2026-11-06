@@ -125,7 +125,7 @@ class _DryRunPanelState extends State<DryRunPanel> {
     final LoadedSkin? skin = look.skin == null ? null : SkinImages.forKeyOrWorkspace(look.skin!, component.resources[skinImagePath(look.skin!)]);
     final NpcScene scene = npcPlaygroundScene(
       look,
-      skin: skin == null ? NpcSkinChoice.steve : NpcSkinChoice(textureId: skin.textureId, slim: false),
+      skin: NpcSkinChoice(textureId: skin?.textureId ?? SkinImages.placeholderFor(actor.id, slim: false).textureId, slim: false),
       speech: speech,
     );
     _stage.show(scene.scene, scene.texts, yawDeg: look.yawDeg, frame: frame);

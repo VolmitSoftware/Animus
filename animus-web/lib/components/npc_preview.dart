@@ -100,7 +100,7 @@ class _NpcPreviewState extends State<NpcPreview> {
     final bool slim = _slimFor(look);
     final LoadedSkin? loaded = _loaded(look);
     if (loaded != null) return NpcSkinChoice(textureId: loaded.textureId, slim: slim);
-    return slim ? NpcSkinChoice.alex : NpcSkinChoice.steve;
+    return NpcSkinChoice(textureId: SkinImages.placeholderFor(component.document.id, slim: slim).textureId, slim: slim);
   }
 
   /// The rig's idle animation id, when the workspace has it.
@@ -397,13 +397,13 @@ class _NpcPreviewState extends State<NpcPreview> {
   String _skinText(NpcLook look, NpcSkinInfo? info, LoadedSkin? loaded, bool slim) {
     final String model = slim ? 'slim' : 'classic';
     if (loaded != null) return '${loaded.source} ($model)';
-    if (look.skin == null) return 'default ${slim ? 'Alex' : 'Steve'} ($model); the definition names no skin';
-    final String fallback = 'default ${slim ? 'Alex' : 'Steve'} skin ($model)';
-    if (info == null) return 'skins/${look.skin}.json is not in this workspace; showing the $fallback';
+    final String placeholder = 'placeholder ${SkinImages.placeholderLook(component.document.id).label} skin ($model)';
+    if (look.skin == null) return 'the $placeholder, in this preview only; the definition names no skin, so the server shows a default skin';
+    if (info == null) return 'skins/${look.skin}.json is not in this workspace; showing the $placeholder';
     final String signed = 'signed skin ${look.skin!.substring(0, look.skin!.length.clamp(0, 12))} ($model)';
     final SkinTextureState? state = SkinImages.textures.stateOf(look.skin!);
-    if (state?.status == SkinTextureStatus.failed) return '$signed; texture not loaded: ${state!.message}. Showing the $fallback; retry or load a PNG';
-    return '$signed; loading its texture from textures.minecraft.net, showing the $fallback until then';
+    if (state?.status == SkinTextureStatus.failed) return '$signed; texture not loaded: ${state!.message}. Showing the $placeholder; retry or load a PNG';
+    return '$signed; loading its texture from textures.minecraft.net, showing the $placeholder until then';
   }
 
   String _armorStandText(NpcArmorStand stand) => <String>[
