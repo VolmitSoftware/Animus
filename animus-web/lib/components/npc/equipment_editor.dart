@@ -14,6 +14,7 @@ import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
 import '../mc/mc_item_icons.dart';
+import '../select/suggest_input.dart';
 
 /// What each slot holds, for the help line.
 const Map<NpcSlot, String> slotHelp = <NpcSlot, String>{

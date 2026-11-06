@@ -70,6 +70,7 @@ class ServerBehaviorsEditor extends StatelessWidget {
         const dom.p(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('List full. Remove one to add another.')])
       else if (addable.isNotEmpty)
         GuiSelect(
+          references: DocumentKind.behavior,
           value: null,
           options: addable,
           noneLabel: 'Add a server behavior',

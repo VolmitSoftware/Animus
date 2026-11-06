@@ -10,6 +10,7 @@ import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
 import '../../logic/rig_sampler.dart';
+import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 
 typedef KeyframeEdit = void Function(JsonMap Function(JsonMap animation) change, {String? coalesce});
@@ -78,16 +79,16 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
     final bool visible = track['target'] == 'visible';
     return dom.div(classes: 'animus-rig-keyframe', attributes: const <String, String>{'aria-label': 'Track'}, <Widget>[
       dom.strong(<Widget>[Component.text('Track ${index + 1}: ${track['bone']} ${track['target']}')]),
-      // Keyed by the value: a native select the user changed keeps its own
-      // selection when only the option attributes change.
       dom.label(key: ValueKey<String>('blend:$index:$blend'), classes: 'animus-rig-field is-inline', <Widget>[
         const dom.span(<Widget>[Component.text('Blend')]),
-        ArcaneSelect(
-          size: ComponentSize.sm,
+        GuiSelect(
           value: visible ? 'replace' : blend,
-          disabled: visible,
-          options: <ArcaneSelectOption>[for (final Blend option in Blend.values) ArcaneSelectOption(label: option.name, value: option.name)],
-          onChanged: (String value) => component.onEdit((JsonMap json) => setTrackBlend(json, index, Blend.values.byName(value))),
+          inactive: visible,
+          options: <String>[for (final Blend option in Blend.values) option.name],
+          hiddenLabel: 'Blend',
+          onChanged: (String? value) {
+            if (value != null) component.onEdit((JsonMap json) => setTrackBlend(json, index, Blend.values.byName(value)));
+          },
         ),
       ]),
       InfoTip(text: visible ? 'Visible tracks always replace.' : blendDescriptions[blend] ?? '', topic: 'Blend', docs: Docs.animations),
@@ -149,15 +150,16 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
         ]),
         dom.label(key: ValueKey<String>('easing:${selected.$1}:${selected.$2}:$easing'), classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Easing')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: bezier ? 'bezier' : easing,
-            options: <ArcaneSelectOption>[
-              for (final String name in <String>[...namedEasings, 'bezier']) ArcaneSelectOption(label: name, value: name),
-            ],
-            onChanged: (String next) => component.onEdit(
-              (JsonMap json) => setKeyframeEasing(json, selected.$1, selected.$2, next == 'bezier' ? 'bezier(0.25,0.1,0.25,1)' : next),
-            ),
+            options: <String>[...namedEasings, 'bezier'],
+            hiddenLabel: 'Easing',
+            onChanged: (String? next) {
+              if (next == null) return;
+              component.onEdit(
+                (JsonMap json) => setKeyframeEasing(json, selected.$1, selected.$2, next == 'bezier' ? 'bezier(0.25,0.1,0.25,1)' : next),
+              );
+            },
           ),
         ]),
         if (bezier)
@@ -177,14 +179,12 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
         if (value is bool)
           dom.label(key: ValueKey<String>('visible:${selected.$1}:${selected.$2}:$value'), classes: 'animus-rig-field is-inline', <Widget>[
             const dom.span(<Widget>[Component.text('Visible')]),
-            ArcaneSelect(
-              size: ComponentSize.sm,
+            GuiSelect(
               value: '$value',
-              options: const <ArcaneSelectOption>[
-                ArcaneSelectOption(label: 'shown', value: 'true'),
-                ArcaneSelectOption(label: 'hidden', value: 'false'),
-              ],
-              onChanged: (String next) => component.onEdit(
+              options: const <String>['true', 'false'],
+              labels: const <String, String>{'true': 'shown', 'false': 'hidden'},
+              hiddenLabel: 'Visible',
+              onChanged: (String? next) => component.onEdit(
                 (JsonMap json) => setKeyframe(json, '${track['bone']}', TrackTarget.visible, tick, next == 'true', track: selected.$1),
               ),
             ),

@@ -32,10 +32,12 @@ import 'document_view.dart';
 import 'gui/gui_fields.dart';
 import 'npc/npc_browser.dart';
 import 'offline/home_screen.dart';
+import 'offline/kind_list_page.dart';
 import 'offline/new_document_page.dart';
 import 'offline/offline_fields.dart';
 import 'offline/sync_page.dart';
 import 'recording/recording_list.dart';
+import 'select/picker_scope.dart';
 import 'rig/rig_actions.dart';
 import 'rig/rig_editor.dart';
 import 'server/live_bar.dart';
@@ -489,7 +491,11 @@ class _EditorShellState extends State<EditorShell> {
     final DocumentRoute? selected = route is DocumentRoute ? route : null;
     final AnimusDocument? document = selected == null ? null : component.store.document(selected.kind, selected.documentId);
     final LiveSession? session = workspace.server == null ? null : component.session;
-    return dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'animus-workspace', <Widget>[
+    return PickerScope(
+      workspaceId: workspace.id,
+      route: route,
+      onNavigate: component.onNavigate,
+      child: dom.div(key: ValueKey<String>('workspace:${workspace.id}'), classes: 'animus-workspace', <Widget>[
       ShellSidebar(
         workspace: workspace,
         route: route,
@@ -549,13 +555,16 @@ class _EditorShellState extends State<EditorShell> {
           RecordingList(key: ValueKey<String>('recording-list:${workspace.id}'), workspace: workspace)
         else if (route is NpcListRoute)
           NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
+        else if (route is KindListRoute)
+          KindListPage(key: ValueKey<String>('list:${workspace.id}:${route.kind.wireName}'), workspace: workspace, kind: route.kind)
         else if (route is NewDocumentRoute)
           NewDocumentPage(
-            key: ValueKey<String>('new:${workspace.id}:${route.folder ?? ''}'),
+            key: ValueKey<String>('new:${workspace.id}:${route.folder ?? ''}:${route.name ?? ''}'),
             store: component.store,
             workspace: workspace,
             kind: route.kind,
             folder: route.folder,
+            name: route.name,
             onNavigate: component.onNavigate,
           )
         else if (route is SyncRoute && workspace.server == null)
@@ -570,7 +579,8 @@ class _EditorShellState extends State<EditorShell> {
         else
           _overview(workspace),
       ]),
-    ]);
+    ]),
+    );
   }
 
   Widget _overview(WorkspaceSnapshot workspace) {

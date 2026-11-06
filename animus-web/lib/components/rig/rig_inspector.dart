@@ -10,6 +10,7 @@ import 'package:web/web.dart' as web;
 
 import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
+import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 
 const List<String> socketSlots = <String>['main_hand', 'off_hand', 'head', 'chest', 'legs', 'feet', 'body', 'saddle'];
@@ -89,17 +90,13 @@ class _RigInspectorState extends State<RigInspector> {
       })),
       dom.label(classes: 'animus-rig-field', <Widget>[
         const dom.span(<Widget>[Component.text('Visual')]),
-        ArcaneSelect(
-          size: ComponentSize.sm,
+        GuiSelect(
           value: type,
-          options: const <ArcaneSelectOption>[
-            ArcaneSelectOption(label: 'None (pivot only)', value: 'none'),
-            ArcaneSelectOption(label: 'Item display', value: 'item'),
-            ArcaneSelectOption(label: 'Block display', value: 'block'),
-            ArcaneSelectOption(label: 'Text display', value: 'text'),
-          ],
-          onChanged: (String value) => bones((JsonMap entry) {
-            if (value == 'none') {
+          options: const <String>['none', 'item', 'block', 'text'],
+          labels: const <String, String>{'none': 'None (pivot only)', 'item': 'Item display', 'block': 'Block display', 'text': 'Text display'},
+          hiddenLabel: 'Visual',
+          onChanged: (String? value) => bones((JsonMap entry) {
+            if (value == null || value == 'none') {
               entry.remove('visual');
             } else {
               entry['visual'] = visualOfType(value, entry['visual'] is JsonMap ? entry['visual']! as JsonMap : null);
@@ -140,12 +137,12 @@ class _RigInspectorState extends State<RigInspector> {
         })),
         dom.label(classes: 'animus-rig-field', <Widget>[
           const dom.span(<Widget>[Component.text('Item context')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: visual['itemDisplay'] is String ? visual['itemDisplay']! as String : 'none',
-            options: <ArcaneSelectOption>[for (final String context in itemContexts) ArcaneSelectOption(label: context, value: context)],
-            onChanged: (String value) => setVisual((JsonMap v) {
-              if (value == 'none') {
+            options: itemContexts,
+            hiddenLabel: 'Item context',
+            onChanged: (String? value) => setVisual((JsonMap v) {
+              if (value == null || value == 'none') {
                 v.remove('itemDisplay');
               } else {
                 v['itemDisplay'] = value;
@@ -160,13 +157,11 @@ class _RigInspectorState extends State<RigInspector> {
         _textField('Text', 'text:$id', '${visual['text'] ?? ''}', (String value) => setVisual((JsonMap v) => v['text'] = value)),
         dom.label(classes: 'animus-rig-field', <Widget>[
           const dom.span(<Widget>[Component.text('Billboard')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: visual['billboard'] is String ? visual['billboard']! as String : 'fixed',
-            options: <ArcaneSelectOption>[
-              for (final String mode in <String>['fixed', 'vertical', 'horizontal', 'center']) ArcaneSelectOption(label: mode, value: mode),
-            ],
-            onChanged: (String value) => setVisual((JsonMap v) => v['billboard'] = value),
+            options: const <String>['fixed', 'vertical', 'horizontal', 'center'],
+            hiddenLabel: 'Billboard',
+            onChanged: (String? value) => setVisual((JsonMap v) => v['billboard'] = value ?? 'fixed'),
           ),
         ]),
         _textField('Background (#AARRGGBB)', 'background:$id', '${visual['background'] ?? ''}', (String value) {
@@ -229,17 +224,16 @@ class _RigInspectorState extends State<RigInspector> {
       for (final String slot in socketSlots)
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           dom.span(<Widget>[Component.text(slot)]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: sockets is JsonMap && sockets[slot] is String ? sockets[slot]! as String : '',
-            options: <ArcaneSelectOption>[
-              const ArcaneSelectOption(label: '(none)', value: ''),
-              for (final JsonMap entry in bonesOf(rig)) ArcaneSelectOption(label: '${entry['id']}', value: '${entry['id']}'),
-            ],
-            onChanged: (String value) => component.onEdit((JsonMap json) {
+            options: <String>[for (final JsonMap entry in bonesOf(rig)) '${entry['id']}'],
+            allowNone: true,
+            noneLabel: '(none)',
+            hiddenLabel: slot,
+            onChanged: (String? value) => component.onEdit((JsonMap json) {
               final JsonMap out = cloneJson(json);
               final JsonMap map = out['sockets'] is JsonMap ? out['sockets']! as JsonMap : <String, Object?>{};
-              if (value.isEmpty) {
+              if (value == null) {
                 map.remove(slot);
               } else {
                 map[slot] = value;

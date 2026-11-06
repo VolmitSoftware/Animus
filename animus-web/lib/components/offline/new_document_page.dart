@@ -18,11 +18,13 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../services/browser.dart';
 import '../../services/skin_images.dart';
+import '../../state/document_return.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
 import '../../config/docs_links.dart';
 import '../gui/gui_fields.dart';
+import '../select/skin_faces.dart';
 import '../info_tip.dart';
 import 'offline_fields.dart';
 
@@ -41,15 +43,19 @@ const Map<String, String> bodyLabels = <String, String>{
 enum _SkinSource { none, file, url, existing }
 
 class NewDocumentPage extends StatefulWidget {
-  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, super.key});
+  const NewDocumentPage({required this.store, required this.workspace, required this.kind, required this.onNavigate, this.folder, this.name, super.key});
 
   final EditorStore store;
   final WorkspaceSnapshot workspace;
   final DocumentKind? kind;
 
-  /// The NPC folder the form starts with, such as `town/market`; empty for
-  /// `npcs/` itself, null for the default.
+  /// Where the new document goes: the NPC folder (such as `town/market`,
+  /// empty for `npcs/` itself), the namespace of a namespaced kind, or the
+  /// rig of an animation. Null for the default.
   final String? folder;
+
+  /// The name the id starts from, typed into a dropdown's search.
+  final String? name;
   final void Function(EditorRoute route) onNavigate;
 
   @override
@@ -98,6 +104,31 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
   num _interval = 500;
 
   @override
+  void initState() {
+    super.initState();
+    final DocumentKind? kind = component.kind;
+    final String name = component.name?.trim() ?? '';
+    if (kind == DocumentKind.animation && component.folder != null && component.store.document(DocumentKind.rig, component.folder!) != null) {
+      _rig = component.folder;
+    }
+    if (kind == null || name.isEmpty) return;
+    _name = name;
+    if (kind != DocumentKind.skin && kind != DocumentKind.presets && kind != DocumentKind.serverBehaviors) _id = _proposed(kind);
+    if (kind == DocumentKind.pack) {
+      _title = name;
+      _name = '';
+    }
+  }
+
+  @override
+  void dispose() {
+    // Leaving without creating ends a dropdown's "+ New" trip.
+    final DocumentKind? kind = component.kind;
+    if (kind != null) documentReturn.abandon(NewDocumentRoute.prefilled(component.workspace.id, kind, folder: component.folder, name: component.name));
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(NewDocumentPage oldComponent) {
     super.didUpdateWidget(oldComponent);
     if (oldComponent.kind != component.kind) {
@@ -119,6 +150,13 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
 
   String get _namespace => slug(component.workspace.name, fallback: 'local');
 
+  /// The namespace a dropdown's "+ New" asked for, when it is a valid one.
+  String? get _folderNamespace {
+    final String? folder = component.folder;
+    if (folder == null || component.kind == DocumentKind.npc || component.kind == DocumentKind.animation) return null;
+    return RegExp(r'^[a-z0-9_.-]+$').hasMatch(folder) ? folder : null;
+  }
+
   /// The id the form proposes for [kind] until the user types one.
   String _proposed(DocumentKind kind) {
     final String base = slug(_name.isEmpty ? _title : _name, fallback: switch (kind) {
@@ -135,7 +173,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
       DocumentKind.npc => npcIdIn(npcFolderSlug(_group), base),
       DocumentKind.route || DocumentKind.pack || DocumentKind.group => base,
       DocumentKind.animation => '${_rig ?? '$_namespace:rig'}/$base',
-      _ => '$_namespace:$base',
+      _ => '${_folderNamespace ?? _namespace}:$base',
     };
     return freeId(candidate, _taken(kind));
   }
@@ -167,6 +205,11 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           : kind == DocumentKind.serverBehaviors
               ? 'Created server-behaviors.json.'
               : 'Created ${_inSentence(kind)} ${guiPlainText(made.title)}.');
+    }
+    final EditorRoute? back = documentReturn.complete(component.workspace.id, kind, id);
+    if (back != null) {
+      component.onNavigate(back);
+      return;
     }
     component.onNavigate(DocumentRoute(component.workspace.id, kind, id));
     focusMainHeading();
@@ -447,8 +490,10 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     };
     final bool exists = (kind == DocumentKind.presets && component.store.document(kind, 'presets') != null) ||
         (kind == DocumentKind.serverBehaviors && component.store.document(kind, DocumentKind.serverBehaviorsId) != null);
+    final bool returning = documentReturn.returnsFor(component.workspace.id, kind) && documentReturn.origin != null;
     return dom.section(classes: 'animus-panel animus-new-form', attributes: <String, String>{'aria-label': 'New ${_inSentence(kind)}'}, <Widget>[
       labelWithTip(dom.h2(<Widget>[Component.text('New ${_inSentence(kind)}')]), '${kindPurpose(kind)}.', _singular(kind), docs: Docs.forKind(kind)),
+      if (returning) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Create takes you back and picks it there.')]),
       ...fields,
       if (_problem != null) dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_problem!)]),
       dom.div(classes: 'animus-row', <Widget>[
@@ -457,7 +502,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
           disabled: _busy,
           onPressed: () => _create(kind),
         ),
-        Button.ghost(label: 'Cancel', onPressed: () => component.onNavigate(WorkspaceRoute(component.workspace.id))),
+        Button.ghost(label: 'Cancel', onPressed: () => component.onNavigate(returning ? documentReturn.origin! : WorkspaceRoute(component.workspace.id))),
       ]),
     ]);
   }
@@ -550,8 +595,10 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         FieldRow(
           label: 'Workspace skin',
           child: GuiSelect(
+            references: DocumentKind.skin,
             value: _existingSkin,
             options: <String>[for (final AnimusDocument skin in skins) skin.id],
+            skinFaces: skinFacesOf(<String>[for (final AnimusDocument skin in skins) skin.id]),
             labels: <String, String>{for (final AnimusDocument skin in skins) skin.id: skin.id.substring(0, 12)},
             onChanged: (String? value) => setState(() => _existingSkin = value),
           ),
@@ -609,6 +656,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
         FieldRow(
           label: 'Shop',
           child: GuiSelect(
+            references: DocumentKind.shop,
             value: _shop ??= shops.first.id,
             options: <String>[for (final AnimusDocument shop in shops) shop.id],
             onChanged: (String? value) => setState(() => _shop = value),
@@ -644,7 +692,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     return <Widget>[
       FieldRow(
         label: 'Rig',
-        child: GuiSelect(value: _rig, options: <String>[for (final AnimusDocument rig in rigs) rig.id], onChanged: (String? value) => setState(() => _rig = value)),
+        child: GuiSelect(references: DocumentKind.rig, value: _rig, options: <String>[for (final AnimusDocument rig in rigs) rig.id], onChanged: (String? value) => setState(() => _rig = value)),
       ),
       OfflineTextField(label: 'Name', value: _name, placeholder: 'wave', onChanged: (String value) => setState(() => _name = value)),
       _idField(DocumentKind.animation),

@@ -33,6 +33,7 @@ import '../../model/document_kind.dart';
 import '../../services/browser.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
+import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import '../mc/mc_asset_loader.dart';
 import '../mc/mc_stage.dart';
@@ -759,26 +760,24 @@ class _RigEditorState extends State<RigEditor> {
       Button.secondary(label: 'Download server files', icon: ArcaneIcon.download(), size: ButtonSize.small, onPressed: _downloadServerFiles),
       dom.label(classes: 'animus-rig-field', <Widget>[
         const dom.span(<Widget>[Component.text('Body')]),
-        ArcaneSelect(
-          size: ComponentSize.sm,
+        GuiSelect(
           value: rig['body'] == 'shown' ? 'shown' : 'hidden',
-          options: const <ArcaneSelectOption>[
-            ArcaneSelectOption(label: 'Hidden (rig only)', value: 'hidden'),
-            ArcaneSelectOption(label: 'Shown (with NPC body)', value: 'shown'),
-          ],
-          onChanged: (String value) => _edit((JsonMap json) => cloneJson(json)..['body'] = value),
+          options: const <String>['hidden', 'shown'],
+          labels: const <String, String>{'hidden': 'Hidden (rig only)', 'shown': 'Shown (with NPC body)'},
+          hiddenLabel: 'Body',
+          onChanged: (String? value) => _edit((JsonMap json) => cloneJson(json)..['body'] = value ?? 'hidden'),
         ),
       ]),
       if (rig['body'] == 'shown')
         dom.label(classes: 'animus-rig-field', <Widget>[
           const dom.span(<Widget>[Component.text('Preview body')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: _bodyType,
-            options: <ArcaneSelectOption>[
-              for (final String type in mcBodyTypes) ArcaneSelectOption(label: previewBodies[type] ?? type, value: type),
-            ],
-            onChanged: (String value) {
+            options: mcBodyTypes,
+            labels: previewBodies,
+            hiddenLabel: 'Preview body',
+            onChanged: (String? value) {
+              if (value == null) return;
               _bodyType = value;
               _framed = false;
               _refresh();

@@ -24,8 +24,10 @@ import '../mc/npc/npc_skin.dart';
 import '../mc/npc/npc_skin_failure.dart';
 import '../mc/npc/route_overlay.dart';
 import '../model/animus_document.dart';
+import '../model/document_kind.dart';
 import '../services/skin_images.dart';
 import '../services/skin_textures.dart';
+import 'gui/gui_fields.dart';
 import 'mc/mc_asset_loader.dart';
 import 'mc/mc_stage.dart';
 
@@ -292,16 +294,16 @@ class _NpcPreviewState extends State<NpcPreview> {
         if (component.rig != null) ...<Widget>[
           dom.label(classes: 'animus-inline-field', <Widget>[
             const dom.span(<Widget>[Component.text('Animation')]),
-            ArcaneSelect(
-              size: ComponentSize.sm,
+            GuiSelect(
               value: _animation ?? '',
-              options: <ArcaneSelectOption>[
-                const ArcaneSelectOption(label: 'Rest pose', value: ''),
-                for (final AnimusDocument animation in component.animations) ArcaneSelectOption(label: animation.id, value: animation.id),
-              ],
-              onChanged: (String value) {
+              options: <String>[for (final AnimusDocument animation in component.animations) animation.id],
+              allowNone: true,
+              noneLabel: 'Rest pose',
+              hiddenLabel: 'Animation',
+              references: DocumentKind.animation,
+              onChanged: (String? value) {
                 setState(() {
-                  _animation = value.isEmpty ? null : value;
+                  _animation = value;
                   _backToIdle = false;
                   _tick = 0;
                   _playing = false;
