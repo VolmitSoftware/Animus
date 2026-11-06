@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "title": "&8Gatehouse",
+  "resolution": "9x3",
+  "mask": [
+    "AAAAAAAAA",
+    "A B C D A",
+    "         "
+  ],
+  "keys": {
+    "A": {
+      "type": "decoration",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:gray_stained_glass_pane"
+      }
+    },
+    "B": {
+      "type": "decoration",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:torch",
+        "name": "&6Lantern token",
+        "lore": [
+          "Shown at the gate"
+        ]
+      }
+    },
+    "C": {
+      "type": "decoration",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:shield"
+      }
+    },
+    "D": {
+      "type": "decoration",
+      "icon": {
+        "type": "item",
+        "item": "minecraft:iron_sword",
+        "count": 2
+      }
+    }
+  }
+}

@@ -27,6 +27,8 @@ public record CatalogChange(Set<DocumentKind> kinds, Set<String> removedBehavior
         Set<String> removed = new TreeSet<>();
         for (String transaction : transactions) {
             for (String path : store.paths(transaction)) {
+                // The enabled server behaviors are read with the behavior catalog.
+                if (path.equals(art.arcane.animus.core.behavior.catalog.ServerBehaviorList.PATH)) { kinds.add(DocumentKind.BEHAVIOR); continue; }
                 Optional<DocumentKind> kind = DocumentKind.forPath(path);
                 if (kind.isEmpty()) continue;
                 kinds.add(kind.get());

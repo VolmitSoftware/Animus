@@ -3,6 +3,7 @@ package art.arcane.animus.core.migration;
 import art.arcane.animus.core.behavior.schema.OfflineBehaviorValidation;
 import art.arcane.animus.core.behavior.schema.OfflineCapabilities;
 import art.arcane.animus.core.editor.SharedFixtures;
+import art.arcane.animus.core.gui.GuiDocument;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonElement;
@@ -25,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The synthetic Denizen folders under schema/fixtures/denizen convert to exactly the committed staged trees under
- * expected/, which animus-web's browser converter must also reproduce byte for byte, and every generated behavior
- * passes the offline behavior compiler.
+ * expected/, which animus-web's browser converter must also reproduce byte for byte, every generated chest GUI
+ * parses, and every generated behavior passes the offline behavior compiler.
  *
  * <p>After an intended converter change, regenerate the expected trees from the worktree root with
  * {@code ./gradlew :core:test --tests 'art.arcane.animus.core.migration.DenizenGoldenTest' -Danimus.regenerateGolden=true},
@@ -71,6 +72,12 @@ class DenizenGoldenTest {
         for (String path : wanted.keySet())
             assertEquals(new String(wanted.get(path), StandardCharsets.UTF_8), new String(actual.get(path), StandardCharsets.UTF_8), name + ": " + path);
         assertEquals(ImportDigest.outputHash(expected), ImportDigest.outputHash(preview.directory()));
+        for (Map.Entry<String, byte[]> file : actual.entrySet()) {
+            if (!file.getKey().startsWith("guis/denizen/")) continue;
+            String id = "denizen:" + file.getKey().substring("guis/denizen/".length(), file.getKey().length() - ".json".length());
+            GuiDocument.Result gui = GuiDocument.parse(id, new String(file.getValue(), StandardCharsets.UTF_8));
+            assertTrue(gui.problems().isEmpty(), name + ": " + file.getKey() + ": " + gui.problems());
+        }
         try (OfflineCapabilities capabilities = new OfflineCapabilities()) {
             OfflineBehaviorValidation.Report report = OfflineBehaviorValidation.validate(preview.directory(), capabilities);
             assertTrue(report.valid(), name + ": " + String.join("\n", report.lines()));

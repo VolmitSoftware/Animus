@@ -61,7 +61,7 @@
       "steps": [
         {
           "type": "action",
-          "capability": "animus:say",
+          "capability": "animus:message",
           "arguments": {
             "text": "Thank you."
           }
@@ -82,7 +82,7 @@
       "steps": [
         {
           "type": "action",
-          "capability": "animus:say",
+          "capability": "animus:message",
           "arguments": {
             "text": "Bring me something else."
           }
@@ -105,19 +105,14 @@
     },
     "s1-enter": {
       "type": "action",
-      "capability": "animus:say",
+      "capability": "animus:message",
       "arguments": {
         "text": "Still gathering?"
       }
     },
     "s1-click": {
       "type": "condition",
-      "capability": "animus:quest-state",
-      "arguments": {
-        "name": "visits",
-        "scope": "player",
-        "atLeast": 3
-      },
+      "expression": "num(flag('player', 'visits', 0)) >= 3",
       "then": {
         "type": "condition",
         "capability": "animus:has-permission",
@@ -131,7 +126,10 @@
               "type": "action",
               "capability": "animus:command",
               "arguments": {
-                "command": "give {player_name} minecraft:emerald 1"
+                "command": null
+              },
+              "templates": {
+                "/command": "give {{ player.name }} minecraft:emerald 1"
               }
             },
             {
@@ -147,44 +145,38 @@
         },
         "else": {
           "type": "condition",
-          "capability": "animus:npc-state",
-          "arguments": {
-            "spawned": true
-          },
+          "expression": "!(npc.spawned)",
           "then": {
             "type": "action",
-            "capability": "animus:say",
+            "capability": "animus:message",
             "arguments": {
-              "text": "Come back later."
+              "text": "How odd."
             }
           },
           "else": {
             "type": "action",
-            "capability": "animus:say",
+            "capability": "animus:message",
             "arguments": {
-              "text": "How odd."
+              "text": "Come back later."
             }
           }
         }
       },
       "else": {
         "type": "condition",
-        "capability": "animus:npc-state",
-        "arguments": {
-          "spawned": true
-        },
+        "expression": "!(npc.spawned)",
         "then": {
           "type": "action",
-          "capability": "animus:say",
+          "capability": "animus:message",
           "arguments": {
-            "text": "Come back later."
+            "text": "How odd."
           }
         },
         "else": {
           "type": "action",
-          "capability": "animus:say",
+          "capability": "animus:message",
           "arguments": {
-            "text": "How odd."
+            "text": "Come back later."
           }
         }
       }
@@ -194,23 +186,25 @@
       "steps": [
         {
           "type": "action",
-          "capability": "animus:say",
+          "capability": "animus:message",
           "arguments": {
             "text": "&#ffaa00You did it❤"
           }
         },
         {
           "type": "action",
-          "capability": "animus:command",
+          "capability": "animus:give-item",
           "arguments": {
-            "command": "give {player} minecraft:diamond 2"
+            "item": "minecraft:diamond",
+            "amount": 2
           }
         },
         {
           "type": "action",
-          "capability": "animus:command",
+          "capability": "animus:take-item",
           "arguments": {
-            "command": "clear {player} minecraft:dirt 3"
+            "item": "minecraft:dirt",
+            "amount": 3
           }
         }
       ]

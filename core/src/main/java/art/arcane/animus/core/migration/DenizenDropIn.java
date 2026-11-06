@@ -1,5 +1,7 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
+import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.DocumentStore;
 import com.google.gson.JsonArray;
@@ -91,6 +93,24 @@ final class DenizenDropIn {
         JsonObject part = state.getAsJsonObject("denizen");
         return Optional.of("Denizen import " + part.get("importId").getAsString().substring(0, 12) + ": behaviors in behaviors/denizen/, kept items with reasons in "
                 + part.get("report").getAsString());
+    }
+
+    /**
+     * The change that appends the applied import's server behaviors to {@code server-behaviors.json}, or empty when there are
+     * none or every one is already listed. Rolling the accepting transaction back restores the file.
+     */
+    static Optional<DocumentStore.Change> serverBehaviors(DocumentStore store, JsonObject state) throws IOException {
+        if (!applied(state)) return Optional.empty();
+        String receipt = store.read(DenizenImporter.IMPORTS + "/" + state.getAsJsonObject("denizen").get("importId").getAsString() + "/receipt.json");
+        if (receipt == null) return Optional.empty();
+        JsonArray listed = DenizenImporter.serverBehaviors(JsonDocuments.object(receipt));
+        if (listed.isEmpty()) return Optional.empty();
+        List<String> ids = new ArrayList<>();
+        for (JsonElement id : listed) ids.add(id.getAsString());
+        String before = store.read(ServerBehaviorList.PATH);
+        String after = ServerBehaviorList.append(before, ids);
+        if (after.equals(before)) return Optional.empty();
+        return Optional.of(new DocumentStore.Change(ServerBehaviorList.PATH, before == null ? "missing" : store.hash(ServerBehaviorList.PATH), after));
     }
 
     static void rolledBack(JsonObject state) {

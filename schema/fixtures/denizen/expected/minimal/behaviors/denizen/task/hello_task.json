@@ -9,9 +9,12 @@
       "steps": [
         {
           "type": "action",
-          "capability": "animus:say",
+          "capability": "animus:message",
           "arguments": {
-            "text": "Hello {player_name}"
+            "text": null
+          },
+          "templates": {
+            "/text": "Hello {{ player.name }}"
           }
         },
         {

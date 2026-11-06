@@ -33,7 +33,7 @@ public final class OfflineBehaviorValidation {
             "Whether modules a pack requires are installed and active.",
             "The command allow-list for animus:command, and the server's platform (on Folia most built-in actions are unavailable).",
             "Revisions against programs a server has already accepted: a changed file there still needs a higher revision.",
-            "Arguments filled from variables, which are checked when the action runs.",
+            "Arguments filled from variables, expressions or templates, which are checked when the action runs.",
             "Worlds, coordinates, reusable routes, skins, permissions, sounds, particles, items and whether a player is present.");
     public record Report(boolean valid, List<String> lines) {
         public Report { lines = List.copyOf(lines); }

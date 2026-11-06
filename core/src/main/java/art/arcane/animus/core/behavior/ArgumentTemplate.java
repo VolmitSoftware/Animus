@@ -6,7 +6,11 @@ import com.google.gson.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-/** Immutable literal chunks and typed slots. JSON pointers are resolved once, during compilation. */
+/**
+ * Immutable literal chunks and slots. JSON pointers are resolved once, during compilation. A slot is filled at execution
+ * from a declared variable (bindings), an expression (expressions) or a template (templates); values are written as
+ * canonical JSON, a whole-number expression result as an integer.
+ */
 public final class ArgumentTemplate {
     public static final int MAX_BYTES=65536,MAX_BINDINGS=32,MAX_SEGMENTS=16,MAX_POINTER_BYTES=4096,MAX_LITERAL_NODES=16384;
     public static final class Invalid extends IllegalArgumentException {
@@ -16,24 +20,37 @@ public final class ArgumentTemplate {
     }
     private sealed interface Part permits Literal,Slot {}
     private record Literal(String json,int bytes)implements Part{}
-    private record Slot(String variable,Type type,String field)implements Part{}
+    private sealed interface Slot extends Part permits Bound,Computed,Text {String field();}
+    private record Bound(String variable,Type type,String field)implements Slot{}
+    private record Computed(BehaviorExpression expression,String field)implements Slot{}
+    private record Text(BehaviorTemplate template,String field)implements Slot{}
     private final List<Part> parts;private final String field;
     private ArgumentTemplate(List<Part> parts,String field){this.parts=List.copyOf(parts);this.field=field;}
 
-    static ArgumentTemplate compile(JsonObject arguments,JsonObject bindings,Map<String,Value> variables,String nodePath){
+    static ArgumentTemplate compile(JsonObject arguments,JsonObject bindings,JsonObject expressions,JsonObject templates,Map<String,Type> variables,String nodePath){
         if(bindings.size()>MAX_BINDINGS)throw new Invalid(nodePath+".bindings","at most 32 argument bindings");
+        if(bindings.size()+expressions.size()+templates.size()>MAX_BINDINGS)throw new Invalid(nodePath+(expressions.size()>0?".expressions":".templates"),"at most 32 bindings, expressions and templates together");
         Map<List<String>,Slot> targets=new LinkedHashMap<>();
         for(var entry:bindings.entrySet()){
             String field=nodePath+".bindings["+entry.getKey()+"]";
-            List<String> pointer=pointer(entry.getKey(),field);
-            for(List<String> previous:targets.keySet())if(prefix(pointer,previous)||prefix(previous,pointer))throw new Invalid(field,"overlapping argument bindings");
+            List<String> pointer=claim(targets,entry.getKey(),field);
             JsonElement raw=entry.getValue();
             if(!raw.isJsonObject()||raw.getAsJsonObject().size()!=1||!raw.getAsJsonObject().has("variable"))throw new Invalid(field,"expected only a variable reference");
             JsonElement reference=raw.getAsJsonObject().get("variable");
             if(!reference.isJsonPrimitive()||!reference.getAsJsonPrimitive().isString())throw new Invalid(field+".variable","expected declared variable name");
-            String name=reference.getAsString();Value declared=variables.get(name);
+            String name=reference.getAsString();Type declared=variables.get(name);
             if(declared==null)throw new Invalid(field+".variable","unknown declared variable");
-            targets.put(pointer,new Slot(name,declared.type(),field));
+            targets.put(pointer,new Bound(name,declared,field));
+        }
+        for(var entry:expressions.entrySet()){
+            String field=nodePath+".expressions["+entry.getKey()+"]";
+            List<String> pointer=claim(targets,entry.getKey(),field);
+            targets.put(pointer,new Computed(BehaviorExpression.compile(source(entry.getValue(),field),variables.keySet(),field),field));
+        }
+        for(var entry:templates.entrySet()){
+            String field=nodePath+".templates["+entry.getKey()+"]";
+            List<String> pointer=claim(targets,entry.getKey(),field);
+            targets.put(pointer,new Text(BehaviorTemplate.compile(source(entry.getValue(),field),variables.keySet(),field),field));
         }
         // Resolve only after overlap validation, so either parent/child declaration order has the same result.
         for(var entry:targets.entrySet()){
@@ -54,6 +71,15 @@ public final class ArgumentTemplate {
         Builder builder=new Builder(targets,nodePath+".arguments");builder.visit(arguments,List.of(),0);builder.flush();
         return new ArgumentTemplate(builder.parts,nodePath+".arguments");
     }
+    private static List<String> claim(Map<List<String>,Slot> targets,String encoded,String field){
+        List<String> pointer=pointer(encoded,field);
+        for(List<String> previous:targets.keySet())if(prefix(pointer,previous)||prefix(previous,pointer))throw new Invalid(field,"overlapping argument bindings");
+        return pointer;
+    }
+    private static String source(JsonElement raw,String field){
+        if(raw==null||!raw.isJsonPrimitive()||!raw.getAsJsonPrimitive().isString()||raw.getAsString().isBlank())throw new Invalid(field,"expected nonblank string");
+        return raw.getAsString();
+    }
     private static boolean prefix(List<String> left,List<String> right){return left.size()<=right.size()&&left.equals(right.subList(0,left.size()));}
     private static List<String> pointer(String encoded,String field){
         if(encoded.isEmpty()||encoded.charAt(0)!='/')throw new Invalid(field,"expected a non-root JSON Pointer");
@@ -72,22 +98,47 @@ public final class ArgumentTemplate {
         }
         return List.copyOf(result);
     }
+    /** Every slot filled at execution: bindings, expressions and templates. Zero means the arguments are fully literal. */
     public int bindings(){return (int)parts.stream().filter(Slot.class::isInstance).count();}
-    /** Bounded valid UTF-8 object JSON suitable for schema validation before module admission. */
-    public String resolve(Map<String,Value> variables){
+    /** Bounded valid UTF-8 object JSON from variables alone; refuses templates that hold expressions or templates. */
+    public String resolve(Map<String,Value> variables){return resolve(variables,null);}
+    /**
+     * Bounded valid UTF-8 object JSON suitable for schema validation before module admission. Expression failures throw
+     * {@link BehaviorExpression.Failed}; a result outside the value bounds fails with code behavior-expression-type.
+     */
+    public String resolve(Map<String,Value> variables,BehaviorExpression.Environment environment){
         Output output=new Output(field);
         for(Part part:parts){
-            if(part instanceof Literal literal)output.known(literal.json(),literal.bytes());
-            else{
-                Slot slot=(Slot)part;Value value=variables.get(slot.variable());
-                if(value==null||value.type()!=slot.type())throw new Invalid(slot.field(),"missing or mismatched runtime variable type");
-                switch(value.type()){
-                    case BOOLEAN,INTEGER,DECIMAL->output.raw(value.value().toString());
-                    case STRING->output.string((String)value.value());
+            switch(part){
+                case Literal literal->output.known(literal.json(),literal.bytes());
+                case Bound slot->{
+                    Value value=variables.get(slot.variable());
+                    if(value==null||slot.type()!=Type.ANY&&value.type()!=slot.type())throw new Invalid(slot.field(),"missing or mismatched runtime variable type");
+                    write(output,value);
+                }
+                case Computed slot->{
+                    if(environment==null)throw new Invalid(slot.field(),"expressions need an execution");
+                    Object result=slot.expression().evaluate(environment);Value value;
+                    try{value=BehaviorValues.natural(result);}catch(IllegalArgumentException invalid){throw new BehaviorExpression.Failed("behavior-expression-type",slot.field(),"the result exceeds the value bounds");}
+                    write(output,value);
+                }
+                case Text slot->{
+                    if(environment==null)throw new Invalid(slot.field(),"templates need an execution");
+                    String text=slot.template().evaluate(environment);
+                    try{new Value(Type.STRING,text);}catch(IllegalArgumentException invalid){throw new BehaviorExpression.Failed("behavior-expression-type",slot.field(),"the text exceeds "+BehaviorValues.MAX_STRING_BYTES+" UTF-8 bytes");}
+                    output.string(text);
                 }
             }
         }
         return output.text.toString();
+    }
+    private static void write(Output output,Value value){
+        switch(value.type()){
+            case BOOLEAN,INTEGER,DECIMAL->output.raw(value.value().toString());
+            case STRING->output.string((String)value.value());
+            case LIST,MAP->output.raw(BehaviorValues.canonical(value));
+            case ANY->throw new IllegalStateException("Runtime values have concrete types");
+        }
     }
     private static final class Builder {
         final Map<List<String>,Slot> targets;final List<Part> parts=new ArrayList<>();final Output output;int nodes;

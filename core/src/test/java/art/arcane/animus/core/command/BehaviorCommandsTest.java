@@ -103,7 +103,7 @@ class BehaviorCommandsTest {
         }
     }
     private static BehaviorSettings enabled(boolean enabled,BehaviorCatalog.Limits catalog){
-        var d=BehaviorSettings.DEFAULT;return new BehaviorSettings(enabled,d.maximumOperations(),d.operationsPerTick(),d.tickMillis(),d.deliveryBudgetMillis(),d.engine(),catalog,d.triggers(),d.state(),d.actions());
+        var d=BehaviorSettings.DEFAULT;return new BehaviorSettings(enabled,d.maximumOperations(),d.operationsPerTick(),d.tickMillis(),d.deliveryBudgetMillis(),d.engine(),catalog,d.triggers(),d.state(),d.actions(),d.server());
     }
     @Test void behaviorsEnabledHotloadsOffAndOnWithoutStoppingRunningExecutions()throws Exception{
         source("example:wait",1,30);
@@ -142,7 +142,7 @@ class BehaviorCommandsTest {
         }
     }
     @Test void disabledBehaviorSettingsNeverQueueCatalogWork()throws Exception{
-        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions());AtomicInteger submitted=new AtomicInteger();
+        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions(),defaults.server());AtomicInteger submitted=new AtomicInteger();
         try(var harness=new Harness(disabled,observer->task->submitted.incrementAndGet())){
             harness.extensions.start();assertEquals(0,submitted.get());assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
         }
@@ -278,7 +278,7 @@ class BehaviorCommandsTest {
         }
     }
     @Test void disabledBehaviorsKeepAnUnavailableDispatcherAndReportIt()throws Exception{
-        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions());
+        var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions(),defaults.server());
         try(var harness=new Harness(disabled,observer->task->{})){
             assertFalse(harness.service.triggers().available());harness.service.execute(sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE | reason=behaviors are disabled"),messages.toString());
         }
