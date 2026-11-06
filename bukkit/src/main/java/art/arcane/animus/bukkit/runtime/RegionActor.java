@@ -247,7 +247,7 @@ final class RegionActor implements RegionOwner.Body {
                 if (had || rig != null) appearance++;
             }
         }
-        if (rig == null || !state.snapshot().active()) return;
+        if (rig == null || !state.snapshot().active() || !host.budget.takeSimulation()) return;
         boolean walking = route != null && route.execution != null && !route.execution.finished();
         for (RigPlayback.Finished done : rig.tick(turns, walking)) host.animationFinished(uuid, done.animation(), done.layer());
         if (rig.due(turns, yaw) && host.budget.cosmeticAllowed() && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs().sampleTicks(), System.nanoTime());
@@ -1023,11 +1023,12 @@ final class RegionActor implements RegionOwner.Body {
         if (falling) routeStatus(current, "falling", "to the ground before the leg starts");
         return falling;
     }
-    /** Idle gravity: one bounded step per owner tick while the NPC falls, charged to the region's motion cells. */
+    /** Idle gravity: one bounded step per owner tick while the NPC falls, charged to the region's simulation turns and motion cells. */
     private void support() {
         supportWanted = false;
         World world = mount || !navigable() || !falls ? null : host.world(state.snapshot().position().world());
         if (world == null) { fallSpeed = 0; return; }
+        if (!host.budget.takeSimulation()) { supportWanted = true; return; }
         int wanted = IdleFall.cells(hullWidth(), hullHeight()), granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
         if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); supportWanted = true; return; }
         ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);

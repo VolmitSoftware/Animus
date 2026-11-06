@@ -175,6 +175,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         CombatBudgets combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : CombatBudgets.DEFAULT;
         live = new RegionPickup<>(regions, initial);
         budget = new RegionBudget(regions, limits(initial, combatBudgets));
+        budget.interval(settings.degradedIntervalTicks());
+        budget.backlog(() -> { TriggerDispatcher dispatcher = triggers; return dispatcher != null && dispatcher.backlogged(); });
         appliedNavigation = initial.navigation();
         settingsSubscription = runtime.onSettings(this::published);
         if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
@@ -216,6 +218,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     private void published(PluginSettings next) {
         Live adopted = new Live(PersistedNpcService.Settings.from(next.npcs()), next.navigation(), next.rigs(), next.recordings());
         budget.limits(limits(adopted, next.combat()));
+        budget.interval(adopted.npcs().degradedIntervalTicks());
         live.publish(adopted);
     }
 
@@ -228,7 +231,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         limits.put(RegionBudget.Kind.MOTION_CELLS, navigation.motionCellsPerTick()); limits.put(RegionBudget.Kind.ROUTE_PLANS, navigation.planningStartsPerTick());
         limits.put(RegionBudget.Kind.CAPTURE, navigation.captureReadsPerTick()); limits.put(RegionBudget.Kind.VIEWERS, npcs.updatesPerTick());
         limits.put(RegionBudget.Kind.PACKETS, npcs.packetsPerTick()); limits.put(RegionBudget.Kind.WAKES, 16); limits.put(RegionBudget.Kind.LOOKS, npcs.lookUpdatesPerTick());
-        limits.put(RegionBudget.Kind.RIG_PLANS, settings.rigs().plansPerTick());
+        limits.put(RegionBudget.Kind.RIG_PLANS, settings.rigs().plansPerTick()); limits.put(RegionBudget.Kind.SIMULATION, npcs.simulationPerTick());
         limits.put(RegionBudget.Kind.COMBAT_BRAINS, combatBudgets.brainsPerTick()); limits.put(RegionBudget.Kind.COMBAT_SCANS, combatBudgets.targetScansPerTick());
         limits.put(RegionBudget.Kind.COMBAT_PATHS, combatBudgets.pathRequestsPerTick()); limits.put(RegionBudget.Kind.COMBAT_ALERTS, combatBudgets.squadAlertsPerTick());
         limits.put(RegionBudget.Kind.COMBAT_HELPERS, combatBudgets.helperUpdatesPerTick());
