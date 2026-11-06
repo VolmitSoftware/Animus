@@ -243,6 +243,8 @@
 - `/animus npc attribute <npc> <attribute> [value=<number>|reset]` with attribute completion, and the behavior action `animus:set-attribute`.
 - The vanilla attribute table is generated from the server jars with `./gradlew :core:generateAttributeTable`.
 - Web editor: an Attributes section for NPCs and groups, with range hints, defaults and sources; the preview shows `scale`.
+- Web editor: a Conversation tab builds a behavior's lines, questions, conditions and actions as a tree by keyboard, writes the routines, `animus:choices` actions and `dialogue_choice` triggers with ids it keeps, opens matching hand-written behaviors, plays the conversation in the browser and attaches it to NPCs and groups in one undoable step.
+- Web editor: New conversation in the sidebar and the command palette, and a Conversation behavior template.
 
 ### Changed
 

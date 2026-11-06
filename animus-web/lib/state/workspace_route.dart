@@ -17,7 +17,8 @@ library;
 
 import '../model/document_kind.dart';
 
-enum ViewMode { visual, preview, code, split }
+/// A document's view. [conversation] is the behavior Conversation tab.
+enum ViewMode { visual, preview, code, split, conversation }
 
 sealed class EditorRoute {
   const EditorRoute();
@@ -49,6 +50,7 @@ sealed class EditorRoute {
         if (parts.length == 3 && parts[2] == 'recordings') return RecordingListRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'new') return NewDocumentRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'sync') return SyncRoute(decode(parts[1]));
+        if (parts.length == 4 && parts[2] == 'new' && parts[3] == NewDocumentRoute.conversationPath) return NewDocumentRoute.conversation(decode(parts[1]));
         if (parts.length == 4 && parts[2] == 'new') {
           String? folder;
           for (final String pair in query.split('&')) {
@@ -159,25 +161,38 @@ class RecordingListRoute extends EditorRoute {
 
 /// The New page of a workspace, optionally on one kind's guided step.
 class NewDocumentRoute extends EditorRoute {
-  const NewDocumentRoute(this.workspaceId, [this.kind]) : folder = null;
+  const NewDocumentRoute(this.workspaceId, [this.kind])
+      : folder = null,
+        conversation = false;
 
-  const NewDocumentRoute.inFolder(this.workspaceId, DocumentKind this.kind, String this.folder);
+  const NewDocumentRoute.inFolder(this.workspaceId, DocumentKind this.kind, String this.folder) : conversation = false;
+
+  /// A new behavior with the Conversation template picked.
+  const NewDocumentRoute.conversation(this.workspaceId)
+      : kind = DocumentKind.behavior,
+        folder = null,
+        conversation = true;
+
+  static const String conversationPath = 'conversation';
 
   final String workspaceId;
   final DocumentKind? kind;
 
   /// For a new NPC, the folder under npcs/ it starts in.
   final String? folder;
+  final bool conversation;
 
   @override
-  String format() =>
-      '#/workspace/${Uri.encodeComponent(workspaceId)}/new${kind == null ? '' : '/${kind!.wireName}'}${kind != null && folder != null ? '?folder=${Uri.encodeComponent(folder!)}' : ''}';
+  String format() => conversation
+      ? '#/workspace/${Uri.encodeComponent(workspaceId)}/new/$conversationPath'
+      : '#/workspace/${Uri.encodeComponent(workspaceId)}/new${kind == null ? '' : '/${kind!.wireName}'}${kind != null && folder != null ? '?folder=${Uri.encodeComponent(folder!)}' : ''}';
 
   @override
-  bool operator ==(Object other) => other is NewDocumentRoute && other.workspaceId == workspaceId && other.kind == kind && other.folder == folder;
+  bool operator ==(Object other) =>
+      other is NewDocumentRoute && other.workspaceId == workspaceId && other.kind == kind && other.folder == folder && other.conversation == conversation;
 
   @override
-  int get hashCode => Object.hash('new', workspaceId, kind, folder);
+  int get hashCode => Object.hash('new', workspaceId, kind, folder, conversation);
 }
 
 /// Pushing a local workspace to a paired server, or pulling from one.
