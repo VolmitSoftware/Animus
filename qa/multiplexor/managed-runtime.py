@@ -127,9 +127,9 @@ def target(args, source):
                 report['persistedUuid'] = saved['uuid']
                 if project == 'folia':
                     before = definition.read_bytes()
-                    report['checks'].append(console(session, log, f'animus spawn {npc_id}', r'.*Cannot activate: NPC runtime unavailable on Folia.*'))
+                    report['checks'].append(console(session, log, f'animus spawn {npc_id}', r'.*Cannot spawn .*: NPC runtime unavailable on Folia.*'))
                     assert definition.read_bytes() == before, 'Unsupported Folia activation changed the persisted definition'
-                    report['checks'].append(console(session, log, f'animus edit {npc_id} {{"name":"Folia Dormant"}}', r'.*Saved; transaction.*'))
+                    report['checks'].append(console(session, log, f'animus edit {npc_id} {{"name":"Folia Dormant"}}', r'.*Saved[^;]*; tx .*'))
                     edited = json.loads(definition.read_text())
                     assert edited['name'] == 'Folia Dormant' and not edited['spawned'] and edited['uuid'] == saved['uuid']
                     assert edited['revision'] == saved['revision'] + 1
@@ -149,13 +149,13 @@ def target(args, source):
                     assert sha(definition) == report['recoveryInvalidSha256']
                     definition.write_bytes((evidence_dir/'recovery-valid.json').read_bytes())
                     assert sha(definition) == report['recoveryValidSha256']
-                    report['checks'].append(console(session, log, 'animus reload', r'.*reload successful.*'))
-                    report['checks'].append(console(session, log, f'animus edit {npc_id} {{"name":"{expected_name}"}}', r'.*Saved; transaction.*'))
+                    report['checks'].append(console(session, log, 'animus reload', r'.*Reloaded; .*'))
+                    report['checks'].append(console(session, log, f'animus edit {npc_id} {{"name":"{expected_name}"}}', r'.*Saved[^;]*; tx .*'))
                     repaired = json.loads(definition.read_text())
                     assert repaired['uuid'] == saved['uuid'] and repaired['revision'] == saved['revision'] + 1 and not repaired['spawned']
                     report['recoveryVerified'] = True
-                report['checks'].append(console(session, log, f'animus delete {npc_id}', r'.*Deleted; rollback transaction.*'))
-            report['checks'].append(console(session, log, 'animus validate', r'.*validate successful;.*'))
+                report['checks'].append(console(session, log, f'animus delete {npc_id}', r'.*Deleted [^;]*; tx .*'))
+            report['checks'].append(console(session, log, 'animus validate', r'.*All definitions valid;.*'))
             if cycle == 0 and args.inline_recovery:
                 valid = definition.read_bytes(); before = json.loads(valid)
                 (evidence_dir/'recovery-valid.json').write_bytes(valid)

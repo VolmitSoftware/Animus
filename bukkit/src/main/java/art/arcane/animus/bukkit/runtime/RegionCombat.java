@@ -228,7 +228,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
                 try {
                     CombatDeletions.delete(host.runtime.npcs(), npc).ifPresent((CombatDeletions.Deleted done) -> {
                         deleted.incrementAndGet();
-                        warn("Combat NPC " + done.id() + " died and was deleted (respawn.deleteOnDeath); undo with /animus rollback " + done.transaction());
+                        warn("Combat NPC " + done.id() + " died and was deleted (respawn.deleteOnDeath); tx " + done.transaction());
                     });
                 } catch (java.io.IOException failure) { warn("Combat could not delete dead NPC " + npc + ": " + failure.getMessage()); }
             });
@@ -297,7 +297,7 @@ public final class RegionCombat implements Listener, AutoCloseable {
             host.plugin.getLogger().info("Combat " + id + ": " + result);
         }, (String reason) -> host.plugin.getLogger().info("Combat " + id + ": UNAVAILABLE " + reason));
         if (!queued) return "Combat " + id + ": UNAVAILABLE the NPC is not active on a region";
-        return "Combat " + id + ": QUEUED on the NPC's region; the result follows in the server log";
+        return "Combat " + id + ": QUEUED on its region; the result goes to the server log";
     }
     private static String describe(CombatOperations.Result result) { return result.status() + " " + result.detail(); }
     /** A combat NPC, an online player or a loaded mob. */

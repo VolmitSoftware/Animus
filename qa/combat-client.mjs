@@ -46,7 +46,7 @@ try {
   await command(`animus inspect ${id}`);
   const document = JSON.parse((await owner.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith('{') && e.text.includes(`"id":"${id}"`), from)).text.replace(/^\[Animus\]: /, ''));
   const shown = owner.events.length;
-  await command(`animus spawn ${id}`, `Spawn requested for ${id}`);
+  await command(`animus spawn ${id}`, `Spawning ${id}`);
   await owner.wait(e => e.event === 'spawn' && e.uuid === document.uuid, shown, 20_000);
   assert.equal(await npcHealth(), 20);
   passed('combat binds the active persisted virtual NPC', { uuid: document.uuid });
@@ -112,20 +112,20 @@ try {
   passed('closed bridge rejects registration and releases the real mob for reacquisition');
 
   const editStart = owner.events.length;
-  await command(`animus edit ${id} {"name":"Renamed Guard"}`, 'Saved; transaction');
+  await command(`animus edit ${id} {"name":"Renamed Guard"}`, /Saved[^;]*; tx /);
   await owner.wait(e => e.event === 'spawn' && e.uuid === document.uuid, editStart, 20_000);
   assert.equal(await npcHealth(), virtualHealth);
   passed('editing appearance preserves runtime health');
 
   // Restored vanilla goals may kill the original cow; policy checks need their own living target.
   const policyTarget = await spawn('cow', 0, 61, 5.8);
-  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":false,"reviewAccepted":false}}}`, 'Saved; transaction');
+  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":false,"reviewAccepted":false}}}`, /Saved[^;]*; tx /);
   await command(`animus attack ${id} ${policyTarget} damage=2`, 'combat is disabled or its migration review has not been accepted');
-  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":"true","reviewAccepted":true}}}`, 'Saved; transaction');
+  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":"true","reviewAccepted":true}}}`, /Saved[^;]*; tx /);
   await command(`animus attack ${id} ${policyTarget} damage=2`, 'combat is disabled or its migration review has not been accepted');
   passed('unreviewed combat and string booleans cannot bypass the import gate');
 
-  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":true,"reviewAccepted":true}}}`, 'Saved; transaction');
+  await command(`animus edit ${id} {"modules":{"animus:combat":{"enabled":true,"reviewAccepted":true}}}`, /Saved[^;]*; tx /);
   await delay(250);
   await command(`animusqa move ${zombie} 5 61 3`, 'QA moved');
   await command(`animus target ${id} ${zombie}`, 'Mob control started');
@@ -144,7 +144,7 @@ try {
       await command(`animus target ${id} stop`);
       await command('fill -1 61 4 1 64 4 air');
       await command('animusqa cleanup', /QA (?:combat cleanup|cleanup combat) complete/);
-      if (created) await command(`animus delete ${id}`, 'Deleted; rollback transaction');
+      if (created) await command(`animus delete ${id}`, /Deleted [^;]*; tx /);
     } catch (error) { failure ??= error; }
   }
   for (const client of clients) await client.close();

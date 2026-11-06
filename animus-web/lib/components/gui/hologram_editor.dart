@@ -281,9 +281,9 @@ class _HologramEditorState extends State<HologramEditor> {
   Widget _itemRow(JsonMap icon, String path, int index, void Function(JsonMap) onChanged) {
     final String itemPath = '$path.item';
     void field(String key, Object? value) => onChanged(withField(icon, key, value));
-    Widget row(String label, String key, Widget Function(String id) child, {String? help}) {
+    Widget row(String label, String key, Widget Function(String id) child, {String? help, bool labelled = true}) {
       final String id = guiPathId('$itemPath.$key');
-      return GuiRow(label: label, forId: id, help: help, problems: diagnosticsAt(_diagnostics, childPath(itemPath, key), nested: key == 'lore'), child: child(id));
+      return GuiRow(label: label, forId: labelled ? id : null, help: help, problems: diagnosticsAt(_diagnostics, childPath(itemPath, key), nested: key == 'lore'), child: child(id));
     }
 
     return dom.div(classes: 'animus-gui-fields animus-gui-holo-item', <Widget>[
@@ -291,7 +291,7 @@ class _HologramEditorState extends State<HologramEditor> {
           help: 'Such as minecraft:diamond'),
       row('Count', 'count', (String id) => GuiNumberInput(id: id, value: asInt(icon['count']), label: 'Row ${index + 1} count', onChanged: (num? v) => field('count', v)), help: '1 to 99'),
       row('Name', 'name', (String id) => GuiTextInput(id: id, value: asString(icon['name']) ?? '', mode: GuiTextMode.template, names: _names, label: 'Row ${index + 1} name', onChanged: (String v) => field('name', v))),
-      row('Lore', 'lore', (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: _names, onChanged: (List<String> lines) => field('lore', lines))),
+      row('Lore', 'lore', (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: _names, onChanged: (List<String> lines) => field('lore', lines)), labelled: false),
       row('Custom model', 'customModelValue', (String id) => GuiNumberInput(id: id, value: asInt(icon['customModelValue']), label: 'Row ${index + 1} custom model value', onChanged: (num? v) => field('customModelValue', v))),
       if (icon.containsKey('style'))
         dom.p(classes: 'animus-gui-note', <Widget>[
