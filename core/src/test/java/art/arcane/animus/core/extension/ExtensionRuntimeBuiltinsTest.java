@@ -60,6 +60,7 @@ class ExtensionRuntimeBuiltinsTest {
         @Override public boolean stopNavigation(NpcHandle npc) { throw new AssertionError(); }
         @Override public void look(NpcHandle npc, Vec3 target) { throw new AssertionError(); }
         @Override public void lookAtPlayer(NpcHandle npc, UUID player) { throw new AssertionError(); }
+        @Override public void pose(NpcHandle npc, String pose) { throw new AssertionError(); }
         @Override public void setAppearance(NpcHandle npc, AppearanceChange change) { throw new AssertionError(); }
         @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) { throw new AssertionError(); }
         @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) { throw new AssertionError(); }
@@ -98,6 +99,28 @@ class ExtensionRuntimeBuiltinsTest {
         ExtensionRuntime started = start(false, List.of());
         assertEquals(ExtensionRuntime.State.DISABLED, started.status().state());
         assertTrue(started.capabilityAvailable(FLAG, Kind.ACTION));
+        assertEquals(Outcome.Status.OK, run(started.behaviorInvoker(), FLAG, "town:greeter", false, "{\"name\":\"met\"}").status());
+    }
+
+    @Test void hotloadSwitchingModulesOffAndOnKeepsBuiltinsBound() throws Exception {
+        ExtensionRuntime started = start(true, List.of());
+        started.settings(new ModuleSettings(false, 8, 2000, 250));
+        assertEquals(ExtensionRuntime.State.DISABLED, started.status().state());
+        assertEquals(Outcome.Status.OK, run(started.behaviorInvoker(), FLAG, "town:greeter", false, "{\"name\":\"met\"}").status());
+        assertFalse(started.catalogResolver().module("example").available());
+        started.settings(new ModuleSettings(true, 8, 2000, 250));
+        assertEquals(ExtensionRuntime.State.READY, started.status().state());
+        assertEquals(Outcome.Status.OK, run(started.behaviorInvoker(), FLAG, "town:greeter", false, "{\"name\":\"met\"}").status());
+    }
+
+    @Test void hotloadEnablingModulesStartedOffLoadsThemOnceWithBuiltinsIntact() throws Exception {
+        ExtensionRuntime started = start(false, List.of());
+        int capabilities = started.capabilities().size();
+        started.settings(new ModuleSettings(true, 8, 2000, 250));
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(4);
+        while (started.status().state() != ExtensionRuntime.State.READY && System.nanoTime() < until) Thread.sleep(2);
+        assertEquals(ExtensionRuntime.State.READY, started.status().state(), started.status().failure());
+        assertEquals(capabilities, started.capabilities().size(), "built-ins are not installed twice");
         assertEquals(Outcome.Status.OK, run(started.behaviorInvoker(), FLAG, "town:greeter", false, "{\"name\":\"met\"}").status());
     }
 

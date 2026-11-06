@@ -11,6 +11,7 @@ import java.util.function.Supplier;
  * Engine observers/cleanup are quick trusted engine hooks, not extension callback surfaces.
  */
 public final class MutationLane implements AutoCloseable {
+    private static final int MAXIMUM_LIMIT=1024;
     public enum CleanupState { NOT_SCHEDULED, QUEUED, RUNNING, SUCCEEDED, FAILED }
     public enum EngineTaskEvent { CANCELLED, FAILED }
     @FunctionalInterface public interface EngineTaskObserver {
@@ -23,8 +24,9 @@ public final class MutationLane implements AutoCloseable {
                          boolean drainContinuationOverBudget,int queuedEngineNotifications,
                          long failedEngineTasks,long cancelledEngineTasks,long observerFailures,
                          CleanupState cleanupState,String lastEngineFailure,boolean quiescent) {}
-    private final int maximum;
-    private final long deliveryBudgetNanos;
+    /** Guarded by this lane; {@link #limits} replaces both live. */
+    private int maximum;
+    private long deliveryBudgetNanos;
     private final ThreadPoolExecutor worker,deliveries;
     private final ExecutorService drainSignal;
     private final Runnable cleanup;
@@ -40,16 +42,28 @@ public final class MutationLane implements AutoCloseable {
     public MutationLane(int maximum){this(maximum,Duration.ofMillis(250));}
     public MutationLane(int maximum,Duration deliveryBudget){this(maximum,deliveryBudget,()->{},failure->{});}
     public MutationLane(int maximum,Duration deliveryBudget,Runnable cleanup,Consumer<Throwable> cleanupFailureObserver) {
-        if(maximum<1 || maximum>1024 || deliveryBudget==null || deliveryBudget.isZero() || deliveryBudget.isNegative()
-                || deliveryBudget.compareTo(Duration.ofMinutes(1))>0)throw new IllegalArgumentException("Invalid mutation/delivery limits");
+        check(maximum,deliveryBudget);
         this.maximum=maximum;deliveryBudgetNanos=deliveryBudget.toNanos();
         this.cleanup=Objects.requireNonNull(cleanup);this.cleanupFailureObserver=Objects.requireNonNull(cleanupFailureObserver);
-        worker=pool(1,maximum,"Animus-api-files");
-        deliveries=pool(2,maximum,"Animus-api-delivery");
-        drainSignal=pool(1,1,"Animus-api-drain");
+        worker=pool(1,"Animus-api-files");
+        deliveries=pool(2,"Animus-api-delivery");
+        drainSignal=pool(1,"Animus-api-drain");
+    }
+    private static void check(int maximum,Duration deliveryBudget){
+        if(maximum<1 || maximum>MAXIMUM_LIMIT || deliveryBudget==null || deliveryBudget.isZero() || deliveryBudget.isNegative()
+                || deliveryBudget.compareTo(Duration.ofMinutes(1))>0)throw new IllegalArgumentException("Invalid mutation/delivery limits");
+    }
+    /**
+     * Replaces the admission limit and delivery budget live. Admitted work always finishes; a lower limit only holds new
+     * work back (callers see the usual busy answer) until enough admitted work has ended.
+     */
+    public synchronized void limits(int maximum,Duration deliveryBudget){
+        check(maximum,deliveryBudget);
+        this.maximum=maximum;deliveryBudgetNanos=deliveryBudget.toNanos();
     }
     private static ThreadFactory factory(String name){return job->{Thread thread=new Thread(job,name);thread.setDaemon(true);return thread;};}
-    private static ThreadPoolExecutor pool(int threads,int queue,String name){return new ThreadPoolExecutor(threads,threads,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(queue),factory(name));}
+    /** Admission bounds every queue, so the queues themselves need no capacity of their own and follow a live limit. */
+    private static ThreadPoolExecutor pool(int threads,String name){return new ThreadPoolExecutor(threads,threads,0,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<>(),factory(name));}
     public <T> CompletionStage<Outcome<T>> submit(Supplier<Outcome<T>> operation) {
         ApiWork<T> task=new ApiWork<>(Objects.requireNonNull(operation));
         synchronized(this) {

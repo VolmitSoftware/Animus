@@ -1,5 +1,5 @@
 /// Rig and animation rules that a JSON Schema cannot express. The Java rig
-/// validator applies the same rules (docs/editor-contracts.md).
+/// validator applies the same rules (dev/editor-contracts.md).
 library;
 
 import '../model/animus_document.dart';

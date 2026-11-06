@@ -108,7 +108,7 @@ class CitizensPresentationTest {
         CitizensPresentation.Result result = map("player", "{\"poses\":{\"defaultPose\":\"North\",\"list\":{\"0\":\"north;180.0;-10.5\",\"1\":\"east;-90;0\"}}}");
         assertEquals(180.0, result.facing().orElseThrow().yaw());
         assertEquals(-10.5, result.facing().orElseThrow().pitch());
-        assertEquals(List.of("/traits/poses: default pose north sets the facing; other named poses are kept for review"), result.warnings());
+        assertEquals(List.of(), result.warnings(), "the named poses convert, so nothing is left to review");
         assertTrue(map("player", "{\"poses\":{\"list\":{\"0\":\"north;180;0\"}}}").facing().isEmpty());
         assertEquals(List.of("/traits/poses: default pose missing is not in the list; kept for review"),
                 map("player", "{\"poses\":{\"defaultPose\":\"missing\",\"list\":{\"0\":\"north;180;0\"}}}").warnings());
@@ -159,7 +159,7 @@ class CitizensPresentationTest {
         assertEquals("CONVERTED", fields.get("/traits/hologramtrait/lines/0").getAsString());
         assertEquals("CONVERTED", fields.get("/traits/sneak/sneaking").getAsString());
         assertEquals(CitizensImporter.CONVERTER_VERSION, preview.converterVersion());
-        assertEquals(10, CitizensImporter.CONVERTER_VERSION);
+        assertEquals(11, CitizensImporter.CONVERTER_VERSION);
     }
 
     @Test void hologramRendererSettingsMarginsAndListInventoriesMap() {

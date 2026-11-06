@@ -716,6 +716,22 @@
       }
     },
     {
+      "id": "animus:pose",
+      "kind": "action",
+      "description": "Turns the NPC to one of the named poses in its definition's poses.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "pose": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 32
+        }
+      }
+    },
+    {
       "id": "animus:quest-state",
       "kind": "condition",
       "description": "Compares a quest stage. An unset quest is stage zero.",

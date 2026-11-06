@@ -15,7 +15,7 @@ import java.util.Set;
 /**
  * {@code animations/<namespace>/<path>.json}: keyframe tracks over a rig's bones, validated against
  * {@code schema/animation-v1.schema.json} plus strictly increasing keyframe ticks within the duration. Sampling follows
- * docs/editor-contracts.md, in {@link RigSampler}.
+ * dev/editor-contracts.md, in {@link RigSampler}.
  */
 public record AnimationDocument(String id, long revision, String rig, int durationTicks, Loop loop, List<Track> tracks, List<Event> events, String source) {
     public static final int MAX_DURATION = 1200, MAX_TRACKS = 64, MAX_KEYFRAMES = 256, MAX_EVENTS = 256;

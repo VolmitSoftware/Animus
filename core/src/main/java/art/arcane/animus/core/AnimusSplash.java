@@ -1,5 +1,7 @@
 package art.arcane.animus.core;
 
+import art.arcane.animus.core.text.Palette;
+import art.arcane.animus.core.text.RichText;
 import art.arcane.volmlib.util.plugin.SplashScreenSupport;
 
 import java.util.List;
@@ -38,5 +40,25 @@ public final class AnimusSplash {
             output.append(LOGO.get(row)).append("   ").append(details[row]).append('\n');
         }
         return output.toString();
+    }
+
+    /**
+     * The splash in Animus colours for a console that shows legacy codes: pink letters, a dark grey shadow, grey details and
+     * a green READY. Legacy codes because the Spigot console renders no hex.
+     */
+    public static String colored(String splash) {
+        StringBuilder colored = new StringBuilder();
+        Palette previous = null;
+        for (int index = 0; index < splash.length(); index++) {
+            char glyph = splash.charAt(index);
+            Palette tone = glyph == '\u2588' ? Palette.PINK : glyph >= '\u2500' && glyph <= '\u257f' ? Palette.DARK_GREY : Palette.GREY;
+            if (tone != previous && !Character.isWhitespace(glyph)) {
+                colored.append(RichText.SECTION).append(tone.legacy());
+                previous = tone;
+            }
+            colored.append(glyph);
+        }
+        return colored.toString().replace("Startup: READY", "Startup: " + RichText.SECTION + "aREADY" + RichText.SECTION + Palette.GREY.legacy())
+                + RichText.SECTION + "r";
     }
 }

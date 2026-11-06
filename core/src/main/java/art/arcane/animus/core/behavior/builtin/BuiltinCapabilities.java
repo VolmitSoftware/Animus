@@ -213,9 +213,15 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
 
     /**
      * A hotload of {@code [behaviors.actions]}: the command allow-lists and the default choice lifetime apply to the next
-     * action. The queue, wait and choice budgets were sized when the actions started and stay until a restart.
+     * action; the queue, wait and choice budgets are adopted by their owners on the next tick or prompt. Lowered caps keep
+     * queued actions, waits and prompts and refuse new ones as busy until usage drops under them.
      */
-    public void settings(BuiltinActionSettings next) { settings = Objects.requireNonNull(next); }
+    public void settings(BuiltinActionSettings next) {
+        settings = Objects.requireNonNull(next);
+        queue.limits(new OwnerActionQueue.Limits(next.actionsPerTick(), next.actionsPerNpcPerTick(), next.queuedActions()));
+        waits.maximum(next.navigationWaits());
+        choices.maximum(next.pendingChoices());
+    }
 
     /**
      * Owner only. Handles a click from the client. Forged, stale, foreign and out-of-range clicks are rejected,
@@ -372,6 +378,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                 schema(COORDINATES + ",\"target\":{\"const\":\"player\"}", "\"oneOf\":[{" + required("target") + "},{" + required("x", "y", "z") + "}]"),
                 (arguments, problems) -> {},
                 this::look);
+        action("pose", Effect.WORLD, "Turns the NPC to one of the named poses in its definition's poses.",
+                schema(string("pose", 32), required("pose")),
+                (arguments, problems) -> matches(arguments, "pose", art.arcane.animus.core.npc.NamedPoses.NAME, problems),
+                call -> {
+                    String pose = text(call.arguments, "pose").orElseThrow();
+                    return onOwner(call, () -> { platform.pose(call.npc(), pose); return "{}"; });
+                });
         action("set-appearance", Effect.WORLD, "Changes the NPC's displayed name or skin until the runtime restarts or its definition changes.",
                 schema(string("name", 16) + "," + string("skin", 64) + "," + bool("reset"),
                         "\"anyOf\":[{" + required("name") + "},{" + required("skin") + "},{" + required("reset") + "}]"),

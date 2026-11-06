@@ -11,7 +11,7 @@ class DialogueFormatTest {
     static final String TOKEN = "a".repeat(32);
 
     @Test void speechColorizesTheSpeakerAndEveryNotationInTheText() {
-        assertEquals("§r§6Greeter§8 » §fWelcome §ahome", DialogueFormat.speech("Greeter", "Welcome &ahome"));
+        assertEquals("§r§x§f§f§5§f§a§8Greeter§8 » §fWelcome §ahome", DialogueFormat.speech("Greeter", "Welcome &ahome"));
         assertEquals("§r§x§1§2§3§4§5§6Bob§8 » §f§c❤ §x§a§b§c§d§e§fhi", DialogueFormat.speech("&#123456Bob", "<red>❤ &#ABCDEFhi"));
     }
 
@@ -20,7 +20,7 @@ class DialogueFormatTest {
         List<TextPart> buttons = parts.stream().filter((TextPart part) -> part.command().isPresent()).toList();
         assertEquals(3, buttons.size());
         assertEquals("§8[ §aYes §8]", buttons.get(0).text());
-        assertEquals("§8[ §bRumours §8]", buttons.get(1).text());
+        assertEquals("§8[ §x§f§f§b§3§d§6Rumours §8]", buttons.get(1).text(), "the second unstyled answer takes the light brand pink");
         assertEquals("§8[ §cNo §8]", buttons.get(2).text());
         assertEquals(Optional.of("/animus choice " + TOKEN + " yes"), buttons.get(0).command());
         assertEquals(Optional.of("§a§lYes\n§7Click to choose this answer"), buttons.get(0).hover());
@@ -32,5 +32,10 @@ class DialogueFormatTest {
         assertEquals("§8[ §x§f§f§a§a§0§0§n§lHire §8]", button.text());
         assertEquals(Optional.of("§7Costs §e5 emeralds"), button.hover());
         assertEquals("§c", DialogueFormat.colour(new ChoiceOption("no", "No", Optional.of("chartreuse"), Optional.empty(), Optional.empty()), 0, 2));
+    }
+
+    @Test void agreeingAnswersStayGreenWhereverTheyAre() {
+        assertEquals("§a", DialogueFormat.colour(new ChoiceOption("accept", "Accept"), 2, 3));
+        assertEquals("§x§f§f§5§f§a§8", DialogueFormat.colour(new ChoiceOption("rumours", "Rumours"), 0, 3));
     }
 }

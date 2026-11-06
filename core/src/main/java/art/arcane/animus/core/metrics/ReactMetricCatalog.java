@@ -11,7 +11,7 @@ import java.util.function.ToDoubleFunction;
  * The server-wide numbers Animus publishes to React under source {@link #SOURCE_ID}, matching the contract React's
  * Animus maps read: 8 costs, 3 pressures, 3 network totals, 7 packet kinds and 3 NPC counts. React accepts at most
  * {@link #LIMIT} metrics per source and only scalars; per-chunk and per-player data stay in {@code /animus debug}.
- * docs/react.md lists every key.
+ * The wiki page animus/17-debug-react-metrics lists every key.
  */
 public final class ReactMetricCatalog {
     public static final String SOURCE_ID = "animus";

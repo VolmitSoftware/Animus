@@ -41,12 +41,15 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
     @FunctionalInterface interface Interactions { boolean allowed(ServerPlayer player, UUID npc, Interaction action); }
     private final Consumer<String> warnings;
     private final Interactions interactions;
+    private final VanillaDoors doors;
     private VanillaBodyTransport transport;
 
-    VanillaRuntimeHost(MinecraftServer server, ModTicks ticks, Consumer<String> warnings, Interactions interactions) {
+    /** {@code doorProtection} decides each door an NPC opens on its route; it fails closed. */
+    VanillaRuntimeHost(MinecraftServer server, ModTicks ticks, Consumer<String> warnings, Interactions interactions, art.arcane.animus.core.building.BuildProtection doorProtection) {
         this.server = Objects.requireNonNull(server); this.ticks = Objects.requireNonNull(ticks); this.warnings = Objects.requireNonNull(warnings);
         this.interactions = Objects.requireNonNull(interactions);
         terrain = new VanillaTerrain(server);
+        doors = new VanillaDoors(terrain, new art.arcane.animus.core.building.BuildProtection.Gate(doorProtection, (String message) -> warnings.accept("Doors: " + message)));
     }
 
     VanillaBodyTransport transport() { return transport; }
@@ -102,6 +105,7 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
         BlockHitResult hit = player.level().clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
         return hit.getType() == HitResult.Type.MISS;
     }
+    @Override public art.arcane.animus.core.navigation.DoorPassage.Doors doors() { return doors; }
     @Override public boolean solid(String world, int x, int y, int z) {
         ServerLevel level = terrain.level(world);
         if (level == null || level.isOutsideBuildHeight(y) || !level.getChunkSource().hasChunk(x >> 4, z >> 4)) return false;

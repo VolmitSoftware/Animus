@@ -125,7 +125,7 @@ public final class AnimusModRuntime {
             });
             NpcRuntimeSettings npcSettings = next.runtime.npcSettings();
             PersistedNpcService.Settings settings = PersistedNpcService.Settings.from(npcSettings);
-            next.host = new VanillaRuntimeHost(server, next.ticks, LOGGER::warn, this::interactionAllowed);
+            next.host = new VanillaRuntimeHost(server, next.ticks, LOGGER::warn, this::interactionAllowed, next.runtime.moduleHooks().buildProtection(BuildProtection.NONE));
             next.living = new PersistedNpcService<>(next.host, next.runtime, files, settings);
             LOGGER.info(next.living.status());
             next.combat = new ModCombat(server, next.runtime, next.living, next.host.terrain(), LOGGER::warn);
@@ -172,6 +172,7 @@ public final class AnimusModRuntime {
                         if (current != null) current.modulesInitialized(initialized);
                     }, next.builtins);
             next.extensions.connectHooks(next.runtime.moduleHooks());
+            next.extensions.follow(next.runtime);
             ExtensionRuntime modules = next.extensions;
             next.living.observeInteractions(modules::interacted);
             next.behaviors = new BehaviorCommands(dataDirectory, next.runtime, next.extensions, LOGGER::info);
@@ -184,24 +185,14 @@ public final class AnimusModRuntime {
                     new ModOperators(server), screenService::refreshOpen, LOGGER::info));
             next.hotload.start();
             TriggerDispatcher triggers = next.behaviors.triggers();
-            if (triggers != null) {
-                if (next.living.available()) { triggers.connect(); next.living.bindTriggers(triggers); }
-                else {
-                    triggers.unavailable(next.living.status());
-                    LOGGER.info("Behavior triggers unavailable: {}", next.living.status());
-                }
-            }
             ServerTriggerDispatcher servers = next.behaviors.servers();
-            if (servers != null) {
-                if (next.living.available()) servers.connect();
-                else servers.unavailable(next.living.status());
-                NpcRepository definitions = next.runtime.npcs();
-                PersistedNpcService<ServerPlayer, ItemStack> npcs = next.living;
-                SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(definitions::snapshot, npcs::state));
-                next.behaviors.facts(facts);
-                next.serverBehaviors = new ModServerBehaviors(server, servers, facts, LOGGER::info);
-                next.ticks.every(measured.timed(Subsystem.BEHAVIORS, next.serverBehaviors::tick));
-            }
+            if (triggers != null) next.ticks.every(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, servers, next.living, LOGGER::info));
+            NpcRepository definitions = next.runtime.npcs();
+            PersistedNpcService<ServerPlayer, ItemStack> npcs = next.living;
+            SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(definitions::snapshot, npcs::state));
+            next.behaviors.facts(facts);
+            next.serverBehaviors = new ModServerBehaviors(server, servers, facts, LOGGER::info);
+            next.ticks.every(measured.timed(Subsystem.BEHAVIORS, next.serverBehaviors::tick));
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
                     next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
                             "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files),

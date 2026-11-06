@@ -1,6 +1,7 @@
 package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
+import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.MovementSettings;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.DefinitionSpec;
@@ -124,6 +125,7 @@ final class RegionActor implements RegionOwner.Body {
     private boolean mount;
     private LookClose lookClose;
     private MovementSettings movement = MovementSettings.DEFAULT;
+    private DoorPassage doors;
     private boolean falls = true, routeSpeedDeclared = true;
     private long nextRandomLook;
     private long nextLook;
@@ -145,6 +147,8 @@ final class RegionActor implements RegionOwner.Body {
     private String rigId, rigProblem;
     private NpcRig<ItemStack> rig;
     private long rigGeneration = -1;
+    /** The {@code [rigs] enabled} the rig was last bound under; a hotload that changes it binds again. */
+    private boolean rigsEnabled;
     private final DragonMotion dragonMotion = new DragonMotion();
     /** This NPC sits on its vehicle's seat; read by its group's owner. */
     volatile boolean seated;
@@ -159,6 +163,7 @@ final class RegionActor implements RegionOwner.Body {
     RegionActor(RegionNpcRuntime host, Desired desired, boolean announced) {
         this.host = host; this.desired = desired; this.announced = announced;
         spec = desired.spec(); id = spec.definition().id(); uuid = spec.definition().uuid();
+        doors = new DoorPassage(uuid);
         RegionNpcRuntime.Geometry geometry = host.geometry(spec.type());
         state = new VirtualNpcState(uuid, spec.position(), geometry.width(), geometry.height(), PersistedNpcService.maximumHealth(spec));
         state.spawn();
@@ -195,12 +200,13 @@ final class RegionActor implements RegionOwner.Body {
         if (rigId == null) return;
         RigCatalog catalog = host.runtime.isRunning() ? host.runtime.rigs().catalog() : null;
         if (catalog == null) return;
-        if (catalog.generation() != rigGeneration) {
-            rigGeneration = catalog.generation();
-            if (rig == null || !rig.refresh(catalog, turns)) {
+        boolean enabled = host.rigs().enabled(), toggled = enabled != rigsEnabled;
+        if (catalog.generation() != rigGeneration || toggled) {
+            rigGeneration = catalog.generation(); rigsEnabled = enabled;
+            if (toggled || rig == null || !rig.refresh(catalog, turns)) {
                 boolean had = rig != null;
                 rig = null; rigProblem = null;
-                if (!host.rigs.enabled()) rigProblem = "rigs are disabled in config.toml";
+                if (!enabled) rigProblem = "rigs are disabled in config.toml";
                 else if (!host.packets.bonesAvailable()) rigProblem = "display bones are unavailable on this server build";
                 else {
                     List<String> problems = new ArrayList<>();
@@ -213,7 +219,7 @@ final class RegionActor implements RegionOwner.Body {
         if (rig == null || !state.snapshot().active()) return;
         boolean walking = route != null && route.execution != null && !route.execution.finished();
         for (RigPlayback.Finished done : rig.tick(turns, walking)) host.animationFinished(uuid, done.animation(), done.layer());
-        if (rig.due(turns, yaw) && host.budget.cosmeticAllowed() && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs.sampleTicks(), System.nanoTime());
+        if (rig.due(turns, yaw) && host.budget.cosmeticAllowed() && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs().sampleTicks(), System.nanoTime());
     }
     void playAnimation(String animation, double speed, Optional<String> loop, int layer) {
         Optional<AnimationDocument.Loop> mode = loop.map((String text) -> AnimationDocument.Loop.parse(text)
@@ -272,6 +278,7 @@ final class RegionActor implements RegionOwner.Body {
         riding.end("npc-dormant", ActorRide.Exit.RESTORE_POSITION);
         closeCombat();
         cancelPlan();
+        doors.closeAll(host.doors);
         routeSleeping = false;
         if (routeWatch != null) stopRoute("unavailable: NPC became dormant because " + reason);
         else if (route != null) routeStatus(route, "suspended", "dormant: " + reason);
@@ -367,7 +374,7 @@ final class RegionActor implements RegionOwner.Body {
         if (module == null || combatSettings == null) { closeCombat(); return; }
         if (combat != null && !combat.matches(combatSettings, combatLoadout)) closeCombat();
         if (combat == null) combat = module.open(this, combatSettings, combatLoadout);
-        if (combat != null) combat.tick();
+        if (combat != null && !combat.tick()) closeCombat();
     }
     private void closeCombat() {
         ActorCombat current = combat;
@@ -579,6 +586,12 @@ final class RegionActor implements RegionOwner.Body {
         publish(true);
         return running;
     }
+    void pose(String name) {
+        art.arcane.animus.core.npc.NamedPoses.Facing facing = art.arcane.animus.core.npc.NamedPoses.parse(spec.definition().json()).find(name)
+                .orElseThrow(() -> new IllegalArgumentException("The NPC has no pose named " + name));
+        setPose(facing.yaw(), facing.pitch(), onGround);
+        publish(true);
+    }
     void lookAt(WorldPosition target) {
         WorldPosition from = state.snapshot().position();
         if (!from.world().equals(target.world()) || from.point().distance(target.point()) > 64)
@@ -606,7 +619,7 @@ final class RegionActor implements RegionOwner.Body {
         for (Player player : host.players().ownedNear(new WorldPosition(at.world(), eye), look.range() + 2, 32)) {
             Location location = player.getEyeLocation();
             Vec3 playerEye = new Vec3(location.getX(), location.getY(), location.getZ());
-            candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.distance(at.point()) <= host.settings.viewDistance()));
+            candidates.add(new LookClose.Candidate<>(player, playerEye, playerEye.distance(at.point()) <= host.settings().viewDistance()));
         }
         boolean looked = false;
         for (LookClose.Candidate<Player> candidate : look.ranked(eye, candidates)) {
@@ -694,7 +707,7 @@ final class RegionActor implements RegionOwner.Body {
         if (!state.snapshot().active()) { stopRoute("cancelled by definition/lifecycle change"); return; }
         // A patrol with no player near sleeps: no turn, plan or budget until a viewer marks it again.
         if (current.leg != null && routeWatch == null && !watched()) {
-            if (!routeSleeping) { routeSleeping = true; cancelPlan(); routeStatus(current, "sleeping", "no player within " + (int) host.settings.viewDistance() + " blocks"); }
+            if (!routeSleeping) { routeSleeping = true; cancelPlan(); doors.closeAll(host.doors); routeStatus(current, "sleeping", "no player within " + (int) host.settings().viewDistance() + " blocks"); }
             routeWaited = 0;
             return;
         }
@@ -769,9 +782,17 @@ final class RegionActor implements RegionOwner.Body {
         PathExecution.Proposal step = current.execution.next(current.speed / 20).orElseThrow();
         int sweep = PersistedNpcService.motionCells(hullWidth(), hullHeight(), step.from().distance(step.to()));
         int settle = PersistedNpcService.motionCells(hullWidth(), hullHeight(), 0);
-        int wanted = Math.min(host.navigationSettings.motionCellsPerTick(), sweep + (step.landing() ? settle : 0));
+        int wanted = Math.min(host.navigationSettings().motionCellsPerTick(), sweep + (step.landing() ? settle : 0));
         int granted = host.budget.take(RegionBudget.Kind.MOTION_CELLS, wanted);
         if (granted < wanted) { host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted); return false; }
+        if (current.mode == MovementProfile.Mode.WALK && movement.openDoors()) {
+            Optional<BlockPos> door = doors.prepare(current.goal.world(), step.from(), step.to(), hullWidth(), hullHeight(), LiveMovementProbe.owned(world, owned), host.doors);
+            if (door.isPresent()) {
+                host.budget.refund(RegionBudget.Kind.MOTION_CELLS, granted);
+                failLeg(current, "blocked: the door at " + door.get().x() + " " + door.get().y() + " " + door.get().z() + " could not be opened");
+                return true;
+            }
+        }
         MotionValidator.Result validation = LiveMovementProbe.check(world, owned, step.from(), step.to(), hullWidth(), hullHeight(), step.medium(), step.requireSupport(), sweep);
         int used = validation.sampledCells();
         if (validation.clear() && step.landing()) {
@@ -790,6 +811,7 @@ final class RegionActor implements RegionOwner.Body {
             state.move(new WorldPosition(current.goal.world(), step.to()));
             host.index.upsert(state.snapshot());
             pose++; setPose(facing, 0, step.onGround());
+            doors.passed(step.to(), hullWidth(), host.doors);
             current.progressTurn = turns;
             routeStatus(current, "moving", PersistedNpcService.moving(current.segment) + "; region owner");
             if (movement.arrived(step.to(), current.goal.point())) arrive(current);
@@ -872,7 +894,13 @@ final class RegionActor implements RegionOwner.Body {
             pose++; setPose(yaw, pitch, !falling);
         }
     }
+    /** Arrival keeps doors the NPC still stands in only while another leg follows; a finished route closes them all. */
     private void arrive(Route current) {
+        arriveAt(current);
+        if (route == null) doors.closeAll(host.doors);
+        else doors.passed(state.snapshot().position().point(), hullWidth(), host.doors);
+    }
+    private void arriveAt(Route current) {
         if (route != current) return;
         WaypointProgress progress = waypoints;
         route = null; routeStatus(current, "arrived", ""); arrivals++;
@@ -942,6 +970,7 @@ final class RegionActor implements RegionOwner.Body {
     }
     private void stopRoute(String reason) {
         Route current = route; route = null; routeSleeping = false; routeWaited = 0;
+        if (doors != null) doors.closeAll(host.doors);
         if (current == null) { navigationStatus = reason; return; }
         if (current.plan != null) current.plan.cancel();
         if (current.execution != null) current.execution.cancel();

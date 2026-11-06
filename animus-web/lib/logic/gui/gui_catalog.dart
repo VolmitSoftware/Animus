@@ -1,7 +1,7 @@
 /// What GUI documents may contain in Animus: the supported and refused
 /// action types (schema/gloss/source.json), each action's fields for the
 /// editor, the components and icons each surface accepts, and the names and
-/// functions expressions can use (docs/gui.md).
+/// functions expressions can use (wiki animus/11-guis-holograms-menus).
 library;
 
 import 'dart:convert';

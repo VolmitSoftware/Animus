@@ -26,7 +26,7 @@ import java.util.TreeSet;
  * steps up to 45) becomes a bone of its own. Blockbench models face -Z and rigs face +Z, so pivots and rotations turn
  * 180 degrees about Y: pivots {@code (-x, y, -z) / 16}, rotations {@code (-x, y, -z)}. Item displays draw their model
  * turned 180 degrees, which cancels that turn for the cubes. Only embedded PNG textures are read; nothing is fetched.
- * Pack source paths and ids follow docs/runtime.md, "Resource pack layout".
+ * Pack source paths and ids follow the wiki page animus/06-rigs-animations, "Resource pack layout".
  */
 final class BlockbenchImport {
     static final String SOURCE_ROOT = "pack/assets", NAMESPACE = "animus";

@@ -11,7 +11,9 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * {@code [editor]} in {@code config.toml}: the web editor API, its embedded listener, tokens and bounds. Requires a restart.
+ * {@code [editor]} in {@code config.toml}: the web editor API, its embedded listener, tokens and bounds. Every key applies on
+ * hotload: {@code enabled} opens or closes the editor, a changed address, port, TLS file, {@code openConnections} or
+ * {@code listenerEnabled} restarts only the listener, and the rest apply to the next request. Issued tokens stay valid.
  * The listener serves plain HTTP only on a loopback address; any other address needs {@code tlsCertificate} and {@code tlsPrivateKey}.
  */
 public record EditorSettings(boolean enabled, String editorUrl, boolean listenerEnabled, String listenAddress, int port, String advertisedUrl,

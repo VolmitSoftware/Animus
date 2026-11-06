@@ -38,7 +38,8 @@ public final class ShopStateStore implements AutoCloseable {
     private static final long COMPACT_BYTES = 1024 * 1024;
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
     private final Path directory, logs;
-    private final long flushMillis;
+    /** Guarded by this store; a hotload of {@code shops.flushMillis} replaces it for the next scheduled write. */
+    private long flushMillis;
     private final Consumer<String> warn;
     private final ShopLedger ledger;
     private final List<String> pending = new ArrayList<>();
@@ -63,6 +64,9 @@ public final class ShopStateStore implements AutoCloseable {
     }
 
     public ShopLedger ledger() { return ledger; }
+
+    /** The write delay for changes queued from now on; a write already scheduled keeps its time. */
+    public synchronized void flushMillis(long millis) { flushMillis = Math.max(0, millis); }
 
     /** Appends a transaction line to the shop's daily log, after the same debounce. */
     public void log(String shop, String line) {

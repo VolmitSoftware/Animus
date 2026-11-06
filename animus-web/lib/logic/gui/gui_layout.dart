@@ -1,7 +1,7 @@
 /// What a chest GUI or shop window shows, slot by slot, as the server lays
 /// it out: mask keys, explicit slots over them, list cells over everything
-/// (docs/gui.md), the chosen variant's replacements, and for shops the
-/// entries of one page and mode with the bottom-row controls (docs/shops.md).
+/// (wiki animus/11-guis-holograms-menus), the chosen variant's replacements, and for shops the
+/// entries of one page and mode with the bottom-row controls (wiki animus/10-shops).
 /// Each cell records where its component is defined so a click edits it.
 library;
 

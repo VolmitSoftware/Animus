@@ -36,8 +36,10 @@ public final class ModuleHost implements AutoCloseable {
     private final ReentrantLock lifecycle=new ReentrantLock();
     private final Platform platform;
     private final DefinitionGateway definitions;
-    private final int maximumInvocations;
-    private final long deadlineNanos,deliveryBudgetNanos;
+    /** Hotloaded as one value, so an invocation sees one consistent set of limits. */
+    private record Limits(int maximumInvocations,long deadlineNanos,long deliveryBudgetNanos) {}
+    private static final int QUEUE_CAPACITY=256;
+    private volatile Limits limits;
     private final Map<String,Entry> modules=new LinkedHashMap<>();
     private final Map<Key,Registration> capabilities=new HashMap<>();
     private final List<Entry> enabled=new ArrayList<>();
@@ -52,13 +54,26 @@ public final class ModuleHost implements AutoCloseable {
     }
     public ModuleHost(Platform platform,DefinitionGateway definitions,int maximumInvocations,Duration deadline,Duration deliveryBudget) {
         this.platform=Objects.requireNonNull(platform);this.definitions=Objects.requireNonNull(definitions);
-        if(maximumInvocations<1 || maximumInvocations>256 || deadline==null || deadline.isNegative() || deadline.isZero() || deadline.compareTo(Duration.ofMinutes(1))>0
-                || deliveryBudget==null || deliveryBudget.isNegative() || deliveryBudget.isZero() || deliveryBudget.compareTo(Duration.ofMinutes(1))>0)throw new IllegalArgumentException("Invalid invocation limits");
-        this.maximumInvocations=maximumInvocations;deadlineNanos=deadline.toNanos();deliveryBudgetNanos=deliveryBudget.toNanos();
-        workers=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(maximumInvocations),job->{Thread t=new Thread(job,"Animus-module");t.setDaemon(true);return t;});
-        deliveries=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(maximumInvocations),job->{Thread t=new Thread(job,"Animus-module-delivery");t.setDaemon(true);return t;});
+        limits=checked(maximumInvocations,deadline,deliveryBudget);
+        // Admission bounds queued work by the current maximum; the queues hold the largest maximum a hotload may set.
+        workers=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(QUEUE_CAPACITY),job->{Thread t=new Thread(job,"Animus-module");t.setDaemon(true);return t;});
+        deliveries=new ThreadPoolExecutor(2,2,0,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<>(QUEUE_CAPACITY),job->{Thread t=new Thread(job,"Animus-module-delivery");t.setDaemon(true);return t;});
         deadlines=new ScheduledThreadPoolExecutor(1,job->{Thread t=new Thread(job,"Animus-module-deadline");t.setDaemon(true);return t;});deadlines.setRemoveOnCancelPolicy(true);
     }
+    private static Limits checked(int maximumInvocations,Duration deadline,Duration deliveryBudget){
+        if(maximumInvocations<1 || maximumInvocations>QUEUE_CAPACITY || deadline==null || deadline.isNegative() || deadline.isZero() || deadline.compareTo(Duration.ofMinutes(1))>0
+                || deliveryBudget==null || deliveryBudget.isNegative() || deliveryBudget.isZero() || deliveryBudget.compareTo(Duration.ofMinutes(1))>0)throw new IllegalArgumentException("Invalid invocation limits");
+        return new Limits(maximumInvocations,deadline.toNanos(),deliveryBudget.toNanos());
+    }
+    /**
+     * A hotload of the invocation limits. The next admission uses them; admitted work keeps its deadline. Lowering the
+     * maximum below the work in flight lets that work finish and refuses new calls as busy until it drains.
+     */
+    public synchronized void limits(int maximumInvocations,Duration deadline,Duration deliveryBudget){limits=checked(maximumInvocations,deadline,deliveryBudget);}
+    private boolean modulesSuspended;
+    /** Discovered modules stop admitting new work while suspended; built-in capabilities stay available. Work already admitted finishes. */
+    public synchronized void suspendModules(boolean suspended){modulesSuspended=suspended;}
+    public synchronized boolean modulesSuspended(){return modulesSuspended;}
     private volatile TriggerSink triggerSink;
     /** Registered triggers report unwired until this is connected. Connect before installing modules. */
     public void connectTriggers(TriggerSink sink){triggerSink=Objects.requireNonNull(sink);}
@@ -226,7 +241,7 @@ public final class ModuleHost implements AutoCloseable {
         for(Call<?> call:calls){
             if(!call.finished.get()){handlers++;if(call.terminal.get()==1)timedOut++;if(call.terminal.get()==4)unobserved++;}
             if(call.deliveryPhase==1)queued++;
-            else if(call.deliveryPhase==2){active++;if(now-call.deliveryStartedNanos>=deliveryBudgetNanos)slow++;}
+            else if(call.deliveryPhase==2){active++;if(now-call.deliveryStartedNanos>=limits.deliveryBudgetNanos())slow++;}
         }
         return new InvocationStatus(calls.size(),handlers,timedOut,unobserved,queued,active,slow,slowDeliveries,admissionClosed);
     }
@@ -249,7 +264,8 @@ public final class ModuleHost implements AutoCloseable {
         if(registration.descriptor.privileged() && (preview || !privilegedGranted))return completedHandle(Outcome.Status.UNAVAILABLE,"privileged-capability-not-granted");
         Optional<String> refused=builtinRefusal(registration);
         if(refused.isPresent())return completedHandle(Outcome.Status.UNAVAILABLE,refused.get());
-        long deadline=registration.owner.policy==null?deadlineNanos:registration.owner.policy.deadlineMillis(key,argumentsJson).stream().map(millis->TimeUnit.MILLISECONDS.toNanos(millis)).findFirst().orElse(deadlineNanos);
+        long configured=limits.deadlineNanos();
+        long deadline=registration.owner.policy==null?configured:registration.owner.policy.deadlineMillis(key,argumentsJson).stream().map(millis->TimeUnit.MILLISECONDS.toNanos(millis)).findFirst().orElse(configured);
         return invokeHandle(registration.owner,registration.descriptor,token->registration.action.run(invocation(registration,npc,player,argumentsJson,preview,token,behavior)),Payload.JSON_OBJECT,sourceCurrent,deadline);
     }
     public CompletionStage<Outcome<Boolean>> condition(Key key,NpcHandle npc,Optional<UUID> player,String argumentsJson,boolean preview){
@@ -277,7 +293,7 @@ public final class ModuleHost implements AutoCloseable {
         if(!errors.isEmpty())throw new InvalidArguments(errors);
         // Validation is bounded preparation, not authority to enter trusted code. Recheck at the
         // callback admission boundary; a callback already admitted remains cooperative work.
-        if(token.cancelled() || !available(registration.owner))throw new CancellationException("Module admission revoked before callback");
+        if(token.cancelled() || !admitted(registration.owner))throw new CancellationException("Module admission revoked before callback");
         return new Invocation(npc,player,json,preview,token,behavior);
     }
     private static final class InvalidArguments extends IllegalArgumentException {
@@ -299,13 +315,13 @@ public final class ModuleHost implements AutoCloseable {
         return invokeHandle(entry,descriptor,operation,payload,()->true);
     }
     private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,Payload payload,BooleanSupplier sourceCurrent){
-        return invokeHandle(entry,descriptor,operation,payload,sourceCurrent,deadlineNanos);
+        return invokeHandle(entry,descriptor,operation,payload,sourceCurrent,limits.deadlineNanos());
     }
     private <T> InvocationHandle<T> invokeHandle(Entry entry,Descriptor descriptor,Operation<T> operation,Payload payload,BooleanSupplier sourceCurrent,long deadline){
         Call<T> call;
         synchronized(this){
             if(!available(entry) || descriptor!=null && !descriptor.platforms().contains(platform))return completedHandle(Outcome.Status.UNAVAILABLE,reason(entry));
-            if(calls.size()>=maximumInvocations)return completedHandle(Outcome.Status.BUSY,"invocation-capacity");
+            if(calls.size()>=limits.maximumInvocations())return completedHandle(Outcome.Status.BUSY,"invocation-capacity");
             call=new Call<>(entry,operation,payload,sourceCurrent);calls.add(call);
             call.deadline=deadlines.schedule(call::timeout,deadline,TimeUnit.NANOSECONDS);
             workers.execute(call);
@@ -313,6 +329,10 @@ public final class ModuleHost implements AutoCloseable {
         return new InvocationHandle<>(call.result.minimalCompletionStage(),()->call.cancel("invocation-cancelled"),call::quiescent);
     }
     private synchronized boolean available(Entry entry){
+        return !(modulesSuspended && entry.policy==null) && admitted(entry);
+    }
+    /** Whether work admitted earlier may still run and report: suspension refuses new work but lets admitted work finish. */
+    private synchronized boolean admitted(Entry entry){
         if(admissionClosed || entry.state!=State.ACTIVE)return false;
         return dependenciesAvailable(entry,new HashSet<>());
     }
@@ -324,7 +344,7 @@ public final class ModuleHost implements AutoCloseable {
         }
         return true;
     }
-    private synchronized String reason(Entry entry){return admissionClosed?"host-admission-closed":available(entry)?"available":entry.state==State.ACTIVE?"dependency-unavailable":entry.reason;}
+    private synchronized String reason(Entry entry){return admissionClosed?"host-admission-closed":modulesSuspended && entry.policy==null && entry.state==State.ACTIVE?"modules-disabled: set [modules] enabled = true in config.toml":available(entry)?"available":entry.state==State.ACTIVE?"dependency-unavailable":entry.reason;}
     private ModuleStatus status(Entry entry){return new ModuleStatus(entry.manifest,entry.state,entry.reason);}
     private Outcome<ModuleStatus> unavailable(Entry entry,String reason){entry.seal();entry.state=State.UNAVAILABLE;entry.reason=reason;return rejected(Outcome.Status.UNAVAILABLE,reason);}
     private static <T> Outcome<T> rejected(Outcome.Status status,String reason){return Outcome.rejected(status,reason.split(":",2)[0],reason);}
@@ -378,7 +398,7 @@ public final class ModuleHost implements AutoCloseable {
             public String id(){return manifest.id();}
             public boolean available(){return ModuleHost.this.available(Entry.this);}
             public String reason(){return ModuleHost.this.reason(Entry.this);}
-            public long deadlineNanos(){return deadlineNanos;}
+            public long deadlineNanos(){return limits.deadlineNanos();}
             public void overran(String hook){ModuleHost.this.overran(Entry.this,hook);}
         };
         Entry(TrustedModule module,ModuleManifest manifest,BuiltinPolicy policy){this.module=module;this.manifest=manifest;this.policy=policy;scopedDefinitions=definitions.scoped(()->available(this));}
@@ -443,7 +463,7 @@ public final class ModuleHost implements AutoCloseable {
             cancel("source-authority-revoked");return true;
         }
         public void run(){
-            if(!available(entry) || isCancelled()){finish(null,null);return;}
+            if(!admitted(entry) || isCancelled()){finish(null,null);return;}
             CompletionStage<T> stage;
             try{stage=Objects.requireNonNull(operation.run(this::isCancelled),"Module returned null stage");}
             catch(Exception | LinkageError | AssertionError error){finish(null,error);return;}
@@ -482,7 +502,7 @@ public final class ModuleHost implements AutoCloseable {
             ScheduledFuture<?> timer=deadline;if(timer!=null)timer.cancel(false);
             if(!terminal.compareAndSet(0,2)){releaseIfComplete();return;}
             Outcome<T> outcome;
-            if(isCancelled() || !available(entry))outcome=rejected(Outcome.Status.CANCELLED,sourceRevoked.get()?"source-authority-revoked":"module-unavailable-after-callback");
+            if(isCancelled() || !admitted(entry))outcome=rejected(Outcome.Status.CANCELLED,sourceRevoked.get()?"source-authority-revoked":"module-unavailable-after-callback");
             else if(failure instanceof InvalidArguments invalid)outcome=new Outcome<>(Outcome.Status.INVALID,Optional.empty(),invalid.diagnostics);
             else if(failure instanceof CapabilityRefusal refusal)outcome=refusal.outcome();
             else if(failure instanceof CompletionException wrapped && wrapped.getCause() instanceof CapabilityRefusal refusal)outcome=refusal.outcome();
@@ -507,7 +527,7 @@ public final class ModuleHost implements AutoCloseable {
             try{result.complete(outcome);}
             finally{
                 synchronized(ModuleHost.this){
-                    if(System.nanoTime()-deliveryStartedNanos>=deliveryBudgetNanos)slowDeliveries++;
+                    if(System.nanoTime()-deliveryStartedNanos>=limits.deliveryBudgetNanos())slowDeliveries++;
                     deliveryPhase=3;releaseIfComplete();
                 }
             }

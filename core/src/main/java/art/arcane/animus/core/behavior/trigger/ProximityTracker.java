@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Viewer-driven enter/leave detection on the platform owner thread. Work follows viewers through the
@@ -44,7 +45,7 @@ public final class ProximityTracker {
         SpatialNpcIndex.Cursor cursor;
     }
 
-    private final Limits limits;
+    private final Supplier<Limits> limits;
     private final SpatialNpcIndex index;
     private final BiPredicate<UUID, UUID> hidden;
     private final Map<UUID, ViewerState> states = new HashMap<>();
@@ -54,11 +55,17 @@ public final class ProximityTracker {
     public ProximityTracker(Limits limits, SpatialNpcIndex index) { this(limits, index, (UUID viewer, UUID npc) -> false); }
     /** {@code hidden} tests (viewer, NPC); see {@link TriggerDispatcher#hides}. */
     public ProximityTracker(Limits limits, SpatialNpcIndex index, BiPredicate<UUID, UUID> hidden) {
+        this(fixed(Objects.requireNonNull(limits)), index, hidden);
+    }
+    /** {@code limits} is read once per tick, so hotloaded budgets apply from the next tick. Entries already inside stay tracked. */
+    public ProximityTracker(Supplier<Limits> limits, SpatialNpcIndex index, BiPredicate<UUID, UUID> hidden) {
         this.limits = Objects.requireNonNull(limits); this.index = Objects.requireNonNull(index); this.hidden = Objects.requireNonNull(hidden);
     }
+    private static Supplier<Limits> fixed(Limits limits) { return () -> limits; }
 
     public void tick(Plan plan, Collection<UUID> viewers, Function<UUID, Optional<WorldPosition>> positions, Consumer<TriggerEvent> sink) {
         tick++;
+        Limits budget = Objects.requireNonNull(limits.get());
         if (plan.npcs().isEmpty()) {
             if (!states.isEmpty()) states.clear();
             if (!pending.isEmpty()) pending.clear();
@@ -66,16 +73,16 @@ public final class ProximityTracker {
         }
         if (pending.isEmpty()) {
             if (tick < nextPass) return;
-            nextPass = tick + limits.intervalTicks();
+            nextPass = tick + budget.intervalTicks();
             pending.addAll(viewers);
         }
-        for (int count = 0; count < limits.viewersPerTick() && !pending.isEmpty(); count++) {
+        for (int count = 0; count < budget.viewersPerTick() && !pending.isEmpty(); count++) {
             UUID viewer = pending.pollFirst();
-            positions.apply(viewer).ifPresent(position -> check(viewer, position, plan, sink));
+            positions.apply(viewer).ifPresent(position -> check(viewer, position, plan, sink, budget));
         }
     }
 
-    private void check(UUID viewer, WorldPosition position, Plan plan, Consumer<TriggerEvent> sink) {
+    private void check(UUID viewer, WorldPosition position, Plan plan, Consumer<TriggerEvent> sink, Limits budget) {
         ViewerState state = states.computeIfAbsent(viewer, ignored -> new ViewerState());
         Iterator<Inside> inside = state.inside.iterator();
         while (inside.hasNext()) {
@@ -90,7 +97,7 @@ public final class ProximityTracker {
             }
         }
         SpatialNpcIndex.Scan scan = index.scan(new SpatialNpcIndex.Query(position, plan.maximumRadius()), state.cursor,
-                new SpatialNpcIndex.Budget(SCAN_CELLS, limits.candidates()), chunk -> true);
+                new SpatialNpcIndex.Budget(SCAN_CELLS, budget.candidates()), chunk -> true);
         scans++; candidates += scan.candidatesVisited(); state.cursor = scan.next().orElse(null);
         Vec3 point = position.point();
         for (VirtualNpcState.Snapshot candidate : scan.candidates()) {
@@ -100,7 +107,7 @@ public final class ProximityTracker {
             for (Binding binding : bindings) {
                 Inside entry = new Inside(candidate.npcId(), binding.key());
                 if (distance > binding.radius() || state.inside.contains(entry)) continue;
-                if (state.inside.size() >= limits.trackedPerViewer()) { overflow++; continue; }
+                if (state.inside.size() >= budget.trackedPerViewer()) { overflow++; continue; }
                 state.inside.add(entry);
                 if (binding.phase() == TriggerBinding.Phase.ENTER) sink.accept(new TriggerEvent.Proximity(candidate.npcId(), viewer, binding.key()));
             }

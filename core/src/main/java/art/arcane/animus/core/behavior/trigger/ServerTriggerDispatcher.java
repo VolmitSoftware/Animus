@@ -73,6 +73,7 @@ public final class ServerTriggerDispatcher {
     private final LongAdder events = new LongAdder(), suppressed = new LongAdder(), started = new LongAdder();
     private final EnumMap<DropReason, LongAdder> drops = new EnumMap<>(DropReason.class);
     private volatile String unavailable = "no platform bridge is connected";
+    private volatile boolean behaviorsEnabled = true;
     private volatile Index index = Index.EMPTY;
     private volatile Commands commands = Commands.EMPTY;
     private volatile Diagnostic lastStartFailure;
@@ -97,14 +98,17 @@ public final class ServerTriggerDispatcher {
     /** The platform publishes server events. Disabled settings stay unavailable. */
     public void connect() { if (settings.enabled()) unavailable = null; }
     public void unavailable(String reason) { unavailable = Objects.requireNonNull(reason); }
-    public boolean available() { return unavailable == null; }
-    public String availability() { String reason = unavailable; return reason == null ? "available" : reason; }
+    /** Follows a hotload of {@code [behaviors] enabled}: disabled behaviors refuse server events while running executions finish. */
+    public void behaviorsEnabled(boolean enabled) { behaviorsEnabled = enabled; }
+    private String reason() { return behaviorsEnabled ? unavailable : "behaviors are disabled in config.toml"; }
+    public boolean available() { return reason() == null; }
+    public String availability() { String reason = reason(); return reason == null ? "available" : reason; }
     public ServerTriggerSettings settings() { return settings; }
 
     /** Quick and nonblocking. True means the event was queued because an enabled trigger listens for its kind. */
     public Outcome<Boolean> publish(ServerEvent event) {
         Objects.requireNonNull(event);
-        String reason = unavailable;
+        String reason = reason();
         if (reason != null) {
             drops.get(DropReason.UNAVAILABLE).increment();
             return Outcome.rejected(Outcome.Status.UNAVAILABLE, "server-trigger-unavailable", reason);
@@ -128,7 +132,7 @@ public final class ServerTriggerDispatcher {
     public void pump(Starter starter) {
         Objects.requireNonNull(starter);
         tick = tick + 1;
-        if (unavailable != null) { clearState(); return; }
+        if (reason() != null) { clearState(); return; }
         stateCleared = false;
         refresh();
         drainEvents();
@@ -142,7 +146,7 @@ public final class ServerTriggerDispatcher {
 
     /** Thread-safe: the behavior is still enabled with the same accepted program. */
     public boolean current(Binding binding) {
-        if (unavailable != null || !enabled.get().ids().contains(binding.behavior)) return false;
+        if (reason() != null || !enabled.get().ids().contains(binding.behavior)) return false;
         BehaviorCatalog.Resolution resolution = catalog.get().byId().get(binding.behavior);
         return resolution != null && resolution.available() && resolution.accepted().orElse(null) == binding.accepted;
     }
@@ -304,7 +308,7 @@ public final class ServerTriggerDispatcher {
     }
 
     public Snapshot snapshot() {
-        Index view = index; String reason = unavailable;
+        Index view = index; String reason = reason();
         Map<DropReason, Long> counted = new EnumMap<>(DropReason.class);
         drops.forEach((drop, count) -> { long value = count.sum(); if (value > 0) counted.put(drop, value); });
         List<Diagnostic> diagnostics = new ArrayList<>();

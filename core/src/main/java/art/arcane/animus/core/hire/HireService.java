@@ -1,5 +1,6 @@
 package art.arcane.animus.core.hire;
 
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.gui.ScreenManager;
 import art.arcane.animus.core.npc.NpcDefinition;
@@ -74,8 +75,8 @@ public final class HireService<P, S> {
             if (!hireable || !contract.active(now)) {
                 if (!desk.expire(contract)) continue;
                 if (!hireable) log.accept("Hire of " + contract.npc() + " by " + contract.playerName() + " ended: the NPC is no longer hireable");
-                else notify(contract.player(), "&e" + living.active(contract.npc()).map(NpcRuntime.ActiveNpc::name).map(RichText::plain).orElse("Your bodyguard")
-                        + "&e's contract has ended. &7Right-click it to hire again.");
+                else notify(contract.player(), Palette.PINK_LIGHT + living.active(contract.npc()).map(NpcRuntime.ActiveNpc::name).map(RichText::plain).orElse("Your bodyguard")
+                        + "'s contract has ended. &7Right-click it to hire again.");
                 continue;
             }
             if (!living.players().online(contract.player()) || living.active(contract.npc()).isEmpty()) continue;

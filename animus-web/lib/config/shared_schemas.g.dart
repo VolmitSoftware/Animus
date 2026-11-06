@@ -8,7 +8,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://animus.volmitsoftware.com/schema/animation-v1.schema.json",
   "title": "Animus animation",
-  "description": "animations/<namespace>/<path>.json. Keyframe tracks over a rig's bones. Sampling is defined in docs/editor-contracts.md and pinned by schema/fixtures/animation/samples/. Validators also check that keyframe ticks strictly increase, stay within durationTicks, that track bones exist in the rig, and that values match the target.",
+  "description": "animations/<namespace>/<path>.json. Keyframe tracks over a rig's bones. Sampling is defined in dev/editor-contracts.md and pinned by schema/fixtures/animation/samples/. Validators also check that keyframe ticks strictly increase, stay within durationTicks, that track bones exist in the rig, and that values match the target.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "rig", "durationTicks", "tracks"],
@@ -837,6 +837,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         {
           "const": "animus:play-sound",
           "description": "Plays a sound at the NPC for the triggering player or nearby players."
+        },
+        {
+          "const": "animus:pose",
+          "description": "Turns the NPC to one of the named poses in its definition's poses."
         },
         {
           "const": "animus:say",
@@ -2026,6 +2030,52 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                     "sound"
                   ],
                   "description": "Plays a sound at the NPC for the triggering player or nearby players."
+                }
+              },
+              "required": [
+                "arguments"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capability": {
+                "const": "animus:pose"
+              }
+            },
+            "required": [
+              "capability"
+            ]
+          },
+          "then": {
+            "if": {
+              "required": [
+                "bindings"
+              ],
+              "properties": {
+                "bindings": {
+                  "minProperties": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "arguments": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "pose": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 32
+                    }
+                  },
+                  "required": [
+                    "pose"
+                  ],
+                  "description": "Turns the NPC to one of the named poses in its definition's poses."
                 }
               },
               "required": [
@@ -4220,6 +4270,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "anyPlayer": {
           "type": "boolean",
           "required": false
+        }
+      }
+    },
+    {
+      "id": "animus:pose",
+      "kind": "action",
+      "description": "Turns the NPC to one of the named poses in its definition's poses.",
+      "privileged": false,
+      "available": false,
+      "reason": "platform-unavailable: offline validation has no server",
+      "arguments": {
+        "pose": {
+          "type": "string",
+          "required": true,
+          "minLength": 1,
+          "maxLength": 32
         }
       }
     },
@@ -12216,7 +12282,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://animus.volmitsoftware.com/schema/rig-v1.schema.json",
   "title": "Animus rig",
-  "description": "rigs/<namespace>/<path>.json. A tree of bones shown as packet-only display entities. Rules a schema cannot express (unique bone ids, parents listed before children, depth at most 16, socket and animation references) are checked by the rig validators; see docs/editor-contracts.md.",
+  "description": "rigs/<namespace>/<path>.json. A tree of bones shown as packet-only display entities. Rules a schema cannot express (unique bone ids, parents listed before children, depth at most 16, socket and animation references) are checked by the rig validators; see dev/editor-contracts.md.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "revision", "id", "bones"],

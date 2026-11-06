@@ -1,6 +1,6 @@
 # Example behavior packs
 
-Seven packs that use only built-in `animus:` capabilities, so they need no Java module or command allow-list. Each one is a complete [pack](../../docs/behaviors.md#packs): a `pack.json`, its behaviors, and an NPC definition that lists them.
+Seven packs that use only built-in `animus:` capabilities, so they need no Java module or command allow-list. Each one is a complete [pack](https://github.com/VolmitSoftware/docs/blob/master/animus/07-behaviors.md#packs): a `pack.json`, its behaviors, and an NPC definition that lists them.
 
 | Pack | NPCs | Shows |
 | --- | --- | --- |
@@ -8,9 +8,9 @@ Seven packs that use only built-in `animus:` capabilities, so they need no Java 
 | `patrol` | Patroller | A square route walked twice on a timer, with `animus:navigate` and `"wait": true`. |
 | `dialogue` | Innkeeper | Prompts whose answers lead to more prompts, and a flag that changes the next conversation. |
 | `quest` | Quest Giver, Harbour Master | A delivery quest shared by two NPCs through the `quest` namespace's quest stage. |
-| `shop` | Baker | A [shop](../../docs/shops.md) opened by right click, with item trades, purchases and sales, and a [chest GUI](../../docs/gui.md) counter opened by left click. |
+| `shop` | Baker | A [shop](https://github.com/VolmitSoftware/docs/blob/master/animus/10-shops.md) opened by right click, with item trades, purchases and sales, and a [chest GUI](https://github.com/VolmitSoftware/docs/blob/master/animus/11-guis-holograms-menus.md) counter opened by left click. |
 | `town-guard` | Town Guard | Fights hostile mobs and anyone who attacks it, then walks back to its post. Greets members, challenges strangers and calls for help when hit. |
-| `personal-guard` | Bodyguard | One player at a time hires it for emeralds through the [`animus:hire`](../../docs/runtime.md#hiring-an-npc) window; it follows that player and fights whatever hurts them until the time runs out or they dismiss it. |
+| `personal-guard` | Bodyguard | One player at a time hires it for emeralds through the [`animus:hire`](https://github.com/VolmitSoftware/docs/blob/master/animus/05-movement-mounts-riding.md#hiring-an-npc) window; it follows that player and fights whatever hurts them until the time runs out or they dismiss it. |
 
 ## Installing
 
@@ -41,6 +41,6 @@ converter/build/install/converter/bin/converter validate-behaviors examples/pack
 - **patrol** walks absolute coordinates from (0, 64, 0) to (8, 64, 8). Change the four `navigate` steps to points on solid ground where you place it. A leg fails the run with `navigation-blocked`, `navigation-unavailable` or `navigation-timeout` when the way is blocked, the terrain is not loaded, or 1,200 ticks pass.
 - **dialogue** and **quest** answers arrive as `dialogue_choice` triggers, so their cooldowns and queue limits apply. A prompt stays open for the default 60 seconds.
 - **shop** binds the Baker to `shop:bakery` through `modules["animus:shop"]`, so a right click opens it. The shop opens on its trade page, where bread and cake cost emeralds and wheat earns them; trades need no economy plugin and work on every platform. The buy and sell pages use money: on Bukkit they need Vault with an economy plugin, and without one every money entry refuses with a message. Mod servers have no money. The cake is limited to one per player per day and the wheat offer has a stock of 64 that refills every hour. A left click starts the behavior's `counter` routine, which opens the `shop:counter` chest GUI with `animus:open-gui`; its bread button opens the shop with the `animus:open-shop` GUI action. Coming within 6 blocks makes the Baker greet you, at most every 30 seconds.
-- **town-guard** and **personal-guard** set their fighting in the NPC definition's `modules["animus:combat"]` (see [combat](../../docs/combat.md)). Both need combat enabled in the plugin settings, and protection such as WorldGuard `pvp` still decides every hit. Neither starts a fight with a player.
+- **town-guard** and **personal-guard** set their fighting in the NPC definition's `modules["animus:combat"]` (see [combat](https://github.com/VolmitSoftware/docs/blob/master/animus/08-combat.md)). Both need combat enabled in the plugin settings, and protection such as WorldGuard `pvp` still decides every hit. Neither starts a fight with a player.
 - **town-guard** targets the `monsters` category within 16 blocks and fights back against any player, mob or NPC that hurts it. It ignores creepers and runs from any within 4 blocks instead of hitting them. It drops a target past 24 blocks from where the fight began, then walks back there, which is its post when it was idle. Guards in the `town-guard` squad never fight each other and alert idle squad members within 24 blocks. It has 40 health, heals 1 every 5 seconds and respawns 30 seconds after dying. Its behavior only arms it, greets or challenges visitors, sounds the alarm when hit and announces its death.
 - **personal-guard** has no targets of its own and fights back when hurt. Hiring happens in the NPC definition's `modules["animus:hire"]`: a right-click opens the hiring window, 5 emeralds buy 30 minutes, and the hirer can renew or dismiss it there. It follows its hirer to within 4 blocks, teleports beside them when more than 24 blocks behind or in another world, and attacks whatever hurts them. The contract survives restarts and logouts. Its behavior only invites players who come close.

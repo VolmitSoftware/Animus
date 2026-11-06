@@ -115,6 +115,8 @@ class ViewerWatchRaceTest {
         final AnimusRuntime runtime;
         final Path npcs;
         final Player player = new Player(UUID.randomUUID(), "Watcher");
+        /** Every online player; the first is {@link #player}. */
+        final List<Player> online = new ArrayList<>(List.of(player));
         final List<String> warnings = new ArrayList<>();
         final FakeTransport transport = new FakeTransport();
         final FakeHost host = new FakeHost(this);
@@ -154,7 +156,7 @@ class ViewerWatchRaceTest {
 
     /** Mirrors the packet adapters: once the watch is gone, body packets refuse synchronously. */
     static final class FakeTransport implements BodyTransport<Player, Object> {
-        final AtomicInteger watches = new AtomicInteger(), spawned = new AtomicInteger();
+        final AtomicInteger watches = new AtomicInteger(), spawned = new AtomicInteger(), forgotten = new AtomicInteger(), closed = new AtomicInteger();
         /** Body packets in the order the runtime sent them: "spawn", "move" or "despawn", a space and the body UUID. */
         final List<String> sent = new ArrayList<>();
         volatile boolean watched, connected = true;
@@ -184,10 +186,10 @@ class ViewerWatchRaceTest {
         @Override public CompletionStage<Void> dragonPhase(Player viewer, Body dragon, int phase) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> equipment(Player viewer, Body body, Map<EquipmentSlot, Object> items) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> despawn(Player viewer, Body body) { sent.add("despawn " + body.uuid()); return CompletableFuture.completedFuture(null); }
-        @Override public void forget(Player viewer) {}
+        @Override public void forget(Player viewer) { forgotten.incrementAndGet(); }
         @Override public ControlSubscription subscribeControl(Player viewer) { throw new IllegalStateException("no control"); }
         @Override public void placeRider(Player rider, double x, double y, double z) {}
-        @Override public void close() {}
+        @Override public void close() { closed.incrementAndGet(); }
     }
 
     static final class FakeHost implements RuntimeHost<Player, Object> {
@@ -202,8 +204,8 @@ class ViewerWatchRaceTest {
         @Override public void warn(String message) { harness.warnings.add(message); }
         @Override public BodyTransport<Player, Object> openTransport() { return harness.transport; }
         @Override public String chunkDelivery() { return "test"; }
-        @Override public Collection<? extends Player> onlinePlayers() { return List.of(harness.player); }
-        @Override public Optional<Player> player(UUID id) { return id.equals(harness.player.id()) ? Optional.of(harness.player) : Optional.empty(); }
+        @Override public Collection<? extends Player> onlinePlayers() { return List.copyOf(harness.online); }
+        @Override public Optional<Player> player(UUID id) { return harness.online.stream().filter((Player player) -> player.id().equals(id)).findFirst(); }
         @Override public UUID id(Player player) { return player.id(); }
         @Override public String name(Player player) { return player.name(); }
         @Override public boolean online(Player player) { return true; }
@@ -223,6 +225,7 @@ class ViewerWatchRaceTest {
         @Override public Optional<String> resolveWorld(String reference) { return Optional.of(reference); }
         @Override public boolean chunkSent(Player player, int chunkX, int chunkZ) { return true; }
         @Override public boolean clearSight(Player player, Vec3 eye, Vec3 direction, double distance) { return true; }
+        @Override public art.arcane.animus.core.navigation.DoorPassage.Doors doors() { return art.arcane.animus.core.navigation.DoorPassage.NONE; }
         @Override public boolean solid(String world, int x, int y, int z) { return y < 64; }
         @Override public boolean registeredEntity(UUID uuid) { return false; }
         @Override public Object item(NpcItem item, String path, List<String> errors) { return new Object(); }

@@ -112,6 +112,8 @@ public interface BehaviorPlatform {
     boolean stopNavigation(NpcHandle npc);
     void look(NpcHandle npc, Vec3 target);
     void lookAtPlayer(NpcHandle npc, UUID player);
+    /** Turns the NPC to one of its definition's named poses; refuses a pose it does not declare. */
+    void pose(NpcHandle npc, String pose);
     void setAppearance(NpcHandle npc, AppearanceChange change);
     /** An empty item clears the slot. */
     void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item);

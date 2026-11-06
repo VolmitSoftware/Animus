@@ -191,4 +191,19 @@ class AnimusRuntimeTest {
                 () -> assertThrows(NullPointerException.class, () -> new AnimusRuntime(null))
         );
     }
+
+    @Test
+    void fileLimitsFollowAHotloadedConfigWithoutRestart() throws Exception {
+        AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", directory));
+        runtime.start();
+        try {
+            String text = Files.readString(directory.resolve("config.toml")).replaceFirst("maximumOperations = 32", "maximumOperations = 1");
+            runtime.applySettings(art.arcane.animus.core.config.PluginSettings.parse(text, directory.resolve("config.toml")));
+            java.util.concurrent.Executor lane = runtime.fileExecutor((Runnable task, art.arcane.animus.core.extension.MutationLane.EngineTaskEvent event, Throwable failure) -> {});
+            java.util.concurrent.CountDownLatch hold = new java.util.concurrent.CountDownLatch(1);
+            lane.execute(() -> { try { hold.await(); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); } });
+            assertThrows(java.util.concurrent.RejectedExecutionException.class, () -> lane.execute(() -> {}));
+            hold.countDown();
+        } finally { runtime.close(); }
+    }
 }

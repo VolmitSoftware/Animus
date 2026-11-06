@@ -77,10 +77,11 @@ public final class ShopService<P, S> implements Screens<P, S>, AutoCloseable {
 
     /**
      * A hotload of {@code [shops]}: messages, price format, economy and the on/off switch apply to the next window and
-     * trade. {@code flushMillis} is read once when the counters open.
+     * trade, and {@code flushMillis} to the next counter write.
      */
     private void applySettings(ShopSettings next) {
         if (closed) return;
+        store.flushMillis(next.flushMillis());
         settings = next;
         context = context(next);
     }

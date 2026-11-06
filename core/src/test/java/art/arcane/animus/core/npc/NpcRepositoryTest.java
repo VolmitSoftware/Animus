@@ -38,13 +38,55 @@ class NpcRepositoryTest {
             assertEquals("Watchman", repository.find("guard").orElseThrow().name());
         }
     }
-    @Test void duplicateIdentityRejectsWholeReload() throws Exception {
+    static final String BAKER = JSON.replace("12345678-1234-1234-1234-123456789abc", "22345678-1234-1234-1234-123456789abc")
+            .replace("\"id\":\"guard\"", "\"id\":\"baker\"").replace("\"name\":\"Guard\"", "\"name\":\"Baker\"");
+
+    @Test void duplicateIdentityRefusesOnlyTheNewcomer() throws Exception {
         try (DocumentStore store = new DocumentStore(root)) {
             store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", JSON)));
             NpcRepository repository = new NpcRepository(store); repository.reload();
             DocumentStore.atomic(root.resolve("npcs/town/duplicate.json"), JSON.replace("\"id\":\"guard\"", "\"id\":\"duplicate\""));
-            assertFalse(repository.reload().isEmpty());
+            List<String> problems = repository.reload();
+            assertEquals(1, problems.size(), problems.toString());
+            assertTrue(problems.getFirst().startsWith("npcs/town/duplicate.json: $.uuid: duplicate"), problems.toString());
             assertEquals(1, repository.all().size());
+            assertTrue(repository.find("guard").isPresent());
+        }
+    }
+
+    @Test void aValidEditAppliesWhileAnotherFileIsInvalid() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", JSON), new DocumentStore.Change("npcs/town/baker.json", "missing", BAKER)));
+            NpcRepository repository = new NpcRepository(store);
+            assertTrue(repository.reload().isEmpty());
+            Files.writeString(root.resolve("npcs/town/guard.json"), JSON.replace("\"y\":64", "\"y\":\"bad\"").replace("\"Guard\"", "\"Broken\""));
+            Files.writeString(root.resolve("npcs/town/baker.json"), BAKER.replace("\"Baker\"", "\"Head Baker\""));
+            List<String> problems = repository.reload();
+            assertEquals(1, problems.size(), problems.toString());
+            assertTrue(problems.getFirst().startsWith("npcs/town/guard.json: $.position.y"), problems.toString());
+            assertEquals("Head Baker", repository.find("baker").orElseThrow().name());
+            assertEquals("Guard", repository.find("guard").orElseThrow().name(), "the invalid file keeps its own last valid version");
+            assertTrue(repository.diagnostics().getFirst().startsWith("npcs/town/guard.json"), repository.diagnostics().toString());
+            Files.writeString(root.resolve("npcs/town/guard.json"), JSON.replace("\"Guard\"", "\"Fixed Guard\""));
+            assertTrue(repository.reload().isEmpty());
+            assertEquals("Fixed Guard", repository.find("guard").orElseThrow().name());
+            assertTrue(repository.diagnostics().isEmpty());
+        }
+    }
+
+    @Test void aNewInvalidFileIsSkippedAndAnEditThatStealsAnIdentityKeepsItsOwnLastVersion() throws Exception {
+        try (DocumentStore store = new DocumentStore(root)) {
+            store.commit(List.of(new DocumentStore.Change("npcs/town/guard.json", "missing", JSON), new DocumentStore.Change("npcs/town/baker.json", "missing", BAKER)));
+            NpcRepository repository = new NpcRepository(store); repository.reload();
+            Files.writeString(root.resolve("npcs/town/new.json"), "{not json");
+            Files.writeString(root.resolve("npcs/town/baker.json"), JSON.replace("\"id\":\"guard\"", "\"id\":\"baker\"").replace("\"Guard\"", "\"Thief\""));
+            List<String> problems = repository.reload();
+            assertEquals(2, problems.size(), problems.toString());
+            assertTrue(problems.stream().anyMatch((String problem) -> problem.startsWith("npcs/town/new.json: ")), problems.toString());
+            assertTrue(problems.stream().anyMatch((String problem) -> problem.startsWith("npcs/town/baker.json: $.uuid: duplicate")), problems.toString());
+            assertEquals("Baker", repository.find("baker").orElseThrow().name());
+            assertEquals("Guard", repository.find("guard").orElseThrow().name());
+            assertEquals(2, repository.all().size());
         }
     }
 }

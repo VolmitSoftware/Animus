@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -23,7 +24,8 @@ public final class PendingChoices {
     private record Prompt(NpcHandle npc, UUID player, Optional<String> behavior, String id, List<ChoiceOption> options, long expiresAt) {}
 
     private static final int TOKEN_BYTES = 16;
-    private final int maximum;
+    private int maximum; // this monitor
+    private final AtomicInteger pendingMaximum = new AtomicInteger();
     private final DialogueChoiceSink sink;
     private final LongSupplier nanos;
     private final Consumer<Throwable> sinkFailure;
@@ -38,8 +40,16 @@ public final class PendingChoices {
         this.sinkFailure = Objects.requireNonNull(sinkFailure);
     }
 
+    /** New capacity, adopted by the next prompt. A lower one keeps every open prompt and refuses new ones until they end. */
+    void maximum(int next) {
+        if (next < 1) throw new IllegalArgumentException("Pending choice capacity must be positive");
+        pendingMaximum.set(next);
+    }
+
     /** Replaces any earlier prompt from this NPC to this player, so its older clicks become stale. */
     synchronized String open(NpcHandle npc, UUID player, Optional<String> behavior, String id, List<ChoiceOption> options, Duration lifetime) {
+        int next = pendingMaximum.getAndSet(0);
+        if (next > 0) maximum = next;
         long now = nanos.getAsLong();
         prompts.values().removeIf(prompt -> expired(prompt, now) || prompt.npc.equals(npc) && prompt.player.equals(player));
         if (prompts.size() >= maximum)

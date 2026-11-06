@@ -11,6 +11,7 @@ import art.arcane.animus.core.mount.SeatGeometry;
 import art.arcane.animus.core.navigation.BlockPos;
 import art.arcane.animus.core.navigation.BodyMobility;
 import art.arcane.animus.core.navigation.CaptureProvenance;
+import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.IdleFall;
 import art.arcane.animus.core.navigation.LongLeg;
 import art.arcane.animus.core.navigation.MovementSettings;
@@ -32,6 +33,7 @@ import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.RuntimeGauges;
 import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.config.NpcRuntimeSettings;
+import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.config.RigSettings;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.rig.AnimationDocument;
@@ -69,12 +71,13 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -83,6 +86,13 @@ import java.util.function.Predicate;
  * Persisted virtual NPCs on a platform with one owner thread: Bukkit and Paper, and the mod loaders' server thread.
  * All world, presentation and movement authority belongs to that thread. The platform supplies a {@link RuntimeHost}
  * and forwards its player lifecycle events to the public event methods.
+ * <p>
+ * A hotload of {@code config.toml} reaches this runtime on its next tick: the {@code [npcs]}, {@code [navigation]}
+ * and {@code [rigs]} tables are swapped in before any work. Budgets and view distance apply to that tick. A lowered
+ * cap never takes away what is already running: viewers and visible bodies above it stay until they leave or retire
+ * as usual, routes and path plans in progress finish, and only new work waits until usage is under the cap.
+ * {@code enabled = false} hides every body by forgetting each viewer, stops all NPC work and closes the transport;
+ * {@code enabled = true} binds the transport again and activates every spawned definition, as startup does.
  *
  * @param <P> the platform's online player
  * @param <I> the platform's item stack
@@ -120,7 +130,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     final RuntimeHost<P, I> host;
     final AnimusRuntime runtime;
     private final Executor io;
-    private final Settings settings;
+    private static final String DISABLED = "disabled in config.toml";
+    /** Owner thread only; a hotload replaces it at the start of a tick. */
+    private Settings settings;
+    /** Settings a hotload published on the file lane, taken by the owner at the start of its next tick. */
+    private final AtomicReference<PluginSettings> pendingSettings = new AtomicReference<>();
+    private final AutoCloseable settingsSubscription;
     private final ViewerPreviews previews;
     private final AtomicBoolean refresh = new AtomicBoolean(true);
     private final DefinitionQueue definitions = new DefinitionQueue();
@@ -134,7 +149,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private final Deque<Viewer> viewerOrder = new ArrayDeque<>();
     /** Every route takes turns here; there is no limit on how many exist, only on the work done in one tick. */
     private final RouteScheduler<Route> routeOrder;
-    private final NavigationSettings navigationSettings;
+    private NavigationSettings navigationSettings;
     private final NavigationPressure navigationPressure = new NavigationPressure();
     private int planStarts, motionCells, pathRefusals;
     /** Idle NPCs whose footing changed, and NPCs still falling; each is queued at most once. */
@@ -142,12 +157,15 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     /** Active NPCs whose definition names a rig; planning takes turns through it. */
     private final Deque<Value> rigOrder = new ArrayDeque<>();
     private final Deque<Value> lookOrder = new ArrayDeque<>();
-    private final RigSettings rigSettings;
+    private RigSettings rigSettings;
     private final Deque<Value> routeReadQueue = new ArrayDeque<>();
     private final Set<RouteReadTask> routeReads = new HashSet<>();
     private final ConcurrentLinkedQueue<RouteReadCompletion> routeReadCompletions = new ConcurrentLinkedQueue<>();
     private final Map<UUID, String> selections = new HashMap<>(), viewerFailures = new HashMap<>();
-    private final ArrayBlockingQueue<Runnable> completions;
+    /** Packet callbacks from network threads; at most {@link #completionCapacity} wait, a bound a hotload may change. */
+    private final ConcurrentLinkedQueue<Runnable> completions = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger completionCount = new AtomicInteger();
+    private volatile int completionCapacity;
     private final ConcurrentLinkedQueue<SkinCompletion> skinCompletions = new ConcurrentLinkedQueue<>();
     private final Set<SkinTask> skinTasks = new HashSet<>();
     private final ConcurrentLinkedQueue<AppearanceCompletion> appearanceCompletions = new ConcurrentLinkedQueue<>();
@@ -186,22 +204,34 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         @Override public boolean console(Runnable action) { owner(); action.run(); return true; }
     };
 
-    /** Construct on the owner thread. A disabled or unbindable runtime stays unavailable with its reason. */
+    /**
+     * Construct on the owner thread. A disabled or unbindable runtime stays unavailable with its reason; a disabled one
+     * still ticks so a hotload can enable it.
+     */
     public PersistedNpcService(RuntimeHost<P, I> host, AnimusRuntime runtime, Executor io, Settings settings) {
         this.host = Objects.requireNonNull(host); this.runtime = Objects.requireNonNull(runtime);
         this.io = Objects.requireNonNull(io); this.settings = Objects.requireNonNull(settings);
         failures = new RuntimeFailures(host::warn);
         nearby = new NearbyPlayers<>((P player) -> host.online(player) ? host.position(player) : null);
         previews = new ViewerPreviews(io, runtime.documents());
-        completions = new ArrayBlockingQueue<>(settings.maximumViewers() * (settings.pendingSpawnsPerViewer() + 2));
+        completionCapacity = completionCapacity(settings);
         rigSettings = runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT;
         navigationSettings = runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT;
         routeOrder = new RouteScheduler<>(navigationSettings.routesPerTick(), navigationSettings.wakeChecksPerTick(), (Route route) -> route.nextAttempt);
-        if (!settings.enabled()) { unavailable = "disabled in config.toml"; return; }
         owner();
+        settingsSubscription = runtime.onSettings(pendingSettings::set);
+        if (settings.enabled()) bind(); else unavailable = DISABLED;
+        try { ticker = host.everyTick(this::tick); }
+        catch (RuntimeException failure) { closeQuietly(settingsSubscription); throw failure; }
+        metrics.gauges(this::gauges);
+    }
+
+    /** Opens the transport and navigation, as startup and a hotload that enables the runtime do. Owner thread. */
+    private void bind() {
         try {
             packets = host.openTransport();
             navigation = new OwnerNavigation(host, host::everyTick, navigationSettings.limits());
+            geometries.clear();
             for (String type : packets.entityTypes()) {
                 BodyTransport.Body body = packets.createBody(UUID.randomUUID(), type, "Animus", null);
                 geometries.put(type, new Geometry(body.width(), body.height(), body.entityIds().length, body.seat()));
@@ -209,15 +239,74 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             mountRuntime = new MountRuntime<>(this, packets.riderUnavailable());
             riders = mountRuntime.riders();
             admissions = host.onlinePlayers().iterator();
-            ticker = host.everyTick(this::tick);
-            metrics.gauges(this::gauges);
+            unavailable = null;
+            refresh.set(true);
         } catch (Exception | LinkageError failure) {
             unavailable = "unavailable: " + concise(failure);
-            if (packets != null) packets.close(); packets = null;
+            if (packets != null) packets.close();
+            packets = null;
             if (navigation != null) navigation.close();
+            navigation = null;
             host.warn("NPC runtime " + unavailable);
         }
     }
+
+    private static int completionCapacity(Settings settings) { return settings.maximumViewers() * (settings.pendingSpawnsPerViewer() + 2); }
+
+    /**
+     * Swaps in the settings a hotload published, before the tick does any work. Budgets are read where they are spent,
+     * so the tick that follows already uses them; caps that are below current usage only hold back new work.
+     */
+    private void adoptSettings() {
+        PluginSettings next = pendingSettings.getAndSet(null);
+        if (next == null) return;
+        Settings previous = settings;
+        settings = Settings.from(next.npcs());
+        completionCapacity = completionCapacity(settings);
+        navigationSettings = next.navigation();
+        routeOrder.budgets(navigationSettings.routesPerTick(), navigationSettings.wakeChecksPerTick());
+        if (navigation != null) navigation.limits(navigationSettings.limits());
+        if (rigSettings.enabled() != next.rigs().enabled())
+            for (Value value : rigOrder) value.rigGeneration = Long.MIN_VALUE;
+        rigSettings = next.rigs();
+        if (previous.maximumVisible() != settings.maximumVisible())
+            for (Viewer viewer : viewers.values()) viewer.guard.limits(viewerLimits());
+        if (!settings.enabled() && unavailable != DISABLED) suspend();
+        else if (settings.enabled() && unavailable == DISABLED) bind();
+    }
+
+    /**
+     * {@code [npcs] enabled = false}: every viewer is forgotten, which removes its bodies on the client, then every NPC
+     * leaves the runtime through the same path as a despawned definition, routes stop and the transport closes. The
+     * tick keeps running so a later hotload can enable the runtime again.
+     */
+    private void suspend() {
+        if (available()) {
+            for (Viewer viewer : List.copyOf(viewers.values())) {
+                disconnect(viewer.player);
+                if (triggers != null) triggers.forget(viewer.id);
+            }
+            for (Entry entry : List.copyOf(entries.values())) remove(entry);
+            mountRuntime.close();
+        }
+        routeOrder.clear(); supportOrder.clear(); rigOrder.clear(); lookOrder.clear();
+        for (RouteReadTask task : routeReads) task.cancelled = true;
+        routeReads.clear(); routeReadQueue.clear(); routeReadCompletions.clear();
+        for (SkinTask task : skinTasks) task.cancelled = true;
+        skinTasks.clear(); skinCompletions.clear();
+        for (AppearanceTask task : appearanceTasks) task.cancelled = true;
+        appearanceTasks.clear(); appearanceCompletions.clear();
+        clearCompletions();
+        entries.clear(); byUuid.clear(); selections.clear(); viewerFailures.clear(); changes.clear(); definitions.clear();
+        admissions = Collections.emptyIterator();
+        if (navigation != null) navigation.close();
+        navigation = null;
+        if (packets != null) packets.close();
+        packets = null;
+        unavailable = DISABLED;
+    }
+    private void clearCompletions() { while (completions.poll() != null) completionCount.decrementAndGet(); }
+    private ViewerSession.Limits viewerLimits() { return new ViewerSession.Limits(settings.maximumVisible(), MAX_ISSUED_IDS, 100_000_000L, 4.5); }
 
     @Override public boolean available() { return !closed && packets != null; }
     /** Connect during startup, before the first runtime tick can activate an NPC. */
@@ -365,6 +454,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             throw new IllegalArgumentException("Look target must be within64 blocks in the same world");
         LookClose.facing(LookClose.eye(from.point(), bodyHeight(value)), target.point())
                 .ifPresent((LookClose.Facing facing) -> setPose(value, facing.yaw(), facing.pitch(), value.onGround));
+    }
+    @Override public void pose(String id, String pose) {
+        Value value = navigable(id); Objects.requireNonNull(pose);
+        art.arcane.animus.core.npc.NamedPoses.Facing facing = art.arcane.animus.core.npc.NamedPoses.parse(value.spec.definition().json()).find(pose)
+                .orElseThrow(() -> new IllegalArgumentException("The NPC has no pose named " + pose));
+        setPose(value, facing.yaw(), facing.pitch(), value.onGround);
     }
     /** Turns NPCs with animus:look-close toward the nearest player in range: a bounded slice per tick, each NPC at most every few ticks. */
     private void tickLooks() {
@@ -601,9 +696,10 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         for (Value value : List.copyOf(rigOrder)) {
             if (!valueCurrent(value)) continue;
             if (value.rigGeneration != catalog.generation()) {
-                boolean had = value.rig != null;
+                boolean had = value.rig != null, toggled = value.rigGeneration == Long.MIN_VALUE;
                 value.rigGeneration = catalog.generation();
-                if (value.rig == null || !value.rig.refresh(catalog, tickNumber)) {
+                // A hotload that switched rigs on or off binds again; a catalog reload refreshes a rig in place when it can.
+                if (toggled || value.rig == null || !value.rig.refresh(catalog, tickNumber)) {
                     bindRig(value);
                     if (had || value.rig != null) representBody(value);
                 }
@@ -793,6 +889,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     }
     void stopRoute(Value value, String reason) {
         Route route = value.route; value.route = null;
+        value.doors.closeAll(host.doors());
         if (route != null) {
             routeOrder.remove(route); if (route.plan != null) route.plan.cancel();
             if (route.execution != null) route.execution.cancel();
@@ -879,6 +976,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             }
             @Override public void slept(Route route) {
                 if (route.plan != null) route.plan.cancel(); route.plan = null; route.result = null;
+                route.value.doors.closeAll(host.doors());
                 routeStatus(route, "sleeping", "no player within " + (int) settings.viewDistance() + " blocks");
             }
             @Override public void woke(Route route) { route.progressTick = tickNumber; routeStatus(route, "queued", "a player is near"); }
@@ -959,6 +1057,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                     // A step larger than the whole tick's cells still runs when it is the tick's first, so a big body never stalls.
                     if (motionCells < sweep + (step.landing() ? settle : 0) && motionCells < navigationSettings.motionCellsPerTick()) return RouteScheduler.Result.DEFER;
                     MotionValidator.Sampler terrain = host.collision(world);
+                    if (route.mode == MovementProfile.Mode.WALK && value.movement.openDoors()) {
+                        Optional<BlockPos> door = value.doors.prepare(world, step.from(), step.to(), moveWidth(value), moveHeight(value), terrain, host.doors());
+                        if (door.isPresent()) {
+                            failLeg(route, "blocked: the door at " + door.get().x() + " " + door.get().y() + " " + door.get().z() + " could not be opened");
+                            return routeCurrent(route) ? RouteScheduler.Result.KEEP : RouteScheduler.Result.DONE;
+                        }
+                    }
                     MotionValidator.Result validation = MotionValidator.check(step.from(), step.to(), moveWidth(value), moveHeight(value), step.medium(), step.requireSupport(), sweep, terrain);
                     motionCells -= validation.sampledCells();
                     if (validation.clear() && step.landing()) {
@@ -975,6 +1080,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                         float yaw = Math.hypot(delta.x(), delta.z()) > .000001 ? (float) Math.toDegrees(Math.atan2(-delta.x(), delta.z())) : value.yaw;
                         value.state.move(new WorldPosition(route.goal.world(), step.to())); index.upsert(value.state.snapshot());
                         value.poseRevision++; setPose(value, yaw, 0, step.onGround());
+                        value.doors.passed(step.to(), moveWidth(value), host.doors());
                         route.progressTick = tickNumber;
                         routeStatus(route, "moving", moving(route.segment));
                         if (value.movement.arrived(step.to(), route.goal.point())) arrive(route);
@@ -1062,7 +1168,14 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             else value.supportQueued = false;
         }
     }
+    /** Arrival keeps doors the NPC still stands in only while another leg follows; a finished route closes them all. */
     private void arrive(Route route) {
+        Value value = route.value;
+        arriveAt(route);
+        if (value.route == null) value.doors.closeAll(host.doors());
+        else value.doors.passed(value.state.snapshot().position().point(), moveWidth(value), host.doors());
+    }
+    private void arriveAt(Route route) {
         Value value = route.value; if (!routeCurrent(route)) return;
         WaypointProgress progress = value.waypoints;
         value.route = null; routeStatus(route, "arrived", "");
@@ -1154,13 +1267,18 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     }
 
     private void tick() {
-        if (!available()) return;
+        if (closed) return;
         owner();
+        adoptSettings();
+        if (!available()) return;
         tickNumber++;
         long mark = metrics.start();
         try {
             // Completion work is bounded independently of connection count and packet acknowledgments.
-            for (int i = 0; i < settings.packetsPerTick() * 2; i++) { Runnable completion = completions.poll(); if (completion == null) break; completion.run(); }
+            for (int i = 0; i < settings.packetsPerTick() * 2; i++) {
+                Runnable completion = completions.poll(); if (completion == null) break;
+                completionCount.decrementAndGet(); completion.run();
+            }
             for (int i = 0; i < MAX_SKIN_READS; i++) {
                 SkinCompletion completion = skinCompletions.poll(); if (completion == null) break;
                 finishSkin(completion);
@@ -1532,7 +1650,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     double playerHeight() { return geometries.get(art.arcane.animus.core.presentation.BodyRules.PLAYER).height(); }
     SeatGeometry playerSeat() { return geometries.get(art.arcane.animus.core.presentation.BodyRules.PLAYER).seat(); }
     void enqueue(Viewer viewer, Runnable action) {
-        if (!closed && !completions.offer(action)) viewer.failed = true;
+        if (closed) return;
+        if (completionCount.incrementAndGet() > completionCapacity) { completionCount.decrementAndGet(); viewer.failed = true; return; }
+        completions.add(action);
     }
     private Optional<WorldPosition> viewerPosition(UUID id) {
         Viewer viewer = viewers.get(id);
@@ -1617,6 +1737,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (closed) return;
         if (mountRuntime != null) mountRuntime.close();
         closed = true;
+        closeQuietly(settingsSubscription);
         previews.close();
         closeQuietly(ticker);
         for (Route route : routeOrder.routes()) stopRoute(route.value, "cancelled: runtime shutdown");
@@ -1624,7 +1745,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         for (RouteReadTask task : routeReads) task.cancelled = true;
         routeReads.clear(); routeReadQueue.clear(); routeReadCompletions.clear();
         for (SkinTask task : skinTasks) task.cancelled = true;
-        skinTasks.clear(); skinCompletions.clear(); completions.clear();
+        skinTasks.clear(); skinCompletions.clear(); clearCompletions();
         for (AppearanceTask task : appearanceTasks) task.cancelled = true;
         appearanceTasks.clear(); appearanceCompletions.clear();
         viewers.values().forEach((Viewer viewer) -> viewer.guard.close()); viewers.clear(); viewerOrder.clear();
@@ -1650,7 +1771,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
         final LookClose lookClose; long nextLook, nextRandomLook;
-        final MovementSettings movement; final boolean falls, routeSpeedDeclared;
+        final MovementSettings movement; final boolean falls, routeSpeedDeclared; final DoorPassage doors;
         final DragonMotion dragonMotion = new DragonMotion(); int dragonPhase = DragonBody.PHASE_HOVERING;
         CompletableFuture<Void> routeWatch;
         String displayName; BodySkin displaySkin; AppearanceTask appearanceTask;
@@ -1665,6 +1786,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             ride = RideSettings.parse(spec.definition().json()).orElse(null);
             lookClose = LookClose.parse(spec.definition().json()).orElse(null);
             movement = MovementSettings.parse(spec.definition().json());
+            doors = new DoorPassage(spec.definition().uuid());
             falls = MovementSettings.falls(spec.type(), spec.definition().json());
             routeSpeedDeclared = MovementSettings.routeDeclaresSpeed(spec.definition().json());
             routeSource = WaypointSettings.reference(spec.definition());
@@ -1710,7 +1832,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         Viewer(P player) {
             this.player = player; id = host.id(player); world = host.position(player).world();
             preview = new PreviewBodies<>(previews, id);
-            guard = new ViewerSession(host.id(player), UUID.randomUUID(), new ViewerSession.Limits(settings.maximumVisible(), MAX_ISSUED_IDS, 100_000_000L, 4.5));
+            guard = new ViewerSession(host.id(player), UUID.randomUUID(), viewerLimits());
         }
     }
     private final class SkinCompletion {
