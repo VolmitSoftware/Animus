@@ -17,6 +17,8 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.HologramStyle;
 import art.arcane.animus.core.npc.NamedPoses;
 import art.arcane.animus.core.npc.NpcAppearance;
+import art.arcane.animus.core.npc.NpcAttributes;
+import art.arcane.animus.core.npc.VanillaAttributes;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcInventory;
 import art.arcane.animus.core.npc.NpcItem;
@@ -83,7 +85,8 @@ public final class NpcSchemaGenerator {
         properties.add("baby", described(type("boolean"), "A baby body, for types that have one."));
         properties.add("usingItem", described(type("boolean"), "Holds the main-hand item raised."));
         properties.add("listed", described(type("boolean"), "Player bodies only: show an entry in the tab list."));
-        properties.add("gravity", described(type("boolean"), "False keeps the body where it is placed. True by default."));
+        properties.add("gravity", described(type("boolean"), "False keeps the body where it is placed, whatever the gravity attribute says. True by default."));
+        properties.add(NpcAttributes.FIELD, attributes());
         properties.add("inventory", inventory());
         properties.add("poses", poses());
         properties.add("movement", movement());
@@ -259,6 +262,23 @@ public final class NpcSchemaGenerator {
         return poses;
     }
 
+    /** Every vanilla attribute, bare and namespaced, with its range and default from {@link VanillaAttributes}. */
+    private static JsonObject attributes() {
+        JsonObject attributes = described(closed(), "Vanilla entity attributes by id, such as scale or minecraft:scale, mapped to base values."
+                + " Every one is sent to viewers; the description of each says what Animus itself does with it.");
+        JsonObject fields = new JsonObject();
+        for (VanillaAttributes.Attribute attribute : NpcAttributes.table()) {
+            String since = attribute.since().isEmpty() ? "" : " Minecraft " + attribute.since() + " and later.";
+            JsonObject value = described(range("number", attribute.minimum(), attribute.maximum()),
+                    "Vanilla default " + NpcAttributes.format(attribute.defaultValue()) + ". " + NpcAttributes.note(attribute.id()) + since);
+            value.addProperty("default", attribute.defaultValue());
+            fields.add(attribute.id(), value);
+            fields.add(NpcAttributes.NAMESPACE + attribute.id(), value.deepCopy());
+        }
+        attributes.add("properties", fields);
+        return attributes;
+    }
+
     private static JsonObject movement() {
         JsonObject movement = described(closed(), "How this NPC walks wherever it walks. A route's own speed wins over speed.");
         JsonObject fields = new JsonObject();
@@ -286,6 +306,13 @@ public final class NpcSchemaGenerator {
         JsonObject fields = new JsonObject();
         fields.add("shop", described(pattern("^" + ShopDocument.ID + "$"), "A shop id such as town:baker."));
         fields.add("openOn", described(choices(List.of("right", "left", "both")), "Which click opens it. right by default."));
+        fields.add("style", described(choices(List.of("native", "chest")), "The window for this NPC: native (villager trading screen) or chest. The shop's own style by default."));
+        JsonObject villager = described(closed(), "A villager body's profession and level, shown in the trading screen title. Other bodies ignore it.");
+        JsonObject villagerFields = new JsonObject();
+        villagerFields.add("profession", described(pattern("^[a-z0-9_.-]+:[a-z0-9_/.-]+$"), "Such as minecraft:farmer. minecraft:none by default."));
+        villagerFields.add("level", described(range("integer", 1, 5), "1 (novice) to 5 (master). 1 by default."));
+        villager.add("properties", villagerFields);
+        fields.add("villager", villager);
         fields.add("imported", described(new JsonObject(), "Kept from an import."));
         fields.add("reviewAccepted", described(type("boolean"), "An imported binding opens nothing until this is true."));
         shop.add("properties", fields);

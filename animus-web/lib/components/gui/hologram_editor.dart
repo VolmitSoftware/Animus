@@ -20,7 +20,6 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import 'actions_editor.dart';
 import 'component_editor.dart';
-import '../info_tip.dart';
 import 'gui_fields.dart';
 import 'gui_stage_preview.dart';
 import 'presets_editor.dart';
@@ -145,24 +144,35 @@ class _HologramEditorState extends State<HologramEditor> {
           note: 'Applies to every row. Default: billboard center, see-through.',
           onChanged: (JsonMap? next, String field) => _write(<JsonStep>['style'], next, coalesce: 'style.$field'),
         ),
-        GuiSection(title: 'Click actions', count: asList(doc['actions']).length, open: asList(doc['actions']).isNotEmpty, children: <Widget>[
-          const InfoTip(text: 'Runs when a viewer clicks the box. navigate with mode page and target next, prev or a page id turns pages.', topic: 'Click actions'),
-          ActionsEditor(
-            actions: asList(doc['actions']),
-            path: r'$.actions',
-            diagnostics: _diagnostics,
-            unavailable: hologramRefusedActions,
-            onChanged: (JsonList next) => _write(<JsonStep>['actions'], next.isEmpty ? null : next),
-          ),
-          _number('Box width', r'$.hitbox.width', asDouble(asMap(doc['hitbox'])['width']), (num? v) => _hitbox('width', v), help: '0.01 to 64 blocks, default 1.2', integer: false),
-          _number('Row height', r'$.hitbox.height', asDouble(asMap(doc['hitbox'])['height']), (num? v) => _hitbox('height', v), help: '0.01 to 64 blocks, default 0.35', integer: false),
-          GuiRow(
-            label: 'Per line',
-            child: GuiSwitch(value: asMap(doc['hitbox'])['perLine'] == true, label: 'One box per row', onChanged: (bool on) => _hitbox('perLine', on ? true : null)),
-          ),
-        ]),
-        GuiSection(title: 'Pages', count: pages.length, open: pages.isNotEmpty, children: _pages(pages)),
-        GuiSection(title: 'Variants', count: variants.length, open: variants.isNotEmpty, children: _variants(variants)),
+        GuiSection(
+          title: 'Click actions',
+          count: asList(doc['actions']).length,
+          open: asList(doc['actions']).isNotEmpty,
+          tip: 'Runs when a viewer clicks the box. navigate with mode page and target next, prev or a page id turns pages.',
+          children: <Widget>[
+            ActionsEditor(
+              actions: asList(doc['actions']),
+              path: r'$.actions',
+              diagnostics: _diagnostics,
+              unavailable: hologramRefusedActions,
+              onChanged: (JsonList next) => _write(<JsonStep>['actions'], next.isEmpty ? null : next),
+            ),
+            _number('Box width', r'$.hitbox.width', asDouble(asMap(doc['hitbox'])['width']), (num? v) => _hitbox('width', v), help: '0.01 to 64 blocks, default 1.2', integer: false),
+            _number('Row height', r'$.hitbox.height', asDouble(asMap(doc['hitbox'])['height']), (num? v) => _hitbox('height', v), help: '0.01 to 64 blocks, default 0.35', integer: false),
+            GuiRow(
+              label: 'Per line',
+              child: GuiSwitch(value: asMap(doc['hitbox'])['perLine'] == true, label: 'One box per row', onChanged: (bool on) => _hitbox('perLine', on ? true : null)),
+            ),
+          ],
+        ),
+        GuiSection(title: 'Pages', count: pages.length, open: pages.isNotEmpty, tip: 'Pages replace the lines. Each viewer sees one page.', children: _pages(pages)),
+        GuiSection(
+          title: 'Variants',
+          count: variants.length,
+          open: variants.isNotEmpty,
+          tip: 'The highest-priority variant whose condition holds replaces the lines or style it names.',
+          children: _variants(variants),
+        ),
       ]),
     ]);
   }
@@ -354,7 +364,6 @@ class _HologramEditorState extends State<HologramEditor> {
   }
 
   List<Widget> _pages(JsonList pages) => <Widget>[
-        const InfoTip(text: 'Pages replace the lines. Each viewer sees one page.', topic: 'Pages'),
         for (int index = 0; index < pages.length; index++)
           GuiSection(title: 'Page ${asString(asMap(pages[index])['id']) ?? index + 1}', open: _page == index, children: <Widget>[
             GuiRow(
@@ -416,7 +425,6 @@ class _HologramEditorState extends State<HologramEditor> {
       ];
 
   List<Widget> _variants(JsonList variants) => <Widget>[
-        const InfoTip(text: 'The highest-priority variant whose condition holds replaces the lines or style it names.', topic: 'Variants'),
         for (int index = 0; index < variants.length; index++) _variantSection(variants, index),
         Button.secondary(
           label: 'Add variant',

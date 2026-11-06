@@ -5,6 +5,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../logic/conversation/conversation_json.dart';
 import '../logic/gui/gui_json.dart';
 import '../logic/gui/gui_text.dart';
 import '../logic/gui/gui_presets.dart';
@@ -31,6 +32,8 @@ import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
 import 'gui/menu_editor.dart';
 import 'gui/shop_editor.dart';
+import 'conversation/conversation_attach.dart';
+import 'conversation/conversation_view.dart';
 import 'inspect/behavior_editor.dart';
 import 'inspect/json_code_editor.dart';
 import 'inspect/npc_inspector.dart';
@@ -65,8 +68,21 @@ class DocumentPane extends StatefulWidget {
     this.liveLookups,
     this.workspaceDocuments = const <AnimusDocument>[],
     this.onOpen,
+    this.onCommit,
+    this.onServerPreview,
+    this.newConversationHref,
     super.key,
   });
+
+  /// Writes several documents as one undoable change (attaching a
+  /// conversation to NPCs); null hides that list.
+  final ConversationCommit? onCommit;
+
+  /// Starts the paired server's preview; null offline.
+  final void Function()? onServerPreview;
+
+  /// Where a new conversation is made.
+  final String? newConversationHref;
 
   /// Opens another document of the workspace (a behavior, route or shop an
   /// NPC names).
@@ -142,11 +158,27 @@ class _DocumentPaneState extends State<DocumentPane> {
     TabOption<ViewMode>(ViewMode.split, 'Split'),
   ];
 
+  static const List<TabOption<ViewMode>> _behaviorViews = <TabOption<ViewMode>>[
+    TabOption<ViewMode>(ViewMode.conversation, 'Conversation'),
+    ..._views,
+  ];
+
+  List<TabOption<ViewMode>> get _tabs => component.document.kind == DocumentKind.behavior ? _behaviorViews : _views;
+
+  /// The view to show: the Conversation tab exists for behaviors only.
+  ViewMode get _view => component.view == ViewMode.conversation && component.document.kind != DocumentKind.behavior ? ViewMode.visual : component.view;
+
   @override
   void initState() {
     super.initState();
     // Closing the tab with Code text that was never applied asks first.
     _stopGuard = guardUnload(() => _draft != null);
+    // A behavior shaped like a conversation opens on its Conversation tab.
+    if (component.document.kind == DocumentKind.behavior && component.view == ViewMode.visual && conversationOf(component.document.json) != null) {
+      Future<void>.microtask(() {
+        if (mounted) component.onView(ViewMode.conversation);
+      });
+    }
   }
 
   @override
@@ -208,8 +240,8 @@ class _DocumentPaneState extends State<DocumentPane> {
   @override
   Widget build(BuildContext context) {
     final AnimusDocument document = component.document;
-    final ViewMode view = component.view;
-    final int selectedTab = _views.indexWhere((TabOption<ViewMode> option) => option.value == view);
+    final ViewMode view = _view;
+    final int selectedTab = _tabs.indexWhere((TabOption<ViewMode> option) => option.value == view);
     return dom.div(classes: 'animus-document', <Widget>[
       dom.header(classes: 'animus-document-header', <Widget>[
         dom.div(classes: 'animus-document-title', <Widget>[
@@ -221,7 +253,7 @@ class _DocumentPaneState extends State<DocumentPane> {
         TabStrip<ViewMode>(
           idPrefix: _tabPrefix,
           label: 'View',
-          options: _views,
+          options: _tabs,
           selected: view,
           panelId: _panelId,
           onSelect: component.onView,
@@ -237,7 +269,9 @@ class _DocumentPaneState extends State<DocumentPane> {
         classes: 'animus-views is-${view.name}${component.editor != null ? ' has-editor' : ''}',
         attributes: <String, String>{'role': 'tabpanel', 'aria-labelledby': TabStrip.tabId(_tabPrefix, selectedTab)},
         <Widget>[
-        if (component.editor != null && view != ViewMode.code)
+        if (view == ViewMode.conversation)
+          DocsScope(link: Docs.forKind(document.kind), child: _conversation(document))
+        else if (component.editor != null && view != ViewMode.code)
           DocsScope(link: Docs.forKind(document.kind), child: component.editor!)
         else if (view == ViewMode.visual || (view == ViewMode.split && !_staged(document)))
           DocsScope(link: Docs.forKind(document.kind), child: _visual(document)),
@@ -410,12 +444,30 @@ class _DocumentPaneState extends State<DocumentPane> {
           diagnostics: <Diagnostic>[..._allDiagnostics(document), ...serverBehaviorsDiagnostics(json, workspace)],
         ),
       DocumentKind.inventory => InventoryEditor(document: document, onJson: onJson, presets: workspacePresets(workspace)),
-      DocumentKind.shop => ShopEditor(document: document, onJson: onJson),
+      DocumentKind.shop => ShopEditor(document: document, onJson: onJson, layouts: _ids(DocumentKind.inventory)),
       DocumentKind.menu => MenuEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace)),
       DocumentKind.hologram => HologramEditor(document: document, onJson: onJson, animations: workspaceAnimations(workspace), presets: workspacePresets(workspace)),
       DocumentKind.textAnimation || DocumentKind.presets => guiDataEditor(document, onJson, workspace) ?? _fields(json),
       _ => _fields(json),
     };
+  }
+
+  Widget _conversation(AnimusDocument document) {
+    final JsonEdit? onJson = component.onJson;
+    if (onJson == null || document.json is! Map<String, Object?>) {
+      return const dom.section(classes: 'animus-panel', <Widget>[Component.text('Not a JSON object. Fix it in Code.')]);
+    }
+    return ConversationView(
+      key: ValueKey<String>('conversation:${document.id}'),
+      document: document,
+      onJson: onJson,
+      catalog: _schemas.catalog,
+      workspaceDocuments: component.workspaceDocuments,
+      onCommit: component.onCommit,
+      onServerPreview: component.onServerPreview,
+      onOpenVisual: () => component.onView(ViewMode.visual),
+      newHref: component.newConversationHref,
+    );
   }
 
   /// Every top-level field with a one-line summary, for kinds with no editor.

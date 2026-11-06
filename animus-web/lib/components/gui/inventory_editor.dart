@@ -346,8 +346,7 @@ class _InventoryEditorState extends State<InventoryEditor> {
         guiFieldRow('List', r'$.refresh.listTicks', d, help: 'Gloss only',
             (String id) => GuiNumberInput(id: id, value: asInt(refresh['listTicks']), label: 'List refresh ticks', onChanged: (num? v) => setRefresh('listTicks', v))),
       ]),
-      GuiSection(title: 'Select', open: select.isNotEmpty, children: <Widget>[
-        const InfoTip(text: 'Gloss uses these to pick one GUI per opener. Animus checks when and ignores priority.', topic: 'Select'),
+      GuiSection(title: 'Select', open: select.isNotEmpty, tip: 'Gloss uses these to pick one GUI per opener. Animus checks when and ignores priority.', children: <Widget>[
         guiFieldRow('Priority', r'$.select.priority', d,
             (String id) => GuiNumberInput(id: id, value: asInt(select['priority']), label: 'Select priority', onChanged: (num? v) => setSelect('priority', v))),
         guiFieldRow('When', r'$.select.when', d, (String id) => GuiTextInput(
@@ -411,7 +410,9 @@ class _InventoryEditorState extends State<InventoryEditor> {
     final JsonMap list = asMap(doc['list']);
     if (list.isEmpty) {
       return dom.div(classes: 'animus-gui-fields', <Widget>[
-        const InfoTip(text: 'Fills one mask character\'s slots with a template, one per entry of a source expression.', topic: 'List'),
+        const dom.p(classes: 'animus-gui-help', <Widget>[
+          InfoTip(tip: 'Fills one mask character\'s slots with a template, one per entry of a source expression.', child: Component.text('About lists')),
+        ]),
         Button.secondary(
           label: 'Add a list',
           size: ButtonSize.small,
@@ -444,7 +445,12 @@ class _InventoryEditorState extends State<InventoryEditor> {
           onChanged: (String v) => set('source', v.isEmpty ? null : v),
         ),
       ),
-      GuiRow(label: 'Page size', help: 'Defaults to the area.', child: GuiNumberInput(value: asInt(list['pageSize']), label: 'Page size', onChanged: (num? v) => set('pageSize', v))),
+      GuiRow(
+        label: 'Page size',
+        help: 'Defaults to the area.',
+        tip: 'Page buttons use navigate with mode page and target next or prev. page and pages give the position.',
+        child: GuiNumberInput(value: asInt(list['pageSize']), label: 'Page size', onChanged: (num? v) => set('pageSize', v)),
+      ),
       GuiRow(label: 'Refresh', help: 'Ticks between source reads.', child: GuiNumberInput(value: asInt(list['refreshTicks']), label: 'List refresh ticks', onChanged: (num? v) => set('refreshTicks', v))),
       GuiSection(title: 'Template', children: <Widget>[
         ComponentEditor(
@@ -457,7 +463,6 @@ class _InventoryEditorState extends State<InventoryEditor> {
           onChanged: (JsonMap next) => set('template', next),
         ),
       ]),
-      const InfoTip(text: 'Page buttons use navigate with mode page and target next or prev. page and pages give the position.', topic: 'List pages'),
       Button.ghost(label: 'Remove the list', size: ButtonSize.small, onPressed: () => _write(<JsonStep>['list'], null)),
     ]);
   }
@@ -465,7 +470,9 @@ class _InventoryEditorState extends State<InventoryEditor> {
   Widget _variants(JsonMap doc) {
     final JsonList variants = asList(doc['variants']);
     return dom.div(classes: 'animus-gui-fields', <Widget>[
-      const InfoTip(text: 'The highest-priority variant whose condition holds replaces the title, mask, keys or slots it names. Nothing merges.', topic: 'Variants'),
+      const dom.p(classes: 'animus-gui-help', <Widget>[
+        InfoTip(tip: 'The highest-priority variant whose condition holds replaces the title, mask, keys or slots it names. Nothing merges.', child: Component.text('About variants')),
+      ]),
       for (int index = 0; index < variants.length; index++)
         GuiSection(title: 'Variant ${asString(asMap(variants[index])['id']) ?? index}', open: _variant == index, children: <Widget>[
           GuiRow(
@@ -528,7 +535,9 @@ class _InventoryEditorState extends State<InventoryEditor> {
   Widget _actions(JsonMap doc) {
     final JsonMap named = asMap(doc['actions']);
     return dom.div(classes: 'animus-gui-fields', <Widget>[
-      const InfoTip(text: 'Run a named list from any action with call. Calls must exist and must not loop.', topic: 'Named actions'),
+      const dom.p(classes: 'animus-gui-help', <Widget>[
+        InfoTip(tip: 'Run a named list from any action with call. Calls must exist and must not loop.', child: Component.text('About named actions')),
+      ]),
       for (final MapEntry<String, Object?> entry in named.entries)
         GuiSection(title: entry.key, count: asList(entry.value).length, children: <Widget>[
           GuiRow(

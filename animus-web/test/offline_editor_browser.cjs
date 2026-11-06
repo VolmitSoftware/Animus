@@ -22,6 +22,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {closeDrawer, isCompact, sidebar, topbarAction} = require('./support/shell.cjs');
+const {chooseAndWait} = require('./support/select.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
@@ -62,10 +63,10 @@ function workspaceId(page) {
   return decodeURIComponent(match[1]);
 }
 
-/// The select inside the field labelled [text] (a label wrapping a select
-/// also holds the options' text, so getByLabel cannot match it exactly).
+/// The dropdown inside the field labelled [text] (a label wrapping a
+/// dropdown also holds its shown text, so getByLabel cannot match it exactly).
 function select(page, text) {
-  return page.locator('label.animus-field-control', {has: page.locator('.animus-field-label', {hasText: new RegExp(`^${text}$`)})}).locator('select');
+  return page.locator('label.animus-field-control', {has: page.locator('.animus-field-label', {hasText: new RegExp(`^${text}$`)})}).locator('button[role="combobox"]');
 }
 
 async function go(page, hash) {
@@ -124,7 +125,7 @@ async function run(browser, viewport, label, skinFile) {
     await (await chooser).setFiles(skinFile);
     await page.getByRole('img', {name: 'Loaded skin face'}).waitFor();
     await page.getByLabel('X', {exact: true}).fill('12');
-    await select(page, 'Behavior').selectOption('new:dialogue');
+    await chooseAndWait(select(page, 'Behavior'), 'new:dialogue');
     await shot(page, label, '03-new-npc');
   });
   assert.match(decodeURIComponent(page.url()), /\/npc\/town\/old-tom/);
@@ -133,7 +134,7 @@ async function run(browser, viewport, label, skinFile) {
   // Every other kind from its guided step.
   await create(page, workspace, 'behavior', 'behavior', async () => {
     await page.getByRole('radio', {name: /^Shop/}).click();
-    await select(page, 'Give to NPC').selectOption('town/old-tom');
+    await chooseAndWait(select(page, 'Give to NPC'), 'town/old-tom');
   });
   await create(page, workspace, 'pack', 'pack', async () => page.getByLabel('Name', {exact: true}).fill('Town pack'));
   await create(page, workspace, 'route', 'route', async () => page.getByLabel('Name', {exact: true}).fill('Market loop'));
@@ -264,7 +265,7 @@ async function run(browser, viewport, label, skinFile) {
   await page.getByText('Browser preview', {exact: true}).first().waitFor();
   await page.locator('.animus-mc-stage[data-webgl="ready"]').waitFor();
   await page.locator('.animus-npc-facts').getByText(/^(tom\.png|the PNG kept in this workspace) \(classic\)$/).waitFor();
-  await page.getByLabel('Animation').selectOption('sketchbook:golem/wave');
+  await chooseAndWait(page.getByLabel('Animation'), 'sketchbook:golem/wave');
   await page.getByRole('button', {name: 'Play'}).click();
   await page.locator('.animus-npc-facts').getByText(/sketchbook:golem\/wave at tick [1-9]/).waitFor();
   await shot(page, label, '05-npc-preview');

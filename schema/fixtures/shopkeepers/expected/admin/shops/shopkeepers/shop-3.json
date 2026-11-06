@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-3",
   "title": "Farmer Joe",
+  "style": "native",
   "modes": [
     "trade"
   ],

@@ -30,7 +30,7 @@ import java.util.UUID;
  */
 public record ShopDocument(String id, long revision, String title, Optional<String> permission, List<Mode> modes, Mode defaultMode,
                            MatchRule match, boolean closeAfterPurchase, boolean confirm, boolean log, List<Page> pages,
-                           Optional<Owner> owner, List<Container> containers) {
+                           Optional<Owner> owner, List<Container> containers, Optional<Style> style, Optional<String> layout) {
     public static final int SCHEMA_VERSION = 1, MAXIMUM_PAGES = 64, MAXIMUM_COMMANDS = 16, MAXIMUM_CONTAINERS = 8;
     /** The player who owns an owned shop. {@code name} is the last known name, for messages only. */
     public record Owner(UUID uuid, Optional<String> name) {}
@@ -43,6 +43,15 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     public enum Mode {
         BUY, SELL, TRADE;
         public String key() { return name().toLowerCase(Locale.ROOT); }
+    }
+    /** Which window a shop opens: the villager trading screen or the chest window. */
+    public enum Style {
+        NATIVE, CHEST;
+        public String key() { return name().toLowerCase(Locale.ROOT); }
+        public static Optional<Style> of(String key) {
+            for (Style style : values()) if (style.key().equals(key)) return Optional.of(style);
+            return Optional.empty();
+        }
     }
     public enum Type { STATIC, BUY, SELL, TRADE, COMMAND }
     public enum CommandSource { CONSOLE, PLAYER }
@@ -105,7 +114,7 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
     public static Result parse(String expectedId, JsonObject object) {
         Reader reader = new Reader();
         reader.fields(object, Set.of("schemaVersion", "revision", "id", "title", "permission", "modes", "defaultMode", "match",
-                "closeAfterPurchase", "confirm", "log", "pages", "imported", "owner", "containers"), "$");
+                "closeAfterPurchase", "confirm", "log", "pages", "imported", "owner", "containers", "style", "layout"), "$");
         Optional<Owner> owner = reader.owner(object.get("owner"), "$.owner");
         List<Container> containers = reader.containers(object.get("containers"), "$.containers");
         if (!containers.isEmpty() && !object.has("owner")) reader.problem("$.owner", "a shop with containers needs an owner");
@@ -119,6 +128,16 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
         else if (!id.equals(expectedId)) reader.problem("$.id", "id " + id + " does not match its file, which names " + expectedId);
         String title = object.has("title") ? reader.string(object, "title", "$", false).orElse(id) : id;
         Optional<String> permission = reader.permission(object, "permission", "$");
+        Optional<Style> style = Optional.empty();
+        if (object.has("style")) {
+            style = reader.string(object, "style", "$", true).flatMap(Style::of);
+            if (style.isEmpty()) reader.problem("$.style", "expected native or chest");
+        }
+        Optional<String> layout = Optional.empty();
+        if (object.has("layout")) {
+            layout = reader.string(object, "layout", "$", true).filter((String gui) -> gui.matches(ID));
+            if (layout.isEmpty()) reader.problem("$.layout", "expected a chest GUI id such as town:shop-frame");
+        }
         List<Mode> modes = new ArrayList<>();
         if (object.has("modes")) {
             JsonElement value = object.get("modes");
@@ -149,7 +168,7 @@ public record ShopDocument(String id, long revision, String title, Optional<Stri
             for (int index = 0; index < array.size(); index++) reader.page(array.get(index), "$.pages[" + index + "]", entryIds).ifPresent(pages::add);
         }
         if (!reader.problems.isEmpty()) return new Result(Optional.empty(), reader.problems);
-        return new Result(Optional.of(new ShopDocument(id, revision, title, permission, modes, defaultMode, match, close, confirm, log, pages, owner, containers)), List.of());
+        return new Result(Optional.of(new ShopDocument(id, revision, title, permission, modes, defaultMode, match, close, confirm, log, pages, owner, containers, style, layout)), List.of());
     }
 
     private static final class Reader {

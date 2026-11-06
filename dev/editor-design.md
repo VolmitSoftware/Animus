@@ -451,7 +451,16 @@ previewsPerServer = 4
 npcsPerPreview = 64
 previewMinutes = 15
 idempotencyHours = 24
+
+[editor.notify]
+enabled = true
+chat = true
+actionBar = false
+console = true
+# [editor.notify.sounds.<apply|rollback|import|spawn|despawn|pair|revoke|refused>] sound, volume, pitch
 ```
+
+`EditorNotices` turns server-side editor events (apply, undo, import steps, spawn, despawn, pair, revoke, and refusals of the server-changing endpoints) into in-game notices. Success notices are recorded when `EditorHost.applied` completes, which chains on `CatalogReloads.reloaded`, so reload problems are reported. Events merge per token, kind and verb until 400 ms pass quietly or 3 s since the first; the service ticks it every 100 ms. Platforms deliver through `EditorNoticeChannel` on each player's own scheduler.
 
 The listener is Animus's own small HTTP/1.1 and WebSocket server on virtual threads (no extra library to shade), in `core/` behind `EditorRequestHandler`, so Bukkit, the mod loaders and the relay client share every handler. A listener on a non-loopback address refuses to start without `tlsCertificate` and `tlsPrivateKey` (PEM chain and unencrypted PKCS#8 key; relative paths are under the data folder). Unknown `[editor]` keys are refused at startup.
 

@@ -24,6 +24,7 @@ import net.minecraft.tags.TagNetworkSerialization;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.PositionMoveRotation;
 import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
@@ -67,6 +68,7 @@ public final class NativeProtocolClient {
     private volatile boolean expectedDisconnect;
     // The open container window (0 is the player's own inventory) and the state id the server last sent for it.
     private volatile int windowId, windowState;
+    private int blockSequence;
     private int positionReminder;
     private Vec3 queuedMove;
     private boolean positioned;
@@ -77,7 +79,7 @@ public final class NativeProtocolClient {
         "keep_alive", "ping", "disconnect", "chunk_batch_finished", "set_entity_data",
         "set_entity_motion", "set_equipment", "set_passengers", "animate", "rotate_head", "set_health",
         "login", "sound", "level_particles", "boss_event", "move_entity_rot", "move_entity_pos_rot",
-        "open_screen", "container_set_content", "container_set_slot", "container_close", "block_update", "section_blocks_update");
+        "open_screen", "container_set_content", "container_set_slot", "container_close", "merchant_offers", "block_update", "section_blocks_update");
 
     private NativeProtocolClient(int port, String username) throws Exception {
         this.username = username;
@@ -345,6 +347,12 @@ public final class NativeProtocolClient {
                 if (!stack.isEmpty()) items.add(stack(slot, stack));
             }
             event("container_content", "container", p.containerId(), "state", p.stateId(), "size", p.items().size(), "items", items);
+        } else if (packet instanceof ClientboundMerchantOffersPacket p) {
+            List<Map<String, Object>> offers = new ArrayList<>();
+            for (MerchantOffer offer : p.getOffers())
+                offers.add(Map.of("costA", BuiltInRegistries.ITEM.getKey(offer.getItemCostA().item().value()).toString(), "result", BuiltInRegistries.ITEM.getKey(offer.getResult().getItem()).toString(),
+                        "uses", offer.getUses(), "maxUses", offer.getMaxUses()));
+            event("merchant_offers", "container", p.getContainerId(), "offers", offers);
         } else if (packet instanceof ClientboundContainerSetSlotPacket p) {
             if (p.getContainerId() == windowId) windowState = p.getStateId();
             event("container_slot", "container", p.getContainerId(), "state", p.getStateId(), "slot", p.getSlot(),
@@ -427,6 +435,14 @@ public final class NativeProtocolClient {
                 send(new ServerboundInteractPacket(command.get("id").getAsInt(), InteractionHand.MAIN_HAND, point, false));
                 event("interaction_point","id",command.get("id").getAsInt(),"x",point.x,"y",point.y,"z",point.z);
             }
+            case "use_block" -> {
+                // A right click on the top face of a block with the main hand, as the vanilla client sends it.
+                if (!loaded) throw new IllegalStateException("Block use requires an active game connection");
+                net.minecraft.core.BlockPos at = new net.minecraft.core.BlockPos(command.get("x").getAsInt(), command.get("y").getAsInt(), command.get("z").getAsInt());
+                net.minecraft.world.phys.BlockHitResult hit = new net.minecraft.world.phys.BlockHitResult(Vec3.atCenterOf(at), net.minecraft.core.Direction.UP, at, false);
+                send(new ServerboundUseItemOnPacket(InteractionHand.MAIN_HAND, hit, ++blockSequence));
+                event("use_block", "x", at.getX(), "y", at.getY(), "z", at.getZ(), "sequence", blockSequence);
+            }
             case "swing" -> {
                 if (!loaded) throw new IllegalStateException("Swing requires an active game connection");
                 send(ProtocolRevision.swing());
@@ -461,6 +477,13 @@ public final class NativeProtocolClient {
                 int state = windowState;
                 send(new ServerboundContainerClickPacket(container, state, (short) slot, (byte) button, mode, new Int2ObjectOpenHashMap<HashedStack>(), HashedStack.EMPTY));
                 event("container_click_sent", "container", container, "state", state, "slot", slot, "button", button, "mode", mode.name());
+            }
+            case "select_trade" -> {
+                // The trading screen's offer button; the server decides what moves.
+                int offer = command.get("offer").getAsInt();
+                if (offer < 0 || offer > 1023) throw new IllegalArgumentException("QA trade offer 0..1023 required");
+                send(new ServerboundSelectTradePacket(offer));
+                event("select_trade_sent", "offer", offer);
             }
             case "close_container" -> {
                 int container = command.has("container") ? command.get("container").getAsInt() : windowId;

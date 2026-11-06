@@ -15,10 +15,11 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
+import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../../logic/help_text.dart';
 import '../info_tip.dart';
-import '../suggest/autocomplete_input.dart';
+import '../select/suggest_input.dart';
 
 /// A label with a required marker; keys read as words (`waitTicks` is "Wait ticks").
 String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
@@ -38,7 +39,7 @@ class InspectRow extends StatelessWidget {
   /// Shown under the control when short; long help moves into the info tip.
   final String? help;
 
-  /// Info tip text beside the label; with it, [help] always stays inline.
+  /// Tip text on the label; with it, [help] always stays inline.
   final String? tip;
   final List<Diagnostic> problems;
 
@@ -46,7 +47,7 @@ class InspectRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final ({String? hint, String? tip}) split = tip == null ? splitHelp(help) : (hint: help == null || help!.isEmpty ? null : help, tip: tip);
     return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      labelWithTip(dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': labelFor}, <Widget>[Component.text(label)]), split.tip, label),
+      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': labelFor}, <Widget>[withTip(Component.text(label), split.tip)]),
       dom.div(classes: 'animus-gui-control', <Widget>[
         child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
@@ -142,6 +143,7 @@ class InspectControl extends StatelessWidget {
     this.suggestions = const <FieldOption>[],
     this.schema,
     this.profile = FieldProfile.none,
+    this.references,
     super.key,
   });
 
@@ -155,6 +157,8 @@ class InspectControl extends StatelessWidget {
 
   /// What a text value completes beyond [suggestions].
   final FieldProfile profile;
+  /// The document kind a text value names, for "+ New" and "Manage".
+  final DocumentKind? references;
 
   @override
   Widget build(BuildContext context) {
@@ -169,10 +173,10 @@ class InspectControl extends StatelessWidget {
         if (!textual) break;
         if (field.openChoice) {
           return SuggestInput(
-            id: controlId(path),
             value: current is String ? current : '',
             label: field.key,
             profile: profile,
+            references: references,
             suggestions: <FieldOption>[...field.options, ...suggestions],
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
@@ -207,10 +211,10 @@ class InspectControl extends StatelessWidget {
       case FieldKind.string:
         if (current is String || current == null) {
           return SuggestInput(
-            id: controlId(path),
             value: current as String? ?? '',
             label: field.key,
             profile: profile,
+            references: references,
             suggestions: suggestions,
             placeholder: field.bounds.isEmpty ? null : field.bounds,
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
@@ -296,42 +300,6 @@ class InspectObject extends StatelessWidget {
             problems: diagnosticsAt(diagnostics, childPath(path, entry.key), nested: true),
             child: KeptJsonEditor(value: entry.value, label: entry.key, onChanged: (Object? next) => put(entry.key, next)),
           ),
-    ]);
-  }
-}
-
-/// A text field that completes [suggestions] and whatever [profile] adds
-/// (registry ids, workspace documents, placeholders).
-class SuggestInput extends StatelessWidget {
-  const SuggestInput({
-    required this.value,
-    required this.onChanged,
-    this.suggestions = const <FieldOption>[],
-    this.profile = FieldProfile.none,
-    this.label,
-    this.placeholder,
-    this.id,
-    super.key,
-  });
-
-  final String value;
-  final void Function(String value) onChanged;
-  final List<FieldOption> suggestions;
-  final FieldProfile profile;
-  final String? label;
-  final String? placeholder;
-  final String? id;
-
-  @override
-  Widget build(BuildContext context) {
-    final FieldProfile merged = suggestions.isEmpty
-        ? profile
-        : profile.copyWith(options: <ValueOption>[
-            ...profile.options,
-            for (final FieldOption option in suggestions) ValueOption(option.label, detail: option.description ?? ''),
-          ]);
-    return dom.div(classes: 'animus-gui-text', <Widget>[
-      AutocompleteInput(id: id, value: value, profile: merged, label: label, placeholder: placeholder, onChanged: onChanged),
     ]);
   }
 }

@@ -17,6 +17,7 @@ import '../../logic/npc/combat_settings.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
+import '../select/suggest_input.dart';
 
 class CombatEditor extends StatefulWidget {
   const CombatEditor({
@@ -711,19 +712,14 @@ class _CombatEditorState extends State<CombatEditor> {
     _problemList(problems),
   ]);
 
-  /// A native select, so it carries an accessible name.
-  Widget _choice(String label, String? value, List<String> options, String fallback, void Function(String? value) onChanged) {
-    final List<String> all = <String>[...options, if (value != null && !options.contains(value)) value];
-    return dom.select(
-      classes: 'animus-gui-input animus-combat-select',
-      attributes: <String, String>{'aria-label': label},
-      onChange: (List<String> next) => onChanged(next.isEmpty || next.first.isEmpty ? null : next.first),
-      <Widget>[
-        dom.option(value: '', selected: value == null, <Widget>[Component.text('default ($fallback)')]),
-        for (final String option in all) dom.option(value: option, selected: option == value, <Widget>[Component.text(option)]),
-      ],
-    );
-  }
+  Widget _choice(String label, String? value, List<String> options, String fallback, void Function(String? value) onChanged) => GuiSelect(
+        value: value,
+        options: options,
+        allowNone: true,
+        noneLabel: 'default ($fallback)',
+        hiddenLabel: label,
+        onChanged: onChanged,
+      );
 
   Widget _categories(String name, JsonMap rules) {
     final List<JsonStep> at = <JsonStep>[name, 'categories'];

@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {sidebar, topbarAction} = require('./support/shell.cjs');
+const {choose, chooseAndWait, valueOf} = require('./support/select.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/groups_recordings');
 const site = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
@@ -78,9 +79,9 @@ async function run(browser, viewport, theme, tag) {
   await (await sidebar(page)).locator('.animus-tree-browse').first().click();
   const form = page.locator('[data-npc="group-assign"]');
   await form.waitFor();
-  await page.selectOption('#animus-group-assign-group', 'town-guards');
-  await page.selectOption('#animus-group-assign-by', 'folder');
-  await page.selectOption('#animus-group-assign-folder', 'town');
+  await chooseAndWait(page.locator('#animus-group-assign-group'), 'town-guards');
+  await chooseAndWait(page.locator('#animus-group-assign-by'), 'folder');
+  await chooseAndWait(page.locator('#animus-group-assign-folder'), 'town');
   await form.locator('[data-npc="group-assign-reach"]').getByText('3 NPCs affected', {exact: false}).waitFor();
   await shot(page, `${tag}-01-group-assign`);
   await noSidewaysScroll(page, `${tag} group assign`);
@@ -97,9 +98,9 @@ async function run(browser, viewport, theme, tag) {
   // Unassign by effective tag: gate-guard takes "guard" from town-guards.
   await page.evaluate((hash) => { location.hash = hash; }, `#/workspace/${workspace}/npcs`);
   await form.waitFor();
-  await page.selectOption('#animus-group-assign-group', 'harbor');
-  await page.selectOption('#animus-group-assign-by', 'tag');
-  await page.selectOption('#animus-group-assign-tag', 'guard');
+  await chooseAndWait(page.locator('#animus-group-assign-group'), 'harbor');
+  await chooseAndWait(page.locator('#animus-group-assign-by'), 'tag');
+  await chooseAndWait(page.locator('#animus-group-assign-tag'), 'guard');
   await page.locator('#animus-group-unassign').click();
   await page.getByText('Unassigned harbor: 1 changed, 1 unchanged.', {exact: false}).first().waitFor();
   await topbarAction(page, 'Undo');
@@ -107,7 +108,7 @@ async function run(browser, viewport, theme, tag) {
 
   // By selection.
   await page.getByRole('checkbox', {name: 'Select harbor/porter', exact: true}).check();
-  await page.selectOption('#animus-group-assign-by', 'selection');
+  await chooseAndWait(page.locator('#animus-group-assign-by'), 'selection');
   await page.locator('#animus-group-unassign').click();
   await page.getByText('Unassigned harbor: 1 changed, 0 unchanged.', {exact: false}).first().waitFor();
   await topbarAction(page, 'Undo');
@@ -147,7 +148,7 @@ async function run(browser, viewport, theme, tag) {
   // Adding a group from the NPC's own list.
   await openDocument(page, workspace, 'npc', 'town/watchman');
   await part(page, 'identity');
-  await page.selectOption('#animus-npc-add-group', 'harbor');
+  await choose(page.locator('#animus-npc-add-group'), 'harbor');
   await settle(page);
   assert.deepEqual((await codeOf(page)).groups, ['harbor']);
   await part(page, 'effective');
@@ -169,8 +170,8 @@ async function run(browser, viewport, theme, tag) {
   await settle(page);
   assert.deepEqual((await codeOf(page)).modules['animus:navigation'].waitTicks, [20, 90]);
   grid = await gridId();
-  assert.equal(await page.locator(`#${grid}-start`).inputValue(), 'random');
-  await page.selectOption(`#${grid}-seed`, 'random');
+  assert.equal(await valueOf(page.locator(`#${grid}-start`)), 'random');
+  await chooseAndWait(page.locator(`#${grid}-seed`), 'random');
   await settle(page);
   assert.equal((await codeOf(page)).modules['animus:navigation'].seed, 'random');
   grid = await gridId();
@@ -186,9 +187,9 @@ async function run(browser, viewport, theme, tag) {
   // An NPC playing a recording.
   await openDocument(page, workspace, 'npc', 'town/stall-keeper');
   await part(page, 'behaviour');
-  assert.equal(await page.locator('#animus-npc-nav-source').inputValue(), 'recording');
-  assert.equal(await page.locator('#animus-npc-playback').inputValue(), 'pingpong');
-  await page.selectOption('#animus-npc-playback', 'once');
+  assert.equal(await valueOf(page.locator('#animus-npc-nav-source')), 'recording');
+  assert.equal(await valueOf(page.locator('#animus-npc-playback')), 'pingpong');
+  await chooseAndWait(page.locator('#animus-npc-playback'), 'once');
   await settle(page);
   assert.deepEqual((await codeOf(page)).modules['animus:navigation'], {enabled: true, recording: 'market-loop', playback: 'once'});
   await part(page, 'behaviour');

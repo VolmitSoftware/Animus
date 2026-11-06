@@ -41,6 +41,8 @@ FieldProfile argumentProfile(String? capability, String key) {
       return idProfile(const ValueRef.registry(RegistryKind.sound));
     case ('animus:spawn-particle', 'particle'):
       return idProfile(const ValueRef.registry(RegistryKind.particle));
+    case ('animus:set-attribute', 'attribute'):
+      return idProfile(const ValueRef.registry(RegistryKind.attribute));
     case ('animus:teleport', 'world'):
       return idProfile(const ValueRef.registry(RegistryKind.world));
     case ('animus:navigate', 'route'):

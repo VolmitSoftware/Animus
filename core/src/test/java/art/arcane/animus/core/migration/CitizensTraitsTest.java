@@ -23,14 +23,26 @@ class CitizensTraitsTest {
                  "traits":{"attributetrait":{"attributes":{"minecraft:step_height":2.0,"minecraft:max_health":40}}}}
                 """, false);
         assertEquals(json("""
-                {"speed":1.29,"avoidWater":false,"maximumFall":1,"pathRange":60.0,"arrivalMargin":0.5,"stuck":{"afterTicks":120,"teleport":false},"fly":true,"openDoors":true,"stepHeight":1.5}
+                {"speed":1.29,"avoidWater":false,"maximumFall":1,"pathRange":60.0,"arrivalMargin":0.5,"stuck":{"afterTicks":120,"teleport":false},"fly":true,"openDoors":true}
                 """), result.fields().get("movement"));
         for (String path : List.of("/navigator/speedmodifier", "/navigator/avoidwater", "/navigator/falldistance", "/navigator/pathfindingrange",
                 "/navigator/distancemargin", "/navigator/destinationteleportmargin", "/navigator/stationaryticks", "/navigator/usedefaultstuckaction",
                 "/metadata/disable-default-stuck-action", "/metadata/flyable", "/metadata/pathfinder-open-doors")) assertTrue(result.converted().contains(path), path);
         assertEquals(CitizensImporter.Status.CONVERTED, result.notes().get("/traits/attributetrait/attributes/minecraft:step_height").status());
-        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traits/attributetrait/attributes/minecraft:max_health").status());
+        assertTrue(result.converted().contains("/traits/attributetrait/attributes/minecraft:max_health"));
+        assertEquals(json("{\"step_height\":2.0,\"max_health\":40}"), result.fields().get("attributes"), "the attribute trait becomes the attributes field");
         assertEquals(List.of(), result.warnings());
+    }
+
+    @Test void legacyAttributeNamesConvertAndValuesOutsideTheVanillaRangeAreClamped() {
+        CitizensTraits.Result result = map("zombie", """
+                {"traits":{"attributetrait":{"attributes":{"generic_scale":1.5,"generic.gravity":0.02,"zombie_spawn_reinforcements":0.5,"horse.jump_strength":0.7,
+                 "minecraft:armor":45,"mymod:mana":10}}}}
+                """, false);
+        assertEquals(json("{\"scale\":1.5,\"gravity\":0.02,\"spawn_reinforcements\":0.5,\"jump_strength\":0.7,\"armor\":30}"), result.fields().get("attributes"));
+        assertTrue(result.converted().contains("/traits/attributetrait/attributes/generic_scale"));
+        assertEquals(List.of("/traits/attributetrait/attributes/minecraft:armor: 45 is outside 0..30 for armor and became 30"), result.warnings());
+        assertEquals(CitizensImporter.Status.UNSUPPORTED_PRESERVED, result.notes().get("/traits/attributetrait/attributes/mymod:mana").status());
     }
 
     @Test void bodyStateMetadataMaps() {

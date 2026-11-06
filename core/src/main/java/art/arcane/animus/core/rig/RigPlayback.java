@@ -48,6 +48,7 @@ public final class RigPlayback {
     private final RigDocument rig;
     private Function<String, Optional<AnimationDocument>> animations;
     private final SeatGeometry seat;
+    private final double scale;
     /** Bone index of each frame entry: display bones, then socket bones. */
     private final int[] shown;
     private final int sockets;
@@ -59,8 +60,13 @@ public final class RigPlayback {
     private long sequence;
 
     /** @param seat the body's passenger point; bones ride there, so their transforms are taken relative to it */
-    public RigPlayback(RigDocument rig, Function<String, Optional<AnimationDocument>> animations, SeatGeometry seat) {
+    public RigPlayback(RigDocument rig, Function<String, Optional<AnimationDocument>> animations, SeatGeometry seat) { this(rig, animations, seat, 1); }
+
+    /** @param scale the body's {@code scale} attribute: the client scales the passenger point by it, and the bones grow with it about the feet */
+    public RigPlayback(RigDocument rig, Function<String, Optional<AnimationDocument>> animations, SeatGeometry seat, double scale) {
         this.rig = Objects.requireNonNull(rig); this.animations = Objects.requireNonNull(animations); this.seat = Objects.requireNonNull(seat);
+        if (!(scale > 0) || !Double.isFinite(scale)) throw new IllegalArgumentException("Rig scale must be positive");
+        this.scale = scale;
         int[] bones = rig.displayBones();
         sockets = rig.sockets().size();
         shown = java.util.Arrays.copyOf(bones, bones.length + sockets);
@@ -201,14 +207,14 @@ public final class RigPlayback {
         }
         Sample end = samples.getLast();
         Sample start = samples.getFirst();
-        Vec3 point = seat.passengerFeet(Vec3.ZERO, yaw, 0);
+        Vec3 point = seat.passengerFeet(Vec3.ZERO, yaw, 0).multiply(scale);
         DisplayTransform[] targets = new DisplayTransform[shown.length];
         int[] durations = new int[shown.length];
         long[] revisions = new long[shown.length];
         sequence++;
         for (int i = 0; i < shown.length; i++) {
             Affine matrix = end.matrices[i];
-            DisplayTransform target = (end.visible[i] ? DisplayTransform.of(matrix) : DisplayTransform.hidden(matrix)).offset(-point.x(), -point.y(), -point.z());
+            DisplayTransform target = (end.visible[i] ? DisplayTransform.of(matrix) : DisplayTransform.hidden(matrix)).scaled(scale).offset(-point.x(), -point.y(), -point.z());
             targets[i] = target;
             durations[i] = end.visible[i] && start.visible[i] ? length : 0;
             revisions[i] = frame != null && i < frame.bones() && frame.target(i).equals(target) ? frame.revision(i) : sequence;

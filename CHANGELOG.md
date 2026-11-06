@@ -230,7 +230,23 @@
 - `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
-- Web editor: an info button beside labels shows a short note on hover, focus or tap and opens the matching wiki section.
+- Web editor: label and heading text with a dotted underline shows a short note on hover, focus or tap, with a Docs link to the matching wiki section.
+- Web editor changes play a sound and show one chat line in game, such as "Brian's editor applied 3 NPCs, 1 behavior (tx 1a2b3c4d)", for applies, undos, imports, spawns, pairings, revokes and refusals. Holders of `animus.editor.notify` (operators by default) and the token's owner get them; the transaction id copies on click and the line suggests `/animus rollback`. Bursts merge into one notice, and the notice waits for the reload so it reports the real result. Sounds, chat, action bar and log line are set in `[editor.notify]`.
+- Shops can open in the villager trading screen: `"style": "native"` or `"chest"` on the shop, on an NPC's `animus:shop` module (so trait groups can set it), with `[shops] style` as the server default and `style=` on `/animus shop open`. Every buy, sell, trade and command entry shows as an offer and trades through the same transactions, limits and stock as the chest window.
+- `animus:shop` `villager` (profession and level) shows a villager NPC's level in the trading screen title.
+- Shop `layout` draws the chest window in a chest GUI, with the offers in its list area and paged by its own buttons.
+- `/animus shop problems` lists notes about offers a shop's window style cannot show exactly.
+- Web editor: Style and Layout fields in the shop editor, with a trading screen preview.
+- Combat NPCs with a bow, crossbow or trident hold it drawn while a target is in range and lower it after.
+- NPC definitions and trait groups take `attributes`: any vanilla attribute id, bare or `minecraft:`, with its vanilla range checked. Viewers get them with the body and on every runtime change on Paper, Spigot, Folia and mod servers.
+- `scale` resizes the body, hitbox, click reach, path clearance, rig bones and text height; movement, gravity, jump, fall, health, armor, knockback, melee and targeting attributes drive Animus's own simulation where the definition sets no field of its own.
+- `/animus npc attribute <npc> <attribute> [value=<number>|reset]` with attribute completion, and the behavior action `animus:set-attribute`.
+- The vanilla attribute table is generated from the server jars with `./gradlew :core:generateAttributeTable`.
+- Web editor: an Attributes section for NPCs and groups, with range hints, defaults and sources; the preview shows `scale`.
+- Web editor: a Conversation tab builds a behavior's lines, questions, conditions and actions as a tree by keyboard, writes the routines, `animus:choices` actions and `dialogue_choice` triggers with ids it keeps, opens matching hand-written behaviors, plays the conversation in the browser and attaches it to NPCs and groups in one undoable step.
+- Web editor: New conversation in the sidebar and the command palette, and a Conversation behavior template.
+- Web editor: dropdowns that pick a rig, animation, route, recording, group, behavior, skin, shop, chest GUI or menu end with "+ New" (opens the create form with the typed text as the name and the current folder, then returns with the new document picked) and "Manage" (lists that kind). Recordings show how to record one in game instead.
+- Web editor: sidebar sections and NPC folders collapse from their headers, with Collapse all and Expand all; the state is kept per workspace.
 - Web editor: one autocomplete for text, expression, id and JSON fields. Typing `{`, `<`, `%`, a name or an id, or pressing Ctrl+Space, lists variables, facts, placeholders, tags with colour swatches, registry ids, workspace ids, flags, quests and commands, matched loosely.
 - Web editor: names, placeholders, tags and ids the server would refuse are underlined, with the reason on hover.
 - `GET /v1/lookups` (read scope) lists the server's registry ids, command names and PlaceholderAPI identifiers for completion.
@@ -331,7 +347,11 @@
 - Look-close players, fight and chat witnesses, hologram placement and per-NPC viewer lookups use chunk indexes instead of scanning every player, watcher, hologram or viewer.
 - Mob targeting of NPCs reads the definitions again only after they change.
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
-- Web editor: shorter copy on every screen; field explanations moved from inline paragraphs into info buttons.
+- Web editor: shorter copy on every screen; field explanations moved from inline paragraphs into tips on the label text.
+- Shopkeepers imports open in the trading screen (`"style": "native"`), and villager profession and level move from the review section to `animus:shop` `villager`; the importer version is 2.
+- `gravity: false` stays the hover switch and wins over the `gravity` attribute, which sets how fast a body falls.
+- Citizens converter version 13: the attribute trait converts to `attributes` instead of only `movement.stepHeight`, and an armor stand without gravity converts to `gravity: false`.
+- Web editor: every select and suggestion list is the editor's own square dropdown. Lists longer than eight entries have a search field, the keyboard works as in a native select, and phones get a full-width sheet with 44 px rows.
 - Web editor: the separate completion lists of GUI text, behavior expressions and the Code view became the shared autocomplete.
 
 ### Removed
@@ -490,6 +510,14 @@
 - On Folia, an NPC's projectiles now hit NPCs that other regions own, credited to the NPC that fired them.
 - A full packet queue no longer drops a player's view of every NPC; moves and spawns wait for the queue to drain.
 - Far fight and chat watchers on Folia no longer use up the 64 deliveries before nearby ones hear the event.
+- Combat NPCs now swing their arm on every melee hit and every thrown shot, on Paper, Spigot, Folia and mod servers.
+- Attack swings go out with moves, so they are no longer delayed by cosmetic pauses or skipped as stale.
+- Controlled iron golems, ravagers, hoglins, zoglins and wardens show their own attack animation instead of a swing.
+- Imported armor stands no longer turn to players unless their Citizens save turns look-close on.
+- Right-clicking a door, chest or other usable block on Paper no longer throws `NoSuchMethodError` for `Material.getKeyOrThrow`; the build now checks every server method the plugin calls against the Spigot and Paper APIs of 26.1.2, 26.2 and 26.3.
+- After `/animus editor pair`, the editor's minute permission re-check no longer fails with "NPC runtime requires the owner thread" on Paper, Spigot and mod servers; it runs on the server thread. A repeating editor task failure is now one WARN line, repeated at most every 10 minutes with a count.
+- A route's `maximumFall` now counts levels as Citizens and the game do, so an NPC with a fall of 1 drops from a ledge onto a slab or path one level down instead of reporting the leg blocked and teleporting.
+- A walking NPC now moves at its configured speed; distance left over when a step reached a path node was dropped, which held a fast player body near 6 blocks a second.
 
 ### Notes
 

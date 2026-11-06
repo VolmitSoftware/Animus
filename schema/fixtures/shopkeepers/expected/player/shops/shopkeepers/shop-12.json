@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-12",
   "title": "Swapper",
+  "style": "native",
   "modes": [
     "trade"
   ],

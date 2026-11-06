@@ -1,5 +1,5 @@
 /// The NPC definition's Visual view, read top down: identity, body,
-/// position, appearance (skin, equipment, hologram, nameplate), behaviour
+/// attributes, position, appearance (skin, equipment, hologram, nameplate), behaviour
 /// (behaviors, route, movement, inventory), modules (combat, shop, mount and
 /// the rest), then fields kept as written. Each part's heading summarises it
 /// while closed. Edits change the parsed definition and report it whole, so
@@ -23,6 +23,7 @@ import '../../logic/npc/combat_settings.dart';
 import '../../logic/npc/group_merge.dart';
 import '../../logic/npc/group_model.dart';
 import '../../logic/npc/npc_appearance.dart';
+import '../../logic/npc/npc_attributes.dart';
 import '../../logic/npc/npc_catalog.dart';
 import '../../logic/npc/route_model.dart';
 import '../../logic/suggest/field_profile.dart';
@@ -31,6 +32,7 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../npc/appearance_editor.dart';
+import '../npc/attributes_editor.dart';
 import '../npc/combat_editor.dart';
 import '../npc/equipment_editor.dart';
 import '../npc/group_parts.dart';
@@ -41,6 +43,7 @@ import '../npc/npc_section.dart';
 import '../npc/skin_picker.dart';
 import '../info_tip.dart';
 import 'inspect_fields.dart';
+import '../select/suggest_input.dart';
 
 /// Keys the NPC inspector lays out itself; the rest show under kept fields.
 const Set<String> _laidOut = <String>{
@@ -69,6 +72,7 @@ const Set<String> _laidOut = <String>{
   'movement',
   'groups',
   'skins',
+  attributesField,
   ..._traits,
 };
 
@@ -227,6 +231,7 @@ class _NpcInspectorState extends State<NpcInspector> {
         if (component.schemas.live) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Using server schemas.')]),
         if (_group) _groupPart() else ...<Widget>[_identity(doc), if (npcGroups(doc).isNotEmpty) _effective(doc)],
         _body(doc),
+        _attributes(doc),
         if (!_group) _position(doc),
         _appearance(doc),
         _behaviour(doc),
@@ -309,6 +314,12 @@ class _NpcInspectorState extends State<NpcInspector> {
             placeholder: 'guard',
             suggestions: <FieldOption>[for (final String tag in known) FieldOption(tag)],
             onChanged: (String value) => setState(() => _newTag = value.trim().toLowerCase()),
+            onSubmit: valid
+                ? () {
+                    put(<String>[...tags, adding]);
+                    setState(() => _newTag = '');
+                  }
+                : null,
           ),
           Button.ghost(
             label: 'Add tag',
@@ -477,6 +488,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           problems: diagnosticsAt(_diagnostics, r'$.rig', nested: true),
           child: dom.div(classes: 'animus-gui-line', <Widget>[
             GuiSelect(
+              references: DocumentKind.rig,
               id: rigId,
               value: rig,
               options: rigs,
@@ -519,6 +531,36 @@ class _NpcInspectorState extends State<NpcInspector> {
           ]),
         const NpcSubhead('Traits'),
         for (final String trait in _traits) _field(trait),
+      ],
+    );
+  }
+
+  // Attributes ---------------------------------------------------------------
+
+  Widget _attributes(JsonMap doc) {
+    final JsonMap set = bareAttributes(doc[attributesField]);
+    final String summary = set.isEmpty
+        ? 'vanilla defaults'
+        : set.entries.map((MapEntry<String, Object?> entry) => '${entry.key} ${entry.value is num ? formatAttribute((entry.value! as num).toDouble()) : entry.value}').join(', ');
+    return NpcSection(
+      id: 'attributes',
+      title: 'Attributes',
+      summary: summary,
+      open: _open('attributes', false),
+      onToggle: (bool open) => setState(() => _opened['attributes'] = open),
+      children: <Widget>[
+        dom.p(classes: 'animus-gui-help', <Widget>[
+          Component.text(<String>[
+            _spec(attributesField).description ?? 'Vanilla entity attributes mapped to base values.',
+            if (_group) "Members take each attribute set here unless they set it themselves.",
+          ].join(' ')),
+        ]),
+        AttributesEditor(
+          value: doc[attributesField],
+          specs: attributeSpecs(_schema),
+          diagnostics: _diagnostics,
+          onChanged: (JsonMap? attributes) => _write(const <JsonStep>[attributesField], attributes),
+        ),
       ],
     );
   }
@@ -700,6 +742,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           if (available.isNotEmpty) ...<Widget>[
             const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': addId}, <Widget>[Component.text('Add a workspace behavior')]),
             GuiSelect(
+              references: DocumentKind.behavior,
               id: addId,
               value: null,
               options: available,
@@ -849,8 +892,8 @@ class _NpcInspectorState extends State<NpcInspector> {
       attributes: <String, String>{'data-module': key},
       <Widget>[
         dom.div(classes: 'animus-gui-action-head', <Widget>[
-          dom.code(<Widget>[Component.text(key)]),
-          if (field?.description case final String about when about.isNotEmpty) InfoTip(text: about, topic: key) else const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('Kept as written.')]),
+          dom.code(<Widget>[withTip(Component.text(key), field?.description)]),
+          if (field?.description?.isNotEmpty != true) const dom.span(classes: 'animus-gui-help', <Widget>[Component.text('Kept as written.')]),
           if (field != null && field.schema.isNotEmpty && value is Map<String, Object?>)
             Button.ghost(
               label: typed ? 'Edit as JSON' : 'Edit as fields',

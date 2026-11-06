@@ -33,10 +33,15 @@ public final class IdleFall {
      * @param swims true when the body stays at the surface of deep water
      */
     public static Step step(Vec3 feet, double speed, double hullWidth, double hullHeight, boolean swims, MotionValidator.Sampler terrain) {
+        return step(feet, speed, GRAVITY, hullWidth, hullHeight, swims, terrain);
+    }
+
+    /** As above, falling with the body's own {@code gravity} attribute; terminal speed scales with it. */
+    public static Step step(Vec3 feet, double speed, double gravity, double hullWidth, double hullHeight, boolean swims, MotionValidator.Sampler terrain) {
         int held = holding(feet, hullWidth, terrain);
         if (held > 0) return new Step(speed > 0 ? Outcome.LANDED : Outcome.SUPPORTED, feet, 0, held, "climbing");
         BodyTerrain.Rest rest = new BodyTerrain(hullWidth, hullHeight, swims, cells(hullWidth, hullHeight), terrain).rest(feet.x(), feet.z(), feet.y(), 0, SEARCH, true);
-        double next = Math.min(TERMINAL, (speed + GRAVITY) * DRAG);
+        double next = Math.min(gravity * DRAG / (1 - DRAG), (speed + gravity) * DRAG);
         int sampled = rest.sampled() - held;
         return switch (rest.kind()) {
             case GROUND, SWIM -> {

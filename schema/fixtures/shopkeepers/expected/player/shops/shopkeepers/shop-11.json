@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-11",
   "title": "Grain Buyer",
+  "style": "native",
   "modes": [
     "trade"
   ],

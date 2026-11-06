@@ -38,9 +38,9 @@ Entity types: player 483, armor stand 3, ender dragon 3, horse 2, turtle 1, frog
 | Trait | Records | Classification beyond converted fields |
 |---|---:|---|
 | age | 2 | Negative age converts to `baby: true` on bodies with a baby form |
-| armorstandtrait | 3 | Converted to `armorStand`; marker and gravity preserved |
+| armorstandtrait | 3 | Converted to `armorStand`; no gravity converts to `gravity: false`; marker preserved |
 | assignment | 8 | Requires integration; converted from the Denizen scripts when they are present |
-| attributetrait | 13 | `step_height` converted to `movement.stepHeight`; other attributes preserved |
+| attributetrait | 13 | Version 13: every vanilla attribute converts to `attributes`, legacy `generic_` names included; out-of-range values are clamped with a warning; unknown ids preserved |
 | controllable | 1 | Converted (disabled trait) |
 | denizen_flags | 24 | Requires integration; values import as typed NPC behavior state with their expiry |
 | equipment | 123 | Converted to `equipment` with item components; meta without a component preserved per item |
