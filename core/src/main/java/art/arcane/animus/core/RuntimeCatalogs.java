@@ -36,7 +36,7 @@ public final class RuntimeCatalogs implements CatalogReloads {
         }
     }
 
-    private static final Set<DocumentKind> NPCS = Set.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.RECORDING);
+    private static final Set<DocumentKind> NPCS = Set.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.RECORDING, DocumentKind.GROUP);
     private static final Set<DocumentKind> BEHAVIORS = Set.of(DocumentKind.BEHAVIOR, DocumentKind.PACK);
     private static final Set<DocumentKind> SHOPS = Set.of(DocumentKind.SHOP, DocumentKind.INVENTORY);
     private static final Set<DocumentKind> HOLOGRAMS = Set.of(DocumentKind.MENU, DocumentKind.HOLOGRAM, DocumentKind.TEXT_ANIMATION, DocumentKind.PRESETS);

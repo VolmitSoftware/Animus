@@ -53,7 +53,7 @@ class DenizenDropInTest {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
             assertTrue(flow.startupNotice().orElseThrow().contains("plugins/Denizen/scripts"));
-            String staged = joined(flow.preview("reject", Optional.empty(), Map.of()));
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of(), false));
             assertTrue(staged.contains("Denizen plugins/Denizen: 17 scripts; 12 behaviors for 4 NPCs; 16 flag values imported, 2 kept"), staged);
             assertTrue(staged.contains("commandNamespaces = [\"denizen\"]"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
@@ -104,7 +104,7 @@ class DenizenDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            flow.preview("reject", Optional.empty(), Map.of());
+            flow.preview("reject", Optional.empty(), Map.of(), false);
             String reportPath = flow.status().getAsJsonObject("denizen").get("report").getAsString();
             JsonObject report = art.arcane.animus.core.storage.JsonDocuments.object(store.read(reportPath));
             JsonArray servers = new JsonArray();
@@ -177,7 +177,7 @@ class DenizenDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            flow.preview("reject", Optional.empty(), Map.of());
+            flow.preview("reject", Optional.empty(), Map.of(), false);
             String applied = joined(flow.applyStaged());
             assertTrue(applied.contains("1 bound to Citizens NPCs"), applied);
             assertTrue(applied.contains("Denizen behaviors installed"), applied);
@@ -214,7 +214,7 @@ class DenizenDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            flow.preview("reject", Optional.empty(), Map.of());
+            flow.preview("reject", Optional.empty(), Map.of(), false);
             DocumentStore.atomic(store.resolve(STATE), "{}");
             String applied = joined(flow.applyStaged());
             assertTrue(applied.contains("Denizen import failed and nothing of it was installed") && applied.contains("Behavior state already stored"), applied);

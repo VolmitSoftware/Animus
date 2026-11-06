@@ -151,21 +151,23 @@ The merge happens in `NpcRepository.reload()`: the stored documents stay the dra
 
 `/animus inspect <id>` prints, after the stored JSON and the runtime line, `Effective (groups: town-guards, harbor)` followed by the effective JSON, and one line `from: modules.animus:combat<-town-guards, equipment<-npc, ...`. The editor gets the same merge in Dart (`lib/logic/npc/group_merge.dart`) and the shared fixtures `schema/fixtures/groups/cases/*.json` (npc, groups, expected effective, expected provenance) are checked by Java and Dart tests; the Effective view and the bulk-assign dialog are built after `editor-revamp` lands, on top of that logic.
 
-### Commands (`Extra` "groups", `animus.admin`)
+### Commands (Director group `groups`, `TraitGroupCommands`, `animus.admin`)
 
 ```text
-/animus groups list
+/animus groups list [page=1]
 /animus groups inspect <group-id>
 /animus groups members <group-id>
-/animus groups assign <group-id> folder=<npc-folder>|tag=<tag>|ids=a,b|selection
-/animus groups unassign <group-id> folder=<npc-folder>|tag=<tag>|ids=a,b|selection
+/animus groups assign <group-id> [folder=] [tag=] [ids=]
+/animus groups unassign <group-id> [folder=] [tag=] [ids=]
 ```
 
-Assign appends the group to each matching NPC's `groups` (no duplicates), unassign removes it, each as one file-lane transaction with one rollback receipt, refused whole if any resulting definition is invalid, and reported as `assigned 12, unchanged 3`. `selection` is the sender's selected NPC.
+Exactly one of `folder=`, `tag=` or `ids=` is given; `@selected` inside `ids=` is the sender's selection, like every other NPC argument.
+
+Assign appends the group to each matching NPC's `groups` (no duplicates), unassign removes it, each as one file-lane transaction with one rollback receipt, refused whole if any resulting definition is invalid, and reported as `assigned 12, unchanged 3`.
 
 ### Citizens import
 
-`/animus import citizens factor-groups` (stage option; also `--factor-groups` on the converter CLI). With the flag, after conversion the preview finds every set of at least two converted NPCs whose groupable fields (`modules` except `citizens:review`, `behaviors`, `equipment`, `hologram`, `nameplate`, `pose`, `movement`, `glowing`, `teamColor`) are identical, writes one `groups/citizens-<8 hex of the set hash>.json` per set, removes those fields from the member NPCs and adds the group reference. The review summary lists each factored group with its member count; rollback removes the group files with the import. Without the flag nothing changes.
+`/animus import citizens preview factor-groups=true` (stage option; also `--factor-groups` on the converter CLI). With the flag, after conversion the preview finds every set of at least two converted NPCs whose groupable fields (`modules` except `citizens:review`, `behaviors`, `equipment`, `hologram`, `nameplate`, `pose`, `movement`, `glowing`, `teamColor`) are identical, writes one `groups/citizens-<8 hex of the set hash>.json` per set, removes those fields from the member NPCs and adds the group reference. The review summary lists each factored group with its member count; rollback removes the group files with the import. Without the flag nothing changes.
 
 ## 3. Shared routes with randomness
 

@@ -119,11 +119,14 @@ public final class CitizensDropIn {
         return String.join(", ", items.subList(0, items.size() - 1)) + " and " + items.getLast();
     }
 
-    /** Previews the saves this flow finds and stages one application plan; {@code mode} is reject, replace or duplicate with a copy label. */
-    public List<String> preview(String mode, Optional<String> label, Map<String, String> worlds) throws IOException {
+    /**
+     * Previews the saves this flow finds and stages one application plan; {@code mode} is reject, replace or duplicate with a
+     * copy label. {@code factorGroups} moves settings two or more imported NPCs share into trait groups.
+     */
+    public List<String> preview(String mode, Optional<String> label, Map<String, String> worlds, boolean factorGroups) throws IOException {
         if (!List.of("reject", "replace", "duplicate").contains(mode)) throw new IOException("mode is reject, replace or duplicate");
         if (mode.equals("duplicate") != label.isPresent()) throw new IOException(mode.equals("duplicate") ? "mode=duplicate needs a copy label, such as copy=town-copy" : "copy= is used only with mode=duplicate");
-        return stage(mode, label.orElse(null), new TreeMap<>(worlds));
+        return stage(mode, label.orElse(null), new TreeMap<>(worlds), factorGroups);
     }
 
     /** Installs the staged preview. */
@@ -168,7 +171,7 @@ public final class CitizensDropIn {
     }
 
     /** Preview the save, the dtlTraders folder and the schematics, and stage one application plan. Nothing is installed. */
-    List<String> stage(String mode, String label, Map<String, String> worlds) throws IOException {
+    List<String> stage(String mode, String label, Map<String, String> worlds, boolean factorGroups) throws IOException {
         JsonObject previous = state();
         Sources sources = find();
         Optional<ShopkeepersDropIn.Found> shopkeepers = ShopkeepersDropIn.find(store, host.pluginsDirectory());
@@ -188,7 +191,7 @@ public final class CitizensDropIn {
             return lines;
         }
         Found save = sources.saves().get();
-        CitizensImporter.Preview preview = new CitizensImporter().preview(save.path(), store, worlds);
+        CitizensImporter.Preview preview = new CitizensImporter().preview(save.path(), store, worlds, factorGroups);
         if (preview.valid() != preview.records())
             throw new IOException(preview.records() - preview.valid() + " of " + preview.records() + " records do not convert; see " + preview.directory().resolve("report.json"));
         ImportApplications.Preview application = ImportApplications.stage(store, preview.id(), mode, label);
@@ -431,12 +434,14 @@ public final class CitizensDropIn {
         List<String> problems = new ArrayList<>();
         NpcRepository.Installed installed = npcs.installed();
         for (NpcDefinition definition : imported(state, installed.definitions())) {
-            JsonObject json = definition.json();
+            // Waiting is read from the effective definition; a setting a factored group holds is accepted in the group.
+            JsonObject json = definition.json(), effective = npcs.find(definition.id()).map(NpcDefinition::json).orElse(json);
             boolean edited = false;
             for (String category : categories) {
+                if (!waiting(effective, category)) continue;
+                accepted.merge(category, 1, Integer::sum);
                 if (!waiting(json, category)) continue;
                 acceptCategory(json, category);
-                accepted.merge(category, 1, Integer::sum);
                 edited = true;
             }
             if (!edited) continue;
@@ -449,10 +454,12 @@ public final class CitizensDropIn {
         }
         List<String> lines = new ArrayList<>();
         Optional<DocumentStore.Change> servers = categories.contains("denizen") ? DenizenDropIn.serverBehaviors(store, state) : Optional.empty();
+        List<DocumentStore.Change> others = new ArrayList<>(GroupFactoring.accept(store, state, categories));
+        servers.ifPresent(others::add);
         if (commands) lines.add(allowCommands(state));
-        if (changed.isEmpty() && servers.isEmpty()) { if (!categories.isEmpty()) lines.add("Nothing waiting in " + String.join(", ", categories)); }
+        if (changed.isEmpty() && others.isEmpty()) { if (!categories.isEmpty()) lines.add("Nothing waiting in " + String.join(", ", categories)); }
         else {
-            String transaction = DefinitionBatch.commit(store, changed, expected, servers.map(List::of).orElse(List.of()));
+            String transaction = DefinitionBatch.commit(store, changed, expected, others);
             state.getAsJsonArray("transactions").add(transaction);
             writeState(state);
             List<String> errors = npcs.reload();
@@ -558,7 +565,7 @@ public final class CitizensDropIn {
         };
     }
 
-    private static void acceptCategory(JsonObject json, String category) {
+    static void acceptCategory(JsonObject json, String category) {
         if (category.equals("spawn")) { json.addProperty("spawned", true); return; }
         if (category.equals("denizen")) { DenizenImporter.accept(json); return; }
         String module = switch (category) {
@@ -724,10 +731,8 @@ public final class CitizensDropIn {
     /** The review counts of a staged preview, the same numbers {@code review} shows after apply. */
     static List<String> summaryLines(CitizensImporter.Preview preview, DocumentStore store) throws IOException {
         JsonObject summary = preview.summary();
-        List<JsonObject> staged = new ArrayList<>();
-        for (String path : summary.getAsJsonObject("documents").keySet())
-            if (path.startsWith("npcs/")) staged.add(JsonDocuments.object(JsonDocuments.read(preview.directory().resolve(path))));
-        List<String> lines = new ArrayList<>();
+        List<JsonObject> staged = GroupFactoring.staged(preview);
+        List<String> lines = new ArrayList<>(GroupFactoring.reviewLine(summary).stream().toList());
         lines.add(converted(staged));
         lines.add("Off until accepted: " + counts(pending(staged)) + "; the rest stay despawned");
         Map<String, Integer> preserved = preserved(staged);

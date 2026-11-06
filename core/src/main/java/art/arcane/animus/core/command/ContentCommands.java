@@ -288,11 +288,12 @@ final class ContentCommands {
         @Director(description = "Preview the Citizens, Shopkeepers, dtlTraders and Denizen data found and stage it")
         void preview(@Param(name = "mode", defaultValue = "reject", description = "reject, replace or duplicate") Import.Mode mode,
                      @Param(name = "copy", defaultValue = "", description = "The copy label mode=duplicate needs") String copy,
-                     @Param(name = "worlds", defaultValue = "", description = "World renames, old:new,other:renamed") String worlds) {
+                     @Param(name = "worlds", defaultValue = "", description = "World renames, old:new,other:renamed") String worlds,
+                     @Param(name = "factor-groups", defaultValue = "false", description = "Move settings two or more imported NPCs share into trait groups") boolean factorGroups) {
             Map<String, String> renames;
             try { renames = worlds(worlds); }
             catch (IllegalArgumentException invalid) { actor().tell(Palette.error(invalid.getMessage())); return; }
-            step((CitizensDropIn dropIn) -> dropIn.preview(mode.name().toLowerCase(Locale.ROOT), given(copy), renames));
+            step((CitizensDropIn dropIn) -> dropIn.preview(mode.name().toLowerCase(Locale.ROOT), given(copy), renames, factorGroups));
         }
 
         @Director(description = "Install the staged preview")

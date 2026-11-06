@@ -131,6 +131,13 @@
 - `@selected` for the selected NPC wherever a command takes an NPC id.
 - Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
 - `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
+- Trait groups: `groups/<id>.json` documents of shared definition values that NPCs list in `groups` and merge before their own fields.
+- Group merge rules: objects merge recursively, behaviors and tags append, a `skins` pool picks one skin per NPC UUID.
+- An NPC naming a missing group is refused on edit; a group deleted later leaves its NPCs on their last valid effective definition, reported as `group-problem=`.
+- `/animus inspect` shows the effective definition of an NPC with groups and where each field came from; `/animus status` counts group problems.
+- `/animus groups list|inspect|members|assign|unassign`; assign and unassign take one of `folder=`, `tag=` or `ids=` (with `@selected`) and edit every matching NPC in one transaction.
+- `factor-groups=true` for `/animus import citizens preview` and `--factor-groups` for the converter's `preview`, which move settings shared by two or more imported NPCs into groups.
+- Shared group schema, merge fixtures and an editor-side merge in `animus-web`.
 
 ### Changed
 
