@@ -235,7 +235,7 @@ void main() {
       expect(parallel.containsKey('steps'), isFalse);
       expect(asList(parallel['branches']), hasLength(1));
       final JsonMap repeat = changeNodeType(sequence, 'repeat', catalog);
-      expect(repeat['count'], 0);
+      expect(repeat['count'], 1, reason: 'a new repeat runs its body once');
       expect(asMap(repeat['body'])['type'], 'wait');
       expect(repeat['note'], 'kept');
       final JsonMap wait = changeNodeType(sequence, 'wait', catalog);
@@ -275,7 +275,7 @@ void main() {
       final JsonMap timer = changeTriggerEvent(trigger, 'timer', catalog);
       expect(timer, <String, Object?>{'id': 'near', 'event': 'timer', 'routine': 'wave', 'x-extra': true, 'intervalTicks': 1});
       final JsonMap fresh = defaultTrigger('proximity', catalog, <String>['proximity']);
-      expect(fresh['id'], 'proximity-2');
+      expect(fresh['id'], 'proximity_2');
       expect(fresh['phase'], 'enter');
       expect(fresh['radius'], 1);
     });
@@ -296,7 +296,8 @@ void main() {
       expect(insertItem(<Object?>[1, 2], 1, 9), <Object?>[1, 9, 2]);
       expect(removeItem(<Object?>[1, 2], 0), <Object?>[2]);
       expect(unknownKeys(<String, Object?>{'type': 'wait', 'ticks': 1, 'x': 2}, <String>['ticks']), <String>['x']);
-      expect(uniqueName('main', <String>['main', 'main-2']), 'main-3');
+      expect(uniqueName('main', <String>['main', 'main_2']), 'main_3');
+      expect(uniqueName('flag', <String>['flag']), matches(RegExp(r'^[a-z][a-z0-9_]{0,63}$')), reason: 'expressions must be able to read it');
     });
   });
 }
