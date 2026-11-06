@@ -14,8 +14,13 @@
 .animus-conv-main,
 .animus-conv-side {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   min-width: 0;
+}
+
+.animus-conv-main {
+  container-type: inline-size;
 }
 
 .animus-conv-side {
@@ -63,12 +68,14 @@
 
 .animus-conv-tree {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   min-width: 0;
 }
 
 .animus-conv-block {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   padding: 0.5rem;
   border: 1px solid var(--animus-border);
@@ -81,6 +88,7 @@
 
 .animus-conv-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.375rem;
   min-width: 0;
 }
@@ -89,6 +97,7 @@
 .animus-conv-options,
 .animus-conv-targets {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.375rem;
   margin: 0;
   padding: 0;
@@ -99,6 +108,7 @@
 .animus-conv-step,
 .animus-conv-option {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
   min-width: 0;
 }
@@ -112,7 +122,8 @@
 }
 
 .animus-conv-row > .animus-conv-input {
-  flex: 1 1 12rem;
+  /* Room for the line's example text; below it the field takes its own line. */
+  flex: 1 1 14rem;
   width: auto;
   min-width: 0;
 }
@@ -145,7 +156,13 @@
 }
 
 .animus-conv-option .animus-conv-follow,
-.animus-conv-option .animus-conv-args {
+.animus-conv-option .animus-conv-args,
+.animus-conv-branch .animus-conv-options,
+.animus-conv-branch .animus-conv-branches,
+.animus-conv-branch .animus-conv-follow,
+.animus-conv-branch .animus-conv-args {
+  /* Inside a boxed branch or answer the box already shows the nesting; a
+     small indent keeps deep trees from squeezing their fields. */
   margin-left: 1.5rem;
 }
 
@@ -158,13 +175,16 @@
 
 .animus-conv-branches {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  /* Side by side while each branch keeps 20rem, room for a step with its
+     action picker; narrower branches stack instead of squeezing the tree. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
   gap: 0.5rem;
   min-width: 0;
 }
 
 .animus-conv-branch {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 0.375rem;
   padding: 0.5rem;
@@ -197,7 +217,7 @@
 
 .animus-conv-args {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
   gap: 0.375rem 0.75rem;
   align-items: start;
   min-width: 0;
@@ -205,6 +225,7 @@
 
 .animus-conv-arg {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
   min-width: 0;
 }
@@ -350,13 +371,19 @@
   margin: 0;
 }
 
-@media (max-width: 760px) {
+/* A narrow tree, on a phone or beside the sidebar on a small window, nests
+   by a small indent and stacks its branches. */
+@container (max-width: 36rem) {
   .animus-conv-options,
   .animus-conv-branches,
   .animus-conv-follow,
   .animus-conv-args,
   .animus-conv-option .animus-conv-follow,
-  .animus-conv-option .animus-conv-args {
+  .animus-conv-option .animus-conv-args,
+  .animus-conv-branch .animus-conv-options,
+  .animus-conv-branch .animus-conv-branches,
+  .animus-conv-branch .animus-conv-follow,
+  .animus-conv-branch .animus-conv-args {
     margin-left: 0.75rem;
   }
 
@@ -368,18 +395,12 @@
     width: auto;
   }
 
-  .animus-conv-row {
-    flex-wrap: nowrap;
-  }
-
-  .animus-conv-row > .animus-conv-input {
-    flex: 1 1 4rem;
-  }
-
   .animus-conv-row > .animus-conv-fields {
     flex-basis: 0;
   }
+}
 
+@media (max-width: 760px) {
   .animus-conv-handle {
     display: none;
   }
