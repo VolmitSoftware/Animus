@@ -544,10 +544,11 @@ class _EditorShellState extends State<EditorShell> {
           NpcBrowser(key: ValueKey<String>('npc-browser:${workspace.id}'), store: component.store, workspace: workspace, session: session)
         else if (route is NewDocumentRoute)
           NewDocumentPage(
-            key: ValueKey<String>('new:${workspace.id}'),
+            key: ValueKey<String>('new:${workspace.id}:${route.folder ?? ''}'),
             store: component.store,
             workspace: workspace,
             kind: route.kind,
+            folder: route.folder,
             onNavigate: component.onNavigate,
           )
         else if (route is SyncRoute && workspace.server == null)

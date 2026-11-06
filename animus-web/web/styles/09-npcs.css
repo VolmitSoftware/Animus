@@ -110,8 +110,62 @@
   cursor: pointer;
 }
 
-.animus-npc-tree-item.is-child {
-  padding-left: 1.25rem;
+/* Nesting reads from the indent; capped so 8 levels stay inside the sidebar. */
+.animus-npc-tree-item {
+  justify-content: flex-start;
+  padding-left: calc(0.25rem + min(var(--animus-tree-level, 0), 8) * 0.625rem);
+}
+
+.animus-npc-tree-toggle {
+  flex: none;
+  width: 1rem;
+  text-align: center;
+  color: var(--animus-muted);
+}
+
+.animus-npc-tree-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animus-npc-folder-panel,
+.animus-npc-folder-actions,
+.animus-npc-folder-form {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-npc-folder-where {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.animus-npc-folder-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.animus-npc-folder-new-npc {
+  font-size: 0.8125rem;
+}
+
+.animus-npc-folder-form {
+  padding: 0.5rem;
+  border: 1px solid var(--animus-border);
+  border-radius: var(--animus-radius);
+}
+
+.animus-npc-folder-actions .animus-error {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .animus-npc-tree-item:hover {
@@ -992,6 +1046,21 @@ html.light .animus-route-dot {
 
   .animus-npc-check {
     min-width: 44px;
+    min-height: 44px;
+  }
+
+  .animus-npc-folder-actions button,
+  .animus-npc-folder-actions select,
+  .animus-npc-folder-actions input,
+  .animus-npc-bulk button,
+  .animus-npc-bulk select,
+  .animus-npc-bulk input:not([type="checkbox"]) {
+    min-height: 44px;
+  }
+
+  .animus-npc-folder-new-npc {
+    display: inline-flex;
+    align-items: center;
     min-height: 44px;
   }
 

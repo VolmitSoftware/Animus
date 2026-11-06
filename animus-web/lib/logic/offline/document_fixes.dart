@@ -13,6 +13,7 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_json.dart';
 import '../inspect/schema_fields.dart';
+import '../npc/npc_paths.dart';
 import '../shared_schemas.dart';
 import 'new_documents.dart';
 
@@ -76,16 +77,15 @@ SchemaView? _viewFor(DocumentKind kind) => _views.putIfAbsent(kind, () {
 Object? _defaultFor(AnimusDocument document, List<JsonStep> steps, Map<String, Object?>? schema, math.Random? random) {
   final String? key = steps.isEmpty || steps.last is! String ? null : steps.last as String;
   if (steps.length == 1) {
-    final List<String> npcParts = document.id.split('/');
     switch ((document.kind, key)) {
       case (DocumentKind.npc, 'uuid'):
         return newUuid(random);
       case (DocumentKind.npc, 'id'):
-        return npcParts.last;
+        return npcLocalIdOf(document.id);
       case (DocumentKind.npc, 'group'):
-        return npcParts.first;
+        return npcFolderOf(document.id);
       case (DocumentKind.npc, 'name'):
-        return npcParts.last;
+        return npcLocalIdOf(document.id);
       case (DocumentKind.npc, 'type'):
         return 'minecraft:player';
       case (DocumentKind.npc, 'spawned'):

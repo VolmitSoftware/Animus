@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:animus_editor/logic/data_folder.dart';
+import 'package:animus_editor/logic/data_folder_export.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
@@ -54,6 +56,32 @@ void main() {
     expect(result.documents.map((AnimusDocument document) => document.id),
         containsAll(<String>['examples/greeter', 'shop:bakery', 'shop:counter', 'greeter:greeter', 'shop:keeper', 'shop']));
     expect(result.documents, hasLength(10));
+  });
+
+  test('should read nested NPC folders and write them back at the same paths', () {
+    final Directory directory = Directory('test/fixtures/npc_browser');
+    final Map<String, Uint8List> files = <String, Uint8List>{
+      for (final File file in directory.listSync(recursive: true).whereType<File>())
+        file.path.substring(directory.path.length + 1).replaceAll(r'\', '/'): file.readAsBytesSync(),
+    };
+    final DataFolderResult opened = openDataFolder(files, SharedSchemas.embedded);
+    final AnimusDocument cartwright = opened.documents.firstWhere((AnimusDocument document) => document.id == 'town/market/stalls/cartwright');
+    expect(cartwright.path, 'npcs/town/market/stalls/cartwright.json');
+    expect(cartwright.valid, isTrue);
+    expect(opened.documents.firstWhere((AnimusDocument document) => document.id == 'crier').path, 'npcs/crier.json');
+    final Map<String, Uint8List> reopened = filesFromZip(zipFiles(<String, Uint8List>{
+      for (final AnimusDocument document in opened.documents) document.path: Uint8List.fromList(utf8.encode(document.source)),
+    }));
+    expect(reopened.keys, containsAll(<String>['npcs/crier.json', 'npcs/town/market/fishmonger.json', 'npcs/town/market/stalls/cartwright.json']));
+  });
+
+  test('should warn, not refuse, when an NPC group is not its folder', () {
+    final AnimusDocument stale = validateSource(const DocumentLocation(DocumentKind.npc, 'town/market/crier'), 'npcs/town/market/crier.json',
+        jsonEncode(<String, Object?>{'schemaVersion': 1, 'revision': 1, 'uuid': '3b5d1f0e-8c2a-4e7b-9a61-0c4d2e8f1a35', 'id': 'crier', 'group': 'town', 'name': 'Crier', 'type': 'minecraft:player', 'spawned': true,
+            'position': <String, Object?>{'world': 'world', 'x': 0, 'y': 64, 'z': 0, 'yaw': 0, 'pitch': 0}}), SharedSchemas.embedded);
+    final Diagnostic group = stale.diagnostics.singleWhere((Diagnostic d) => d.path == r'$.group');
+    expect(group.severity, DiagnosticSeverity.warning);
+    expect(stale.valid, isTrue);
   });
 
   test('should report invalid JSON and id mismatches as errors', () {

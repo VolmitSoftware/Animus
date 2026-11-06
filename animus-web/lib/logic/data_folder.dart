@@ -13,6 +13,7 @@ import '../model/document_kind.dart';
 import 'gui/gui_validation.dart';
 import 'inspect/json_syntax.dart';
 import 'npc/combat_settings.dart';
+import 'npc/npc_paths.dart';
 import 'rig_validation.dart';
 import 'shared_schemas.dart';
 
@@ -49,7 +50,10 @@ DocumentLocation? locateDocument(String path) {
   if (path == DocumentKind.serverBehaviorsPath) return const DocumentLocation(DocumentKind.serverBehaviors, DocumentKind.serverBehaviorsId);
   switch (parts.first) {
     case 'npcs':
-      return parts.length >= 2 && parts.length <= 10 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.npc, parts.sublist(1).join('/')) : null;
+      // npcs/<id>.json or up to npcMaxFolders folders below npcs/, as NpcPaths.
+      return parts.length >= 2 && parts.length <= npcMaxFolders + 2 && parts.skip(1).every(npcSegmentPattern.hasMatch)
+          ? DocumentLocation(DocumentKind.npc, parts.sublist(1).join('/'))
+          : null;
     case 'routes':
       return parts.length == 2 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.route, parts[1]) : null;
     case 'skins':
@@ -233,10 +237,14 @@ List<Diagnostic> _identity(DocumentLocation location, Object? json) {
       );
   switch (location.kind) {
     case DocumentKind.npc:
-      final List<String> parts = location.id.split('/');
+      // The server takes the group from the folder on load, so a stale one
+      // is a warning; the id must match the file name.
+      final String folder = npcFolderOf(location.id);
+      final String id = npcLocalIdOf(location.id);
       return <Diagnostic>[
-        if (_string(json, 'group') != null && _string(json, 'group') != parts[0]) mismatch('group', parts[0]),
-        if (_string(json, 'id') != null && _string(json, 'id') != parts[1]) mismatch('id', parts[1]),
+        if (_string(json, 'group') != null && _string(json, 'group') != folder)
+          Diagnostic(DiagnosticSeverity.warning, r'$.group', 'expected ${folder.isEmpty ? 'an empty group for npcs/' : folder} to match this file\'s folder; the server uses the folder', code: 'id-mismatch'),
+        if (_string(json, 'id') != null && _string(json, 'id') != id) mismatch('id', id),
       ];
     case DocumentKind.behavior:
     case DocumentKind.shop:

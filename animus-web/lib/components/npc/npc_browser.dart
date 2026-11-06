@@ -12,7 +12,7 @@ import 'package:web/web.dart' as web;
 import '../../logic/gui/gui_text.dart';
 import '../../logic/npc/npc_bulk.dart';
 import '../../logic/npc/npc_catalog.dart';
-import '../../logic/npc/tree_keys.dart';
+import '../../logic/npc/npc_paths.dart';
 import '../../model/document_kind.dart';
 import '../../services/skin_images.dart';
 import '../../state/editor_store.dart';
@@ -21,6 +21,7 @@ import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
+import 'npc_folders.dart';
 import '../../logic/inspect/schema_fields.dart';
 
 /// A bulk action that waits for a second press.
@@ -48,8 +49,9 @@ class _NpcBrowserState extends State<NpcBrowser> {
   _Confirm _confirm = _Confirm.none;
   bool _busy = false;
 
-  /// The folder tree item that holds the tab stop: 0 is `npcs/`.
-  int _treeFocus = 0;
+  /// The bulk move's picked folder (`/` is `npcs/`) and a typed new path,
+  /// which wins when set.
+  String _moveTarget = '/';
 
   List<NpcEntry> get _all => npcEntries(component.workspace.documents);
 
@@ -142,7 +144,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
               key: ValueKey<String>('npc-search:$_searchEpoch'),
               value: _search,
               label: 'Search NPCs',
-              placeholder: 'Name, id, tag:guard, folder:town, has:combat, is:despawned',
+              placeholder: 'Name, id, tag:guard, folder:town, folder:=town, has:combat',
               onChanged: _typeSearch,
             ),
             if (_search.isNotEmpty) Button.ghost(label: 'Clear search', size: ButtonSize.small, onPressed: () => _setSearch('')),
@@ -210,52 +212,38 @@ class _NpcBrowserState extends State<NpcBrowser> {
     );
   }
 
-  Widget _folders(List<NpcEntry> all) {
-    final List<NpcFolder> folders = npcFolders(all);
-    final List<(String, int)> tags = npcTags(all);
-    String? folder;
+  /// The folder the search narrows to with `folder:` (subtree), or `''`.
+  String get _selectedFolder {
+    String folder = '';
     for (final NpcTerm term in NpcQuery.parse(_search).terms) {
-      if (term.field == 'folder' && !term.negated) folder = term.value;
+      if (term.field == 'folder' && !term.negated && !term.value.startsWith('=')) folder = term.value;
     }
-    void open(String? name) {
-      String next = _search;
-      if (folder != null) next = toggleTerm(next, 'folder', folder);
-      if (name != null) next = toggleTerm(next, 'folder', name);
-      _setSearch(next);
-    }
+    return folder;
+  }
 
-    // A flat tree: npcs/ at level 1, its folders at level 2. One tab stop;
-    // arrows, Home and End move focus, Enter or Space opens the folder.
-    final List<(String?, String, int)> items = <(String?, String, int)>[
-      (null, 'npcs/', all.length),
-      for (final NpcFolder entry in folders) (entry.name, '${entry.name}/', entry.count),
-    ];
-    final int focus = _treeFocus.clamp(0, items.length - 1);
-    void choose(int index) {
-      final String? name = items[index].$1;
-      open(name == null || folder == name ? null : name);
+  /// Filters the list to [folder] and its subtree, replacing any folder term.
+  void _openFolder(String folder) {
+    String next = _search;
+    for (final NpcTerm term in NpcQuery.parse(_search).terms) {
+      if (term.field == 'folder' && !term.negated) next = toggleTerm(next, 'folder', term.value);
     }
+    if (folder.isNotEmpty) next = toggleTerm(next, 'folder', folder);
+    _setSearch(next);
+  }
 
+  Widget _folders(List<NpcEntry> all) {
+    final List<(String, int)> tags = npcTags(all);
     return dom.nav(
       classes: 'animus-npc-folders',
       attributes: const <String, String>{'aria-label': 'Folders and tags'},
       <Widget>[
-        const dom.h3(attributes: <String, String>{'id': 'animus-npc-folders-title'}, <Widget>[Component.text('Folders')]),
-        dom.ul(
-          classes: 'animus-npc-tree',
-          attributes: const <String, String>{'role': 'tree', 'aria-labelledby': 'animus-npc-folders-title'},
-          <Widget>[
-            for (int index = 0; index < items.length; index++)
-              _treeItem(
-                index: index,
-                label: items[index].$2,
-                count: items[index].$3,
-                selected: items[index].$1 == folder,
-                focused: index == focus,
-                total: items.length,
-                onChoose: () => choose(index),
-              ),
-          ],
+        NpcFolderPanel(
+          key: ValueKey<String>('npc-folders:${component.workspace.id}'),
+          store: component.store,
+          workspaceId: component.workspace.id,
+          entries: all,
+          selected: _selectedFolder,
+          onSelect: _openFolder,
         ),
         const dom.h3(<Widget>[Component.text('Tags')]),
         if (tags.isEmpty)
@@ -265,58 +253,6 @@ class _NpcBrowserState extends State<NpcBrowser> {
             for (final (String tag, int count) in tags)
               _chip(tag, hasTerm(_search, 'tag', tag), () => _setSearch(toggleTerm(_search, 'tag', tag)), count: '$count'),
           ]),
-      ],
-    );
-  }
-
-  Widget _treeItem({
-    required int index,
-    required String label,
-    required int count,
-    required bool selected,
-    required bool focused,
-    required int total,
-    required void Function() onChoose,
-  }) {
-    final bool root = index == 0;
-    return dom.li(
-      key: ValueKey<String>('tree:$label'),
-      classes: 'animus-npc-tree-item${selected ? ' is-selected' : ''}${root ? '' : ' is-child'}',
-      attributes: <String, String>{
-        'id': 'animus-npc-tree-$index',
-        'role': 'treeitem',
-        'aria-level': root ? '1' : '2',
-        'aria-setsize': root ? '1' : '${total - 1}',
-        'aria-posinset': root ? '1' : '$index',
-        if (root) 'aria-expanded': 'true',
-        'aria-selected': '$selected',
-        'aria-label': '${root ? 'All folders' : 'Folder ${label.substring(0, label.length - 1)}'}, $count NPC${count == 1 ? '' : 's'}',
-        'tabindex': focused ? '0' : '-1',
-      },
-      events: <String, void Function(web.Event)>{
-        'click': (web.Event _) {
-          setState(() => _treeFocus = index);
-          onChoose();
-        },
-        'keydown': (web.Event event) {
-          final String key = (event as web.KeyboardEvent).key;
-          if (key == 'Enter' || key == ' ') {
-            event.preventDefault();
-            onChoose();
-            return;
-          }
-          final int? next = treeMove(key, index, total);
-          if (next == null) return;
-          event.preventDefault();
-          // The items keep their ids, so the next one can take focus at once.
-          final web.Element? element = web.document.getElementById('animus-npc-tree-$next');
-          if (element != null) (element as web.HTMLElement).focus();
-          setState(() => _treeFocus = next);
-        },
-      },
-      <Widget>[
-        dom.span(<Widget>[Component.text(label)]),
-        dom.span(classes: 'animus-count', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[Component.text('$count')]),
       ],
     );
   }
@@ -370,22 +306,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
               },
             ),
         ]),
-        dom.div(classes: 'animus-npc-bulk-group', <Widget>[
-          const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Folder')]),
-          SuggestInput(
-            value: _folder,
-            label: 'Folder',
-            placeholder: 'town',
-            suggestions: <FieldOption>[for (final NpcFolder folder in npcFolders(all)) FieldOption(folder.name)],
-            onChanged: (String value) => setState(() => _folder = value.trim().toLowerCase()),
-          ),
-          Button.secondary(
-            label: 'Move to folder',
-            size: ButtonSize.small,
-            disabled: _busy || !npcFolderPattern.hasMatch(_folder),
-            onPressed: () => _bulk('Moved', moveToFolder(selected, _folder, keys)),
-          ),
-        ]),
+        _moveGroup(all, selected, keys),
         dom.div(classes: 'animus-npc-bulk-group', <Widget>[
           const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Module')]),
           if (modules.isEmpty)
@@ -463,6 +384,36 @@ class _NpcBrowserState extends State<NpcBrowser> {
     );
   }
 
+  /// Move to folder: the tree as a picker, or a typed path for a new folder.
+  Widget _moveGroup(List<NpcEntry> all, List<NpcEntry> selected, Set<String> keys) {
+    final String typed = normalizeNpcFolder(_folder);
+    final String target = _folder.trim().isNotEmpty ? typed : (_moveTarget == '/' ? '' : _moveTarget);
+    final String? problem = _folder.trim().isEmpty ? null : npcFolderProblem(typed);
+    return dom.div(classes: 'animus-npc-bulk-group', <Widget>[
+      const dom.span(classes: 'animus-npc-bulk-label', <Widget>[Component.text('Folder')]),
+      NpcFolderPicker(
+        root: npcFolderTree(all, extra: NpcFolderMemory.created(component.workspace.id)),
+        value: _moveTarget,
+        label: 'Move to',
+        onChanged: (String value) => setState(() => _moveTarget = value),
+      ),
+      GuiTextInput(
+        value: _folder,
+        label: 'Or a new path',
+        placeholder: 'town/market',
+        onChanged: (String value) => setState(() => _folder = value),
+      ),
+      Button.secondary(
+        label: 'Move to npcs/${target.isEmpty ? '' : '$target/'}',
+        size: ButtonSize.small,
+        disabled: _busy || problem != null,
+        attributes: const <String, String>{'data-testid': 'bulk-move'},
+        onPressed: () => _bulk('Moved', moveToFolder(selected, target, keys)),
+      ),
+      if (problem != null) dom.span(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(problem)]),
+    ]);
+  }
+
   Widget _list(List<NpcEntry> shown, bool allShown) {
     if (shown.isEmpty) {
       if (_all.isEmpty) {
@@ -473,6 +424,18 @@ class _NpcBrowserState extends State<NpcBrowser> {
             href: NewDocumentRoute(component.workspace.id, DocumentKind.npc).format(),
             <Widget>[const Component.text('Create an NPC')],
           ),
+        ]);
+      }
+      final String folder = _selectedFolder;
+      if (folder.isNotEmpty && NpcQuery.parse(_search).terms.length == 1) {
+        return dom.div(classes: 'animus-npc-empty', <Widget>[
+          dom.p(<Widget>[Component.text('npcs/$folder/ holds no NPCs yet. Select NPCs and move them here, or create one in it.')]),
+          dom.a(
+            classes: 'animus-npc-empty-action',
+            href: NewDocumentRoute.inFolder(component.workspace.id, DocumentKind.npc, folder).format(),
+            <Widget>[Component.text('New NPC in npcs/$folder/')],
+          ),
+          Button.secondary(label: 'Show every NPC', size: ButtonSize.small, onPressed: () => _setSearch('')),
         ]);
       }
       return dom.div(classes: 'animus-npc-empty', <Widget>[
