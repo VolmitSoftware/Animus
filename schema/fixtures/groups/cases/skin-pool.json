@@ -1,0 +1,66 @@
+{
+  "description": "A skins pool resolves to one skin by the NPC UUID.",
+  "npc": {
+    "schemaVersion": 1,
+    "revision": 3,
+    "uuid": "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+    "id": "vendor",
+    "group": "town",
+    "name": "Vendor",
+    "type": "minecraft:player",
+    "spawned": false,
+    "position": {
+      "world": "world",
+      "x": 0.5,
+      "y": 64,
+      "z": 0.5,
+      "yaw": 0,
+      "pitch": 0
+    },
+    "groups": [
+      "market-skins"
+    ]
+  },
+  "groups": [
+    {
+      "schemaVersion": 1,
+      "revision": 1,
+      "id": "market-skins",
+      "values": {
+        "skins": [
+          "f452d142d05d44f61fc577ae2045e9c2560e73a35e1698f0f0a00514a435da2a",
+          "dfdcfd26c5b8e587b601a6a7645c55afc0ca91cdff4a1dba24a34fd35d310d35",
+          "ebd6a16986a60e46195b3c5e023bdf585d4719e527c3bf1a93aa806b14aefb66"
+        ],
+        "glowing": true
+      }
+    }
+  ],
+  "effective": {
+    "schemaVersion": 1,
+    "revision": 3,
+    "uuid": "7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+    "id": "vendor",
+    "group": "town",
+    "name": "Vendor",
+    "type": "minecraft:player",
+    "spawned": false,
+    "position": {
+      "world": "world",
+      "x": 0.5,
+      "y": 64,
+      "z": 0.5,
+      "yaw": 0,
+      "pitch": 0
+    },
+    "groups": [
+      "market-skins"
+    ],
+    "skin": "ebd6a16986a60e46195b3c5e023bdf585d4719e527c3bf1a93aa806b14aefb66",
+    "glowing": true
+  },
+  "provenance": {
+    "glowing": "market-skins",
+    "skin": "market-skins"
+  }
+}

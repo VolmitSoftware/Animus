@@ -127,6 +127,13 @@
 - `/animus record start|stop|cancel|status|ghost|preview` captures a player's movement, sneaking, swings, equipment and door use into `recordings/<id>.json` as one rollback-able transaction, on the player's own thread on Folia.
 - Recording sessions end and save on quit, death, world change, a teleport over 8 blocks or `maximumTicks`; a recording over `maximumFileBytes` is held until it is stopped again or cancelled.
 - A viewer-private, glowing ghost of the recorder replays the last `ghostStretchTicks` every `ghostIntervalTicks` while recording, and `/animus record preview <id>` plays a saved recording once for the requesting player.
+- Trait groups: `groups/<id>.json` documents of shared definition values that NPCs list in `groups` and merge before their own fields.
+- Group merge rules: objects merge recursively, behaviors and tags append, a `skins` pool picks one skin per NPC UUID.
+- An NPC naming a missing group is refused on edit; a group deleted later leaves its NPCs on their last valid effective definition, reported as `group-problem=`.
+- `/animus inspect` shows the effective definition of an NPC with groups and where each field came from; `/animus status` counts group problems.
+- `/animus groups list|inspect|members|assign|unassign`; assign and unassign edit every matching NPC in one transaction.
+- `factor-groups` option for `/animus import citizens` and `--factor-groups` for the converter's `preview`, which move settings shared by two or more imported NPCs into groups.
+- Shared group schema, merge fixtures and an editor-side merge in `animus-web`.
 
 ### Changed
 
