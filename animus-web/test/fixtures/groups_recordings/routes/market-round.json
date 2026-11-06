@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "order": "random",
+  "seed": "random",
+  "startOffset": "random",
+  "jitter": 2,
+  "waitTicks": [20, 100],
+  "points": [
+    {"x": -6, "y": 64, "z": 0, "weight": 5},
+    {"x": 2, "y": 64, "z": 8},
+    {"x": 6, "y": 64, "z": -4, "weight": 2}
+  ]
+}

@@ -22,6 +22,41 @@ const double routeDefaultLinkDistance = 32;
 /// Fields a route keeps, in the module or in its route document.
 const List<String> routeFields = <String>['mode', 'speed', 'order', 'loop', 'waitTicks', 'points', 'guides', 'linkDistance', 'wander', 'seed', 'startOffset', 'jitter'];
 
+/// Route seeds and start offsets; the first of each is the default.
+const List<String> routeSeeds = <String>['npc', 'random'];
+const List<String> routeStartOffsets = <String>['first', 'random'];
+
+const int routeMaxJitter = 8;
+const int routeMaxWeight = 1000;
+const int routeMaxJunctions = 8;
+
+/// A whole number, or null for anything else (1.5, text, null).
+int? _whole(Object? value) => value is num && value.isFinite && value == value.roundToDouble() ? value.toInt() : null;
+
+/// Why the server refuses [value] as a `waitTicks`, worded like
+/// WaypointSettings.wait without the field name, or null when it is fine.
+String? routeWaitProblem(Object? value) {
+  const String bounds = 'must be 0..$routeMaxWait or [min, max]';
+  if (value is List<Object?>) {
+    if (value.length != 2) return bounds;
+    for (final Object? part in value) {
+      if (part is! num) return bounds;
+      if (_whole(part) == null) return 'expected whole number';
+      if (part < 0 || part > routeMaxWait) return bounds;
+    }
+    return _whole(value[0])! > _whole(value[1])! ? 'min above max' : null;
+  }
+  if (value is! num) return bounds;
+  if (_whole(value) == null) return 'expected whole number';
+  return value < 0 || value > routeMaxWait ? bounds : null;
+}
+
+String? _rangeProblem(Object? value, int min, int max, String unit) {
+  if (value is! num) return 'must be $min..$max$unit';
+  if (_whole(value) == null) return 'expected whole number';
+  return value < min || value > max ? 'must be $min..$max$unit' : null;
+}
+
 /// A wait in ticks: a fixed count, or `[min, max]` drawn per arrival.
 class RouteWait {
   const RouteWait(this.min, this.max);
@@ -39,6 +74,9 @@ class RouteWait {
   }
 
   bool get ranged => min != max;
+
+  /// The JSON a route stores: a count, or `[min, max]` for a range.
+  Object toJson() => ranged ? <int>[min, max] : min;
 
   @override
   String toString() => ranged ? '$min-$max' : '$min';
@@ -119,7 +157,8 @@ final RegExp routeRecordingId = RegExp(r'^[a-z0-9][a-z0-9_-]{0,63}$');
 /// A route as the runtime reads it.
 class RouteSpec {
   RouteSpec(JsonMap json)
-    : order = routeOrders.contains(json['order']) ? json['order']! as String : 'sequence',
+    : _json = json,
+      order = routeOrders.contains(json['order']) ? json['order']! as String : 'sequence',
       loop = json['loop'] == true,
       mode = routeModes.contains(json['mode']) ? json['mode']! as String : 'walk',
       waitTicks = RouteWait.fromJson(json['waitTicks']) ?? const RouteWait(20, 20),
@@ -129,6 +168,7 @@ class RouteSpec {
       points = <RouteEntry>[for (final Object? point in asList(json['points'])) RouteEntry.fromJson(point)],
       guides = <RouteEntry>[for (final Object? guide in asList(json['guides'])) RouteEntry.fromJson(guide, guide: true)];
 
+  final JsonMap _json;
   final String order;
   final bool loop;
   final String mode;
@@ -167,9 +207,12 @@ class RouteSpec {
     bool placedPair((int, int) pair) => all[pair.$1] is RouteNode && all[pair.$2] is RouteNode;
     switch (order) {
       case 'sequence':
+        final List<Object?> raw = asList(_json['points']);
+        bool branches(int index) => index < raw.length && asMap(raw[index]).containsKey('next');
         return <(int, int)>[
-          for (int index = 1; index < points.length; index++) (index - 1, index),
-          if (loop && points.length > 2) (points.length - 1, 0),
+          for (int index = 1; index < points.length; index++)
+            if (!branches(index - 1)) (index - 1, index),
+          if (loop && points.length > 2 && !branches(points.length - 1)) (points.length - 1, 0),
         ].where(placedPair).toList();
       case 'pingpong':
         return <(int, int)>[for (int index = 1; index < points.length; index++) (index - 1, index)].where(placedPair).toList();
@@ -192,9 +235,38 @@ class RouteSpec {
     }
   }
 
+  /// A sequence route's junctions, from each point with `next` to each
+  /// listed point that is in range; both ends must have a position.
+  List<(int, int)> get junctionLinks {
+    if (order != 'sequence') return const <(int, int)>[];
+    final List<Object?> raw = asList(_json['points']);
+    return <(int, int)>[
+      for (int index = 0; index < raw.length && index < points.length; index++)
+        for (final Object? junction in asList(asMap(raw[index])['next']))
+          if (_whole(asMap(junction)['to']) case final int to when to >= 0 && to < points.length && to != index && points[index] is RouteNode && points[to] is RouteNode)
+            (index, to),
+    ];
+  }
+
   /// Problems the runtime refuses, worded like its field errors, by field.
   List<(String, String)> problems() {
     final List<(String, String)> found = <(String, String)>[];
+    void check(String field, String? problem) {
+      if (problem != null) found.add((field, problem));
+    }
+
+    final JsonMap json = _json;
+    if (json.containsKey('waitTicks')) check('waitTicks', routeWaitProblem(json['waitTicks']));
+    if (json.containsKey('seed') && !routeSeeds.contains(json['seed'])) found.add(('seed', 'must be npc or random'));
+    if (json.containsKey('startOffset') && !routeStartOffsets.contains(json['startOffset'])) found.add(('startOffset', 'must be first or random'));
+    if (json.containsKey('jitter')) {
+      check('jitter', order == 'wander' ? 'is not allowed with order wander; wander.radius spreads its goals' : _rangeProblem(json['jitter'], 0, routeMaxJitter, ' blocks'));
+    }
+    if (json.containsKey('loop') && order != 'sequence') found.add(('loop', 'is only allowed with order sequence'));
+    final List<Object?> raw = asList(json['points']);
+    for (int index = 0; index < raw.length; index++) {
+      found.addAll(_pointProblems(asMap(raw[index]), 'points[$index]', raw.length));
+    }
     final int pointLimit = order == 'wander' ? routeMaxWanderCentres : routeMaxPoints;
     if (points.length > pointLimit) found.add(('points', 'at most $pointLimit points for order $order'));
     if (order != 'wander' && points.isEmpty) found.add(('points', 'needs at least one point'));
@@ -217,6 +289,56 @@ class RouteSpec {
           found.add((node.guide ? 'guides[${index - points.length}].y' : 'points[$index].y', 'walking routes need whole-block heights'));
         }
       }
+    }
+    return found;
+  }
+
+  /// A point's own wait, jitter, weight and junctions, checked as
+  /// WaypointSettings checks them against the route's order.
+  List<(String, String)> _pointProblems(JsonMap point, String field, int count) {
+    final List<(String, String)> found = <(String, String)>[];
+    void check(String at, String? problem) {
+      if (problem != null) found.add((at, problem));
+    }
+
+    final bool step = point.containsKey('recording');
+    if (point.containsKey('waitTicks')) check('$field.waitTicks', routeWaitProblem(point['waitTicks']));
+    if (point.containsKey('jitter')) {
+      check(
+        '$field.jitter',
+        step ? 'a recording step has no jitter' : (order == 'wander' ? 'is not allowed with order wander' : _rangeProblem(point['jitter'], 0, routeMaxJitter, ' blocks')),
+      );
+    }
+    if (point.containsKey('weight')) {
+      check('$field.weight', order != 'random' ? 'is only allowed with order random' : _rangeProblem(point['weight'], 1, routeMaxWeight, ''));
+    }
+    if (!point.containsKey('next')) return found;
+    if (order != 'sequence') return found..add(('$field.next', 'is only allowed with order sequence'));
+    final Object? next = point['next'];
+    if (next is! List<Object?> || next.isEmpty || next.length > routeMaxJunctions) {
+      return found..add(('$field.next', 'requires 1..$routeMaxJunctions {"to": index, "weight": 1..$routeMaxWeight} entries'));
+    }
+    for (int index = 0; index < next.length; index++) {
+      final String entry = '$field.next[$index]';
+      final Object? junction = next[index];
+      if (junction is! Map<String, Object?>) {
+        found.add((entry, 'expected object'));
+        continue;
+      }
+      for (final String key in junction.keys) {
+        if (key != 'to' && key != 'weight') found.add(('$entry.$key', 'unknown field'));
+      }
+      if (!junction.containsKey('to')) {
+        found.add(('$entry.to', 'required'));
+      } else {
+        final int? to = _whole(junction['to']);
+        if (to == null) {
+          found.add(('$entry.to', 'expected whole number'));
+        } else if (to < 0 || to >= count) {
+          found.add(('$entry.to', 'out of range'));
+        }
+      }
+      if (junction.containsKey('weight')) check('$entry.weight', _rangeProblem(junction['weight'], 1, routeMaxWeight, ''));
     }
     return found;
   }
@@ -298,6 +420,7 @@ JsonMap removeRouteNode(JsonMap route, String key, int index) {
   final List<Object?> list = List<Object?>.of(asList(route[key]));
   if (index < 0 || index >= list.length) return route;
   list.removeAt(index);
+  if (key == 'points') _remapJunctions(list, (int to) => to == index ? null : (to > index ? to - 1 : to));
   final JsonMap next = <String, Object?>{...route};
   if (list.isEmpty && key == 'guides') {
     next.remove(key);
@@ -363,7 +486,91 @@ JsonMap _convertPoint(JsonMap route, int index, List<String> drop, JsonMap inser
 JsonMap reorderRoutePoint(JsonMap route, int from, int to) {
   final List<Object?> list = asList(route['points']);
   if (from < 0 || from >= list.length || to < 0 || to >= list.length) return route;
-  return <String, Object?>{...route, 'points': moveItem(list, from, to)};
+  final List<Object?> moved = List<Object?>.of(moveItem(list, from, to));
+  _remapJunctions(moved, (int old) {
+    if (old == from) return to;
+    if (from < to && old > from && old <= to) return old - 1;
+    if (to < from && old >= to && old < from) return old + 1;
+    return old;
+  });
+  return <String, Object?>{...route, 'points': moved};
+}
+
+/// Rewrites every junction target in [points] through [map]; a target it
+/// maps to null goes, and an emptied `next` is removed.
+void _remapJunctions(List<Object?> points, int? Function(int to) map) {
+  for (int index = 0; index < points.length; index++) {
+    final JsonMap point = asMap(points[index]);
+    if (!point.containsKey('next')) continue;
+    final List<Object?> kept = <Object?>[];
+    for (final Object? junction in asList(point['next'])) {
+      final JsonMap entry = asMap(junction);
+      final int? to = _whole(entry['to']);
+      if (to == null) {
+        kept.add(junction);
+        continue;
+      }
+      final int? mapped = map(to);
+      if (mapped != null) kept.add(<String, Object?>{...entry, 'to': mapped});
+    }
+    final JsonMap next = <String, Object?>{...point};
+    if (kept.isEmpty) {
+      next.remove('next');
+    } else {
+      next['next'] = kept;
+    }
+    points[index] = next;
+  }
+}
+
+/// The route with a junction appended to point [index]'s `next`, leading
+/// to the first other point it does not list yet.
+JsonMap addRouteJunction(JsonMap route, int index) {
+  final List<Object?> points = asList(route['points']);
+  if (index < 0 || index >= points.length) return route;
+  final List<Object?> next = asList(asMap(points[index])['next']);
+  final Set<int?> listed = <int?>{for (final Object? junction in next) _whole(asMap(junction)['to'])};
+  int to = 0;
+  for (int candidate = 0; candidate < points.length; candidate++) {
+    if (candidate != index && !listed.contains(candidate)) {
+      to = candidate;
+      break;
+    }
+  }
+  return setRouteNodeField(route, 'points', index, 'next', <Object?>[...next, <String, Object?>{'to': to}]);
+}
+
+const Object _keep = Object();
+
+/// The route with junction [junction] of point [index] changed: [to] when
+/// given, and [weight] set, or removed when null, when given.
+JsonMap setRouteJunction(JsonMap route, int index, int junction, {int? to, Object? weight = _keep}) {
+  final List<Object?> points = asList(route['points']);
+  if (index < 0 || index >= points.length) return route;
+  final List<Object?> next = List<Object?>.of(asList(asMap(points[index])['next']));
+  if (junction < 0 || junction >= next.length) return route;
+  final JsonMap entry = <String, Object?>{...asMap(next[junction])};
+  if (to != null) entry['to'] = to;
+  if (!identical(weight, _keep)) {
+    if (weight == null) {
+      entry.remove('weight');
+    } else {
+      entry['weight'] = weight;
+    }
+  }
+  next[junction] = entry;
+  return setRouteNodeField(route, 'points', index, 'next', next);
+}
+
+/// The route without junction [junction] of point [index]; an emptied
+/// `next` is removed.
+JsonMap removeRouteJunction(JsonMap route, int index, int junction) {
+  final List<Object?> points = asList(route['points']);
+  if (index < 0 || index >= points.length) return route;
+  final List<Object?> next = List<Object?>.of(asList(asMap(points[index])['next']));
+  if (junction < 0 || junction >= next.length) return route;
+  next.removeAt(junction);
+  return setRouteNodeField(route, 'points', index, 'next', next.isEmpty ? null : next);
 }
 
 /// The route with [order] set and the fields that order refuses removed
@@ -377,7 +584,70 @@ JsonMap setRouteOrder(JsonMap route, String order) {
     next.remove('linkDistance');
   }
   if (order != 'wander') next.remove('wander');
+  if (order == 'wander') next.remove('jitter');
+  bool refused(String field) => switch (field) {
+        'weight' => order != 'random',
+        'next' => order != 'sequence',
+        'jitter' => order == 'wander',
+        _ => false,
+      };
+  if (next['points'] is List<Object?>) {
+    next['points'] = <Object?>[
+      for (final Object? point in asList(next['points']))
+        if (point is Map<String, Object?>)
+          <String, Object?>{
+            for (final MapEntry<String, Object?> entry in point.entries)
+              if (!refused(entry.key)) entry.key: entry.value,
+          }
+        else
+          point,
+    ];
+  }
   return next;
+}
+
+/// Where an NPC's `animus:navigation` module takes its movement from.
+enum NavigationSource { points, route, recording }
+
+/// How a navigation recording plays; `loop` is the default.
+const List<String> navigationPlaybacks = <String>['once', 'loop', 'pingpong'];
+
+/// The route fields RecordingSource refuses beside `recording`, in its order.
+const List<String> _recordingConflicts = <String>['points', 'mode', 'speed', 'order', 'loop', 'waitTicks', 'guides', 'linkDistance', 'wander', 'seed', 'startOffset', 'jitter'];
+
+NavigationSource navigationSource(JsonMap module) => module.containsKey('recording')
+    ? NavigationSource.recording
+    : (module.containsKey('route') ? NavigationSource.route : NavigationSource.points);
+
+/// The module playing [recording]: `route` and every route field go, the
+/// rest (enabled, reviewAccepted, unknown keys) stay. A null [playback]
+/// leaves it out, which plays `loop`.
+JsonMap setNavigationRecording(JsonMap module, String recording, {String? playback}) => <String, Object?>{
+      for (final MapEntry<String, Object?> entry in module.entries)
+        if (entry.key != 'route' && entry.key != 'recording' && entry.key != 'playback' && !_recordingConflicts.contains(entry.key)) entry.key: entry.value,
+      'recording': recording,
+      'playback': ?playback,
+    };
+
+/// What RecordingSource refuses in an enabled module, by field under
+/// `modules.animus:navigation`.
+List<(String, String)> navigationProblems(JsonMap module) {
+  if (module['enabled'] != true) return const <(String, String)>[];
+  if (!module.containsKey('recording')) {
+    return module.containsKey('playback') ? const <(String, String)>[('playback', 'requires recording')] : const <(String, String)>[];
+  }
+  final Object? recording = module['recording'];
+  if (recording is! String || !routeRecordingId.hasMatch(recording)) {
+    return const <(String, String)>[('recording', 'expected 1-64 lowercase letters, digits, _ or -')];
+  }
+  if (module.containsKey('route')) return const <(String, String)>[('recording', 'cannot be combined with route')];
+  for (final String conflicting in _recordingConflicts) {
+    if (module.containsKey(conflicting)) return <(String, String)>[('recording', 'cannot be combined with $conflicting')];
+  }
+  if (module.containsKey('playback') && !navigationPlaybacks.contains(module['playback'])) {
+    return const <(String, String)>[('playback', 'expected once, loop or pingpong')];
+  }
+  return const <(String, String)>[];
 }
 
 /// Snaps a grid position to a whole block.

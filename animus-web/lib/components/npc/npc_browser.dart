@@ -10,6 +10,8 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_text.dart';
+import '../../logic/gui/gui_json.dart';
+import '../../logic/npc/group_model.dart';
 import '../../logic/npc/npc_bulk.dart';
 import '../../logic/npc/npc_catalog.dart';
 import '../../logic/npc/npc_paths.dart';
@@ -53,6 +55,13 @@ class _NpcBrowserState extends State<NpcBrowser> {
   /// which wins when set.
   String _moveTarget = '/';
 
+  /// The group assign form: which group, and which NPCs (`selection`,
+  /// `folder` or `tag`, the server's `ids=`, `folder=` and `tag=`).
+  String? _assignGroup;
+  String _assignBy = 'selection';
+  String? _assignFolder;
+  String? _assignTag;
+
   List<NpcEntry> get _all => npcEntries(component.workspace.documents);
 
   /// Bumped when a filter (not typing) changes the search, so the field
@@ -70,9 +79,9 @@ class _NpcBrowserState extends State<NpcBrowser> {
     _confirm = _Confirm.none;
   });
 
-  Future<void> _bulk(String action, NpcBulkResult result) async {
+  Future<void> _bulk(String action, NpcBulkResult result, {String? summary}) async {
     if (result.changes.isEmpty) {
-      ArcaneSonner.warning(describeBulk(action, result));
+      ArcaneSonner.warning(summary ?? describeBulk(action, result));
       return;
     }
     setState(() => _busy = true);
@@ -86,7 +95,7 @@ class _NpcBrowserState extends State<NpcBrowser> {
         for (final DocumentChange change in result.changes)
           if (change.source != null) change.id,
       };
-      final String message = describeBulk(action, result);
+      final String message = summary ?? describeBulk(action, result);
       if (result.skipped.isEmpty) {
         ArcaneSonner.success('$message Undo reverts it in one step.');
       } else {
@@ -153,7 +162,11 @@ class _NpcBrowserState extends State<NpcBrowser> {
         _filters(all),
         dom.div(classes: 'animus-npc-browser-body', <Widget>[
           _folders(all),
-          dom.div(classes: 'animus-npc-browser-main', <Widget>[if (selected.isNotEmpty) _bulkBar(all, selected, keys), _list(shown, allShown)]),
+          dom.div(classes: 'animus-npc-browser-main', <Widget>[
+            _groupAssign(all, selected),
+            if (selected.isNotEmpty) _bulkBar(all, selected, keys),
+            _list(shown, allShown),
+          ]),
         ]),
       ],
     );
@@ -253,6 +266,126 @@ class _NpcBrowserState extends State<NpcBrowser> {
             for (final (String tag, int count) in tags)
               _chip(tag, hasTerm(_search, 'tag', tag), () => _setSearch(toggleTerm(_search, 'tag', tag)), count: '$count'),
           ]),
+      ],
+    );
+  }
+
+  /// Assigns or unassigns a trait group for the selection, a folder or a
+  /// tag, as one commit (one undo step, one change set at the next apply).
+  Future<void> _changeGroup(List<NpcEntry> all, String group, NpcGroupTarget target, {required bool assign}) async {
+    final NpcBulkResult result = changeGroup(all, workspaceGroups(component.workspace.documents), group, target, assign: assign);
+    final String summary = describeGroupChange(group, result, assign: assign);
+    if (result.changes.isEmpty) {
+      ArcaneSonner.warning(summary);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await component.store.commit(documents: result.changes, label: '${assign ? 'assign' : 'unassign'} group $group');
+      ArcaneSonner.success('$summary Undo reverts it in one step.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The trait group form: a group, who gets it (the selection, one folder
+  /// exactly, or every NPC whose effective tags include a tag), and Assign
+  /// or Unassign. Shown once the workspace has a group.
+  Widget _groupAssign(List<NpcEntry> all, List<NpcEntry> selected) {
+    final Map<String, JsonMap> groups = workspaceGroups(component.workspace.documents);
+    if (groups.isEmpty) return const dom.div(<Widget>[]);
+    final String? group = _assignGroup != null && groups.containsKey(_assignGroup) ? _assignGroup : null;
+    final List<String> folders = <String>[for (final NpcFolderNode node in npcFolderTree(all).all) node.path];
+    final List<String> tags = <String>{
+      for (final NpcEntry entry in all) ...jsonStrings((effectiveNpc(entry.json, groups)?.json ?? entry.json)['tags']),
+    }.toList()
+      ..sort();
+    final NpcGroupTarget? target = switch (_assignBy) {
+      'folder' when _assignFolder != null && folders.contains(_assignFolder) => NpcGroupTarget.folder(_assignFolder!),
+      'tag' when _assignTag != null && tags.contains(_assignTag) => NpcGroupTarget.tag(_assignTag!),
+      'selection' when selected.isNotEmpty => NpcGroupTarget.ids(<String>{for (final NpcEntry entry in selected) entry.key}),
+      _ => null,
+    };
+    final int reached = target == null ? 0 : all.where((NpcEntry entry) => target.matches(entry, groups)).length;
+    final bool ready = !_busy && group != null && target != null;
+    String folderLabel(String path) => path.isEmpty ? 'npcs/' : 'npcs/$path/';
+    return dom.section(
+      classes: 'animus-npc-group-assign',
+      attributes: const <String, String>{'aria-label': 'Trait groups', 'data-npc': 'group-assign'},
+      <Widget>[
+        const dom.h3(<Widget>[Component.text('Trait groups')]),
+        dom.div(classes: 'animus-npc-group-assign-fields', <Widget>[
+          dom.label(classes: 'animus-npc-filter-select', <Widget>[
+            const dom.span(<Widget>[Component.text('Group')]),
+            GuiSelect(
+              id: 'animus-group-assign-group',
+              value: group,
+              options: groups.keys.toList(),
+              noneLabel: 'Pick a group',
+              onChanged: (String? value) => setState(() => _assignGroup = value),
+            ),
+          ]),
+          dom.label(classes: 'animus-npc-filter-select', <Widget>[
+            const dom.span(<Widget>[Component.text('For')]),
+            GuiSelect(
+              id: 'animus-group-assign-by',
+              value: _assignBy,
+              options: const <String>['selection', 'folder', 'tag'],
+              labels: <String, String>{
+                'selection': 'Selected NPCs (${selected.length})',
+                'folder': 'One folder',
+                'tag': 'NPCs with a tag',
+              },
+              onChanged: (String? value) => setState(() => _assignBy = value ?? 'selection'),
+            ),
+          ]),
+          if (_assignBy == 'folder')
+            dom.label(classes: 'animus-npc-filter-select', <Widget>[
+              const dom.span(<Widget>[Component.text('Folder')]),
+              GuiSelect(
+                id: 'animus-group-assign-folder',
+                value: _assignFolder != null && folders.contains(_assignFolder) ? _assignFolder : null,
+                options: folders,
+                labels: <String, String>{for (final String path in folders) path: folderLabel(path)},
+                noneLabel: 'Pick a folder',
+                onChanged: (String? value) => setState(() => _assignFolder = value),
+              ),
+            ]),
+          if (_assignBy == 'tag')
+            dom.label(classes: 'animus-npc-filter-select', <Widget>[
+              const dom.span(<Widget>[Component.text('Tag')]),
+              GuiSelect(
+                id: 'animus-group-assign-tag',
+                value: _assignTag != null && tags.contains(_assignTag) ? _assignTag : null,
+                options: tags,
+                noneLabel: tags.isEmpty ? 'No tags yet' : 'Pick a tag',
+                onChanged: (String? value) => setState(() => _assignTag = value),
+              ),
+            ]),
+        ]),
+        dom.div(classes: 'animus-row', <Widget>[
+          Button.secondary(
+            id: 'animus-group-assign',
+            label: 'Assign',
+            size: ButtonSize.small,
+            disabled: !ready,
+            onPressed: () => _changeGroup(all, group!, target!, assign: true),
+          ),
+          Button.ghost(
+            id: 'animus-group-unassign',
+            label: 'Unassign',
+            size: ButtonSize.small,
+            disabled: !ready,
+            onPressed: () => _changeGroup(all, group!, target!, assign: false),
+          ),
+          dom.span(classes: 'animus-muted', attributes: const <String, String>{'role': 'status', 'data-npc': 'group-assign-reach'}, <Widget>[
+            Component.text(switch ((group, target)) {
+              (null, _) => 'Pick a group to assign or unassign.',
+              (_, null) => _assignBy == 'selection' ? 'Select NPCs in the list, or pick a folder or tag.' : 'Pick the ${_assignBy == 'folder' ? 'folder' : 'tag'}.',
+              _ => '$reached NPC${reached == 1 ? '' : 's'} reached. A folder means that folder only; a tag counts tags from groups too.',
+            }),
+          ]),
+        ]),
       ],
     );
   }
