@@ -11,7 +11,7 @@
 library;
 
 
-/// Evaluation errors carry no source position — the tree they walk has no
+/// Evaluation errors carry no source position: the tree they walk has no
 /// remaining source text to point at. Parse errors always carry one.
 const int previewNoPosition = -1;
 
@@ -558,7 +558,7 @@ int _scanIdentifierEnd(String source, int start, int n) {
   return i;
 }
 
-/// `#RGB` and `#RRGGBB` are opaque — the parser prefixes `FF`. Only `#AARRGGBB`
+/// `#RGB` and `#RRGGBB` are opaque: the parser prefixes `FF`. Only `#AARRGGBB`
 /// carries its own alpha.
 double _expandColor(String hex) {
   if (hex.length == 3) {
@@ -722,7 +722,7 @@ String evalString(PExpr expr, PExprScope scope) =>
 int evalColor(PExpr expr, PExprScope scope) =>
     previewNarrowArgb(evalNumber(expr, scope));
 
-/// True when [expr] contains no [PVar] or [PCall] node anywhere — a field the
+/// True when [expr] contains no [PVar] or [PCall] node anywhere: a field the
 /// document loader can fold once at build instead of re-evaluating.
 bool isConstantExpr(PExpr expr) {
   switch (expr) {
@@ -982,7 +982,7 @@ double previewRound(double value) {
   return rounded == 0.0 ? 0.0 : rounded;
 }
 
-/// The unsigned low 32 bits of Java's `(long) value` cast — the narrowing every
+/// The unsigned low 32 bits of Java's `(long) value` cast, the narrowing every
 /// colour goes through before its channels are read.
 int previewNarrowArgb(double value) {
   if (value.isNaN) {

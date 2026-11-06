@@ -6,6 +6,7 @@
 library;
 
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -32,6 +33,7 @@ class ChestWindow extends StatefulWidget {
     this.showMask = false,
     this.label = 'Chest window',
     this.onPaint,
+    this.onPaintEnd,
     this.pinSelected = false,
     super.key,
   });
@@ -39,6 +41,9 @@ class ChestWindow extends StatefulWidget {
   /// Called for each slot a press and drag crosses; set while a brush is
   /// chosen. Clicks and Enter still go to [onSlot].
   final void Function(int slot)? onPaint;
+
+  /// Called when the press that painted is released.
+  final void Function()? onPaintEnd;
 
   /// Shows the selected slot's name and lore without hover, for touch.
   final bool pinSelected;
@@ -58,7 +63,6 @@ class ChestWindow extends StatefulWidget {
 }
 
 class _ChestWindowState extends State<ChestWindow> {
-  bool _painting = false;
   int? _lastPainted;
   JSFunction? _release;
 
@@ -80,7 +84,7 @@ class _ChestWindowState extends State<ChestWindow> {
   }
 
   void _stopPaint() {
-    _painting = false;
+    if (_lastPainted != null) component.onPaintEnd?.call();
     _lastPainted = null;
   }
 
@@ -92,10 +96,17 @@ class _ChestWindowState extends State<ChestWindow> {
 
   /// The slot under a pointer, for drags that leave the pressed button
   /// (touch keeps the pointer captured on it).
-  int? _slotAt(web.PointerEvent event) {
-    final web.Element? hit = web.document.elementFromPoint(event.clientX.toDouble(), event.clientY.toDouble());
+  int? _slotAt(web.Event event) {
+    final web.Element? hit = web.document.elementFromPoint(_number(event, 'clientX'), _number(event, 'clientY'));
     final String? slot = hit?.closest('[data-slot]')?.getAttribute('data-slot');
     return slot == null ? null : int.tryParse(slot);
+  }
+
+  /// A numeric event property, read the way the stage reads pointer
+  /// coordinates (typed getters can fail on fractional values).
+  static double _number(web.Event event, String property) {
+    final JSAny? value = (event as JSObject).getProperty<JSAny?>(property.toJS);
+    return value != null && value.isA<JSNumber>() ? (value as JSNumber).toDartDouble : 0;
   }
 
   void _refresh() {
@@ -110,13 +121,16 @@ class _ChestWindowState extends State<ChestWindow> {
       dom.div(
         classes: 'animus-chest${component.onPaint != null ? ' is-painting' : ''}',
         styles: dom.Styles(raw: <String, String>{'grid-template-columns': 'repeat(${layout.width}, var(--animus-slot))'}),
+        // Always bound: an events map that only gains a key on a later build
+        // never gets that listener.
         events: <String, void Function(web.Event)>{
-          if (component.onPaint != null)
-            'pointermove': (web.Event event) {
-              if (!_painting) return;
-              final int? slot = _slotAt(event as web.PointerEvent);
-              if (slot != null) _paint(slot);
-            },
+          'pointermove': (web.Event event) {
+            // The pressed button, not a flag: a repaint after each stroke may
+            // rebuild this window mid-drag.
+            if (component.onPaint == null || (_number(event, 'buttons').toInt() & 1) == 0) return;
+            final int? slot = _slotAt(event);
+            if (slot != null) _paint(slot);
+          },
         },
         <Widget>[for (final ChestCell cell in layout.cells) _slot(cell)],
       ),
@@ -164,13 +178,11 @@ class _ChestWindowState extends State<ChestWindow> {
       attributes: <String, String>{'type': 'button', 'aria-label': described, 'aria-pressed': '$selected', 'data-slot': '${cell.slot}'},
       events: <String, void Function(web.Event)>{
         'click': (web.Event _) => component.onSlot!(cell.slot),
-        if (component.onPaint != null)
-          'pointerdown': (web.Event event) {
-            if ((event as web.PointerEvent).button != 0) return;
-            _painting = true;
-            _lastPainted = null;
-            _paint(cell.slot);
-          },
+        'pointerdown': (web.Event event) {
+          if (component.onPaint == null || _number(event, 'button') != 0) return;
+          _lastPainted = null;
+          _paint(cell.slot);
+        },
       },
       <Widget>[face],
     );
