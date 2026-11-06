@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:arcane_jaspr/arcane_jaspr.dart' show Brightness;
 import 'package:web/web.dart' as web;
 
+import '../config/brand.dart';
 import '../logic/data_folder.dart';
 
 const String themeKey = 'animus.theme';
@@ -27,8 +28,12 @@ void saveBrightness(Brightness brightness) {
   } on Object {
     // Private mode: the choice lasts for this page only.
   }
+  // bootstrap.js stamps this class before paint, and the theme tokens key off it, so the toggle moves it too.
+  final web.DOMTokenList classes = web.document.documentElement!.classList;
+  classes.remove(light ? 'dark' : 'light');
+  classes.add(light ? 'light' : 'dark');
   final web.Element? color = web.document.getElementById('animus-theme-color');
-  color?.setAttribute('content', light ? '#f6f5f0' : '#111310');
+  color?.setAttribute('content', light ? brandLight.themeColor : brandDark.themeColor);
 }
 
 String currentHash() => web.window.location.hash;

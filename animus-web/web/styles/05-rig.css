@@ -72,7 +72,7 @@
 }
 
 .animus-rig-bone.is-selected {
-  background: color-mix(in srgb, var(--primary, #8fbf6f) 24%, transparent);
+  background: color-mix(in srgb, var(--primary, #ff5fa8) 24%, transparent);
 }
 
 .animus-rig-actions {
@@ -143,7 +143,7 @@
 }
 
 .animus-rig-handle {
-  stroke: #111310;
+  stroke: #0d0d0f;
   stroke-width: 1.5;
   cursor: grab;
 }
@@ -244,7 +244,7 @@
   width: 0.8rem;
   height: 0.8rem;
   padding: 0;
-  border: 1px solid #111310;
+  border: 1px solid #0d0d0f;
   background: var(--animus-muted);
   transform: translate(-50%, -50%) rotate(45deg);
   cursor: pointer;
