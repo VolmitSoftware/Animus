@@ -204,6 +204,7 @@ void main() {
       expect(npcIdIn('', 'crier'), 'crier');
       expect(npcFolderWithin('town/market', 'town'), isTrue);
       expect(npcFolderWithin('townhall', 'town'), isFalse);
+      expect(<String>['town/market', 'town-hall', '', 'town']..sort(compareNpcFolders), <String>['', 'town', 'town/market', 'town-hall']);
     });
 
     test('moveToFolder rewrites group and path and refuses collisions', () {

@@ -67,3 +67,18 @@ String normalizeNpcFolder(String folder) {
   }
   return text;
 }
+
+/// Orders folders as the tree lists them: segment by segment, a folder
+/// before the folders inside it.
+int compareNpcFolders(String a, String b) {
+  if (a == b) return 0;
+  if (a.isEmpty) return -1;
+  if (b.isEmpty) return 1;
+  final List<String> left = a.split('/');
+  final List<String> right = b.split('/');
+  for (int index = 0; index < left.length && index < right.length; index++) {
+    final int order = left[index].compareTo(right[index]);
+    if (order != 0) return order;
+  }
+  return left.length.compareTo(right.length);
+}

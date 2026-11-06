@@ -106,6 +106,8 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
   String? _problem;
   bool _busy = false;
 
+  static const String _nameField = 'animus-npc-folder-name';
+
   /// The picker's value for `npcs/` itself; GuiSelect keeps '' for none.
   static const String _rootValue = '/';
 
@@ -322,7 +324,9 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
     final List<Widget> form = switch (_operation) {
       _Operation.none => const <Widget>[],
       _Operation.create => <Widget>[
+          dom.label(classes: 'animus-npc-folder-label', htmlFor: _nameField, <Widget>[Component.text('New folder in $where')]),
           GuiTextInput(
+            id: _nameField,
             value: _text,
             label: 'New folder in $where',
             placeholder: 'market',
@@ -334,7 +338,9 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
           ]),
         ],
       _Operation.rename => <Widget>[
+          dom.label(classes: 'animus-npc-folder-label', htmlFor: _nameField, <Widget>[Component.text('New name for $where')]),
           GuiTextInput(
+            id: _nameField,
             value: _text,
             label: 'New name for $where',
             placeholder: current.name,
@@ -342,7 +348,7 @@ class _NpcFolderPanelState extends State<NpcFolderPanel> {
           ),
           dom.div(classes: 'animus-row', <Widget>[
             Button.primary(
-              label: 'Rename',
+              label: 'Rename folder',
               size: ButtonSize.small,
               disabled: _busy,
               onPressed: () => _relocate(current, npcIdIn(npcParentFolder(current.path), normalizeNpcFolder(_text)), 'rename'),

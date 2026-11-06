@@ -668,12 +668,23 @@ class LiveSession {
   Future<void> _applied(ChangeApplied applied, PendingChange pending, Map<String, ({String path, Object? source})>? sent) async {
     if (sent == null || pending.undoOf != null) {
       // No local copy of what was written (a recovered or undone change
-      // set): take the server's versions.
-      await store.commit(server: (ServerBinding binding) => recordApplied(binding, applied, const <String, ({String path, Object? source})>{}, undoOf: pending.undoOf, at: _now().toUtc()), undoable: false);
-      // A move (or the undo of one) leaves its old id: absorbing it drops
-      // the local copy there.
+      // set): take the server's versions. What it removed (a delete, or the
+      // id a move left) is gone there, so the local copy goes without a
+      // fetch that could only answer not found.
+      final List<DocumentChange> gone = <DocumentChange>[
+        for (final AppliedDocument document in applied.documents) ...<DocumentChange>[
+          if (document.hash == null && store.document(document.kind, document.id) != null) DocumentChange(document.kind, document.id, null),
+          if (document.from != null && store.document(document.kind, document.from!) != null) DocumentChange(document.kind, document.from!, null),
+        ],
+      ];
+      await store.commit(
+        documents: gone,
+        server: (ServerBinding binding) => recordApplied(binding, applied, const <String, ({String path, Object? source})>{}, undoOf: pending.undoOf, at: _now().toUtc()),
+        undoable: false,
+      );
       await _absorb(<String>[
-        for (final AppliedDocument document in applied.documents) ...<String>[document.key, if (document.fromKey != null) document.fromKey!],
+        for (final AppliedDocument document in applied.documents)
+          if (document.hash != null) document.key,
       ], replace: true);
     } else {
       final Map<String, ({String path, Object? source})> stored = <String, ({String path, Object? source})>{};

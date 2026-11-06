@@ -154,7 +154,23 @@
 }
 
 .animus-npc-folder-new-npc {
+  color: inherit;
   font-size: 0.8125rem;
+  text-underline-offset: 0.2em;
+}
+
+.animus-npc-folder-new-npc:hover {
+  color: var(--primary, #ff5fa8);
+}
+
+.animus-npc-folder-new-npc:focus-visible {
+  outline: 2px solid var(--ring, #ff5fa8);
+  outline-offset: 2px;
+}
+
+.animus-npc-folder-label {
+  font-size: 0.8125rem;
+  color: var(--animus-muted);
 }
 
 .animus-npc-folder-form {
