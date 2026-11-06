@@ -42,6 +42,7 @@ import '../npc/npc_section.dart';
 import '../npc/skin_picker.dart';
 import '../info_tip.dart';
 import 'inspect_fields.dart';
+import '../select/suggest_input.dart';
 
 /// Keys the NPC inspector lays out itself; the rest show under kept fields.
 const Set<String> _laidOut = <String>{
@@ -310,6 +311,12 @@ class _NpcInspectorState extends State<NpcInspector> {
             placeholder: 'guard',
             suggestions: <FieldOption>[for (final String tag in known) FieldOption(tag)],
             onChanged: (String value) => setState(() => _newTag = value.trim().toLowerCase()),
+            onSubmit: valid
+                ? () {
+                    put(<String>[...tags, adding]);
+                    setState(() => _newTag = '');
+                  }
+                : null,
           ),
           Button.ghost(
             label: 'Add tag',
@@ -478,6 +485,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           problems: diagnosticsAt(_diagnostics, r'$.rig', nested: true),
           child: dom.div(classes: 'animus-gui-line', <Widget>[
             GuiSelect(
+              references: DocumentKind.rig,
               id: rigId,
               value: rig,
               options: rigs,
@@ -731,6 +739,7 @@ class _NpcInspectorState extends State<NpcInspector> {
           if (available.isNotEmpty) ...<Widget>[
             const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': addId}, <Widget>[Component.text('Add a workspace behavior')]),
             GuiSelect(
+              references: DocumentKind.behavior,
               id: addId,
               value: null,
               options: available,

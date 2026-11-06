@@ -92,7 +92,7 @@ async function run(browser, viewport, theme, tag) {
   await addAttribute(page, attributes, 'scale');
   const scale = attributes.locator('[data-attribute="scale"]');
   assert.equal((await scale.locator('[data-attribute-hint]').textContent()).trim(), '0.0625..16, vanilla 1');
-  await scale.getByText('Body size', {exact: false}).waitFor();
+  await scale.getByText('Body size', {exact: false}).waitFor({state: 'attached'});
   assert.deepEqual((await codeOf(page)).attributes, {scale: 1});
   attributes = await part(page, 'attributes');
   await scale.getByLabel('scale value').fill('2');

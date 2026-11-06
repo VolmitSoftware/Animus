@@ -245,6 +245,8 @@
 - Web editor: an Attributes section for NPCs and groups, with range hints, defaults and sources; the preview shows `scale`.
 - Web editor: a Conversation tab builds a behavior's lines, questions, conditions and actions as a tree by keyboard, writes the routines, `animus:choices` actions and `dialogue_choice` triggers with ids it keeps, opens matching hand-written behaviors, plays the conversation in the browser and attaches it to NPCs and groups in one undoable step.
 - Web editor: New conversation in the sidebar and the command palette, and a Conversation behavior template.
+- Web editor: dropdowns that pick a rig, animation, route, recording, group, behavior, skin, shop, chest GUI or menu end with "+ New" (opens the create form with the typed text as the name and the current folder, then returns with the new document picked) and "Manage" (lists that kind). Recordings show how to record one in game instead.
+- Web editor: sidebar sections and NPC folders collapse from their headers, with Collapse all and Expand all; the state is kept per workspace.
 
 ### Changed
 
@@ -345,6 +347,7 @@
 - Shopkeepers imports open in the trading screen (`"style": "native"`), and villager profession and level move from the review section to `animus:shop` `villager`; the importer version is 2.
 - `gravity: false` stays the hover switch and wins over the `gravity` attribute, which sets how fast a body falls.
 - Citizens converter version 13: the attribute trait converts to `attributes` instead of only `movement.stepHeight`, and an armor stand without gravity converts to `gravity: false`.
+- Web editor: every select and suggestion list is the editor's own square dropdown. Lists longer than eight entries have a search field, the keyboard works as in a native select, and phones get a full-width sheet with 44 px rows.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -506,6 +509,10 @@
 - Attack swings go out with moves, so they are no longer delayed by cosmetic pauses or skipped as stale.
 - Controlled iron golems, ravagers, hoglins, zoglins and wardens show their own attack animation instead of a swing.
 - Imported armor stands no longer turn to players unless their Citizens save turns look-close on.
+- Right-clicking a door, chest or other usable block on Paper no longer throws `NoSuchMethodError` for `Material.getKeyOrThrow`; the build now checks every server method the plugin calls against the Spigot and Paper APIs of 26.1.2, 26.2 and 26.3.
+- After `/animus editor pair`, the editor's minute permission re-check no longer fails with "NPC runtime requires the owner thread" on Paper, Spigot and mod servers; it runs on the server thread. A repeating editor task failure is now one WARN line, repeated at most every 10 minutes with a count.
+- A route's `maximumFall` now counts levels as Citizens and the game do, so an NPC with a fall of 1 drops from a ledge onto a slab or path one level down instead of reporting the leg blocked and teleporting.
+- A walking NPC now moves at its configured speed; distance left over when a step reached a path node was dropped, which held a fast player body near 6 blocks a second.
 - Editor fields show a range once, under the field, instead of again as the placeholder.
 - Editor number fields are as wide as their allowed range; the control moves under its label in narrow panels.
 - Nested settings such as movement and stuck lay out as full-width groups instead of squeezed columns.

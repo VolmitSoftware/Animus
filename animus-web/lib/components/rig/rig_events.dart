@@ -11,6 +11,7 @@ import '../../config/docs_links.dart';
 import '../../logic/inspect/inspect_schemas.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../logic/rig_edit.dart';
+import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 
 /// Arguments the event form leaves out: events always play to nearby players.
@@ -133,14 +134,13 @@ class _RigEventEditorState extends State<RigEventEditor> {
       _input('Tick', 'tick', '$_tick', _commitTick, number: true),
       dom.label(key: ValueKey<String>('runs:${component.index}:$_capability'), classes: 'animus-rig-field is-inline', <Widget>[
         const dom.span(<Widget>[Component.text('Runs')]),
-        ArcaneSelect(
-          size: ComponentSize.sm,
+        GuiSelect(
           value: _capability,
-          options: <ArcaneSelectOption>[
-            for (final String capability in eventCapabilities) ArcaneSelectOption(label: capabilityLabel(capability), value: capability),
-          ],
-          onChanged: (String value) {
-            if (value != _capability) component.onUpdate(_tick, value, starterArguments(value));
+          options: eventCapabilities,
+          labels: <String, String>{for (final String capability in eventCapabilities) capability: capabilityLabel(capability)},
+          hiddenLabel: 'Runs',
+          onChanged: (String? value) {
+            if (value != null && value != _capability) component.onUpdate(_tick, value, starterArguments(value));
           },
         ),
       ]),
@@ -148,14 +148,13 @@ class _RigEventEditorState extends State<RigEventEditor> {
         if (field.kind == FieldKind.choice)
           dom.label(classes: 'animus-rig-field is-inline', <Widget>[
             dom.span(<Widget>[Component.text(field.key)]),
-            ArcaneSelect(
-              size: ComponentSize.sm,
+            GuiSelect(
               value: _arguments[field.key] == null ? '' : '${_arguments[field.key]}',
-              options: <ArcaneSelectOption>[
-                const ArcaneSelectOption(label: '(default)', value: ''),
-                for (final FieldOption option in field.options) ArcaneSelectOption(label: option.label, value: option.label),
-              ],
-              onChanged: (String value) => _set(field.key, value.isEmpty ? null : value),
+              options: <String>[for (final FieldOption option in field.options) option.label],
+              allowNone: true,
+              noneLabel: '(default)',
+              hiddenLabel: field.key,
+              onChanged: (String? value) => _set(field.key, value),
             ),
           ])
         else
