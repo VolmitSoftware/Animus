@@ -18,10 +18,10 @@
     "/traits/skintrait/updateSkins": "UNSUPPORTED_PRESERVED"
   },
   "reasons": {
-    "/traits/skintrait/skinName": "skins show only on player bodies; this one is kept for when the NPC becomes a player",
-    "/traits/skintrait/signature": "skins show only on player bodies; this one is kept for when the NPC becomes a player",
-    "/traits/skintrait/textureRaw": "skins show only on player bodies; this one is kept for when the NPC becomes a player",
-    "/traits/skintrait/updateSkins": "skins show only on player bodies; this one is kept for when the NPC becomes a player"
+    "/traits/skintrait/skinName": "Citizens draws skins only on player NPCs, so this frog never showed it; kept for when the NPC becomes a player",
+    "/traits/skintrait/signature": "Citizens draws skins only on player NPCs, so this frog never showed it; kept for when the NPC becomes a player",
+    "/traits/skintrait/textureRaw": "Citizens draws skins only on player NPCs, so this frog never showed it; kept for when the NPC becomes a player",
+    "/traits/skintrait/updateSkins": "Citizens draws skins only on player NPCs, so this frog never showed it; kept for when the NPC becomes a player"
   },
   "worldRemaps": [
     {

@@ -64,6 +64,13 @@ bool _playerTarget(String value) {
 
 bool _everyone(String value) => value.toLowerCase() == '<server.online_players>';
 
+/// The player who triggered the behavior, as Sentinel's target syntax names them.
+bool _triggeringPlayer(String value) {
+  String lowered = value.toLowerCase();
+  if (lowered.startsWith('player:')) lowered = lowered.substring(7);
+  return lowered == '<player>' || lowered == '<player.name>' || lowered == '<player.uuid>';
+}
+
 bool _npcTarget(String value) {
   final String lowered = value.toLowerCase();
   return lowered == '<npc>' || lowered == 'npc';
@@ -679,6 +686,7 @@ class _Commands {
         'look' => scope.server ? const _Converted.kept(_noNpc) : _look(command),
         'walk' => scope.server ? const _Converted.kept(_noNpc) : _walk(command),
         'equip' => scope.server ? const _Converted.kept(_noNpc) : equip(command),
+        'trait' => scope.server ? const _Converted.kept(_noNpc) : _trait(command),
         'playsound' => sound(command, scope),
         'playeffect' => _particle(command, scope),
         'actionbar' => actionbar(command, scope, pending),
@@ -1065,12 +1073,85 @@ class _Commands {
     if (as == null) return const _Converted.kept('execute needs as_server, as_op or as_player');
     String line = javaTrim(words.join(' '));
     if (line.startsWith('/')) line = line.substring(1);
+    final List<String> split = line.split(RegExp(r'\s+'));
+    if (split.first.toLowerCase() == 'sentinel') return _sentinel(split.sublist(1), scope);
     final _Result<_Text> text = this.text(line, scope, pending, true, 1024);
     if (text.failed) return _Converted.kept(text.reason!);
     if (!text.value!.isDynamic && javaIsBlank(text.value!.literal!)) return const _Converted.kept('command is empty');
     final _Action action = _Action()..text('command', text.value!);
     if (as == 'player') action.put('as', const JString('player'));
     return _Converted.of(<JObject>[action.node('animus:command')]);
+  }
+
+  /// A `/sentinel` command. Sentinel is replaced by animus:combat, so the forms that act on the NPC become
+  /// combat-control on the behavior's own NPC; target types and Sentinel settings are kept with the reason.
+  _Converted _sentinel(List<String> words, _Scope scope) {
+    if (scope.server) return const _Converted.kept('sentinel acts on an NPC, and $_noNpc');
+    final List<String> rest = <String>[];
+    for (int i = 0; i < words.length; i++) {
+      final String word = words[i];
+      String? id;
+      if (word.toLowerCase() == '--id' && i + 1 < words.length) {
+        id = words[++i];
+      } else if (word.toLowerCase().startsWith('--id=')) {
+        id = word.substring(5);
+      }
+      if (id == null) {
+        rest.add(word);
+        continue;
+      }
+      if (id.toLowerCase() != '<npc.id>' && id.toLowerCase() != '<npc>') {
+        return const _Converted.kept("sentinel names another NPC with --id; animus:combat acts on the behavior's own NPC");
+      }
+    }
+    final String operation = rest.isEmpty ? '' : rest.first.toLowerCase();
+    final List<String> arguments = rest.isEmpty ? const <String>[] : rest.sublist(1);
+    final bool player = arguments.length == 1 && _triggeringPlayer(arguments.first);
+    final _Action action = _Action();
+    switch (operation) {
+      case 'addtarget':
+      case 'removetarget':
+        if (!player) {
+          return _Converted.kept("sentinel ${rest.join(' ')}: target types are animus:combat settings; set them in the NPC's animus:combat targets");
+        }
+        // Taking the player off the target list stops the attack on them; combat-control releases the current target.
+        action.put('operation', JString(operation == 'addtarget' ? 'target' : 'release'));
+        if (operation == 'addtarget') action.put('target', const JString('player'));
+      case 'forgive':
+      case 'forgiveall':
+        if (arguments.isNotEmpty) return _Converted.kept('sentinel $operation with arguments has no combat action');
+        action.put('operation', const JString('release'));
+      case 'guard':
+        if (arguments.isNotEmpty && !player) return const _Converted.kept('sentinel guard guards only the triggering player in Animus');
+        action.put('operation', const JString('guard'));
+        if (player) action.put('target', const JString('player'));
+      case '':
+        return const _Converted.kept('sentinel without a subcommand');
+      default:
+        return _Converted.kept("sentinel $operation has no combat action; set it in the NPC's animus:combat settings");
+    }
+    return _Converted.of(<JObject>[action.node('animus:combat-control')]);
+  }
+
+  /// `trait state:true|false sentinel`: Sentinel on or off becomes the NPC's combat on or off.
+  _Converted _trait(DenizenCommand command) {
+    String state = 'toggle';
+    String? name;
+    for (final DenizenArg arg in command.args) {
+      if (arg.prefix == 'state') {
+        state = arg.value.toLowerCase();
+      } else if (arg.prefix == 'to' && _npcTarget(arg.value)) {
+        continue;
+      } else if (arg.prefix.isEmpty && name == null) {
+        name = arg.value.toLowerCase();
+      } else {
+        return _Converted.kept('trait argument ${_raw(arg)} has no Animus equivalent');
+      }
+    }
+    if (name != 'sentinel') return _Converted.kept('no Animus equivalent for the ${name ?? 'unnamed'} trait');
+    if (state != 'true' && state != 'false') return const _Converted.kept('trait toggles Sentinel without saying on or off; use state:true or state:false');
+    final _Action action = _Action()..put('operation', JString(state == 'true' ? 'enable' : 'disable'));
+    return _Converted.of(<JObject>[action.node('animus:combat-control')]);
   }
 
   String? material(String value) {

@@ -335,6 +335,20 @@ class EditorApiTest {
     }
 
     @Test
+    void apply_recording_isStoredInItsSerializedForm() throws Exception {
+        JsonObject source = art.arcane.animus.core.storage.JsonDocuments.object(SharedFixtures.text(SharedFixtures.fixture("recordings/roundtrip-input.json")));
+        EditorResponse response = harness.send("POST", "/v1/changes", harness.token(), set("key-0000000000000031", change("recording", "market-loop", null, source)));
+        valid("change-applied", response);
+        assertEquals(SharedFixtures.text(SharedFixtures.fixture("recordings/market-loop.json")), harness.read("recordings/market-loop.json"));
+        JsonObject broken = source.deepCopy();
+        broken.addProperty("durationTicks", 81);
+        JsonObject current = EditorHarness.json(harness.send("GET", "/v1/documents/recording/market-loop", harness.token(), null));
+        EditorResponse refused = harness.send("POST", "/v1/changes", harness.token(), set("key-0000000000000032", change("recording", "market-loop", current, broken)));
+        assertEquals(422, refused.status());
+        valid("change-invalid", refused);
+    }
+
+    @Test
     void apply_duplicateNpcId_isRefused() throws Exception {
         JsonObject created = greeter().getAsJsonObject("source").deepCopy();
         created.addProperty("group", "other");
