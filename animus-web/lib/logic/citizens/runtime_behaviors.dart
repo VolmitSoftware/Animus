@@ -322,6 +322,14 @@ class _Runtime {
     return citizensSpeed(factor);
   }
 
+  /// The NPC is an armor stand: Citizens' `type` trait, with or without its namespace.
+  bool _armorStand() {
+    final JElement? type = traits.get('type');
+    if (type is! JPrimitive) return false;
+    final String key = type.asString.toLowerCase();
+    return key == 'armor_stand' || key == 'minecraft:armor_stand';
+  }
+
   // ---- Look-close ----
 
   JObject? lookClose() {
@@ -329,7 +337,13 @@ class _Runtime {
     if (look == null) return null;
     const String base = '/traits/lookclose';
     final JObject values = defaults.get('lookclose')! as JObject;
-    final bool enabled = _flag(look, 'enabled', values.get('enabled')!.asPrimitive.asBoolean, base);
+    bool enabled = _flag(look, 'enabled', values.get('enabled')!.asPrimitive.asBoolean, base);
+    // A posed stand that turns to players breaks the scene it was posed for; only a save that turns it on explicitly does.
+    if (enabled && _armorStand() && !look.has('enabled')) {
+      enabled = false;
+      warnings.add("$base/enabled: an armor stand keeps its own facing and pose, so the server's look-close default is not applied; "
+          'set enabled in animus:look-close to turn it toward players');
+    }
     final bool realistic = _flag(look, 'realisticlooking', values.get('realisticlooking')!.asPrimitive.asBoolean, base);
     final bool disabled = _flag(look, 'disablewhilenavigating', values.get('disablewhilenavigating')!.asPrimitive.asBoolean, base);
     double range = 10;

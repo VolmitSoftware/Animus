@@ -884,13 +884,29 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         changeLook(value, RecordingSteps.pose(pose, value.spec.appearance().pose()), RecordingSteps.motion(pose));
     }
     private void resetLook(Value value) { changeLook(value, value.spec.appearance().pose(), 0); }
+    /** The playback's pose and motion; a bow drawn in a fight stays drawn across them. */
     private void changeLook(Value value, NpcPose pose, int motion) {
-        if (value.lookPose == pose && value.lookMotion == motion) return;
-        value.lookPose = pose; value.lookMotion = motion; value.lookRevision++;
-        value.look = BodyLook.of(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.spec.appearance()).moving(pose, motion);
+        int shown = motion | (value.drawing ? BodyLook.USING_ITEM : 0);
+        if (value.lookPose == pose && value.lookMotion == shown) return;
+        value.lookPose = pose; value.lookMotion = shown; value.lookRevision++;
+        value.look = BodyLook.of(value.spec.definition().uuid(), value.spec.type(), value.displayName, value.spec.appearance()).moving(pose, shown);
     }
     /** Viewers pick the swing up with their cosmetic work; several swings in a few ticks show as one. */
     private void swing(Value value) { value.swings++; value.swungAt = tickNumber; }
+    /** Shows one attack to everyone who sees the NPC, sent with its moves rather than after cosmetic work. */
+    public void attackSwing(String id) {
+        if (!available()) return;
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        if (value != null) value.attackSwings++;
+    }
+    /** Raises or lowers the NPC's bow for everyone who sees it. */
+    public void drawing(String id, boolean drawing) {
+        if (!available()) return;
+        owner(); Entry entry = entries.get(id); Value value = entry == null ? null : entry.value;
+        if (value == null || value.drawing == drawing) return;
+        value.drawing = drawing;
+        changeLook(value, value.lookPose, value.lookMotion & ~BodyLook.USING_ITEM);
+    }
     /** Replaces the current route with a reusable route; its read and any read failure are reported in navigation status. */
     @Override public void followRoute(String id, String route) {
         Value value = navigable(id);
@@ -1070,6 +1086,20 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                 if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) cosmeticFailed(viewer, "swing", body.value, failure); });
             });
         } catch (RuntimeException failure) { cosmeticFailed(viewer, "swing", body.value, failure); }
+        return true;
+    }
+    /**
+     * One swing for every attack since this viewer's last, admitted like a move: an attack is feedback for a hit the
+     * viewer may feel, so it neither waits for cosmetic budget nor goes stale. A failed send is recorded and not retried.
+     */
+    private boolean attackSwing(Viewer viewer, Presented body) {
+        if (!admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) return false;
+        body.deliveredAttackSwings = body.value.attackSwings;
+        try {
+            handOver(viewer, () -> packets.swing(viewer.player, body.body)).whenComplete((Void nothing, Throwable failure) -> {
+                if (failure != null) enqueue(viewer, () -> { if (current(viewer) && !body.retired) cosmeticFailed(viewer, "attack swing", body.value, failure); });
+            });
+        } catch (RuntimeException failure) { cosmeticFailed(viewer, "attack swing", body.value, failure); }
         return true;
     }
     /** Reserves a place in the viewer's outbox; a full queue counts as a short budget, so cosmetic work yields while it drains. */
@@ -2041,6 +2071,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
                     sent++;
                     if (!current(viewer)) return sent;
                 }
+                if (body.spawnFinished && body.bound && sent < packetBudget && body.deliveredAttackSwings != body.value.attackSwings) {
+                    if (!attackSwing(viewer, body)) return sent;
+                    sent++;
+                    if (!current(viewer)) return sent;
+                }
             }
             sent += mountRuntime.updatePassengers(viewer, packetBudget - sent);
         }
@@ -2076,7 +2111,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         try {
             BodyTransport.Body body = NpcPresentation.body(packets, value.spec, value.displayName, value.displaySkin);
             Presented presented = new Presented(value, body); viewer.visible.put(body.uuid(), presented); showing.shown(body.uuid(), viewer);
-            presented.deliveredSwings = value.swings;
+            presented.deliveredSwings = value.swings; presented.deliveredAttackSwings = value.attackSwings;
             viewer.presentationOrder.addLast(presented); viewer.cosmeticOrder.addLast(presented);
             viewer.nativeIds += body.entityIds().length; viewer.pendingSpawns++;
             presented.deliveredPoseRevision = value.poseRevision;
@@ -2369,6 +2404,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         final RecordingDoors recordingDoors;
         /** The pose and motion a playback shows; {@link #look} is the body look with them, sent when {@link #lookRevision} moves. */
         NpcPose lookPose; int lookMotion; long lookRevision; BodyLook look;
+        /** Attacks so far, sent with moves; and whether a fight holds the bow drawn, shown through {@link #look}. */
+        long attackSwings; boolean drawing;
         final MountReference mountReference; final RideSettings ride; final SeatGeometry seat;
         boolean supportQueued; double fallSpeed;
         final LookClose lookClose; long nextLook, nextRandomLook;
@@ -2423,7 +2460,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     final class Presented {
         final Value value; final BodyTransport.Body body;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking;
-        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision, deliveredSwings;
+        long deliveredPoseRevision, deliveredEquipmentRevision, deliveredLookRevision, deliveredSwings, deliveredAttackSwings;
         List<Integer> sentRoster = List.of();
         int sentDragonPhase = DragonBody.PHASE_HOVERING;
         BodyTransport.Bones bones; RigView view; long rigIdentity, socketRevision; boolean bonesShown, rigFailed;
