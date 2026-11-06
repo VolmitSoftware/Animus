@@ -53,7 +53,7 @@ class DenizenDropInTest {
             CitizensDropIn flow = dropIn(store, npcs);
             assertTrue(flow.startupNotice().orElseThrow().contains("plugins/Denizen/scripts"));
             String staged = joined(flow.execute(new String[0]));
-            assertTrue(staged.contains("Denizen plugins/Denizen: 13 scripts; 8 behaviors for 1 NPCs; 15 flag values imported, 2 kept"), staged);
+            assertTrue(staged.contains("Denizen plugins/Denizen: 14 scripts; 9 behaviors for 1 NPCs; 15 flag values imported, 2 kept"), staged);
             assertTrue(staged.contains("commandNamespaces = [\"denizen\"]"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
 
@@ -145,6 +145,67 @@ class DenizenDropInTest {
         DenizenImporter.accept(definition);
         DenizenImporter.accept(definition);
         assertEquals(2, definition.getAsJsonArray("behaviors").size());
+    }
+
+    @Test void oneApplyKeepsTheShopkeepersShopAndTheDenizenBehaviorsOnTheSameNpc() throws Exception {
+        leaveServerFolders();
+        Path save = root.resolve("plugins/Shopkeepers/data/save.yml");
+        Files.createDirectories(save.getParent());
+        Files.writeString(save, """
+                data-version: 4|4189
+                '1':
+                  uniqueId: 6c1b7a43-9a0e-4d7f-8a39-1f9f0f2a0101
+                  name: Gate Shop
+                  world: world
+                  x: 4
+                  y: 64
+                  z: 8
+                  type: admin
+                  object:
+                    type: citizen
+                    npcId: 00000000-0000-4000-8000-000000000001
+                  recipes:
+                    '1':
+                      resultItem:
+                        id: minecraft:bread
+                        count: 2
+                      item1:
+                        id: minecraft:emerald
+                        count: 1
+                """);
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            flow.execute(new String[0]);
+            String applied = joined(flow.execute(new String[]{"apply"}));
+            assertTrue(applied.contains("1 bound to Citizens NPCs"), applied);
+            assertTrue(applied.contains("Denizen behaviors installed"), applied);
+            JsonObject modules = npcs.find("citizens-0").orElseThrow().json().getAsJsonObject("modules");
+            assertTrue(modules.has("animus:shop"), "the Shopkeepers shop survives the Denizen part");
+            assertTrue(modules.has(DenizenImporter.MODULE), "the Denizen behaviors are bound");
+            JsonObject stored = art.arcane.animus.core.storage.JsonDocuments.object(store.read(npcs.find("citizens-0").orElseThrow().path())).getAsJsonObject("modules");
+            assertTrue(stored.has("animus:shop") && stored.has(DenizenImporter.MODULE), stored.toString());
+        }
+    }
+
+    @Test void denizenApplyRefusesAnNpcChangedSinceItWasRead() throws Exception {
+        leaveServerFolders();
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            Path saves = root.resolve("plugins/Citizens/saves.yml");
+            new CitizensImporter().apply(store, new CitizensImporter().preview(saves, store, java.util.Map.of()).id());
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            NpcRepository.Installed stale = npcs.installed();
+            NpcRepository.Draft draft = npcs.draft("citizens-0");
+            JsonObject edited = draft.document();
+            edited.addProperty("name", "Gatekeeper");
+            npcs.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+            DenizenImporter importer = new DenizenImporter();
+            DenizenImporter.Preview preview = importer.preview(root.resolve("plugins/Denizen"), Optional.of(saves), store);
+            IOException refused = assertThrows(IOException.class, () -> importer.apply(store, preview.id(), stale));
+            assertTrue(refused.getMessage().contains("Conflict"), refused.getMessage());
+            assertEquals("Gatekeeper", npcs.find("citizens-0").orElseThrow().name());
+            assertNull(store.read("behaviors/denizen/interact/guard_quest.json"), "nothing of the refused apply is installed");
+        }
     }
 
     @Test void storedDenizenStateStopsTheApply() throws Exception {

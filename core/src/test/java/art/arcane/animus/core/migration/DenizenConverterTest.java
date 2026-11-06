@@ -228,6 +228,27 @@ class DenizenConverterTest {
         assertEquals(object("{\"title\":\"&6Town gate\",\"subtitle\":\"Welcome home\",\"stay\":40}"), main.getAsJsonObject("arguments"));
     }
 
+    @Test void aSpaceAloneStaysABlankTitleAndABlankBookAuthorFallsBack() throws IOException {
+        DenizenConverter.Output output = convert("""
+                t:
+                  type: task
+                  script:
+                  - title title:<&sp> subtitle:Welcome
+                  - actionbar <&sp>
+                  - give blank_book
+                blank_book:
+                  type: book
+                  title: <&sp>
+                  author: <&sp>
+                  text:
+                  - Hello.
+                """);
+        JsonObject main = document(output, "denizen:task/t").getAsJsonObject("routines").getAsJsonObject("main");
+        assertEquals(object("{\"title\":\" \",\"subtitle\":\"Welcome\"}"), step(main, 0).getAsJsonObject("arguments"));
+        assertEquals(object("{\"text\":\" \"}"), step(main, 1).getAsJsonObject("arguments"));
+        assertEquals(object("{\"title\":\"blank_book\",\"author\":\"Server\",\"pages\":[\"Hello.\"]}"), step(main, 2).getAsJsonObject("arguments"));
+    }
+
     @Test void itemsBooksTeleportAndAdjustUseTheNewActions() throws IOException {
         DenizenConverter.Output output = convert("""
                 t:

@@ -3,6 +3,7 @@ package art.arcane.animus.core.migration;
 import art.arcane.animus.core.migration.ImportReport.Status;
 import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.shop.ShopBinding;
 import art.arcane.animus.core.shop.ShopDocument;
@@ -19,7 +20,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -593,7 +593,7 @@ public final class ShopkeepersImporter {
      * Installs the staged shops and new NPCs and binds each Citizens shopkeeper whose NPC is installed, in one
      * transaction. A shop or NPC file that already exists with other content stops the whole apply.
      */
-    public Applied apply(DocumentStore store, String id, Collection<NpcDefinition> installed) throws IOException {
+    public Applied apply(DocumentStore store, String id, NpcRepository.Installed installed) throws IOException {
         if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
         Path staged = store.resolve(IMPORTS + "/" + id);
         Preview preview = read(staged, id);
@@ -602,7 +602,7 @@ public final class ShopkeepersImporter {
         List<DocumentStore.Change> changes = new ArrayList<>();
         Set<UUID> uuids = new HashSet<>();
         Set<String> ids = new HashSet<>();
-        for (NpcDefinition definition : installed) { uuids.add(definition.uuid()); ids.add(definition.id()); }
+        for (NpcDefinition definition : installed.definitions()) { uuids.add(definition.uuid()); ids.add(definition.id()); }
         for (Map.Entry<String, JsonElement> document : preview.summary().getAsJsonObject("documents").entrySet()) {
             String relative = document.getKey();
             if (!relative.matches(SHOP_PATH) && !relative.matches(NPC_PATH)) throw new IOException("Invalid bundle path: " + relative);
@@ -626,7 +626,7 @@ public final class ShopkeepersImporter {
         List<String> problems = new ArrayList<>();
         List<NpcDefinition> edited = new ArrayList<>();
         Map<String, String> expected = new HashMap<>();
-        int bound = bindings(store, preview.bindings(), installed, edited, expected, pending, problems);
+        int bound = bindings(preview.bindings(), installed, edited, expected, pending, problems);
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);
         receipt.addProperty("shops", preview.shops());
@@ -637,21 +637,21 @@ public final class ShopkeepersImporter {
     }
 
     /** Binds pending Citizens shopkeepers to NPCs installed since; empty when none of them is installed yet. */
-    public static Optional<Applied> bind(DocumentStore store, JsonArray pending, Collection<NpcDefinition> installed) throws IOException {
+    public static Optional<Applied> bind(DocumentStore store, JsonArray pending, NpcRepository.Installed installed) throws IOException {
         List<NpcDefinition> edited = new ArrayList<>();
         Map<String, String> expected = new HashMap<>();
         JsonArray still = new JsonArray();
         List<String> problems = new ArrayList<>();
-        int bound = bindings(store, pending, installed, edited, expected, still, problems);
+        int bound = bindings(pending, installed, edited, expected, still, problems);
         if (edited.isEmpty()) return Optional.empty();
         return Optional.of(new Applied(DefinitionBatch.commit(store, edited, expected, List.of()), bound, still, problems));
     }
 
-    private static int bindings(DocumentStore store, JsonArray requested, Collection<NpcDefinition> installed, List<NpcDefinition> changes, Map<String, String> expected,
+    private static int bindings(JsonArray requested, NpcRepository.Installed installed, List<NpcDefinition> changes, Map<String, String> expected,
                                 JsonArray pending, List<String> problems) throws IOException {
         Map<String, NpcDefinition> byUuid = new HashMap<>();
         Map<Integer, NpcDefinition> byCitizensId = new HashMap<>();
-        for (NpcDefinition definition : installed) {
+        for (NpcDefinition definition : installed.definitions()) {
             byUuid.put(definition.uuid().toString(), definition);
             JsonObject json = definition.json();
             if (json.has("migration") && json.get("migration").isJsonObject() && json.getAsJsonObject("migration").has("citizensId")) {
@@ -678,7 +678,7 @@ public final class ShopkeepersImporter {
             json.add("modules", modules);
             json.addProperty("revision", target.revision() + 1);
             changes.add(NpcDefinition.parse(JsonDocuments.write(json)));
-            expected.put(target.path(), store.hash(target.path()));
+            expected.put(target.path(), installed.expectedHash(target));
             bound++;
         }
         return bound;

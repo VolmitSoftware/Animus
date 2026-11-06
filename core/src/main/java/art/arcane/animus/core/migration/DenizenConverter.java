@@ -43,6 +43,8 @@ import java.util.UUID;
  */
 final class DenizenConverter {
     static final int CONVERTER_VERSION = 2;
+    /** The author a converted book gets when its Denizen author is blank. */
+    static final String BLANK_BOOK_AUTHOR = "Server";
     static final String NAMESPACE = "denizen";
     static final int MAXIMUM_FILES = 512, MAXIMUM_PLAYERS = 10_000, MAXIMUM_STATE_KEYS = 128, MAXIMUM_TEXT = 1024, DEFAULT_RADIUS = 5;
     static final String STATE_ROOT = "state/behavior-state/", GUI_ROOT = "guis/denizen/";
@@ -1115,7 +1117,9 @@ final class DenizenConverter {
             Result<Text> text = expressions.text(value.get(), scope, pending, false, 0);
             if (text.failed()) return Result.fail(text.reason());
             if (!text.value().dynamic() && text.value().literal().length() > 32) return Result.fail("book " + field + " longer than 32 characters");
-            action.text(field, text.value());
+            // A signed book needs a visible title and author, so a blank one (often <&sp>) falls back to the script name or Server.
+            if (!text.value().dynamic() && text.value().literal().isBlank()) action.put(field, field.equals("title") ? book.name().substring(0, Math.min(32, book.name().length())) : BLANK_BOOK_AUTHOR);
+            else action.text(field, text.value());
         }
         Optional<Node> pages = book.body().get("text");
         if (pages.isEmpty() || !(pages.get() instanceof Sequence sequence) || sequence.items().isEmpty()) return Result.fail("book script without text pages");
