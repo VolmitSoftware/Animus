@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000101",
+  "id": "citizens-1",
+  "group": "world",
+  "name": "Absent 1",
+  "type": "minecraft:frog",
+  "spawned": false,
+  "migration": {
+    "importId": "61ff927202b9166f3ee29a1f98a87796df80a6cd033cff814ba243e33cfdbbbc",
+    "citizensId": 1,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 1,
+    "y": 64,
+    "z": 1,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "FROG",
+      "location": {
+        "world": "world",
+        "x": 1,
+        "y": 64,
+        "z": 1
+      },
+      "itemframe": [
+        1,
+        2
+      ],
+      "leashedtrait": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "mirrortrait": "text",
+      "ocelotmodifiers": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "packet": {
+        "enabled": true
+      },
+      "paintingtrait": [
+        1,
+        2
+      ],
+      "pausepathfinding": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "playerfilter": "text",
+      "powered": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "profession": {
+        "enabled": true
+      },
+      "rabbittype": [
+        1,
+        2
+      ],
+      "saddle": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "scaledhealthtrait": "text",
+      "sheeptrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "shop": {
+        "enabled": true
+      },
+      "skinlayers": [
+        1,
+        2
+      ]
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000008",
+  "id": "citizens-7",
+  "group": "world",
+  "name": "Bad Mount",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "422e5c989fcb1593adb1b901b20abf74f3d8a2644d1153d3524dc7b9d67adff0",
+    "citizensId": 7,
+    "originalSpawned": null,
+    "references": [
+      {
+        "source": "/traits/mounttrait/mountedon",
+        "kind": "mount",
+        "original": "0A1B2C3D-0000-4000-8000-000000000003",
+        "status": "invalid"
+      }
+    ]
+  },
+  "position": {
+    "world": "world",
+    "x": 0,
+    "y": 64,
+    "z": 0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 0,
+        "y": 64,
+        "z": 0
+      },
+      "mounttrait": {
+        "mountedon": "0A1B2C3D-0000-4000-8000-000000000003"
+      }
+    }
+  }
+}

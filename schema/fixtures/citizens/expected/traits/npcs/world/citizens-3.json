@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000004",
+  "id": "citizens-3",
+  "group": "world",
+  "name": "Rider",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "422e5c989fcb1593adb1b901b20abf74f3d8a2644d1153d3524dc7b9d67adff0",
+    "citizensId": 3,
+    "originalSpawned": null,
+    "references": [
+      {
+        "source": "/traits/mounttrait/mountedon",
+        "kind": "mount",
+        "original": "0a1b2c3d-0000-4000-8000-000000000003",
+        "npcUuid": "0a1b2c3d-0000-4000-8000-000000000003",
+        "npcId": "citizens-2",
+        "citizensId": 2,
+        "status": "resolved"
+      }
+    ]
+  },
+  "position": {
+    "world": "world",
+    "x": 0,
+    "y": 65,
+    "z": 0,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "pose": "sneaking",
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 0,
+        "y": 65,
+        "z": 0
+      },
+      "mounttrait": {
+        "mountedon": "0a1b2c3d-0000-4000-8000-000000000003"
+      },
+      "sittrait": {
+        "sittingAt": {
+          "world": "world",
+          "x": 0,
+          "y": 65,
+          "z": 0
+        }
+      },
+      "sneak": {
+        "sneaking": true
+      },
+      "sneaking": {
+        "sneaking": true
+      }
+    }
+  },
+  "skin": "25acce198f371e8a14720e1aebe18d881a76b32a48c7fb5217ca8d9f1bdabc6e"
+}

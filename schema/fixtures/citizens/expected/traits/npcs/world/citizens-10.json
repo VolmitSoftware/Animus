@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000010",
+  "id": "citizens-10",
+  "group": "world",
+  "name": "Ambiguous Rider",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "422e5c989fcb1593adb1b901b20abf74f3d8a2644d1153d3524dc7b9d67adff0",
+    "citizensId": 10,
+    "originalSpawned": null,
+    "references": [
+      {
+        "source": "/traits/mounttrait/mountedon",
+        "kind": "mount",
+        "original": "0a1b2c3d-0000-4000-8000-0000000000aa",
+        "status": "ambiguous"
+      }
+    ]
+  },
+  "position": {
+    "world": "world",
+    "x": 10,
+    "y": 64,
+    "z": 10,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 10,
+        "y": 64,
+        "z": 10
+      },
+      "mounttrait": {
+        "mountedon": "0a1b2c3d-0000-4000-8000-0000000000aa"
+      }
+    }
+  }
+}

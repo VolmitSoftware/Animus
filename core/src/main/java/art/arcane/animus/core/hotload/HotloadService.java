@@ -184,7 +184,10 @@ public final class HotloadService implements AutoCloseable {
         if (screens) parts.refreshScreens().run();
     }
 
-    /** The settings and catalog reloads on the file lane, as an editor apply runs them. Empty when the lane is busy or slow, to retry. */
+    /**
+     * The settings and catalog reloads on the file lane, as an editor apply runs them, finished once every reloaded catalog is
+     * live so a run right after the notice sees the new version. Empty when the lane is busy or slow, to retry.
+     */
     private Optional<List<String>> applyOnFileLane(List<Item> valid) {
         Set<DocumentKind> kinds = EnumSet.noneOf(DocumentKind.class);
         Set<String> removed = new TreeSet<>();
@@ -204,8 +207,12 @@ public final class HotloadService implements AutoCloseable {
                     List<String> problems = new ArrayList<>();
                     next.ifPresent(parts.runtime()::applySettings);
                     CatalogChange change = new CatalogChange(kinds, removed, false);
-                    if (!change.empty()) parts.runtime().catalogs().reload(change, problems::add);
-                    done.complete(problems);
+                    // Behavior, shop and hologram reloads queue behind this task; the notice waits for them to go live.
+                    CompletableFuture<Void> live = change.empty() ? CompletableFuture.completedFuture(null) : parts.runtime().catalogs().reloaded(change, problems::add);
+                    live.whenComplete((Void ignored, Throwable failure) -> {
+                        if (failure != null) done.completeExceptionally(failure);
+                        else done.complete(List.copyOf(problems));
+                    });
                 } catch (RuntimeException | LinkageError failure) { done.completeExceptionally(failure); }
             });
         } catch (RejectedExecutionException busy) { return Optional.empty(); }

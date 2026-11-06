@@ -12,6 +12,8 @@ import static java.nio.file.StandardOpenOption.*;
 /** Journaled file transactions. A committed journal is rolled forward before the runtime loads definitions. */
 public final class DocumentStore implements AutoCloseable {
     public record Change(String path, String expectedHash, String content) {}
+    /** Where the last-valid recovery copy of each NPC file is kept, mirroring its path under {@code npcs/}. */
+    public static final String DEFINITION_POINTERS = "state/npc-definitions/last-valid/";
     /** A whole replacement of generated data, where null deletes it. Generated data has no editor, so nothing can conflict. */
     public record Generated(String path, String content) {}
     private static final String GENERATED_PATH = "state/behavior-state/[a-z0-9_/-]+\\.json|state/behavior-catalog/last-valid/(?:packs/[a-z0-9_-]+/)?behaviors/[a-z0-9_/-]+\\.json"
@@ -186,8 +188,8 @@ public final class DocumentStore implements AutoCloseable {
         List<Change> result = new ArrayList<>(changes);
         for (Change change : changes) {
             String source = root.relativize(resolve(change.path())).toString().replace('\\', '/');
-            if (!source.matches("npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json")) continue;
-            String pointer = "state/npc-definitions/last-valid/" + source;
+            if (!NpcPaths.file(source)) continue;
+            String pointer = DEFINITION_POINTERS + source;
             if (explicit.contains(pointer)) continue;
             if (change.content() != null && Objects.equals(read(change.path()), change.content())) continue;
             String before = read(pointer);
@@ -328,7 +330,7 @@ public final class DocumentStore implements AutoCloseable {
         if (!path.matches("(?:npcs|skins|behaviors|packs|imports|shops|gui|routes|recordings|rigs|animations)/[a-zA-Z0-9_./-]+\\.json")
                 && !path.equals("server-behaviors.json")
                 && !path.matches("state/shops/imports/[a-f0-9]{64}\\.json")
-                && !path.matches("state/npc-definitions/last-valid/npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,63}\\.json")
+                && !(path.startsWith(DEFINITION_POINTERS) && NpcPaths.file(path.substring(DEFINITION_POINTERS.length())))
                 && !path.matches(GENERATED_PATH))
             throw new IOException("Not a writable document path: " + path);
     }

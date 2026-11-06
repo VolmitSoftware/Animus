@@ -6,7 +6,7 @@ import java.util.Optional;
 
 /** Event names accepted by the {@code event} field of a behavior trigger, with the fields each accepts. */
 public enum TriggerKind {
-    INTERACTION("interaction", true, Reach.NPC, "A viewer's validated hit on the NPC.", "action"),
+    INTERACTION("interaction", true, Reach.NPC, "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).", "action", "consume"),
     PROXIMITY("proximity", true, Reach.NPC, "A viewer crosses a radius around the NPC.", "phase", "radius"),
     SPAWN("spawn", false, Reach.NPC, "The runtime first presents the NPC."),
     DESPAWN("despawn", false, Reach.NPC, "A spawned NPC is despawned."),

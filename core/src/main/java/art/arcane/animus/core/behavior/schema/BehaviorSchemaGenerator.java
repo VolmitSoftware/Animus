@@ -17,6 +17,7 @@ import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.schema.CapabilitySchema;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.NpcPaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -439,6 +440,7 @@ public final class BehaviorSchemaGenerator {
             case "routine" -> new Field(described(reference("identifier"), "Starts this routine instead of entry."), "routine", false);
             case "cooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Overrides the configured cooldown, per trigger on each NPC."), "integer", false);
             case "action" -> new Field(described(choices(lower(TriggerBinding.InteractionFilter.values())), "Which hit fires it; interact by default."), "string", false);
+            case "consume" -> new Field(described(expressionText(), "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."), "expression", false);
             case "phase" -> new Field(described(choices(lower(TriggerBinding.Phase.values())), "Entering or leaving the radius."), "string", true);
             case "radius" -> {
                 JsonObject radius = type("number");
@@ -476,7 +478,7 @@ public final class BehaviorSchemaGenerator {
         JsonObject root = new JsonObject();
         root.addProperty("$schema", DIALECT);
         root.addProperty("title", "Animus NPC definition");
-        root.addProperty("description", "npcs/<group>/<id>.json. Unknown fields and modules are kept as written.");
+        root.addProperty("description", "npcs/<folders>/<id>.json, in npcs/ itself or up to " + NpcPaths.MAX_FOLDERS + " folders deep. Unknown fields and modules are kept as written.");
         root.addProperty("type", "object");
         root.add("required", strings("schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position"));
         JsonObject properties = new JsonObject();
@@ -484,7 +486,7 @@ public final class BehaviorSchemaGenerator {
         properties.add("revision", described(range("integer", 1, Long.MAX_VALUE), "Raise this with every edit."));
         properties.add("uuid", described(pattern("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"), "A canonical lowercase UUID that never changes."));
         properties.add("id", described(pattern(IDENTIFIER), "Matches the file name."));
-        properties.add("group", described(pattern(IDENTIFIER), "Matches the directory name."));
+        properties.add("group", described(pattern("^" + NpcPaths.FOLDER + "$"), "The folder under npcs/, empty for npcs/ itself. Animus sets it from where the file is."));
         properties.add("name", described(pattern(NONBLANK), "The displayed name."));
         properties.add("type", described(pattern("^[a-z0-9_]+:[a-z0-9_/]+$"), "An entity type such as minecraft:player."));
         properties.add("spawned", described(type("boolean"), "Whether the NPC is presented."));
