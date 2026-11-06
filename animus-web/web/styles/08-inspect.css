@@ -54,35 +54,111 @@
   color: #8cb4fa;
 }
 
-/* Behavior nodes: nested cards with a full border, never a side stripe. */
+/* ---- Behavior editor (lane L2) -------------------------------------------
+   The routine tree reads by indentation: each level sits on one thin rail,
+   not inside another bordered box. Pink marks only the focused row and the
+   primary actions; problems use the semantic error colour with a text flag. */
+
+.animus-behavior-tree {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
 
 .animus-node {
   display: grid;
-  gap: 0.375rem;
-  padding: 0.5rem;
-  border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
-  background: rgba(128, 128, 128, 0.04);
+  gap: 0.25rem;
   min-width: 0;
 }
 
-.animus-node.has-error {
-  border-color: var(--animus-error);
-}
-
-.animus-node-head {
+.animus-node-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.375rem;
-  align-items: center;
+  gap: 0.25rem 0.5rem;
+  align-items: baseline;
+  min-height: 2rem;
+  padding: 0.25rem 0.375rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  list-style: none;
   min-width: 0;
+}
+
+.animus-node-summary::-webkit-details-marker {
+  display: none;
+}
+
+.animus-node-summary::before {
+  content: "\25B8";
+  flex: none;
+  width: 0.75rem;
+  color: var(--animus-muted);
+  transition: transform 120ms ease-out;
+}
+
+.animus-node[open] > .animus-node-summary::before {
+  transform: rotate(90deg);
+}
+
+.animus-node-summary:hover {
+  background: rgba(128, 128, 128, 0.1);
+}
+
+.animus-node-summary:focus-visible {
+  outline: 2px solid var(--ring, #ffb3d6);
+  outline-offset: 1px;
+  background: rgba(255, 95, 168, 0.08);
 }
 
 .animus-node-caption {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   color: var(--animus-muted);
-  min-width: 3.5rem;
+}
+
+.animus-node-type {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.animus-node-line {
+  flex: 1 1 12rem;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.animus-node-flag {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.animus-node-flag.is-error {
+  color: var(--animus-error);
+}
+
+.animus-node-flag.is-warning {
+  color: var(--animus-warning);
+}
+
+.animus-node.has-error > .animus-node-summary .animus-node-type {
+  color: var(--animus-error);
+}
+
+.animus-node-body {
+  display: grid;
+  gap: 0.5rem;
+  padding-inline-start: 1.125rem;
+  min-width: 0;
+}
+
+.animus-node-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+  min-width: 0;
 }
 
 .animus-node-help {
@@ -92,18 +168,233 @@
   min-width: 0;
 }
 
-.animus-node-body,
-.animus-node-list,
-.animus-node-slot {
+/* One rail per level: structure, not decoration. */
+.animus-node-children {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.375rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 1px solid var(--animus-border);
   min-width: 0;
 }
 
-.animus-node-list,
-.animus-node-slot {
-  padding-inline-start: 0.75rem;
+.animus-add-node {
+  max-width: 22rem;
 }
+
+.animus-trigger {
+  display: grid;
+  gap: 0.375rem;
+  padding-block: 0.5rem;
+  border-top: 1px solid var(--animus-border);
+  min-width: 0;
+}
+
+.animus-trigger.has-error .animus-node-caption {
+  color: var(--animus-error);
+}
+
+.animus-operand {
+  display: grid;
+  grid-template-columns: minmax(9rem, max-content) minmax(0, 1fr);
+  gap: 0.375rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.animus-operand > :nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+
+.animus-expr {
+  position: relative;
+  min-width: 0;
+}
+
+.animus-expr-input {
+  width: 100%;
+  min-height: 2.25rem;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.animus-expr-completions {
+  top: auto;
+}
+
+.animus-expr .animus-gui-completions {
+  position: static;
+  margin-top: 0.25rem;
+}
+
+.animus-value-editor {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  gap: 0.375rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.animus-value-list {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.animus-value-row {
+  display: grid;
+  grid-template-columns: minmax(2rem, max-content) minmax(0, 1fr) auto;
+  gap: 0.375rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.animus-value-key {
+  padding-top: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.animus-slots {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.animus-slots h5 {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+}
+
+/* Rows already name their selects; the select's own label stays for
+   screen readers only. */
+.animus-behavior-editor [class$="-select-label"],
+.animus-server-behaviors .animus-gui-row [class$="-select-label"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.animus-server-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.animus-server-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  padding: 0.375rem 0;
+  border-bottom: 1px solid var(--animus-border);
+  min-width: 0;
+}
+
+.animus-server-item code {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.animus-server-item .animus-muted {
+  flex: 1 1 14rem;
+  font-size: 0.8125rem;
+}
+
+.animus-code-syntax {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--animus-error);
+  font-size: 0.8125rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animus-node-summary::before {
+    transition: none;
+  }
+}
+
+.animus-behavior-editor .animus-gui-control,
+.animus-behavior-editor .animus-gui-text,
+.animus-server-behaviors .animus-gui-control {
+  min-width: 0;
+}
+
+.animus-behavior-editor [class$="-select-wrapper"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Single-column grids size to their container, not to the widest select
+   option, so deep trees and long capability names never push sideways. */
+.animus-behavior-tree,
+.animus-node,
+.animus-node-body,
+.animus-node-children,
+.animus-behavior-editor .animus-capability,
+.animus-behavior-editor .animus-control-stack,
+.animus-behavior-editor .animus-inspect-item,
+.animus-behavior-editor .animus-routine,
+.animus-slots,
+.animus-value-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.animus-behavior-editor select,
+.animus-server-behaviors select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 520px) {
+  /* 12 px per level: the rail's own padding, no extra body indent. */
+  .animus-node-body {
+    padding-inline-start: 0;
+  }
+
+  .animus-node-children {
+    padding-inline-start: calc(0.75rem - 1px);
+  }
+
+  .animus-behavior-editor .animus-gui-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .animus-operand,
+  .animus-value-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .animus-value-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .animus-value-row > .animus-value-key {
+    grid-column: 1 / -1;
+  }
+
+  .animus-node-summary {
+    min-height: 2.75rem;
+    align-items: center;
+  }
+}
+
+/* ---- end of the behavior editor block ---------------------------------- */
 
 /* JSON code view. */
 
@@ -259,11 +550,6 @@
   .animus-code-gutter,
   .animus-code-area {
     height: 24rem;
-  }
-
-  .animus-node-list,
-  .animus-node-slot {
-    padding-inline-start: 0.25rem;
   }
 
   .animus-code-completions {
