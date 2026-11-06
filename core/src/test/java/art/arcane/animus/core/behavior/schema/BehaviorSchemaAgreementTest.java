@@ -3,6 +3,7 @@ package art.arcane.animus.core.behavior.schema;
 import art.arcane.animus.core.behavior.catalog.PackManifest;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.storage.JsonDocuments;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,7 +28,7 @@ class BehaviorSchemaAgreementTest {
     @BeforeAll static void generate() {
         capabilities = new OfflineCapabilities();
         behaviors = new JsonSchemaCheck(BehaviorSchemaGenerator.behaviorSchema(capabilities.capabilities()));
-        npcs = new JsonSchemaCheck(BehaviorSchemaGenerator.npcSchema());
+        npcs = new JsonSchemaCheck(NpcSchemaGenerator.schema());
         packs = new JsonSchemaCheck(BehaviorSchemaGenerator.packSchema());
     }
     @AfterAll static void close() { capabilities.close(); }
@@ -216,6 +217,37 @@ class BehaviorSchemaAgreementTest {
         JsonObject speed = JsonDocuments.object(base);
         speed.add("modules", JsonDocuments.object("{\"animus:navigation\":{\"enabled\":true,\"speed\":9,\"points\":[{\"x\":0,\"y\":64,\"z\":0}]}}"));
         invalid.put("navigation speed", speed);
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("pose", "{\"pose\":\"flying\"}");
+        fields.put("pose for a non-player body", "{\"type\":\"minecraft:villager\",\"pose\":\"sitting\"}");
+        fields.put("armor stand on a player", "{\"armorStand\":{\"small\":true}}");
+        fields.put("armor stand angle", "{\"type\":\"minecraft:armor_stand\",\"armorStand\":{\"head\":[0,400,0]}}");
+        fields.put("armor stand unknown part", "{\"type\":\"minecraft:armor_stand\",\"armorStand\":{\"tail\":[0,0,0]}}");
+        fields.put("hologram without lines", "{\"hologram\":{\"billboard\":\"center\"}}");
+        fields.put("hologram unknown field", "{\"hologram\":{\"lines\":[\"Hi\"],\"colour\":\"red\"}}");
+        fields.put("hologram billboard", "{\"hologram\":{\"lines\":[\"Hi\"],\"billboard\":\"spin\"}}");
+        fields.put("nameplate", "{\"nameplate\":{\"visible\":\"no\"}}");
+        fields.put("owner", "{\"owner\":\"not-a-uuid\"}");
+        fields.put("inventory size", "{\"inventory\":{\"size\":10,\"slots\":{}}}");
+        fields.put("inventory slot key", "{\"inventory\":{\"size\":9,\"slots\":{\"first\":{\"id\":\"minecraft:stone\"}}}}");
+        fields.put("equipment slot", "{\"equipment\":{\"hand\":{\"id\":\"minecraft:stone\"}}}");
+        fields.put("equipment count", "{\"equipment\":{\"head\":{\"id\":\"minecraft:stone\",\"count\":100}}}");
+        fields.put("team colour", "{\"teamColor\":\"pink\"}");
+        fields.put("movement field", "{\"movement\":{\"sped\":2}}");
+        fields.put("named pose pitch", "{\"poses\":{\"rest\":{\"yaw\":0,\"pitch\":120}}}");
+        fields.put("combat unknown setting", "{\"modules\":{\"animus:combat\":{\"enabled\":true,\"meele\":{}}}}");
+        fields.put("combat health", "{\"modules\":{\"animus:combat\":{\"defense\":{\"maximumHealth\":0}}}}");
+        fields.put("combat potion without effect", "{\"modules\":{\"animus:combat\":{\"ranged\":{\"weapon\":\"potion\"}}}}");
+        fields.put("combat delete without -1", "{\"modules\":{\"animus:combat\":{\"respawn\":{\"deleteOnDeath\":true}}}}");
+        fields.put("combat scan rule in ignores", "{\"modules\":{\"animus:combat\":{\"ignores\":{\"chat\":[\"hi\"]}}}}");
+        fields.put("shop without id", "{\"modules\":{\"animus:shop\":{\"openOn\":\"right\"}}}");
+        fields.put("gui empty", "{\"modules\":{\"animus:gui\":{}}}");
+        fields.put("hire duration", "{\"modules\":{\"animus:hire\":{\"durationMinutes\":0}}}");
+        for (Map.Entry<String, String> field : fields.entrySet()) {
+            JsonObject specimen = JsonDocuments.object(base);
+            for (Map.Entry<String, JsonElement> entry : JsonDocuments.object(field.getValue()).entrySet()) specimen.add(entry.getKey(), entry.getValue());
+            invalid.put(field.getKey(), specimen);
+        }
         for (Map.Entry<String, JsonObject> specimen : invalid.entrySet()) {
             assertFalse(npcs.validate(specimen.getValue()).isEmpty(), "schema accepted: " + specimen.getKey());
             assertFalse(NpcDefinition.validate(specimen.getValue()).isEmpty(), "definition accepted: " + specimen.getKey());
@@ -226,5 +258,38 @@ class BehaviorSchemaAgreementTest {
         preserved.add("tags", JsonDocuments.object("{\"t\":[\"guard\",\"north_gate\"]}").get("t"));
         assertEquals(List.of(), npcs.validate(preserved));
         assertEquals(List.of(), NpcDefinition.validate(preserved));
+    }
+
+    @Test void everyDeclaredNpcFieldValidatesUnderBoth() throws Exception {
+        JsonObject full = JsonDocuments.object(Files.readString(RepositoryFiles.packs().resolve("greeter/npcs/examples/greeter.json")));
+        JsonObject extra = JsonDocuments.object("""
+                {"type": "minecraft:armor_stand", "owner": "0f6a3b8e-6a55-4b1e-9d8a-1f2e3d4c5b6a", "pose": "standing",
+                 "equipment": {"head": {"id": "minecraft:carved_pumpkin"}, "main_hand": {"id": "minecraft:iron_sword", "count": 1, "components": "[enchantment_glint_override=true]"}},
+                 "hologram": {"lines": ["&aHello", {"text": "Second", "marginTop": 0.1}], "lineHeight": 0.3, "viewRange": 32, "billboard": "vertical",
+                              "shadowed": true, "seeThrough": false, "interpolationDelay": 0, "interpolationDuration": 5},
+                 "nameplate": {"visible": false},
+                 "armorStand": {"small": true, "arms": true, "basePlate": false, "invisible": false, "head": [10, 0, 0], "rightArm": [-15, 0, 10]},
+                 "inventory": {"size": 18, "slots": {"0": {"id": "minecraft:bread", "count": 3}, "17": {"id": "minecraft:stone"}}},
+                 "glowing": true, "teamColor": "light_purple", "gravity": false, "listed": false,
+                 "poses": {"rest": {"yaw": 90, "pitch": 0}},
+                 "movement": {"speed": 2, "avoidWater": false, "openDoors": true, "stepHeight": 1, "maximumFall": 3, "stuck": {"afterTicks": 100, "teleport": true}},
+                 "rig": {"id": "examples:guard"},
+                 "modules": {
+                   "animus:combat": {"enabled": true, "targets": {"categories": ["monsters"], "all": [{"entityTypes": ["minecraft:zombie"]}],
+                                     "events": {"kinds": ["player_hurts_npc"]}}, "ignores": {"players": ["Steve"]},
+                                     "targeting": {"scanRange": 20, "lineOfSight": "field_of_view"}, "guard": {"followDistance": 5},
+                                     "melee": {"damage": 4, "weaponDamage": {"minecraft:iron_sword": 6}},
+                                     "ranged": {"enabled": true, "weapon": "potion", "effect": {"id": "minecraft:poison", "amplifier": 1}},
+                                     "defense": {"maximumHealth": 40, "armor": 0.5}, "death": {"drops": [{"item": "minecraft:bone", "amount": 2, "chance": 0.5}]},
+                                     "respawn": {"delayTicks": -1, "deleteOnDeath": true, "locations": [{"world": "world", "x": 0, "y": 64, "z": 0}]},
+                                     "greetings": {"friendly": "Hello", "range": 8}, "squad": {"name": "north"}, "targetableByMobs": true},
+                   "animus:shop": {"shop": "town:baker", "openOn": "both"},
+                   "animus:gui": {"open": {"kind": "gloss", "id": "lobby/main"}, "hologram": {"id": "town:sign", "offset": [0, 2.5, 0]}},
+                   "animus:hire": {"price": 50, "items": [{"id": "minecraft:emerald", "count": 2}], "durationMinutes": 120, "permission": "animus.hire.guard"}
+                 }}
+                """);
+        for (Map.Entry<String, JsonElement> entry : extra.entrySet()) full.add(entry.getKey(), entry.getValue());
+        assertEquals(List.of(), NpcDefinition.validate(full));
+        assertEquals(List.of(), npcs.validate(full));
     }
 }
