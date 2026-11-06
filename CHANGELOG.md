@@ -231,6 +231,10 @@
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
 - Web editor: an info button beside labels shows a short note on hover, focus or tap and opens the matching wiki section.
+- Web editor: one autocomplete for text, expression, id and JSON fields. Typing `{`, `<`, `%`, a name or an id, or pressing Ctrl+Space, lists variables, facts, placeholders, tags with colour swatches, registry ids, workspace ids, flags, quests and commands, matched loosely.
+- Web editor: names, placeholders, tags and ids the server would refuse are underlined, with the reason on hover.
+- `GET /v1/lookups` (read scope) lists the server's registry ids, command names and PlaceholderAPI identifiers for completion.
+- The Minecraft asset extractor writes `registries.json`, the ids the editor completes offline.
 
 ### Changed
 
@@ -328,6 +332,7 @@
 - Mob targeting of NPCs reads the definitions again only after they change.
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
 - Web editor: shorter copy on every screen; field explanations moved from inline paragraphs into info buttons.
+- Web editor: the separate completion lists of GUI text, behavior expressions and the Code view became the shared autocomplete.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

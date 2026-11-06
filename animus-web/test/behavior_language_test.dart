@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:animus_editor/logic/data_folder.dart';
-import 'package:animus_editor/logic/gui/gui_expression.dart' show ExpressionCompletion;
 import 'package:animus_editor/logic/gui/gui_json.dart';
 import 'package:animus_editor/logic/inspect/behavior_edit.dart';
 import 'package:animus_editor/logic/inspect/behavior_eval.dart';
@@ -14,6 +13,9 @@ import 'package:animus_editor/logic/inspect/server_behaviors.dart';
 import 'package:animus_editor/logic/offline/dry_run.dart';
 import 'package:animus_editor/logic/offline/new_documents.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
+import 'package:animus_editor/logic/suggest/completion_item.dart';
+import 'package:animus_editor/logic/suggest/field_profile.dart';
+import 'package:animus_editor/logic/suggest/text_completion.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
@@ -54,8 +56,10 @@ void main() {
     });
 
     test('should complete variables, roots, facts and functions', () {
-      List<String> labels(String text, {bool template = false}) =>
-          completeBehaviorExpression(text, text.length, scope, template: template).map((ExpressionCompletion completion) => completion.label).toList();
+      final CompletionEnv env = CompletionEnv(behavior: BehaviorNames(scope: scope));
+      List<String> labels(String text, {bool template = false}) => <String>[
+            for (final CompletionItem item in completeText(text, text.length, template ? FieldProfile.behaviorTemplate : FieldProfile.behaviorExpression, env).items) item.label,
+          ];
       expect(labels('co'), contains('count'));
       expect(labels('player.he'), contains('player.health'));
       expect(labels('su'), contains('sum()'));

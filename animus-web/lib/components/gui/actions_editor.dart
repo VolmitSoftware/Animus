@@ -11,6 +11,7 @@ import 'package:web/web.dart' as web;
 import '../../logic/gui/gui_catalog.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../model/animus_document.dart';
 import 'gui_fields.dart';
 
@@ -377,7 +378,7 @@ class ActionsEditor extends StatelessWidget {
 
         return GuiSection(title: name, children: <Widget>[
           for (final Diagnostic problem in problems) dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
-          row('item', 'Item *', (String rowId) => GuiTextInput(id: rowId, value: asString(icon['item']) ?? '', mode: GuiTextMode.template, names: names, label: 'Item id', onChanged: (String v) => set(with_('item', v))),
+          row('item', 'Item *', (String rowId) => GuiTextInput(id: rowId, value: asString(icon['item']) ?? '', mode: GuiTextMode.template, profile: guiItemProfile, names: names, label: 'Item id', onChanged: (String v) => set(with_('item', v))),
               help: 'Such as minecraft:bread'),
           row('count', 'Count', (String rowId) => GuiNumberInput(id: rowId, value: asInt(icon['count']), label: 'Item count', onChanged: (num? v) => set(with_('count', v))),
               help: '1 to 99 per stack'),

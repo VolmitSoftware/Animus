@@ -14,6 +14,9 @@ import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_validation.dart';
 import '../../logic/gui/shop_entries.dart';
+import '../../logic/suggest/completion_sources.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../model/animus_document.dart';
 import 'chest_window.dart';
 import 'component_editor.dart';
@@ -300,6 +303,7 @@ class _ShopEditorState extends State<ShopEditor> {
           GuiTextInput(
             value: asString(asMap(containers[index])['world']) ?? '',
             label: 'Container ${index + 1} world',
+            profile: idProfile(const ValueRef.registry(RegistryKind.world)),
             placeholder: 'world',
             onChanged: (String v) => _write(<JsonStep>['containers', index, 'world'], v.isEmpty ? null : v),
           ),
@@ -436,7 +440,7 @@ class _ShopEditorState extends State<ShopEditor> {
           ),
           help: 'Drops fields the new type lacks'),
       GuiSection(title: 'Item', children: <Widget>[
-        _row('Item *', '$path.item.id', (String id) => GuiTextInput(id: id, value: asString(item['id']) ?? '', label: 'Item id', onChanged: (String v) => setIn('item', 'id', v))),
+        _row('Item *', '$path.item.id', (String id) => GuiTextInput(id: id, value: asString(item['id']) ?? '', label: 'Item id', profile: idProfile(const ValueRef.registry(RegistryKind.item)), onChanged: (String v) => setIn('item', 'id', v))),
         _row('Count', '$path.item.count', (String id) => GuiNumberInput(id: id, value: asInt(item['count']), label: 'Item count', onChanged: (num? v) => setIn('item', 'count', v)),
             help: '1 to 99, priced per this many'),
         _row('Components', '$path.item.components', (String id) => GuiTextInput(id: id, value: asString(item['components']) ?? '', label: 'Item components', onChanged: (String v) => setIn('item', 'components', v)),
@@ -497,7 +501,7 @@ class _ShopEditorState extends State<ShopEditor> {
       GuiSection(title: 'Access and messages', open: entry['permission'] != null || entry['broadcast'] != null, children: <Widget>[
         _row('Permission', '$path.permission', (String id) => GuiTextInput(id: id, value: asString(entry['permission']) ?? '', label: 'Entry permission', onChanged: (String v) => set('permission', v.isEmpty ? null : v)),
             help: 'Needed to buy'),
-        _row('Broadcast', '$path.broadcast', (String id) => GuiTextInput(id: id, value: asString(entry['broadcast']) ?? '', label: 'Broadcast', onChanged: (String v) => set('broadcast', v.isEmpty ? null : v)),
+        _row('Broadcast', '$path.broadcast', (String id) => GuiTextInput(id: id, value: asString(entry['broadcast']) ?? '', label: 'Broadcast', profile: shopBroadcastProfile, onChanged: (String v) => set('broadcast', v.isEmpty ? null : v)),
             help: 'Uses {player}, {item}, {price}'),
         GuiRow(label: 'After buying', child: GuiSwitch(value: entry['closeAfterPurchase'] == true, label: 'Close the shop', onChanged: (bool on) => set('closeAfterPurchase', on ? true : null))),
         _row('Matching', '$path.match', (String id) => GuiSelect(id: id, value: asString(entry['match']), options: const <String>['strict', 'legacy'], allowNone: true, noneLabel: 'as the shop', onChanged: (String? v) => set('match', v))),
@@ -517,6 +521,7 @@ class _ShopEditorState extends State<ShopEditor> {
           GuiTextInput(
             value: asString(asMap(asMap(goods[index])['item'])['id']) ?? '',
             label: '$title ${index + 1} item',
+            profile: idProfile(const ValueRef.registry(RegistryKind.item)),
             onChanged: (String v) => _write(<JsonStep>[...steps, key, index, 'item', 'id'], v),
           ),
           GuiNumberInput(
@@ -550,6 +555,7 @@ class _ShopEditorState extends State<ShopEditor> {
           GuiTextInput(
             value: asString(asMap(commands[index])['command']) ?? '',
             label: 'Command ${index + 1}',
+            profile: shopCommandProfile,
             placeholder: 'no leading slash',
             onChanged: (String v) => _write(<JsonStep>[...steps, 'commands', index, 'command'], v),
           ),

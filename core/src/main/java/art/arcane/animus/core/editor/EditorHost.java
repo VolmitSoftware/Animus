@@ -40,6 +40,20 @@ public interface EditorHost {
     /** Module ids and states for {@code GET /v1/capabilities}. */
     List<Map.Entry<String, String>> modules();
 
+    /**
+     * What {@code GET /v1/lookups} lists for the editor's completion: registry ids by kind ({@code items}, {@code blocks},
+     * {@code sounds}, {@code particles}, {@code entityTypes}, {@code enchantments}, {@code effects}, {@code attributes},
+     * {@code worlds}), command names and PlaceholderAPI identifiers.
+     */
+    record Lookups(Map<String, List<String>> registries, List<String> commands, List<String> papi) {
+        public static final Lookups NONE = new Lookups(Map.of(), List.of(), List.of());
+
+        public Lookups { registries = Map.copyOf(registries); commands = List.copyOf(commands); papi = List.copyOf(papi); }
+    }
+
+    /** The lists for {@code GET /v1/lookups}, on any thread; a platform without them answers {@link Lookups#NONE}. */
+    default Lookups lookups() { return Lookups.NONE; }
+
     /** The live capability registry the generated behavior schema describes. */
     List<Capabilities.Availability> capabilities();
 

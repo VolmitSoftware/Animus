@@ -368,6 +368,7 @@ This follows React rather than Gloss. Gloss's long-poll snapshot relay suits who
 | `POST /v1/pair` | pairing secret | Exchange the pairing secret for a token. |
 | `GET /v1/capabilities` | read | Which features this server supports, with reasons for unavailable ones (Folia combat, rigs disabled, PlaceholderAPI missing, Gloss bridge present or not). |
 | `GET /v1/schemas` | read | The generated `npc`, `behavior` and `pack` schemas (including loaded modules) and the rig, animation and GUI schemas. |
+| `GET /v1/lookups` | read | Registry ids (items, blocks, sounds, particles, entity types, enchantments, effects, attributes, worlds), command names and PlaceholderAPI identifiers, for completion. |
 | `GET /v1/catalog?kind=&after=` | read | Ids, paths, revisions and hashes of every document, paged. |
 | `GET /v1/documents/{kind}/{id}` | read | One document with its revision and hash. |
 | `GET /v1/skins/{hash}/texture.png` | read | Decoded skin texture for the renderer. |

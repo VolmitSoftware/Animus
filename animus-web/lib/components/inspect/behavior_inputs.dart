@@ -5,24 +5,24 @@
 library;
 
 import 'dart:convert';
-import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
-import 'package:web/web.dart' as web;
 
-import '../../logic/gui/gui_expression.dart' show ExpressionCompletion;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/behavior_language.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../gui/gui_fields.dart';
+import '../suggest/autocomplete_input.dart';
+import '../suggest/suggest_scope.dart';
 import 'inspect_fields.dart';
 
 int _nextId = 0;
 
-/// A monospace expression or template field. Typing offers variables,
-/// roots, facts and functions below it (arrow keys, Enter or Tab to pick,
-/// Escape to close); a problem shows under the field as you type.
+/// A monospace expression or template field that completes variables,
+/// facts, context keys and functions; a problem shows under the field as
+/// you type.
 class BehaviorExpressionInput extends StatefulWidget {
   const BehaviorExpressionInput({
     required this.value,
@@ -51,133 +51,39 @@ class BehaviorExpressionInput extends StatefulWidget {
 
 class _BehaviorExpressionInputState extends State<BehaviorExpressionInput> {
   final String _id = 'animus-expr-${_nextId++}';
-  List<ExpressionCompletion> _completions = const <ExpressionCompletion>[];
-  int _active = 0;
-  bool _focused = false;
+
+  /// The latest typed text, ahead of the saved value.
   String? _typed;
 
-  String get _text => _typed ?? component.value;
-
-  web.HTMLTextAreaElement? get _area {
-    final web.Element? element = web.document.getElementById(_id);
-    return element != null && element.isA<web.HTMLTextAreaElement>() ? element as web.HTMLTextAreaElement : null;
-  }
-
-  void _suggest(String text, int caret) {
-    final List<ExpressionCompletion> next = completeBehaviorExpression(text, caret, component.scope, template: component.template);
-    setState(() {
-      _completions = next;
-      _active = 0;
-    });
-  }
-
-  void _apply(ExpressionCompletion completion) {
-    final web.HTMLTextAreaElement? area = _area;
-    final (String text, int caret) = completion.applyTo(area?.value ?? _text);
-    if (area != null) {
-      area.value = text;
-      area.setSelectionRange(caret, caret);
-      area.focus();
-    }
-    _typed = text;
-    component.onChanged(text);
-    _suggest(text, caret);
-  }
-
-  void _onKey(web.Event event) {
-    if (!event.isA<web.KeyboardEvent>()) return;
-    final web.KeyboardEvent key = event as web.KeyboardEvent;
-    if (key.key == 'Enter' && _completions.isEmpty) {
-      // One line: Enter never inserts a line break.
-      key.preventDefault();
-      return;
-    }
-    if (_completions.isEmpty) return;
-    switch (key.key) {
-      case 'ArrowDown':
-        key.preventDefault();
-        setState(() => _active = (_active + 1) % _completions.length);
-      case 'ArrowUp':
-        key.preventDefault();
-        setState(() => _active = (_active - 1 + _completions.length) % _completions.length);
-      case 'Enter' || 'Tab':
-        key.preventDefault();
-        _apply(_completions[_active]);
-      case 'Escape':
-        key.preventDefault();
-        key.stopPropagation();
-        setState(() => _completions = const <ExpressionCompletion>[]);
-    }
+  @override
+  void didUpdateWidget(BehaviorExpressionInput oldComponent) {
+    super.didUpdateWidget(oldComponent);
+    if (component.value != oldComponent.value && component.value != _typed) _typed = null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final String text = _text;
+    final String text = _typed ?? component.value;
     final String? problem = text.isEmpty && component.template ? null : (component.template ? checkBehaviorTemplate(text, component.scope) : checkBehaviorExpression(text, component.scope));
-    final bool open = _focused && _completions.isNotEmpty;
+    final BehaviorNames names = BehaviorNames(scope: component.scope, variableScopes: SuggestScope.of(context).behavior?.variableScopes ?? const <String, String>{});
     return dom.div(classes: 'animus-gui-text animus-expr', <Widget>[
-      dom.textarea(
+      AutocompleteInput(
         id: _id,
-        classes: 'animus-gui-input is-code animus-expr-input${problem != null ? ' is-invalid' : ''}',
-        rows: 1,
-        attributes: <String, String>{
-          'spellcheck': 'false',
-          'autocomplete': 'off',
-          'aria-label': component.label,
-          'aria-autocomplete': 'list',
-          'placeholder': ?component.placeholder,
-          if (open) 'aria-expanded': 'true',
-          if (open) 'aria-controls': '$_id-list',
-          if (problem != null) 'aria-invalid': 'true',
-          if (problem != null) 'aria-describedby': '$_id-problem',
+        value: component.value,
+        profile: component.template ? FieldProfile.behaviorTemplate : FieldProfile.behaviorExpression,
+        behavior: names,
+        label: component.label,
+        placeholder: component.placeholder,
+        oneLine: true,
+        classes: 'animus-gui-input is-code animus-expr-input',
+        invalid: problem != null,
+        describedBy: problem != null ? '$_id-problem' : null,
+        onChanged: (String next) {
+          setState(() => _typed = next);
+          component.onChanged(next);
         },
-        events: <String, void Function(web.Event)>{
-          'input': (web.Event event) {
-            final web.HTMLTextAreaElement area = event.target! as web.HTMLTextAreaElement;
-            final String value = area.value.replaceAll('\n', ' ');
-            _typed = value;
-            component.onChanged(value);
-            _suggest(value, area.selectionStart);
-          },
-          'keydown': _onKey,
-          'focus': (web.Event event) {
-            _focused = true;
-            final web.HTMLTextAreaElement area = event.target! as web.HTMLTextAreaElement;
-            _suggest(area.value, area.selectionStart);
-          },
-          'blur': (web.Event _) {
-            // A completion click lands before blur hides the list.
-            Future<void>.delayed(const Duration(milliseconds: 150), () {
-              if (mounted) {
-                setState(() {
-                  _focused = false;
-                  _typed = null;
-                });
-              }
-            });
-          },
-        },
-        <Widget>[Component.text(text)],
       ),
       if (problem != null) dom.span(id: '$_id-problem', classes: 'animus-gui-problem is-error', <Widget>[Component.text(problem)]),
-      if (open)
-        dom.ul(id: '$_id-list', classes: 'animus-gui-completions animus-expr-completions', attributes: const <String, String>{'role': 'listbox'}, <Widget>[
-          for (int index = 0; index < _completions.length; index++)
-            dom.li(
-              classes: index == _active ? 'is-active' : null,
-              attributes: <String, String>{'role': 'option', 'aria-selected': '${index == _active}'},
-              events: <String, void Function(web.Event)>{
-                'mousedown': (web.Event event) {
-                  event.preventDefault();
-                  _apply(_completions[index]);
-                },
-              },
-              <Widget>[
-                dom.code(<Widget>[Component.text(_completions[index].label)]),
-                dom.span(<Widget>[Component.text(_completions[index].detail)]),
-              ],
-            ),
-        ]),
     ]);
   }
 }

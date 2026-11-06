@@ -13,6 +13,8 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/dialogue_tree.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../gui/gui_fields.dart';
 
 class DialogueView extends StatelessWidget {
@@ -60,6 +62,7 @@ class DialogueView extends StatelessWidget {
               GuiTextInput(
                 value: text,
                 label: 'Line at ${formatPath(steps)}',
+                profile: argumentProfile('animus:say', 'text'),
                 onChanged: (String value) => write(<JsonStep>[...steps, 'arguments', 'text'], value),
               ),
           ]),
@@ -72,6 +75,7 @@ class DialogueView extends StatelessWidget {
                 GuiTextInput(
                   value: prompt,
                   label: 'Prompt $id',
+                  profile: argumentProfile('animus:choices', 'prompt'),
                   onChanged: (String value) => write(<JsonStep>[...steps, 'arguments', 'prompt'], value),
                 ),
             ]),
@@ -86,6 +90,7 @@ class DialogueView extends StatelessWidget {
                       GuiTextInput(
                         value: option.text,
                         label: 'Answer ${option.id} of $id',
+                        profile: FieldProfile.richText,
                         onChanged: (String value) => write(<JsonStep>[...steps, 'arguments', 'options', option.index, 'text'], value),
                       ),
                   ]),

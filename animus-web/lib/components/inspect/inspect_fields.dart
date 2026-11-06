@@ -13,12 +13,12 @@ import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../../logic/help_text.dart';
 import '../info_tip.dart';
-
-int _nextListId = 0;
+import '../suggest/autocomplete_input.dart';
 
 /// A label with a required marker; keys read as words (`waitTicks` is "Wait ticks").
 String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
@@ -84,11 +84,15 @@ class InspectField extends StatelessWidget {
     this.suggestions = const <FieldOption>[],
     this.schema,
     this.label,
+    this.profile = FieldProfile.none,
     super.key,
   });
 
   final FieldSpec field;
   final Object? value;
+
+  /// What a text value completes beyond [suggestions].
+  final FieldProfile profile;
 
   /// The field's path, as diagnostics name it.
   final String path;
@@ -121,6 +125,7 @@ class InspectField extends StatelessWidget {
         diagnostics: diagnostics,
         suggestions: suggestions,
         schema: schema,
+        profile: profile,
       ),
     );
   }
@@ -136,6 +141,7 @@ class InspectControl extends StatelessWidget {
     this.diagnostics = const <Diagnostic>[],
     this.suggestions = const <FieldOption>[],
     this.schema,
+    this.profile = FieldProfile.none,
     super.key,
   });
 
@@ -146,6 +152,9 @@ class InspectControl extends StatelessWidget {
   final List<Diagnostic> diagnostics;
   final List<FieldOption> suggestions;
   final SchemaView? schema;
+
+  /// What a text value completes beyond [suggestions].
+  final FieldProfile profile;
 
   @override
   Widget build(BuildContext context) {
@@ -160,8 +169,10 @@ class InspectControl extends StatelessWidget {
         if (!textual) break;
         if (field.openChoice) {
           return SuggestInput(
+            id: controlId(path),
             value: current is String ? current : '',
             label: field.key,
+            profile: profile,
             suggestions: <FieldOption>[...field.options, ...suggestions],
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
@@ -196,8 +207,10 @@ class InspectControl extends StatelessWidget {
       case FieldKind.string:
         if (current is String || current == null) {
           return SuggestInput(
+            id: controlId(path),
             value: current as String? ?? '',
             label: field.key,
+            profile: profile,
             suggestions: suggestions,
             placeholder: field.bounds.isEmpty ? null : field.bounds,
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
@@ -287,63 +300,38 @@ class InspectObject extends StatelessWidget {
   }
 }
 
-/// A text field that offers [suggestions] through the browser's list.
-class SuggestInput extends StatefulWidget {
+/// A text field that completes [suggestions] and whatever [profile] adds
+/// (registry ids, workspace documents, placeholders).
+class SuggestInput extends StatelessWidget {
   const SuggestInput({
     required this.value,
     required this.onChanged,
     this.suggestions = const <FieldOption>[],
+    this.profile = FieldProfile.none,
     this.label,
     this.placeholder,
+    this.id,
     super.key,
   });
 
   final String value;
   final void Function(String value) onChanged;
   final List<FieldOption> suggestions;
+  final FieldProfile profile;
   final String? label;
   final String? placeholder;
-
-  @override
-  State<SuggestInput> createState() => _SuggestInputState();
-}
-
-class _SuggestInputState extends State<SuggestInput> {
-  final String _list = 'animus-suggest-${_nextListId++}';
-
-  /// The text while focused, kept over slower saves.
-  String? _typed;
+  final String? id;
 
   @override
   Widget build(BuildContext context) {
-    final bool listed = component.suggestions.isNotEmpty;
+    final FieldProfile merged = suggestions.isEmpty
+        ? profile
+        : profile.copyWith(options: <ValueOption>[
+            ...profile.options,
+            for (final FieldOption option in suggestions) ValueOption(option.label, detail: option.description ?? ''),
+          ]);
     return dom.div(classes: 'animus-gui-text', <Widget>[
-      dom.input(
-        classes: 'animus-gui-input',
-        value: _typed ?? component.value,
-        attributes: <String, String>{
-          'autocomplete': 'off',
-          'spellcheck': 'false',
-          'aria-label': ?component.label,
-          'placeholder': ?component.placeholder,
-          if (listed) 'list': _list,
-        },
-        events: <String, void Function(web.Event)>{
-          'input': (web.Event event) {
-            final String text = (event.target! as web.HTMLInputElement).value;
-            _typed = text;
-            component.onChanged(text);
-          },
-          'blur': (web.Event _) {
-            if (mounted) setState(() => _typed = null);
-          },
-        },
-      ),
-      if (listed)
-        dom.datalist(id: _list, <Widget>[
-          for (final FieldOption option in component.suggestions)
-            dom.option(value: option.label, label: option.description ?? option.label, const <Widget>[]),
-        ]),
+      AutocompleteInput(id: id, value: value, profile: merged, label: label, placeholder: placeholder, onChanged: onChanged),
     ]);
   }
 }
