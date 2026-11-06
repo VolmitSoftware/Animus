@@ -46,6 +46,7 @@ public final class AnimusCommandTree extends CommandGroup {
     ServiceCommands.Build build;
     ServiceCommands.Editor editor;
     BehaviorTree.Behaviors behaviors;
+    TraitGroupCommands groups;
     DiagnosticCommands.Debug debug;
     DiagnosticCommands.Proof proof;
     DiagnosticCommands.FoliaProof foliaproof;
@@ -65,6 +66,7 @@ public final class AnimusCommandTree extends CommandGroup {
         build = new ServiceCommands.Build(services);
         editor = new ServiceCommands.Editor(services);
         behaviors = new BehaviorTree.Behaviors(services);
+        groups = new TraitGroupCommands(services);
         debug = new DiagnosticCommands.Debug(services);
         proof = new DiagnosticCommands.Proof(services);
         foliaproof = new DiagnosticCommands.FoliaProof(services);
@@ -85,6 +87,7 @@ public final class AnimusCommandTree extends CommandGroup {
             case "behavior" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.behaviorIds(); }
             case "state" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.stateBehaviors(); }
             case "execution" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.executionIds(); }
+            case "group-id" -> runtime().npcs().groups().groups().keySet().stream().limit(100).toList();
             case "shop" -> services.shops().shopIds();
             case "gui" -> services.guis().guiIds();
             case "menu" -> services.guis().menuIds();
@@ -140,7 +143,7 @@ public final class AnimusCommandTree extends CommandGroup {
     @Director(description = "Show an NPC's definition and runtime state")
     void inspect(@Param(name = "npc", description = "The NPC id, or @selected") String npc) {
         CommandActor actor = actor();
-        npc(actor, npc).ifPresent((String id) -> files(actor, () -> List.of(administration().inspect(id)), () -> actor.tell(living().inspect(id))));
+        npc(actor, npc).ifPresent((String id) -> files(actor, () -> administration().inspect(id), () -> actor.tell(living().inspect(id))));
     }
 
     @Director(description = "Merge a JSON object into an NPC's definition")

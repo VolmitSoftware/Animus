@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town-guards",
+  "description": "Watch uniform and look-close",
+  "values": {
+    "modules": {
+      "animus:look-close": {
+        "enabled": true,
+        "range": 12,
+        "lineOfSight": true
+      },
+      "town:uniform": {
+        "color": "gold",
+        "badge": {
+          "rank": 2,
+          "shape": "star"
+        }
+      }
+    },
+    "behaviors": [
+      "town:greeting"
+    ],
+    "tags": [
+      "guard"
+    ],
+    "equipment": {
+      "head": {
+        "id": "minecraft:iron_helmet"
+      },
+      "chest": {
+        "id": "minecraft:iron_chestplate"
+      }
+    },
+    "nameplate": {
+      "visible": true
+    },
+    "teamColor": "gold",
+    "hologram": {
+      "lines": [
+        "&6Town Guard"
+      ]
+    }
+  }
+}
