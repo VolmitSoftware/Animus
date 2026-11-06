@@ -6,6 +6,7 @@ import art.arcane.animus.core.behavior.trigger.ServerCommandSync;
 import art.arcane.animus.core.behavior.trigger.ServerEvent;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
+import art.arcane.animus.core.platform.ModWorlds;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import art.arcane.animus.mod.mixin.ContainerMenuAccess;
@@ -65,16 +67,22 @@ final class ModServerBehaviors {
     private ServerCommandSync sync;
     private List<Diagnostic> logged = List.of();
     private long ticks;
+    /** The loaded dimension keys, refreshed with the fact snapshots, so fact readers on any thread resolve worlds without the server. */
+    private volatile Set<String> dimensions;
 
     ModServerBehaviors(MinecraftServer server, ServerTriggerDispatcher servers, SnapshotFacts facts, Consumer<String> log) {
         this.server = Objects.requireNonNull(server); this.servers = Objects.requireNonNull(servers);
         this.facts = Objects.requireNonNull(facts); this.log = Objects.requireNonNull(log);
         servers.worlds((String reference) -> ModWorldKeys.resolve(server, reference));
+        dimensions = ModWorldKeys.loaded(server);
+        String levelName = server.getWorldData().getLevelName();
+        facts.worlds((String reference) -> ModWorlds.resolve(reference, levelName, dimensions));
     }
 
     void tick() {
         ticks++;
         if (ticks % SnapshotFacts.REFRESH_TICKS == 0) {
+            dimensions = ModWorldKeys.loaded(server);
             List<ServerPlayer> online = List.copyOf(server.getPlayerList().getPlayers());
             for (ServerPlayer player : online) refresh(player);
             List<UUID> ids = new java.util.ArrayList<>(online.size());

@@ -277,7 +277,7 @@ final class DenizenEvents {
                     if (!player) return Mapped.fail("switch in: needs a player; " + event + " has none");
                     if (!value.matches("[a-z0-9_-]{1,64}")) return Mapped.fail("switch in:" + value + " names an area Animus cannot check");
                     if (notes.containsKey(value)) return Mapped.fail("switch in:" + value + " names a noted area; Animus checks areas only as enter and exit events");
-                    guards.add(new Atom("same(player.world, " + DenizenExpressions.quote(value) + ")"));
+                    guards.add(new Atom("same_world(player.world, " + DenizenExpressions.quote(value) + ")"));
                 }
                 default -> { return Mapped.fail("event switch " + name + ": has no Animus equivalent"); }
             }

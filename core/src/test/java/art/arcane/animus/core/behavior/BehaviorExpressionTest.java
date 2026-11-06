@@ -51,6 +51,26 @@ class BehaviorExpressionTest {
         assertTrue(failure("context.missing",env).getMessage().startsWith("fact-unavailable"));
         env.player=Optional.empty();assertTrue(failure("player.name",env).getMessage().startsWith("fact-unavailable"));
     }
+    @Test void sameWorldComparesWorldsThePlatformResolves(){
+        Env env=new Env();
+        BehaviorFacts base=env.facts;
+        env.facts=new BehaviorFacts(){
+            public Optional<Map<String,Object>> player(UUID id){return Optional.of(Map.of("world","world_nether"));}
+            public Optional<Map<String,Object>> npc(UUID id){return base.npc(id);}
+            public Map<String,Object> server(){return base.server();}
+            public Optional<String> world(String reference){return switch(reference){
+                case "world","minecraft:overworld"->Optional.of("world");
+                case "world_nether","minecraft:the_nether"->Optional.of("world_nether");
+                default->Optional.empty();
+            };}
+        };
+        assertEquals(true,eval("same_world(player.world, 'minecraft:the_nether')",env));
+        assertEquals(false,eval("same_world(player.world, 'minecraft:overworld')",env));
+        assertEquals(false,eval("same_world('skylands', 'minecraft:overworld')",env));
+        assertEquals(true,eval("same_world('Skylands', 'skylands')",env),"worlds no platform knows compare as text, ignoring case");
+        assertEquals(true,eval("same_world('world', 'world')"),"without a resolver both sides compare as written");
+        assertTrue(failure("same_world('world')",new Env()).getMessage().contains("same_world takes 2"));
+    }
     @Test void collectionFunctionsAreImmutableAndBounded(){
         Env env=new Env();env.variables.put("names",new Value(Type.LIST,List.of(text("b"),text("a"))));
         assertEquals(List.of("b","a","c"),eval("append(names, 'c')",env));assertEquals(List.of("b","a"),BehaviorValues.expression(env.variables.get("names")));

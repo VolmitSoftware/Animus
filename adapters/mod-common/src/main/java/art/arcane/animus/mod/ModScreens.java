@@ -79,7 +79,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     @Override public String name(ServerPlayer player) { return player.getGameProfile().name(); }
     @Override public Object viewer(ServerPlayer player, String property) {
         return switch (property) {
-            case "world" -> ModWorldKeys.key(player.level());
+            case "world", "world_key" -> ModWorldKeys.key(player.level());
             case "health" -> (double) player.getHealth();
             case "level" -> player.experienceLevel;
             case "food" -> player.getFoodData().getFoodLevel();

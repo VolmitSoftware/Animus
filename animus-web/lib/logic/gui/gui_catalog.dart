@@ -298,7 +298,8 @@ const int inventorySchemaVersion = 1;
 const Map<String, String> guiExpressionNames = <String, String>{
   'viewer.name': 'The viewer\'s name',
   'viewer.uuid': 'The viewer\'s UUID',
-  'viewer.world': 'The viewer\'s world',
+  'viewer.world': 'The viewer\'s world: its name on Bukkit, its dimension key on mod servers',
+  'viewer.world_key': 'The viewer\'s world as a dimension key, such as minecraft:the_nether',
   'viewer.health': 'Health',
   'viewer.level': 'Experience level',
   'viewer.food': 'Food level',
