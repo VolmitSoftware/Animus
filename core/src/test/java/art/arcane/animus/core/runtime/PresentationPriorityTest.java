@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PresentationPriorityTest {
     @TempDir Path directory;
-    private static final PersistedNpcService.Settings TIGHT = new PersistedNpcService.Settings(true, 48, 64, 256, 16, 4, 8, 32);
+    private static final PersistedNpcService.Settings TIGHT = new PersistedNpcService.Settings(true, 48, 64, 256, 16, 4, 8, 32, 512, 24, 4);
 
     @Test
     void despawnsAreSentBeforeMovesWhenTheTickIsShortOfBudget() throws IOException {

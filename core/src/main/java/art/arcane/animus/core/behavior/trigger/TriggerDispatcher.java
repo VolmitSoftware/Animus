@@ -77,6 +77,8 @@ public final class TriggerDispatcher implements TriggerSink {
     private final EnumMap<DropReason, LongAdder> drops = new EnumMap<>(DropReason.class);
     /** The platform or runtime reason; null once a bridge connects. Configuration switches are checked separately. */
     private volatile String blocked = "no platform bridge is connected";
+    /** When queued runs last had to wait for the start budget; read by NPC owners to slow cosmetic work. */
+    private volatile long backloggedAtNanos;
     private volatile Index index = Index.EMPTY;
     private volatile HiddenNpcs hidden = HiddenNpcs.NONE;
     private volatile Consumption consumption;
@@ -469,6 +471,12 @@ public final class TriggerDispatcher implements TriggerSink {
             activeCount = activeCount + 1; started.increment();
             npcActive.merge(npc, 1, Integer::sum);
         }
+        if (!queue.isEmpty() && (starts >= settings.startsPerTick() || activeCount >= settings.concurrentTotal())) backloggedAtNanos = System.nanoTime();
+    }
+    /** Any thread: queued runs waited for the start or concurrency budget within the last second. */
+    public boolean backlogged() {
+        long at = backloggedAtNanos;
+        return at != 0 && System.nanoTime() - at < 1_000_000_000L;
     }
     private void release(Iterator<Pending> iterator, Pending pending) {
         iterator.remove(); queuedCount = queue.size();

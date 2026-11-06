@@ -25,6 +25,8 @@ import java.util.UUID;
 public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRules targets, TargetRules ignores, TargetRules avoids,
                              Targeting targeting, Avoidance avoidance, Squad squad, Guard guard, Pursuit pursuit, Melee melee,
                              Ranged ranged, Defense defense, Death death, Respawn respawn, Greetings greetings, boolean targetableByMobs) {
+    /** The farthest {@code avoidance.range} may reach, in blocks. */
+    public static final double MAXIMUM_AVOIDANCE_RANGE = 64;
     public static final String MODULE = "animus:combat";
     private static final String ROOT = "$.modules." + MODULE;
     private static final int MAXIMUM_RULE_ENTRIES = 256;
@@ -209,7 +211,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
     private static Avoidance avoidance(Reader reader) {
         reader.known("range", "fleeWhenAttacked", "returnPoint");
         Optional<Location> point = reader.has("returnPoint") ? Optional.of(location(reader.child("returnPoint"))) : Optional.empty();
-        return new Avoidance(reader.number("range", 10, 1, 64), reader.bool("fleeWhenAttacked", false), point);
+        return new Avoidance(reader.number("range", 10, 1, MAXIMUM_AVOIDANCE_RANGE), reader.bool("fleeWhenAttacked", false), point);
     }
     private static Squad squad(Reader reader) {
         reader.known("name", "alertRange");

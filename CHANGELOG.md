@@ -227,6 +227,9 @@
 - Rollback receipts rotate at startup by `files.backupsKept` and `files.backupDays`, removing stored copies only they used.
 - Schema migrations cover routes, recordings, groups, chest GUIs, holograms, text animations, rigs, animations, pack manifests and `server-behaviors.json`.
 - Web editor: the live bar shows Resyncing after a reconnect, then one line saying what changed.
+- `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
+- `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
+- `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
 
 ### Changed
 
@@ -319,6 +322,10 @@
 - Combat NPCs ask protection before choosing a target and every 10 ticks while chasing it, and never choose an invincible NPC or an invulnerable entity.
 - A protected or cancelled hit, melee or projectile, ends the fight at once and leaves that target alone for 5 seconds.
 - Hits on an NPC with `defense.invincible` report `PROTECTED` instead of `NO_CHANGE`.
+- Recording poses, arm swings and dragon wing beats are cosmetic updates: they go after every move and spawn, and several swings in one update show as one.
+- Look-close players, fight and chat witnesses, hologram placement and per-NPC viewer lookups use chunk indexes instead of scanning every player, watcher, hologram or viewer.
+- Mob targeting of NPCs reads the definitions again only after they change.
+- On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -474,6 +481,8 @@
 - An editor browser that stops reading events no longer stalls event delivery to other editors.
 - A respawned combat NPC refills its ammunition, forgets old refusals and greetings, and walks back to its post.
 - On Folia, an NPC's projectiles now hit NPCs that other regions own, credited to the NPC that fired them.
+- A full packet queue no longer drops a player's view of every NPC; moves and spawns wait for the queue to drain.
+- Far fight and chat watchers on Folia no longer use up the 64 deliveries before nearby ones hear the event.
 
 ### Notes
 

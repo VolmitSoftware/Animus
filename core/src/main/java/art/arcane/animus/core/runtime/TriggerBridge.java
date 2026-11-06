@@ -42,4 +42,6 @@ public final class TriggerBridge {
     public void forget(UUID viewer) { proximity.forget(viewer); }
     public void failed(String reason) { dispatcher.unavailable(reason); }
     public long proximityScans() { return proximity.scans(); }
+    /** Queued behavior runs waited for their start budget within the last second. */
+    public boolean backlogged() { return dispatcher.backlogged(); }
 }

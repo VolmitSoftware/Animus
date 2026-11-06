@@ -56,7 +56,7 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     String status();
     /**
      * On the caller's owner: cosmetic updates such as hologram text animation may send now. False while NPC moves and
-     * despawns are waiting for packet budget; see {@link PresentationPressure}.
+     * despawns are waiting for packet budget, and on most ticks while another budget runs short; see {@link PresentationPressure}.
      */
     boolean cosmeticAllowed();
     /** Connect during startup, before the first NPC can activate. */

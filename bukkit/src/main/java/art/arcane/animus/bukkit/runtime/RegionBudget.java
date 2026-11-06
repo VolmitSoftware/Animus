@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 /**
  * Work allowances for one region tick. A region tick runs on a single thread, so a thread-local window keyed by the
@@ -16,7 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * New limits from a hotload are adopted by each region at its next region tick, never in the middle of one.
  */
 final class RegionBudget {
-    enum Kind { OWNER_WORK, ROUTES, MOTION_CELLS, CAPTURE, VIEWERS, PACKETS, WAKES, RIG_PLANS, LOOKS, ROUTE_PLANS, COMBAT_BRAINS, COMBAT_SCANS, COMBAT_PATHS, COMBAT_ALERTS, COMBAT_HELPERS }
+    enum Kind { OWNER_WORK, ROUTES, MOTION_CELLS, CAPTURE, VIEWERS, PACKETS, WAKES, RIG_PLANS, LOOKS, ROUTE_PLANS, SIMULATION, COMBAT_BRAINS, COMBAT_SCANS, COMBAT_PATHS, COMBAT_ALERTS, COMBAT_HELPERS }
     private static final long IDLE_TURNS_NANOS = 60_000_000_000L;
     private static final class Window { Object region; long tick = Long.MIN_VALUE; int[] limits; final int[] used = new int[Kind.values().length]; }
     private static final class Turns { final WaitingTurns turns = new WaitingTurns(); final PresentationPressure pressure = new PresentationPressure(); volatile long seen; }
@@ -26,6 +27,10 @@ final class RegionBudget {
     private final Map<Object, Turns> turns = new ConcurrentHashMap<>(), combatTurns = new ConcurrentHashMap<>();
     private final AtomicInteger refusedRoutes = new AtomicInteger();
     private volatile long shortAtNanos = Long.MIN_VALUE;
+    /** {@code [npcs] degradedIntervalTicks}; each region's pressure takes it at its next use. */
+    private volatile int interval = 1;
+    /** Behavior runs waiting for their start budget, which slows cosmetic work on every region. */
+    private volatile BooleanSupplier backlog = () -> false;
 
     RegionBudget(RegionScheduler regions, Map<Kind, Integer> limits) {
         this.regions = Objects.requireNonNull(regions);
@@ -78,6 +83,7 @@ final class RegionBudget {
         if (entry.turns.admits(waited) && take(Kind.ROUTES, 1) == 1) return true;
         entry.turns.refused(waited);
         refusedRoutes.incrementAndGet();
+        busy();
         return false;
     }
     /** One combat brain turn, longest waiting first, like {@link #takeRoute}: combat NPCs ask in the same order every tick. */
@@ -94,7 +100,25 @@ final class RegionBudget {
         Turns entry = turns();
         if (entry != null) entry.turns.refused(waited);
         refusedRoutes.incrementAndGet();
+        busy();
     }
+    /** One simulation turn (an idle fall step or rig playback) for this region tick; a refusal slows cosmetic work here. */
+    boolean takeSimulation() {
+        if (take(Kind.SIMULATION, 1) == 1) return true;
+        busy();
+        return false;
+    }
+    /** Simulation, navigation or behavior work on this region waited for its budget this tick. */
+    private void busy() {
+        RegionScheduler.Tick tick = regions.tick();
+        Turns entry = tick == null ? null : turns();
+        if (entry != null) entry.pressure.busy(tick.number());
+    }
+    void interval(int ticks) {
+        if (ticks < 1) throw new IllegalArgumentException("Invalid degraded interval");
+        interval = ticks;
+    }
+    void backlog(BooleanSupplier backlogged) { backlog = java.util.Objects.requireNonNull(backlogged); }
     /** Authoritative packet work on this region waited for budget this tick: cosmetic work pauses here for a while. */
     void shortOfPackets() {
         RegionScheduler.Tick tick = regions.tick();
@@ -107,11 +131,22 @@ final class RegionBudget {
         long at = shortAtNanos;
         return at != Long.MIN_VALUE && System.nanoTime() - at < 1_000_000_000L;
     }
-    /** Cosmetic work (look-close, rig sampling and bones, hologram text refresh) may run on this region now; true away from a region thread. */
+    /** Cosmetic work (look-close, rig sampling, hologram text refresh) may run on this region now; true away from a region thread. */
     boolean cosmeticAllowed() {
         RegionScheduler.Tick tick = regions.tick();
+        return tick == null || cosmeticAllowed(tick.number());
+    }
+    /** Like {@link #cosmeticAllowed()}, spaced by a viewer's own update count so its turn schedule cannot starve it. */
+    boolean cosmeticAllowed(long turn) {
+        RegionScheduler.Tick tick = regions.tick();
         Turns entry = tick == null ? null : turns();
-        return entry == null || entry.pressure.allows(PresentationPressure.Tier.COSMETIC, tick.number());
+        return entry == null || entry.pressure.allows(PresentationPressure.Tier.COSMETIC, tick.number(), turn);
+    }
+    /** A body far from its viewer gets its move on this viewer turn; under pressure, one turn in the interval. */
+    boolean distantMove(long turn, long phase) {
+        RegionScheduler.Tick tick = regions.tick();
+        Turns entry = tick == null ? null : turns();
+        return entry == null || entry.pressure.distantMove(tick.number(), turn, phase);
     }
     /** Route refusals on every region since the last call. */
     int drainRefusedRoutes() { return refusedRoutes.getAndSet(0); }
@@ -127,6 +162,8 @@ final class RegionBudget {
         Turns entry = table.computeIfAbsent(tick.region(), (Object region) -> new Turns());
         entry.seen = System.nanoTime();
         entry.turns.begin(tick.number());
+        entry.pressure.interval(interval);
+        if (table == turns && backlog.getAsBoolean()) entry.pressure.busy(tick.number());
         return entry;
     }
     private Window window() {
