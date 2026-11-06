@@ -341,7 +341,7 @@ void main() {
       'modules': <String, Object?>{combatModule: combat},
     });
 
-    test('should add combat diagnostics to an npc document', () {
+    test('should report an out-of-range combat field once on an npc document', () {
       final AnimusDocument document = validateSource(
         const DocumentLocation(DocumentKind.npc, 'town/guard'),
         'npcs/town/guard.json',
@@ -351,12 +351,14 @@ void main() {
         }),
         SharedSchemas.embedded,
       );
-      final List<Diagnostic> combat = <Diagnostic>[
+      // The schema declares the combat bounds, so the schema check reports the
+      // field and the combat hook does not repeat it.
+      final List<Diagnostic> reach = <Diagnostic>[
         for (final Diagnostic d in document.diagnostics)
-          if (d.code == 'combat') d,
+          if (d.path.contains('melee') && d.path.endsWith('reach')) d,
       ];
-      expect(combat.map((Diagnostic d) => d.path), <String>[r'$.modules.animus:combat.melee.reach']);
-      expect(combat.single.severity, DiagnosticSeverity.error);
+      expect(reach, hasLength(1));
+      expect(reach.single.severity, DiagnosticSeverity.error);
       expect(document.valid, isFalse);
     });
 

@@ -2,6 +2,9 @@
 /// says, each prompt with its answers, and under each answer what the
 /// matching `dialogue_choice` trigger runs. Lines, prompts and answers are
 /// edited in place; everything else stays in the routine editor below.
+///
+/// It is drawn as nested lists, not an ARIA tree: every line is a text field,
+/// and a tree's single tab stop would take them out of the Tab order.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -23,9 +26,9 @@ class DialogueView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return dom.div(classes: 'animus-dialogue', attributes: const <String, String>{'role': 'tree', 'aria-label': 'Conversation'}, <Widget>[
+    return dom.div(classes: 'animus-dialogue', attributes: const <String, String>{'role': 'group', 'aria-label': 'Conversation'}, <Widget>[
       for (final DialogueStart start in tree.starts)
-        dom.div(classes: 'animus-dialogue-start', attributes: const <String, String>{'role': 'treeitem'}, <Widget>[
+        dom.div(classes: 'animus-dialogue-start', <Widget>[
           dom.div(classes: 'animus-dialogue-head', <Widget>[
             dom.span(classes: 'animus-tag', <Widget>[Component.text(start.label)]),
             dom.span(classes: 'animus-muted', <Widget>[Component.text('runs ${start.routine}')]),
@@ -41,8 +44,8 @@ class DialogueView extends StatelessWidget {
 
   Widget _steps(List<DialogueStep> steps) {
     if (steps.isEmpty) return const dom.p(classes: 'animus-muted', <Widget>[Component.text('Says nothing.')]);
-    return dom.ol(classes: 'animus-dialogue-steps', attributes: const <String, String>{'role': 'group'}, <Widget>[
-      for (final DialogueStep step in steps) dom.li(attributes: const <String, String>{'role': 'treeitem'}, <Widget>[_step(step)]),
+    return dom.ol(classes: 'animus-dialogue-steps', <Widget>[
+      for (final DialogueStep step in steps) dom.li(<Widget>[_step(step)]),
     ]);
   }
 
@@ -74,7 +77,7 @@ class DialogueView extends StatelessWidget {
             ]),
             dom.ul(classes: 'animus-dialogue-options', <Widget>[
               for (final DialogueOption option in options)
-                dom.li(classes: 'animus-dialogue-option', attributes: const <String, String>{'role': 'treeitem'}, <Widget>[
+                dom.li(classes: 'animus-dialogue-option', <Widget>[
                   dom.div(classes: 'animus-dialogue-answer', <Widget>[
                     dom.span(classes: 'animus-dialogue-speaker', <Widget>[const Component.text('Player answers'), dom.code(<Widget>[Component.text(' ${option.id}')])]),
                     if (readOnly)

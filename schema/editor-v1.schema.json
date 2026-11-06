@@ -160,7 +160,7 @@
       "properties": {
         "schemas": {
           "type": "object",
-          "description": "Schema name (npc, behavior, pack, completions, shop, inventory, rig, animation and the Gloss kinds) to schema document.",
+          "description": "Schema name (npc, route, behavior, pack, completions, shop, inventory, rig, animation and the Gloss kinds) to schema document.",
           "additionalProperties": {"type": "object"}
         }
       }
