@@ -7,6 +7,7 @@ import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.BuildIdentity;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
 import art.arcane.animus.core.behavior.builtin.PlatformRefusals;
+import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
@@ -15,7 +16,11 @@ import art.arcane.animus.core.runtime.PersistedNpcService;
 import art.arcane.animus.core.runtime.ViewerPreviews;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
+import art.arcane.animus.api.Outcome;
+import art.arcane.animus.core.extension.CapabilityRefusal;
+import art.arcane.animus.core.text.RichText;
 import com.mojang.brigadier.ParseResults;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -25,19 +30,30 @@ import java.util.function.Consumer;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.Holder;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.Filterable;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.component.WrittenBookContent;
 
 /** Behavior world work on the mod server thread, the single owner of every NPC and player. */
 final class VanillaBehaviorPlatform implements BehaviorPlatform {
@@ -60,6 +76,9 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     @Override public Optional<String> unavailable() { return PlatformRefusals.unavailability(living::available, living::status); }
     @Override public AutoCloseable ownerTicks(Runnable tick) { return ticks.every(AnimusMetrics.current().timed(Subsystem.BEHAVIORS, tick)); }
     @Override public boolean onNpcOwner(NpcHandle npc, Runnable work, Consumer<String> refused) { return living.onOwner(npc.uuid(), work, refused); }
+    /** The server thread owns every player too, so player and global work run inline there like NPC work. */
+    @Override public boolean onPlayerOwner(UUID player, Runnable work, Consumer<String> refused) { return living.onOwner(player, work, refused); }
+    @Override public boolean onGlobalOwner(Runnable work, Consumer<String> refused) { return living.onOwner(ServerNpc.HANDLE.uuid(), work, refused); }
 
     @Override public boolean hasPermission(UUID player, String node) {
         return living.players().owned(player).map((ServerPlayer online) -> VanillaRuntimeHost.permitted(online.permissions(), node)).orElse(false);
@@ -165,13 +184,16 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
     @Override public int playSound(NpcHandle npc, Audience audience, SoundEffect sound) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
         WorldPosition at = bodyCenter(active);
-        Identifier id = Identifier.tryParse(sound.sound());
-        if (id == null) throw PlatformRefusals.refusal(art.arcane.animus.api.Outcome.Status.INVALID, "unknown-sound", new IllegalArgumentException("Unknown sound: " + sound.sound()));
-        Holder<SoundEvent> event = BuiltInRegistries.SOUND_EVENT.get(id).<Holder<SoundEvent>>map((Holder.Reference<SoundEvent> reference) -> reference)
-                .orElseGet(() -> Holder.direct(SoundEvent.createVariableRangeEvent(id)));
+        Holder<SoundEvent> event = sound(sound.sound());
         long seed = server.overworld().getRandom().nextLong();
         return deliver(active, audience, at, true, (ServerPlayer viewer) -> viewer.connection.send(new ClientboundSoundPacket(event, SoundSource.NEUTRAL,
                 at.point().x(), at.point().y(), at.point().z(), sound.volume(), sound.pitch(), seed)));
+    }
+    private static Holder<SoundEvent> sound(String key) {
+        Identifier id = Identifier.tryParse(key);
+        if (id == null) throw PlatformRefusals.refusal(art.arcane.animus.api.Outcome.Status.INVALID, "unknown-sound", new IllegalArgumentException("Unknown sound: " + key));
+        return BuiltInRegistries.SOUND_EVENT.get(id).<Holder<SoundEvent>>map((Holder.Reference<SoundEvent> reference) -> reference)
+                .orElseGet(() -> Holder.direct(SoundEvent.createVariableRangeEvent(id)));
     }
     @Override public int spawnParticle(NpcHandle npc, Audience audience, ParticleEffect effect) {
         NpcRuntime.ActiveNpc active = requireVoice(npc);
@@ -199,6 +221,184 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         if (builds.unavailable().isPresent())
             throw new art.arcane.animus.core.extension.CapabilityRefusal(art.arcane.animus.api.Outcome.Status.UNAVAILABLE, "build-unavailable", "Builds " + builds.unavailable().get());
         return builds.behavior(active.id(), operation, schematic, origin, options);
+    }
+
+    @Override public int message(NpcHandle npc, Optional<UUID> player, MessageTarget to, String text) {
+        Component line = formatted(text);
+        return switch (to) {
+            case CONSOLE -> { server.sendSystemMessage(line); yield 1; }
+            case PLAYER -> living.players().deliver(player.orElseThrow(() -> invalid("message-needs-player", "A player message needs a triggering player")),
+                    (ServerPlayer online) -> online.sendSystemMessage(line)) ? 1 : 0;
+            case ALL -> broadcast(server.getPlayerList().getPlayers(), line);
+            case WORLD -> {
+                String world;
+                if (ServerNpc.is(npc)) {
+                    Optional<ServerPlayer> online = living.players().owned(player.orElseThrow(() -> invalid("message-needs-world", "A world message in a server behavior needs a triggering player")));
+                    if (online.isEmpty()) yield 0;
+                    world = ModWorldKeys.key(online.get().level());
+                } else world = requireVoice(npc).state().position().world();
+                ServerLevel level = ModWorldKeys.level(server, world);
+                if (level == null) throw PlatformRefusals.worldUnavailable();
+                yield broadcast(level.players(), line);
+            }
+        };
+    }
+    private static int broadcast(List<ServerPlayer> receivers, Component line) {
+        List<ServerPlayer> snapshot = List.copyOf(receivers);
+        for (ServerPlayer receiver : snapshot) receiver.sendSystemMessage(line);
+        return snapshot.size();
+    }
+    @Override public int title(UUID player, Title title) {
+        Component main = formatted(title.title().orElse("")), sub = formatted(title.subtitle().orElse(""));
+        return living.players().deliver(player, (ServerPlayer online) -> {
+            online.connection.send(new ClientboundSetTitlesAnimationPacket(title.fadeIn(), title.stay(), title.fadeOut()));
+            online.connection.send(new ClientboundSetSubtitleTextPacket(sub));
+            online.connection.send(new ClientboundSetTitleTextPacket(main));
+        }) ? 1 : 0;
+    }
+    @Override public int actionbar(UUID player, String text) {
+        Component line = formatted(text);
+        return living.players().deliver(player, (ServerPlayer online) -> online.sendSystemMessage(line, true)) ? 1 : 0;
+    }
+    @Override public int playSoundAtPlayer(UUID player, Audience audience, SoundEffect sound) {
+        Holder<SoundEvent> event = sound(sound.sound());
+        Optional<WorldPosition> at = playerCenter(player);
+        if (at.isEmpty()) return 0;
+        Vec3 point = at.get().point();
+        long seed = server.overworld().getRandom().nextLong();
+        return deliverAt(at.get(), audience, (ServerPlayer viewer) -> viewer.connection.send(new ClientboundSoundPacket(event, SoundSource.NEUTRAL,
+                point.x(), point.y(), point.z(), sound.volume(), sound.pitch(), seed)));
+    }
+    @Override public int spawnParticleAtPlayer(UUID player, Audience audience, ParticleEffect effect) {
+        SimpleParticleType particle = particle(effect.particle());
+        Optional<WorldPosition> at = playerCenter(player);
+        if (at.isEmpty()) return 0;
+        ServerLevel level = ModWorldKeys.level(server, at.get().world());
+        if (level == null) throw PlatformRefusals.worldUnavailable();
+        Vec3 point = at.get().point();
+        return deliverAt(at.get(), audience, (ServerPlayer viewer) -> level.sendParticles(viewer, particle, false, false,
+                point.x(), point.y(), point.z(), effect.count(), effect.spread(), effect.spread(), effect.spread(), 0));
+    }
+    @Override public boolean teleportPlayer(UUID player, NpcHandle npc, Destination to) {
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return false;
+        ServerPlayer target = online.get();
+        Placement place = switch (to) {
+            case Point point -> new Placement(new WorldPosition(world(point, ModWorldKeys.key(target.level())), point.position()),
+                    point.yaw().isPresent() ? (float) point.yaw().getAsDouble() : target.getYRot(), point.pitch().isPresent() ? (float) point.pitch().getAsDouble() : target.getXRot());
+            case ToNpc ignored -> {
+                if (ServerNpc.is(npc)) throw invalid("teleport-needs-npc", "A server behavior has no NPC to teleport to");
+                yield new Placement(require(npc).state().position(), target.getYRot(), target.getXRot());
+            }
+            case ToPlayer other -> {
+                ServerPlayer destination = living.players().owned(other.player()).orElseThrow(PlatformRefusals::offline);
+                yield new Placement(position(destination), destination.getYRot(), destination.getXRot());
+            }
+        };
+        ServerLevel level = ModWorldKeys.level(server, place.at().world());
+        if (level == null) throw PlatformRefusals.worldUnavailable();
+        Vec3 point = place.at().point();
+        target.teleportTo(level, point.x(), point.y(), point.z(), java.util.Set.of(), place.yaw(), place.pitch(), true);
+        return true;
+    }
+    /** Facing is not applied: the NPC runtime relocates an NPC without turning it. */
+    @Override public void teleportNpc(NpcHandle npc, Destination to) {
+        if (ServerNpc.is(npc)) throw invalid("teleport-needs-npc", "A server behavior has no NPC to teleport");
+        NpcRuntime.ActiveNpc active = require(npc);
+        WorldPosition at = switch (to) {
+            case Point point -> new WorldPosition(world(point, active.state().position().world()), point.position());
+            case ToNpc ignored -> throw invalid("teleport-to-self", "An NPC cannot be teleported to itself");
+            case ToPlayer other -> position(living.players().owned(other.player()).orElseThrow(PlatformRefusals::offline));
+        };
+        if (!PlatformRefusals.mapped(() -> living.relocate(active.id(), at)))
+            throw new CapabilityRefusal(Outcome.Status.FAILED, "teleport-blocked",
+                    "The NPC cannot stand there: the destination must be loaded, clear and supported, and the NPC must not ride or carry anyone");
+    }
+    @Override public int giveItem(UUID player, ItemGift gift) {
+        ItemStack template = stack(gift.item());
+        gift.name().ifPresent((String name) -> template.set(DataComponents.CUSTOM_NAME, itemText(name)));
+        if (!gift.lore().isEmpty()) {
+            List<Component> lines = new ArrayList<>();
+            for (String line : gift.lore()) if (lines.size() < ItemLore.MAX_LINES) lines.add(itemText(line));
+            template.set(DataComponents.LORE, new ItemLore(lines));
+        }
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return 0;
+        int limit = Math.max(1, template.getMaxStackSize());
+        for (int remaining = gift.amount(); remaining > 0; remaining -= limit) give(online.get(), template.copyWithCount(Math.min(remaining, limit)));
+        return gift.amount();
+    }
+    /** Main inventory and off hand only; worn armour is never taken. */
+    @Override public int takeItem(UUID player, String item, int amount) {
+        Item wanted = stack(item).getItem();
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return 0;
+        Inventory inventory = online.get().getInventory();
+        int taken = 0;
+        for (int slot = 0; slot < inventory.getContainerSize() && taken < amount; slot++) {
+            if (slot >= Inventory.INVENTORY_SIZE && slot != Inventory.SLOT_OFFHAND) continue;
+            ItemStack held = inventory.getItem(slot);
+            if (held.isEmpty() || !held.is(wanted)) continue;
+            int take = Math.min(amount - taken, held.getCount());
+            held.shrink(take);
+            if (held.isEmpty()) inventory.setItem(slot, ItemStack.EMPTY);
+            taken += take;
+        }
+        if (taken > 0) inventory.setChanged();
+        return taken;
+    }
+    @Override public int giveBook(UUID player, Book book) {
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return 0;
+        String title = RichText.plain(book.title());
+        if (title.length() > WrittenBookContent.TITLE_MAX_LENGTH) title = title.substring(0, WrittenBookContent.TITLE_MAX_LENGTH);
+        List<Filterable<Component>> pages = new ArrayList<>();
+        for (String page : book.pages()) pages.add(Filterable.passThrough(formatted(page)));
+        ItemStack stack = new ItemStack(Items.WRITTEN_BOOK);
+        stack.set(DataComponents.WRITTEN_BOOK_CONTENT, new WrittenBookContent(Filterable.passThrough(title), book.author(), 0, pages, true));
+        give(online.get(), stack);
+        return 1;
+    }
+
+    private record Placement(WorldPosition at, float yaw, float pitch) {}
+    /** Text formatted like dialogue, without a speaker prefix. */
+    private static Component formatted(String raw) { return ModText.section(RichText.colorize(raw)); }
+    private static Component itemText(String raw) { return ModText.component(raw, Style.EMPTY.withItalic(false)); }
+    private static CapabilityRefusal invalid(String code, String message) { return new CapabilityRefusal(Outcome.Status.INVALID, code, message); }
+    private String world(Point point, String current) {
+        if (point.world().isEmpty()) return current;
+        return ModWorldKeys.resolve(server, point.world().get())
+                .orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "world-unavailable", "World is not loaded: " + point.world().get()));
+    }
+    private static WorldPosition position(ServerPlayer player) {
+        net.minecraft.world.phys.Vec3 at = player.position();
+        return new WorldPosition(ModWorldKeys.key(player.level()), new Vec3(at.x(), at.y(), at.z()));
+    }
+    private Optional<WorldPosition> playerCenter(UUID player) {
+        Optional<ServerPlayer> online = living.players().owned(player);
+        if (online.isEmpty()) return Optional.empty();
+        WorldPosition feet = position(online.get());
+        return Optional.of(new WorldPosition(feet.world(), new Vec3(feet.point().x(), feet.point().y() + online.get().getBbHeight() / 2, feet.point().z())));
+    }
+    /** The audience player in the same world, or every player within the radius of the point. */
+    private int deliverAt(WorldPosition at, Audience audience, Consumer<ServerPlayer> action) {
+        if (audience.player().isPresent()) {
+            Optional<ServerPlayer> viewer = living.players().owned(audience.player().get());
+            if (viewer.isEmpty() || !ModWorldKeys.key(viewer.get().level()).equals(at.world())) return 0;
+            action.accept(viewer.get());
+            return 1;
+        }
+        List<ServerPlayer> nearby = living.players().ownedNear(at, audience.radius(), MAXIMUM_AUDIENCE);
+        for (ServerPlayer viewer : nearby) action.accept(viewer);
+        return nearby.size();
+    }
+    /** Fills the inventory and drops what does not fit at the player's feet. */
+    private static void give(ServerPlayer player, ItemStack stack) {
+        player.getInventory().add(stack);
+        if (stack.isEmpty()) return;
+        ItemEntity dropped = new ItemEntity(player.level(), player.getX(), player.getY(), player.getZ(), stack);
+        dropped.setNoPickUpDelay();
+        player.level().addFreshEntity(dropped);
     }
 
     private NpcRuntime.ActiveNpc require(NpcHandle npc) { return living.active(npc.uuid()).orElseThrow(PlatformRefusals::inactive); }
@@ -237,6 +437,7 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         art.arcane.animus.core.gui.GuiBinding.Kind target = art.arcane.animus.core.gui.HoloService.kind(kind);
         Optional<art.arcane.animus.core.extension.CapabilityRefusal> refused = service.refusal(target);
         if (refused.isPresent()) throw refused.get();
-        return living.players().deliver(player, (ServerPlayer viewer) -> service.open(viewer, target, id, java.util.Map.of(), Optional.of(npc.uuid())));
+        Optional<UUID> owner = ServerNpc.is(npc) ? Optional.empty() : Optional.of(npc.uuid());
+        return living.players().deliver(player, (ServerPlayer viewer) -> service.open(viewer, target, id, java.util.Map.of(), owner));
     }
 }
