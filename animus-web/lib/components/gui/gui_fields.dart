@@ -541,11 +541,13 @@ class GuiStyledText extends StatelessWidget {
 }
 
 /// A collapsible group of fields.
-class GuiSection extends StatelessWidget {
+class GuiSection extends StatefulWidget {
   const GuiSection({required this.title, required this.children, this.open = true, this.count, this.tip, this.docs, super.key});
 
   final String title;
   final List<Widget> children;
+
+  /// Whether the section starts open.
   final bool open;
   final int? count;
 
@@ -554,15 +556,30 @@ class GuiSection extends StatelessWidget {
   final DocLink? docs;
 
   @override
+  State<GuiSection> createState() => _GuiSectionState();
+}
+
+class _GuiSectionState extends State<GuiSection> {
+  /// Kept from the user's own open and close, so an edit that builds the
+  /// section again does not fold it back to [GuiSection.open].
+  late bool _open = component.open;
+
+  @override
   Widget build(BuildContext context) => dom.details(
         classes: 'animus-gui-section',
-        attributes: <String, String>{if (open) 'open': ''},
+        attributes: <String, String>{if (_open) 'open': ''},
+        events: <String, void Function(web.Event)>{
+          'toggle': (web.Event event) {
+            final bool open = (event.currentTarget! as web.HTMLDetailsElement).open;
+            if (open != _open) setState(() => _open = open);
+          },
+        },
         <Widget>[
           dom.summary(<Widget>[
-            withTip(Component.text(title), tip, docs: docs),
-            if (count != null) dom.span(classes: 'animus-count', <Widget>[Component.text('$count')]),
+            withTip(Component.text(component.title), component.tip, docs: component.docs),
+            if (component.count != null) dom.span(classes: 'animus-count', <Widget>[Component.text('${component.count}')]),
           ]),
-          dom.div(classes: 'animus-gui-section-body', children),
+          dom.div(classes: 'animus-gui-section-body', component.children),
         ],
       );
 }

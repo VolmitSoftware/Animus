@@ -32,7 +32,7 @@ async function tooltip(page, text) {
  * sections around it, and returns it. */
 async function labelTip(page) {
   const id = await page.evaluate(() => {
-    const text = [...document.querySelectorAll('label .animus-tip-text')].find(el => el.closest('label').control?.matches('input:not([type="checkbox"]), textarea, select'));
+    const text = [...document.querySelectorAll('label .animus-tip-text')].find(el => el.closest('label').control?.matches('input:not([type="checkbox"]), textarea, button[role="combobox"]'));
     for (let section = text?.closest('details'); section; section = section.parentElement.closest('details')) section.open = true;
     return text?.closest('label').control.id;
   });

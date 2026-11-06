@@ -49,7 +49,8 @@ const stateTargets = [
   'input[type="text"], input:not([type])',
   'input[type="checkbox"]',
   'input[type="range"]',
-  'select',
+  'button[role="combobox"]',
+  'input[role="combobox"]',
   'textarea',
   'summary',
   '.arcane-toast-close',
@@ -147,7 +148,7 @@ async function scanStates(page, cdp) {
 async function sizes(page, compact) {
   return page.evaluate(({allowed, compact}) => {
     const out = [];
-    for (const el of document.querySelectorAll('button, .arcane-button, [role="button"], [role="tab"], select, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="color"])')) {
+    for (const el of document.querySelectorAll('button, .arcane-button, [role="button"], [role="tab"], [role="combobox"], input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="color"])')) {
       const box = el.getBoundingClientRect();
       if (!box.width || !box.height || getComputedStyle(el).visibility === 'hidden') continue;
       // Chest slots, stage tools and tree rows are sized by their grid, not the button system.
@@ -155,7 +156,7 @@ async function sizes(page, compact) {
       const height = Math.round(box.height);
       const label = `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''} "${(el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24)}"`;
       if (compact) {
-        if (height < 44 && el.matches('button, .arcane-button, [role="button"], [role="tab"], select, input')) out.push(`${label} ${height}px`);
+        if (height < 44 && el.matches('button, .arcane-button, [role="button"], [role="tab"], [role="combobox"], input')) out.push(`${label} ${height}px`);
       } else if (el.matches('button.arcane-button, a.arcane-button, button.arcane-cycle-button') && !allowed.includes(height)) {
         out.push(`${label} ${height}px`);
       }
