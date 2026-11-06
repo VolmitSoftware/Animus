@@ -88,12 +88,9 @@ class _ConversationAttachState extends State<ConversationAttach> {
     final int using = targets.where(_listed).length;
     return dom.section(classes: 'animus-conv-attach', attributes: const <String, String>{'aria-label': 'NPCs'}, <Widget>[
       dom.div(classes: 'animus-conv-preview-head', <Widget>[
-        labelWithTip(
-          dom.h3(<Widget>[Component.text(using == 0 ? 'NPCs' : 'NPCs ($using)')]),
-          'NPCs and groups that list this behavior run its start. Tick them, then Attach.',
-          'NPCs',
-          docs: conversationDocs,
-        ),
+        dom.h3(<Widget>[
+          withTip(Component.text(using == 0 ? 'NPCs' : 'NPCs ($using)'), 'NPCs and groups that list this behavior run its start. Tick them, then Attach.', docs: conversationDocs),
+        ]),
         Button.primary(
           label: changed == 0 ? 'Attach' : 'Attach ($changed)',
           size: ButtonSize.small,

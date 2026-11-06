@@ -63,12 +63,9 @@ class _ConversationPreviewState extends State<ConversationPreview> {
     }
     return dom.section(classes: 'animus-conv-preview', attributes: const <String, String>{'aria-label': 'Preview'}, <Widget>[
       dom.div(classes: 'animus-conv-preview-head', <Widget>[
-        labelWithTip(
-          const dom.h3(<Widget>[Component.text('Preview')]),
-          'Plays in the browser. Each condition has a switch for the branch it takes.',
-          'Preview',
-          docs: conversationDocs,
-        ),
+        dom.h3(<Widget>[
+          withTip(const Component.text('Preview'), 'Plays in the browser. Each condition has a switch for the branch it takes.', docs: conversationDocs),
+        ]),
         Button.ghost(
           label: 'Restart',
           size: ButtonSize.small,

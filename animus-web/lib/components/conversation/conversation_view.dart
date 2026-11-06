@@ -167,12 +167,13 @@ class _ConversationViewState extends State<ConversationView> {
     final ConversationStart start = conversation.start;
     const String startId = 'conv-start';
     return dom.div(classes: 'animus-conv-start', <Widget>[
-      labelWithTip(
-        const dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': startId}, <Widget>[Component.text('Start')]),
-        'What starts it for the NPCs below. Command means /animus behaviors run <npc> <behavior>, which needs animus.admin.',
-        'Start',
-        docs: conversationDocs,
-      ),
+      dom.label(classes: 'animus-gui-label', attributes: const <String, String>{'for': startId}, <Widget>[
+        withTip(
+          const Component.text('Start'),
+          'What starts it for the NPCs below. Command means /animus behaviors run <npc> <behavior>, which needs animus.admin.',
+          docs: conversationDocs,
+        ),
+      ]),
       ConversationPicker(
         id: startId,
         label: 'Start',

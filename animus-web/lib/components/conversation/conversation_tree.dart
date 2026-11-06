@@ -542,9 +542,10 @@ class PlaceholderMenu extends StatelessWidget {
 }
 
 /// The heading tip that lists the keys.
-Widget conversationKeysTip(String label) => labelWithTip(
-      dom.h2(classes: 'animus-conv-title', <Widget>[Component.text(label)]),
-      'Enter adds a line, and a line ending in [Yes] [No] becomes a question. Type /ask, /if, /do, /goto or /end in an empty line; Alt+arrows move, Ctrl+D duplicates, Ctrl+Enter on an answer adds what follows.',
-      label,
-      docs: conversationDocs,
-    );
+Widget conversationKeysTip(String label) => dom.h2(classes: 'animus-conv-title', <Widget>[
+      withTip(
+        Component.text(label),
+        'Enter adds a line, and a line ending in [Yes] [No] becomes a question. Type /ask, /if, /do, /goto or /end in an empty line; Alt+arrows move, Ctrl+D duplicates, Ctrl+Enter on an answer adds what follows.',
+        docs: conversationDocs,
+      ),
+    ]);

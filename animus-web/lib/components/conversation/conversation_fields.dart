@@ -310,7 +310,7 @@ class ActionArguments extends StatelessWidget {
     final Object? value = action.arguments[field.key];
     final String label = '${humanizeKey(field.key)}${field.required ? ' *' : ''}';
     return dom.div(classes: 'animus-conv-arg', <Widget>[
-      labelWithTip(dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': id}, <Widget>[Component.text(label)]), field.description, label),
+      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': id}, <Widget>[withTip(Component.text(label), field.description)]),
       _control(field, id, value),
     ]);
   }
@@ -366,7 +366,7 @@ class ActionArguments extends StatelessWidget {
 
 /// A small labelled field inside an opened row.
 Widget _labelled(String id, String label, String? tip, Widget control) => dom.div(classes: 'animus-conv-arg', <Widget>[
-      labelWithTip(dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': id}, <Widget>[Component.text(label)]), tip, label),
+      dom.label(classes: 'animus-gui-label', attributes: <String, String>{'for': id}, <Widget>[withTip(Component.text(label), tip, docs: conversationDocs)]),
       control,
     ]);
 
