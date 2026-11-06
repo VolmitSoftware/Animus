@@ -63,6 +63,20 @@ public final class BodyTerrain {
         throw new IllegalStateException("A complete read always decides");
     }
 
+    /** The surface on top of block {@code y} itself, up to one block above it, such as a full block, a carpet or snow on it. */
+    public Rest onTop(double x, double z, int y) { return rest(x, z, y + 1, 1 - 0.0001, 0, false); }
+
+    /**
+     * Where a body sent to block {@code y} stands: ground in that block or the one below, otherwise on top of the block,
+     * which is what a waypoint naming the ground under the feet means. The plain rest answer when neither holds it.
+     */
+    public Rest footing(double x, double z, int y) {
+        Rest rest = rest(x, z, y, 1 - 0.0001, 1, false);
+        if (rest.usable() || rest.kind() == Kind.UNAVAILABLE) return rest;
+        Rest top = onTop(x, z, y);
+        return top.usable() ? top : rest;
+    }
+
     /** @return null while a lower, unread layer could still change the answer */
     private Rest decide(Area area, double feet, double climb, double drop, boolean allowHazard, int count, boolean complete) {
         // Boxes in unread layers top out at least this low, so a surface above it is final.

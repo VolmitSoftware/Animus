@@ -162,7 +162,10 @@ public final class PathPlanner {
         }
         private static Vec3 centre(BlockPos column, double y) { return new Vec3(column.x() + 0.5, y, column.z() + 0.5); }
 
-        /** Where a body asked to be in this voxel actually rests; ground anywhere from one block below counts. */
+        /**
+         * Where a body asked to be in this voxel actually rests; ground anywhere from one block below counts. A goal may
+         * also name the block under the feet, as a Citizens waypoint does: the body then stands on top of that block.
+         */
         private Place resolve(BlockPos voxel, boolean start) {
             Vec3 point = centre(voxel, voxel.y());
             if (flies || !walks) {
@@ -176,6 +179,11 @@ public final class PathPlanner {
             // A climber may start or end holding a ladder or vine above the ground.
             if (climbs && (!rest.usable() || floor(rest.feet()) < voxel.y()) && climbable(voxel.x(), voxel.y(), voxel.z())
                     && check(point, point, MotionValidator.Medium.CLIMB, false).clear()) return new Place(Kind.OPEN, voxel.y(), false);
+            if (!start && !rest.usable()) {
+                BodyTerrain.Rest top = terrain.onTop(point.x(), point.z(), voxel.y());
+                if (top.kind() == BodyTerrain.Kind.UNAVAILABLE) { unavailable = true; return new Place(Kind.UNKNOWN, voxel.y(), false); }
+                if (top.usable()) return new Place(Kind.OPEN, top.feet(), top.kind() == BodyTerrain.Kind.SWIM);
+            }
             if (!rest.usable() || floor(rest.feet()) < voxel.y() - 1) return new Place(Kind.BLOCKED, voxel.y(), false);
             return new Place(Kind.OPEN, rest.feet(), rest.kind() == BodyTerrain.Kind.SWIM);
         }
