@@ -6,6 +6,7 @@
 library;
 
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -83,6 +84,42 @@ class DenizenPreview {
   int get bindings => report.object('bindings')!.length;
   int get preserved => (report.get('preserved')! as JArray).length;
   int get flagsPreserved => (report.object('flags')!.get('preserved')! as JInt).value.toInt();
+
+  /// The converted behaviors with `"server": true`, in id order.
+  List<String> get serverBehaviorIds => <String>[
+        for (final JElement id in (report.get('serverBehaviors')! as JArray).elements)
+          if (id is JString) id.value,
+      ];
+
+  /// `server-behaviors.json` after the review is accepted: the [existing]
+  /// list (null when the data folder has none) with this import's server
+  /// behaviors appended once each, as the server's `DenizenDropIn` writes
+  /// it. Null when the import made no server behavior and there is no list.
+  /// The staged tree itself never holds the file, so it stays the same as
+  /// the server's.
+  String? serverBehaviorsAfterAccept(String? existing) {
+    final List<String> added = serverBehaviorIds;
+    if (added.isEmpty) return existing;
+    final List<String> ids = <String>[];
+    if (existing != null) {
+      final Object? parsed = jsonDecode(existing);
+      if (parsed is Map<String, Object?> && parsed['behaviors'] is List<Object?>) {
+        for (final Object? id in parsed['behaviors']! as List<Object?>) {
+          if (id is String && !ids.contains(id)) ids.add(id);
+        }
+      }
+    }
+    bool changed = false;
+    for (final String id in added) {
+      if (!ids.contains(id)) {
+        ids.add(id);
+        changed = true;
+      }
+    }
+    if (ids.length > 256) throw const DenizenImportException('server-behaviors.json would list more than 256 behaviors');
+    if (!changed && existing != null) return existing;
+    return '${const JsonEncoder.withIndent('  ').convert(<String, Object?>{'schemaVersion': 1, 'behaviors': ids})}\n';
+  }
   int get flagsImported {
     int total = 0;
     for (final JElement count in report.object('flags')!.object('imported')!.members.values) {

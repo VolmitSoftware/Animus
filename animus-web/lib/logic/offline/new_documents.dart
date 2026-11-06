@@ -31,12 +31,13 @@ const List<DocumentKind> creatableKinds = <DocumentKind>[
   DocumentKind.skin,
   DocumentKind.textAnimation,
   DocumentKind.presets,
+  DocumentKind.serverBehaviors,
 ];
 
 /// What each kind is for, in one line, for the New page.
 String kindPurpose(DocumentKind kind) => switch (kind) {
       DocumentKind.npc => 'A character in the world: body, name, skin, position and the behaviors it runs.',
-      DocumentKind.behavior => 'What an NPC does when clicked, approached, on a timer or after an answer.',
+      DocumentKind.behavior => 'Steps an NPC runs when clicked, approached, on a timer or after an answer, or a server behavior that reacts to joins, chat and commands.',
       DocumentKind.pack => 'A named bundle of behaviors, installed under packs/.',
       DocumentKind.route => 'Waypoints an NPC walks, reusable by several NPCs.',
       DocumentKind.shop => 'Buy, sell and trade pages an NPC or a GUI opens.',
@@ -48,6 +49,7 @@ String kindPurpose(DocumentKind kind) => switch (kind) {
       DocumentKind.skin => 'A player skin from a PNG, for player bodies.',
       DocumentKind.textAnimation => 'Frames that GUI text cycles through.',
       DocumentKind.presets => 'Default settings for Gloss GUI documents; one per workspace.',
+      DocumentKind.serverBehaviors => 'Which server behaviors run. Only the ones listed here start; one per workspace.',
     };
 
 /// An id or folder name: lowercase letters, digits, `_` and `-`, starting
@@ -89,6 +91,7 @@ bool validDocumentId(DocumentKind kind, String id) =>
 String _pathFor(DocumentKind kind, String id) {
   if (kind == DocumentKind.pack) return 'packs/$id/pack.json';
   if (kind == DocumentKind.presets) return 'gui/presets.json';
+  if (kind == DocumentKind.serverBehaviors) return DocumentKind.serverBehaviorsPath;
   final int colon = id.indexOf(':');
   final String relative = colon < 0 ? id : '${id.substring(0, colon)}/${id.substring(colon + 1)}';
   return '${kind.folder}/$relative.json';
@@ -104,6 +107,7 @@ String idHint(DocumentKind kind) => switch (kind) {
       DocumentKind.route || DocumentKind.pack => 'a name such as town-patrol',
       DocumentKind.skin => 'the SHA-256 of the skin file, set for you',
       DocumentKind.presets => 'always presets',
+      DocumentKind.serverBehaviors => 'always server-behaviors',
       _ => 'namespace:path, such as town/welcome written town:welcome',
     };
 
@@ -528,6 +532,9 @@ JsonMap newTextAnimation({List<String> frames = const <String>['&eHello', '&6Hel
 
 JsonMap newPresets() => <String, Object?>{'schemaVersion': 1, 'revision': 1};
 
+/// An empty server behaviors list, optionally starting with [behaviors].
+JsonMap newServerBehaviors([List<String> behaviors = const <String>[]]) => <String, Object?>{'schemaVersion': 1, 'behaviors': <Object?>[...behaviors]};
+
 /// GUI documents from the GUI templates, with the title the guided step set.
 JsonMap newGuiDocument(DocumentKind kind, String id, {String? title}) {
   final JsonMap document = newDocument(kind, id);
@@ -565,7 +572,7 @@ JsonMap newGuiDocument(DocumentKind kind, String id, {String? title}) {
 
 /// A default id for a copy of [id] that [taken] does not hold.
 String copyId(DocumentKind kind, String id, Set<String> taken) {
-  if (kind == DocumentKind.presets || kind == DocumentKind.skin) return id;
+  if (kind == DocumentKind.presets || kind == DocumentKind.skin || kind == DocumentKind.serverBehaviors) return id;
   return freeId('$id-copy', taken);
 }
 

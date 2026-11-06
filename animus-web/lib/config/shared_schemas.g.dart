@@ -125,7 +125,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "text-animation": {"folder": "gui/text-animations", "applyScope": "apply:gui", "schema": null},
     "presets": {"folder": "gui", "applyScope": "apply:gui", "schema": "gloss/gloss-presets.schema.json"},
     "rig": {"folder": "rigs", "applyScope": "apply:rigs", "schema": "rig-v1.schema.json"},
-    "animation": {"folder": "animations", "applyScope": "apply:rigs", "schema": "animation-v1.schema.json"}
+    "animation": {"folder": "animations", "applyScope": "apply:rigs", "schema": "animation-v1.schema.json"},
+    "server-behaviors": {"folder": "", "applyScope": "apply:behaviors", "schema": "server-behaviors-v1.schema.json"}
   },
   "pairing": {
     "prefix": "ANM1.",
@@ -180,7 +181,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "protocol": {"const": 1},
     "scope": {"enum": ["read", "validate", "preview", "apply:npcs", "apply:behaviors", "apply:gui", "apply:rigs", "import", "spawn", "admin"]},
     "kind": {
-      "enum": ["npc", "route", "skin", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation"],
+      "enum": ["npc", "route", "skin", "behavior", "pack", "shop", "inventory", "menu", "hologram", "text-animation", "presets", "rig", "animation", "server-behaviors"],
       "description": "Document kinds. Folders and apply scopes are listed in editor-v1.endpoints.json."
     },
     "documentId": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[a-z0-9_.:/-]+$", "description": "The kind's own id: group/id for NPCs, namespace:path for behaviors, shops, GUIs, rigs and animations, the SHA-256 for skins, the relative path for menus."},
@@ -781,6 +782,111 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "server": {
+            "const": true
+          }
+        },
+        "required": [
+          "server"
+        ]
+      },
+      "then": {
+        "properties": {
+          "variables": {
+            "additionalProperties": {
+              "properties": {
+                "scope": {
+                  "enum": [
+                    "execution",
+                    "player",
+                    "global"
+                  ],
+                  "description": "A server behavior has no NPC: execution, player or global."
+                }
+              }
+            }
+          },
+          "triggers": {
+            "items": {
+              "properties": {
+                "event": {
+                  "enum": [
+                    "timer",
+                    "module",
+                    "player_join",
+                    "player_quit",
+                    "player_chat",
+                    "command",
+                    "server_start",
+                    "player_death",
+                    "player_respawn",
+                    "player_world_change"
+                  ],
+                  "description": "A server behavior uses server events only."
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "event": {
+                        "const": "timer"
+                      }
+                    },
+                    "required": [
+                      "event"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "intervalTicks": {
+                        "type": "integer",
+                        "minimum": 20,
+                        "maximum": 72000,
+                        "description": "Server behaviors use at least 20 ticks."
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "triggers": {
+            "items": {
+              "properties": {
+                "event": {
+                  "enum": [
+                    "interaction",
+                    "proximity",
+                    "spawn",
+                    "despawn",
+                    "damage",
+                    "death",
+                    "waypoint",
+                    "timer",
+                    "dialogue_choice",
+                    "module",
+                    "build_finished",
+                    "build_paused",
+                    "animation_finished"
+                  ],
+                  "description": "Server events need \"server\": true."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "identifier": {
       "type": "string",
@@ -5901,6 +6007,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "text": {
           "type": "string",
@@ -5923,6 +6030,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -5961,6 +6069,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "operation": {
           "type": "string",
@@ -6060,6 +6169,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "id": {
           "type": "string",
@@ -6092,6 +6202,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "operation": {
           "type": "string",
@@ -6119,6 +6230,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": true,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "command": {
           "type": "string",
@@ -6149,6 +6261,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -6180,6 +6293,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "title": {
           "type": "string",
@@ -6212,6 +6326,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "item": {
           "type": "string",
@@ -6250,6 +6365,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "permission": {
           "type": "string",
@@ -6266,6 +6382,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "x": {
           "type": "number",
@@ -6309,6 +6426,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "text": {
           "type": "string",
@@ -6341,6 +6459,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "route": {
           "type": "string",
@@ -6410,6 +6529,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "spawned": {
           "type": "boolean",
@@ -6447,6 +6567,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "gui": {
           "type": "string",
@@ -6479,6 +6600,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "shop": {
           "type": "string",
@@ -6501,6 +6623,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "animation": {
           "type": "string",
@@ -6539,6 +6662,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "sound": {
           "type": "string",
@@ -6595,6 +6719,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "radius": {
           "type": "number",
@@ -6615,6 +6740,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "pose": {
           "type": "string",
@@ -6631,6 +6757,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -6686,6 +6813,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "text": {
           "type": "string",
@@ -6722,6 +6850,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "name": {
           "type": "string",
@@ -6759,6 +6888,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "slot": {
           "type": "string",
@@ -6788,6 +6918,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -6830,6 +6961,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": true,
       "reason": "available",
+      "reach": "both",
       "arguments": {
         "name": {
           "type": "string",
@@ -6876,6 +7008,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "particle": {
           "type": "string",
@@ -6932,6 +7065,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {
         "layer": {
           "type": "integer",
@@ -6954,6 +7088,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "npc",
       "arguments": {}
     },
     {
@@ -6963,6 +7098,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "item": {
           "type": "string",
@@ -6991,6 +7127,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "target": {
           "type": "string",
@@ -7069,6 +7206,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "privileged": false,
       "available": false,
       "reason": "platform-unavailable: offline validation has no server",
+      "reach": "both",
       "arguments": {
         "title": {
           "type": "string",
@@ -7561,6 +7699,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player joins the server. first: true matches only first joins, false only returning players.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "first"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -7624,6 +7765,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player sends a chat message, optionally matching a case-insensitive pattern with * wildcards.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "message"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -7660,6 +7804,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player or the console runs the Animus-managed command this trigger registers.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "command",
+        "alias",
+        "args",
+        "raw_args"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -7749,6 +7899,9 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player dies.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "message"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -7807,6 +7960,10 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "description": "A player moves to another world, optionally only from or to named worlds.",
       "carriesPlayer": true,
       "reach": "server",
+      "context": [
+        "from",
+        "to"
+      ],
       "fields": {
         "id": {
           "type": "identifier",
@@ -8128,7 +8285,149 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "variables",
       "routines",
       "triggers"
-    ]
+    ],
+    "expressions": {
+      "maxLength": 4096,
+      "namePattern": "^[a-z][a-z0-9_]{0,63}$",
+      "roots": [
+        "player",
+        "npc",
+        "server",
+        "context"
+      ],
+      "reserved": [
+        "context",
+        "false",
+        "npc",
+        "player",
+        "server",
+        "true"
+      ],
+      "facts": {
+        "player": [
+          "name",
+          "uuid",
+          "online",
+          "health",
+          "max_health",
+          "food",
+          "level",
+          "world",
+          "x",
+          "y",
+          "z",
+          "location",
+          "gamemode",
+          "op",
+          "sneaking",
+          "flying",
+          "item_in_hand",
+          "item_in_hand_amount"
+        ],
+        "npc": [
+          "name",
+          "id",
+          "uuid",
+          "spawned",
+          "health",
+          "world",
+          "x",
+          "y",
+          "z",
+          "location"
+        ],
+        "server": [
+          "online_players",
+          "max_players",
+          "tick",
+          "time_millis"
+        ]
+      },
+      "flagScopes": [
+        "player",
+        "npc",
+        "relationship",
+        "global"
+      ],
+      "functions": [
+        "get",
+        "has",
+        "keys",
+        "values",
+        "put",
+        "remove",
+        "append",
+        "insert",
+        "index_of",
+        "first",
+        "last",
+        "slice",
+        "reverse",
+        "sort",
+        "sum",
+        "join",
+        "split",
+        "range",
+        "trim",
+        "replace",
+        "starts_with",
+        "ends_with",
+        "num",
+        "int",
+        "truthy",
+        "same",
+        "text",
+        "random",
+        "random_decimal",
+        "chance",
+        "pick",
+        "flag",
+        "has_flag",
+        "quest"
+      ],
+      "standardFunctions": [
+        "abs",
+        "align",
+        "alpha",
+        "argb",
+        "bar",
+        "ceil",
+        "clamp",
+        "contains",
+        "cos",
+        "fixed",
+        "flash",
+        "floor",
+        "hex",
+        "len",
+        "lerp",
+        "lower",
+        "marquee",
+        "max",
+        "min",
+        "mix",
+        "mod",
+        "number",
+        "odometer",
+        "palette",
+        "plain",
+        "pow",
+        "readable",
+        "rgb",
+        "round",
+        "scanner",
+        "scramble",
+        "select",
+        "sin",
+        "smoothstep",
+        "str",
+        "timeline",
+        "typewriter",
+        "upper",
+        "wave",
+        "wipe"
+      ]
+    }
   }
 }
 ''',
@@ -15320,6 +15619,33 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     }
   }
+}
+''',
+  'server-behaviors-v1.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://animus.volmitsoftware.com/schema/server-behaviors-v1.schema.json",
+  "title": "Animus server behaviors",
+  "description": "server-behaviors.json at the data folder root. Only the server behaviors listed here run. Each id names a behavior with \"server\": true. The Java ServerBehaviorList parser is authoritative.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "behaviors"],
+  "properties": {
+    "schemaVersion": {"const": 1, "description": "Always 1."},
+    "behaviors": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "description": "Server behaviors to run, at most 256. A missing file runs none; an invalid file runs none until it is fixed.",
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$",
+        "description": "A behavior id, namespace:path, of a behavior with \"server\": true."
+      }
+    }
+  },
+  "examples": [{"schemaVersion": 1, "behaviors": ["town:welcome"]}]
 }
 ''',
   'shop-v1.schema.json': r'''
