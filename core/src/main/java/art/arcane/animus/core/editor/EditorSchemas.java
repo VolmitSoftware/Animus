@@ -40,6 +40,7 @@ public final class EditorSchemas {
         if (cached != null && capabilities.equals(cachedFor)) return cached;
         JsonObject schemas = new JsonObject();
         schemas.add("npc", NpcSchemaGenerator.schema());
+        schemas.add("route", NpcSchemaGenerator.routeSchema());
         schemas.add("behavior", BehaviorSchemaGenerator.behaviorSchema(capabilities));
         schemas.add("pack", BehaviorSchemaGenerator.packSchema());
         schemas.add("completions", BehaviorSchemaGenerator.completions(capabilities));
