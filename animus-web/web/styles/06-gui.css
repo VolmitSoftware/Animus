@@ -578,11 +578,6 @@ button.animus-chest-slot:focus-visible {
   border: 0;
 }
 
-.animus-gui-select {
-  display: inline-flex;
-  min-width: 0;
-}
-
 /* Section tabs share the view tabs' frame, tab and selected rule
    (`.animus-tabs`, `.animus-tab`). */
 .animus-gui-tabs .animus-tab:disabled {

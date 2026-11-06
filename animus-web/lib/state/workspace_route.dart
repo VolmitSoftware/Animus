@@ -6,7 +6,8 @@
 /// #/workspace/<id>                           a workspace
 /// #/workspace/<id>/npcs                      the NPC browser
 /// #/workspace/<id>/recordings                the recordings list
-/// #/workspace/<id>/new[/<kind>][?folder=]    create a document (an NPC in a folder)
+/// #/workspace/<id>/new[/<kind>][?folder=&name=]  create a document, prefilled
+/// #/workspace/<id>/list/<kind>               every document of one kind
 /// #/workspace/<id>/sync                      push to or pull from a server
 /// #/workspace/<id>/<kind>/<docId>?view=code  one document (docId URI-encoded)
 /// #/citizens                                 convert a Citizens save locally
@@ -53,11 +54,17 @@ sealed class EditorRoute {
         if (parts.length == 4 && parts[2] == 'new' && parts[3] == NewDocumentRoute.conversationPath) return NewDocumentRoute.conversation(decode(parts[1]));
         if (parts.length == 4 && parts[2] == 'new') {
           String? folder;
+          String? name;
           for (final String pair in query.split('&')) {
             if (pair.startsWith('folder=')) folder = decode(pair.substring(7));
+            if (pair.startsWith('name=')) name = decode(pair.substring(5));
           }
           final DocumentKind? kind = DocumentKind.parse(parts[3]);
-          return kind != null && folder != null ? NewDocumentRoute.inFolder(decode(parts[1]), kind, folder) : NewDocumentRoute(decode(parts[1]), kind);
+          return kind == null ? NewDocumentRoute(decode(parts[1])) : NewDocumentRoute.prefilled(decode(parts[1]), kind, folder: folder, name: name);
+        }
+        if (parts.length == 4 && parts[2] == 'list') {
+          final DocumentKind? kind = DocumentKind.parse(parts[3]);
+          return kind == null ? WorkspaceRoute(decode(parts[1])) : KindListRoute(decode(parts[1]), kind);
         }
         if (parts.length == 4) {
           final DocumentKind? kind = DocumentKind.parse(parts[2]);
@@ -163,14 +170,22 @@ class RecordingListRoute extends EditorRoute {
 class NewDocumentRoute extends EditorRoute {
   const NewDocumentRoute(this.workspaceId, [this.kind])
       : folder = null,
+        name = null,
         conversation = false;
 
-  const NewDocumentRoute.inFolder(this.workspaceId, DocumentKind this.kind, String this.folder) : conversation = false;
+  const NewDocumentRoute.inFolder(this.workspaceId, DocumentKind this.kind, String this.folder)
+      : name = null,
+        conversation = false;
+
+  /// A guided step with its folder and name typed in, as a dropdown's
+  /// "+ New" row opens it.
+  const NewDocumentRoute.prefilled(this.workspaceId, DocumentKind this.kind, {this.folder, this.name}) : conversation = false;
 
   /// A new behavior with the Conversation template picked.
   const NewDocumentRoute.conversation(this.workspaceId)
       : kind = DocumentKind.behavior,
         folder = null,
+        name = null,
         conversation = true;
 
   static const String conversationPath = 'conversation';
@@ -178,21 +193,54 @@ class NewDocumentRoute extends EditorRoute {
   final String workspaceId;
   final DocumentKind? kind;
 
-  /// For a new NPC, the folder under npcs/ it starts in.
+  /// Where the new document goes: the folder under npcs/ for an NPC, the
+  /// namespace for namespaced kinds, the rig for an animation.
   final String? folder;
   final bool conversation;
 
+  /// The name the id is made from.
+  final String? name;
+
   @override
-  String format() => conversation
-      ? '#/workspace/${Uri.encodeComponent(workspaceId)}/new/$conversationPath'
-      : '#/workspace/${Uri.encodeComponent(workspaceId)}/new${kind == null ? '' : '/${kind!.wireName}'}${kind != null && folder != null ? '?folder=${Uri.encodeComponent(folder!)}' : ''}';
+  String format() {
+    if (conversation) return '#/workspace/${Uri.encodeComponent(workspaceId)}/new/$conversationPath';
+    final String base = '#/workspace/${Uri.encodeComponent(workspaceId)}/new${kind == null ? '' : '/${kind!.wireName}'}';
+    if (kind == null) return base;
+    final List<String> query = <String>[
+      if (folder != null) 'folder=${Uri.encodeComponent(folder!)}',
+      if (name != null && name!.isNotEmpty) 'name=${Uri.encodeComponent(name!)}',
+    ];
+    return query.isEmpty ? base : '$base?${query.join('&')}';
+  }
 
   @override
   bool operator ==(Object other) =>
-      other is NewDocumentRoute && other.workspaceId == workspaceId && other.kind == kind && other.folder == folder && other.conversation == conversation;
+      other is NewDocumentRoute &&
+      other.workspaceId == workspaceId &&
+      other.kind == kind &&
+      other.folder == folder &&
+      other.name == name &&
+      other.conversation == conversation;
 
   @override
-  int get hashCode => Object.hash('new', workspaceId, kind, folder, conversation);
+  int get hashCode => Object.hash('new', workspaceId, kind, folder, name, conversation);
+}
+
+/// Every document of one kind, with New and the problems of each.
+class KindListRoute extends EditorRoute {
+  const KindListRoute(this.workspaceId, this.kind);
+
+  final String workspaceId;
+  final DocumentKind kind;
+
+  @override
+  String format() => '#/workspace/${Uri.encodeComponent(workspaceId)}/list/${kind.wireName}';
+
+  @override
+  bool operator ==(Object other) => other is KindListRoute && other.workspaceId == workspaceId && other.kind == kind;
+
+  @override
+  int get hashCode => Object.hash('list', workspaceId, kind);
 }
 
 /// Pushing a local workspace to a paired server, or pulling from one.

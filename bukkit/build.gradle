@@ -15,6 +15,10 @@ repositories {
         url = uri('https://maven.enginehub.org/repo/')
         content { includeGroup('com.sk89q.worldguard'); includeGroup('com.sk89q.worldedit'); includeGroup('com.sk89q.worldedit.worldedit-libs'); includeGroup('com.sk89q.worldguard.worldguard-libs') }
     }
+    maven {
+        url = uri('https://repo.papermc.io/repository/maven-public/')
+        content { includeGroup('io.papermc.paper'); includeGroup('com.mojang'); includeVersionByRegex('net\\.md-5', 'bungeecord-chat', '.*-deprecated.*') }
+    }
 }
 configurations { packetApi; protectionApi; economyApi }
 configurations.compileOnly.extendsFrom(configurations.packetApi, configurations.protectionApi, configurations.economyApi)
@@ -43,10 +47,18 @@ tasks.named('shadowJar').configure {
     archiveFileName.set("${animus.projectName} v${version} [CraftBukkit] ${minecraftTargets.keySet().first()}-${minecraftTargets.keySet().last()}.jar")
 }
 
+// The Paper API build each target's linkage is checked against; the APIs differ and the plugin compiles against Spigot.
+Map<String, String> paperApiBuilds = ['26.1.2': '26.1.2.build.74-stable', '26.2': '26.2.build.135-stable', '26.3': '26.3.build.244-stable']
+Map<String, Configuration> apiTargets = [:]
 minecraftTargets.keySet().each { String target ->
     String suffix = target.replace('.', '_')
     Configuration targetApi = configurations.create("spigot${suffix}")
     dependencies.add(targetApi.name, "org.spigotmc:spigot-api:${target}-R0.1-SNAPSHOT")
+    if (!paperApiBuilds.containsKey(target)) throw new GradleException("No Paper API build is pinned for Minecraft ${target}")
+    Configuration paperApi = configurations.create("paper${suffix}")
+    dependencies.add(paperApi.name, "io.papermc.paper:paper-api:${paperApiBuilds[target]}")
+    apiTargets["spigot-${target}".toString()] = targetApi
+    apiTargets["paper-${target}".toString()] = paperApi
     TaskProvider<JavaCompile> compatibility = tasks.register("compileSpigot${suffix}", JavaCompile) {
         source = sourceSets.main.java
         classpath = targetApi + configurations.bundle + configurations.packetApi + configurations.protectionApi + configurations.economyApi
@@ -54,4 +66,15 @@ minecraftTargets.keySet().each { String target ->
         dependsOn(':core:jar')
     }
     tasks.named('check').configure { dependsOn(compatibility) }
+}
+
+// ServerApiLinkageTest resolves every server member the shipped jar names against each target's API jars.
+tasks.named('test', Test).configure {
+    inputs.file(distributionJar).withPropertyName('pluginJar')
+    apiTargets.each { String name, Configuration api -> inputs.files(api).withPropertyName("api-${name}") }
+    jvmArgumentProviders.add({ ->
+        String separator = File.pathSeparator
+        ["-Danimus.pluginJar=${distributionJar.get().asFile.absolutePath}".toString(),
+         "-Danimus.apiTargets=${apiTargets.collect { String name, Configuration api -> name + '=' + api.files.collect { File file -> file.absolutePath }.join(separator) }.join(';')}".toString()]
+    } as CommandLineArgumentProvider)
 }

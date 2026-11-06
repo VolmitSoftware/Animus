@@ -15,6 +15,7 @@ import '../inspect/inspect_fields.dart';
 import '../../logic/npc/route_model.dart';
 import 'npc_section.dart';
 import 'route_editor.dart';
+import '../select/suggest_input.dart';
 
 const String shopModule = 'animus:shop';
 const String mountModule = 'animus:mount';
@@ -54,6 +55,7 @@ class ShopBindingEditor extends StatelessWidget {
         const NpcSubhead('Shop', help: 'No shop.'),
         const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': shopId}, <Widget>[Component.text('Open a workspace shop on click')]),
         GuiSelect(
+          references: DocumentKind.shop,
           id: shopId,
           value: null,
           options: shops,
@@ -215,6 +217,7 @@ class NavigationEditor extends StatelessWidget {
           if (routeIds.isNotEmpty) ...<Widget>[
             const dom.label(classes: 'animus-sr-only', attributes: <String, String>{'for': routeId}, <Widget>[Component.text('Use a reusable route')]),
             GuiSelect(
+              references: DocumentKind.route,
               id: routeId,
               value: null,
               options: routeIds,
@@ -277,7 +280,7 @@ class NavigationEditor extends StatelessWidget {
               problems: diagnosticsAt(diagnostics, childPath(path, 'route')),
               child: routeIds.isEmpty
                   ? GuiTextInput(id: routeId, value: reference ?? '', label: 'Route id', placeholder: 'town-patrol', onChanged: (String id) => onChanged(<String, Object?>{...module, 'route': id.trim()}))
-                  : GuiSelect(id: routeId, value: reference, options: routeIds, onChanged: (String? id) => onChanged(<String, Object?>{...module, 'route': id ?? ''})),
+                  : GuiSelect(references: DocumentKind.route, id: routeId, value: reference, options: routeIds, onChanged: (String? id) => onChanged(<String, Object?>{...module, 'route': id ?? ''})),
             ),
             if (routeDocument != null && onOpen != null)
               dom.div(classes: 'animus-row', <Widget>[
@@ -320,6 +323,7 @@ class NavigationEditor extends StatelessWidget {
         child: recordings.isEmpty
             ? GuiTextInput(id: recordingId, value: recording, label: 'Recording id', placeholder: 'market-loop', onChanged: (String id) => onChanged(<String, Object?>{...module, 'recording': id.trim()}))
             : GuiSelect(
+                references: DocumentKind.recording,
                 id: recordingId,
                 value: recording.isEmpty ? null : recording,
                 options: recordings.keys.toList(),

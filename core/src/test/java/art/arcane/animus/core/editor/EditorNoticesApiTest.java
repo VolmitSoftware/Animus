@@ -137,6 +137,7 @@ class EditorNoticesApiTest {
         harness.flushNotices();
         harness.host.admin = EditorHost.Admin.NOT_ADMIN;
         harness.api.recheckAdmins();
+        harness.lane.submit(() -> {}).get(5, java.util.concurrent.TimeUnit.SECONDS);
         assertEquals(List.of("[Animus]: Brian's editor was revoked after losing animus.admin"), harness.flushNotices());
     }
 

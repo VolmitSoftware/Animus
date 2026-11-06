@@ -681,7 +681,7 @@ button.animus-rig-lane-label:focus-visible {
 
 @media (max-width: 520px) {
   .animus-rig-editor button:not(.animus-rig-key):not(.animus-rig-event),
-  .animus-rig-editor select,
+  .animus-rig-editor .animus-select-trigger,
   .animus-rig-editor input:not([type="range"]):not([type="checkbox"]),
   .animus-rig-names-toggle,
   button.animus-rig-lane-label {

@@ -19,7 +19,8 @@ import '../../logic/gui/shop_entries.dart';
 import '../../logic/gui/shop_offers.dart';
 import '../../logic/inspect/schema_fields.dart';
 import '../../model/animus_document.dart';
-import '../inspect/inspect_fields.dart';
+import '../../model/document_kind.dart';
+import '../select/suggest_input.dart';
 import 'chest_window.dart';
 import 'component_editor.dart';
 import 'gui_fields.dart';
@@ -266,6 +267,7 @@ class _ShopEditorState extends State<ShopEditor> {
           value: asString(shop['layout']) ?? '',
           label: 'Layout',
           placeholder: 'town:shop-list',
+          references: DocumentKind.inventory,
           suggestions: <FieldOption>[for (final String id in component.layouts) FieldOption(id, description: 'chest GUI')],
           onChanged: (String v) => _write(<JsonStep>['layout'], v.trim().isEmpty ? null : v.trim()),
         ),
