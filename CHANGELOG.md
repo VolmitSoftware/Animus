@@ -178,6 +178,7 @@
 - `/animus attack` and `/animus target` on Folia; checks run on the NPC's and the target's own regions, with results in the server log.
 - Builds on Folia, including scaffolding, doors and beds; each build takes turns on the region that owns its work.
 - `/animus build status` shows `region-turns`, `out` and `lost` on Folia.
+- Server triggers that name a world that is not loaded report a `server-world-unknown` warning.
 
 ### Changed
 
@@ -395,6 +396,9 @@
 - A guard's combat teleport into a chunk held by another Folia region now places the NPC.
 - Guards return exactly to their definition's post after each fight and face their post's direction again; repeated fights no longer move a guard's post.
 - Guards walk back to their post without stalling, and a walk that ends short of the post finishes with a short step.
+- `player_area` triggers naming a Bukkit world such as `world` now fire on Fabric, NeoForge and Forge.
+- `player_world_change` `from` and `to` accept Bukkit world names on mod servers and dimension keys on Bukkit.
+- Hologram anchors on mod servers match `world_nether`, `world_the_end` and bare vanilla dimension names.
 
 ### Notes
 
