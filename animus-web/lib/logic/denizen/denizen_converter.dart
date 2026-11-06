@@ -23,7 +23,10 @@ part 'denizen_commands.dart';
 part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
-const int denizenConverterVersion = 2;
+const int denizenConverterVersion = 3;
+
+/// The author a converted book gets when its Denizen author is blank.
+const String _blankBookAuthor = 'Server';
 const String _namespace = 'denizen';
 const int denizenMaximumFiles = 512;
 const int denizenMaximumPlayers = 10000;
@@ -206,6 +209,9 @@ class _Scope {
   /// Denizen context keys the trigger passes, and their Animus names.
   final Map<String, String> context;
 
+  /// The `determine cancelled` line an NPC event's `consume` condition was made from; set on that event's scope only.
+  DenizenItem? cancel;
+
   /// The scope of another script run from this one: same document, its own definitions, no loops and no event context.
   _Scope inContainer(DenizenContainer other) => _Scope(doc, calling, false, other, null, -1, SplayTreeMap<String, String>(), const <String>[],
       SplayTreeMap<String, String>(), const <String, String>{});
@@ -377,6 +383,12 @@ class _Converter {
   final List<_Npc> npcs = <_Npc>[];
   final SplayTreeMap<String, String> guis = SplayTreeMap<String, String>();
   final SplayTreeSet<String> serverBehaviors = SplayTreeSet<String>();
+
+  /// World behaviors of NPC events, bound to every NPC.
+  final SplayTreeSet<String> clickBehaviors = SplayTreeSet<String>();
+
+  /// Literal values scripts and NPC data give each flag, by `scope:name`; filled on first use.
+  SplayTreeMap<String, SplayTreeSet<String>>? _flagValues;
   final SplayTreeMap<String, List<String>> guards = SplayTreeMap<String, List<String>>();
   late final _Expressions expressions;
   late final _Commands commands;
@@ -486,6 +498,9 @@ class _Converter {
           final String other = behaviorId('interact', listed);
           if (documents.containsKey(other) && !bound.contains(other)) bound.add(other);
         }
+      }
+      for (final String click in clickBehaviors) {
+        if (documents.containsKey(click) && !bound.contains(click)) bound.add(click);
       }
       for (final String problem in npc.problems) {
         issues.add('${npc.id}: $problem');
@@ -847,17 +862,19 @@ class _Converter {
 
   bool partial(String document) {
     for (final _Outcome outcome in outcomes.values) {
-      if (!outcome.converted && document == documentOf(outcome)) return true;
+      if (!outcome.converted && documentsOf(outcome).contains(document)) return true;
     }
     return false;
   }
 
-  String documentOf(_Outcome outcome) {
+  /// The behaviors an outcome's container makes; a world script makes one for server events and one for NPC events.
+  List<String> documentsOf(_Outcome outcome) {
     final DenizenContainer? container = containers[outcome.container.toLowerCase()];
-    if (container == null) return '';
+    if (container == null) return const <String>[];
     return switch (container.type) {
-      'task' || 'assignment' || 'interact' || 'world' || 'command' || 'book' => behaviorId(container.type, container),
-      _ => '',
+      'world' => <String>[behaviorId('world', container), behaviorId('world-npc', container)],
+      'task' || 'assignment' || 'interact' || 'command' || 'book' => <String>[behaviorId(container.type, container)],
+      _ => const <String>[],
     };
   }
 
@@ -1367,16 +1384,20 @@ class _Converter {
 
   // ---- Server behaviors ----
 
-  /// A world script: one server behavior whose routines are its events, each run by the matching server trigger.
+  /// A world script: one server behavior whose routines are its events, each run by the matching server trigger, and
+  /// one NPC behavior, bound to every NPC, for its NPC click events. A click event whose top level cancels the click
+  /// after plain guards gets a `consume` condition made of those guards.
   void world(DenizenContainer container, SplayTreeMap<String, String> documents) {
     final DenizenNode? events = container.body.get('events');
-    final _Doc doc = _Doc(true);
-    final JArray triggers = JArray();
+    final _Doc server = _Doc(true);
+    final _Doc clicks = _Doc(false);
+    final JArray serverTriggers = JArray();
+    final JArray clickTriggers = JArray();
     if (events is DenizenMapping) {
       for (final DenizenEntry entry in events.entries) {
         final String key = _collapse(entry.key);
         final String label = 'world $key';
-        final _Scope kept = _Scope.of(doc, true, container, null, -1, const <String, String>{});
+        final _Scope kept = _Scope.of(server, true, container, null, -1, const <String, String>{});
         final DenizenNode sequence = entry.value;
         if (sequence is! DenizenSequence) {
           record(container, entry.line, 'event', label, entry.key, false, 'event without a script list');
@@ -1385,6 +1406,8 @@ class _Converter {
         }
         final _Mapped mapped = _denizenEvent(key);
         String? reason = mapped.reason;
+        final _Doc doc = mapped.npc ? clicks : server;
+        final JArray triggers = mapped.npc ? clickTriggers : serverTriggers;
         String base = 'on-${_eventPhrase(key).replaceAll(RegExp('[^a-z0-9_-]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '')}';
         if (base.length > 60) base = base.substring(0, 60);
         String routine = base;
@@ -1400,6 +1423,8 @@ class _Converter {
         }
         record(container, entry.line, 'event', label, entry.key, true, '');
         final _Scope scope = _Scope.of(doc, true, container, null, -1, mapped.context);
+        final _Consume? consume = mapped.npc ? commands.consume(sequence.items, mapped.guards, scope) : null;
+        scope.cancel = consume?.item;
         JObject body = _sequence(commands.block(sequence.items, 0, scope));
         for (int index = mapped.guards.length - 1; index >= 0; index--) {
           body = _build(mapped.guards[index], body, null);
@@ -1409,6 +1434,7 @@ class _Converter {
         for (final MapEntry<String, JElement> field in mapped.trigger!.entries) {
           trigger.add(field.key, field.value);
         }
+        if (consume != null) trigger.addString('consume', consume.condition);
         trigger.addString('routine', routine);
         triggers.add(trigger);
       }
@@ -1416,8 +1442,62 @@ class _Converter {
       record(container, container.line, 'container', 'world', container.name, false, 'world script without events');
     }
     otherKeys(container, <String>['type', 'events', 'debug', 'enabled'], 'world');
-    if (doc.routines.isEmpty) return;
-    document(behaviorId('world', container), doc, container, triggers, documents);
+    if (server.routines.isNotEmpty) document(behaviorId('world', container), server, container, serverTriggers, documents);
+    if (clicks.routines.isNotEmpty && document(behaviorId('world-npc', container), clicks, container, clickTriggers, documents)) {
+      clickBehaviors.add(behaviorId('world-npc', container));
+    }
+  }
+
+  /// The flag name a `ratelimit` line keeps its per-player window in.
+  String ratelimitFlag(DenizenContainer container, int line) {
+    final String suffix = '-$line';
+    final String base = 'ratelimit-${slug(container.name)}';
+    return (base.length + suffix.length > 64 ? base.substring(0, 64 - suffix.length) : base) + suffix;
+  }
+
+  /// The literal values scripts give the flag [name] of [scope] (`npc`, `player` or `global`) with
+  /// `flag <target> name:value`, and the values Citizens NPCs already hold, lowercased.
+  SplayTreeSet<String> flagValues(String scope, String name) {
+    SplayTreeMap<String, SplayTreeSet<String>>? values = _flagValues;
+    if (values == null) {
+      values = SplayTreeMap<String, SplayTreeSet<String>>();
+      _flagValues = values;
+      for (final DenizenContainer container in containers.values) {
+        collectFlags(container.body, values);
+      }
+      for (final _Npc npc in npcs) {
+        for (final MapEntry<String, String> flag in npc.flags.entries) {
+          final String? flagged = _flagName(flag.key);
+          if (flagged != null && !flag.value.contains('<')) {
+            values.putIfAbsent('npc:$flagged', SplayTreeSet<String>.new).add(javaTrim(flag.value).toLowerCase());
+          }
+        }
+      }
+    }
+    return values['$scope:$name'] ?? SplayTreeSet<String>();
+  }
+
+  void collectFlags(DenizenNode node, SplayTreeMap<String, SplayTreeSet<String>> values) {
+    if (node is DenizenMapping) {
+      for (final DenizenEntry entry in node.entries) {
+        collectFlags(entry.value, values);
+      }
+    } else if (node is DenizenSequence) {
+      for (final DenizenItem item in node.items) {
+        if (item.children != null) collectFlags(item.children!, values);
+        final DenizenCommand command = denizenCommand(item.text);
+        if (command.name != 'flag' || command.args.length < 2 || command.args.first.prefix.isNotEmpty) continue;
+        final String target = command.args.first.value.toLowerCase().replaceAll('<', '').replaceAll('>', '');
+        if (!<String>['player', 'npc', 'server'].contains(target)) continue;
+        final String raw = _raw(command.args[1]);
+        final int colon = raw.indexOf(':');
+        if (colon < 0) continue;
+        final String? flagged = _flagName(raw.substring(0, colon));
+        final String value = javaTrim(raw.substring(colon + 1)).toLowerCase();
+        if (flagged == null || !_full('[a-z0-9_]{1,64}', value)) continue;
+        values.putIfAbsent('${_scopeOf(target)}:$flagged', SplayTreeSet<String>.new).add(value);
+      }
+    }
   }
 
   /// A command script: a server behavior with a `command` trigger whose run reads `context.args`.
@@ -1487,7 +1567,12 @@ class _Converter {
       final _Result<_Text> text = expressions.text(value, scope, pending, false, 0);
       if (text.failed) return _Result<JObject>.fail(text.reason!);
       if (!text.value!.isDynamic && text.value!.literal!.length > 32) return _Result<JObject>.fail('book $field longer than 32 characters');
-      action.text(field, text.value!);
+      // A signed book needs a visible title and author, so a blank one (often <&sp>) falls back to the script name or Server.
+      if (!text.value!.isDynamic && text.value!.literal!.trim().isEmpty) {
+        action.put(field, JString(field == 'title' ? book.name.substring(0, book.name.length < 32 ? book.name.length : 32) : _blankBookAuthor));
+      } else {
+        action.text(field, text.value!);
+      }
     }
     final DenizenNode? pages = book.body.get('text');
     if (pages is! DenizenSequence || pages.items.isEmpty) return const _Result<JObject>.fail('book script without text pages');

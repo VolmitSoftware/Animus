@@ -2,16 +2,22 @@ package art.arcane.animus.core.behavior.trigger;
 
 import art.arcane.animus.api.Diagnostic;
 import art.arcane.animus.api.Outcome;
+import art.arcane.animus.core.behavior.BehaviorExpression;
+import art.arcane.animus.core.behavior.BehaviorFacts;
+import art.arcane.animus.core.behavior.BehaviorFlags;
 import art.arcane.animus.core.behavior.BehaviorProgram;
+import art.arcane.animus.core.behavior.BehaviorState;
 import art.arcane.animus.core.behavior.catalog.BehaviorCatalog;
 import art.arcane.animus.core.npc.NpcDefinition;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
+import java.util.random.RandomGenerator;
 
 /**
- * Turns events into bounded execution starts. {@link #publish}, {@link #activated}, {@link #deactivated},
+ * Turns events into bounded execution starts. {@link #publish}, {@link #click}, {@link #activated}, {@link #deactivated},
  * {@link #dead} and the diagnostic reads are thread-safe; {@link #pump} and {@link #finished} belong to the
  * behavior owner. Sources must be quick immutable observations. Overflow is dropped and counted, never queued.
  * Hotloaded settings wait in a pending slot until the owner's next pump; a lowered cap refuses new work and leaves
@@ -20,7 +26,8 @@ import java.util.function.Supplier;
 public final class TriggerDispatcher implements TriggerSink {
     public enum DropReason { EVENT_QUEUE, INACTIVE, NPC_QUEUE, TRIGGER_QUEUE, TOTAL_QUEUE, EXPIRED, STALE, START_FAILED, UNAVAILABLE, ACTIVE_CAPACITY }
     @FunctionalInterface public interface Starter { Outcome<UUID> start(Request request); }
-    public record Request(Binding binding, NpcDefinition definition, BehaviorCatalog.Accepted accepted, BehaviorProgram program, Optional<UUID> player) {}
+    /** {@code event} is what the run reads as {@code context.*}: the click's sneaking and hand for an interaction, nothing for other events. */
+    public record Request(Binding binding, NpcDefinition definition, BehaviorCatalog.Accepted accepted, BehaviorProgram program, Optional<UUID> player, Map<String, Object> event) {}
     public record Row(String npcId, UUID npc, String behavior, String trigger, String event, String routine, OptionalLong lastFiredTicksAgo,
                       long fired, int active, int queued, long suppressed, long dropped) {}
     public record Snapshot(boolean available, String reason, long tick, int bindings, int timers, int proximityNpcs, int queued, int active,
@@ -48,7 +55,9 @@ public final class TriggerDispatcher implements TriggerSink {
         static final Index EMPTY = new Index(Map.of(), List.of(), List.of());
     }
     /** {@code lifetime} is the queue lifetime when admitted, so a lowered setting never expires work already waiting. */
-    private record Pending(Binding binding, Optional<UUID> player, long admitted, int lifetime) {}
+    private record Pending(Binding binding, Optional<UUID> player, Map<String, Object> event, long admitted, int lifetime) {}
+    /** Thread-safe state and facts a consume condition reads at click time. */
+    private record Consumption(BehaviorState state, BehaviorFacts facts) {}
     private record Timer(long due, Binding binding, int interval) {}
 
     private static final int MAX_DIAGNOSTICS = 64, MAX_TRACKED_NPCS = 16384;
@@ -70,6 +79,7 @@ public final class TriggerDispatcher implements TriggerSink {
     private volatile String blocked = "no platform bridge is connected";
     private volatile Index index = Index.EMPTY;
     private volatile HiddenNpcs hidden = HiddenNpcs.NONE;
+    private volatile Consumption consumption;
     private volatile ProximityTracker.Plan plan = ProximityTracker.Plan.EMPTY;
     private volatile List<Diagnostic> activityDiagnostics = List.of();
     private volatile Diagnostic lastStartFailure;
@@ -122,6 +132,50 @@ public final class TriggerDispatcher implements TriggerSink {
         List<Binding> bindings = index.byNpc().get(npc);
         String id = bindings == null || bindings.isEmpty() ? "" : bindings.getFirst().definition.id();
         return current.hides(viewer, id, npc);
+    }
+
+    /** Connects what consume conditions read. {@code state} must allow reads from any thread. Until then no click is consumed. */
+    public void consumption(BehaviorState state, BehaviorFacts facts) { consumption = new Consumption(Objects.requireNonNull(state), Objects.requireNonNull(facts)); }
+
+    /**
+     * Publishes a click and answers whether a behavior consumes it. Called on the clicking player's thread before any
+     * default handling: a click is consumed when an interaction trigger of an enabled behavior on this NPC matches it and
+     * its {@code consume} condition holds now. A consumed click is not handed to modules (shops, hiring, GUIs), riding or
+     * selection; any other click is, whether or not it also fires triggers. A failing condition does not consume.
+     */
+    public boolean click(TriggerEvent.Interaction event) {
+        publish(event);
+        Consumption reads = consumption;
+        if (reads == null || unavailable() != null || hides(event.viewer(), event.npc())) return false;
+        List<Binding> bound = index.byNpc().get(event.npc());
+        if (bound == null) return false;
+        for (Binding binding : bound) {
+            if (!(binding.trigger.spec() instanceof TriggerBinding.Interaction interaction) || interaction.consume().isEmpty() || !interaction.accepts(event.action())) continue;
+            if (consumes(interaction.consume().get(), binding.behavior, event, reads)) return true;
+        }
+        return false;
+    }
+    private static boolean consumes(BehaviorExpression condition, String behavior, TriggerEvent.Interaction event, Consumption reads) {
+        try { return Boolean.TRUE.equals(condition.evaluate(new ClickEnvironment(behavior, event, reads))); }
+        catch (BehaviorExpression.Failed | BehaviorState.Rejected failed) { return false; }
+    }
+    /** What a consume condition reads: no variables, the click's context, and this behavior namespace's flags and quests. */
+    private record ClickEnvironment(String behavior, TriggerEvent.Interaction event, Consumption reads) implements BehaviorExpression.Environment {
+        private static final BehaviorProgram.Value UNSET = new BehaviorProgram.Value(BehaviorProgram.Type.STRING, "unset"), UNSET_STAGE = new BehaviorProgram.Value(BehaviorProgram.Type.INTEGER, 0L);
+        @Override public BehaviorProgram.Value variable(String name) { return null; }
+        @Override public BehaviorFacts facts() { return reads.facts(); }
+        @Override public Optional<UUID> player() { return event.player(); }
+        @Override public UUID npc() { return event.npc(); }
+        @Override public Map<String, Object> context() { return event.context(); }
+        @Override public Optional<BehaviorProgram.Value> flag(String scope, String name) {
+            BehaviorProgram.Value value = reads.state().read(subject(BehaviorFlags.FLAGS), name, BehaviorFlags.declaration(scope), UNSET, BehaviorProgram.Type.ANY);
+            return value == UNSET ? Optional.empty() : Optional.of(value);
+        }
+        @Override public long quest(String scope, String name) {
+            return (Long) reads.state().read(subject(BehaviorFlags.QUESTS), name, BehaviorFlags.declaration(scope), UNSET_STAGE, BehaviorProgram.Type.INTEGER).value();
+        }
+        @Override public RandomGenerator random() { return ThreadLocalRandom.current(); }
+        private BehaviorState.Subject subject(String kind) { return BehaviorFlags.subject(kind, behavior, event.npc(), event.player()); }
     }
 
     @Override public Outcome<Boolean> publish(TriggerEvent event) {
@@ -354,7 +408,7 @@ public final class TriggerDispatcher implements TriggerSink {
             if (!binding.trigger.matches(event, binding.key())) continue;
             if (!presented) { drop(binding, DropReason.INACTIVE); continue; }
             if (cooling) { suppress(binding); continue; }
-            admitted |= enqueue(binding, event.player());
+            admitted |= enqueue(binding, event.player(), event instanceof TriggerEvent.Interaction click ? click.context() : Map.of());
         }
         if (admitted && settings.npcCooldownTicks() > 0) npcAdmitted.put(event.npc(), tick);
     }
@@ -364,10 +418,10 @@ public final class TriggerDispatcher implements TriggerSink {
             long next = tick + timer.interval();
             timers.add(new Timer(next, timer.binding(), timer.interval()));
             timerDue.put(timer.binding().definition.uuid() + "|" + timer.binding().key(), next);
-            enqueue(timer.binding(), Optional.empty());
+            enqueue(timer.binding(), Optional.empty(), Map.of());
         }
     }
-    private boolean enqueue(Binding binding, Optional<UUID> player) {
+    private boolean enqueue(Binding binding, Optional<UUID> player, Map<String, Object> event) {
         Stats stat = binding.stats;
         int cooldown = binding.trigger.cooldownTicks().orElse(binding.trigger.spec() instanceof TriggerBinding.Timer ? 0 : settings.defaultCooldownTicks());
         if (stat.lastAdmitted >= 0 && tick - stat.lastAdmitted < cooldown) { suppress(binding); return false; }
@@ -375,7 +429,7 @@ public final class TriggerDispatcher implements TriggerSink {
         if (queue.size() >= settings.maximumQueued()) { drop(binding, DropReason.TOTAL_QUEUE); return false; }
         if (npcQueued.getOrDefault(npc, 0) >= settings.queuePerNpc()) { drop(binding, DropReason.NPC_QUEUE); return false; }
         if (stat.queued >= settings.queuePerTrigger()) { drop(binding, DropReason.TRIGGER_QUEUE); return false; }
-        queue.addLast(new Pending(binding, player, tick, settings.queueLifetimeTicks()));
+        queue.addLast(new Pending(binding, player, event, tick, settings.queueLifetimeTicks()));
         queuedCount = queue.size(); stat.queued = stat.queued + 1; stat.lastAdmitted = tick;
         npcQueued.merge(npc, 1, Integer::sum);
         return true;
@@ -394,7 +448,7 @@ public final class TriggerDispatcher implements TriggerSink {
             if (!current(binding)) { release(iterator, pending); drop(binding, DropReason.STALE); continue; }
             if (starts >= settings.startsPerTick() || activeCount >= settings.concurrentTotal()) continue;
             if (npcActive.getOrDefault(npc, 0) >= settings.concurrentPerNpc() || binding.stats.active >= settings.concurrentPerTrigger()) continue;
-            Outcome<UUID> result = starter.start(new Request(binding, binding.definition, binding.accepted, binding.program, pending.player()));
+            Outcome<UUID> result = starter.start(new Request(binding, binding.definition, binding.accepted, binding.program, pending.player(), pending.event()));
             if (result.status() == Outcome.Status.BUSY) { starts = settings.startsPerTick(); continue; }
             release(iterator, pending);
             if (result.status() != Outcome.Status.OK) {

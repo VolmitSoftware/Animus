@@ -5168,7 +5168,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "trigger-interaction": {
       "type": "object",
-      "description": "A viewer's validated hit on the NPC.",
+      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -5195,6 +5195,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "any"
           ],
           "description": "Which hit fires it; interact by default."
+        },
+        "consume": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
         }
       },
       "required": [
@@ -7120,7 +7126,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   ],
   "triggers": {
     "interaction": {
-      "description": "A viewer's validated hit on the NPC.",
+      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
       "carriesPlayer": true,
       "reach": "npc",
       "fields": {
@@ -7155,6 +7161,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "any"
           ],
           "description": "Which hit fires it; interact by default."
+        },
+        "consume": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
         }
       }
     },
@@ -8137,7 +8150,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Animus NPC definition",
-  "description": "npcs/<group>/<id>.json. Unknown fields and modules are kept as written.",
+  "description": "npcs/<folders>/<id>.json, in npcs/ itself or up to 8 folders deep. Unknown fields and modules are kept as written.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -8172,8 +8185,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "group": {
       "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
-      "description": "Matches the directory name."
+      "pattern": "^(?:[a-z0-9][a-z0-9_-]{0,63}(?:/[a-z0-9][a-z0-9_-]{0,63}){0,7})?$",
+      "description": "The folder under npcs/, empty for npcs/ itself. Animus sets it from where the file is."
     },
     "name": {
       "type": "string",

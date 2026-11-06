@@ -2,6 +2,7 @@ package art.arcane.animus.core.editor;
 
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.NpcPaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -36,7 +37,6 @@ public final class EditorTokens {
     public static final String PATH = "state/editor/tokens.json";
     public static final int MAXIMUM_TOKENS = 256, MAXIMUM_PAIRINGS = 64;
     public static final Duration PAIRING_LIFETIME = Duration.ofMinutes(10);
-    private static final String GROUP = "[a-z0-9][a-z0-9_-]{0,63}";
 
     /** A stored token. {@code admin} is empty for tokens paired from the console. */
     public record Token(String id, String hash, String label, Optional<UUID> admin, List<EditorScope> scopes, List<String> groups, Instant created,
@@ -48,8 +48,8 @@ public final class EditorTokens {
 
         public boolean has(EditorScope scope) { return scopes.contains(scope); }
 
-        /** True when the token may touch NPCs of this group. A token without groups reaches every group. */
-        public boolean group(String group) { return groups.isEmpty() || groups.contains(group); }
+        /** True when the token may touch NPCs in this folder: one of its groups or a folder inside one. A token without groups reaches every folder. */
+        public boolean group(String folder) { return groups.isEmpty() || groups.stream().anyMatch((String group) -> folder.equals(group) || folder.startsWith(group + "/")); }
     }
 
     /** What /animus editor pair asked for. */
@@ -57,7 +57,7 @@ public final class EditorTokens {
         public Grant {
             if (label.length() > 64) throw new IllegalArgumentException("label: at most 64 characters");
             if (scopes.isEmpty()) throw new IllegalArgumentException("scopes: at least one scope");
-            for (String group : groups) if (!group.matches(GROUP)) throw new IllegalArgumentException("groups: " + group + " is not an NPC group");
+            for (String group : groups) if (group.isEmpty() || !NpcPaths.folder(group)) throw new IllegalArgumentException("groups: " + group + " is not an NPC folder");
             if (lifetime.isNegative() || lifetime.isZero() || lifetime.compareTo(Duration.ofDays(365)) > 0) throw new IllegalArgumentException("expires: 1 minute to 365 days");
             scopes = List.copyOf(scopes);
             groups = List.copyOf(groups);
