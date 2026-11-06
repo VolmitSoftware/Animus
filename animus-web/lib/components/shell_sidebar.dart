@@ -22,6 +22,7 @@ import 'server/live_bar.dart';
 /// Kinds listed in the sidebar, in this order.
 const List<DocumentKind> listedKinds = <DocumentKind>[
   DocumentKind.npc,
+  DocumentKind.group,
   DocumentKind.behavior,
   DocumentKind.pack,
   DocumentKind.shop,
@@ -31,6 +32,7 @@ const List<DocumentKind> listedKinds = <DocumentKind>[
   DocumentKind.rig,
   DocumentKind.animation,
   DocumentKind.route,
+  DocumentKind.recording,
   DocumentKind.skin,
   DocumentKind.textAnimation,
   DocumentKind.presets,
@@ -208,6 +210,13 @@ class _ShellSidebarState extends State<ShellSidebar> {
           dom.a(
             href: NpcListRoute(workspace.id).format(),
             classes: 'animus-tree-browse${component.route is NpcListRoute ? ' is-selected' : ''}',
+            const <Widget>[Component.text('Browse')],
+          ),
+        if (kind == DocumentKind.recording && count > 0)
+          dom.a(
+            href: RecordingListRoute(workspace.id).format(),
+            classes: 'animus-tree-browse${component.route is RecordingListRoute ? ' is-selected' : ''}',
+            attributes: const <String, String>{'aria-label': 'Browse recordings'},
             const <Widget>[Component.text('Browse')],
           ),
       ]),

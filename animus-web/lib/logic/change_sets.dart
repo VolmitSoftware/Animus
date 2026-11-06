@@ -301,4 +301,5 @@ const Set<DocumentKind> revisionedKinds = <DocumentKind>{
   DocumentKind.presets,
   DocumentKind.rig,
   DocumentKind.animation,
+  DocumentKind.recording,
 };

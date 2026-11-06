@@ -5,6 +5,7 @@
 /// #/                                         home
 /// #/workspace/<id>                           a workspace
 /// #/workspace/<id>/npcs                      the NPC browser
+/// #/workspace/<id>/recordings                the recordings list
 /// #/workspace/<id>/new[/<kind>][?folder=]    create a document (an NPC in a folder)
 /// #/workspace/<id>/sync                      push to or pull from a server
 /// #/workspace/<id>/<kind>/<docId>?view=code  one document (docId URI-encoded)
@@ -45,6 +46,7 @@ sealed class EditorRoute {
       case 'workspace':
         if (parts.length == 2) return WorkspaceRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'npcs') return NpcListRoute(decode(parts[1]));
+        if (parts.length == 3 && parts[2] == 'recordings') return RecordingListRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'new') return NewDocumentRoute(decode(parts[1]));
         if (parts.length == 3 && parts[2] == 'sync') return SyncRoute(decode(parts[1]));
         if (parts.length == 4 && parts[2] == 'new') {
@@ -137,6 +139,22 @@ class NpcListRoute extends EditorRoute {
 
   @override
   int get hashCode => Object.hash('npcs', workspaceId);
+}
+
+/// The recordings list of a workspace.
+class RecordingListRoute extends EditorRoute {
+  const RecordingListRoute(this.workspaceId);
+
+  final String workspaceId;
+
+  @override
+  String format() => '#/workspace/${Uri.encodeComponent(workspaceId)}/recordings';
+
+  @override
+  bool operator ==(Object other) => other is RecordingListRoute && other.workspaceId == workspaceId;
+
+  @override
+  int get hashCode => Object.hash('recordings', workspaceId);
 }
 
 /// The New page of a workspace, optionally on one kind's guided step.

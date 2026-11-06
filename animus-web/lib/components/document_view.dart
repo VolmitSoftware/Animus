@@ -12,6 +12,7 @@ import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
 import '../logic/inspect/server_behaviors.dart';
+import '../logic/npc/group_model.dart';
 import '../logic/npc/npc_catalog.dart';
 import '../logic/npc/route_model.dart';
 import '../logic/offline/document_fixes.dart';
@@ -23,6 +24,7 @@ import 'gui/gui_fields.dart';
 import 'tab_strip.dart';
 import 'offline/dry_run_panel.dart';
 import 'offline/offline_fields.dart';
+import 'recording/recording_view.dart';
 import 'gui/gui_data_editors.dart';
 import 'gui/hologram_editor.dart';
 import 'gui/inventory_editor.dart';
@@ -347,6 +349,7 @@ class _DocumentPaneState extends State<DocumentPane> {
         Component.text('This document is not a JSON object, so Visual has no fields to show. Open Code to fix the text; the problems are listed above.'),
       ]);
     }
+    if (document.kind == DocumentKind.recording) return RecordingView(key: ValueKey<String>('recording:${document.id}'), document: document);
     if (document.kind == DocumentKind.skin) {
       return SkinSummary(document: document, workspaceDocuments: component.workspaceDocuments, onOpen: component.onOpen, onLoaded: () => setState(() {}));
     }
@@ -375,6 +378,15 @@ class _DocumentPaneState extends State<DocumentPane> {
             onChanged: (JsonMap value) => onJson(value, coalesce: 'route'),
           ),
         ]),
+      DocumentKind.group => NpcInspector.forGroup(
+          document: document,
+          onJson: onJson,
+          schemas: _schemas,
+          diagnostics: _allDiagnostics(document),
+          workspaceDocuments: workspace,
+          onSkinLoaded: () => setState(() {}),
+          onOpen: component.onOpen,
+        ),
       DocumentKind.pack => PackEditor(document: document, schema: _schemas.pack, onJson: onJson, diagnostics: _allDiagnostics(document)),
       DocumentKind.serverBehaviors => ServerBehaviorsEditor(
           document: document,
@@ -420,6 +432,16 @@ class _DocumentPaneState extends State<DocumentPane> {
     return null;
   }
 
+  /// The workspace skin document [document]'s `skin` names, when present.
+  AnimusDocument? _skinFor(AnimusDocument document) {
+    final String? skin = asString(asMap(document.json)['skin']);
+    if (skin == null) return null;
+    for (final AnimusDocument other in component.workspaceDocuments) {
+      if (other.kind == DocumentKind.skin && other.id == skin) return other;
+    }
+    return null;
+  }
+
   /// Kinds whose Preview is the 3D stage, which Split shows beside the code.
   bool _staged(AnimusDocument document) => document.kind == DocumentKind.npc && document.json is Map<String, Object?>;
 
@@ -438,12 +460,15 @@ class _DocumentPaneState extends State<DocumentPane> {
 
   Widget _preview(AnimusDocument document) {
     if (_staged(document)) {
-      final (AnimusDocument? rig, List<AnimusDocument> animations) = _rigOf(document);
+      // The stage shows what the server runs: the NPC over its groups.
+      final NpcEffective? effective = effectiveNpc(asMap(document.json), workspaceGroups(component.workspaceDocuments));
+      final AnimusDocument staged = effective == null ? document : document.copyWith(json: effective.json, source: prettyJson(effective.json));
+      final (AnimusDocument? rig, List<AnimusDocument> animations) = _rigOf(staged);
       return NpcPreview(
         key: ValueKey<String>('npc-preview:${document.id}'),
-        document: document,
-        skinDocument: component.skinDocument,
-        route: _routeOf(document),
+        document: staged,
+        skinDocument: _skinFor(staged) ?? component.skinDocument,
+        route: _routeOf(staged),
         rig: rig,
         animations: animations,
         resources: component.resources,
@@ -457,6 +482,9 @@ class _DocumentPaneState extends State<DocumentPane> {
         resources: component.resources,
         onOpen: component.onOpen,
       );
+    }
+    if (document.kind == DocumentKind.recording) {
+      return RecordingView(key: ValueKey<String>('recording-preview:${document.id}'), document: document, facts: false);
     }
     final Object? json = document.json;
     if (json is Map<String, Object?> && guiEditorKinds.contains(document.kind)) {
@@ -490,14 +518,20 @@ class _DocumentPaneState extends State<DocumentPane> {
     return dom.section(classes: 'animus-panel animus-code', <Widget>[
       JsonCodeEditor(
         text: text,
-        onChanged: _edit,
+        onChanged: document.kind == DocumentKind.recording ? (String _) {} : _edit,
         schema: schemas.forKind(document.kind),
         catalog: document.kind == DocumentKind.behavior ? schemas.catalog : null,
         hints: hints,
         diagnostics: document.diagnostics,
         serverDiagnostics: component.serverDiagnostics,
+        readOnly: document.kind == DocumentKind.recording,
       ),
-      dom.div(classes: 'animus-row', <Widget>[
+      if (document.kind == DocumentKind.recording)
+        const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-recording': 'code-note'}, <Widget>[
+          Component.text('Recordings are made in game with /animus record, so this text is read-only here. Rename and Delete above still apply.'),
+        ])
+      else
+        dom.div(classes: 'animus-row', <Widget>[
         Button.primary(
           label: 'Apply to draft',
           size: ButtonSize.small,

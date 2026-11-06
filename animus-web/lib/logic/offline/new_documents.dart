@@ -605,6 +605,8 @@ Object? rewriteIdentity(DocumentKind kind, Object? json, String id, {required bo
     case DocumentKind.rig:
     case DocumentKind.animation:
     case DocumentKind.pack:
+    case DocumentKind.recording:
+    case DocumentKind.group:
       if (out.containsKey('id') || kind != DocumentKind.shop) out['id'] = id;
     default:
       break;

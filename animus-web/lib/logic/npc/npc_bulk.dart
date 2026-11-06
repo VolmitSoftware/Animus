@@ -6,6 +6,7 @@ library;
 import '../../model/document_kind.dart';
 import '../../state/editor_store.dart';
 import '../gui/gui_json.dart';
+import 'group_model.dart';
 import 'npc_catalog.dart';
 import 'npc_paths.dart';
 
@@ -234,4 +235,78 @@ String describeBulk(String action, NpcBulkResult result) {
   if (result.skipped.isEmpty) return '$head.';
   final Set<String> reasons = result.skipped.values.toSet();
   return '$head; skipped ${result.skipped.length}: ${reasons.take(3).join(' ')}';
+}
+
+/// Which NPCs a group assign or unassign reaches, the server's
+/// `folder=`, `tag=` and `ids=` selectors.
+class NpcGroupTarget {
+  const NpcGroupTarget._(this.folder, this.tag, this.keys);
+
+  /// NPCs whose folder under `npcs/` is exactly [folder] (`''` is `npcs/`).
+  const NpcGroupTarget.folder(String folder) : this._(folder, null, null);
+
+  /// NPCs whose effective tags (their own and their groups') include [tag].
+  const NpcGroupTarget.tag(String tag) : this._(null, tag, null);
+
+  /// The NPCs with these workspace keys.
+  const NpcGroupTarget.ids(Set<String> keys) : this._(null, null, keys);
+
+  final String? folder;
+  final String? tag;
+  final Set<String>? keys;
+
+  bool matches(NpcEntry entry, Map<String, JsonMap> groups) {
+    if (folder case final String folder) return entry.folder == folder;
+    if (tag case final String tag) return jsonStrings((effectiveNpc(entry.json, groups)?.json ?? entry.json)['tags']).contains(tag);
+    return keys!.contains(entry.key);
+  }
+}
+
+/// Adds [group] to the end of each matching NPC's `groups` ([assign]) or
+/// removes it, as `/animus groups assign` and `unassign` do. NPCs already in
+/// the wanted state count as unchanged ([NpcBulkResult.skipped]). Like the
+/// server, an assign of a group the workspace lacks, or one that would give
+/// any NPC more than [npcGroupLimit] groups, writes nothing.
+NpcBulkResult changeGroup(List<NpcEntry> entries, Map<String, JsonMap> groups, String group, NpcGroupTarget target, {required bool assign}) {
+  final List<NpcEntry> matched = <NpcEntry>[
+    for (final NpcEntry entry in entries)
+      if (target.matches(entry, groups)) entry,
+  ];
+  if (assign && !groups.containsKey(group)) {
+    return NpcBulkResult(const <DocumentChange>[], <String, String>{for (final NpcEntry entry in matched) entry.key: 'No group $group in this workspace.'}, 0);
+  }
+  final Map<String, String> full = <String, String>{
+    if (assign)
+      for (final NpcEntry entry in matched)
+        if (!npcGroups(entry.json).contains(group) && npcGroups(entry.json).length >= npcGroupLimit) entry.key: 'Already lists $npcGroupLimit groups.',
+  };
+  if (full.isNotEmpty) return NpcBulkResult(const <DocumentChange>[], full, 0);
+  return _each(matched, (NpcEntry entry, Map<String, String> skipped) {
+    final List<String> listed = npcGroups(entry.json);
+    if (listed.contains(group) == assign) {
+      skipped[entry.key] = assign ? 'Already lists $group.' : 'Does not list $group.';
+      return null;
+    }
+    final List<String> next = <String>[
+      for (final String id in listed)
+        if (id != group) id,
+      if (assign) group,
+    ];
+    final JsonMap json = _copy(entry);
+    if (next.isEmpty) {
+      json.remove('groups');
+    } else {
+      json['groups'] = next;
+    }
+    return json;
+  });
+}
+
+/// One line for a toast, worded like the server's reply: how many changed
+/// and how many already were as asked, or why nothing was written.
+String describeGroupChange(String group, NpcBulkResult result, {required bool assign}) {
+  final bool refused = result.changes.isEmpty && result.skipped.values.any((String reason) => !reason.startsWith('Already lists $group') && !reason.startsWith('Does not list'));
+  if (refused) return 'Nothing changed: ${result.skipped.values.toSet().take(2).join(' ')}';
+  if (result.changed == 0 && result.skipped.isEmpty) return 'No NPC matches, so nothing changed.';
+  return '${assign ? 'Assigned' : 'Unassigned'} $group: ${result.changed} changed, ${result.skipped.length} unchanged.';
 }

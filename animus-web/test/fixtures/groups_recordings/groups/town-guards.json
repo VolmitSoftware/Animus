@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town-guards",
+  "description": "Watch uniform, look-close and the gate colours",
+  "values": {
+    "modules": {
+      "animus:look-close": {
+        "enabled": true,
+        "range": 12
+      }
+    },
+    "tags": [
+      "guard"
+    ],
+    "equipment": {
+      "head": {
+        "id": "minecraft:iron_helmet"
+      },
+      "chest": {
+        "id": "minecraft:iron_chestplate"
+      }
+    },
+    "nameplate": {
+      "visible": true
+    },
+    "teamColor": "gold"
+  }
+}
