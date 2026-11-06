@@ -107,6 +107,11 @@
 - `/animus status` shows the main budgets in effect.
 - Editor: offline workspaces (blank or with the example packs), a guided New page for every document kind with behavior templates, rename, duplicate and confirmed delete, one-click fixes, rig animation playback in the NPC preview, a behavior dry run with server-only steps listed as not run, and push or pull between a local workspace and a paired server.
 - Builders place doors, beds, tall plants, double chests, extended pistons and dripleaf columns as one unit, paid once; they put up, climb and take down scaffolding to reach high blocks (`scaffolding` build option); walking NPCs climb ladders, vines and scaffolding.
+- Behavior expressions for set, conditions, argument expressions and text templates, with bounded evaluation.
+- List, map and any value types; foreach, while, computed repeat, break, continue, call arguments and results, and return.
+- Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
+- Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
+- Flags hold any value and can expire; durable state stores lists, maps and expiry.
 
 ### Changed
 
@@ -169,6 +174,7 @@
 - Boss bars default to pink.
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
+- The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
 
 ### Fixed
 
@@ -204,6 +210,7 @@
 - A player who logs out while riding is saved at the NPC's feet instead of beside it.
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 - The editor theme toggle switches themes without a reload.
+- Assignments whose only content was `on assignment` now give their NPCs a behavior.
 
 ### Notes
 
