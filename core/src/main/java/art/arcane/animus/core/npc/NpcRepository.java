@@ -72,15 +72,14 @@ public final class NpcRepository {
         Map<String, String> recovered = new TreeMap<>();
         Path directory = store.resolve("npcs");
         if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
-            for (Path file : JsonDocumentTree.files(directory)) {
+            for (Path file : JsonDocumentTree.files(directory, NpcPaths.TREE_DEPTH)) {
                 String path = "npcs/" + directory.relativize(file).toString().replace('\\', '/');
                 if (reads.size() >= 100_000) throw new IOException("NPC definition limit exceeded: 100000");
                 try {
-                    DefinitionCheckpoints.Saved saved = startup ? checkpoints.read(path).orElse(null) : null;
+                    DefinitionCheckpoints.Saved saved = startup && NpcPaths.file(path) ? checkpoints.read(path).orElse(null) : null;
                     try {
                         String json = JsonDocuments.read(file);
-                        NpcDefinition definition = NpcDefinition.parse(json);
-                        if (!store.resolve(definition.path()).equals(file)) throw new IOException("$.id/group: must match file path");
+                        NpcDefinition definition = NpcDefinition.read(path, json);
                         NpcDefinition previous = startup && saved != null ? saved.definition() : active.get(definition.id());
                         if (!allowOlderRevision && previous != null && definition.revision() < previous.revision()) throw new IOException("$.revision: cannot decrease");
                         reads.put(path, new Read(path, definition, JsonDocuments.hash(json), null));

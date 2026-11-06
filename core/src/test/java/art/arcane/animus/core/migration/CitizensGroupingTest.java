@@ -3,9 +3,7 @@ package art.arcane.animus.core.migration;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.shop.ShopBinding;
 import art.arcane.animus.core.storage.JsonDocuments;
-import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -42,42 +40,37 @@ class CitizensGroupingTest {
                   controllable: {enabled: false}
             """;
 
-    private static String group(String world, double x, double z) { return CitizensImporter.group(world, new JsonPrimitive(x), new JsonPrimitive(z)); }
-
-    @Test void groupIsTheWorldAndRegionFileAsAStablePathSegment() {
-        assertEquals("world-r0_0", group("world", 0, 511.9));
-        assertEquals("world-r-1_1", group("world", -0.5, 512));
-        assertEquals("world_nether-r-2_-3", group("world_nether", -1024, -1025));
-        assertEquals("world-nether-r0_0", group("World Nether", 1, 1));
-        assertEquals("spawn-r0_0", group("__spawn__", 1, 1));
-        assertEquals("citizens", group("", 1, 1));
-        assertEquals("citizens", group("$$$", 1, 1));
-        assertEquals("world", CitizensImporter.group("world", JsonNull.INSTANCE, new JsonPrimitive(1)));
-        assertEquals("world", CitizensImporter.group("world", new JsonPrimitive("1"), new JsonPrimitive(1)));
-        assertEquals(48 + "-r0_0".length(), group("a".repeat(80), 1, 1).length());
+    @Test void groupIsTheWorldAloneAsAStablePathSegment() {
+        assertEquals("world", CitizensImporter.group("world"));
+        assertEquals("world_nether", CitizensImporter.group("world_nether"));
+        assertEquals("world-nether", CitizensImporter.group("World Nether"));
+        assertEquals("spawn", CitizensImporter.group("__spawn__"));
+        assertEquals("citizens", CitizensImporter.group(""));
+        assertEquals("citizens", CitizensImporter.group("$$$"));
+        assertEquals(48, CitizensImporter.group("a".repeat(80)).length());
     }
 
     @Test void definitionsAreSplitIntoWorldFoldersAfterWorldMapping() throws Exception {
         Path source = Files.writeString(root.resolve("saves.yml"), SAVES);
         CitizensImporter.Preview preview = new CitizensImporter().preview(source, root.resolve("data"), Map.of("old", "survival"));
-        assertEquals(Set.of("npcs/world-nether-r0_0/citizens-1.json", "npcs/survival-r0_0/citizens-2.json", "npcs/citizens/citizens-3.json", "npcs/survival-r0_0/citizens-4.json"),
+        assertEquals(Set.of("npcs/world-nether/citizens-1.json", "npcs/survival/citizens-2.json", "npcs/citizens/citizens-3.json", "npcs/survival/citizens-4.json"),
                 preview.summary().getAsJsonObject("documents").keySet());
-        JsonObject horse = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/survival-r0_0/citizens-2.json")));
-        assertEquals("survival-r0_0", horse.get("group").getAsString());
+        JsonObject horse = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/survival/citizens-2.json")));
+        assertEquals("survival", horse.get("group").getAsString());
     }
 
     @Test void controllableBecomesDisabledRidingAndImportedShopsWaitForReview() throws Exception {
         Path source = Files.writeString(root.resolve("saves.yml"), SAVES);
         CitizensImporter.Preview preview = new CitizensImporter().preview(source, root.resolve("data"), Map.of());
-        JsonObject horse = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/old-r0_0/citizens-2.json")));
+        JsonObject horse = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/old/citizens-2.json")));
         JsonObject riding = horse.getAsJsonObject("modules").getAsJsonObject(RideSettings.MODULE);
         assertFalse(riding.get("enabled").getAsBoolean());
         assertFalse(riding.get("reviewAccepted").getAsBoolean());
         assertTrue(RideSettings.parse(horse).isEmpty());
-        JsonObject parked = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/old-r0_0/citizens-4.json")));
+        JsonObject parked = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/old/citizens-4.json")));
         assertFalse(parked.getAsJsonObject("modules").has(RideSettings.MODULE));
 
-        JsonObject baker = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/world-nether-r0_0/citizens-1.json")));
+        JsonObject baker = JsonDocuments.object(Files.readString(preview.directory().resolve("npcs/world-nether/citizens-1.json")));
         JsonObject shop = baker.getAsJsonObject("modules").getAsJsonObject(ShopBinding.MODULE);
         assertFalse(shop.get("reviewAccepted").getAsBoolean());
         assertTrue(ShopBinding.parse(baker).isEmpty());
