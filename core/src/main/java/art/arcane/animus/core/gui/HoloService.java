@@ -12,6 +12,7 @@ import art.arcane.animus.core.presentation.DisplayTransport;
 import art.arcane.animus.core.runtime.NpcRuntime;
 import art.arcane.animus.core.shop.ShopCatalog;
 import art.arcane.animus.core.shop.ShopService;
+import art.arcane.animus.core.virtual.PointGrid;
 import art.arcane.animus.core.virtual.VirtualNpcState;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -191,11 +192,10 @@ public final class HoloService<P, S> implements AutoCloseable {
         boolean scan = viewer.tick % SCAN_TICKS == 1 || viewer.holograms.isEmpty() && viewer.tick % SCAN_TICKS == 0;
         if (scan) {
             Map<String, Candidate> wanted = new LinkedHashMap<>();
-            for (HologramDocument document : current.holograms().values()) {
-                if (wanted.size() >= MAXIMUM_HOLOGRAMS_PER_VIEWER) break;
-                if (pose.in(document.world()) && near(pose, document.x(), document.y(), document.z(), document.viewDistance()))
+            PointGrid<HologramDocument> placed = placed(current);
+            for (String world : pose.worlds())
+                for (HologramDocument document : placed.reaching(world, pose.x(), pose.y(), pose.z(), MAXIMUM_HOLOGRAMS_PER_VIEWER - wanted.size()))
                     wanted.put(document.id(), new Candidate(document, Optional.empty()));
-            }
             for (Map.Entry<UUID, GuiBinding> bound : bindings().entrySet()) {
                 if (wanted.size() >= MAXIMUM_HOLOGRAMS_PER_VIEWER) break;
                 Optional<GuiBinding.Hologram> hologram = bound.getValue().hologram();
@@ -217,6 +217,19 @@ public final class HoloService<P, S> implements AutoCloseable {
         for (HologramView view : viewer.holograms.values()) draw(viewer, view, pose);
     }
     private record Candidate(HologramDocument document, Optional<UUID> npc) {}
+    private record Placed(HoloCatalog catalog, PointGrid<HologramDocument> grid) {}
+    /** Placed holograms of the current catalog by chunk; any viewer's owner may rebuild it after a reload. */
+    private volatile Placed placed = new Placed(HoloCatalog.EMPTY, new PointGrid<>(List.of()));
+    private PointGrid<HologramDocument> placed(HoloCatalog current) {
+        Placed known = placed;
+        if (known.catalog() == current) return known.grid();
+        List<PointGrid.Point<HologramDocument>> points = new ArrayList<>(current.holograms().size());
+        for (HologramDocument document : current.holograms().values())
+            points.add(new PointGrid.Point<>(document.world(), document.x(), document.y(), document.z(), document.viewDistance(), document));
+        PointGrid<HologramDocument> grid = new PointGrid<>(points);
+        placed = new Placed(current, grid);
+        return grid;
+    }
 
     private void draw(Viewer viewer, HologramView view, ScreenHost.Pose pose) {
         HologramDocument document = view.document;

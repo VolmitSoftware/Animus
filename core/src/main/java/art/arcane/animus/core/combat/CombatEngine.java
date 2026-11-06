@@ -69,7 +69,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private final Map<UUID, CombatBrain> brains = new HashMap<>();
     private final Map<String, List<CombatBrain>> squads = new HashMap<>();
     private final Map<TargetRef, List<CombatBrain>> guardians = new HashMap<>();
-    private final List<CombatBrain> watchers = new ArrayList<>();
+    private final Set<CombatBrain> watchers = new java.util.LinkedHashSet<>();
     private final PriorityQueue<Scheduled> schedule = new PriorityQueue<>(
             Comparator.comparingLong(Scheduled::wake).thenComparingLong(Scheduled::order));
     private final HelperLedger helpers;
@@ -470,7 +470,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
             }
         };
         sightsLeft = SIGHTS_PER_EVENT;
-        for (CombatBrain watcher : List.copyOf(watchers)) {
+        for (CombatBrain watcher : watchersNear(attacker.get().position())) {
             if (watcher.npc().equals(fight.attacker().id())) continue;
             boolean asTarget = watcher.reacts(watcher.settings().targets(), fight.kind(), fight.attacker(), observed);
             boolean asThreat = watcher.reacts(watcher.settings().avoids(), fight.kind(), fight.attacker(), observed);
@@ -482,11 +482,27 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         Optional<CombatTarget> player = resolve(chat.player());
         if (player.isEmpty()) return;
         sightsLeft = SIGHTS_PER_EVENT;
-        for (CombatBrain watcher : List.copyOf(watchers)) {
+        for (CombatBrain watcher : watchersNear(player.get().position())) {
             boolean asTarget = CombatBrain.said(watcher.settings().targets(), chat.folded());
             boolean asThreat = CombatBrain.said(watcher.settings().avoids(), chat.folded());
             if (asTarget || asThreat) watcher.witnessed(player.get(), asTarget, asThreat);
         }
+    }
+
+    /**
+     * Watchers that could notice something at this point, found through the NPC spatial index rather than every watcher:
+     * a watcher reacts only within its scan or avoidance range, and both are capped.
+     */
+    private List<CombatBrain> watchersNear(WorldPosition at) {
+        double radius = Math.max(budgets.maximumScanRange(), CombatSettings.MAXIMUM_AVOIDANCE_RANGE);
+        int side = (int) Math.ceil(radius * 2 / 16) + 2;
+        SpatialNpcIndex.Scan near = world.nearbyNpcs(at, radius, null, new SpatialNpcIndex.Budget(side * side, 65536));
+        List<CombatBrain> found = new ArrayList<>();
+        for (VirtualNpcState.Snapshot candidate : near.candidates()) {
+            CombatBrain brain = brains.get(candidate.npcId());
+            if (brain != null && watchers.contains(brain)) found.add(brain);
+        }
+        return found;
     }
 
     /** All damage goes through here: protection first, then defense, then exactly one damage authority. */

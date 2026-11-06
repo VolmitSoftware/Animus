@@ -187,21 +187,36 @@ public final class RegionCombat implements Listener, AutoCloseable {
         }
         return asked;
     }
-    /** A fight: guards of either side and NPCs that watch fights hear of it on their own owners. */
-    void fought(RegionActor except, TargetRef attacker, TargetRef victim) {
+    /** A fight at {@code at}: guards of either side, and NPCs near it that watch fights, hear of it on their own owners. */
+    void fought(RegionActor except, TargetRef attacker, TargetRef victim, WorldPosition at) {
         if (closed || !enabled()) return;
         List<RegionActor> audience = new ArrayList<>();
         for (UUID party : List.of(victim.id(), attacker.id())) {
             Set<RegionActor> guards = guardians.get(party);
             if (guards != null) audience.addAll(guards);
         }
-        audience.addAll(watchers);
+        audience.addAll(watchersNear(at));
         int sent = 0;
         for (RegionActor actor : audience.stream().distinct().toList()) {
             if (actor == except) continue;
             if (sent++ >= DELIVERIES_PER_EVENT) { dropped.incrementAndGet(); continue; }
             send(actor, "fight", (ActorCombat combat) -> combat.engine.heardFight(victim, attacker));
         }
+    }
+    /**
+     * Watching NPCs that could notice something at this point, from the NPC spatial index instead of every watcher on the
+     * server, so far watchers cannot use up the delivery cap. A watcher reacts only within its scan or avoidance range.
+     */
+    private List<RegionActor> watchersNear(WorldPosition at) {
+        if (watchers.isEmpty()) return List.of();
+        double radius = Math.max(budgets.maximumScanRange(), art.arcane.animus.core.combat.CombatSettings.MAXIMUM_AVOIDANCE_RANGE);
+        int side = (int) Math.ceil(radius * 2 / 16) + 2;
+        List<RegionActor> found = new ArrayList<>();
+        for (VirtualNpcState.Snapshot candidate : scan(at, radius, null, new SpatialNpcIndex.Budget(side * side, 65536)).candidates()) {
+            RegionActor actor = actor(candidate.npcId());
+            if (actor != null && watchers.contains(actor)) found.add(actor);
+        }
+        return found;
     }
     /** Deletes a dead NPC's definition on the file lane as one transaction, as the single-owner module does. */
     void deleteDead(UUID npc) {
@@ -370,18 +385,23 @@ public final class RegionCombat implements Listener, AutoCloseable {
             damager = shooter instanceof Entity source ? source : null;
         }
         TargetRef attacker = damager == null ? null : reference(damager);
-        if (victim != null && attacker != null) fought(null, attacker, victim);
+        if (victim != null && attacker != null) fought(null, attacker, victim, RegionViewer.position(event.getEntity().getLocation()));
     }
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    /** Chat arrives off every region; the speaker's own region reads where they stand and tells the watchers near them. */
     public void chat(AsyncPlayerChatEvent event) {
         if (closed || !enabled() || watchers.isEmpty()) return;
-        TargetRef speaker = new TargetRef(TargetKind.PLAYER, event.getPlayer().getUniqueId());
+        Player player = event.getPlayer();
+        TargetRef speaker = new TargetRef(TargetKind.PLAYER, player.getUniqueId());
         String message = event.getMessage();
-        int sent = 0;
-        for (RegionActor actor : List.copyOf(watchers)) {
-            if (sent++ >= DELIVERIES_PER_EVENT) { dropped.incrementAndGet(); continue; }
-            send(actor, "chat", (ActorCombat combat) -> combat.engine.chat(speaker, message));
-        }
+        host.regions.execute(player, () -> {
+            if (closed || !enabled() || !player.isOnline()) return;
+            int sent = 0;
+            for (RegionActor actor : watchersNear(RegionViewer.position(player.getLocation()))) {
+                if (sent++ >= DELIVERIES_PER_EVENT) { dropped.incrementAndGet(); continue; }
+                send(actor, "chat", (ActorCombat combat) -> combat.engine.chat(speaker, message));
+            }
+        }, () -> {});
     }
     @EventHandler(priority = EventPriority.LOWEST)
     public void helperExplosion(ExplosionPrimeEvent event) { if (helper(event.getEntity())) event.setCancelled(true); }

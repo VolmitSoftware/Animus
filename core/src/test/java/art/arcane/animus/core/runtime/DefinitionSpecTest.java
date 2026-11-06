@@ -90,15 +90,15 @@ class DefinitionSpecTest {
     }
 
     @Test void settingsCannotExceedHardQueueAndVisibilityCeilings() {
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, Double.NaN, 64, 256, 16, 32, 8, 32));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 7, 64, 256, 16, 32, 8, 32));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 257, 64, 256, 16, 32, 8, 32));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 129, 256, 16, 32, 8, 32));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 1025, 16, 32, 8, 32));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 65, 32, 8, 32));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 0, 8, 32));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 32, 65, 32));
-        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 32, 8, 1025));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, Double.NaN, 64, 256, 16, 32, 8, 32, 512, 24, 4));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 7, 64, 256, 16, 32, 8, 32, 512, 24, 4));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 257, 64, 256, 16, 32, 8, 32, 512, 24, 4));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 129, 256, 16, 32, 8, 32, 512, 24, 4));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 1025, 16, 32, 8, 32, 512, 24, 4));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 65, 32, 8, 32, 512, 24, 4));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 0, 8, 32, 512, 24, 4));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 32, 65, 32, 512, 24, 4));
+        assertThrows(IllegalArgumentException.class, () -> new PersistedNpcService.Settings(true, 48, 64, 256, 16, 32, 8, 1025, 512, 24, 4));
     }
 
     @Test void acceptedTomlBudgetEndpointsConstructRuntimeSettings(@TempDir Path directory) throws Exception {

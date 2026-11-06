@@ -4,7 +4,9 @@ import art.arcane.animus.core.metrics.Subsystem;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.runtime.NpcPresentation;
 import art.arcane.animus.core.runtime.NpcRuntime;
+import art.arcane.animus.core.runtime.PresentationPressure;
 import art.arcane.animus.core.runtime.PreviewBodies;
+import art.arcane.animus.core.runtime.ViewerOutbox;
 import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyPose;
 import art.arcane.animus.core.presentation.BodyTransport;
@@ -33,9 +35,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -57,14 +61,17 @@ final class RegionViewer {
     final ViewerSession guard;
     final PreviewBodies<Player, ItemStack> preview;
     private final Map<UUID, Presented> visible = new HashMap<>(), retiring = new HashMap<>();
-    private final Deque<Presented> retirements = new ArrayDeque<>(), presentationOrder = new ArrayDeque<>(), rigOrder = new ArrayDeque<>();
+    /** {@code cosmeticOrder} holds the same bodies as {@code presentationOrder}, in its own rotation for cosmetic work. */
+    private final Deque<Presented> retirements = new ArrayDeque<>(), presentationOrder = new ArrayDeque<>(), cosmeticOrder = new ArrayDeque<>();
+    /** Packet operations handed to the transport and not yet finished, bounded by {@code [npcs] queuePerViewer}. */
+    private final ViewerOutbox outbox = new ViewerOutbox();
     private final ConcurrentLinkedQueue<Runnable> completions = new ConcurrentLinkedQueue<>();
     private final AtomicInteger queued = new AtomicInteger();
     final AtomicInteger shown = new AtomicInteger();
     private SpatialNpcIndex.Cursor cursor;
     private ProximityTracker proximity;
     private int nativeIds, pendingSpawns, bones;
-    private long ticks;
+    private long ticks, updates;
     private final long phase = java.util.concurrent.ThreadLocalRandom.current().nextLong(1 << 20);
     volatile boolean ready, failed;
     volatile AutoCloseable task;
@@ -127,20 +134,21 @@ final class RegionViewer {
         int budget = host.budget.take(RegionBudget.Kind.PACKETS, share);
         int used = update(at, budget);
         if (used >= budget) host.budget.shortOfPackets();
-        // Cosmetic work spends only what this viewer's despawns, moves and spawns left, and pauses while the region is short.
-        if (host.budget.cosmeticAllowed()) used += presentCosmetics(budget - used);
+        // Cosmetic work spends only what this viewer's despawns, moves and spawns left, and slows or pauses while the region is short.
+        if (host.budget.cosmeticAllowed(updates)) used += presentCosmetics(budget - used);
         host.budget.refund(RegionBudget.Kind.PACKETS, budget - used);
     }
 
     private int update(WorldPosition at, int packetBudget) {
         int sent = 0;
+        updates++;
         Map<Long, Boolean> delivered = new HashMap<>();
         Predicate<ChunkPosition> sentChunk = chunk -> chunk.world().equals(at.world())
                 && delivered.computeIfAbsent(ChunkPosition.key(chunk.x(), chunk.z()), ignored -> host.regions.sent(player, chunk.x(), chunk.z()));
         for (Presented body : List.copyOf(visible.values())) if (!eligible(body.actor.publication, at, sentChunk)) retire(body);
-        while (!retirements.isEmpty() && sent < packetBudget) {
+        while (!retirements.isEmpty() && sent < packetBudget && admit(PresentationPressure.Tier.DESPAWN)) {
             Presented body = retirements.removeFirst(); sent++;
-            host.packets.despawn(player, body.body).whenComplete((nothing, failure) -> enqueue(() -> {
+            handOver(() -> host.packets.despawn(player, body.body)).whenComplete((nothing, failure) -> enqueue(() -> {
                 if (!host.current(this)) return;
                 body.despawnFinished = true;
                 if (failure != null) host.fail(this, "despawn", body.actor, failure); else release(body);
@@ -154,11 +162,14 @@ final class RegionViewer {
                 presentationOrder.addLast(body);
                 RegionActor.Publication now = body.actor.publication;
                 if (now.appearance() != body.appearance || rigReplaced(body, now)) { retire(body); continue; }
-                if (body.spawnFinished && !body.moving && body.pose != now.pose()) { move(body, now); sent++; if (!host.current(this)) return sent; }
-                if (body.spawnFinished && !body.equipping && sent < packetBudget && body.equipment != now.equipmentRevision()) { equip(body, now); sent++; if (!host.current(this)) return sent; }
-                if (body.spawnFinished && !body.looking && sent < packetBudget && body.look != now.lookRevision()) { look(body, now); sent++; if (!host.current(this)) return sent; }
-                if (body.spawnFinished && sent < packetBudget && body.dragonPhase != now.dragonPhase() && now.type().equals(DragonBody.TYPE)) { phase(body, now.dragonPhase()); sent++; if (!host.current(this)) return sent; }
-                if (body.spawnFinished && sent < packetBudget && body.swings != now.swings()) { swing(body, now.swings()); sent++; if (!host.current(this)) return sent; }
+                if (body.spawnFinished && !body.moving && body.pose != now.pose() && moveDue(body, now, at)) {
+                    if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
+                    move(body, now); sent++; if (!host.current(this)) return sent;
+                }
+                if (body.spawnFinished && !body.equipping && sent < packetBudget && body.equipment != now.equipmentRevision()) {
+                    if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
+                    equip(body, now); sent++; if (!host.current(this)) return sent;
+                }
             }
         }
         if (ready && retirements.isEmpty() && sent < packetBudget) { sent += rosters(packetBudget - sent); if (!host.current(this)) return sent; }
@@ -175,6 +186,7 @@ final class RegionViewer {
             RegionActor.Publication now = actor == null ? null : actor.publication;
             if (now == null || visible.containsKey(candidate.npcId()) || retiring.containsKey(candidate.npcId())
                     || nativeIds + preview.reservedIds() + now.ids() > 256 || !eligible(now, at, sentChunk)) continue;
+            if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) break;
             spawn(actor, now); sent++; capacity--;
             if (!host.current(this)) break;
         }
@@ -194,9 +206,9 @@ final class RegionViewer {
         try {
             NativePacketAdapter.Body body = host.packets.createBody(now.spec().definition().uuid(), now.spec().type(), now.name(), now.spec().appearance(), now.skin());
             Presented presented = new Presented(actor, body, now);
-            visible.put(actor.uuid, presented); presentationOrder.addLast(presented); rigOrder.addLast(presented);
+            visible.put(actor.uuid, presented); presentationOrder.addLast(presented); cosmeticOrder.addLast(presented);
             nativeIds += presented.ids; pendingSpawns++; shown.incrementAndGet();
-            host.packets.spawn(player, body, pose(now)).whenComplete((nothing, failure) -> enqueue(() -> {
+            handOver(() -> host.packets.spawn(player, body, pose(now))).whenComplete((nothing, failure) -> enqueue(() -> {
                 if (!host.current(this)) return;
                 presented.spawnFinished = true; pendingSpawns--;
                 if (presented.retired) { release(presented); return; }
@@ -210,7 +222,7 @@ final class RegionViewer {
     private void move(Presented body, RegionActor.Publication now) {
         body.moving = true;
         try {
-            host.packets.move(player, body.body, pose(now)).whenComplete((nothing, failure) -> enqueue(() -> {
+            handOver(() -> host.packets.move(player, body.body, pose(now))).whenComplete((nothing, failure) -> enqueue(() -> {
                 if (!host.current(this) || body.retired || visible.get(body.actor.uuid) != body) return;
                 body.moving = false;
                 if (failure != null) { host.fail(this, "move", body.actor, failure); return; }
@@ -224,60 +236,100 @@ final class RegionViewer {
     private void equip(Presented body, RegionActor.Publication now) {
         body.equipping = true;
         try {
-            host.packets.equipment(player, body.body, now.equipment()).whenComplete((nothing, failure) -> enqueue(() -> {
+            handOver(() -> host.packets.equipment(player, body.body, now.equipment())).whenComplete((nothing, failure) -> enqueue(() -> {
                 body.equipping = false; body.equipment = now.equipmentRevision();
                 if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "equipment", body.actor, failure);
             }));
         } catch (RuntimeException failure) { body.equipping = false; body.equipment = now.equipmentRevision(); host.cosmeticFailed(this, "equipment", body.actor, failure); }
     }
-    /** Cosmetic, like equipment: a recording playback's pose and motion flags, sent as metadata. */
-    private void look(Presented body, RegionActor.Publication now) {
+    /** Cosmetic: a recording playback's pose and motion flags, sent as metadata. False when the outbox has no room for cosmetic work. */
+    private boolean look(Presented body, RegionActor.Publication now) {
         BodyLook shown = now.look();
-        if (shown == null || !host.packets.presentationAvailable()) { body.look = now.lookRevision(); return; }
+        if (shown == null || !host.packets.presentationAvailable()) { body.look = now.lookRevision(); return true; }
+        if (!admit(PresentationPressure.Tier.COSMETIC)) return false;
         body.looking = true;
         try {
-            host.packets.look(player, body.body, shown).whenComplete((nothing, failure) -> enqueue(() -> {
+            handOver(() -> host.packets.look(player, body.body, shown)).whenComplete((nothing, failure) -> enqueue(() -> {
                 body.looking = false; body.look = now.lookRevision();
                 if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "look", body.actor, failure);
             }));
         } catch (RuntimeException failure) { body.looking = false; body.look = now.lookRevision(); host.cosmeticFailed(this, "look", body.actor, failure); }
+        return true;
     }
     /** Cosmetic: one arm swing for any number the owner published since the last; a failed send is not retried. */
-    private void swing(Presented body, long swings) {
+    private boolean swing(Presented body, long swings) {
+        if (!admit(PresentationPressure.Tier.COSMETIC)) return false;
         body.swings = swings;
         try {
-            host.packets.swing(player, body.body).whenComplete((nothing, failure) -> {
+            handOver(() -> host.packets.swing(player, body.body)).whenComplete((nothing, failure) -> {
                 if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "swing", body.actor, failure); });
             });
         } catch (RuntimeException failure) { host.cosmeticFailed(this, "swing", body.actor, failure); }
+        return true;
     }
     /** Cosmetic: the dragon's wing phase from its owner's publication. A failed send is tried again on a later update. */
-    private void phase(Presented body, int phase) {
+    private boolean phase(Presented body, int phase) {
+        if (!admit(PresentationPressure.Tier.COSMETIC)) return false;
         body.dragonPhase = phase;
         try {
-            host.packets.dragonPhase(player, body.body, phase).whenComplete((nothing, failure) -> {
+            handOver(() -> host.packets.dragonPhase(player, body.body, phase)).whenComplete((nothing, failure) -> {
                 if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired && !host.cosmeticFailed(this, "dragon phase", body.actor, failure)) body.dragonPhase = -1; });
             });
         } catch (RuntimeException failure) { if (!host.cosmeticFailed(this, "dragon phase", body.actor, failure)) body.dragonPhase = -1; }
+        return true;
     }
     /** The body shows bones of a rig the NPC no longer has: it is respawned, which is authoritative work. */
     private static boolean rigReplaced(Presented body, RegionActor.Publication now) {
         return body.rigIdentity != 0 && (now.rig() == null || now.rig().identity() != body.rigIdentity);
     }
-    /** Rig bones for this viewer, taking turns so its rig budget reaches every body over a few ticks. Returns packet budget used. */
+    /**
+     * Cosmetic work for this viewer after its authoritative work: playback poses, arm swings, dragon wing phases and rig
+     * bones, taking turns so the budget reaches every body over a few ticks. Each sends the latest published state, so
+     * work that waited is coalesced, not queued. Returns packet budget used.
+     */
     private int presentCosmetics(int packetBudget) {
         if (!ready || !retirements.isEmpty()) return 0;
         int sent = 0;
         int[] rigBudget = {host.rigs().updatesPerTick()};
-        for (int i = 0, count = rigOrder.size(); i < count && (sent < packetBudget || rigBudget[0] > 0); i++) {
-            Presented body = rigOrder.removeFirst();
+        for (int i = 0, count = cosmeticOrder.size(); i < count && (sent < packetBudget || rigBudget[0] > 0); i++) {
+            Presented body = cosmeticOrder.removeFirst();
             if (body.retired) continue;
-            rigOrder.addLast(body);
+            cosmeticOrder.addLast(body);
             RegionActor.Publication now = body.actor.publication;
+            if (body.spawnFinished && !body.looking && sent < packetBudget && body.look != now.lookRevision()) {
+                if (!look(body, now)) return sent;
+                sent++; if (!host.current(this)) return sent;
+            }
+            if (body.spawnFinished && sent < packetBudget && body.dragonPhase != now.dragonPhase() && now.type().equals(DragonBody.TYPE)) {
+                if (!phase(body, now.dragonPhase())) return sent;
+                sent++; if (!host.current(this)) return sent;
+            }
+            if (body.spawnFinished && sent < packetBudget && body.swings != now.swings()) {
+                if (!swing(body, now.swings())) return sent;
+                sent++; if (!host.current(this)) return sent;
+            }
             if (now.rig() != null || body.rigIdentity != 0) sent += presentRig(body, now, packetBudget - sent, rigBudget);
             if (!host.current(this)) return sent;
         }
         return sent;
+    }
+    /** A body farther than half the view distance moves on fewer turns while a budget is short, always to its latest pose. */
+    private boolean moveDue(Presented body, RegionActor.Publication now, WorldPosition at) {
+        return now.snapshot().position().point().distance(at.point()) <= host.settings().viewDistance() / 2
+                || host.budget.distantMove(updates, body.actor.uuid.hashCode());
+    }
+    /** Reserves a place in this viewer's outbox; a full queue counts as a short budget, so cosmetic work yields while it drains. */
+    private boolean admit(PresentationPressure.Tier tier) {
+        if (outbox.admit(tier, host.settings().queuePerViewer())) return true;
+        if (tier != PresentationPressure.Tier.COSMETIC) host.budget.shortOfPackets();
+        return false;
+    }
+    /** Hands one admitted operation to the transport; a send that throws first gives its place back. */
+    private CompletionStage<Void> handOver(Supplier<CompletionStage<Void>> send) {
+        CompletionStage<Void> sent;
+        try { sent = send.get(); }
+        catch (RuntimeException failure) { outbox.abandon(); throw failure; }
+        return outbox.track(sent);
     }
     /** Shows the body's bones once it is spawned, then sends changed bone transforms within this viewer's rig budget. */
     private int presentRig(Presented body, RegionActor.Publication now, int packetBudget, int[] rigBudget) {
@@ -285,12 +337,12 @@ final class RegionViewer {
         if (rigReplaced(body, now) || shown == null || shown.frame() == null || !body.spawnFinished || body.retired || body.rigFailed) return 0;
         RigFrame frame = shown.frame();
         if (body.bones == null) {
-            if (packetBudget <= 0 || bones + shown.displays().size() > host.rigs().maximumBones()) return 0;
+            if (packetBudget <= 0 || bones + shown.displays().size() > host.rigs().maximumBones() || !admit(PresentationPressure.Tier.COSMETIC)) return 0;
             try { body.bones = host.packets.createBones(body.body, shown.displays()); }
-            catch (RuntimeException invalid) { body.rigFailed = true; host.cosmeticFailed(this, "rig bones", body.actor, invalid); return 0; }
+            catch (RuntimeException invalid) { outbox.abandon(); body.rigFailed = true; host.cosmeticFailed(this, "rig bones", body.actor, invalid); return 0; }
             body.rigIdentity = shown.identity(); body.view = new RigView(body.bones.count()); bones += body.bones.count();
             try {
-                host.packets.showBones(player, body.body, body.bones, pose(now), List.of(frame.targets()), shown.hideBody()).whenComplete((nothing, failure) -> enqueue(() -> {
+                handOver(() -> host.packets.showBones(player, body.body, body.bones, pose(now), List.of(frame.targets()), shown.hideBody())).whenComplete((nothing, failure) -> enqueue(() -> {
                     if (failure != null) { if (host.current(this) && !body.retired && !host.cosmeticFailed(this, "show bones", body.actor, failure)) body.rigFailed = true; return; }
                     body.view.shown(frame); body.bonesShown = true;
                 }));
@@ -299,7 +351,7 @@ final class RegionViewer {
         }
         if (!body.bonesShown || rigBudget[0] <= 0) return 0;
         int[] due = body.view.due(frame, rigBudget[0]);
-        if (due.length == 0) return 0;
+        if (due.length == 0 || !admit(PresentationPressure.Tier.COSMETIC)) return 0;
         long nanos = System.nanoTime();
         DisplayTransform[] targets = new DisplayTransform[due.length];
         int[] durations = new int[due.length];
@@ -307,7 +359,7 @@ final class RegionViewer {
         body.view.sent(frame, due);
         rigBudget[0] -= due.length;
         try {
-            host.packets.moveBones(player, body.bones, due, targets, durations).whenComplete((nothing, failure) -> {
+            handOver(() -> host.packets.moveBones(player, body.bones, due, targets, durations)).whenComplete((nothing, failure) -> {
                 if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) { body.view.unsent(due); host.cosmeticFailed(this, "move bones", body.actor, failure); } });
             });
         } catch (RuntimeException failure) { body.view.unsent(due); host.cosmeticFailed(this, "move bones", body.actor, failure); }
@@ -317,7 +369,7 @@ final class RegionViewer {
         if (body.retired) return;
         if (body.bones != null) { bones -= body.bones.count(); body.bones = null; }
         body.retired = true; visible.remove(body.actor.uuid, body); guard.unbind(body.body.entityId());
-        presentationOrder.remove(body); rigOrder.remove(body); shown.decrementAndGet();
+        presentationOrder.remove(body); cosmeticOrder.remove(body); shown.decrementAndGet();
         retiring.put(body.actor.uuid, body); retirements.addLast(body);
     }
     private void release(Presented body) {
@@ -329,7 +381,7 @@ final class RegionViewer {
     }
     /** Network and pure state only: callable from a retirement callback without world access. */
     void close() {
-        guard.close(); visible.clear(); retiring.clear(); retirements.clear(); presentationOrder.clear(); rigOrder.clear(); completions.clear(); shown.set(0);
+        guard.close(); visible.clear(); retiring.clear(); retirements.clear(); presentationOrder.clear(); cosmeticOrder.clear(); completions.clear(); shown.set(0);
         if (proximity != null) proximity.forget(id);
         AutoCloseable running = task;
         if (running != null) try { running.close(); } catch (Exception ignored) { /* Folia already retired the task. */ }
@@ -462,10 +514,11 @@ final class RegionViewer {
                 boolean reveal = resend && rider != null && rider != player;
                 if (pass == 0 ? !(changed && detaching) : !(changed || reveal)) continue;
                 if (vehicle.sentRoster == null && roster.isEmpty()) { vehicle.sentRoster = roster; continue; }
+                if (!admit(PresentationPressure.Tier.AUTHORITATIVE)) return sent;
                 vehicle.sentRoster = roster;
                 sent++;
                 try {
-                    host.packets.passengers(player, vehicle.body, passengers, rider, false).whenComplete((nothing, failure) -> {
+                    handOver(() -> host.packets.passengers(player, vehicle.body, passengers, rider, false)).whenComplete((nothing, failure) -> {
                         if (failure != null) enqueue(() -> { if (host.current(this) && !vehicle.retired) { vehicle.sentRoster = null; host.cosmeticFailed(this, "passengers", vehicle.actor, failure); } });
                     });
                 } catch (RuntimeException failure) { vehicle.sentRoster = null; if (host.cosmeticFailed(this, "passengers", vehicle.actor, failure)) return sent; }

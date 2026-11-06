@@ -145,28 +145,28 @@ final class MountRuntime<P, I> implements AutoCloseable {
         return host.host.solid(position.world(), x, y, z);
     }
 
-    /** One viewer's presentation pass. Dragon phases and passenger lists share the viewer's packet budget. */
-    int update(PersistedNpcService<P, I>.Viewer viewer, int budget) {
-        int sent = updateDragonPhases(viewer, budget);
-        return sent + updatePassengers(viewer, budget - sent);
-    }
-    private int updateDragonPhases(PersistedNpcService<P, I>.Viewer viewer, int budget) {
+    /** Cosmetic work: dragon wing phases, after every viewer's authoritative work, within what it left. */
+    int updateDragonPhases(PersistedNpcService<P, I>.Viewer viewer, int budget) {
         if (dragons.isEmpty() || budget <= 0) return 0;
         int sent = 0;
         for (PersistedNpcService<P, I>.Value dragon : dragons) {
             if (sent >= budget) break;
             PersistedNpcService<P, I>.Presented body = viewer.visible.get(dragon.spec.definition().uuid());
             if (body == null || body.value != dragon || !body.spawnFinished || body.retired || body.sentDragonPhase == dragon.dragonPhase) continue;
+            if (!host.admit(viewer, PresentationPressure.Tier.COSMETIC)) break;
             int phase = dragon.dragonPhase;
             body.sentDragonPhase = phase; sent++;
-            host.packets.dragonPhase(viewer.player, body.body, phase).whenComplete((Void nothing, Throwable failure) -> {
+            host.handOver(viewer, () -> host.packets.dragonPhase(viewer.player, body.body, phase)).whenComplete((Void nothing, Throwable failure) -> {
                 if (failure != null) host.enqueue(viewer, () -> { if (host.current(viewer) && !body.retired) body.sentDragonPhase = -1; });
             });
         }
         return sent;
     }
-    /** Client passenger lists replace the whole roster and need both IDs known, so they are re-derived from what this viewer has. */
-    private int updatePassengers(PersistedNpcService<P, I>.Viewer viewer, int budget) {
+    /**
+     * Client passenger lists replace the whole roster and need both IDs known, so they are re-derived from what this viewer
+     * has. Authoritative: they share the viewer's packet budget with moves and spawns.
+     */
+    int updatePassengers(PersistedNpcService<P, I>.Viewer viewer, int budget) {
         // Other clients only know a real rider while vanilla tracks it, and nothing announces that here, so its roster repeats.
         boolean resend = riders.count() > 0 && host.tickNumber % ROSTER_RESEND_TICKS == 0;
         if (budget <= 0 || (!resend && !viewer.rosterDirty && viewer.rosterRevision == revision)) return 0;
@@ -182,8 +182,8 @@ final class MountRuntime<P, I> implements AutoCloseable {
                 P rider = riders.riderOf(vehicle.body.uuid());
                 boolean reveal = resend && rider != null && rider != viewer.player;
                 if (pass == 0 ? !(changed && detaching) : !(changed || reveal)) continue;
-                if (sent >= budget) { complete = false; continue; }
-                sendRoster(viewer, vehicle, rider, false); sent++;
+                if (sent >= budget || !host.admit(viewer, PresentationPressure.Tier.AUTHORITATIVE)) { complete = false; continue; }
+                host.handOver(viewer, () -> sendRoster(viewer, vehicle, rider, false)); sent++;
             }
         }
         if (complete) { viewer.rosterDirty = false; viewer.rosterRevision = revision; }

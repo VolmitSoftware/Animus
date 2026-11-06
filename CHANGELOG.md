@@ -220,6 +220,9 @@
 - Web editor: an NPC's navigation plays a recording with `once`, `loop` or `pingpong`.
 - Web editor: ranged waits take a min and max field; routes edit `seed`, `startOffset`, `jitter`, point `weight` and `next` junctions, checked as the server checks them.
 - Web editor: renaming a recording or group updates the NPCs and routes that name it.
+- `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
+- `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
+- `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
 
 ### Changed
 
@@ -308,6 +311,10 @@
 - Web editor: checkboxes, radios and range thumbs are square; rig keyframes, events and gizmo handles take a 44 px target on phones.
 - Web editor: the NPC preview wears a placeholder skin instead of the default one when no skin texture is loaded, offline or online, and its skin line names it.
 - The Denizen importer converts world comparisons and `in:<world>` switches to `same_world`.
+- Recording poses, arm swings and dragon wing beats are cosmetic updates: they go after every move and spawn, and several swings in one update show as one.
+- Look-close players, fight and chat witnesses, hologram placement and per-NPC viewer lookups use chunk indexes instead of scanning every player, watcher, hologram or viewer.
+- Mob targeting of NPCs reads the definitions again only after they change.
+- On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -455,6 +462,8 @@
 - Bukkit NPC positions, admin create, teleports, combat locations, GUI teleports, shop chests and WorldGuard checks accept dimension keys such as `minecraft:the_nether`.
 - `npc.world` gives the same form as `player.world`: the world name on Bukkit, the dimension key on mods.
 - Clicks on NPC-bound holograms count only in the NPC's world.
+- A full packet queue no longer drops a player's view of every NPC; moves and spawns wait for the queue to drain.
+- Far fight and chat watchers on Folia no longer use up the 64 deliveries before nearby ones hear the event.
 
 ### Notes
 
