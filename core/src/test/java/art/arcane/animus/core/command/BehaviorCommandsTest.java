@@ -35,6 +35,28 @@ class BehaviorCommandsTest {
             @Override public boolean reply(Runnable action){replies.add(action);return true;}
         };
     }
+    /** The words the Director tree routes to each typed behavior command, as {@code /animus behaviors ...} sends them. */
+    private static void exec(BehaviorCommands service,CommandActor sender,String[] args){
+        switch(args[1]){
+            case "status"->service.status(sender);
+            case "list"->service.list(sender,args.length>2?Integer.parseInt(args[2]):1);
+            case "validate"->service.validate(sender,args.length>2?Optional.of(args[2]):Optional.empty());
+            case "reload"->service.reload(sender);
+            case "schema"->service.schemaCommand(sender);
+            case "packs"->service.packs(sender,args.length>2?Integer.parseInt(args[2]):1);
+            case "run"->service.run(sender,args[2],args[3]);
+            case "inspect"->service.inspect(sender,UUID.fromString(args[2]));
+            case "trace"->service.trace(sender,args[2]);
+            case "cancel"->service.cancel(sender,UUID.fromString(args[2]));
+            case "triggers"->service.triggers(sender,args.length>2?Integer.parseInt(args[2]):1);
+            case "state"->{
+                if(args[2].equals("status"))service.stateStatus(sender);
+                else if(args[3].equals("npc"))service.purgeNpc(sender,args[4]);
+                else throw new AssertionError(String.join(" ",args));
+            }
+            default->throw new AssertionError(String.join(" ",args));
+        }
+    }
     private void pump(){for(Runnable action;(action=replies.poll())!=null;)action.run();}
     private void until(BooleanSupplier condition)throws Exception{
         long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);while(!condition.getAsBoolean()&&System.nanoTime()<end){pump();Thread.sleep(5);}pump();assertTrue(condition.getAsBoolean());
@@ -46,13 +68,13 @@ class BehaviorCommandsTest {
         final AnimusRuntime runtime;final ExtensionRuntime extensions;final BehaviorCommands service;final List<String> reports=new CopyOnWriteArrayList<>();
         Harness(BehaviorSettings settings,Function<MutationLane.EngineTaskObserver,Executor> supplied)throws Exception{
             runtime=new AnimusRuntime(RuntimeEnvironment.bukkit("26.3",root));runtime.start();
-            if(runtime.npcs().all().isEmpty())new Administration(runtime).execute(new String[]{"create","test","minecraft:player","world","0","64","0","default","Test"});
+            if(runtime.npcs().all().isEmpty())new Administration(runtime).create("test","minecraft:player","world",0,64,0,"default","Test");
             AtomicReference<BehaviorCommands> ready=new AtomicReference<>();extensions=new ExtensionRuntime(root.resolve("modules"),art.arcane.animus.api.Platform.PAPER,runtime.definitionGateway(),new ModuleSettings(false,4,1000,250),reports::add,state->ready.get().modulesInitialized(state));
             service=new BehaviorCommands(root,settings,runtime.npcs(),runtime.documents(),runtime.behaviorState(),extensions,supplied==null?runtime::fileExecutor:supplied,reports::add);ready.set(service);
         }
         void start()throws Exception{extensions.start();until(()->service.statusLines().getFirst().startsWith("Behaviors READY"));}
         UUID run(CommandActor sender,String id)throws Exception{
-            messages.clear();service.execute(sender,new String[]{"behaviors","run","test",id});until(()->messages.stream().anyMatch(line->line.startsWith("Behavior run: OK")));
+            messages.clear();exec(service,sender,new String[]{"behaviors","run","test",id});until(()->messages.stream().anyMatch(line->line.startsWith("Behavior run: OK")));
             var match=EXECUTION.matcher(messages.stream().filter(line->line.startsWith("Behavior run: OK")).findFirst().orElseThrow());assertTrue(match.find());UUID execution=UUID.fromString(match.group(1));until(()->service.diagnosticRuntime().inspect(execution).isPresent());return execution;
         }
         public void close()throws Exception{
@@ -64,18 +86,18 @@ class BehaviorCommandsTest {
     @Test void startupWaitsForOneTerminalModuleObserverAndCommandsCaptureOnlyViewerUuid()throws Exception{
         source("example:wait",1,100);
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
-            CommandActor sender=sender(true,true);harness.service.execute(sender,new String[]{"behaviors","run","test","example:wait"});pump();assertTrue(messages.getFirst().contains("WAITING_MODULES"));assertNotNull(harness.service.diagnosticRuntime());assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());
+            CommandActor sender=sender(true,true);exec(harness.service,sender,new String[]{"behaviors","run","test","example:wait"});pump();assertTrue(messages.getFirst().contains("WAITING_MODULES"));assertNotNull(harness.service.diagnosticRuntime());assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());
             harness.start();UUID execution=harness.run(sender,"example:wait");until(()->harness.service.diagnosticRuntime().inspect(execution).isPresent());assertEquals(Optional.of(playerId),harness.service.diagnosticRuntime().inspect(execution).orElseThrow().player());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","inspect",execution.toString()});until(()->!messages.isEmpty());assertTrue(messages.getFirst().contains("npc-revision=1"));assertTrue(messages.getFirst().contains("behavior-revision=1"));assertTrue(messages.getFirst().contains("source-hash="));
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","cancel",execution.toString()});until(()->messages.stream().anyMatch(line->line.contains("cancelled=true")));until(()->harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state()==BehaviorEngine.State.CANCELLED);
-            assertEquals(List.of("example:wait"),harness.service.complete(new String[]{"behaviors","run","test","example:"}));
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","inspect",execution.toString()});until(()->!messages.isEmpty());assertTrue(messages.getFirst().contains("npc-revision=1"));assertTrue(messages.getFirst().contains("behavior-revision=1"));assertTrue(messages.getFirst().contains("source-hash="));
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","cancel",execution.toString()});until(()->messages.stream().anyMatch(line->line.contains("cancelled=true")));until(()->harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state()==BehaviorEngine.State.CANCELLED);
+            assertEquals(List.of("example:wait"),harness.service.behaviorIds());
         }
     }
     @Test void validateDoesNotPublishButReloadReplacesAuthorityAndCancelsExistingExecution()throws Exception{
         Path file=source("example:wait",1,200);try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();CommandActor sender=sender(false,true);UUID execution=harness.run(sender,"example:wait");source("example:wait",2,1);String bytes=Files.readString(file);
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","validate"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: VALID")));assertTrue(messages.getFirst().contains("generation=1"));assertTrue(messages.getFirst().contains("published=false"));assertEquals(bytes,Files.readString(file));assertEquals(BehaviorEngine.State.RUNNING,harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","reload"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));assertTrue(messages.getFirst().contains("generation=2"));until(()->harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state()==BehaviorEngine.State.CANCELLED);
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","validate"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: VALID")));assertTrue(messages.getFirst().contains("generation=1"));assertTrue(messages.getFirst().contains("published=false"));assertEquals(bytes,Files.readString(file));assertEquals(BehaviorEngine.State.RUNNING,harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state());
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","reload"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));assertTrue(messages.getFirst().contains("generation=2"));until(()->harness.service.diagnosticRuntime().inspect(execution).orElseThrow().report().state()==BehaviorEngine.State.CANCELLED);
             UUID replacement=harness.run(sender,"example:wait");until(()->harness.service.diagnosticRuntime().inspect(replacement).orElseThrow().report().state()==BehaviorEngine.State.COMPLETED);assertEquals(2,harness.service.diagnosticRuntime().inspect(replacement).orElseThrow().behaviorRevision());
         }
     }
@@ -83,7 +105,7 @@ class BehaviorCommandsTest {
         List<Runnable> queued=new ArrayList<>();AtomicReference<MutationLane.EngineTaskObserver> observer=new AtomicReference<>();
         try(var harness=new Harness(BehaviorSettings.DEFAULT,callback->{observer.set(callback);return queued::add;})){
             harness.extensions.start();harness.service.modulesInitialized(ExtensionRuntime.State.DISABLED);assertEquals(1,queued.size());var owned=harness.service.diagnosticRuntime();assertNotNull(owned);assertTrue(owned.snapshot().executions().isEmpty());
-            harness.service.execute(sender(false,true),new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("BUSY"));assertEquals(1,queued.size());
+            exec(harness.service,sender(false,true),new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("BUSY"));assertEquals(1,queued.size());
             harness.service.close();assertTrue(owned.awaitStopped(Duration.ofSeconds(3)));queued.getFirst().run();assertSame(owned,harness.service.diagnosticRuntime());assertTrue(owned.snapshot().executions().isEmpty());assertTrue(harness.service.statusLines().getFirst().contains("CLOSED"));assertTrue(harness.service.statusLines().getFirst().contains("catalog-work=idle"));
         }
     }
@@ -112,7 +134,7 @@ class BehaviorCommandsTest {
             harness.service.settings(enabled(false,BehaviorCatalog.Limits.defaults()));
             assertTrue(harness.service.statusLines().getFirst().startsWith("Behaviors DISABLED"));
             assertEquals("behaviors are disabled in config.toml",harness.service.triggers().availability());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","run","test","example:wait"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE | state=DISABLED"),messages.toString());
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","run","test","example:wait"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE | state=DISABLED"),messages.toString());
             until(()->harness.service.diagnosticRuntime().inspect(running).orElseThrow().report().state()==BehaviorEngine.State.COMPLETED);
             harness.service.settings(BehaviorSettings.DEFAULT);
             until(()->harness.service.statusLines().getFirst().startsWith("Behaviors READY"));
@@ -144,15 +166,14 @@ class BehaviorCommandsTest {
     @Test void disabledBehaviorSettingsNeverQueueCatalogWork()throws Exception{
         var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions(),defaults.server());AtomicInteger submitted=new AtomicInteger();
         try(var harness=new Harness(disabled,observer->task->submitted.incrementAndGet())){
-            harness.extensions.start();assertEquals(0,submitted.get());assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
+            harness.extensions.start();assertEquals(0,submitted.get());assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","reload"});pump();assertTrue(messages.getFirst().contains("DISABLED"));assertEquals(0,submitted.get());
         }
     }
     @Test void pagesAndDiagnosticsAreBoundedAndDeniedCommandsDoNotRun()throws Exception{
         for(int i=0;i<30;i++)source("example:p"+i,1,1);
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
-            harness.start();CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","list","2"});pump();assertEquals(11,messages.size());assertTrue(messages.getFirst().contains("30 documents; page 2"));
-            messages.clear();harness.service.execute(sender(false,false),new String[]{"behaviors","run","test","example:p0"});pump();assertEquals(List.of("You do not have permission to use this command."),messages);assertTrue(harness.service.diagnosticRuntime().snapshot().executions().isEmpty());
-            for(int i=0;i<30;i++)Files.writeString(root.resolve("behaviors/example/p"+i+".json"),"malformed");messages.clear();harness.service.execute(sender,new String[]{"behaviors","validate"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: INVALID")));assertEquals(17,messages.size());
+            harness.start();CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","list","2"});pump();assertEquals(11,messages.size());assertTrue(messages.getFirst().contains("30 documents; page 2"));
+            for(int i=0;i<30;i++)Files.writeString(root.resolve("behaviors/example/p"+i+".json"),"malformed");messages.clear();exec(harness.service,sender,new String[]{"behaviors","validate"});until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: INVALID")));assertEquals(17,messages.size());
         }
     }
     private Path scopedSource(String id,long revision)throws Exception{
@@ -162,7 +183,7 @@ class BehaviorCommandsTest {
     }
     private void command(Harness harness,CommandActor sender,String expected,String...args)throws Exception{
         messages.clear();String[] full=new String[args.length+1];full[0]="behaviors";System.arraycopy(args,0,full,1,args.length);
-        harness.service.execute(sender,full);until(()->messages.stream().anyMatch(line->line.contains(expected)));
+        exec(harness.service,sender,full);until(()->messages.stream().anyMatch(line->line.contains(expected)));
     }
     @Test void stateStatusTraceAndPurgeCommandsWorkThroughTheFileLane()throws Exception{
         scopedSource("example:quest",1);
@@ -175,14 +196,9 @@ class BehaviorCommandsTest {
             assertTrue(messages.getFirst().contains("active=0"),messages.toString());assertTrue(messages.stream().anyMatch(line->line.contains("trigger=manual")),messages.toString());
             assertTrue(messages.stream().anyMatch(line->line.startsWith("Behavior recent: execution="+execution)),messages.toString());
             command(harness,sender,"NOT_FOUND","trace","nobody");
-            command(harness,sender,"purge all confirm","state","purge","all");
-            assertEquals(1,harness.runtime.behaviorState().status().persistentKeys(),"An unconfirmed full purge removes nothing");
-            command(harness,sender,"Invalid UUID","state","purge","player","not-a-uuid");
+            assertEquals(1,harness.runtime.behaviorState().status().persistentKeys());
             command(harness,sender,"Behavior state purge: OK | documents=1 | keys=1","state","purge","npc","test");
             assertEquals(0,harness.runtime.behaviorState().status().persistentKeys());
-            assertEquals(List.of("state"),harness.service.complete(new String[]{"behaviors","sta"}).stream().filter("state"::equals).toList());
-            assertEquals(List.of("purge"),harness.service.complete(new String[]{"behaviors","state","pu"}));
-            assertEquals(List.of("relationship"),harness.service.complete(new String[]{"behaviors","state","purge","rel"}));
         }
     }
     @Test void restartKeepsPersistentStateAndReportsMalformedSourceOnItsLastValidProgram()throws Exception{
@@ -242,18 +258,17 @@ class BehaviorCommandsTest {
             harness.start();attach(harness,"example:greeter");var triggers=harness.service.triggers();triggers.connect();
             UUID npc=harness.runtime.npcs().find("test").orElseThrow().uuid();triggers.activated(npc);
             until(()->triggers.snapshot().bindings()==1);
-            CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","triggers"});pump();
+            CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","triggers"});pump();
             assertTrue(messages.getFirst().startsWith("Behavior triggers: AVAILABLE"),messages.getFirst());assertTrue(messages.getFirst().contains("bindings=1"));
             String row=messages.stream().filter(line->line.startsWith("Trigger ")).findFirst().orElseThrow();
             assertTrue(row.contains("npc=test"));assertTrue(row.contains("behavior=example:greeter"));assertTrue(row.contains("trigger=click"));assertTrue(row.contains("event=interaction"));assertTrue(row.contains("last-fired=never"));
             assertEquals(art.arcane.animus.api.Outcome.Status.OK,triggers.publish(new art.arcane.animus.core.behavior.trigger.TriggerEvent.Interaction(npc,playerId,art.arcane.animus.core.behavior.trigger.TriggerEvent.Action.INTERACT)).status());
             until(()->harness.service.diagnosticRuntime().snapshot().executions().values().stream().anyMatch(item->item.trigger().isPresent()));
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","triggers"});pump();
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","triggers"});pump();
             assertTrue(messages.stream().anyMatch(line->line.startsWith("Trigger ")&&line.contains("fired=1")&&!line.contains("last-fired=never")),messages.toString());
             var execution=harness.service.diagnosticRuntime().snapshot().executions().values().iterator().next();assertEquals(Optional.of(playerId),execution.player());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","inspect",execution.report().id().toString()});until(()->!messages.isEmpty());assertTrue(messages.getFirst().contains("trigger=example:greeter#click"),messages.getFirst());
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","inspect",execution.report().id().toString()});until(()->!messages.isEmpty());assertTrue(messages.getFirst().contains("trigger=example:greeter#click"),messages.getFirst());
             assertTrue(harness.service.statusLines().stream().anyMatch(line->line.startsWith("Behavior triggers: AVAILABLE")));
-            assertTrue(BehaviorCommands.OPERATIONS.contains("triggers"));
         }
     }
     @Test void triggerPagesAreBounded()throws Exception{
@@ -262,16 +277,16 @@ class BehaviorCommandsTest {
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();attach(harness,"example:greeter");var triggers=harness.service.triggers();triggers.connect();triggers.activated(harness.runtime.npcs().find("test").orElseThrow().uuid());
             until(()->triggers.snapshot().bindings()==30);
-            CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","triggers","2"});pump();
+            CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","triggers","2"});pump();
             assertTrue(messages.size()<=24,messages.toString());assertEquals(10,messages.stream().filter(line->line.startsWith("Trigger ")).count());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","triggers","0"});pump();assertTrue(messages.getFirst().contains("Page must be"));
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","triggers","0"});pump();assertTrue(messages.getFirst().contains("Page must be"));
         }
     }
     @Test void unavailablePlatformReportsItsDiagnosticAndStillAllowsManualRuns()throws Exception{
         triggerSource("example:greeter",1,"[{\"id\":\"click\",\"event\":\"interaction\"}]");
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();attach(harness,"example:greeter");harness.service.triggers().unavailable("NPC runtime unavailable on Folia until region-safe ownership and snapshots are proven");
-            CommandActor sender=sender(false,true);harness.service.execute(sender,new String[]{"behaviors","triggers"});pump();
+            CommandActor sender=sender(false,true);exec(harness.service,sender,new String[]{"behaviors","triggers"});pump();
             assertTrue(messages.getFirst().startsWith("Behavior triggers: UNAVAILABLE"),messages.getFirst());assertTrue(messages.getFirst().contains("Folia"));
             var outcome=harness.service.triggers().publish(new art.arcane.animus.core.behavior.trigger.TriggerEvent.Waypoint(UUID.randomUUID(),1));assertEquals(art.arcane.animus.api.Outcome.Status.UNAVAILABLE,outcome.status());
             harness.run(sender,"example:greeter");
@@ -280,39 +295,33 @@ class BehaviorCommandsTest {
     @Test void disabledBehaviorsKeepAnUnavailableDispatcherAndReportIt()throws Exception{
         var defaults=BehaviorSettings.DEFAULT;var disabled=new BehaviorSettings(false,defaults.maximumOperations(),defaults.operationsPerTick(),defaults.tickMillis(),defaults.deliveryBudgetMillis(),defaults.engine(),defaults.catalog(),defaults.triggers(),defaults.state(),defaults.actions(),defaults.server());
         try(var harness=new Harness(disabled,observer->task->{})){
-            assertFalse(harness.service.triggers().available());harness.service.execute(sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE | reason=behaviors are disabled"),messages.toString());
+            assertFalse(harness.service.triggers().available());exec(harness.service,sender(false,true),new String[]{"behaviors","triggers"});pump();assertTrue(messages.getFirst().contains("UNAVAILABLE | reason=behaviors are disabled"),messages.toString());
         }
     }
     @Test void schemaWritesGeneratedFilesThroughTheFileLane()throws Exception{
         source("example:wait",1,100);
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();CommandActor sender=sender(false,true);
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","schema"});
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","schema"});
             until(()->messages.stream().anyMatch(line->line.startsWith("Behavior schemas: WRITTEN")));
             for(String file:List.of("behavior.schema.json","npc.schema.json","pack.schema.json","completions.json"))assertTrue(Files.isRegularFile(root.resolve("schemas/"+file)),file);
             assertTrue(messages.stream().anyMatch(line->line.contains("capabilities="+harness.extensions.capabilities().size())),messages.toString());
             assertTrue(Files.readString(root.resolve("schemas/behavior.schema.json")).startsWith("{"));
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","schema","extra"});pump();
-            assertTrue(messages.getFirst().contains("behaviors schema"),messages.toString());
         }
     }
     @Test void validateCanNameOneBehaviorAndCompletionOffersIdentifiers()throws Exception{
         source("example:wait",1,100);Files.writeString(root.resolve("behaviors/example/broken.json"),"{}");
         try(var harness=new Harness(BehaviorSettings.DEFAULT,null)){
             harness.start();CommandActor sender=sender(false,true);
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","validate","example:wait"});
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","validate","example:wait"});
             until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate:")));
             assertTrue(messages.stream().noneMatch(line->line.contains("broken.json")),messages.toString());
             assertTrue(messages.getFirst().contains("behavior=example:wait"),messages.getFirst());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","validate"});
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","validate"});
             until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors validate: INVALID")));
             assertTrue(messages.stream().anyMatch(line->line.contains("broken.json")),messages.toString());
-            assertEquals(List.of("example:wait"),harness.service.complete(new String[]{"behaviors","validate","example:w"}));
-            assertTrue(harness.service.complete(new String[]{"behaviors","state","purge","behavior","example:"}).contains("example:wait"));
-            assertEquals(List.of("test"),harness.service.complete(new String[]{"behaviors","state","purge","npc","te"}));
-            assertEquals(List.of("test"),harness.service.complete(new String[]{"behaviors","state","purge","relationship","t"}));
-            assertTrue(harness.service.complete(new String[]{"behaviors",""}).containsAll(List.of("schema","packs","validate")));
-            assertEquals(List.of("confirm"),harness.service.complete(new String[]{"behaviors","state","purge","all",""}));
+            assertEquals(List.of("example:wait"),harness.service.behaviorIds());
+            assertTrue(harness.service.stateBehaviors().containsAll(List.of("example:wait","animus:flags/example","animus:quests/example")));
         }
     }
     @Test void deliberatelyDeletedSourcesLeaveTheCatalogAndTheirCheckpoints()throws Exception{
@@ -324,7 +333,7 @@ class BehaviorCommandsTest {
             messages.clear();harness.service.reload(sender,java.util.Set.of("example:wait"));
             until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));
             assertTrue(messages.getFirst().contains("documents=0")&&messages.getFirst().contains("invalid=0"),messages.toString());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","reload"});
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","reload"});
             until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));
             assertTrue(messages.stream().noneMatch(line->line.contains("behavior-source-missing")),messages.toString());
             assertNull(harness.runtime.documents().read("state/behavior-catalog/last-valid/behaviors/example/wait.json"));
@@ -336,12 +345,12 @@ class BehaviorCommandsTest {
             Path pack=root.resolve("packs/town");Files.createDirectories(pack.resolve("behaviors/town"));
             Files.writeString(pack.resolve("pack.json"),"{\"schemaVersion\":1,\"id\":\"town\",\"modules\":{\"gatekeeper\":{\"configuration\":{\"openTicks\":200}}}}");
             Files.writeString(pack.resolve("behaviors/town/greeter.json"),"{\"schemaVersion\":1,\"revision\":1,\"id\":\"town:greeter\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"wait\",\"ticks\":1}}}");
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","reload"});
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","reload"});
             until(()->messages.stream().anyMatch(line->line.startsWith("Behaviors reload: APPLIED")));
             assertTrue(messages.stream().anyMatch(line->line.contains("pack-module-unavailable")),messages.toString());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","packs"});pump();
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","packs"});pump();
             assertTrue(messages.stream().anyMatch(line->line.startsWith("Behavior pack town")&&line.contains("manifest=valid")&&line.contains("missing-modules=gatekeeper")),messages.toString());
-            messages.clear();harness.service.execute(sender,new String[]{"behaviors","list"});pump();
+            messages.clear();exec(harness.service,sender,new String[]{"behaviors","list"});pump();
             assertTrue(messages.stream().anyMatch(line->line.contains("town:greeter")&&line.contains("available=false")),messages.toString());
         }
     }

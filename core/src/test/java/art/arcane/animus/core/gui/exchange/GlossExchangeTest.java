@@ -156,15 +156,15 @@ class GlossExchangeTest {
         };
         int[] reloads = {0};
         GlossExchange exchange = new GlossExchange(data, ACCEPT, () -> art.arcane.animus.core.gui.GlossBridge.absent("Gloss is not installed"), Runnable::run, told::add);
-        exchange.command(actor, new String[]{"gui", "import", "file", "pack", "namespace=town"}, () -> reloads[0]++);
+        exchange.importFile(actor, "pack", "town", false, () -> reloads[0]++);
         assertTrue(Files.exists(data.resolve("gui/holograms/town/lobby.json")));
         assertEquals(1, reloads[0]);
         assertTrue(told.get(0).startsWith("GUI import: 1 written"));
-        exchange.command(actor, new String[]{"gui", "export", "gloss", "all"}, () -> reloads[0]++);
+        exchange.exportGloss(actor, GlossExchange.kind("all"), Optional.empty(), false);
         assertEquals("Gloss is not installed", told.get(told.size() - 1));
-        exchange.command(actor, new String[]{"gui", "export", "file", "out", "format=bundle"}, () -> {});
+        exchange.exportFile(actor, "out", Optional.of("bundle"));
         assertTrue(Files.exists(data.resolve("exports/gui/out.json")));
-        exchange.command(actor, new String[]{"gui", "import", "file", "../escape"}, () -> {});
-        assertTrue(told.get(told.size() - 1).startsWith("Name a folder"));
+        exchange.importFile(actor, "../escape", "gloss", false, () -> {});
+        assertTrue(told.get(told.size() - 1).startsWith("GUI import: name a folder"));
     }
 }

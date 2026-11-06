@@ -194,7 +194,7 @@ class HotloadServiceTest {
         Files.createDirectories(behavior.getParent());
         String source = "{\"schemaVersion\":1,\"revision\":REV,\"id\":\"town:greeter\",\"entry\":\"main\",\"routines\":{\"main\":{\"type\":\"wait\",\"ticks\":1}}}";
         Files.writeString(behavior, source.replace("REV", "1"));
-        new art.arcane.animus.core.admin.Administration(runtime).execute(new String[]{"create", "test", "minecraft:player", "world", "0", "64", "0", "default", "Test"});
+        new art.arcane.animus.core.admin.Administration(runtime).create("test", "minecraft:player", "world", 0, 64, 0, "default", "Test");
         java.util.concurrent.atomic.AtomicReference<BehaviorCommands> ready = new java.util.concurrent.atomic.AtomicReference<>();
         ExtensionRuntime extensions = new ExtensionRuntime(root.resolve("modules"), art.arcane.animus.api.Platform.PAPER, runtime.definitionGateway(),
                 new ModuleSettings(false, 4, 1000, 250), (String line) -> {}, (ExtensionRuntime.State state) -> ready.get().modulesInitialized(state));
@@ -215,7 +215,7 @@ class HotloadServiceTest {
                 Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()), (List<String> sent, boolean sound) -> {
                     if (sent.stream().noneMatch((String line) -> line.contains("behaviors/town/greeter.json"))) return;
                     atNotice.add(behaviors.statusLines().getFirst());
-                    behaviors.execute(console, new String[]{"behaviors", "run", "test", "town:greeter"});
+                    behaviors.run(console, "test", "town:greeter");
                 }, () -> {}, (String line) -> {}));
         hotload.listen();
         hotload.cycle();

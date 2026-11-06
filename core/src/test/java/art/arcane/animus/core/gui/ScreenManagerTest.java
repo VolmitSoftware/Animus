@@ -106,8 +106,13 @@ class ScreenManagerTest {
         open(Optional.empty(), true);
         ScreenManager<Player, Stack>.Viewer viewer = manager.viewer(alex.id).orElseThrow();
         for (int index = 0; index < ScreenManager.MAXIMUM_PENDING; index++) assertTrue(viewer.schedule(5, () -> {}));
+        art.arcane.animus.core.AnimusLog.shared().debug(true);
+        try {
+            assertFalse(viewer.schedule(5, () -> {}));
+            assertEquals(1, warnings.size(), "debug mode logs the dropped action");
+        } finally { art.arcane.animus.core.AnimusLog.shared().debug(false); }
         assertFalse(viewer.schedule(5, () -> {}));
-        assertEquals(1, warnings.size());
+        assertEquals(1, warnings.size(), "outside debug mode it is only counted");
     }
 
     @Test void aFrameThePlatformCannotDrawClosesTheScreen() {
