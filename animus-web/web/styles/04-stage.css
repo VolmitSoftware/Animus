@@ -64,7 +64,6 @@ html.light {
   max-height: 72vh;
   overflow: hidden;
   border: 1px solid var(--animus-border);
-  border-radius: var(--animus-radius);
   background: var(--animus-stage-sky, #1a171b);
   /* Vertical swipes scroll the page; a horizontal drag orbits. A drag in
      progress takes every direction. */
@@ -136,25 +135,39 @@ html.light {
   pointer-events: none;
 }
 
+/* Loading: a straight track with a pink segment that runs across it, the
+   same line as the boot splash. */
 .animus-mc-spinner {
-  width: 2rem;
-  height: 2rem;
-  border: 3px solid color-mix(in srgb, var(--animus-muted) 35%, transparent);
-  border-top-color: var(--primary, #ff5fa8);
-  border-radius: 50%;
-  animation: animus-spin 0.9s linear infinite;
+  position: relative;
+  display: block;
+  width: 6rem;
+  height: 2px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--animus-muted) 35%, transparent);
 }
 
-@keyframes animus-spin {
+.animus-mc-spinner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: var(--primary, #ff5fa8);
+  animation: animus-track 1.1s ease-in-out infinite;
+}
+
+@keyframes animus-track {
+  from {
+    transform: translateX(-100%);
+  }
   to {
-    transform: rotate(360deg);
+    transform: translateX(250%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animus-mc-spinner {
+  .animus-mc-spinner::before {
     animation: none;
-    border-top-color: var(--animus-muted);
+    transform: none;
   }
 }
 
@@ -187,7 +200,6 @@ html.light {
   align-items: center;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--animus-error);
-  border-radius: var(--animus-radius);
   color: var(--animus-error);
 }
 

@@ -34,7 +34,9 @@
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --animus-gap: 0.75rem;
-  --animus-radius: 0.5rem;
+  /* The one corner radius. The editor is square-cornered; only things
+     that are round by meaning may set their own. */
+  --animus-radius: 0;
   --animus-panel: var(--card, #161518);
   --animus-border: var(--border, #343036);
   --animus-muted: var(--muted-foreground, #aba5aa);

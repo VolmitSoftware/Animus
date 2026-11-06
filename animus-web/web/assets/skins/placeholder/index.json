@@ -1,0 +1,116 @@
+{
+  "skins": [
+    {
+      "id": "guard",
+      "look": "guard",
+      "label": "Guard",
+      "arms": "classic",
+      "file": "guard.png"
+    },
+    {
+      "id": "guard-slim",
+      "look": "guard",
+      "label": "Guard",
+      "arms": "slim",
+      "file": "guard-slim.png"
+    },
+    {
+      "id": "merchant",
+      "look": "merchant",
+      "label": "Merchant",
+      "arms": "classic",
+      "file": "merchant.png"
+    },
+    {
+      "id": "merchant-slim",
+      "look": "merchant",
+      "label": "Merchant",
+      "arms": "slim",
+      "file": "merchant-slim.png"
+    },
+    {
+      "id": "villager",
+      "look": "villager",
+      "label": "Villager",
+      "arms": "classic",
+      "file": "villager.png"
+    },
+    {
+      "id": "villager-slim",
+      "look": "villager",
+      "label": "Villager",
+      "arms": "slim",
+      "file": "villager-slim.png"
+    },
+    {
+      "id": "noble",
+      "look": "noble",
+      "label": "Noble",
+      "arms": "classic",
+      "file": "noble.png"
+    },
+    {
+      "id": "noble-slim",
+      "look": "noble",
+      "label": "Noble",
+      "arms": "slim",
+      "file": "noble-slim.png"
+    },
+    {
+      "id": "miner",
+      "look": "miner",
+      "label": "Miner",
+      "arms": "classic",
+      "file": "miner.png"
+    },
+    {
+      "id": "miner-slim",
+      "look": "miner",
+      "label": "Miner",
+      "arms": "slim",
+      "file": "miner-slim.png"
+    },
+    {
+      "id": "traveler",
+      "look": "traveler",
+      "label": "Traveler",
+      "arms": "classic",
+      "file": "traveler.png"
+    },
+    {
+      "id": "traveler-slim",
+      "look": "traveler",
+      "label": "Traveler",
+      "arms": "slim",
+      "file": "traveler-slim.png"
+    },
+    {
+      "id": "smith",
+      "look": "smith",
+      "label": "Smith",
+      "arms": "classic",
+      "file": "smith.png"
+    },
+    {
+      "id": "smith-slim",
+      "look": "smith",
+      "label": "Smith",
+      "arms": "slim",
+      "file": "smith-slim.png"
+    },
+    {
+      "id": "scholar",
+      "look": "scholar",
+      "label": "Scholar",
+      "arms": "classic",
+      "file": "scholar.png"
+    },
+    {
+      "id": "scholar-slim",
+      "look": "scholar",
+      "label": "Scholar",
+      "arms": "slim",
+      "file": "scholar-slim.png"
+    }
+  ]
+}

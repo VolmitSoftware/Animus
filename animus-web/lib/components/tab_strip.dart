@@ -1,6 +1,6 @@
 /// A row of tabs with the tablist keyboard pattern: one Tab stop, Left and
 /// Right (or Home and End) move and select. The selected tab is a raised
-/// neutral fill with a pink underline (`.animus-tabs`), so pink fills stay
+/// neutral fill with a full pink border (`.animus-tabs`), so pink fills stay
 /// for actions.
 library;
 
