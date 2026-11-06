@@ -87,7 +87,7 @@ class _ServerOverviewState extends State<ServerOverview> {
             dom.dd(<Widget>[Component.text(line)]),
           ],
           if (token != null) ...<Widget>[
-            const dom.dt(<Widget>[Component.text('This browser may')]),
+            const dom.dt(<Widget>[Component.text('Scopes')]),
             dom.dd(classes: 'animus-scopes', <Widget>[
               for (final String scope in token.scopes)
                 dom.span(classes: 'animus-tag', attributes: <String, String>{'title': scope}, <Widget>[Component.text(scopeLabel(scope))]),
@@ -95,7 +95,7 @@ class _ServerOverviewState extends State<ServerOverview> {
             const dom.dt(<Widget>[Component.text('Pairing')]),
             dom.dd(<Widget>[
               Component.text('Expires ${token.expiresAt.toLocal().toString().substring(0, 16)}, '
-                  '${profile.remember ? 'remembered in this browser' : 'kept in this tab only'}'),
+                  '${profile.remember ? 'remembered' : 'this tab only'}'),
             ]),
           ],
         ]),
@@ -151,16 +151,16 @@ class _ServerOverviewState extends State<ServerOverview> {
         const dom.p(classes: 'animus-muted', <Widget>[Component.text(LiveSession.otherTab)])
       else if (problem != null)
         dom.div(classes: 'animus-row', attributes: const <String, String>{'role': 'alert', 'data-testid': 'catalog-problem'}, <Widget>[
-          dom.span(classes: 'animus-error', <Widget>[Component.text('Could not load the catalog. ${problem.text}')]),
+          dom.span(classes: 'animus-error', <Widget>[Component.text('Catalog failed. ${problem.text}')]),
           if (status.online) Button.secondary(label: 'Try again', size: ButtonSize.small, onPressed: session.loadCatalog),
         ])
       else if (!session.catalogLoaded)
         dom.p(classes: 'animus-muted', attributes: const <String, String>{'role': 'status'}, <Widget>[
-          Component.text(status.online ? 'Loading the server catalog...' : 'Connect to list the server\'s documents. Drafts here stay in this browser.'),
+          Component.text(status.online ? 'Loading catalog...' : 'Connect to list documents.'),
         ])
       else if (session.catalog.isEmpty)
         const dom.p(classes: 'animus-muted', attributes: <String, String>{'data-testid': 'catalog-empty'}, <Widget>[
-          Component.text('The server has no documents yet. Make some in a local workspace, then send them from its Sync page.'),
+          Component.text('No documents yet. Send some from a workspace\'s Sync page.'),
         ])
       else ...<Widget>[
         dom.div(classes: 'animus-row', <Widget>[
@@ -220,7 +220,7 @@ class _ServerOverviewState extends State<ServerOverview> {
           Button.ghost(
             label: 'Show',
             size: ButtonSize.small,
-            attributes: <String, String>{'data-open': 'true', 'aria-label': 'Show ${entry.kind.label.toLowerCase()} ${entry.id}, already open here'},
+            attributes: <String, String>{'data-open': 'true', 'aria-label': 'Show ${entry.kind.label.toLowerCase()} ${entry.id}, already open'},
             onPressed: () => component.onOpened(entry.kind, entry.id),
           ),
       ]),

@@ -189,7 +189,7 @@ class _GuiStagePreviewState extends State<GuiStagePreview> {
       ]),
       McStage(controller: _stage, label: component.label, overlay: hasTargets ? _overlay : null),
       if (_animated && !_playing && prefersReducedMotion())
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Text animations are paused because your system asks for reduced motion.')]),
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Animations paused for reduced motion.')]),
       dom.ul(classes: 'animus-npc-notes', attributes: const <String, String>{'aria-live': 'polite'}, <Widget>[
         for (final String note in component.scene.notes) dom.li(<Widget>[Component.text(note)]),
       ]),

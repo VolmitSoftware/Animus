@@ -117,7 +117,7 @@ class WorkspaceSync {
     try {
       return await connection.request(request);
     } on NotConnected catch (offline) {
-      throw SyncFailure('Could not $what. ${offline.status.message ?? 'The server is not connected. Connect it above, then try again.'}');
+      throw SyncFailure('Could not $what. ${offline.status.message ?? 'The server is not connected. Connect and try again.'}');
     } on TransportFailure catch (failure) {
       throw SyncFailure('Could not $what. ${failure.message}');
     }
@@ -211,11 +211,11 @@ class WorkspaceSync {
   /// would read as a conflict. When it applies, the local documents take the
   /// revision the server stored, so the next compare finds them the same.
   Future<PushResult> push(List<PushEntry> selection, {String? message}) async {
-    if (selection.isEmpty) throw const SyncFailure('Nothing is selected to push. Tick the documents to send, then push.');
+    if (selection.isEmpty) throw const SyncFailure('Nothing selected. Tick documents to push.');
     final WorkspaceSnapshot? workspace = store.workspace;
     if (workspace == null) throw const SyncFailure('Open a workspace first.');
     if (pending != null) {
-      throw const SyncFailure('An earlier push has no answer yet. Press Check the earlier push to ask the server what became of it.');
+      throw const SyncFailure('An earlier push has no answer yet. Press Check the earlier push.');
     }
     final PendingPush record = PendingPush(
       serverId: serverId,
@@ -225,8 +225,8 @@ class WorkspaceSync {
     );
     if (!records.write(recordKey(workspace.id), jsonEncode(record.toJson()))) {
       records.remove(recordKey(workspace.id));
-      throw const SyncFailure('Nothing was sent: this browser refused to store the push record, so a lost answer could not be recovered. '
-          'Leave private browsing or free some site storage, then push again.');
+      throw const SyncFailure('Nothing was sent: the browser refused to store the push record. '
+          'Leave private browsing or free site storage, then push again.');
     }
     final ApiResponse response;
     try {
@@ -237,14 +237,14 @@ class WorkspaceSync {
       }));
     } on NotConnected catch (offline) {
       _clear();
-      throw SyncFailure('Nothing was sent. ${offline.status.message ?? 'The server is not connected. Connect it above, then try again.'}');
+      throw SyncFailure('Nothing was sent. ${offline.status.message ?? 'The server is not connected. Connect and try again.'}');
     } on TransportFailure catch (failure) {
       throw SyncFailure('The push went out but its answer did not arrive (${failure.copy.cause.toLowerCase().replaceAll(RegExp(r'\.$'), '')}). '
-          'Press Check the earlier push once the server is connected to learn whether it applied.');
+          'Press Check the earlier push once connected.');
     }
     final ChangeOutcome? outcome = ChangeOutcome.parse(response.body);
     if (outcome == null && (response.status >= 500 || response.errorCode == 'busy' || response.errorCode == 'rate-limited')) {
-      throw SyncFailure('${response.problem.cause} The push is kept; press Check the earlier push in a moment.');
+      throw SyncFailure('${response.problem.cause} Press Check the earlier push soon.');
     }
     _clear();
     return switch (outcome) {

@@ -18,11 +18,13 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/route_model.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import '../inspect/inspect_fields.dart';
 import '../rig/rig_gizmo.dart' show eventNumber;
 
@@ -354,7 +356,7 @@ class _RouteEditorState extends State<RouteEditor> {
             },
           ),
         if (walking && y != y.roundToDouble())
-          const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Walking points stand on whole blocks; use a whole y.')]),
+          const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Walking points need a whole y.')]),
       ]),
     ]);
   }
@@ -383,8 +385,8 @@ class _RouteEditorState extends State<RouteEditor> {
           if (spec.order == 'random') _toolButton(RouteTool.guide, 'Add guides'),
           _toolButton(RouteTool.select, 'Pick and drag'),
           dom.span(classes: 'animus-gui-help', <Widget>[
-            Component.text(_tool == RouteTool.select ? 'Drag a point to move it.' : 'Click the grid to add; drag a point to move it.'),
-            const Component.text(' From the keyboard, Tab to a point: arrows move it, Shift moves a whole block, Delete removes it.'),
+            Component.text(_tool == RouteTool.select ? 'Drag to move. ' : 'Click to add, drag to move. '),
+            const InfoTip(text: 'Tab to a point: arrows move it, Shift moves a whole block, Delete removes it.', topic: 'Route grid keys', docs: Docs.routes),
           ]),
         ]),
       _grid(spec, picked),
@@ -433,7 +435,7 @@ class _RouteEditorState extends State<RouteEditor> {
       InspectRow(
         label: 'Order',
         labelFor: '$_gridId-order',
-        help: 'sequence walks the points in order; pingpong back and forth; random picks a point and walks over points and guides; wander walks near a centre.',
+        help: 'sequence in order; pingpong back and forth; random picks points via guides; wander roams near a centre.',
         child: GuiSelect(id: '$_gridId-order', value: asString(route['order']), options: routeOrders, allowNone: true, noneLabel: 'sequence (default)', onChanged: (String? value) {
           if (value == null) {
             _write(setRouteOrder(route, 'sequence')..remove('order'));
@@ -446,7 +448,7 @@ class _RouteEditorState extends State<RouteEditor> {
       InspectRow(
         label: 'Mode',
         labelFor: '$_gridId-mode',
-        help: 'Walking points stand on whole blocks; swimming and flying points may sit between them.',
+        help: 'Only walk needs whole-block points.',
         child: GuiSelect(id: '$_gridId-mode', value: asString(route['mode']), options: routeModes, allowNone: true, noneLabel: 'walk (default)', onChanged: (String? value) => _field('mode', value)),
       ),
       GuiRow(
@@ -457,21 +459,21 @@ class _RouteEditorState extends State<RouteEditor> {
       InspectRow(
         label: 'Wait ticks',
         labelFor: '$_gridId-wait',
-        help: 'Wait before the first leg and after each arrival, 0-$routeMaxWait; a range draws a new wait each time. 20 by default.',
+        help: '0-$routeMaxWait at each point, default 20.',
         problems: _inline('waitTicks'),
         child: RouteWaitInput(id: '$_gridId-wait', label: 'route', value: route['waitTicks'], placeholder: '20', onChanged: (Object? value) => _field('waitTicks', value)),
       ),
       InspectRow(
         label: 'Seed',
         labelFor: '$_gridId-seed',
-        help: 'npc: each NPC makes its own choices, the same after a restart. random: new choices every run.',
+        help: 'npc: stable per NPC. random: new each run.',
         problems: _inline('seed'),
         child: GuiSelect(id: '$_gridId-seed', value: asString(route['seed']), options: routeSeeds, allowNone: true, noneLabel: 'npc (default)', onChanged: (String? value) => _field('seed', value)),
       ),
       InspectRow(
         label: 'Start offset',
         labelFor: '$_gridId-start',
-        help: 'random starts at a random point after a random part of the wait, so NPCs sharing the route spread out.',
+        help: 'random spreads NPCs sharing the route.',
         problems: _inline('startOffset'),
         child: GuiSelect(
           id: '$_gridId-start',
@@ -486,31 +488,31 @@ class _RouteEditorState extends State<RouteEditor> {
         InspectRow(
           label: 'Jitter',
           labelFor: '$_gridId-jitter',
-          help: 'Each leg aims at a random whole block up to this many blocks from the point, 0-$routeMaxJitter. 0 by default.',
+          help: 'Random offset, 0-$routeMaxJitter blocks.',
           problems: _inline('jitter'),
           child: GuiNumberInput(id: '$_gridId-jitter', value: asInt(route['jitter']), label: 'route jitter', placeholder: '0', onChanged: (num? value) => _field('jitter', value?.toInt())),
         ),
       if (spec.order == 'sequence')
         GuiRow(
           label: 'Loop',
-          help: 'Start again from the first point after the last.',
+          help: 'Restart after the last point.',
           child: GuiSwitch(value: route['loop'] == true, label: 'Loop', onChanged: (bool value) => _field('loop', value ? true : null)),
         ),
       if (spec.order == 'random')
         GuiRow(
           label: 'Link distance',
-          help: 'The longest link between two points or guides, 1-256. 32 by default.',
+          help: 'Max link length, 1-256, default 32.',
           child: GuiNumberInput(value: asDouble(route['linkDistance']), integer: false, label: 'route linkDistance', onChanged: (num? value) => _field('linkDistance', value)),
         ),
       if (spec.order == 'wander') ...<Widget>[
         GuiRow(
           label: 'Wander radius',
-          help: 'Blocks from a centre on x and z, 1-32. 25 by default.',
+          help: 'x/z blocks, 1-32, default 25.',
           child: GuiNumberInput(value: asInt(wander['radius']), label: 'wander radius', onChanged: (num? value) => _field('wander', _wander(wander, 'radius', value))),
         ),
         GuiRow(
           label: 'Wander height',
-          help: 'Blocks up or down, 0-8. 3 by default.',
+          help: 'Vertical blocks, 0-8, default 3.',
           child: GuiNumberInput(value: asInt(wander['height']), label: 'wander height', onChanged: (num? value) => _field('wander', _wander(wander, 'height', value))),
         ),
       ],
@@ -739,7 +741,7 @@ class _RouteEditorState extends State<RouteEditor> {
           InspectRow(
             label: 'Weight',
             labelFor: '$_gridId-point-weight',
-            help: 'How often random picks this point against the others, 1-$routeMaxWeight. 1 by default.',
+            help: 'Relative pick chance, 1-$routeMaxWeight.',
             problems: _inline('$field.weight'),
             child: GuiNumberInput(id: '$_gridId-point-weight', value: asInt(node['weight']), label: '$label weight', placeholder: '1', onChanged: (num? value) => set('weight', value?.toInt())),
           ),
@@ -811,8 +813,8 @@ class _RouteEditorState extends State<RouteEditor> {
         const dom.span(classes: 'animus-gui-label', <Widget>[Component.text('Next points')]),
         dom.span(classes: 'animus-gui-help', <Widget>[
           Component.text(next.isEmpty
-              ? 'None: the NPC walks on to point ${index + 1 < count ? index + 1 : 'after the last'}. Add a junction to branch here.'
-              : 'After this point the NPC goes to one of these, picked by weight, instead of point ${index + 1}.'),
+              ? 'None. Walks on to point ${index + 1 < count ? index + 1 : 'after the last'}.'
+              : 'Picked by weight instead of point ${index + 1}.'),
         ]),
       ]),
       for (int junction = 0; junction < next.length; junction++)
@@ -870,7 +872,7 @@ class _RouteEditorState extends State<RouteEditor> {
         label: 'Recording',
         forId: recordingId,
         help: recordings.isEmpty
-            ? 'No recordings in this workspace. Type the id of one under recordings/ on the server.'
+            ? 'No recordings. Type an id.'
             : 'Walks to the segment\'s first frame, plays it once, then goes on from its last frame.',
         child: recordings.isEmpty
             ? GuiTextInput(id: recordingId, value: recording, placeholder: 'recording id', label: '$label recording', onChanged: (String value) => set('recording', value.trim()))
@@ -898,8 +900,8 @@ class _RouteEditorState extends State<RouteEditor> {
     if (spec.nodes.isEmpty) {
       return dom.p(classes: 'animus-muted', <Widget>[
         Component.text(component.readOnly
-            ? 'This route has no points yet. Open the route document to add some.'
-            : 'No points yet. Click the grid, or enter x, y and z under Add point at and press Add point.'),
+            ? 'No points. Add them in the route document.'
+            : 'No points yet. Click the grid or use Add point.'),
       ]);
     }
     String wait(RouteEntry node) => node.guide ? '-' : (node.waitTicks == null ? 'route (${spec.waitTicks})' : '${node.waitTicks}');

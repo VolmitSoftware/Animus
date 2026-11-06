@@ -15,6 +15,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/bbmodel_import.dart' show sanitizeName;
 import '../../logic/data_folder_export.dart';
 import '../../logic/rig_edit.dart';
@@ -32,6 +33,7 @@ import '../../model/document_kind.dart';
 import '../../services/browser.dart';
 import '../../state/editor_store.dart';
 import '../../state/workspace_repository.dart';
+import '../info_tip.dart';
 import '../mc/mc_asset_loader.dart';
 import '../mc/mc_stage.dart';
 import 'rig_actions.dart';
@@ -221,14 +223,14 @@ class _RigEditorState extends State<RigEditor> {
     try {
       rig = Rig.fromJson(rigJson);
     } on Object {
-      _problem = 'The rig cannot be drawn until it is valid.${_firstError(component.rig)} Fix it here or in the Code view.';
+      _problem = 'The rig is invalid.${_firstError(component.rig)}';
       _stage.show(McScene.empty, const <NpcText>[], yawDeg: 0);
       if (mounted) setState(() {});
       return;
     }
     final Clip? clip = _clip;
     _problem = _animation != _restPose && clip == null
-        ? 'The animation cannot be played until it is valid.${_firstError(_animationDocument)} The stage shows the rest pose.'
+        ? 'The animation is invalid.${_firstError(_animationDocument)} Showing the rest pose.'
         : null;
     final Clip? idle = _idleTick == null ? null : _idle;
     final List<Layer> layers = <Layer>[
@@ -279,7 +281,7 @@ class _RigEditorState extends State<RigEditor> {
       );
     } on Object catch (failure) {
       web.console.warn('rig commit: $failure'.toJS);
-      ArcaneSonner.error('The change was not saved: the browser refused to store it. Try again; if it keeps failing, export the workspace as a zip.');
+      ArcaneSonner.error('Not saved: the browser refused to store it. Try again or export the workspace.');
     }
   }
 
@@ -517,10 +519,10 @@ class _RigEditorState extends State<RigEditor> {
     final int animations = bundle.files.keys.where((String path) => path.startsWith('animations/')).length;
     final int pack = bundle.files.keys.where((String path) => path.startsWith('pack/')).length;
     ArcaneSonner.info(
-      'Saved $name: the rig, $animations animation${animations == 1 ? '' : 's'} and $pack pack source file${pack == 1 ? '' : 's'}. '
-      'Unzip it into plugins/Animus on the server, then run /animus pack build to make the resource pack.',
+      'Saved $name: rig, $animations animation${animations == 1 ? '' : 's'}, $pack pack file${pack == 1 ? '' : 's'}. '
+      'Unzip into plugins/Animus, then run /animus pack build.',
     );
-    if (bundle.missing.isNotEmpty) ArcaneSonner.warning('Not in this workspace, so not in the zip: ${bundle.missing.join(', ')}.');
+    if (bundle.missing.isNotEmpty) ArcaneSonner.warning('Not in this workspace, left out: ${bundle.missing.join(', ')}.');
   }
 
   void _createAnimation() {
@@ -532,11 +534,11 @@ class _RigEditorState extends State<RigEditor> {
   /// rig's map when that name is free.
   void _create(String id, {String? name}) {
     if (!documentIdPattern.hasMatch(id)) {
-      ArcaneSonner.warning('$id is not a valid animation id. Use lower case letters, digits, - and _.');
+      ArcaneSonner.warning('Invalid animation id $id. Use lowercase letters, digits, - and _.');
       return;
     }
     if (component.store.document(DocumentKind.animation, id) != null) {
-      ArcaneSonner.warning('Animation $id already exists. Pick it in the Animation list.');
+      ArcaneSonner.warning('Animation $id already exists.');
       return;
     }
     final JsonMap names = animationNames(_rigJson);
@@ -545,7 +547,7 @@ class _RigEditorState extends State<RigEditor> {
       rig: named ? setAnimationName(_rigJson, name, id) : null,
       animations: <String, JsonMap>{id: newAnimation(id, _rigId)},
     ).then((void _) {
-      if (name != null && !named) ArcaneSonner.info('Created $id. The name $name is taken, so give it a name under Animation names.');
+      if (name != null && !named) ArcaneSonner.info('Created $id. Name $name is taken; name it under Animation names.');
       _animation = id;
       _newAnimation = '';
       _tick = 0;
@@ -623,17 +625,17 @@ class _RigEditorState extends State<RigEditor> {
                 onPressed: () => setState(() => _mode = mode),
               ),
             Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
+            InfoTip(
+              text: _animation == _restPose ? 'Edits pivots, rest rotations and visual scales.' : 'Keys the selected bone at tick ${_round(_clipTime)}.',
+              topic: 'Gizmo',
+              docs: Docs.editorRigs,
+            ),
           ]),
           McStage(
             controller: _stage,
             label: 'Rig ${component.rig.id}${_selected == null ? '' : ', bone $_selected selected'}',
             overlay: (McCamera camera, double width, double height) => overlay.build(camera, width, height),
           ),
-          dom.p(classes: 'animus-muted animus-rig-hint', <Widget>[
-            Component.text(_animation == _restPose
-                ? 'Rest pose: the gizmo edits pivots, rest rotations and visual scales. Focus a handle and use the arrow keys to nudge it.'
-                : 'Animation: the gizmo keys the selected bone at tick ${_round(_clipTime)}. Focus a handle and use the arrow keys to nudge it.'),
-          ]),
           if (_notes.isNotEmpty)
             dom.ul(classes: 'animus-npc-notes', <Widget>[
               for (final String note in _notes) dom.li(<Widget>[Component.text(note)]),
@@ -679,7 +681,7 @@ class _RigEditorState extends State<RigEditor> {
             time: _clipTime,
             playing: _playing,
             speed: _speed,
-            status: _idleTick == null ? null : 'The once clip ended, so the preview plays the idle animation, as the server does. Press Play to start the clip again.',
+            status: _idleTick == null ? null : 'Clip ended, playing idle. Press Play to restart.',
             names: RigAnimationsPanel(
               rig: rig,
               documents: <String, String?>{
@@ -761,8 +763,8 @@ class _RigEditorState extends State<RigEditor> {
           size: ComponentSize.sm,
           value: rig['body'] == 'shown' ? 'shown' : 'hidden',
           options: const <ArcaneSelectOption>[
-            ArcaneSelectOption(label: 'Hidden: only the rig shows', value: 'hidden'),
-            ArcaneSelectOption(label: 'Shown: parts on the NPC body', value: 'shown'),
+            ArcaneSelectOption(label: 'Hidden (rig only)', value: 'hidden'),
+            ArcaneSelectOption(label: 'Shown (with NPC body)', value: 'shown'),
           ],
           onChanged: (String value) => _edit((JsonMap json) => cloneJson(json)..['body'] = value),
         ),

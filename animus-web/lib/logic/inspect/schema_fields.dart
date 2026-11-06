@@ -122,7 +122,7 @@ String patternProblem(String pattern) => switch (pattern) {
       r'^[a-f0-9]{64}$' => 'Use the 64-character lowercase hex SHA-256 of the file.',
       r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' => 'Use a lowercase UUID, such as 3f2a6c1e-0b7d-4c55-9e1a-2d4b6f8a9c01.',
       r'^#[0-9a-fA-F]{8}$' => 'Use a colour as #AARRGGBB, such as #FFFF5FA8.',
-      _ => 'Does not have the expected form; see the help above.',
+      _ => 'Wrong format.',
     };
 
 String _number(num value) => value == value.roundToDouble() && value.abs() < 1e15 ? value.toInt().toString() : value.toString();

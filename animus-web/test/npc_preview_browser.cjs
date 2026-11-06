@@ -133,7 +133,7 @@ async function run(browser, viewport, label, dark) {
   };
   await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fmerchant?view=preview`);
   const skinState = page.locator('[data-testid="npc-skin-state"]');
-  await skinState.getByText(/the placeholder \w+ skin \(classic\), in this preview only; the definition names no skin/).waitFor();
+  await skinState.getByText(/none; preview shows the placeholder \w+ skin \(classic\)/).waitFor();
   const look = /placeholder (\w+) skin/.exec(await skinState.textContent())[1].toLowerCase();
   await wearsPlaceholder(`${look}.png`, `placeholder-${look}-classic`);
   await page.getByRole('button', {name: 'Slim', exact: true}).click();

@@ -48,10 +48,10 @@ class NpcGroupsList extends StatelessWidget {
     const String addId = 'animus-npc-add-group';
     return GuiRow(
       label: 'Groups',
-      help: 'Trait groups this NPC takes values from, first to last. Its own fields win. At most $npcGroupLimit.',
+      help: 'First to last; own fields win.',
       problems: diagnosticsAt(diagnostics, r'$.groups', nested: true),
       child: dom.div(classes: 'animus-npc-groups', attributes: const <String, String>{'data-npc': 'groups'}, <Widget>[
-        if (listed.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No groups. Add one to share its settings with other NPCs.')]),
+        if (listed.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No groups.')]),
         if (listed.isNotEmpty)
           dom.ol(classes: 'animus-npc-group-list', <Widget>[
             for (int index = 0; index < listed.length; index++)
@@ -95,7 +95,7 @@ class NpcGroupsList extends StatelessWidget {
             ),
           ])
         else if (groups.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('This workspace has no groups yet. New document makes one.')]),
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('No groups yet. Use New document.')]),
       ]),
     );
   }
@@ -195,10 +195,10 @@ class _GroupSkinPoolState extends State<GroupSkinPool> {
     const String pickId = 'animus-group-add-skin';
     return GuiRow(
       label: 'Skin pool',
-      help: "Each member takes one of these by its UUID and keeps it. A member's own skin wins. 1-$_poolLimit skin hashes.",
+      help: 'Each member keeps one, picked by UUID. Its own skin wins.',
       problems: diagnosticsAt(component.diagnostics, r'$.skins', nested: true),
       child: dom.div(classes: 'animus-group-skins', <Widget>[
-        if (pool.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No pool: members keep the skin above, or their own.')]),
+        if (pool.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No pool. Members use the skin above.')]),
         if (pool.isNotEmpty)
           dom.ul(classes: 'animus-group-skin-list', <Widget>[
             for (final String hash in pool)

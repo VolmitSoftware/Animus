@@ -274,7 +274,7 @@ class _NpcPreviewState extends State<NpcPreview> {
     final bool slim = _slimFor(look);
     return dom.section(classes: 'animus-panel animus-npc-preview', <Widget>[
       const dom.p(classes: 'animus-preview-label', <Widget>[
-        Component.text('Browser preview. The server draws the same definition; nothing here is sent to one.'),
+        Component.text('Browser preview'),
       ]),
       dom.div(classes: 'animus-npc-preview-bar', <Widget>[
         Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
@@ -367,7 +367,7 @@ class _NpcPreviewState extends State<NpcPreview> {
       dom.dl(classes: 'animus-npc-facts', <Widget>[
         ..._fact('Body', scene.presentable ? look.type : '${look.type} (not presented)'),
         if (component.rig != null)
-          ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}${_backToIdle ? ' (back to idle after a once clip, as the server does)' : ''}'}'),
+          ..._fact('Rig', '${component.rig!.id}${_animation == null ? ', rest pose' : ', $_animation at tick ${_tick.toStringAsFixed(1)}${_backToIdle ? ' (back to idle)' : ''}'}'),
         if (player) ..._fact('Pose', look.pose.name),
         if (player) ...<Widget>[
           const dom.dt(<Widget>[Component.text('Skin')]),
@@ -398,12 +398,12 @@ class _NpcPreviewState extends State<NpcPreview> {
     final String model = slim ? 'slim' : 'classic';
     if (loaded != null) return '${loaded.source} ($model)';
     final String placeholder = 'placeholder ${SkinImages.placeholderLook(component.document.id).label} skin ($model)';
-    if (look.skin == null) return 'the $placeholder, in this preview only; the definition names no skin, so the server shows a default skin';
-    if (info == null) return 'skins/${look.skin}.json is not in this workspace; showing the $placeholder';
+    if (look.skin == null) return 'none; preview shows the $placeholder';
+    if (info == null) return 'skins/${look.skin}.json not in this workspace; showing the $placeholder';
     final String signed = 'signed skin ${look.skin!.substring(0, look.skin!.length.clamp(0, 12))} ($model)';
     final SkinTextureState? state = SkinImages.textures.stateOf(look.skin!);
-    if (state?.status == SkinTextureStatus.failed) return '$signed; texture not loaded: ${state!.message}. Showing the $placeholder; retry or load a PNG';
-    return '$signed; loading its texture from textures.minecraft.net, showing the $placeholder until then';
+    if (state?.status == SkinTextureStatus.failed) return '$signed; texture not loaded: ${state!.message}. Showing the $placeholder';
+    return '$signed; loading texture';
   }
 
   String _armorStandText(NpcArmorStand stand) => <String>[

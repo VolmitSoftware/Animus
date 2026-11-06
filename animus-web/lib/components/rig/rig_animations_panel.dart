@@ -50,8 +50,8 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
   ]..sort();
 
   static String? _role(String name) => switch (name) {
-    'idle' => 'Navigation plays this while the NPC stands.',
-    'walk' => 'Navigation plays this while the NPC walks.',
+    'idle' => 'Plays while the NPC stands.',
+    'walk' => 'Plays while the NPC walks.',
     _ => null,
   };
 
@@ -69,7 +69,7 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
     final String animation = _newAnimation.isEmpty && _own.isNotEmpty ? _own.first : _newAnimation;
     if (name.isEmpty || animation.isEmpty) return;
     if (animationNames(component.rig).containsKey(name)) {
-      ArcaneSonner.warning('The name $name is taken. Rename or remove that row first.');
+      ArcaneSonner.warning('Name $name is taken.');
       return;
     }
     component.onEdit((JsonMap rig) => setAnimationName(rig, name, animation));
@@ -84,15 +84,12 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
     final JsonMap names = animationNames(component.rig);
     final List<String> own = _own;
     return dom.div(classes: 'animus-rig-names', attributes: const <String, String>{'aria-label': 'Named animations'}, <Widget>[
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Behaviors play an animation by its name. idle and walk are the two names navigation switches between on its own.'),
-      ]),
       for (final String missing in navigationAnimations)
         if (!names.containsKey(missing))
           dom.p(classes: 'animus-muted', <Widget>[
             Component.text(missing == 'idle'
-                ? 'No idle name: a standing NPC holds the rest pose.'
-                : 'No walk name: a walking NPC plays idle, or holds the rest pose.'),
+                ? 'No idle: a standing NPC holds the rest pose.'
+                : 'No walk: a walking NPC plays idle.'),
           ]),
       if (names.isNotEmpty)
         dom.ul(classes: 'animus-rig-name-list', <Widget>[
@@ -125,7 +122,7 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
           onPressed: _add,
         ),
       ]),
-      if (own.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Create an animation on the timeline first, then name it here.')]),
+      if (own.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('Create an animation first.')]),
     ]);
   }
 
@@ -174,13 +171,13 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
       if (role != null) dom.p(classes: 'animus-rig-name-role', <Widget>[Component.text(role)]),
       if (!exists)
         dom.div(classes: 'animus-rig-name-fix', attributes: const <String, String>{'role': 'status'}, <Widget>[
-          dom.span(<Widget>[Component.text('$id is not in this workspace, so the server skips $name.')]),
+          dom.span(<Widget>[Component.text('$id is not in this workspace. The server skips $name.')]),
           if (documentIdPattern.hasMatch(id))
             Button.secondary(label: 'Create $id', size: ButtonSize.small, onPressed: () => component.onCreate(id)),
         ])
       else if (foreign)
         dom.div(classes: 'animus-rig-name-fix', attributes: const <String, String>{'role': 'status'}, <Widget>[
-          dom.span(<Widget>[Component.text('$id animates $rig, so the server skips $name. Pick one of this rig\'s animations.')]),
+          dom.span(<Widget>[Component.text('$id belongs to $rig. Pick one of this rig\'s animations.')]),
         ]),
     ]);
   }

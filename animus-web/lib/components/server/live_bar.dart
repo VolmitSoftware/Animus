@@ -38,9 +38,9 @@ const int expiryNoticeDays = 3;
 /// "Pairing expires in 2 days" while the token is close to its end.
 String? expiryLine(Duration? left) {
   if (left == null || left.isNegative || left.inDays >= expiryNoticeDays) return null;
-  if (left.inHours < 24) return 'The pairing for this browser expires in ${left.inHours < 1 ? 'under an hour' : '${left.inHours} hour${left.inHours == 1 ? '' : 's'}'}. Pair again before then to keep editing.';
+  if (left.inHours < 24) return 'Pairing expires in ${left.inHours < 1 ? 'under an hour' : '${left.inHours} hour${left.inHours == 1 ? '' : 's'}'}. Pair again soon.';
   final int days = (left.inHours / 24).ceil();
-  return 'The pairing for this browser expires in $days day${days == 1 ? '' : 's'}. Pair again before then to keep editing.';
+  return 'Pairing expires in $days day${days == 1 ? '' : 's'}. Pair again soon.';
 }
 
 class _LiveBarState extends State<LiveBar> {
@@ -55,7 +55,7 @@ class _LiveBarState extends State<LiveBar> {
   void _pairWith() {
     final String code = extractPairingCode(_code);
     if (!code.startsWith(pairingPrefix)) {
-      ArcaneSonner.warning('Paste the link or ANM1. code that /animus editor pair prints on the server.');
+      ArcaneSonner.warning('Paste a pairing link or ANM1. code.');
       return;
     }
     navigate(PairRoute(code).format());
@@ -129,11 +129,11 @@ class _LiveBarState extends State<LiveBar> {
               focusSoon(_pairId);
             },
           ),
-          const dom.span(classes: 'animus-muted', <Widget>[Component.text('Run /animus editor pair on the server, then paste the link it prints.')]),
+          const dom.span(classes: 'animus-muted', <Widget>[Component.text('From /animus editor pair')]),
         ]),
       if (binding != null && binding.pending.isNotEmpty && session.pendingProblem != null)
         dom.div(classes: 'animus-row', <Widget>[
-          dom.span(classes: 'animus-muted', <Widget>[Component.text('The server has not said what became of an earlier change set. ${session.pendingProblem!.cause}')]),
+          dom.span(classes: 'animus-muted', <Widget>[Component.text('Earlier change set unconfirmed. ${session.pendingProblem!.cause}')]),
           Button.ghost(label: 'Check again', size: ButtonSize.small, disabled: !online || !idle, onPressed: session.checkPending),
           Button.ghost(label: 'Stop waiting', size: ButtonSize.small, disabled: !idle || !owned, onPressed: session.forgetPending),
         ]),
@@ -183,8 +183,8 @@ class _LiveBarState extends State<LiveBar> {
       if (undoable.isNotEmpty && _confirmUndo)
         LiveConfirm(
           question: 'Undo the last apply on the server?',
-          detail: 'The server puts back ${undoable.first.documents.length} document${undoable.first.documents.length == 1 ? '' : 's'} as they were before change ${undoable.first.changeId}. '
-              'It refuses if someone edited them since.',
+          detail: 'Restores ${undoable.first.documents.length} document${undoable.first.documents.length == 1 ? '' : 's'} to before change ${undoable.first.changeId}. '
+              'Fails if edited since.',
           confirmLabel: 'Undo on the server',
           returnFocus: _undoId,
           onConfirm: () {
@@ -196,8 +196,8 @@ class _LiveBarState extends State<LiveBar> {
       if (preview != null)
         dom.p(classes: 'animus-muted animus-live-preview', attributes: const <String, String>{'data-testid': 'preview-state'}, <Widget>[
           Component.text(preview.running
-              ? 'Preview running for your player only (${preview.npcs.join(', ')})'
-                  '${preview.expiresAt == null ? '' : ', until ${preview.expiresAt!.toLocal().toString().substring(11, 16)}'}. Commands, combat and the economy stay off.'
+              ? 'Preview for your player only (${preview.npcs.join(', ')})'
+                  '${preview.expiresAt == null ? '' : ', until ${preview.expiresAt!.toLocal().toString().substring(11, 16)}'}. Commands, combat and economy off.'
               : 'The preview ${preview.stateLine}.'),
         ]),
       if (preview != null && preview.hiddenLine != null)
@@ -281,9 +281,9 @@ class _ConflictPanelState extends State<ConflictPanel> {
           ]),
           dom.p(classes: 'animus-muted', <Widget>[
             Component.text(view.server == null
-                ? 'The server deleted this document after you opened it.'
-                : 'The server is at revision ${view.server!.revision}; you started from ${view.base == null ? 'nothing' : 'revision ${view.base!.revision}'}. '
-                    '${view.merge.clean ? 'Your edits and the server\'s touch different fields, so they merge cleanly.' : '${view.merge.conflicts.length} field${view.merge.conflicts.length == 1 ? '' : 's'} changed on both sides.'}'),
+                ? 'Deleted on the server after you opened it.'
+                : 'Server at revision ${view.server!.revision}, yours from ${view.base == null ? 'nothing' : 'revision ${view.base!.revision}'}. '
+                    '${view.merge.clean ? 'Edits merge cleanly.' : '${view.merge.conflicts.length} field${view.merge.conflicts.length == 1 ? '' : 's'} changed on both sides.'}'),
           ]),
           if (view.merge.conflicts.isNotEmpty)
             dom.table(classes: 'animus-merge-table', <Widget>[
@@ -322,8 +322,8 @@ class _ConflictPanelState extends State<ConflictPanel> {
             LiveConfirm(
               question: view.server == null ? 'Accept the deletion of ${view.id}?' : 'Take the server version of ${view.id}?',
               detail: view.server == null
-                  ? 'Your draft of it is removed from this workspace, as the server already did.'
-                  : 'Your edits to it are replaced by the server\'s revision ${view.server!.revision}. Undo in this workspace brings them back.',
+                  ? 'Removes your draft from this workspace.'
+                  : 'Replaces your edits with server revision ${view.server!.revision}. Undo restores them.',
               confirmLabel: view.server == null ? 'Remove my draft' : 'Replace my draft',
               destructive: true,
               returnFocus: _takeId(view.key),
@@ -336,7 +336,7 @@ class _ConflictPanelState extends State<ConflictPanel> {
           else
             dom.div(classes: 'animus-row', <Widget>[
               Button.primary(
-                label: view.server == null ? 'Keep mine (create it again)' : 'Use merge',
+                label: view.server == null ? 'Recreate mine' : 'Use merge',
                 size: ButtonSize.small,
                 onPressed: () => session.resolve(view.key),
               ),

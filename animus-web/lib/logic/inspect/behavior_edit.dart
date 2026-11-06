@@ -316,7 +316,7 @@ String? variableNameProblem(String name, Iterable<String> taken) {
 /// A note when [name] is valid but expressions cannot read it.
 String? variableNameNote(String name) => RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(name)
     ? null
-    : 'Expressions and templates cannot read $name; start with a letter and use only letters, digits and _ to read it there.';
+    : 'Expressions cannot read $name. Start with a letter and use only letters, digits and _.';
 
 final RegExp _quoted = RegExp(r"""("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')""");
 

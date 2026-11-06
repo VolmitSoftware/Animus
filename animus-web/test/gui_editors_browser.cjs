@@ -329,7 +329,7 @@ async function run(browser, viewport, tag, theme) {
   // Text animation: the preset fix copies the preset's fields in; the preview pauses.
   await open(page, 'town:sparkle');
   await page.getByText("Gloss presets are not available in Animus; inline the preset's fields.").waitFor();
-  await page.getByRole('button', {name: "Copy this preset's fields into the document"}).click();
+  await page.getByRole('button', {name: 'Inline preset'}).click();
   await page.waitForTimeout(300);
   json = await codeOf(page);
   assert.equal(json.preset, undefined);

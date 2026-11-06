@@ -21,6 +21,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show ChangeNotifier, Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../mc/assets/mc_ids.dart';
 import '../../mc/npc/mc_text.dart';
 import '../../mc/npc/npc_scene.dart';
@@ -29,6 +30,7 @@ import '../../mc/scene/mc_math.dart';
 import '../../mc/scene/mc_scene.dart';
 import 'mc_asset_loader.dart';
 import 'mc_gl.dart';
+import '../info_tip.dart';
 import 'mc_gl_renderer.dart';
 
 /// Pixels of drag one arrow key press stands for.
@@ -109,8 +111,8 @@ typedef McStageOverlay = List<Widget> Function(McCamera camera, double widthPx, 
 
 /// A line for a texture the renderer could not decode.
 String mcTextureNote(String id, {required bool fromPack}) => fromPack
-    ? 'The Minecraft texture $id could not be read, so its part is drawn plain white. Reload the page to fetch it again.'
-    : 'A loaded image (a skin or a rig texture) could not be read, so its part is drawn plain white. Load the PNG again or pick another one.';
+    ? 'Texture $id failed to load and is drawn white. Reload to retry.'
+    : 'An image failed to load and is drawn white. Load the PNG again.';
 
 /// A line for an item the stage has no model for, from the resolver's reason.
 String mcItemNote(String item, String reason) {
@@ -522,15 +524,14 @@ class _McStageState extends State<McStage> {
   (String, bool)? get _problem {
     if (!_c.webGlAvailable) {
       return (
-        'This browser cannot draw the 3D preview: WebGL2 is off or missing. Turn on hardware acceleration in the browser settings, '
-            'or open the editor in a current Chrome, Edge, Firefox or Safari.',
+        'WebGL2 is off or missing. Turn on hardware acceleration or use a current browser.',
         false,
       );
     }
-    if (_lost) return ('The graphics card reset and the preview stopped drawing. It comes back on its own; reload the page if it stays blank.', false);
+    if (_lost) return ('Graphics reset. Reload if the preview stays blank.', false);
     return switch (McAssetLoader.failure) {
-      McPackFailure.missing => ('The model pack is not on this site. The preview needs the pack described in the README.', false),
-      McPackFailure.network => ('The models could not be downloaded. Check the connection and retry.', true),
+      McPackFailure.missing => ('Model pack missing from this site. See the README.', false),
+      McPackFailure.network => ('Models failed to download. Check the connection.', true),
       null => null,
     };
   }
@@ -564,11 +565,15 @@ class _McStageState extends State<McStage> {
         ],
       ),
       dom.p(id: '$_id-keys', classes: 'animus-mc-keys', <Widget>[
-        const Component.text('Drag to orbit, Shift or right drag to pan, Ctrl and the wheel to zoom. Focused: arrows orbit, '
-            'Shift and arrows pan, + and - zoom, 0 resets.'),
+        labelWithTip(
+          const dom.span(<Widget>[Component.text('Controls')]),
+          'Drag to orbit, Shift or right drag to pan, Ctrl and the wheel to zoom. Focused: arrows orbit, Shift and arrows pan, + and - zoom, 0 resets.',
+          'Preview controls',
+          docs: Docs.editorKeyboard,
+        ),
       ]),
       dom.div(id: '$_id-status', classes: 'animus-mc-status', attributes: const <String, String>{'aria-live': 'polite'}, <Widget>[
-        if (loading) const dom.p(<Widget>[Component.text('Loading the Minecraft models (about 2 MB).')]),
+        if (loading) const dom.p(<Widget>[Component.text('Loading models (2 MB)')]),
         if (problem != null)
           dom.p(classes: 'animus-mc-problem', <Widget>[
             Component.text(problem.$1),

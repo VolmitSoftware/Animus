@@ -8,11 +8,13 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/server_behaviors.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 
 class ServerBehaviorsEditor extends StatelessWidget {
   const ServerBehaviorsEditor({required this.document, required this.onJson, required this.workspaceDocuments, this.onOpen, this.diagnostics = const <Diagnostic>[], super.key});
@@ -31,18 +33,19 @@ class ServerBehaviorsEditor extends StatelessWidget {
     final List<String> addable = <String>[for (final MapEntry<String, bool> entry in behaviors.entries) if (entry.value && !listed.contains(entry.key)) entry.key];
     void put(List<String> next) => onJson(writeAt(json, const <JsonStep>[], <String, Object?>{...json, 'schemaVersion': 1, 'behaviors': next}), coalesce: 'server-behaviors');
     return dom.section(classes: 'animus-panel animus-inspector animus-server-behaviors', attributes: const <String, String>{'aria-label': 'Server behaviors list'}, <Widget>[
-      const dom.h2(<Widget>[Component.text('Server behaviors that run')]),
-      const dom.p(classes: 'animus-gui-help', <Widget>[
-        Component.text('Only the behaviors listed here run on the server, in this order. A behavior must have the server switch on to be listed; '
-            'a missing or broken list runs none. At most $serverBehaviorsMaximum.'),
-      ]),
+      labelWithTip(
+        const dom.h2(<Widget>[Component.text('Server behaviors')]),
+        'Only listed behaviors run, in this order. At most $serverBehaviorsMaximum.',
+        'Server behaviors',
+        docs: Docs.serverBehaviors,
+      ),
       for (final Diagnostic problem in diagnostics)
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text('${problem.path}: ${problem.message}')]),
       if (listed.isEmpty)
         dom.p(classes: 'animus-muted', <Widget>[
           Component.text(addable.isEmpty
-              ? 'The list is empty, so no server behavior runs. Turn on the server switch in a behavior\'s Document section, then add it here.'
-              : 'The list is empty, so no server behavior runs. Add one below.'),
+              ? 'Nothing listed. Turn on Server behavior in a behavior first.'
+              : 'Nothing listed. Add one below.'),
         ]),
       dom.ol(classes: 'animus-server-list', attributes: const <String, String>{'aria-label': 'Listed server behaviors'}, <Widget>[
         for (int index = 0; index < listed.length; index++)
@@ -64,7 +67,7 @@ class ServerBehaviorsEditor extends StatelessWidget {
           ]),
       ]),
       if (listed.length >= serverBehaviorsMaximum)
-        const dom.p(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('The list is full; remove one to add another.')])
+        const dom.p(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('List full. Remove one to add another.')])
       else if (addable.isNotEmpty)
         GuiSelect(
           value: null,
@@ -76,7 +79,7 @@ class ServerBehaviorsEditor extends StatelessWidget {
           },
         )
       else if (listed.isNotEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[Component.text('Every server behavior in this workspace is listed.')]),
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text('All server behaviors are listed.')]),
     ]);
   }
 }

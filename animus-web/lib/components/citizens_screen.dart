@@ -13,6 +13,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../config/docs_links.dart';
 import '../logic/citizens/citizens_converter.dart';
 import '../logic/citizens/citizens_review.dart';
 import '../logic/citizens/denizen_folder.dart';
@@ -21,6 +22,7 @@ import '../logic/shopkeepers/shopkeepers_converter.dart';
 import '../services/browser.dart';
 import '../services/server/server_imports.dart';
 import '../state/server_hub.dart';
+import 'info_tip.dart';
 import 'server/server_import_panel.dart';
 
 @JS('animusCitizensResult')
@@ -40,13 +42,13 @@ String fieldStatusLabel(String status) => switch (status) {
       'CONVERTED' => 'Converted',
       'REQUIRES_REVIEW' => 'Converted, check it',
       'UNSUPPORTED_PRESERVED' => 'Kept, not run',
-      'REQUIRES_INTEGRATION' => 'Needs data from another plugin',
+      'REQUIRES_INTEGRATION' => 'Needs another plugin',
       _ => status.toLowerCase().replaceAll('_', ' '),
     };
 
 /// What a failed conversion means and what to do next.
 String conversionProblem(String what, String message) =>
-    '$message${message.endsWith('.') ? '' : '.'} Check that this is the $what the plugin wrote (not a copy edited by hand), then choose it again.';
+    '$message${message.endsWith('.') ? '' : '.'} Choose the unedited $what again.';
 
 /// Lets the user pick a folder; every file in it, as text, by its picked path.
 Future<Map<String, String>?> _pickTextFolder() {
@@ -202,7 +204,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       _denizen = denizenFolderOf(files);
       _denizenPreview = null;
       _denizenError = _denizen!.empty
-          ? 'That folder holds no Denizen scripts, server_flags.dat or player_flags. Choose plugins/Denizen, the folder with scripts/ inside it.'
+          ? 'No Denizen scripts or flags in that folder. Choose plugins/Denizen.'
           : null;
     });
     _denizenResult = null;
@@ -259,7 +261,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
         if (_shopConfig != null) ImportUpload(ImportFile.shopkeepersConfig, _shopConfig!.$2),
       ];
 
-  static const String _unzipNext = 'Unzip it into the Animus data folder, then run /animus import citizens on the server to review and apply it.';
+  static const String _unzipNext = 'Unzip into the Animus data folder, then run /animus import citizens.';
 
   void _downloadShops(ShopkeepersPreview preview) {
     downloadBytes('animus-shopkeepers-import-${preview.id.substring(0, 12)}.zip', shopkeepersBundleZip(preview));
@@ -268,7 +270,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
 
   void _downloadDenizen(DenizenPreview preview) {
     downloadBytes('animus-denizen-import-${preview.id.substring(0, 12)}.zip', denizenBundleZip(preview));
-    ArcaneSonner.success('Unzip it into the Animus data folder beside the Citizens import, then run /animus import citizens on the server.');
+    ArcaneSonner.success('Unzip into the Animus data folder beside the Citizens import, then run /animus import citizens.');
   }
 
   Future<void> _convert() async {
@@ -307,12 +309,9 @@ class _CitizensScreenState extends State<CitizensScreen> {
     final CitizensReview? review = _review;
     return dom.main_(classes: 'animus-home animus-citizens', <Widget>[
       dom.section(classes: 'animus-panel animus-home-intro', <Widget>[
-        const dom.h1(<Widget>[Component.text(converterTitle)]),
-        const dom.p(<Widget>[
-          Component.text('Each file is converted in this browser with the same rules as the server converter, and converting never uploads it. '
-              'Only Upload and stage, under Import on a server below, sends the files to a paired server. '
-              'Imported NPCs stay dormant and combat stays off until reviewed on the server.'),
-        ]),
+        labelWithTip(const dom.h1(<Widget>[Component.text(converterTitle)]),
+            'Files convert in this browser and are never uploaded unless you use Upload and stage. Imported NPCs stay dormant until reviewed on the server.', 'Converting',
+            docs: Docs.citizens),
         dom.div(classes: 'animus-row', <Widget>[
           Button.secondary(label: 'Choose saves.yml', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: _choose),
           dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_fileName ?? 'No Citizens save chosen')]),
@@ -320,7 +319,6 @@ class _CitizensScreenState extends State<CitizensScreen> {
         TextArea(
           label: 'World mappings (optional)',
           placeholder: 'old_world=new_world, one per line',
-          helperText: 'Renames worlds in locations, waypoints and Sentinel points, as the server converter does.',
           rows: 3,
           value: _worlds,
           fullWidth: true,
@@ -354,11 +352,9 @@ class _CitizensScreenState extends State<CitizensScreen> {
 
   Widget _tradersPanel() {
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'dtlTraders files'}, <Widget>[
-      const dom.h2(<Widget>[Component.text('dtlTraders files (optional, server import)')]),
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Pick guis.yml, config.yml, messages.yml, data.dat and the shop files from the dtlTraders data folder. '
-            'A file named <shop>.yml is the shop file shops/<shop>/<shop>.yml. The server converts them with the Citizens save.'),
-      ]),
+      labelWithTip(const dom.h2(<Widget>[Component.text('dtlTraders files')]),
+          'Only the server converts these, with the Citizens save. Pick guis.yml, config.yml, messages.yml, data.dat and <shop>.yml files.', 'dtlTraders',
+          docs: Docs.dtlTraders),
       dom.div(classes: 'animus-row', <Widget>[
         Button.secondary(label: 'Choose dtlTraders files', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: _chooseTraders),
         dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[
@@ -367,8 +363,7 @@ class _CitizensScreenState extends State<CitizensScreen> {
       ]),
       if (_tradersSkipped.isNotEmpty)
         dom.p(classes: 'animus-muted', attributes: const <String, String>{'data-testid': 'traders-skipped'}, <Widget>[
-          Component.text('Skipped ${_tradersSkipped.join(', ')}: dtlTraders does not use ${_tradersSkipped.length == 1 ? 'that name' : 'those names'}. '
-              'Pick guis.yml, config.yml, messages.yml, data.dat or a <shop>.yml shop file.'),
+          Component.text('Skipped ${_tradersSkipped.join(', ')}: not ${_tradersSkipped.length == 1 ? 'a dtlTraders file' : 'dtlTraders files'}.'),
         ]),
     ]);
   }
@@ -377,11 +372,9 @@ class _CitizensScreenState extends State<CitizensScreen> {
     final DenizenFolder? folder = _denizen;
     final DenizenPreview? preview = _denizenPreview;
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Denizen folder'}, <Widget>[
-      const dom.h2(<Widget>[Component.text('Denizen folder (optional)')]),
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Pick the plugins/Denizen folder: its scripts/, server_flags.dat and player_flags/. Assignments bind to the NPCs of the '
-            'Citizens save chosen above. Converted behaviors stay off until reviewed on the server.'),
-      ]),
+      labelWithTip(const dom.h2(<Widget>[Component.text('Denizen folder')]),
+          'Pick plugins/Denizen. Assignments bind to NPCs in the Citizens save above, and behaviors stay off until reviewed on the server.', 'Denizen',
+          docs: Docs.denizen),
       dom.div(classes: 'animus-row', <Widget>[
         Button.secondary(label: 'Choose Denizen folder', icon: ArcaneIcon.folderOpen(), disabled: _busy, onPressed: _chooseDenizen),
         dom.span(classes: 'animus-muted animus-citizens-file', attributes: const <String, String>{'data-testid': 'denizen-folder'}, <Widget>[
@@ -395,12 +388,12 @@ class _CitizensScreenState extends State<CitizensScreen> {
       if (folder != null && folder.skipped.isNotEmpty)
         dom.details(attributes: const <String, String>{'data-testid': 'denizen-skipped'}, <Widget>[
           dom.summary(<Widget>[Component.text('${folder.skipped.length} file${folder.skipped.length == 1 ? '' : 's'} not read')]),
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('The converter reads .dsc and .yml under scripts/, server_flags.dat and player_flags/*.dat only.')]),
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('Only .dsc and .yml under scripts/, server_flags.dat and player_flags/*.dat are read.')]),
           dom.ul(classes: 'animus-citizens-lines', <Widget>[for (final String path in folder.skipped.take(50)) dom.li(<Widget>[Component.text(path)])]),
         ]),
       if (folder != null && !folder.empty && _bytes == null)
         const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('No Citizens save is chosen, so assignments bind to no NPC. Choose saves.yml above to bind them.'),
+          Component.text('No Citizens save chosen above, so assignments bind to no NPC.'),
         ]),
       dom.div(classes: 'animus-row', <Widget>[
         Button.primary(
@@ -417,11 +410,11 @@ class _CitizensScreenState extends State<CitizensScreen> {
         ]),
       if (preview != null) ...<Widget>[
         _stats(<(int, String)>[
-          (preview.behaviors, 'behaviors made'),
-          (preview.bindings, 'NPCs with an assignment'),
-          (preview.flagsImported, 'flag values imported'),
+          (preview.behaviors, 'behaviors'),
+          (preview.bindings, 'NPCs bound'),
+          (preview.flagsImported, 'flags imported'),
           (preview.preserved, 'items kept, not run'),
-          (preview.flagsPreserved, 'flag values kept, not run'),
+          (preview.flagsPreserved, 'flags kept, not run'),
         ]),
         dom.p(classes: 'animus-muted animus-citizens-id', <Widget>[
           const Component.text('Import '),
@@ -437,11 +430,9 @@ class _CitizensScreenState extends State<CitizensScreen> {
   Widget _shopkeepersPanel() {
     final ShopkeepersPreview? shops = _shops;
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Shopkeepers shops'}, <Widget>[
-      const dom.h2(<Widget>[Component.text('Shopkeepers shops (optional)')]),
-      const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('Pick a Shopkeepers save.yml, and its config.yml for the currency items. When a Citizens saves.yml is chosen above, '
-            'Citizens shopkeepers are checked against it. Converted shops stay closed until reviewed on the server.'),
-      ]),
+      labelWithTip(const dom.h2(<Widget>[Component.text('Shopkeepers shops')]),
+          'Add config.yml for its currency items. Citizens shopkeepers are checked against the saves.yml above, and shops stay closed until reviewed.', 'Shopkeepers',
+          docs: Docs.shopkeepers),
       dom.div(classes: 'animus-row', <Widget>[
         Button.secondary(label: 'Choose Shopkeepers save.yml', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: () => _chooseShops(false)),
         dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_shopSave?.$1 ?? 'No Shopkeepers save chosen')]),
@@ -487,13 +478,13 @@ class _CitizensScreenState extends State<CitizensScreen> {
           if (review.warnings.isNotEmpty || review.issues.isNotEmpty)
             dom.p(classes: 'animus-citizens-lead', <Widget>[
               Component.text(<String>[
-                if (review.warnings.isNotEmpty) '${review.warnings.length} migration warning${review.warnings.length == 1 ? '' : 's'} to act on',
+                if (review.warnings.isNotEmpty) '${review.warnings.length} migration warning${review.warnings.length == 1 ? '' : 's'}',
                 if (review.issues.isNotEmpty) '${review.issues.length} record${review.issues.length == 1 ? '' : 's'} that will not load',
               ].join(' and ')),
-              const Component.text('. Read them below before you apply.'),
+              const Component.text('. Read them before applying.'),
             ])
           else
-            const dom.p(classes: 'animus-citizens-lead', <Widget>[Component.text('Every record converted to a valid definition, with no warnings.')]),
+            const dom.p(classes: 'animus-citizens-lead', <Widget>[Component.text('All records valid, no warnings.')]),
           _stats(<(int, String)>[
             (review.preview.records, 'records'),
             (review.preview.valid, 'valid definitions'),
@@ -512,8 +503,8 @@ class _CitizensScreenState extends State<CitizensScreen> {
             dom.code(<Widget>[Component.text(review.preview.id)]),
           ]),
         ]),
-        _list('Migration warnings', review.warnings, 'No migration warnings.'),
-        _list('Records that will not load', review.issues, 'Every record is a valid definition.'),
+        _list('Migration warnings', review.warnings, 'None.'),
+        _list('Records that will not load', review.issues, 'None.'),
         dom.section(classes: 'animus-panel', <Widget>[
           const dom.h2(<Widget>[Component.text('Fields by conversion status')]),
           _counts(<String, int>{for (final MapEntry<String, int> entry in review.classification.entries) fieldStatusLabel(entry.key): entry.value}, 'Status', 'Fields',

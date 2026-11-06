@@ -41,7 +41,7 @@ async function run(browser, viewport, label, theme) {
   page.on('request', request => requests.push(request.url()));
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
   await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
-  await page.getByRole('button', {name: 'Convert a Citizens, Shopkeepers, dtlTraders or Denizen save'}).click();
+  await page.getByRole('button', {name: 'Convert Citizens and others'}).click();
   await page.getByRole('heading', {name: 'Convert Citizens, Shopkeepers, dtlTraders and Denizen data'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Choose saves.yml'}).click();

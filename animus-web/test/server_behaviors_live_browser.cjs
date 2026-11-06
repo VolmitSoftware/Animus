@@ -73,9 +73,9 @@ async function run(browser, viewport, label, theme) {
   await openFromSidebar(page, 'server-behaviors');
   await page.getByRole('tab', {name: 'Visual'}).click();
   const list = page.locator('.animus-server-behaviors');
-  await list.getByText('The list is empty, so no server behavior runs. Add one below.').waitFor();
+  await list.getByText('Nothing listed. Add one below.').waitFor();
   await list.locator('select', {has: page.locator('option', {hasText: 'Add a server behavior'})}).first().selectOption('town:welcome');
-  await list.locator('[data-behavior="town:welcome"]').getByText('Server behavior in this workspace.').waitFor();
+  await list.locator('[data-behavior="town:welcome"]').getByText('Server behavior', {exact: true}).waitFor();
   await shot(page, `${label}-list`);
   const listed = async () => (await control('state')).documents.find(document => document.kind === 'server-behaviors');
   const before = await listed();

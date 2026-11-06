@@ -163,7 +163,7 @@ async function run(browser, width, height, label, scratch, theme) {
   forced = true;
   await control('fail?code=busy&times=1&route=/v1/imports', {});
   await page.getByRole('button', {name: 'Load review'}).click();
-  await page.locator('[data-testid="import-error"]', {hasText: 'The server is busy with another write. Wait a moment and try again.'}).waitFor();
+  await page.locator('[data-testid="import-error"]', {hasText: 'Server is busy with another write. Try again in a moment.'}).waitFor();
   await shot(page, `${label}-import-05b-refused`);
   forced = false;
 

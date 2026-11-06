@@ -11,6 +11,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/offline/dry_run.dart';
 import '../../logic/offline/new_documents.dart';
@@ -21,6 +22,7 @@ import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../services/skin_images.dart';
 import '../gui/gui_fields.dart';
+import '../info_tip.dart';
 import '../mc/mc_stage.dart';
 
 class DryRunPanel extends StatefulWidget {
@@ -140,11 +142,12 @@ class _DryRunPanelState extends State<DryRunPanel> {
     final bool finished = session != null && _shown >= steps.length;
     final AnimusDocument? actor = _actor;
     return dom.section(classes: 'animus-panel animus-dryrun', attributes: const <String, String>{'aria-label': 'Dry run'}, <Widget>[
-      const dom.h3(<Widget>[Component.text('Dry run')]),
-      const dom.p(classes: 'animus-preview-label', <Widget>[
-        Component.text('Runs in this browser only. Flags, quest stages and variables live in this session; expressions use sample player and NPC facts. '
-            'Steps tagged server only (commands, combat, items, shop trades and money) are listed, not run; steps tagged assumed can be flipped.'),
-      ]),
+      labelWithTip(
+        const dom.h3(<Widget>[Component.text('Dry run')]),
+        'Runs in this browser with sample player and NPC facts. Server-only steps are listed, not run.',
+        'Dry run',
+        docs: Docs.dryRun,
+      ),
       dom.div(classes: 'animus-dryrun-layout${actor == null ? '' : ' has-stage'}', <Widget>[
         if (actor != null)
           dom.div(classes: 'animus-dryrun-stage', <Widget>[
@@ -164,9 +167,9 @@ class _DryRunPanelState extends State<DryRunPanel> {
           ])
         else
           dom.p(classes: 'animus-muted animus-dryrun-nostage', <Widget>[
-            const Component.text('No NPC in this workspace lists this behavior, so the stage stays empty. '),
+            const Component.text('No NPC uses this behavior. '),
             if (component.onOpen != null)
-              const Component.text('Add it to an NPC\'s behaviors to see it speak.'),
+              const Component.text('Add it to one to see it speak.'),
           ]),
         dom.div(classes: 'animus-dryrun-trace', <Widget>[
           dom.div(classes: 'animus-row', attributes: <String, String>{'role': 'group', 'aria-label': session == null ? 'Start the dry run' : 'Next trigger'}, <Widget>[
@@ -284,7 +287,7 @@ class _DryRunPanelState extends State<DryRunPanel> {
       dom.p(classes: 'animus-muted', <Widget>[
         Component.text(serverOnly.isEmpty
             ? 'Nothing in this session needs a server.'
-            : '${serverOnly.length} step${serverOnly.length == 1 ? '' : 's'} would run on the server and ${serverOnly.length == 1 ? 'was' : 'were'} not run here.'),
+            : '${serverOnly.length} server-only step${serverOnly.length == 1 ? '' : 's'} not run.'),
       ]),
     ]);
   }

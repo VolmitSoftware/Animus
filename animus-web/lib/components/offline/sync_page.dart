@@ -8,6 +8,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/offline/sync_plan.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
@@ -24,6 +25,7 @@ import '../gui/gui_fields.dart';
 import '../server/connection_pill.dart';
 import '../server/live_confirm.dart';
 import '../brand_mark.dart';
+import '../info_tip.dart';
 import 'offline_fields.dart';
 
 class SyncPage extends StatefulWidget {
@@ -80,7 +82,7 @@ class _SyncPageState extends State<SyncPage> {
     } on SyncFailure catch (failure) {
       _failure = failure.message;
     } on Object {
-      _failure = 'Something went wrong in this page. ${transportCopy('dropped').next} Then try again.';
+      _failure = 'Something went wrong. ${transportCopy('dropped').next} Then try again.';
     } finally {
       if (mounted) setState(() => _busy = null);
     }
@@ -119,14 +121,14 @@ class _SyncPageState extends State<SyncPage> {
   Future<void> _settle(ServerProfile server, PushResult result) async {
     switch (result) {
       case PushApplied(:final String changeId, :final int count):
-        _pushResult = 'The server applied $count document${count == 1 ? '' : 's'} as change $changeId.';
+        _pushResult = 'Applied $count document${count == 1 ? '' : 's'} as change $changeId.';
         ArcaneSonner.success(_pushResult!);
         _push = await _sync(server).comparePush();
         _pushChoices.clear();
         _validated = null;
         _validatedFor = null;
       case PushConflicted(:final List<String> keys):
-        _failure = '${keys.join(', ')} changed on the server since the compare, so nothing was written. Review the new compare below, then push again.';
+        _failure = '${keys.join(', ')} changed on the server, so nothing was written. Review the new compare and push again.';
         _push = await _sync(server).comparePush();
         _validated = null;
         _validatedFor = null;
@@ -134,12 +136,12 @@ class _SyncPageState extends State<SyncPage> {
         _validated = diagnostics;
         _validatedFor = null;
         _failure =
-            'The server refused ${diagnostics.length} document${diagnostics.length == 1 ? '' : 's'}, so nothing was written. Fix the marked fields, then validate again.';
+            'The server refused ${diagnostics.length} document${diagnostics.length == 1 ? '' : 's'}. Fix the marked fields and validate again.';
       case PushLost():
-        _failure = 'The earlier push never reached the server, so nothing was written. Compare again, then push.';
+        _failure = 'The earlier push never arrived. Compare again, then push.';
         _push = null;
       case PushWaiting():
-        _failure = 'The server is still writing the earlier push. Check again in a moment.';
+        _failure = 'The server is still writing the earlier push. Check again soon.';
     }
   }
 
@@ -160,7 +162,7 @@ class _SyncPageState extends State<SyncPage> {
 
   Future<void> _takePull(ServerProfile server) => _run('Pulling', () async {
     final int written = await _sync(server).pull(_pull!, _pullChoices);
-    ArcaneSonner.success('Pulled $written document${written == 1 ? '' : 's'} into ${component.workspace.name}. Undo takes them back out.');
+    ArcaneSonner.success('Pulled $written document${written == 1 ? '' : 's'} into ${component.workspace.name}.');
     _pull = null;
     _pullSelected.clear();
   });
@@ -173,13 +175,12 @@ class _SyncPageState extends State<SyncPage> {
         classes: 'animus-panel',
         attributes: const <String, String>{'aria-labelledby': 'animus-sync-title'},
         <Widget>[
-          const dom.h2(id: 'animus-sync-title', <Widget>[Component.text('Send to a server')]),
-          dom.p(classes: 'animus-muted', <Widget>[
-            Component.text(
-              '${component.workspace.name} stays a local workspace. A push is checked by the server and applied as one change set; '
-              'a pull copies server documents in, as one undo step.',
-            ),
-          ]),
+          labelWithTip(
+            const dom.h2(id: 'animus-sync-title', <Widget>[Component.text('Send to a server')]),
+            'A push is checked by the server and applied as one change set. A pull copies server documents in as one undo step.',
+            'Sending',
+            docs: Docs.sending,
+          ),
           if (server == null)
             dom.div(
               classes: 'animus-sync-empty',
@@ -188,7 +189,7 @@ class _SyncPageState extends State<SyncPage> {
                 const BrandMark(size: 48, classes: 'animus-server-mark'),
                 const dom.p(<Widget>[
                   Component.text(
-                    'No server is paired in this browser yet. Run /animus editor pair on the server, then paste the link it prints under Servers on the home page.',
+                    'No server paired. Run /animus editor pair, then paste the link under Servers on the home page.',
                   ),
                 ]),
                 Button.secondary(label: 'Pair a server', size: ButtonSize.small, onPressed: () => component.onNavigate(const HomeRoute())),
@@ -258,14 +259,14 @@ class _SyncPageState extends State<SyncPage> {
             disabled: !online || _busy != null,
             onPressed: () => _compare(server),
           ),
-          if (!online) const dom.span(classes: 'animus-muted', <Widget>[Component.text('Connect the server above to compare.')]),
+          if (!online) const dom.span(classes: 'animus-muted', <Widget>[Component.text('Connect to compare.')]),
         ]),
         if (waiting)
           dom.div(
             classes: 'animus-row',
             attributes: const <String, String>{'role': 'status', 'data-testid': 'sync-pending'},
             <Widget>[
-              const dom.span(<Widget>[Component.text('A push sent earlier has no answer yet. Ask the server what became of it before pushing again.')]),
+              const dom.span(<Widget>[Component.text('An earlier push has no answer yet. Check it before pushing again.')]),
               Button.secondary(
                 label: 'Check the earlier push',
                 size: ButtonSize.small,
@@ -284,16 +285,16 @@ class _SyncPageState extends State<SyncPage> {
             <Widget>[
               Component.text(
                 plan.where(SyncState.same).isEmpty
-                    ? '${component.workspace.name} has no documents to send. Add some, or pull from the server below.'
-                    : 'All ${plan.where(SyncState.same).length} documents here already match the server. Nothing to push.',
+                    ? '${component.workspace.name} has no documents to send.'
+                    : 'All ${plan.where(SyncState.same).length} documents already match the server.',
               ),
             ],
           ),
         if (plan != null && (plan.where(SyncState.added).isNotEmpty || plan.where(SyncState.conflict).isNotEmpty)) ...<Widget>[
           dom.p(<Widget>[
             Component.text(
-              '${plan.where(SyncState.added).length} new to the server, ${plan.where(SyncState.conflict).length} different from the server\'s copy, '
-              '${plan.where(SyncState.same).length} already the same.',
+              '${plan.where(SyncState.added).length} new, ${plan.where(SyncState.conflict).length} different, '
+              '${plan.where(SyncState.same).length} the same.',
             ),
           ]),
           if (plan.where(SyncState.added).isNotEmpty)
@@ -337,7 +338,7 @@ class _SyncPageState extends State<SyncPage> {
           OfflineTextField(
             label: 'Change message',
             value: _message,
-            placeholder: 'What this push changes',
+            placeholder: 'Optional',
             onChanged: (String value) => setState(() => _message = value),
           ),
           dom.div(classes: 'animus-row', <Widget>[
@@ -362,9 +363,9 @@ class _SyncPageState extends State<SyncPage> {
                   selection.isEmpty
                       ? 'Nothing selected.'
                       : !validatedNow
-                      ? 'Validate this selection before pushing.'
+                      ? 'Validate before pushing.'
                       : serverErrors > 0
-                      ? 'The server found $serverErrors error${serverErrors == 1 ? '' : 's'}; fix them and validate again.'
+                      ? '$serverErrors server error${serverErrors == 1 ? '' : 's'}. Fix and validate again.'
                       : 'The server accepts this selection.',
                 ),
               ],
@@ -375,7 +376,7 @@ class _SyncPageState extends State<SyncPage> {
               question: 'Replace ${replacing.length} server cop${replacing.length == 1 ? 'y' : 'ies'} with yours?',
               detail:
                   '${replacing.map((PushEntry entry) => entry.document.id).take(6).join(', ')}${replacing.length > 6 ? ' and more' : ''} '
-                  'will hold this workspace\'s version on the server. The server can undo the push afterwards.',
+                  'get your version on the server. The server can undo the push.',
               confirmLabel: 'Replace and push',
               destructive: true,
               returnFocus: _pushId,
@@ -438,7 +439,7 @@ class _SyncPageState extends State<SyncPage> {
           ),
         ]),
         if (catalog != null && catalog.isEmpty)
-          const dom.p(classes: 'animus-muted', <Widget>[Component.text('The server has no documents yet. Push this workspace above to give it some.')]),
+          const dom.p(classes: 'animus-muted', <Widget>[Component.text('The server has no documents yet.')]),
         if (catalog != null && catalog.isNotEmpty) ...<Widget>[
           dom.div(classes: 'animus-row', <Widget>[
             TextInput(
@@ -475,8 +476,8 @@ class _SyncPageState extends State<SyncPage> {
         if (plan != null) ...<Widget>[
           dom.p(<Widget>[
             Component.text(
-              '${plan.where(SyncState.added).length} not in this workspace, ${plan.where(SyncState.conflict).length} different here, '
-              '${plan.where(SyncState.same).length} already the same.',
+              '${plan.where(SyncState.added).length} new, ${plan.where(SyncState.conflict).length} different, '
+              '${plan.where(SyncState.same).length} the same.',
             ),
           ]),
           for (final PullEntry entry in plan.where(SyncState.conflict))

@@ -17,9 +17,9 @@ import '../mc/mc_item_icons.dart';
 
 /// What each slot holds, for the help line.
 const Map<NpcSlot, String> slotHelp = <NpcSlot, String>{
-  NpcSlot.mainHand: 'Held in the right hand. Combat reads it for melee.fromEquipment.',
+  NpcSlot.mainHand: 'Right hand. Used by melee.fromEquipment.',
   NpcSlot.offHand: 'Held in the left hand.',
-  NpcSlot.head: 'Helmet, head or block worn on the head.',
+  NpcSlot.head: 'Helmet, head or block.',
   NpcSlot.chest: 'Chestplate or elytra.',
   NpcSlot.legs: 'Leggings.',
   NpcSlot.feet: 'Boots.',

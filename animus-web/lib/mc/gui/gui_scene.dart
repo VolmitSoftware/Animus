@@ -75,7 +75,7 @@ NpcText _shownText(McVec3 at, String raw, GuiAnimationClock clock, Set<String> m
 
 void _missingNotes(Set<String> missing, List<String> notes) {
   for (final String id in missing) {
-    notes.add('Text animation $id is not in this workspace, so its token shows as written.');
+    notes.add('Text animation $id is not in this workspace; token shown as written.');
   }
 }
 
@@ -118,7 +118,7 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant, GuiAnimationClock 
   for (int index = 0; index < lines.length; index++) {
     final Object? line = lines[index];
     final bool shown = line is! Map<String, Object?> || sampleCondition(line['show']);
-    if (!shown) notes.add('Row ${index + 1} is hidden for the sample viewer (show is false).');
+    if (!shown) notes.add('Row ${index + 1} hidden for the sample viewer.');
     if (isText(line)) {
       final String raw = line is String ? line : (line is Map<String, Object?> ? line['text']! as String : '');
       missing.addAll(clock.missing(raw));
@@ -180,19 +180,19 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant, GuiAnimationClock 
       if (item != null) {
         nodes.add(McItemNode(key: 'line-${object.index}', itemId: item, pose: McDisplayPose.fixed, transform: at(centre, scale)));
       } else {
-        notes.add('Row $row: the item comes from an expression, which needs the server.');
+        notes.add('Row $row: item expression resolves on the server.');
       }
     } else if (line['block'] is String) {
       final String? block = _bareItem(line['block']! as String);
       if (block != null) nodes.add(McItemNode(key: 'line-${object.index}', itemId: block, pose: McDisplayPose.none, transform: at(centre, 0.5 * scale)));
     } else if (line['head'] is String) {
       nodes.add(McItemNode(key: 'line-${object.index}', itemId: 'player_head', pose: McDisplayPose.fixed, transform: at(centre, scale)));
-      notes.add('Row $row: the head is drawn without a skin; the server shows ${line['head']}\'s.');
+      notes.add('Row $row: head drawn without ${line['head']}\'s skin.');
     } else if (line['entity'] is String) {
       final String entity = line['entity']! as String;
       nodes.add(McItemNode(key: 'line-${object.index}', itemId: 'glass', pose: McDisplayPose.none, transform: at(centre, 0.45 * scale)));
       texts.add(_shownText(centre + const McVec3(0, -0.05, 0), '&7${entity.contains(':') ? entity : 'minecraft:$entity'}', clock, missing));
-      notes.add('Row $row: entity rows are drawn as a labelled box; the server shows the entity.');
+      notes.add('Row $row: entity drawn as a labelled box.');
     }
   }
   notes.addAll(style.notes);
@@ -249,7 +249,7 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
         place('$key-$index', asMap(data['template']), cell, '$label entry ${index + 1}',
             scope: GuiSampleScope(extra: <String, Object?>{if (entry != null) variable: entry is num ? entry.toDouble() : entry}));
       }
-      if (source is! List<Object?>) notes.add('$label: the list source needs the server; three sample entries are shown.');
+      if (source is! List<Object?>) notes.add('$label: list source resolves on the server; showing three samples.');
       return;
     }
     if (type == 'slider') {
@@ -275,7 +275,7 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
       case 'item':
         final String? item = _bareItem(asString(icon['item']));
         if (item == null) {
-          notes.add('$label: the item comes from an expression, which needs the server.');
+          notes.add('$label: item expression resolves on the server.');
         } else {
           nodes.add(McItemNode(key: key, itemId: item, pose: McDisplayPose.fixed, transform: McMat4.translation(at.x, at.y, at.z)));
         }
@@ -295,13 +295,13 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
         }
       case 'playerHead':
         nodes.add(McItemNode(key: key, itemId: 'player_head', pose: McDisplayPose.fixed, transform: McMat4.translation(at.x, at.y, at.z)));
-        notes.add('$label: heads show the default head; the server draws the player\'s skin.');
+        notes.add('$label: head drawn without the player\'s skin.');
       case 'entity':
         final double width = asDouble(icon['width']) ?? 1;
         final double height = asDouble(icon['height']) ?? 1;
         nodes.add(McItemNode(key: key, itemId: 'glass', pose: McDisplayPose.none, transform: McMat4.translation(at.x, at.y, at.z).multiply(McMat4.scale(width * 0.5, height * 0.5, width * 0.5))));
         texts.add(_shownText(at, '&7${asString(icon['entity']) ?? 'minecraft:pig'}', clock, missing));
-        notes.add('$label: entities are drawn as a labelled box the size of width and height; the server shows the entity.');
+        notes.add('$label: entity drawn as a labelled box.');
       default:
         break;
     }
@@ -312,7 +312,7 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
     final JsonMap component = asMap(components[index]);
     final String id = asString(component['id']) ?? 'component-$index';
     if (!sampleCondition(component['show'])) {
-      notes.add('$id is hidden for the sample viewer (show is false).');
+      notes.add('$id hidden for the sample viewer.');
       continue;
     }
     final JsonList at = asList(component['offset']);

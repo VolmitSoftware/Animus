@@ -7,6 +7,7 @@ import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 
+import '../../config/docs_links.dart';
 import '../../logic/offline/starter_workspace.dart';
 import '../../services/browser.dart';
 import '../../services/server/server_profiles.dart';
@@ -15,6 +16,7 @@ import '../../state/server_hub.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';
 import '../brand_mark.dart';
+import '../info_tip.dart';
 import '../rig/rig_actions.dart';
 import '../server/pair_page.dart';
 import 'offline_fields.dart';
@@ -62,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await task();
     } on Object catch (failure) {
-      ArcaneSonner.error('Could not $what ($failure). Reload the page and try again; export a zip first if the workspace matters.');
+      ArcaneSonner.error('Could not $what ($failure). Reload and try again.');
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -70,14 +72,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _createBlank() => _run('create the workspace', () async {
         final WorkspaceSnapshot made = await component.store.createWorkspace(_workspaceName);
-        ArcaneSonner.success('Created ${made.name}. Make an NPC to start.');
+        ArcaneSonner.success('Created ${made.name}.');
         component.onNavigate(NewDocumentRoute(made.id));
         focusMainHeading();
       });
 
   Future<void> _createStarter() => _run('create the workspace', () async {
         final WorkspaceSnapshot made = await component.store.openFiles(_name.trim().isEmpty ? 'Example packs' : _name.trim(), starterWorkspaceFiles());
-        ArcaneSonner.success('Created ${made.name} with ${made.documents.length} documents from the example packs.');
+        ArcaneSonner.success('Created ${made.name} (${made.documents.length} documents).');
         component.onNavigate(WorkspaceRoute(made.id));
         focusMainHeading();
       });
@@ -118,7 +120,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _delete(WorkspaceSummary summary) => _run('delete ${summary.name}', () async {
         _deleting = null;
         await component.store.deleteWorkspace(summary.id);
-        ArcaneSonner.info('Deleted ${summary.name}. Restore brings it back until you close the tab.');
+        ArcaneSonner.info('Deleted ${summary.name}.');
         focusWhenShown('animus-workspaces-title');
       });
 
@@ -129,21 +131,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<(String, String)> packs = starterPacks();
     return dom.main_(id: _mainId, classes: 'animus-home', attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
       dom.section(classes: 'animus-start', attributes: const <String, String>{'aria-labelledby': mainHeadingId}, <Widget>[
-        const dom.div(classes: 'animus-start-head', <Widget>[
-          BrandMark(size: 64, classes: 'animus-start-mark'),
+        dom.div(classes: 'animus-start-head', <Widget>[
+          const BrandMark(size: 64, classes: 'animus-start-mark'),
           dom.div(<Widget>[
-            dom.h1(id: mainHeadingId, attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Start a workspace')]),
-            dom.p(classes: 'animus-start-lede', <Widget>[
-              Component.text('Make NPCs, behaviors, shops, GUIs, holograms and rigs here, with no server. '
-                  'Workspaces stay in this browser and are checked against the shared schemas as you edit.'),
-            ]),
+            labelWithTip(
+              const dom.h1(id: mainHeadingId, attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Start a workspace')]),
+              'Workspaces stay in this browser. Nothing reaches a server until you send it.',
+              'Workspaces',
+              docs: Docs.editor,
+            ),
           ]),
         ]),
         dom.ol(classes: 'animus-start-ways', <Widget>[
           dom.li(classes: 'animus-start-way is-first', <Widget>[
             const dom.div(classes: 'animus-start-copy', <Widget>[
               dom.h2(<Widget>[Component.text('Blank')]),
-              dom.p(classes: 'animus-muted', <Widget>[Component.text('An empty workspace with its own name. The New page walks you through the first NPC.')]),
             ]),
             dom.div(classes: 'animus-start-row', <Widget>[
               OfflineTextField(
@@ -160,25 +162,25 @@ class _HomeScreenState extends State<HomeScreen> {
             dom.div(classes: 'animus-start-copy', <Widget>[
               const dom.h2(<Widget>[Component.text('From the example packs')]),
               dom.p(classes: 'animus-muted', <Widget>[
-                Component.text('${packs.length} packs with their NPCs, behaviors, a shop and a chest GUI: '
-                    '${packs.map(((String, String) pack) => pack.$1).join(', ')}. Uses the name above when you typed one.'),
+                Component.text(packs.map(((String, String) pack) => pack.$1).join(', ')),
               ]),
             ]),
             Button.secondary(label: 'Create with example packs', disabled: busy, onPressed: _createStarter),
           ]),
           dom.li(classes: 'animus-start-way', <Widget>[
-            const dom.div(classes: 'animus-start-copy', <Widget>[
-              dom.h2(<Widget>[Component.text('From a data folder')]),
-              dom.p(classes: 'animus-muted', <Widget>[
-                Component.text('Pick plugins/Animus (config/animus on mod servers) or a zip of it. It is copied into a new workspace: '
-                    'nothing is uploaded, and edits do not go back into the folder. Export a zip to take them back.'),
-              ]),
+            dom.div(classes: 'animus-start-copy', <Widget>[
+              labelWithTip(
+                const dom.h2(<Widget>[Component.text('From a data folder')]),
+                'Opens a copy of plugins/Animus (config/animus on mod servers). Edits stay here until you export a zip.',
+                'Data folder',
+                docs: Docs.editor,
+              ),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
               Button.secondary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), disabled: busy, onPressed: component.onOpenFolder),
               Button.secondary(label: 'Open zip', icon: ArcaneIcon.fileArchive(), disabled: busy, onPressed: component.onOpenZip),
               Button.ghost(
-                label: 'Convert a Citizens, Shopkeepers, dtlTraders or Denizen save',
+                label: 'Convert Citizens and others',
                 icon: ArcaneIcon.arrowRightLeft(),
                 disabled: busy,
                 onPressed: () => component.onNavigate(const CitizensRoute()),
@@ -199,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const dom.h2(id: 'animus-workspaces-title', attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Workspaces in this browser')]),
       if (deleted != null && !store.workspaces.any((WorkspaceSummary summary) => summary.id == deleted.id))
         dom.div(classes: 'animus-row animus-restore', attributes: const <String, String>{'role': 'status'}, <Widget>[
-          Component.text('Deleted ${deleted.name} (${deleted.documents.length} documents). You can restore it until you close the tab.'),
+          Component.text('Deleted ${deleted.name}. Restore until you close the tab.'),
           Button.secondary(
             label: 'Restore ${deleted.name}',
             size: ButtonSize.small,
@@ -212,11 +214,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (listProblem != null)
         dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(listProblem)])
       else if (!store.workspacesListed)
-        const dom.p(classes: 'animus-muted', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Reading the workspaces kept in this browser...')])
+        const dom.p(classes: 'animus-muted', attributes: <String, String>{'role': 'status'}, <Widget>[Component.text('Loading workspaces...')])
       else if (store.workspaces.isEmpty)
-        const dom.p(classes: 'animus-muted', <Widget>[
-          Component.text('None yet. A workspace you start above, open from a folder or pull from a server is listed here.'),
-        ])
+        const dom.p(classes: 'animus-muted', <Widget>[Component.text('No workspaces yet.')])
       else
         dom.ul(classes: 'animus-workspace-list', <Widget>[
           for (final WorkspaceSummary summary in store.workspaces) dom.li(classes: 'animus-workspace-row', <Widget>[_workspaceRow(summary, busy)]),
@@ -230,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_deleting == summary.id) {
       return ConfirmRow(
         question: 'Delete ${summary.name}?',
-        detail: 'Its ${summary.documentCount} documents and undo history leave this browser. Export a zip first to keep a copy.',
+        detail: 'Removes its ${summary.documentCount} documents and undo history from this browser.',
         confirmLabel: 'Delete workspace',
         onConfirm: () => _delete(summary),
         onCancel: () {

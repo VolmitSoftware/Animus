@@ -667,10 +667,10 @@ class _GuiJsonObjectInputState extends State<GuiJsonObjectInput> {
         setState(() => _problem = null);
         component.onChanged(parsed);
       } else {
-        setState(() => _problem = 'Must be a JSON object in braces; nothing is saved until it is.');
+        setState(() => _problem = 'Must be a JSON object. Not saved yet.');
       }
     } on FormatException catch (error) {
-      setState(() => _problem = 'Not valid JSON yet (${error.message}); nothing is saved until it parses.');
+      setState(() => _problem = 'Invalid JSON (${error.message}). Not saved yet.');
     }
   }
 
