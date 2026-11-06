@@ -230,6 +230,7 @@
 - `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
+- Combat NPCs with a bow, crossbow or trident hold it drawn while a target is in range and lower it after.
 
 ### Changed
 
@@ -483,6 +484,10 @@
 - On Folia, an NPC's projectiles now hit NPCs that other regions own, credited to the NPC that fired them.
 - A full packet queue no longer drops a player's view of every NPC; moves and spawns wait for the queue to drain.
 - Far fight and chat watchers on Folia no longer use up the 64 deliveries before nearby ones hear the event.
+- Combat NPCs now swing their arm on every melee hit and every thrown shot, on Paper, Spigot, Folia and mod servers.
+- Attack swings go out with moves, so they are no longer delayed by cosmetic pauses or skipped as stale.
+- Controlled iron golems, ravagers, hoglins, zoglins and wardens show their own attack animation instead of a swing.
+- Imported armor stands no longer turn to players unless their Citizens save turns look-close on.
 
 ### Notes
 

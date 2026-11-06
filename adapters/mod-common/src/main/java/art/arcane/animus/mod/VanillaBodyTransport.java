@@ -361,7 +361,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         } finally { buffer.release(); }
     }
 
-    /** The shared flags and pose of a visible body from {@code look}; both are always sent, so standing again clears a crouch. */
+    /** The shared flags, pose and item use of a visible body from {@code look}; all are always sent, so standing again clears a crouch. */
     @Override public CompletionStage<Void> look(ServerPlayer viewer, BodyTransport.Body presented, BodyLook look) {
         Body body = checkBody(presented);
         Objects.requireNonNull(look);
@@ -372,7 +372,8 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         Pose pose = look.pose() == NpcPose.SITTING ? Pose.STANDING : Pose.valueOf(look.nativePose());
         return send(session, body, PacketKind.METADATA, List.of(new ClientboundSetEntityDataPacket(body.entityId, List.of(
                 SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), look.sharedFlags(invisible)),
-                SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), pose)))));
+                SynchedEntityData.DataValue.create(EntityDataAccess.animus$pose(), pose),
+                SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(look.usingItem()))))));
     }
 
     @Override public CompletionStage<Void> equipment(ServerPlayer viewer, BodyTransport.Body presented, Map<EquipmentSlot, ItemStack> items) {
@@ -633,7 +634,7 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         boolean invisible = look.armorStand().map(ArmorStandLook::invisible).orElse(false);
         byte flags = look.sharedFlags(invisible);
         if (flags != 0) values.add(SynchedEntityData.DataValue.create(EntityDataAccess.animus$sharedFlags(), flags));
-        if (look.traits().usingItem()) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(true)));
+        if (look.usingItem()) values.add(SynchedEntityData.DataValue.create(LivingDataAccess.animus$livingFlags(), BodyLook.livingFlags(true)));
         if (look.traits().baby()) BodyRules.babyFlag(typeKey).ifPresent((BodyRules.BabyFlag flag) -> values.add(SynchedEntityData.DataValue.create(switch (flag) {
             case AGEABLE -> AgeableDataAccess.animus$baby();
             case ZOMBIE -> ZombieDataAccess.animus$baby();

@@ -52,6 +52,10 @@ public interface CombatWorld {
     /** Turns the NPC back to its definition's facing and pose, standing. */
     default void restorePose(UUID npc) {}
     void face(UUID npc, Vec3 point);
+    /** Shows one attack: the main-arm swing, or the type's own attack animation. Sent promptly, never dropped as cosmetic. */
+    default void swing(UUID npc) {}
+    /** Shows the NPC drawing its bow, crossbow or trident while true, as a player holding use does. */
+    default void drawing(UUID npc, boolean drawing) {}
     /** Horizontal facing in degrees; yaw 0 faces positive Z. */
     double yaw(UUID npc);
     void knockback(UUID npc, Vec3 direction, double strength);
