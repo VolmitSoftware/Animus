@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "importerVersion": 1,
-  "importId": "6e128e439c7602e903a1f0041fea7a2fceec1c55d4b5cb382e2e68b108be3b85",
+  "importerVersion": 2,
+  "importId": "daa89ba44bf8453e4b4bf1d56b8811121080293b909ad80ca597117b6ca21044",
   "sourceSha256": "b325111394220d25b7f5c506800c7cebb0d031f2a0e6699792b14966d836789e",
   "notice": "Data conversion only. Shops install under shops/shopkeepers/ and stay closed on their NPCs until the shops review is accepted. Try each shop in game before relying on it.",
   "dataVersion": "4|4189",
@@ -109,12 +109,12 @@
     "note: not a shopkeeper id; kept in source.yml"
   ],
   "documents": {
-    "shops/shopkeepers/shop-1.json": "02ff276807f7196b89b6621fa0b66f5366ed8dfe7f3daf37be865b4784a8a20f",
-    "shops/shopkeepers/shop-2.json": "cddaeb89a085e0cb5bd97e3fe723df73156b863ef1dc27584420859980ba8179",
-    "shops/shopkeepers/shop-3.json": "3d5169c609554750960197490cd352a5b645582444c40f65ace69d6e14ef64c9",
-    "npcs/shopkeepers/shopkeeper-3.json": "e0c3d117b4c621b28bed6ac22806f69aa75999ed24656f7ff0f77bfbde211475",
-    "shops/shopkeepers/shop-4.json": "d193717db50269bf96394a9fd5109207b1c72baa8fd1dbba03558736d4d9bef8",
-    "shops/shopkeepers/shop-5.json": "fa38c2ca460b46b946e2a313c146e0ed3afba504fd07bc43625d0fd15daf1228",
-    "shops/shopkeepers/shop-6.json": "9e7f320080b8b9f97f746917305384981d992a4b24d66f09c7b718304abc0c0c"
+    "shops/shopkeepers/shop-1.json": "762e84df1396925bc1ddba2c815af4a7a063d168a102e74cf5425fdd34a8f9b9",
+    "shops/shopkeepers/shop-2.json": "d87518b3a3a84dcff8ba8ae79234bbbba5b8abd730947328a0fddaa9ea3db554",
+    "shops/shopkeepers/shop-3.json": "8f7268103d0d0241f41682ea5d9e6ade4a09fc10df3ff509f22cf915bdb16281",
+    "npcs/shopkeepers/shopkeeper-3.json": "f7e40d3b7c2cb604e28c2ada5e96111c0500afcfcbbb2b3b72cb36e784a60720",
+    "shops/shopkeepers/shop-4.json": "dbbd302428b4cdf0c652b673d96959e936099a98f79261da8621e57bf60ad5bd",
+    "shops/shopkeepers/shop-5.json": "20a249cae6a6ceae6c5e88decb72449a022632fa686fa500061654bb39e9dbd0",
+    "shops/shopkeepers/shop-6.json": "9aa16720b414dabdb8bd7a2c7f405e004e4da43d01a4ec41477886ff0f908223"
   }
 }

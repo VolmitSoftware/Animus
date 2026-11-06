@@ -131,15 +131,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<(String, String)> packs = starterPacks();
     return dom.main_(id: _mainId, classes: 'animus-home', attributes: const <String, String>{'tabindex': '-1'}, <Widget>[
       dom.section(classes: 'animus-start', attributes: const <String, String>{'aria-labelledby': mainHeadingId}, <Widget>[
-        dom.div(classes: 'animus-start-head', <Widget>[
-          const BrandMark(size: 64, classes: 'animus-start-mark'),
+        const dom.div(classes: 'animus-start-head', <Widget>[
+          BrandMark(size: 64, classes: 'animus-start-mark'),
           dom.div(<Widget>[
-            labelWithTip(
-              const dom.h1(id: mainHeadingId, attributes: <String, String>{'tabindex': '-1'}, <Widget>[Component.text('Start a workspace')]),
-              'Workspaces stay in this browser. Nothing reaches a server until you send it.',
-              'Workspaces',
-              docs: Docs.editor,
-            ),
+            dom.h1(id: mainHeadingId, attributes: <String, String>{'tabindex': '-1'}, <Widget>[
+              InfoTip(
+                tip: 'Workspaces stay in this browser. Nothing reaches a server until you send it.',
+                docs: Docs.editor,
+                child: Component.text('Start a workspace'),
+              ),
+            ]),
           ]),
         ]),
         dom.ol(classes: 'animus-start-ways', <Widget>[
@@ -168,13 +169,14 @@ class _HomeScreenState extends State<HomeScreen> {
             Button.secondary(label: 'Create with example packs', disabled: busy, onPressed: _createStarter),
           ]),
           dom.li(classes: 'animus-start-way', <Widget>[
-            dom.div(classes: 'animus-start-copy', <Widget>[
-              labelWithTip(
-                const dom.h2(<Widget>[Component.text('From a data folder')]),
-                'Opens a copy of plugins/Animus (config/animus on mod servers). Edits stay here until you export a zip.',
-                'Data folder',
-                docs: Docs.editor,
-              ),
+            const dom.div(classes: 'animus-start-copy', <Widget>[
+              dom.h2(<Widget>[
+                InfoTip(
+                  tip: 'Opens a copy of plugins/Animus (config/animus on mod servers). Edits stay here until you export a zip.',
+                  docs: Docs.editor,
+                  child: Component.text('From a data folder'),
+                ),
+              ]),
             ]),
             dom.div(classes: 'animus-row', <Widget>[
               Button.secondary(label: 'Open folder', icon: ArcaneIcon.folderOpen(), disabled: busy, onPressed: component.onOpenFolder),

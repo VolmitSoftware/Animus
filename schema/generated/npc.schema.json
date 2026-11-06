@@ -1935,6 +1935,31 @@
               ],
               "description": "Which click opens it. right by default."
             },
+            "style": {
+              "enum": [
+                "native",
+                "chest"
+              ],
+              "description": "The window for this NPC: native (villager trading screen) or chest. The shop's own style by default."
+            },
+            "villager": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "A villager body's profession and level, shown in the trading screen title. Other bodies ignore it.",
+              "properties": {
+                "profession": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_.-]+:[a-z0-9_/.-]+$",
+                  "description": "Such as minecraft:farmer. minecraft:none by default."
+                },
+                "level": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 5,
+                  "description": "1 (novice) to 5 (master). 1 by default."
+                }
+              }
+            },
             "imported": {
               "description": "Kept from an import."
             },

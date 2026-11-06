@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-13",
   "title": "Library",
+  "style": "native",
   "modes": [
     "trade"
   ],

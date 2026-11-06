@@ -32,10 +32,11 @@ async function run(browser, viewport, label) {
 
   // One focal point and three ways to start.
   await page.getByRole('heading', {level: 1, name: 'Start a workspace'}).waitFor();
-  assert.deepEqual(await page.locator('.animus-start-way h2').allTextContents(), ['Blank', 'From the example packs', 'From a data folder']);
+  assert.deepEqual(await page.locator('.animus-start-way h2').allInnerTexts(), ['Blank', 'From the example packs', 'From a data folder']);
   assert.equal(await page.locator(".animus-start .arcane-button[data-variant='primary']").count(), 1, 'one primary action on the home page');
-  assert.equal(await page.getByRole('link', {name: 'Data folder docs'}).getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
-  assert.equal(await page.getByRole('link', {name: 'Workspaces docs'}).getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
+  const docsOf = text => page.locator('.animus-tip').filter({has: page.getByRole('link', {name: text, exact: true})}).locator('.animus-tip-docs');
+  assert.equal(await docsOf('From a data folder').getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
+  assert.equal(await docsOf('Start a workspace').getAttribute('href'), 'https://docs.volmitsoftware.com/animus/14-web-editor#working-without-a-server');
   await page.getByRole('button', {name: 'Convert Citizens and others'}).waitFor();
   await page.getByText('No workspaces yet.', {exact: true}).waitFor();
   await noSideways(page, `${label} home`);

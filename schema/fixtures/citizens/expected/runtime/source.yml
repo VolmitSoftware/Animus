@@ -1,5 +1,5 @@
 # Synthetic Citizens saves.yml for patrols, look-close, text and commands. Every name, UUID and world is invented.
-# Look-close writes only enabled: false here, so an unset enabled means true.
+# Look-close writes only enabled: false here, so an unset enabled means true, except on the armor stand.
 npc:
   '0':
     name: Gate Patrol
@@ -89,3 +89,10 @@ npc:
       waypoints:
         provider: spiral
         spiral: {turns: 3}
+  '5':
+    name: Square Statue
+    uuid: 0a1b2c3d-0000-4000-8000-000000000305
+    traits:
+      type: ARMOR_STAND
+      location: {world: old_town, x: 12.5, y: 64.0, z: 12.5}
+      lookclose: {randomPitchRange: [0.0, 0.0], randomYawRange: [0.0, 360.0]}
