@@ -71,7 +71,12 @@ void main() {
       }),
       path: () => ConnectionPath.direct,
     );
-    await expectLater(imports.rollback('b' * 64), throwsA(isA<ImportRefused>().having((ImportRefused r) => r.message, 'message', 'No import is applied.')));
+    await expectLater(
+      imports.rollback('b' * 64),
+      throwsA(isA<ImportRefused>()
+          .having((ImportRefused r) => r.code, 'code', 'conflict')
+          .having((ImportRefused r) => r.detail, 'detail', 'No import is applied.')),
+    );
   });
 
   test('should place picked dtlTraders files where the dtlTraders folder keeps them', () {

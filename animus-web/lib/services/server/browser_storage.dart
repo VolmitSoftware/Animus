@@ -1,16 +1,26 @@
+import 'dart:async';
+import 'dart:js_interop';
+
 import 'package:web/web.dart' as web;
 
 import 'server_profiles.dart';
 
-/// localStorage or sessionStorage; private modes that refuse storage keep
-/// values for the page only.
+/// localStorage or sessionStorage. A browser that refuses storage (a private
+/// window, a full quota) keeps values for this page only, and [write] says so.
 class BrowserKeyValueStore implements KeyValueStore {
-  BrowserKeyValueStore.local() : _storage = _safe(() => web.window.localStorage);
+  BrowserKeyValueStore.local() : _storage = _safe(() => web.window.localStorage) {
+    // Other tabs' writes to localStorage arrive as storage events.
+    web.window.addEventListener('storage', ((web.StorageEvent event) => _changes.add(event.key)).toJS);
+  }
 
   BrowserKeyValueStore.session() : _storage = _safe(() => web.window.sessionStorage);
 
   final web.Storage? _storage;
   final Map<String, String> _fallback = <String, String>{};
+  final StreamController<String?> _changes = StreamController<String?>.broadcast(sync: true);
+
+  @override
+  Stream<String?> get changes => _changes.stream;
 
   static web.Storage? _safe(web.Storage Function() open) {
     try {
@@ -30,12 +40,16 @@ class BrowserKeyValueStore implements KeyValueStore {
   }
 
   @override
-  void write(String key, String value) {
+  bool write(String key, String value) {
     _fallback[key] = value;
+    final web.Storage? storage = _storage;
+    if (storage == null) return false;
     try {
-      _storage?.setItem(key, value);
+      storage.setItem(key, value);
+      return true;
     } on Object {
       // Kept in memory for this page.
+      return false;
     }
   }
 

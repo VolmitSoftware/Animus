@@ -217,6 +217,87 @@
         "schema": true,
         "java": false
       }
+    },
+    {
+      "path": "documents/route/town-patrol.json",
+      "kind": "route",
+      "id": "town-patrol",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/route/loop-with-random.json",
+      "kind": "route",
+      "id": "loop-with-random",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/route/no-points.json",
+      "kind": "route",
+      "id": "no-points",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/behavior/loops.json",
+      "kind": "behavior",
+      "id": "town:counter",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/behavior/server-welcome.json",
+      "kind": "behavior",
+      "id": "town:welcome",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/behavior/server-npc-trigger.json",
+      "kind": "behavior",
+      "id": "town:broken-server",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/behavior/break-outside-loop.json",
+      "kind": "behavior",
+      "id": "town:stray-break",
+      "expect": {
+        "schema": true,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/server-behaviors/server-behaviors.json",
+      "kind": "server-behaviors",
+      "id": "server-behaviors",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/server-behaviors/extra-field.json",
+      "kind": "server-behaviors",
+      "id": "server-behaviors",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
     }
   ],
   "messages": [

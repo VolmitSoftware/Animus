@@ -100,24 +100,106 @@
   border-radius: var(--animus-radius);
 }
 
-/* Home */
+/* Home: the offline landing. One focal point (the mark and "Start a
+   workspace"), the three ways to start as rows of one list, then the
+   workspaces and servers. */
+
+.animus-home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  width: min(52rem, calc(100% - 2rem));
+  margin: 2.5rem auto 3rem;
+}
+
+.animus-start {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+  padding: 0.5rem 0 0.75rem;
+}
+
+.animus-start-head {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.animus-start-head h1 {
+  margin: 0 0 0.375rem;
+  font-size: clamp(1.625rem, 1.2rem + 1.6vw, 2.125rem);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.animus-start-lede {
+  margin: 0;
+  max-width: 38rem;
+  color: var(--animus-muted);
+}
+
+.animus-start-ways {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--animus-border);
+}
+
+.animus-start-way {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--animus-border);
+}
+
+.animus-start-copy {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.animus-start-way.is-first {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.animus-start-head > div {
+  min-width: 0;
+}
+
+/* Long labels wrap inside their button instead of widening the page (the
+   button sets nowrap and a fixed height inline). */
+#arcane-root .animus-start-way .arcane-button {
+  max-width: 100%;
+  height: auto !important;
+  white-space: normal !important;
+  text-align: start;
+}
+
+.animus-start-way h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.animus-start-copy p {
+  margin: 0;
+  max-width: 36rem;
+  font-size: 0.9375rem;
+}
 
 .animus-start-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: end;
-  margin-top: 0.75rem;
 }
 
 .animus-start-row > .animus-field {
   flex: 1 1 14rem;
   max-width: 22rem;
-}
-
-.animus-start-packs {
-  margin: 0.75rem 0 0;
-  font-size: 0.875rem;
 }
 
 .animus-workspace-list .animus-workspace-row {
@@ -152,8 +234,63 @@
   font-size: 0.8125rem;
 }
 
+.animus-workspace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Delete sits apart from the everyday actions and reads in the error tone,
+   so it is not one more grey button in the row. */
+.animus-quiet-danger {
+  margin-inline-start: 0.5rem;
+  padding-inline-start: 0.5rem;
+  border-inline-start: 1px solid var(--animus-border);
+}
+
+#arcane-root .animus-quiet-danger .arcane-button {
+  color: var(--animus-error);
+}
+
 .animus-restore {
   margin-bottom: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .animus-home {
+    margin-top: 1.25rem;
+    width: calc(100% - 1.5rem);
+  }
+
+  .animus-start-head {
+    align-items: flex-start;
+  }
+
+  .animus-start-mark {
+    width: 48px;
+    height: 48px;
+  }
+
+  .animus-start-copy {
+    flex-basis: 100%;
+  }
+
+  .animus-workspace-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .animus-quiet-danger {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  #arcane-root .animus-workspace-actions .arcane-button {
+    width: 100%;
+  }
 }
 
 /* Sidebar links */
@@ -161,7 +298,8 @@
 .animus-side-link {
   display: inline-flex;
   align-items: center;
-  min-height: 2rem;
+  min-height: 2.25rem;
+  box-sizing: border-box;
   padding: 0.25rem 0.625rem;
   border: 1px solid var(--animus-border);
   border-radius: var(--animus-radius);
@@ -183,6 +321,12 @@
 
 .animus-side-link.is-selected {
   border-color: currentColor;
+}
+
+@media (max-width: 760px) {
+  .animus-side-link {
+    min-height: 44px;
+  }
 }
 
 /* The New page */

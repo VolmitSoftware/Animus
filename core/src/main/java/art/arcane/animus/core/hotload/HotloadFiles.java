@@ -72,6 +72,7 @@ public final class HotloadFiles implements HotloadEngine.Source {
         truncated = false;
         add(found, HotloadTargets.CONFIG, active.maximumFiles());
         if (!active.enabled()) return found;
+        add(found, art.arcane.animus.core.behavior.catalog.ServerBehaviorList.PATH, active.maximumFiles());
         Deque<Path> folders = new ArrayDeque<>();
         for (String folder : HotloadTargets.FOLDERS) folders.add(root.resolve(folder));
         while (!folders.isEmpty()) {

@@ -1,21 +1,6 @@
 /* NPC browser, typed NPC editors, route editor and dialogue view.
    Cards and rows get a full hairline border, never a one-sided stripe. */
 
-.animus-tree-group h3 .animus-tree-browse {
-  margin-left: auto;
-  font-size: 0.75rem;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--animus-muted);
-}
-
-.animus-tree-group h3 .animus-tree-browse.is-selected,
-.animus-tree-group h3 .animus-tree-browse:hover {
-  color: inherit;
-  text-decoration: underline;
-}
-
 /* Browser */
 
 .animus-npc-browser {
@@ -109,7 +94,9 @@
 .animus-npc-tree-item {
   display: flex;
   width: 100%;
+  box-sizing: border-box;
   justify-content: space-between;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.3rem 0.5rem;
   border: 1px solid transparent;
@@ -123,8 +110,17 @@
   cursor: pointer;
 }
 
+.animus-npc-tree-item.is-child {
+  padding-left: 1.25rem;
+}
+
 .animus-npc-tree-item:hover {
   border-color: var(--animus-border);
+}
+
+.animus-npc-tree-item:focus-visible {
+  outline: 2px solid var(--ring, #ff5fa8);
+  outline-offset: -2px;
 }
 
 .animus-npc-tree-item.is-selected {
@@ -142,11 +138,12 @@
   display: inline-flex;
   align-items: center;
   gap: 0.125rem;
+  max-width: 100%;
   padding: 0.0625rem 0.45rem;
-  border: 1px solid color-mix(in srgb, var(--primary, #ff5fa8) 55%, var(--animus-border));
+  border: 1px solid var(--animus-border);
   border-radius: 999px;
   font-size: 0.75rem;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .animus-npc-tag .arcane-button,
@@ -165,9 +162,9 @@
   display: grid;
   gap: 0.5rem;
   padding: 0.625rem;
-  border: 1px solid color-mix(in srgb, var(--primary, #ff5fa8) 45%, var(--animus-border));
+  border: 1px solid var(--animus-border);
   border-radius: var(--animus-radius);
-  background: color-mix(in srgb, var(--primary, #ff5fa8) 7%, transparent);
+  background: var(--animus-panel);
   min-width: 0;
 }
 
@@ -205,7 +202,7 @@
 
 .animus-npc-row {
   display: grid;
-  grid-template-columns: 1.5rem minmax(9rem, 1.4fr) minmax(5rem, 0.7fr) minmax(4rem, 0.6fr) minmax(0, 1.6fr);
+  grid-template-columns: 1.75rem minmax(9rem, 1.4fr) minmax(5rem, 0.7fr) minmax(4rem, 0.6fr) minmax(0, 1.6fr);
   gap: 0.5rem;
   align-items: center;
   padding: 0.4rem 0.625rem;
@@ -228,13 +225,34 @@
   background: color-mix(in srgb, var(--primary, #ff5fa8) 12%, transparent);
 }
 
+.animus-npc-check {
+  display: grid;
+  place-items: center;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  cursor: pointer;
+}
+
 .animus-npc-row input[type="checkbox"] {
   width: 1rem;
   height: 1rem;
   margin: 0;
 }
 
+.animus-npc-row input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--ring, #ff5fa8);
+  outline-offset: 1px;
+}
+
 .animus-npc-name {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.animus-npc-name-text {
   display: grid;
   min-width: 0;
 }
@@ -270,7 +288,26 @@
 }
 
 .animus-npc-empty {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
   padding: 1rem;
+}
+
+.animus-npc-empty p {
+  margin: 0;
+  color: var(--animus-muted);
+}
+
+.animus-npc-empty-action {
+  color: var(--primary, #ff5fa8);
+  font-weight: 600;
+  text-underline-offset: 0.2em;
+}
+
+.animus-npc-empty-action:focus-visible {
+  outline: 2px solid var(--ring, #ff5fa8);
+  outline-offset: 2px;
 }
 
 /* NPC Visual: inspector beside the stage */
@@ -316,7 +353,7 @@
   height: 2.75rem;
   border: 1px solid var(--animus-border);
   border-radius: 0.25rem;
-  background: color-mix(in srgb, #8b8b8b 30%, transparent);
+  background: color-mix(in srgb, var(--animus-border) 60%, transparent);
   color: var(--animus-muted);
 }
 
@@ -388,8 +425,20 @@
 
 .animus-skin-face.is-blank {
   border: 1px solid var(--animus-border);
+  background: color-mix(in srgb, var(--animus-border) 45%, transparent);
   color: var(--animus-muted);
   font-size: 0.75rem;
+}
+
+.animus-skin-face.is-small {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.animus-skin-face.is-large {
+  width: 6rem;
+  height: 6rem;
+  border-radius: var(--animus-radius);
 }
 
 .animus-skin-card-text {
@@ -436,7 +485,7 @@
   aspect-ratio: 1 / 1;
   border: 1px solid var(--animus-border);
   border-radius: var(--animus-radius);
-  background: color-mix(in srgb, #e0408c 14%, transparent);
+  background: var(--animus-panel);
   touch-action: none;
   user-select: none;
 }
@@ -455,52 +504,63 @@
   stroke: var(--animus-muted);
 }
 
+/* The route grid is grey chrome; pink marks only the picked point and the
+   keyboard focus. */
 .animus-route-link {
-  stroke: #f3f0f2;
+  stroke: var(--animus-muted);
   stroke-width: 2px;
   vector-effect: non-scaling-stroke;
-  opacity: 0.85;
-}
-
-html.light .animus-route-link {
-  stroke: #3a353a;
 }
 
 .animus-route-link.is-mesh {
-  stroke: #6fb6f2;
+  stroke-width: 1px;
   stroke-dasharray: 4 3;
 }
 
 .animus-route-wander {
-  fill: color-mix(in srgb, #f2c94c 12%, transparent);
-  stroke: #f2c94c;
+  fill: color-mix(in srgb, var(--animus-muted) 10%, transparent);
+  stroke: var(--animus-muted);
   stroke-width: 1px;
   stroke-dasharray: 4 3;
   vector-effect: non-scaling-stroke;
 }
 
 .animus-route-npc {
-  fill: #f2c94c;
-  stroke: #0d0d0f;
-  stroke-width: 1px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2px;
   vector-effect: non-scaling-stroke;
 }
 
 .animus-route-dot {
-  fill: #ff5fa8;
+  fill: #d9d4d8;
   stroke: #0d0d0f;
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
   cursor: grab;
 }
 
+html.light .animus-route-dot {
+  fill: #ffffff;
+  stroke: #4a444a;
+}
+
 .animus-route-node.is-guide .animus-route-dot {
-  fill: #6fb6f2;
+  fill: var(--animus-muted);
 }
 
 .animus-route-node.is-selected .animus-route-dot {
-  stroke: #f2c94c;
-  stroke-width: 3px;
+  fill: var(--primary, #ff5fa8);
+  stroke-width: 2px;
+}
+
+.animus-route-dot:focus {
+  outline: none;
+}
+
+.animus-route-dot:focus-visible {
+  stroke: var(--ring, #ff5fa8);
+  stroke-width: 4px;
 }
 
 .animus-route-grid.is-readonly .animus-route-dot {
@@ -515,7 +575,11 @@ html.light .animus-route-link {
 }
 
 .animus-route-label.is-npc {
-  fill: #f2c94c;
+  fill: currentColor;
+}
+
+.animus-route-node.is-selected .animus-route-label {
+  fill: #0d0d0f;
 }
 
 .animus-route-legend {
@@ -560,6 +624,7 @@ html.light .animus-route-link {
   list-style: none;
   max-height: 16rem;
   overflow: auto;
+  padding: 2px;
 }
 
 .animus-route-list-item {
@@ -581,6 +646,23 @@ html.light .animus-route-link {
 .animus-route-list li.is-selected .animus-route-list-item,
 .animus-route-list-item:hover {
   border-color: var(--animus-border);
+}
+
+.animus-route-list li.is-selected .animus-route-list-item {
+  background: color-mix(in srgb, var(--primary, #ff5fa8) 14%, transparent);
+}
+
+.animus-route-list-item:focus-visible {
+  outline: 2px solid var(--ring, #ff5fa8);
+  outline-offset: -2px;
+}
+
+.animus-route-add {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border: 1px solid var(--animus-border);
+  border-radius: var(--animus-radius);
 }
 
 /* Dialogue */
@@ -664,6 +746,201 @@ html.light .animus-route-link {
   color: var(--animus-muted);
 }
 
+/* NPC inspector parts */
+
+.animus-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.animus-npc-section > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.animus-npc-section > summary:focus-visible {
+  outline: 2px solid var(--ring, #ff5fa8);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+.animus-npc-section-summary {
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: var(--animus-muted);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.animus-npc-section[open] > summary .animus-npc-section-summary {
+  display: none;
+}
+
+.animus-npc-subhead {
+  display: grid;
+  gap: 0.125rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--animus-border);
+}
+
+.animus-gui-section-body > .animus-npc-subhead:first-child,
+.animus-npc-behaviors > .animus-npc-subhead:first-child,
+.animus-npc-module > .animus-npc-subhead:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.animus-npc-subhead h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.animus-npc-subhead p {
+  margin: 0;
+}
+
+.animus-npc-module,
+.animus-npc-behaviors,
+.animus-npc-route {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-hologram-editor,
+.animus-armor-stand,
+.animus-npc-inventory {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.animus-hologram-preview {
+  display: grid;
+  justify-items: center;
+  gap: 0.125rem;
+  padding: 0.625rem;
+  border-radius: var(--animus-radius);
+  background: #0d0d0f;
+  color: #f3f0f2;
+  font-family: "Minecraft", var(--font-mono);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.animus-hologram-preview-line {
+  padding: 0 0.375rem;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.animus-armor-stand-parts {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.animus-armor-stand-part {
+  display: grid;
+  grid-template-columns: 5.5rem repeat(3, minmax(0, 1fr));
+  gap: 0.375rem;
+  align-items: end;
+}
+
+.animus-armor-stand-part label {
+  display: grid;
+  gap: 0.125rem;
+  font-size: 0.75rem;
+  color: var(--animus-muted);
+}
+
+.animus-armor-stand-part .animus-gui-input.is-number {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.animus-armor-stand-name {
+  align-self: center;
+  font-size: 0.8125rem;
+}
+
+.animus-armor-stand-part > .animus-gui-problem {
+  grid-column: 1 / -1;
+}
+
+.animus-npc-inventory-slot {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr) 5rem auto;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.animus-npc-inventory-slot > .animus-gui-problem {
+  grid-column: 1 / -1;
+}
+
+.animus-npc-inventory-number {
+  text-align: center;
+  color: var(--animus-muted);
+}
+
+/* Skin and pack documents */
+
+.animus-skin-summary,
+.animus-pack-editor {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.animus-skin-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: start;
+}
+
+.animus-skin-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+  min-width: 0;
+  flex: 1 1 16rem;
+}
+
+.animus-skin-facts dt {
+  color: var(--animus-muted);
+  font-size: 0.8125rem;
+}
+
+.animus-skin-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.animus-skin-wearers {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.animus-pack-module {
+  display: grid;
+  gap: 0.5rem;
+}
+
 @media (max-width: 1100px) {
   .animus-npc-visual {
     grid-template-columns: minmax(0, 1fr);
@@ -681,7 +958,7 @@ html.light .animus-route-link {
   }
 
   .animus-npc-row {
-    grid-template-columns: 1.5rem minmax(0, 1fr);
+    grid-template-columns: 1.75rem minmax(0, 1fr);
   }
 
   .animus-npc-row > .animus-npc-col-type,
@@ -703,4 +980,51 @@ html.light .animus-route-link {
   .animus-route-grid-wrap {
     max-width: none;
   }
+}
+
+/* Phone widths and touch screens: 44 px tap targets. */
+@media (max-width: 520px), (pointer: coarse) {
+  .animus-npc-tree-item,
+  .animus-route-list-item {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .animus-npc-check {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .animus-npc-row {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .animus-npc-row input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .animus-armor-stand-part {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .animus-armor-stand-name {
+    grid-column: 1 / -1;
+  }
+
+  .animus-npc-inventory-slot {
+    grid-template-columns: 2rem minmax(0, 1fr) 4.5rem;
+  }
+}
+
+/* Skins are named by a 64-character hash: let the document header wrap a
+   long unbroken title instead of widening the page. */
+.animus-document-header > div:first-child {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.animus-document-header h2,
+.animus-document-header > div:first-child > code {
+  overflow-wrap: anywhere;
 }

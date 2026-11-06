@@ -67,8 +67,8 @@ class FakeServer {
   static bool _until(DateTime? until) => until != null && now().isBefore(until);
 
   /// Mints a pairing secret and its code and link.
-  Map<String, Object?> pair([PairPaths paths = PairPaths.both, List<String> extraScopes = const <String>[]]) {
-    final Pairing pairing = api.tokens.pair(extraScopes);
+  Map<String, Object?> pair([PairPaths paths = PairPaths.both, List<String> extraScopes = const <String>[], num? tokenDays]) {
+    final Pairing pairing = api.tokens.pair(extraScopes, tokenDays);
     final String code = pairingCode(
       directUrl: paths == PairPaths.relay ? null : directUrl,
       relayUrl: paths == PairPaths.direct ? null : relayUrl,
@@ -149,6 +149,7 @@ class FakeServer {
           'relay': api.events.openFor(StreamPath.relay),
         },
         'relayConnections': relay.connections,
+        'controls': api.testControls,
         'documents': <Object?>[for (final StoredDocument document in api.documents.list()) document.version],
       };
 

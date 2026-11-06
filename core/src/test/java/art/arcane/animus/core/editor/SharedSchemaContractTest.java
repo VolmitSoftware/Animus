@@ -80,6 +80,10 @@ class SharedSchemaContractTest {
                 BehaviorCompiler.Result result = BehaviorCompiler.compile(object.toString());
                 yield result.program().isPresent() ? List.of() : result.diagnostics().stream().map(Object::toString).toList();
             }
+            case "route" -> {
+                try { art.arcane.animus.core.navigation.WaypointSettings.document(source); yield List.of(); }
+                catch (IOException | IllegalArgumentException invalid) { yield List.of(invalid.getMessage()); }
+            }
             case "pack" -> {
                 try { PackManifest.parse(source, id); yield List.of(); }
                 catch (IllegalArgumentException invalid) { yield List.of(invalid.getMessage()); }
@@ -90,6 +94,10 @@ class SharedSchemaContractTest {
             case "text-animation" -> art.arcane.animus.core.gui.TextAnimation.parse(id, source).problems();
             case "rig" -> art.arcane.animus.core.rig.RigDocument.parse(id, source).problems();
             case "animation" -> art.arcane.animus.core.rig.AnimationDocument.parse(id, source).problems();
+            case "server-behaviors" -> {
+                try { art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(source); yield List.of(); }
+                catch (IOException invalid) { yield List.of(invalid.getMessage()); }
+            }
             default -> { fail("No Java parser for fixture kind " + kind); yield List.of(); }
         };
     }

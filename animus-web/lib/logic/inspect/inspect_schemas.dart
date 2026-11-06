@@ -12,7 +12,7 @@ import 'completion_catalog.dart';
 import 'schema_fields.dart';
 
 class InspectSchemas {
-  InspectSchemas._({required this.npc, required this.behavior, required this.pack, required this.catalog, required this.live});
+  InspectSchemas._({required this.npc, required this.behavior, required this.pack, required this.serverBehaviors, required this.catalog, required this.live});
 
   /// Builds the set from a `GET /v1/schemas` map; any schema it lacks comes
   /// from the embedded copy.
@@ -32,6 +32,7 @@ class InspectSchemas {
       npc: pick('npc', fallback.npc),
       behavior: pick('behavior', fallback.behavior),
       pack: pick('pack', fallback.pack),
+      serverBehaviors: fallback.serverBehaviors,
       catalog: completions is Map<String, Object?> ? CompletionCatalog.fromJson(completions) : fallback.catalog,
       live: true,
     );
@@ -47,6 +48,7 @@ class InspectSchemas {
       npc: SchemaView(decode('generated/npc.schema.json')),
       behavior: SchemaView(decode('generated/behavior.schema.json')),
       pack: SchemaView(decode('generated/pack.schema.json')),
+      serverBehaviors: SchemaView(decode('server-behaviors-v1.schema.json')),
       catalog: CompletionCatalog.fromJson(decode('generated/completions.json')),
       live: false,
     );
@@ -61,6 +63,9 @@ class InspectSchemas {
   final SchemaView npc;
   final SchemaView behavior;
   final SchemaView pack;
+
+  /// `server-behaviors.json`, for the code view's completion.
+  final SchemaView serverBehaviors;
   final CompletionCatalog catalog;
 
   /// Whether these came from a connected server.
@@ -71,6 +76,7 @@ class InspectSchemas {
         DocumentKind.npc => npc,
         DocumentKind.behavior => behavior,
         DocumentKind.pack => pack,
+        DocumentKind.serverBehaviors => serverBehaviors,
         _ => null,
       };
 }

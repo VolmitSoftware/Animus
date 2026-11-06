@@ -201,6 +201,23 @@ void main() {
     expect(store.document(DocumentKind.npc, 'town/guard')!.path, 'npcs/town/guard.json');
   });
 
+  test('should open the skin document an NPC names once, quietly, with its server base', () async {
+    final String hash = 'ab' * 32;
+    final Map<String, Object?> skin = <String, Object?>{'signature': 'sig', 'skinName': 'x' * 36, 'textureRaw': 'e30='};
+    server.put(DocumentKind.skin, hash, skin);
+    final List<LiveNotice> notices = <LiveNotice>[];
+    session.notices.listen(notices.add);
+    final int before = network.sent.length;
+    await Future.wait(<Future<void>>[session.openSkin(hash), session.openSkin(hash)]);
+    await session.openSkin(hash);
+    expect(store.document(DocumentKind.skin, hash)!.json, skin);
+    expect(store.workspace!.server!.bases['skin:$hash'], isNotNull);
+    expect(network.sent.length - before, 1, reason: 'one GET for the skin');
+    expect(notices, isEmpty);
+    await session.openSkin('cd' * 32);
+    expect(store.document(DocumentKind.skin, 'cd' * 32), isNull, reason: 'the server has no such skin');
+  });
+
   test('should apply a change set and move the base to the new revision', () async {
     await session.openDocuments(session.catalog);
     await edit('town/guard', (Map<String, Object?> json) => json..['name'] = 'Captain');
@@ -328,7 +345,7 @@ void main() {
     await stream.end('limit');
     await settle();
     final List<String> messages = <String>[for (final LiveNotice notice in session.log) notice.message];
-    expect(messages, contains(allOf(contains('fell too far behind'), contains('limit'))));
+    expect(messages.where((String message) => message.contains('fell too far behind')), hasLength(1), reason: 'one notice per close');
     expect(connection.status.online, isTrue);
     expect(network.streams.length, greaterThan(1), reason: 'a new event stream is open');
     expect(network.sent.where(((ConnectionPath, ApiRequest) sent) => sent.$2.path == '/v1/catalog').length, greaterThan(catalogLoads));

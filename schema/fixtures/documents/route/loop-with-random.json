@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "order": "random",
+  "loop": true,
+  "points": [
+    {
+      "x": 0,
+      "y": 64,
+      "z": 0
+    }
+  ]
+}
