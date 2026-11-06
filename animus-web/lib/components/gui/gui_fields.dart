@@ -4,6 +4,7 @@
 /// the document.
 library;
 
+import 'dart:convert';
 import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -34,20 +35,36 @@ typedef JsonEdit = void Function(Object? json, {String? coalesce});
 
 int _nextFieldId = 0;
 
+/// Whether the system asks for reduced motion; animated previews start
+/// paused when it does.
+bool prefersReducedMotion() => web.window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/// A fresh element id for a control and the label that names it.
+String guiFieldId() => 'animus-field-${_nextFieldId++}';
+
+/// A stable element id for the control at a document [path], so a [GuiRow]
+/// label can point at it with `for`.
+String guiPathId(String path) => 'animus-at-${path.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}';
+
 /// A labelled row: the control, an optional help line and the diagnostics
-/// the document has at [path].
+/// the document has at [path]. With [forId] the label is a `<label for>`
+/// naming the control with that id.
 class GuiRow extends StatelessWidget {
-  const GuiRow({required this.label, required this.child, this.help, this.problems = const <Diagnostic>[], super.key});
+  const GuiRow({required this.label, required this.child, this.help, this.problems = const <Diagnostic>[], this.forId, super.key});
 
   final String label;
   final Widget child;
   final String? help;
   final List<Diagnostic> problems;
+  final String? forId;
 
   @override
   Widget build(BuildContext context) {
     return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      dom.span(classes: 'animus-gui-label', <Widget>[Component.text(label)]),
+      if (forId != null)
+        dom.label(htmlFor: forId, classes: 'animus-gui-label', <Widget>[Component.text(label)])
+      else
+        dom.span(classes: 'animus-gui-label', <Widget>[Component.text(label)]),
       dom.div(classes: 'animus-gui-control', <Widget>[
         child,
         if (help != null && help!.isNotEmpty) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(help!)]),
@@ -83,8 +100,12 @@ class GuiTextInput extends StatefulWidget {
     this.placeholder,
     this.multiline = false,
     this.label,
+    this.id,
     super.key,
   });
+
+  /// The element id; a [GuiRow] with the same `forId` labels it.
+  final String? id;
 
   final String value;
   final void Function(String value) onChanged;
@@ -101,7 +122,7 @@ class GuiTextInput extends StatefulWidget {
 }
 
 class _GuiTextInputState extends State<GuiTextInput> {
-  final String _id = 'animus-field-${_nextFieldId++}';
+  late final String _id = component.id ?? guiFieldId();
   List<ExpressionCompletion> _completions = const <ExpressionCompletion>[];
   int _active = 0;
   bool _focused = false;
@@ -273,8 +294,10 @@ class _GuiTextInputState extends State<GuiTextInput> {
 
 /// A number field; empty clears the value.
 class GuiNumberInput extends StatefulWidget {
-  const GuiNumberInput({required this.value, required this.onChanged, this.integer = true, this.label, this.placeholder, super.key});
+  const GuiNumberInput({required this.value, required this.onChanged, this.integer = true, this.label, this.placeholder, this.id, super.key});
 
+  /// The element id; a [GuiRow] with the same `forId` labels it.
+  final String? id;
   final num? value;
   final void Function(num? value) onChanged;
   final bool integer;
@@ -293,6 +316,7 @@ class _GuiNumberInputState extends State<GuiNumberInput> {
   Widget build(BuildContext context) {
     final num? shown = component.value;
     return dom.input(
+      id: component.id,
       classes: 'animus-gui-input is-number',
       type: dom.InputType.number,
       value: _typed ?? (shown == null ? '' : (shown == shown.roundToDouble() ? shown.toInt().toString() : shown.toString())),
@@ -331,6 +355,7 @@ class GuiSelect extends StatelessWidget {
     this.labels = const <String, String>{},
     this.id,
     this.label,
+    this.hiddenLabel,
     super.key,
   });
 
@@ -348,9 +373,25 @@ class GuiSelect extends StatelessWidget {
   /// names the control.
   final String? label;
 
+  /// A label read by assistive technology only, for a select whose purpose
+  /// the surrounding layout already shows.
+  final String? hiddenLabel;
+
   @override
   Widget build(BuildContext context) {
     final List<String> all = <String>[...options, if (value != null && !options.contains(value)) value!];
+    final String? named = hiddenLabel;
+    if (named != null) {
+      final String own = id ?? guiFieldId();
+      return dom.span(classes: 'animus-gui-select', <Widget>[
+        dom.label(htmlFor: own, classes: 'animus-sr-only', <Widget>[Component.text(named)]),
+        _select(own, all),
+      ]);
+    }
+    return _select(id, all);
+  }
+
+  Widget _select(String? id, List<String> all) {
     return ArcaneSelect(
       size: ComponentSize.sm,
       id: id,
@@ -412,6 +453,12 @@ class GuiLinesEditor extends StatelessWidget {
             label: 'Move line ${index + 1} up',
             disabled: index == 0,
             onPressed: () => onChanged(<String>[for (final Object? line in moveItem(lines, index, index - 1)) line! as String]),
+          ),
+          GuiIconButton(
+            icon: ArcaneIcon.arrowDown(size: IconSize.sm),
+            label: 'Move line ${index + 1} down',
+            disabled: index == lines.length - 1,
+            onPressed: () => onChanged(<String>[for (final Object? line in moveItem(lines, index, index + 1)) line! as String]),
           ),
           GuiIconButton(
             icon: ArcaneIcon.x(size: IconSize.sm),
@@ -490,3 +537,141 @@ class GuiSection extends StatelessWidget {
 
 /// Reads a string list from JSON, dropping non-strings.
 List<String> stringList(Object? value) => <String>[for (final Object? item in asList(value)) if (item is String) item];
+
+/// Section tabs: a tablist whose selected tab has a raised neutral fill and
+/// a pink indicator, so the pink fill stays with the primary action.
+class GuiTabs extends StatelessWidget {
+  const GuiTabs({required this.tabs, required this.selected, required this.onSelect, required this.label, this.disabled = const <int>{}, super.key});
+
+  final List<String> tabs;
+  final int selected;
+  final void Function(int index) onSelect;
+  final String label;
+  final Set<int> disabled;
+
+  @override
+  Widget build(BuildContext context) => dom.div(
+        classes: 'animus-gui-tabs',
+        attributes: <String, String>{'role': 'tablist', 'aria-label': label},
+        <Widget>[
+          for (int index = 0; index < tabs.length; index++)
+            Button.ghost(
+              label: tabs[index],
+              size: ButtonSize.small,
+              disabled: disabled.contains(index),
+              attributes: <String, String>{'role': 'tab', 'aria-selected': '${index == selected}', 'data-tab': '$index'},
+              onPressed: () => onSelect(index),
+            ),
+        ],
+      );
+}
+
+/// A number, or an expression that gives one: digits write a number, any
+/// other text writes the expression string.
+class GuiNumberOrExpression extends StatelessWidget {
+  const GuiNumberOrExpression({required this.value, required this.onChanged, required this.label, this.names = ExpressionNames.standard, this.id, super.key});
+
+  final Object? value;
+  final void Function(Object? value) onChanged;
+  final String label;
+  final ExpressionNames names;
+  final String? id;
+
+  @override
+  Widget build(BuildContext context) {
+    final Object? shown = value;
+    final String text = shown is num ? (shown == shown.roundToDouble() ? '${shown.toInt()}' : '$shown') : (shown is String ? shown : '');
+    return GuiTextInput(
+      id: id,
+      value: text,
+      mode: GuiTextMode.expression,
+      names: names,
+      label: label,
+      onChanged: (String raw) {
+        final String trimmed = raw.trim();
+        if (trimmed.isEmpty) {
+          onChanged(null);
+          return;
+        }
+        onChanged(num.tryParse(trimmed) ?? trimmed);
+      },
+    );
+  }
+}
+
+/// Earlier and later buttons for the item at [index] of a list of [length].
+List<Widget> guiMoveButtons({required int index, required int length, required String noun, required void Function(int to) onMove}) => <Widget>[
+      GuiIconButton(
+        icon: ArcaneIcon.arrowUp(size: IconSize.sm),
+        label: 'Move $noun earlier',
+        disabled: index == 0,
+        onPressed: () => onMove(index - 1),
+      ),
+      GuiIconButton(
+        icon: ArcaneIcon.arrowDown(size: IconSize.sm),
+        label: 'Move $noun later',
+        disabled: index >= length - 1,
+        onPressed: () => onMove(index + 1),
+      ),
+    ];
+
+/// A JSON object typed as text. Nothing is written until the text parses
+/// to an object; until then the field says what is wrong.
+class GuiJsonObjectInput extends StatefulWidget {
+  const GuiJsonObjectInput({required this.value, required this.onChanged, required this.label, this.id, this.multiline = false, super.key});
+
+  final JsonMap? value;
+
+  /// The parsed object, or null when the text is cleared.
+  final void Function(JsonMap? value) onChanged;
+  final String label;
+  final String? id;
+  final bool multiline;
+
+  @override
+  State<GuiJsonObjectInput> createState() => _GuiJsonObjectInputState();
+}
+
+class _GuiJsonObjectInputState extends State<GuiJsonObjectInput> {
+  late final String _id = component.id ?? guiFieldId();
+  String? _typed;
+  String? _problem;
+
+  String _encode(JsonMap? value) => value == null || value.isEmpty ? '' : (component.multiline ? prettyJson(value).trimRight() : jsonEncode(value));
+
+  void _onText(String text) {
+    _typed = text;
+    if (text.trim().isEmpty) {
+      setState(() => _problem = null);
+      component.onChanged(null);
+      return;
+    }
+    try {
+      final Object? parsed = jsonDecode(text);
+      if (parsed is Map<String, Object?>) {
+        setState(() => _problem = null);
+        component.onChanged(parsed);
+      } else {
+        setState(() => _problem = 'Must be a JSON object in braces; nothing is saved until it is.');
+      }
+    } on FormatException catch (error) {
+      setState(() => _problem = 'Not valid JSON yet (${error.message}); nothing is saved until it parses.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return dom.div(classes: 'animus-gui-text', <Widget>[
+      GuiTextInput(
+        id: _id,
+        value: _typed ?? _encode(component.value),
+        multiline: component.multiline,
+        label: component.label,
+        placeholder: '{"name": "value"}',
+        onChanged: _onText,
+      ),
+      if (_problem != null)
+        dom.span(classes: 'animus-gui-problem is-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_problem!)]),
+    ]);
+  }
+}

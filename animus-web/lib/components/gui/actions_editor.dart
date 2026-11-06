@@ -3,11 +3,10 @@
 /// flagged with its exact field and can only be removed or replaced.
 library;
 
-import 'dart:convert';
-
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
+import 'package:web/web.dart' as web;
 
 import '../../logic/gui/gui_catalog.dart';
 import '../../logic/gui/gui_expression.dart';
@@ -82,11 +81,12 @@ class ActionsEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     final GuiActionLists lists = GuiActionLists.instance;
     return dom.div(classes: 'animus-gui-actions', <Widget>[
-      if (actions.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No actions.')]),
+      if (actions.isEmpty) dom.p(classes: 'animus-muted', <Widget>[Component.text(steps ? 'No steps yet. Add a step below.' : 'Nothing runs yet. Add an action below.')]),
       for (int index = 0; index < actions.length; index++) _action(index, asMap(actions[index]), lists),
       dom.div(classes: 'animus-gui-add', <Widget>[
         GuiSelect(
           value: null,
+          hiddenLabel: steps ? 'Add a step' : 'Add an action',
           noneLabel: steps ? 'Add a step...' : 'Add an action...',
           options: <String>[for (final String type in lists.offered) if (!unavailable.contains(type)) type],
           labels: actionLabels,
@@ -121,8 +121,12 @@ class ActionsEditor extends StatelessWidget {
       attributes: <String, String>{'data-path': actionPath},
       <Widget>[
         dom.div(classes: 'animus-gui-action-head', <Widget>[
-          dom.span(classes: 'animus-gui-action-index', <Widget>[Component.text('${index + 1}')]),
+          dom.label(htmlFor: guiPathId('$actionPath-type'), classes: 'animus-gui-action-index', <Widget>[
+            dom.span(classes: 'animus-sr-only', <Widget>[Component.text(steps ? 'Step ' : 'Action ')]),
+            Component.text('${index + 1}'),
+          ]),
           GuiSelect(
+            id: guiPathId('$actionPath-type'),
             value: type,
             options: <String>[for (final String one in lists.offered) if (!unavailable.contains(one)) one],
             labels: <String, String>{
@@ -131,11 +135,13 @@ class ActionsEditor extends StatelessWidget {
             },
             onChanged: (String? next) {
               if (next == null || next == type) return;
-              _set(index, <String, Object?>{
-                ...newAction(next),
-                for (final String common in const <String>['trigger', 'when', 'cooldownTicks'])
-                  if (action.containsKey(common)) common: action[common],
-              });
+              final (JsonMap changed, List<String> dropped) = changeActionType(action, next);
+              if (dropped.isNotEmpty &&
+                  !web.window.confirm('A $next action has no ${dropped.join(', ')}. Changing the type drops the actions nested there. Change it anyway?')) {
+                onChanged(<Object?>[...actions]);
+                return;
+              }
+              _set(index, changed);
             },
           ),
           GuiIconButton(
@@ -179,8 +185,15 @@ class ActionsEditor extends StatelessWidget {
           if (steps)
             GuiRow(
               label: 'At tick',
-              help: 'When this step runs, from the start of the sequence.',
-              child: GuiNumberInput(value: asInt(action['atTicks']), onChanged: (num? value) => _set(index, _field(action, 'atTicks', value))),
+              forId: guiPathId('$actionPath.atTicks'),
+              help: 'When this step runs, in ticks from the start of the sequence.',
+              problems: diagnosticsAt(diagnostics, childPath(actionPath, 'atTicks')),
+              child: GuiNumberInput(
+                id: guiPathId('$actionPath.atTicks'),
+                value: asInt(action['atTicks']),
+                label: 'At tick',
+                onChanged: (num? value) => _set(index, _field(action, 'atTicks', value)),
+              ),
             ),
           GuiSection(
             title: 'Click and condition',
@@ -199,16 +212,20 @@ class ActionsEditor extends StatelessWidget {
     final String fieldPath = childPath(actionPath, field.name);
     final Object? value = action[field.name];
     void set(Object? next) => _set(index, _field(action, field.name, next));
-    final String label = '${field.name}${field.required ? ' *' : ''}';
+    final String name = humanizeKey(field.name);
+    final String label = '$name${field.required ? ' *' : ''}';
+    final String id = guiPathId(fieldPath);
     final List<Diagnostic> problems = diagnosticsAt(diagnostics, fieldPath);
     switch (field.kind) {
       case GuiFieldKind.template || GuiFieldKind.expression || GuiFieldKind.text:
         final bool callTarget = field.name == 'action' && asString(action['type']) == 'call';
         return GuiRow(
           label: label,
+          forId: id,
           help: callTarget && namedLists.isNotEmpty ? '${field.help} Lists: ${namedLists.join(', ')}.' : field.help,
           problems: problems,
           child: GuiTextInput(
+            id: id,
             value: value is String ? value : (value == null ? '' : '$value'),
             mode: switch (field.kind) {
               GuiFieldKind.template => GuiTextMode.template,
@@ -216,29 +233,49 @@ class ActionsEditor extends StatelessWidget {
               _ => GuiTextMode.plain,
             },
             names: names,
-            label: field.name,
+            label: name,
             onChanged: set,
           ),
         );
       case GuiFieldKind.integer || GuiFieldKind.number:
         return GuiRow(
           label: label,
+          forId: id,
           help: field.help,
           problems: problems,
-          child: GuiNumberInput(value: value is num ? value : null, integer: field.kind == GuiFieldKind.integer, label: field.name, onChanged: set),
+          child: GuiNumberInput(id: id, value: value is num ? value : null, integer: field.kind == GuiFieldKind.integer, label: name, onChanged: set),
         );
       case GuiFieldKind.boolean:
-        return GuiRow(label: field.name, help: field.help, problems: problems, child: GuiSwitch(value: value == true, label: field.name, onChanged: (bool on) => set(on ? true : null)));
+        return GuiRow(label: name, help: field.help, problems: problems, child: GuiSwitch(value: value == true, label: name, onChanged: (bool on) => set(on ? true : null)));
       case GuiFieldKind.choice:
+        return GuiRow(
+          label: label,
+          forId: id,
+          help: field.help,
+          problems: problems,
+          child: GuiSelect(id: id, value: asString(value), options: field.choices, allowNone: !field.required, onChanged: set),
+        );
+      case GuiFieldKind.multiChoice:
+        final List<String> chosen = stringList(value);
         return GuiRow(
           label: label,
           help: field.help,
           problems: problems,
-          child: GuiSelect(value: asString(value), options: field.choices, allowNone: !field.required, onChanged: set),
+          child: dom.div(classes: 'animus-row', <Widget>[
+            for (final String choice in field.choices)
+              GuiSwitch(
+                value: chosen.contains(choice),
+                label: choice,
+                onChanged: (bool on) {
+                  final List<String> next = <String>[for (final String one in field.choices) if (one == choice ? on : chosen.contains(one)) one];
+                  set(next.isEmpty ? null : next);
+                },
+              ),
+          ]),
         );
       case GuiFieldKind.actions:
         return GuiSection(
-          title: field.name,
+          title: name,
           count: asList(value).length,
           children: <Widget>[
             ActionsEditor(
@@ -255,7 +292,7 @@ class ActionsEditor extends StatelessWidget {
         );
       case GuiFieldKind.branches:
         final JsonList branches = asList(value);
-        return GuiSection(title: 'branches', count: branches.length, children: <Widget>[
+        return GuiSection(title: 'Branches', count: branches.length, children: <Widget>[
           for (int branch = 0; branch < branches.length; branch++)
             GuiSection(title: 'Branch ${branch + 1}', children: <Widget>[
               ActionsEditor(
@@ -278,7 +315,7 @@ class ActionsEditor extends StatelessWidget {
         ]);
       case GuiFieldKind.cases:
         final JsonMap cases = asMap(value);
-        return GuiSection(title: 'cases', count: cases.length, children: <Widget>[
+        return GuiSection(title: 'Cases', count: cases.length, children: <Widget>[
           for (final MapEntry<String, Object?> entry in cases.entries)
             dom.div(classes: 'animus-gui-case', <Widget>[
               GuiRow(
@@ -323,9 +360,10 @@ class ActionsEditor extends StatelessWidget {
         ]);
       case GuiFieldKind.icon:
         final JsonMap icon = asMap(value);
+        // The item keeps every key it has; type is item when absent.
         JsonMap with_(String key, Object? next) {
-          final JsonMap out = <String, Object?>{'type': 'item', ...icon};
-          if (next == null || next == '') {
+          final JsonMap out = <String, Object?>{...icon};
+          if (next == null || next == '' || (next is List<Object?> && next.isEmpty)) {
             out.remove(key);
           } else {
             out[key] = next;
@@ -333,35 +371,28 @@ class ActionsEditor extends StatelessWidget {
           return out;
         }
 
-        return GuiSection(title: field.name, children: <Widget>[
-          GuiRow(
-            label: 'item *',
-            problems: diagnosticsAt(diagnostics, childPath(fieldPath, 'item')),
-            child: GuiTextInput(value: asString(icon['item']) ?? '', mode: GuiTextMode.template, names: names, label: 'Item id', onChanged: (String v) => set(with_('item', v))),
-          ),
-          GuiRow(label: 'name', child: GuiTextInput(value: asString(icon['name']) ?? '', mode: GuiTextMode.template, names: names, label: 'Item name', onChanged: (String v) => set(with_('name', v)))),
+        Widget row(String key, String rowLabel, Widget Function(String id) child, {String? help}) {
+          final String rowId = guiPathId(childPath(fieldPath, key));
+          return GuiRow(label: rowLabel, forId: rowId, help: help, problems: diagnosticsAt(diagnostics, childPath(fieldPath, key), nested: key == 'lore'), child: child(rowId));
+        }
+
+        return GuiSection(title: name, children: <Widget>[
+          for (final Diagnostic problem in problems) dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
+          row('item', 'Item *', (String rowId) => GuiTextInput(id: rowId, value: asString(icon['item']) ?? '', mode: GuiTextMode.template, names: names, label: 'Item id', onChanged: (String v) => set(with_('item', v))),
+              help: 'An item id such as minecraft:bread.'),
+          row('count', 'Count', (String rowId) => GuiNumberInput(id: rowId, value: asInt(icon['count']), label: 'Item count', onChanged: (num? v) => set(with_('count', v))),
+              help: '1 to 99 per stack; amount sets how many.'),
+          row('name', 'Name', (String rowId) => GuiTextInput(id: rowId, value: asString(icon['name']) ?? '', mode: GuiTextMode.template, names: names, label: 'Item name', onChanged: (String v) => set(with_('name', v)))),
+          row('lore', 'Lore', (String _) => GuiLinesEditor(lines: stringList(icon['lore']), names: names, onChanged: (List<String> lines) => set(with_('lore', lines)))),
+          row('customModelValue', 'Custom model', (String rowId) => GuiNumberInput(id: rowId, value: asInt(icon['customModelValue']), label: 'Custom model value', onChanged: (num? v) => set(with_('customModelValue', v)))),
         ]);
       case GuiFieldKind.object:
         return GuiRow(
-          label: field.name,
-          help: '${field.help} JSON object.',
+          label: name,
+          forId: id,
+          help: '${field.help} A JSON object.',
           problems: problems,
-          child: GuiTextInput(
-            value: value == null ? '' : jsonEncode(value),
-            label: field.name,
-            onChanged: (String text) {
-              if (text.trim().isEmpty) {
-                set(null);
-                return;
-              }
-              try {
-                final Object? parsed = jsonDecode(text);
-                if (parsed is Map<String, Object?>) set(parsed);
-              } on FormatException {
-                // Keep typing; nothing is written until the text parses.
-              }
-            },
-          ),
+          child: GuiJsonObjectInput(id: id, value: value is Map<String, Object?> ? value : null, label: name, onChanged: (JsonMap? next) => set(next)),
         );
     }
   }

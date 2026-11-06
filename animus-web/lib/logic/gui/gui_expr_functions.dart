@@ -361,7 +361,7 @@ double _packArgb(int a, int r, int g, int b) =>
 // Lists / strings
 // ---------------------------------------------------------------------------
 
-/// Index is `(long) floor(index)` — a saturating cast in Java — wrapped into
+/// Index is `(long) floor(index)` (a saturating cast in Java), wrapped into
 /// range with `floorMod`.
 double _palette(String name, List<Object?> args) {
   _requireCount(name, args, 2);

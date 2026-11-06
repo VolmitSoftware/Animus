@@ -1,7 +1,9 @@
 /// The shop editor: pages, the buy, sell and trade grids painted as the
-/// shop window with its controls, and an inspector for the shop and for the
-/// selected entry (prices, limits with resets, stock, permissions, discounts,
-/// trades and command entries).
+/// shop window with its controls, and an inspector for the shop (modes in
+/// order, owner and containers) and for the selected entry (prices, limits
+/// with resets, stock, permissions, discounts, trades and command entries).
+/// A shop with containers trades items for items, so the editor offers
+/// only trade and static entries there, without price or stock.
 library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
@@ -11,6 +13,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_layout.dart';
 import '../../logic/gui/gui_validation.dart';
+import '../../logic/gui/shop_entries.dart';
 import '../../model/animus_document.dart';
 import 'chest_window.dart';
 import 'component_editor.dart';
@@ -18,24 +21,90 @@ import 'gui_fields.dart';
 
 const Map<String, String> _modeLabels = <String, String>{'buy': 'Buy', 'sell': 'Sell', 'trade': 'Trade'};
 
+const Map<String, String> _typeLabels = <String, String>{
+  'buy': 'buy (the player pays)',
+  'command': 'command (runs commands when bought)',
+  'sell': 'sell (the shop pays)',
+  'trade': 'trade (items for items)',
+  'static': 'static (decoration)',
+};
+
 List<String> _enabledModes(JsonMap shop) {
   final List<String> modes = stringList(shop['modes']);
   return modes.isEmpty ? shopModes : modes;
 }
 
-class ShopPreview extends StatelessWidget {
-  const ShopPreview({required this.document, this.page = 0, this.mode, super.key});
+/// The page and mode tabs over a shop window.
+class _ShopSwitch extends StatelessWidget {
+  const _ShopSwitch({required this.shop, required this.page, required this.mode, required this.onPage, required this.onMode, this.trailing = const <Widget>[]});
 
-  final AnimusDocument document;
+  final JsonMap shop;
   final int page;
-  final String? mode;
+  final String mode;
+  final void Function(int page) onPage;
+  final void Function(String mode) onMode;
+  final List<Widget> trailing;
 
   @override
   Widget build(BuildContext context) {
-    final JsonMap shop = asMap(document.json);
-    final String shown = mode ?? asString(shop['defaultMode']) ?? _enabledModes(shop).first;
+    final JsonList pages = asList(shop['pages']);
+    final List<String> modes = _enabledModes(shop);
+    return dom.div(classes: 'animus-gui-toolbar', <Widget>[
+      if (pages.isNotEmpty)
+        GuiTabs(
+          label: 'Pages',
+          tabs: <String>[for (int index = 0; index < pages.length; index++) asString(asMap(pages[index])['name']) ?? 'Page ${index + 1}'],
+          selected: page,
+          onSelect: onPage,
+        ),
+      ...trailing,
+      GuiTabs(label: 'Modes', tabs: <String>[for (final String one in modes) _modeLabels[one] ?? one], selected: modes.indexOf(mode), onSelect: (int index) => onMode(modes[index])),
+    ]);
+  }
+}
+
+class ShopPreview extends StatefulWidget {
+  const ShopPreview({required this.document, super.key});
+
+  final AnimusDocument document;
+
+  @override
+  State<ShopPreview> createState() => _ShopPreviewState();
+}
+
+class _ShopPreviewState extends State<ShopPreview> {
+  int _page = 0;
+  String? _mode;
+  int? _slot;
+
+  @override
+  Widget build(BuildContext context) {
+    final JsonMap shop = asMap(component.document.json);
+    final int pages = asList(shop['pages']).length;
+    if (_page >= pages) _page = pages == 0 ? 0 : pages - 1;
+    final List<String> modes = _enabledModes(shop);
+    final String shown = _mode != null && modes.contains(_mode) ? _mode! : (asString(shop['defaultMode']) ?? modes.first);
     return dom.section(classes: 'animus-panel animus-gui-preview', <Widget>[
-      ChestWindow(layout: layoutShop(shop, page: page, mode: shown), label: 'Shop window ${document.id}'),
+      _ShopSwitch(
+        shop: shop,
+        page: _page,
+        mode: shown,
+        onPage: (int page) => setState(() {
+          _page = page;
+          _slot = null;
+        }),
+        onMode: (String mode) => setState(() {
+          _mode = mode;
+          _slot = null;
+        }),
+      ),
+      ChestWindow(
+        layout: layoutShop(shop, page: _page, mode: shown),
+        label: 'Shop window ${component.document.id}',
+        selected: _slot,
+        onSlot: (int slot) => setState(() => _slot = _slot == slot ? null : slot),
+      ),
+      const dom.p(classes: 'animus-muted', <Widget>[Component.text('Tap or focus a slot to read its name and lore.')]),
     ]);
   }
 }
@@ -50,14 +119,17 @@ class ShopEditor extends StatefulWidget {
   State<ShopEditor> createState() => _ShopEditorState();
 }
 
+enum _Tab { entry, page, shop }
+
 class _ShopEditorState extends State<ShopEditor> {
   int _page = 0;
   String? _mode;
   int? _slot;
-  bool _shopTab = false;
+  _Tab _tab = _Tab.page;
 
   JsonMap get _shop => asMap(component.document.json);
   List<Diagnostic> get _diagnostics => component.document.diagnostics;
+  bool get _container => isContainerShop(_shop);
 
   void _write(List<JsonStep> steps, Object? value, {String? coalesce}) =>
       component.onJson(writeIn(_shop, steps, value), coalesce: coalesce ?? steps.join('.'));
@@ -66,7 +138,13 @@ class _ShopEditorState extends State<ShopEditor> {
     final List<String> modes = _enabledModes(_shop);
     final String? mode = _mode;
     if (mode != null && modes.contains(mode)) return mode;
-    return asString(_shop['defaultMode']) ?? modes.first;
+    final String? first = asString(_shop['defaultMode']);
+    return first != null && modes.contains(first) ? first : modes.first;
+  }
+
+  Widget _row(String label, String path, Widget Function(String id) child, {String? help, bool nested = false}) {
+    final String id = guiPathId(path);
+    return GuiRow(label: label, forId: id, help: help, problems: diagnosticsAt(_diagnostics, path, nested: nested), child: child(id));
   }
 
   @override
@@ -76,52 +154,43 @@ class _ShopEditorState extends State<ShopEditor> {
     if (_page >= pages.length) _page = pages.isEmpty ? 0 : pages.length - 1;
     final String mode = _shownMode;
     final ChestLayout layout = layoutShop(shop, page: _page, mode: mode);
+    final _Tab tab = _tab == _Tab.entry && _slot == null ? _Tab.page : _tab;
     return dom.div(classes: 'animus-gui-editor', <Widget>[
       dom.section(classes: 'animus-panel animus-gui-stage', <Widget>[
-        dom.div(classes: 'animus-gui-toolbar', <Widget>[
-          dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'tablist', 'aria-label': 'Pages'}, <Widget>[
-            for (int index = 0; index < pages.length; index++)
-              Button(
-                label: asString(asMap(pages[index])['name']) ?? 'Page ${index + 1}',
-                size: ButtonSize.small,
-                variant: index == _page ? ButtonVariant.primary : ButtonVariant.ghost,
-                attributes: <String, String>{'role': 'tab', 'aria-selected': '${index == _page}'},
-                onPressed: () => setState(() {
-                  _page = index;
-                  _slot = null;
-                }),
-              ),
+        _ShopSwitch(
+          shop: shop,
+          page: _page,
+          mode: mode,
+          onPage: (int page) => setState(() {
+            _page = page;
+            _slot = null;
+          }),
+          onMode: (String one) => setState(() {
+            _mode = one;
+            _slot = null;
+          }),
+          trailing: <Widget>[
             GuiIconButton(
               icon: ArcaneIcon.plus(size: IconSize.sm),
               label: 'Add page',
               disabled: pages.length >= 64,
               onPressed: () {
                 _write(<JsonStep>['pages'], <Object?>[...pages, <String, Object?>{'name': 'Page ${pages.length + 1}', 'rows': 3}]);
-                setState(() => _page = pages.length);
+                setState(() {
+                  _page = pages.length;
+                  _tab = _Tab.page;
+                });
               },
             ),
-          ]),
-          dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'tablist', 'aria-label': 'Modes'}, <Widget>[
-            for (final String one in _enabledModes(shop))
-              Button(
-                label: _modeLabels[one] ?? one,
-                size: ButtonSize.small,
-                variant: one == mode ? ButtonVariant.primary : ButtonVariant.ghost,
-                attributes: <String, String>{'role': 'tab', 'aria-selected': '${one == mode}'},
-                onPressed: () => setState(() {
-                  _mode = one;
-                  _slot = null;
-                }),
-              ),
-          ]),
-        ]),
+          ],
+        ),
         ChestWindow(
           layout: layout,
           selected: _slot,
           label: 'Shop window ${component.document.id}',
           onSlot: (int slot) => setState(() {
             _slot = slot;
-            _shopTab = false;
+            _tab = _Tab.entry;
           }),
         ),
         const dom.p(classes: 'animus-muted', <Widget>[
@@ -129,78 +198,60 @@ class _ShopEditorState extends State<ShopEditor> {
         ]),
       ]),
       dom.section(classes: 'animus-panel animus-gui-inspector', <Widget>[
-        dom.div(classes: 'animus-segmented animus-gui-tabs', attributes: const <String, String>{'role': 'tablist'}, <Widget>[
-          Button(
-            label: _slot == null ? 'Entry' : 'Slot $_slot',
-            size: ButtonSize.small,
-            disabled: _slot == null,
-            variant: !_shopTab && _slot != null ? ButtonVariant.primary : ButtonVariant.ghost,
-            attributes: <String, String>{'role': 'tab', 'aria-selected': '${!_shopTab && _slot != null}'},
-            onPressed: () => setState(() => _shopTab = false),
-          ),
-          Button(
-            label: 'Page',
-            size: ButtonSize.small,
-            variant: !_shopTab && _slot == null ? ButtonVariant.primary : ButtonVariant.ghost,
-            attributes: <String, String>{'role': 'tab', 'aria-selected': '${!_shopTab && _slot == null}'},
-            onPressed: () => setState(() {
-              _shopTab = false;
-              _slot = null;
-            }),
-          ),
-          Button(
-            label: 'Shop',
-            size: ButtonSize.small,
-            variant: _shopTab ? ButtonVariant.primary : ButtonVariant.ghost,
-            attributes: <String, String>{'role': 'tab', 'aria-selected': '$_shopTab'},
-            onPressed: () => setState(() => _shopTab = true),
-          ),
-        ]),
-        if (_shopTab) _shopFields(shop) else if (_slot == null) _pageFields(pages) else _entry(layout, mode),
+        GuiTabs(
+          label: 'Shop sections',
+          tabs: <String>[_slot == null ? 'Entry' : 'Slot $_slot', 'Page', 'Shop'],
+          selected: tab.index,
+          disabled: <int>{if (_slot == null) 0},
+          onSelect: (int index) => setState(() => _tab = _Tab.values[index]),
+        ),
+        switch (tab) {
+          _Tab.shop => _shopFields(shop),
+          _Tab.page => _pageFields(pages),
+          _Tab.entry => _entry(layout, mode),
+        },
       ]),
     ]);
   }
 
   Widget _shopFields(JsonMap shop) {
     final List<String> modes = stringList(shop['modes']);
+    final List<String> ordered = modes.isEmpty ? shopModes : modes;
+    void setModes(List<String> next) => _write(<JsonStep>['modes'], next.isEmpty ? null : next);
     return dom.div(classes: 'animus-gui-fields', <Widget>[
-      GuiRow(
-        label: 'Title',
-        problems: diagnosticsAt(_diagnostics, r'$.title'),
-        child: GuiTextInput(value: asString(shop['title']) ?? '', mode: GuiTextMode.template, label: 'Shop title', onChanged: (String v) => _write(<JsonStep>['title'], v.isEmpty ? null : v)),
-      ),
-      GuiRow(
-        label: 'Permission',
-        help: 'Needed to open the shop.',
-        problems: diagnosticsAt(_diagnostics, r'$.permission'),
-        child: GuiTextInput(value: asString(shop['permission']) ?? '', label: 'Shop permission', onChanged: (String v) => _write(<JsonStep>['permission'], v.isEmpty ? null : v)),
-      ),
+      _row('Title', r'$.title', (String id) => GuiTextInput(id: id, value: asString(shop['title']) ?? '', mode: GuiTextMode.template, label: 'Shop title', onChanged: (String v) => _write(<JsonStep>['title'], v.isEmpty ? null : v))),
+      _row('Permission', r'$.permission', (String id) => GuiTextInput(id: id, value: asString(shop['permission']) ?? '', label: 'Shop permission', placeholder: 'town.shop.baker', onChanged: (String v) => _write(<JsonStep>['permission'], v.isEmpty ? null : v)),
+          help: 'Needed to open the shop.'),
       GuiRow(
         label: 'Modes',
-        help: 'In switch order. None ticked means all three.',
-        problems: diagnosticsAt(_diagnostics, r'$.modes'),
-        child: dom.div(classes: 'animus-row', <Widget>[
+        help: 'Ticked modes, in the order the mode switch cycles them. None ticked means buy, sell, trade.',
+        problems: diagnosticsAt(_diagnostics, r'$.modes', nested: true),
+        child: dom.div(classes: 'animus-gui-lines', <Widget>[
+          for (int index = 0; index < ordered.length; index++)
+            dom.div(classes: 'animus-gui-line', <Widget>[
+              GuiSwitch(
+                value: modes.contains(ordered[index]),
+                label: _modeLabels[ordered[index]]!,
+                onChanged: (bool on) => setModes(on ? <String>[...modes, ordered[index]] : (<String>[...modes]..remove(ordered[index]))),
+              ),
+              if (modes.contains(ordered[index]))
+                ...guiMoveButtons(
+                  index: modes.indexOf(ordered[index]),
+                  length: modes.length,
+                  noun: '${_modeLabels[ordered[index]]} mode',
+                  onMove: (int to) => setModes(<String>[for (final Object? one in moveItem(modes, modes.indexOf(ordered[index]), to)) one! as String]),
+                ),
+            ]),
           for (final String mode in shopModes)
-            GuiSwitch(
-              value: modes.contains(mode),
-              label: _modeLabels[mode]!,
-              onChanged: (bool on) {
-                final List<String> next = on ? <String>[...modes, mode] : (<String>[...modes]..remove(mode));
-                _write(<JsonStep>['modes'], next.isEmpty ? null : next);
-              },
-            ),
+            if (!ordered.contains(mode))
+              dom.div(classes: 'animus-gui-line', <Widget>[
+                GuiSwitch(value: false, label: _modeLabels[mode]!, onChanged: (bool on) => setModes(<String>[...modes, mode])),
+              ]),
         ]),
       ),
-      GuiRow(
-        label: 'First mode',
-        problems: diagnosticsAt(_diagnostics, r'$.defaultMode'),
-        child: GuiSelect(value: asString(shop['defaultMode']), options: _enabledModes(shop), allowNone: true, noneLabel: 'first in modes', onChanged: (String? v) => _write(<JsonStep>['defaultMode'], v)),
-      ),
-      GuiRow(
-        label: 'Item matching',
-        help: 'strict compares every piece of item data; legacy is what imports use.',
-        child: GuiSelect(value: asString(shop['match']), options: const <String>['strict', 'legacy'], allowNone: true, noneLabel: 'strict', onChanged: (String? v) => _write(<JsonStep>['match'], v)),
-      ),
+      _row('First mode', r'$.defaultMode', (String id) => GuiSelect(id: id, value: asString(shop['defaultMode']), options: _enabledModes(shop), allowNone: true, noneLabel: 'first in modes', labels: _modeLabels, onChanged: (String? v) => _write(<JsonStep>['defaultMode'], v))),
+      _row('Item matching', r'$.match', (String id) => GuiSelect(id: id, value: asString(shop['match']), options: const <String>['strict', 'legacy'], allowNone: true, noneLabel: 'strict', onChanged: (String? v) => _write(<JsonStep>['match'], v)),
+          help: 'strict compares every piece of item data; legacy is what imports use.'),
       GuiRow(
         label: 'Purchases',
         child: dom.div(classes: 'animus-row', <Widget>[
@@ -209,55 +260,109 @@ class _ShopEditorState extends State<ShopEditor> {
           GuiSwitch(value: shop['log'] == true, label: 'Log', onChanged: (bool on) => _write(<JsonStep>['log'], on ? true : null)),
         ]),
       ),
-      GuiRow(
-        label: 'Revision',
-        child: GuiNumberInput(value: asInt(shop['revision']), label: 'Revision', onChanged: (num? v) => _write(<JsonStep>['revision'], v)),
+      _ownerSection(shop),
+      _containersSection(shop),
+      _row('Revision', r'$.revision', (String id) => GuiNumberInput(id: id, value: asInt(shop['revision']), label: 'Revision', onChanged: (num? v) => _write(<JsonStep>['revision'], v))),
+    ]);
+  }
+
+  Widget _ownerSection(JsonMap shop) {
+    final JsonMap owner = asMap(shop['owner']);
+    void set(String key, String value) {
+      final JsonMap next = withField(owner, key, value.trim());
+      _write(<JsonStep>['owner'], next.isEmpty ? null : next, coalesce: 'owner.$key');
+    }
+
+    return GuiSection(title: 'Owner', open: owner.isNotEmpty || _container, children: <Widget>[
+      const dom.p(classes: 'animus-muted', <Widget>[
+        Component.text('The player whose chests stock the shop and who receives its takings. A shop with containers needs one.'),
+      ]),
+      _row('UUID', r'$.owner.uuid', (String id) => GuiTextInput(id: id, value: asString(owner['uuid']) ?? '', label: 'Owner UUID', placeholder: '00000000-0000-0000-0000-000000000000', onChanged: (String v) => set('uuid', v)),
+          help: 'The canonical form, lowercase with dashes.'),
+      _row('Name', r'$.owner.name', (String id) => GuiTextInput(id: id, value: asString(owner['name']) ?? '', label: 'Owner name', onChanged: (String v) => set('name', v))),
+      for (final Diagnostic problem in diagnosticsAt(_diagnostics, r'$.owner'))
+        dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
+    ]);
+  }
+
+  Widget _containersSection(JsonMap shop) {
+    final JsonList containers = asList(shop['containers']);
+    void setAll(JsonList next) => _write(<JsonStep>['containers'], next.isEmpty ? null : next, coalesce: 'containers-structure');
+    return GuiSection(title: 'Containers', count: containers.length, open: containers.isNotEmpty, children: <Widget>[
+      const dom.p(classes: 'animus-muted', <Widget>[
+        Component.text('Chests the shop takes stock from and pays into. With containers the shop only trades items for items: '
+            'entries are trade or static, with no price and no stock of their own.'),
+      ]),
+      for (final Diagnostic problem in diagnosticsAt(_diagnostics, r'$.containers'))
+        dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
+      for (int index = 0; index < containers.length; index++)
+        dom.div(classes: 'animus-row animus-gui-goods', attributes: <String, String>{'data-path': '\$.containers[$index]'}, <Widget>[
+          GuiTextInput(
+            value: asString(asMap(containers[index])['world']) ?? '',
+            label: 'Container ${index + 1} world',
+            placeholder: 'world',
+            onChanged: (String v) => _write(<JsonStep>['containers', index, 'world'], v.isEmpty ? null : v),
+          ),
+          for (final String axis in const <String>['x', 'y', 'z'])
+            GuiNumberInput(
+              value: asInt(asMap(containers[index])[axis]),
+              label: 'Container ${index + 1} $axis',
+              placeholder: axis,
+              onChanged: (num? v) => _write(<JsonStep>['containers', index, axis], v),
+            ),
+          GuiIconButton(icon: ArcaneIcon.trash(size: IconSize.sm), label: 'Remove container ${index + 1}', onPressed: () => setAll(<Object?>[...containers]..removeAt(index))),
+          for (final Diagnostic problem in diagnosticsAt(_diagnostics, '\$.containers[$index]', nested: true))
+            dom.span(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text('${problem.path} ${problem.message}')]),
+        ]),
+      Button.secondary(
+        label: 'Add container',
+        size: ButtonSize.small,
+        disabled: containers.length >= 8,
+        onPressed: () => setAll(<Object?>[...containers, <String, Object?>{'world': 'world', 'x': 0, 'y': 64, 'z': 0}]),
       ),
     ]);
   }
 
   Widget _pageFields(JsonList pages) {
-    if (pages.isEmpty) return const dom.p(classes: 'animus-muted', <Widget>[Component.text('Add a page above.')]);
+    if (pages.isEmpty) {
+      return const dom.p(classes: 'animus-muted', <Widget>[Component.text('This shop has no pages. Use Add page above the window to make the first.')]);
+    }
     final JsonMap page = asMap(pages[_page]);
     final String path = '\$.pages[$_page]';
+    final int rows = asInt(page['rows']) ?? 3;
+    final List<String> outside = shopEntriesOutside(page, rows);
     return dom.div(classes: 'animus-gui-fields', <Widget>[
-      dom.p(classes: 'animus-muted', <Widget>[Component.text('Page ${_page + 1}. Click a slot to edit or add an entry.')]),
-      GuiRow(
-        label: 'Name',
-        child: GuiTextInput(value: asString(page['name']) ?? '', label: 'Page name', onChanged: (String v) => _write(<JsonStep>['pages', _page, 'name'], v.isEmpty ? null : v)),
-      ),
-      GuiRow(
-        label: 'Rows',
-        problems: diagnosticsAt(_diagnostics, '$path.rows'),
-        child: GuiSelect(
-          value: '${asInt(page['rows']) ?? 3}',
-          options: const <String>['1', '2', '3', '4', '5', '6'],
-          onChanged: (String? v) => _write(<JsonStep>['pages', _page, 'rows'], v == null ? null : int.parse(v)),
-        ),
-      ),
-      GuiRow(
-        label: 'Permission',
-        help: 'Players without it skip this page.',
-        problems: diagnosticsAt(_diagnostics, '$path.permission'),
-        child: GuiTextInput(value: asString(page['permission']) ?? '', label: 'Page permission', onChanged: (String v) => _write(<JsonStep>['pages', _page, 'permission'], v.isEmpty ? null : v)),
-      ),
+      dom.p(classes: 'animus-muted', <Widget>[Component.text('Page ${_page + 1}. Click a slot in the window to edit or add an entry.')]),
+      _row('Name', '$path.name', (String id) => GuiTextInput(id: id, value: asString(page['name']) ?? '', label: 'Page name', onChanged: (String v) => _write(<JsonStep>['pages', _page, 'name'], v.isEmpty ? null : v))),
+      _row('Rows', '$path.rows', (String id) => GuiSelect(
+            id: id,
+            value: '$rows',
+            options: const <String>['1', '2', '3', '4', '5', '6'],
+            onChanged: (String? v) => _write(<JsonStep>['pages', _page, 'rows'], v == null ? null : int.parse(v)),
+          )),
+      if (outside.isNotEmpty)
+        dom.p(classes: 'animus-gui-problem is-warning', attributes: const <String, String>{'role': 'alert'}, <Widget>[
+          Component.text('${outside.length} ${outside.length == 1 ? 'entry sits' : 'entries sit'} outside a $rows-row page (${outside.join(', ')}); '
+              'the server refuses the shop until you raise the rows or move ${outside.length == 1 ? 'it' : 'them'}.'),
+        ]),
+      _row('Permission', '$path.permission', (String id) => GuiTextInput(id: id, value: asString(page['permission']) ?? '', label: 'Page permission', onChanged: (String v) => _write(<JsonStep>['pages', _page, 'permission'], v.isEmpty ? null : v)),
+          help: 'Players without it skip this page.'),
       dom.div(classes: 'animus-row', <Widget>[
-        GuiIconButton(
-          icon: ArcaneIcon.arrowUp(size: IconSize.sm),
-          label: 'Move page earlier',
-          disabled: _page == 0,
-          onPressed: () {
-            _write(<JsonStep>['pages'], moveItem(pages, _page, _page - 1));
-            setState(() => _page--);
-          },
-        ),
+        ...guiMoveButtons(index: _page, length: pages.length, noun: 'page', onMove: (int to) {
+          _write(<JsonStep>['pages'], moveItem(pages, _page, to));
+          setState(() => _page = to);
+        }),
         Button.ghost(
           label: 'Remove page',
           size: ButtonSize.small,
           disabled: pages.length <= 1,
           onPressed: () {
-            _write(<JsonStep>['pages'], <Object?>[...pages]..removeAt(_page));
-            setState(() => _page = 0);
+            final int removed = _page;
+            _write(<JsonStep>['pages'], <Object?>[...pages]..removeAt(removed));
+            setState(() {
+              _page = removed >= pages.length - 1 ? removed - 1 : removed;
+              _slot = null;
+            });
           },
         ),
       ]),
@@ -268,41 +373,25 @@ class _ShopEditorState extends State<ShopEditor> {
     final int slot = _slot!;
     final ChestCell cell = layout.cell(slot.clamp(0, layout.cells.length - 1));
     final List<JsonStep> steps = <JsonStep>['pages', _page, mode, '$slot'];
+    final bool container = _container;
     if (cell.source == ChestCellSource.control) {
       return const dom.p(classes: 'animus-muted', <Widget>[
-        Component.text('A shop control. Entries under a shown control are hidden.'),
+        Component.text('A shop control. An entry under a shown control is hidden; pick another slot for entries.'),
       ]);
     }
     final JsonMap entry = asMap(readIn(_shop, steps));
     if (entry.isEmpty) {
-      final String type = mode == 'buy' ? 'buy' : mode;
+      final List<String> types = shopTypesFor(mode, container: container).where((String type) => type != 'static').toList();
       return dom.div(classes: 'animus-gui-fields', <Widget>[
-        dom.p(classes: 'animus-muted', <Widget>[Component.text('Slot $slot of the ${_modeLabels[mode]} grid is empty.')]),
-        Button.secondary(
-          label: 'Add a $type entry',
-          size: ButtonSize.small,
-          onPressed: () => _write(steps, <String, Object?>{
-            'id': _freshId(),
-            'type': type,
-            'item': <String, Object?>{'id': 'minecraft:bread'},
-            if (type == 'trade') ...<String, Object?>{
-              'needs': <Object?>[<String, Object?>{'item': <String, Object?>{'id': 'minecraft:emerald'}, 'amount': 1}],
-              'gives': <Object?>[<String, Object?>{'item': <String, Object?>{'id': 'minecraft:bread'}, 'amount': 1}],
-            } else
-              'price': 1,
-          }),
-        ),
-        if (mode == 'buy')
-          Button.ghost(
-            label: 'Add a command entry',
+        dom.p(classes: 'animus-muted', <Widget>[
+          Component.text('Slot $slot of the ${_modeLabels[mode]} grid is empty. Add an entry for it.'
+              '${container && mode != 'trade' ? ' A shop with containers sells through trades, so this grid takes decorations only.' : ''}'),
+        ]),
+        for (final String type in types)
+          Button.secondary(
+            label: 'Add a $type entry',
             size: ButtonSize.small,
-            onPressed: () => _write(steps, <String, Object?>{
-              'id': _freshId(),
-              'type': 'command',
-              'item': <String, Object?>{'id': 'minecraft:paper'},
-              'price': 1,
-              'commands': <Object?>[<String, Object?>{'command': 'say {player} bought a ticket', 'as': 'console'}],
-            }),
+            onPressed: () => _write(steps, withShopEntryType(<String, Object?>{'id': _freshId(), 'item': <String, Object?>{'id': 'minecraft:bread'}}, type, container: container)),
           ),
         Button.ghost(
           label: 'Add a decoration',
@@ -325,45 +414,36 @@ class _ShopEditorState extends State<ShopEditor> {
     final JsonMap stock = asMap(entry['stock']);
     final JsonMap discount = asMap(entry['discount']);
     final bool priced = type != 'static';
+    final bool showPrice = !container && priced || entry.containsKey('price') && container;
+    final bool showStock = shopEntryKeeps(type, 'stock', container: container) || entry.containsKey('stock');
     return dom.div(classes: 'animus-gui-fields', attributes: <String, String>{'data-path': path}, <Widget>[
       for (final Diagnostic problem in diagnosticsAt(_diagnostics, path))
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[Component.text(problem.message)]),
-      GuiRow(
-        label: 'Id *',
-        help: 'Unique in the shop; limits and stock are kept under it.',
-        problems: diagnosticsAt(_diagnostics, '$path.id'),
-        child: GuiTextInput(value: asString(entry['id']) ?? '', label: 'Entry id', onChanged: (String v) => set('id', v)),
-      ),
-      GuiRow(
-        label: 'Type',
-        problems: diagnosticsAt(_diagnostics, '$path.type'),
-        child: GuiSelect(
-          value: type,
-          options: <String>[if (mode == 'buy') ...<String>['buy', 'command'], if (mode == 'sell') 'sell', if (mode == 'trade') 'trade', 'static'],
-          onChanged: (String? v) => set('type', v),
-        ),
-      ),
+      _row('Id *', '$path.id', (String id) => GuiTextInput(id: id, value: asString(entry['id']) ?? '', label: 'Entry id', onChanged: (String v) => set('id', v)),
+          help: 'Unique in the shop; limits and stock are kept under it.'),
+      _row('Type', '$path.type', (String id) => GuiSelect(
+            id: id,
+            value: type,
+            options: shopTypesFor(mode, container: container),
+            labels: <String, String>{
+              ..._typeLabels,
+              if (!shopTypesFor(mode, container: container).contains(type)) type: '${_typeLabels[type] ?? type}, not allowed here',
+            },
+            onChanged: (String? v) {
+              if (v == null || v == type) return;
+              _write(steps, withShopEntryType(entry, v, container: container));
+            },
+          ),
+          help: 'Changing it removes the fields the new type does not use.'),
       GuiSection(title: 'Item', children: <Widget>[
-        GuiRow(
-          label: 'Item *',
-          problems: diagnosticsAt(_diagnostics, '$path.item.id'),
-          child: GuiTextInput(value: asString(item['id']) ?? '', label: 'Item id', onChanged: (String v) => setIn('item', 'id', v)),
-        ),
-        GuiRow(
-          label: 'Count',
-          help: '1 to 99; the price is for this many.',
-          problems: diagnosticsAt(_diagnostics, '$path.item.count'),
-          child: GuiNumberInput(value: asInt(item['count']), label: 'Item count', onChanged: (num? v) => setIn('item', 'count', v)),
-        ),
-        GuiRow(
-          label: 'Components',
-          help: 'In /give syntax, such as [custom_name="Fresh"].',
-          problems: diagnosticsAt(_diagnostics, '$path.item.components'),
-          child: GuiTextInput(value: asString(item['components']) ?? '', label: 'Item components', onChanged: (String v) => setIn('item', 'components', v)),
-        ),
+        _row('Item *', '$path.item.id', (String id) => GuiTextInput(id: id, value: asString(item['id']) ?? '', label: 'Item id', onChanged: (String v) => setIn('item', 'id', v))),
+        _row('Count', '$path.item.count', (String id) => GuiNumberInput(id: id, value: asInt(item['count']), label: 'Item count', onChanged: (num? v) => setIn('item', 'count', v)),
+            help: '1 to 99; the price is for this many.'),
+        _row('Components', '$path.item.components', (String id) => GuiTextInput(id: id, value: asString(item['components']) ?? '', label: 'Item components', onChanged: (String v) => setIn('item', 'components', v)),
+            help: 'In /give syntax, such as [custom_name="Fresh"].'),
       ]),
       GuiSection(title: 'Display', open: display.isNotEmpty, children: <Widget>[
-        GuiRow(label: 'Name', child: GuiTextInput(value: asString(display['name']) ?? '', mode: GuiTextMode.template, label: 'Display name', onChanged: (String v) => setIn('display', 'name', v))),
+        _row('Name', '$path.display.name', (String id) => GuiTextInput(id: id, value: asString(display['name']) ?? '', mode: GuiTextMode.template, label: 'Display name', onChanged: (String v) => setIn('display', 'name', v))),
         GuiRow(label: 'Lore', child: GuiLinesEditor(lines: stringList(display['lore']), onChanged: (List<String> lines) => setIn('display', 'lore', lines.isEmpty ? null : lines))),
         GuiRow(
           label: 'Lines',
@@ -373,13 +453,9 @@ class _ShopEditorState extends State<ShopEditor> {
           ]),
         ),
       ]),
-      if (priced)
-        GuiRow(
-          label: type == 'trade' ? 'Money price' : 'Price *',
-          help: 'For item.count items, 0 to 1,000,000,000,000 with at most 4 decimals.',
-          problems: diagnosticsAt(_diagnostics, '$path.price'),
-          child: GuiNumberInput(value: asDouble(entry['price']), integer: false, label: 'Price', onChanged: (num? v) => set('price', v)),
-        ),
+      if (showPrice)
+        _row(type == 'trade' ? 'Money price' : 'Price *', '$path.price', (String id) => GuiNumberInput(id: id, value: asDouble(entry['price']), integer: false, label: 'Price', onChanged: (num? v) => set('price', v)),
+            help: container ? 'A shop with containers takes no money; clear the price.' : 'For item.count items, 0 to 1,000,000,000,000 with at most 4 decimals.'),
       if (type == 'trade') ...<Widget>[
         _goods(entry, steps, 'needs', 'Needs'),
         _goods(entry, steps, 'gives', 'Gives'),
@@ -399,52 +475,33 @@ class _ShopEditorState extends State<ShopEditor> {
           const dom.p(classes: 'animus-muted', <Widget>[
             Component.text('Items for buy and sell entries, purchases for trades and commands. A window starts at the first purchase after the last one ended.'),
           ]),
-          GuiRow(label: 'Per player', problems: diagnosticsAt(_diagnostics, '$path.limit.perPlayer'), child: GuiNumberInput(value: asInt(limit['perPlayer']), label: 'Per player limit', onChanged: (num? v) => setIn('limit', 'perPlayer', v))),
-          GuiRow(label: 'Global', problems: diagnosticsAt(_diagnostics, '$path.limit.global'), child: GuiNumberInput(value: asInt(limit['global']), label: 'Global limit', onChanged: (num? v) => setIn('limit', 'global', v))),
-          GuiRow(
-            label: 'Resets after',
-            help: 'Seconds; 86400 is a day.',
-            problems: diagnosticsAt(_diagnostics, '$path.limit.resetSeconds'),
-            child: GuiNumberInput(value: asInt(limit['resetSeconds']), label: 'Limit reset seconds', onChanged: (num? v) => setIn('limit', 'resetSeconds', v)),
-          ),
+          _row('Per player', '$path.limit.perPlayer', (String id) => GuiNumberInput(id: id, value: asInt(limit['perPlayer']), label: 'Per player limit', onChanged: (num? v) => setIn('limit', 'perPlayer', v))),
+          _row('Global', '$path.limit.global', (String id) => GuiNumberInput(id: id, value: asInt(limit['global']), label: 'Global limit', onChanged: (num? v) => setIn('limit', 'global', v))),
+          _row('Resets after', '$path.limit.resetSeconds', (String id) => GuiNumberInput(id: id, value: asInt(limit['resetSeconds']), label: 'Limit reset seconds', onChanged: (num? v) => setIn('limit', 'resetSeconds', v)),
+              help: 'Seconds; 86400 is a day.'),
         ]),
-        GuiSection(title: 'Stock', open: stock.isNotEmpty, children: <Widget>[
-          GuiRow(label: 'Maximum', problems: diagnosticsAt(_diagnostics, '$path.stock.maximum'), child: GuiNumberInput(value: asInt(stock['maximum']), label: 'Stock maximum', onChanged: (num? v) => setIn('stock', 'maximum', v))),
-          GuiRow(label: 'Restock after', help: 'Seconds.', child: GuiNumberInput(value: asInt(stock['restockSeconds']), label: 'Restock seconds', onChanged: (num? v) => setIn('stock', 'restockSeconds', v))),
-        ]),
+        if (showStock)
+          GuiSection(title: 'Stock', open: stock.isNotEmpty, children: <Widget>[
+            _row('Maximum', '$path.stock.maximum', (String id) => GuiNumberInput(id: id, value: asInt(stock['maximum']), label: 'Stock maximum', onChanged: (num? v) => setIn('stock', 'maximum', v)),
+                help: '1 to 1,000,000,000.'),
+            _row('Restock after', '$path.stock.restockSeconds', (String id) => GuiNumberInput(id: id, value: asInt(stock['restockSeconds']), label: 'Restock seconds', onChanged: (num? v) => setIn('stock', 'restockSeconds', v)),
+                help: 'Seconds.'),
+          ]),
         GuiSection(title: 'Discount', open: discount.isNotEmpty, children: <Widget>[
-          GuiRow(label: 'Price', problems: diagnosticsAt(_diagnostics, '$path.discount.price'), child: GuiNumberInput(value: asDouble(discount['price']), integer: false, label: 'Discount price', onChanged: (num? v) => setIn('discount', 'price', v))),
-          GuiRow(
-            label: 'Starts',
-            help: 'ISO-8601, such as 2026-12-20T00:00:00Z.',
-            problems: diagnosticsAt(_diagnostics, '$path.discount.start'),
-            child: GuiTextInput(value: asString(discount['start']) ?? '', label: 'Discount start', onChanged: (String v) => setIn('discount', 'start', v)),
-          ),
-          GuiRow(
-            label: 'Ends',
-            problems: diagnosticsAt(_diagnostics, '$path.discount.end'),
-            child: GuiTextInput(value: asString(discount['end']) ?? '', label: 'Discount end', onChanged: (String v) => setIn('discount', 'end', v)),
-          ),
-        ]),
-        GuiSection(title: 'Access and messages', open: entry['permission'] != null || entry['broadcast'] != null, children: <Widget>[
-          GuiRow(
-            label: 'Permission',
-            help: 'Needed to buy; others see a needs-permission line.',
-            problems: diagnosticsAt(_diagnostics, '$path.permission'),
-            child: GuiTextInput(value: asString(entry['permission']) ?? '', label: 'Entry permission', onChanged: (String v) => set('permission', v.isEmpty ? null : v)),
-          ),
-          GuiRow(
-            label: 'Broadcast',
-            help: '{player}, {item} and {price} are filled in.',
-            child: GuiTextInput(value: asString(entry['broadcast']) ?? '', label: 'Broadcast', onChanged: (String v) => set('broadcast', v.isEmpty ? null : v)),
-          ),
-          GuiRow(label: 'After buying', child: GuiSwitch(value: entry['closeAfterPurchase'] == true, label: 'Close the shop', onChanged: (bool on) => set('closeAfterPurchase', on ? true : null))),
-          GuiRow(
-            label: 'Matching',
-            child: GuiSelect(value: asString(entry['match']), options: const <String>['strict', 'legacy'], allowNone: true, noneLabel: 'as the shop', onChanged: (String? v) => set('match', v)),
-          ),
+          _row('Price', '$path.discount.price', (String id) => GuiNumberInput(id: id, value: asDouble(discount['price']), integer: false, label: 'Discount price', onChanged: (num? v) => setIn('discount', 'price', v))),
+          _row('Starts', '$path.discount.start', (String id) => GuiTextInput(id: id, value: asString(discount['start']) ?? '', label: 'Discount start', placeholder: '2026-12-20T00:00:00Z', onChanged: (String v) => setIn('discount', 'start', v)),
+              help: 'ISO-8601, such as 2026-12-20T00:00:00Z.'),
+          _row('Ends', '$path.discount.end', (String id) => GuiTextInput(id: id, value: asString(discount['end']) ?? '', label: 'Discount end', onChanged: (String v) => setIn('discount', 'end', v))),
         ]),
       ],
+      GuiSection(title: 'Access and messages', open: entry['permission'] != null || entry['broadcast'] != null, children: <Widget>[
+        _row('Permission', '$path.permission', (String id) => GuiTextInput(id: id, value: asString(entry['permission']) ?? '', label: 'Entry permission', onChanged: (String v) => set('permission', v.isEmpty ? null : v)),
+            help: 'Needed to buy; others see a needs-permission line.'),
+        _row('Broadcast', '$path.broadcast', (String id) => GuiTextInput(id: id, value: asString(entry['broadcast']) ?? '', label: 'Broadcast', onChanged: (String v) => set('broadcast', v.isEmpty ? null : v)),
+            help: '{player}, {item} and {price} are filled in.'),
+        GuiRow(label: 'After buying', child: GuiSwitch(value: entry['closeAfterPurchase'] == true, label: 'Close the shop', onChanged: (bool on) => set('closeAfterPurchase', on ? true : null))),
+        _row('Matching', '$path.match', (String id) => GuiSelect(id: id, value: asString(entry['match']), options: const <String>['strict', 'legacy'], allowNone: true, noneLabel: 'as the shop', onChanged: (String? v) => set('match', v))),
+      ]),
       Button.ghost(label: 'Remove entry', size: ButtonSize.small, onPressed: () => _write(steps, null)),
     ]);
   }
@@ -501,6 +558,7 @@ class _ShopEditorState extends State<ShopEditor> {
             options: const <String>['console', 'player'],
             allowNone: true,
             noneLabel: 'console',
+            hiddenLabel: 'Command ${index + 1} runs as',
             onChanged: (String? v) => _write(<JsonStep>[...steps, 'commands', index, 'as'], v),
           ),
           GuiIconButton(icon: ArcaneIcon.trash(size: IconSize.sm), label: 'Remove command ${index + 1}', onPressed: () => _write(<JsonStep>[...steps, 'commands'], <Object?>[...commands]..removeAt(index))),

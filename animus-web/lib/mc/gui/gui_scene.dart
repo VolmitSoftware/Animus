@@ -21,14 +21,28 @@ const double guiTextRowBlocks = 0.25;
 /// Blocks an item or block row takes.
 const double guiItemRowBlocks = 0.55;
 
+/// Something the stage can pick and ring: a menu component by id.
+final class GuiSceneTarget {
+  const GuiSceneTarget({required this.key, required this.centre, required this.half});
+
+  final String key;
+  final McVec3 centre;
+
+  /// Half its size in blocks, for the ring.
+  final McVec3 half;
+}
+
 final class GuiScene {
-  const GuiScene({required this.scene, required this.texts, required this.notes});
+  const GuiScene({required this.scene, required this.texts, required this.notes, this.targets = const <GuiSceneTarget>[]});
 
   final McScene scene;
   final List<NpcText> texts;
 
   /// What the preview does not draw, and why.
   final List<String> notes;
+
+  /// What a click on the stage can select.
+  final List<GuiSceneTarget> targets;
 }
 
 List<List<McTextRun>> _styled(String text) => <List<McTextRun>>[for (final String line in text.split('\n')) guiTextRuns(line)];
@@ -89,61 +103,92 @@ GuiScene hologramScene(JsonMap doc, {int? page, int? variant, GuiAnimationClock 
   final List<McSceneNode> nodes = <McSceneNode>[];
   final List<NpcText> texts = <NpcText>[];
   final List<String> notes = <String>[];
+  final JsonMap style = hologramStyle(doc, variant: variant);
+  final double styleScale = asDouble(style['scaleY']) ?? 1;
   double height = 0;
   for (final Object? line in lines) {
-    height += _rowHeight(line);
+    height += _rowHeight(line) * styleScale;
   }
   // Rows stack downward from the top; the anchor sits 1.2 blocks above the
-  // grass so the stack reads at eye level.
-  double top = 1.2 + height;
+  // grass so the stack reads at eye level. Yaw and pitch turn the stack
+  // about the anchor, as the server turns its displays.
+  const double base = 1.2;
+  final McMat4 turn = McMat4.rotationY(-(asDouble(doc['yaw']) ?? 0)).multiply(McMat4.rotationX(asDouble(doc['pitch']) ?? 0));
+  McVec3 at(double y) {
+    final McVec3 turned = turn.transformPoint(McVec3(0, y - base, 0));
+    return McVec3(turned.x, turned.y + base, turned.z);
+  }
+
+  McMat4 placed(McVec3 centre, double scale) =>
+      McMat4.translation(centre.x, centre.y, centre.z).multiply(turn).multiply(McMat4.scale(scale, scale, scale));
+  double top = base + height;
   for (int index = 0; index < lines.length; index++) {
     final Object? line = lines[index];
-    final double row = _rowHeight(line);
+    final double row = _rowHeight(line) * styleScale;
     final double bottom = top - row;
+    final double scale = (line is Map<String, Object?> ? asDouble(line['scale']) ?? 1 : 1) * styleScale;
     if (line == null || line is String) {
       final String text = line is String ? line : '';
-      texts.add(_shownText(McVec3(0, bottom, 0), text, clock, missing));
+      texts.add(_shownText(at(bottom), text, clock, missing));
     } else if (line is Map<String, Object?>) {
-      final McVec3 centre = McVec3(0, bottom + row / 2, 0);
+      final McVec3 centre = at(bottom + row / 2);
       if (!sampleCondition(line['show'])) {
+        notes.add('Row ${index + 1} is hidden for the sample viewer (show is false).');
         top = bottom;
         continue;
       }
       if (line['text'] is String) {
-        final String text = line['text']! as String;
-        texts.add(_shownText(McVec3(0, bottom, 0), text, clock, missing));
+        texts.add(_shownText(at(bottom), line['text']! as String, clock, missing));
       } else if (line['item'] is Map<String, Object?>) {
-        final String? item = _bareItem(asString(asMap(line['item'])['item']));
+        final JsonMap icon = asMap(line['item']);
+        final String? item = _bareItem(asString(icon['item']));
         if (item != null) {
-          nodes.add(McItemNode(key: 'line-$index', itemId: item, pose: McDisplayPose.fixed, transform: McMat4.translation(centre.x, centre.y, centre.z)));
+          nodes.add(McItemNode(key: 'line-$index', itemId: item, pose: McDisplayPose.fixed, transform: placed(centre, scale)));
         } else {
-          notes.add('Line ${index + 1}: the item comes from an expression, which needs the server.');
+          notes.add('Row ${index + 1}: the item comes from an expression, which needs the server.');
         }
       } else if (line['block'] is String) {
         final String? block = _bareItem(line['block']! as String);
         if (block != null) {
-          nodes.add(McItemNode(
-            key: 'line-$index',
-            itemId: block,
-            pose: McDisplayPose.none,
-            transform: McMat4.translation(centre.x, centre.y, centre.z).multiply(McMat4.scale(0.5, 0.5, 0.5)),
-          ));
+          nodes.add(McItemNode(key: 'line-$index', itemId: block, pose: McDisplayPose.none, transform: placed(centre, 0.5 * scale)));
         }
       } else if (line['head'] is String) {
-        nodes.add(McItemNode(key: 'line-$index', itemId: 'player_head', pose: McDisplayPose.fixed, transform: McMat4.translation(centre.x, centre.y, centre.z)));
-        notes.add('Line ${index + 1}: heads show the default head; the server draws ${line['head']}\'s skin.');
+        nodes.add(McItemNode(key: 'line-$index', itemId: 'player_head', pose: McDisplayPose.fixed, transform: placed(centre, scale)));
+        notes.add('Row ${index + 1}: the head is drawn without a skin; the server shows ${line['head']}\'s.');
       } else if (line['entity'] is String) {
-        notes.add('Line ${index + 1}: entity ${line['entity']} is not drawn in the preview.');
+        final String entity = line['entity']! as String;
+        nodes.add(McItemNode(key: 'line-$index', itemId: 'glass', pose: McDisplayPose.none, transform: placed(centre, 0.45 * scale)));
+        texts.add(_shownText(centre + const McVec3(0, -0.05, 0), '&7${entity.contains(':') ? entity : 'minecraft:$entity'}', clock, missing));
+        notes.add('Row ${index + 1}: entity rows are drawn as a labelled box; the server shows the entity.');
       }
     }
     top = bottom;
   }
+  _styleNotes(style, notes);
   _missingNotes(missing, notes);
   return GuiScene(
     scene: McScene(nodes, frame: _corners(McBounds(const McVec3(-1, 0.8, -0.5), McVec3(1, 1.4 + height, 0.5)))),
     texts: texts,
     notes: notes,
   );
+}
+
+/// The style a hologram draws with: its own, with a shown variant's
+/// presentation style laid over it.
+JsonMap hologramStyle(JsonMap doc, {int? variant}) {
+  final JsonMap own = asMap(doc['style']);
+  if (variant == null) return own;
+  final JsonMap over = asMap(asMap(asMap(asList(doc['variants']).elementAtOrNull(variant))['presentation'])['style']);
+  return <String, Object?>{...own, ...over};
+}
+
+/// What the text layer cannot show of a style yet.
+void _styleNotes(JsonMap style, List<String> notes) {
+  final List<String> unshown = <String>[
+    for (final String key in const <String>['backgroundArgb', 'shadow', 'billboard', 'textOpacity', 'glowColor'])
+      if (style.containsKey(key)) key,
+  ];
+  if (unshown.isNotEmpty) notes.add('Style ${unshown.join(', ')} is saved and used by the server; the preview text does not show it yet.');
 }
 
 double _rowHeight(Object? line) {
@@ -160,12 +205,19 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
   final List<McSceneNode> nodes = <McSceneNode>[];
   final List<NpcText> texts = <NpcText>[];
   final List<String> notes = <String>[];
+  final List<GuiSceneTarget> targets = <GuiSceneTarget>[];
   final JsonList offset = asList(doc['offset']);
-  final double centreY = (asDouble(offset.elementAtOrNull(1)) ?? 1.5).clamp(0.2, 4).toDouble();
+  final McVec3 centre = McVec3(
+    asDouble(offset.elementAtOrNull(0)) ?? 0,
+    (asDouble(offset.elementAtOrNull(1)) ?? 1.5).clamp(-64, 64).toDouble(),
+    asDouble(offset.elementAtOrNull(2)) ?? 0,
+  );
   McBounds? bounds;
+  McBounds? componentBounds;
   void place(String key, JsonMap data, McVec3 at, String label, {GuiSampleScope? scope}) {
     final McBounds here = McBounds(at - const McVec3(0.3, 0.3, 0.3), at + const McVec3(0.3, 0.3, 0.3));
     bounds = bounds == null ? here : bounds!.union(here);
+    componentBounds = componentBounds == null ? here : componentBounds!.union(here);
     final String type = asString(data['type']) ?? '';
     if (type == 'list') {
       final JsonMap flow = asMap(data['flow']);
@@ -230,7 +282,11 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
         nodes.add(McItemNode(key: key, itemId: 'player_head', pose: McDisplayPose.fixed, transform: McMat4.translation(at.x, at.y, at.z)));
         notes.add('$label: heads show the default head; the server draws the player\'s skin.');
       case 'entity':
-        notes.add('$label: entity ${icon['entity']} is not drawn in the preview.');
+        final double width = asDouble(icon['width']) ?? 1;
+        final double height = asDouble(icon['height']) ?? 1;
+        nodes.add(McItemNode(key: key, itemId: 'glass', pose: McDisplayPose.none, transform: McMat4.translation(at.x, at.y, at.z).multiply(McMat4.scale(width * 0.5, height * 0.5, width * 0.5))));
+        texts.add(_shownText(at, '&7${asString(icon['entity']) ?? 'minecraft:pig'}', clock, missing));
+        notes.add('$label: entities are drawn as a labelled box the size of width and height; the server shows the entity.');
       default:
         break;
     }
@@ -245,14 +301,18 @@ GuiScene menuScene(JsonMap doc, {String? selected, GuiAnimationClock clock = Gui
       continue;
     }
     final JsonList at = asList(component['offset']);
-    final McVec3 position = McVec3(asDouble(at.elementAtOrNull(0)) ?? 0, centreY + (asDouble(at.elementAtOrNull(1)) ?? 0), asDouble(at.elementAtOrNull(2)) ?? 0);
+    final McVec3 position = centre + McVec3(asDouble(at.elementAtOrNull(0)) ?? 0, asDouble(at.elementAtOrNull(1)) ?? 0, asDouble(at.elementAtOrNull(2)) ?? 0);
+    componentBounds = null;
     place(id, asMap(component['data']), position, id);
+    final McBounds? box = componentBounds;
+    if (box != null) targets.add(GuiSceneTarget(key: id, centre: box.centre, half: (box.max - box.min) * 0.5));
   }
   _missingNotes(missing, notes);
   return GuiScene(
     scene: McScene(nodes, frame: _corners(bounds ?? const McBounds(McVec3(-1, 0.5, -0.5), McVec3(1, 2.5, 0.5)))),
     texts: texts,
     notes: notes,
+    targets: targets,
   );
 }
 
