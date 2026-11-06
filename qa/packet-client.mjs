@@ -24,7 +24,7 @@ class Client extends NativeClient {
   }
   async spawnBody(type, skin = null) {
     const start = this.events.length;
-    const reply = await this.command(`animus proof spawn minecraft:${type}${skin ? ` ${skin}` : ''}`, 'Proof spawned id=');
+    const reply = await this.command(`animus proof spawn minecraft:${type}${skin ? ` skin=${skin}` : ''}`, 'Proof spawned id=');
     const fields = Object.fromEntries([...reply.text.matchAll(/([\w-]+)=([^ ]+)/g)].map(m => [m[1], m[2]]));
     const body = { id: Number(fields.id), uuid: fields.uuid, type: fields.type, x: Number(fields.x), y: Number(fields.y), z: Number(fields.z), height: Number(fields.height), start };
     assert.equal(fields['world-registered'], '0');
@@ -91,7 +91,7 @@ try {
   if (args.has('skin-race')) {
     assert(args.get('skin'), '--skin-race requires a signed --skin fixture');
     const start = owner.events.length;
-    owner.send('command', { text: `animus proof spawn minecraft:player ${args.get('skin')}` });
+    owner.send('command', { text: `animus proof spawn minecraft:player skin=${args.get('skin')}` });
     owner.send('command', { text: 'animus proof clear' });
     await owner.wait(e => e.event === 'chat' && e.text.includes('Proof cleared'), start);
     await delay(500);
@@ -207,7 +207,7 @@ try {
     const horse = bodies.find(b => b.type === 'minecraft:horse');
     const rider = bodies.find(b => b.type === 'minecraft:armor_stand');
     const mountStart = owner.events.length;
-    await owner.command(`animus proof mount ${horse.id} ${rider.id}`, 'Proof passengers');
+    await owner.command(`animus proof mount ${horse.id} riders=${rider.id}`, 'Proof passengers');
     await owner.wait(e => e.event === 'passengers' && e.vehicle === horse.id && e.ids.includes(rider.id), mountStart);
     const detachStart = owner.events.length;
     await owner.command(`animus proof mount ${horse.id}`, 'Proof passengers');

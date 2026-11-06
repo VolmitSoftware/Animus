@@ -38,12 +38,12 @@ class Client extends NativeClient {
   async inspect(npc = id) {
     const from = this.events.length;
     await this.command(`animus inspect ${npc}`);
-    const doc = await this.wait(e => e.event === 'chat' && e.text.startsWith('{') && e.text.includes(`"id":"${npc}"`), from);
-    const runtime = await this.wait(e => e.event === 'chat' && e.text.startsWith(`Runtime ${npc}:`), from);
-    return { document: JSON.parse(doc.text), runtime: runtime.text };
+    const doc = await this.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith('{') && e.text.includes(`"id":"${npc}"`), from);
+    const runtime = await this.wait(e => e.event === 'chat' && e.text.replace(/^\[Animus\]: /, '').startsWith(`Runtime ${npc}:`), from);
+    return { document: JSON.parse(doc.text.replace(/^\[Animus\]: /, '')), runtime: runtime.text.replace(/^\[Animus\]: /, '') };
   }
   async status(npc = id) {
-    const e = await this.command(`animus navigation ${npc} status`, `Navigation ${npc}:`);
+    const e = await this.command(`animus navigation status ${npc}`, `Navigation ${npc}:`);
     const f = fields(e.text);
     return { text: e.text, state: e.text.slice(e.text.indexOf(': ') + 2).split(';')[0], route: f.route, position: vector(e.text, 'position'), tick: Number(f.tick), arrivals: Number(f.arrivals), sampled: Number(f.sampled), unavailable: Number(f.unavailable) };
   }
@@ -54,7 +54,7 @@ class Client extends NativeClient {
     throw new Error(`Navigation condition timed out: ${status?.text}`);
   }
   async route(target, mode = 'walk', speed = 2, npc = id) {
-    const e = await this.command(`animus navigate ${npc} ${target.x} ${target.y} ${target.z} ${mode} ${speed}`, `Navigation requested for ${npc}`);
+    const e = await this.command(`animus navigate ${npc} ${target.x} ${target.y} ${target.z} mode=${mode} speed=${speed}`, `Navigation requested for ${npc}`);
     return fields(e.text).route;
   }
   async arrive(target, mode = 'walk', speed = 2) {
@@ -69,7 +69,7 @@ class Client extends NativeClient {
     return { status, from, route };
   }
   async reset(position = origin, modules = {}) {
-    await this.command(`animus navigation ${id} stop`, 'Navigation stop requested');
+    await this.command(`animus navigation stop ${id}`, 'Navigation stop requested');
     const previous = this.body()?.id, from = this.events.length;
     await this.command(`animus despawn ${id}`, 'Despawn requested');
     if (previous) await this.wait(e => e.event === 'remove' && e.ids.includes(previous), from);
@@ -110,7 +110,7 @@ try {
   await owner.command('execute in minecraft:overworld run tp @s 0.0 61.0 0.0 0 0', 'Teleported AnimusProofQA');
   if (owner.position?.x !== 0 || owner.position?.y !== 61 || owner.position?.z !== 0)
     await owner.wait(e => e.event === 'position' && e.x === 0 && e.y === 61 && e.z === 0, tp);
-  await owner.command(`animus create ${id} minecraft:player world .5 61 3.5 movementqa Motion Guard`, `Created dormant ${id}`); live = true;
+  await owner.command(`animus create ${id} minecraft:player world .5 61 3.5 movementqa "Motion Guard"`, `Created dormant ${id}`); live = true;
   uuid = (await owner.inspect()).document.uuid;
   await owner.command(`animusqa expect ${uuid}`, 'QA production expect');
   await owner.command(`animusqa motion expect ${uuid}`, 'QA motion expect');
@@ -132,7 +132,7 @@ try {
   await owner.click(); await owner.click(true);
   const moving = await owner.status(); assert.equal(moving.route, movingRoute); assert.equal(moving.state, 'moving');
   passed('moving NPC accepts server-aimed interactions and honors third-party cancellation');
-  await owner.command(`animus navigation ${id} stop`, 'stopped=true');
+  await owner.command(`animus navigation stop ${id}`, 'stopped=true');
   const stopped = await owner.status(); await delay(800); const stable = await owner.status();
   near(stopped.position, stable.position); assert.equal(stable.arrivals, stopped.arrivals);
   passed('administrator cancellation stops authoritative movement without a late arrival');
@@ -227,7 +227,7 @@ try {
   await owner.reset(origin, { 'animus:navigation': { enabled: true, mode: 'walk', speed: 3, loop: true, waitTicks: 5, points: [{ x: 1.5, y: 61, z: 3.5 }, { x: 2.5, y: 61, z: 3.5 }] } });
   const loopFirst = await owner.wait(e => e.event === 'chat' && e.text.includes(`QA waypoint npc=${uuid}`) && e.text.includes('waypoint=0 '), loopFrom);
   await owner.wait(e => e.event === 'chat' && e.text.includes(`QA waypoint npc=${uuid}`) && e.text.includes('waypoint=0 '), loopFirst.sequence + 1);
-  await owner.command(`animus navigation ${id} stop`, 'stopped=true');
+  await owner.command(`animus navigation stop ${id}`, 'stopped=true');
   const loopStopped = await owner.status(); await delay(700); const loopStable = await owner.status();
   near(loopStopped.position, loopStable.position); assert.equal(loopStopped.arrivals, loopStable.arrivals);
   passed('looping waypoint routes repeat and stop without scheduling another arrival');
@@ -247,7 +247,7 @@ try {
   }
   assert(sourceChunk !== undefined, 'QA requires an observed loaded source and absent destination within one bounded leg');
   const farStart = sourceChunk * 16 + 14.5, farGoal = targetChunk * 16 + 2.5;
-  await owner.command(`animus create ${farId} minecraft:player world ${farStart} 100 8.5 movementqa Unloaded Guard`, `Created dormant ${farId}`);
+  await owner.command(`animus create ${farId} minecraft:player world ${farStart} 100 8.5 movementqa "Unloaded Guard"`, `Created dormant ${farId}`);
   await owner.command(`animus spawn ${farId}`, `Spawn requested for ${farId}`);
   const sourceBefore = await owner.command(`animusqa motion chunk ${sourceChunk} 0 status`, 'QA chunk');
   assert(sourceBefore.text.includes('loaded=true') && sourceBefore.text.includes('forced=false'), 'Only the destination may be unavailable in this case');

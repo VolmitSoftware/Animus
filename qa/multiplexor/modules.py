@@ -111,7 +111,7 @@ def main():
         check('startup-rejections-dependencies-and-parent-api-identity')
         command('animus modules capabilities',r'.*reference:hello \| ACTION \| available=true.*');catalog=report['commands'][-1]['output'];assert 'Module capabilities: 13; built-in: 19;' in catalog;assert 'qabroken:partial' not in catalog and 'reference:stolen' not in catalog
         check('failed-and-foreign-namespace-registrations-not-published')
-        command(f'animus create {npc_id} minecraft:player world 0 61 3 qa Module Before',rf'.*Created dormant {npc_id};.*')
+        command(f'animus create {npc_id} minecraft:player world 0 61 3 qa "Module Before"',rf'.*Created dormant {npc_id};.*')
         command(f'animus edit {npc_id} '+json.dumps({'modules':{'missing:module':{'retained':True}}},separators=(',',':')),r'.*Saved; transaction .*')
         saved=read(npc);report['npcUuid']=saved['uuid'];report['initialRevision']=saved['revision']
         assert action('reference:hello')['message']=='Hello from a trusted external module';assert action('qalink:linked')['linked'] is True
