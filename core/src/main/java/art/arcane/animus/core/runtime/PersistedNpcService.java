@@ -1608,7 +1608,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         if (motionCells < wanted && motionCells < navigationSettings.motionCellsPerTick()) return false;
         WorldPosition at = value.state.snapshot().position();
         boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
-        IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
+        IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, value.movement.gravity(), moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
         motionCells -= step.sampled();
         value.fallSpeed = step.speed();
         boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
@@ -1644,7 +1644,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
             WorldPosition at = value.state.snapshot().position();
             if (!falls(value) || !host.worldLoaded(at.world())) { value.supportQueued = false; value.fallSpeed = 0; continue; }
             boolean swims = BodyMobility.forBody(value.spec.type(), moveWidth(value), moveHeight(value)).supports(MovementProfile.Mode.SWIM);
-            IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
+            IdleFall.Step step = IdleFall.step(at.point(), value.fallSpeed, value.movement.gravity(), moveWidth(value), moveHeight(value), swims, host.collision(at.world()));
             cells -= step.sampled();
             value.fallSpeed = step.speed();
             boolean falling = step.outcome() == IdleFall.Outcome.FALLING;
@@ -1943,9 +1943,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
         VirtualNpcState state;
         if (previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid())) {
             WorldPosition next = previous.spec.position().equals(spec.position()) ? previous.state.snapshot().position() : spec.position();
-            state = previous.state.reconfigured(next, geometry.width, geometry.height, maximumHealth(spec));
+            state = previous.state.reconfigured(next, geometry.width * scale(spec), geometry.height * scale(spec), maximumHealth(spec));
         } else {
-            state = new VirtualNpcState(spec.definition().uuid(), spec.position(), geometry.width, geometry.height, maximumHealth(spec));
+            state = new VirtualNpcState(spec.definition().uuid(), spec.position(), geometry.width * scale(spec), geometry.height * scale(spec), maximumHealth(spec));
             state.spawn();
         }
         boolean sameNpc = previous != null && previous.spec.definition().uuid().equals(spec.definition().uuid());
@@ -1962,6 +1962,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildN
     public static double maximumHealth(DefinitionSpec<?> spec) {
         return CombatSettings.active(spec.definition()).map((CombatSettings combat) -> combat.defense().maximumHealth()).orElse(20.0);
     }
+    /** The body size multiplier: hitbox, reach and path clearance follow it, as the viewers' clients draw it. */
+    public static double scale(DefinitionSpec<?> spec) { return spec.appearance().traits().attributes().scale(); }
     private void remove(Entry entry) {
         if (entry.task != null) { entry.task.cancelled = true; entry.task = null; }
         if (entry.value != null) {

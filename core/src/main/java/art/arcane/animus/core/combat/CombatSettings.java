@@ -1,6 +1,8 @@
 package art.arcane.animus.core.combat;
 
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcAttributes;
+import art.arcane.animus.core.presentation.BodyRules;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -76,9 +78,13 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         /** Whether this weapon only helps whoever it reaches. */
         public boolean helpful() { return effect.map(Effect::helpful).orElse(false); }
     }
-    /** @param armorFromEquipment derive armor from worn items instead of {@code armor} */
+    /**
+     * @param armorFromEquipment derive armor from worn items instead of {@code armor}
+     * @param armorPoints vanilla armor points from the {@code armor} attribute, used with {@code armorToughness} when the module sets no armor
+     * @param knockbackResistance the {@code knockback_resistance} attribute: the share of knockback ignored
+     */
     public record Defense(double maximumHealth, double armor, boolean invincible, boolean knockback, boolean protectedFromIgnored, double protectFromRange,
-                          int healRateTicks, int invulnerableTicks, boolean armorFromEquipment) {}
+                          int healRateTicks, int invulnerableTicks, boolean armorFromEquipment, double armorPoints, double armorToughness, double knockbackResistance) {}
     public record DropRule(String item, int amount, double chance) {}
     public record Death(List<DropRule> drops, int experience, boolean victimDrops) {
         public Death { drops = List.copyOf(drops); }
@@ -98,7 +104,20 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
         if (modules == null || !modules.isJsonObject() || !modules.getAsJsonObject().has(MODULE)) return Optional.empty();
         JsonElement module = modules.getAsJsonObject().get(MODULE);
         if (!module.isJsonObject()) throw new IllegalArgumentException(ROOT + ": expected object");
-        return Optional.of(parseModule(module.getAsJsonObject()));
+        NpcAttributes attributes = NpcAttributes.of(definition);
+        if (attributes.isEmpty()) return Optional.of(parseModule(module.getAsJsonObject()));
+        JsonElement type = definition.get("type");
+        boolean player = type != null && type.isJsonPrimitive() && type.getAsString().equals(BodyRules.PLAYER);
+        JsonObject filled = CombatAttributes.fill(module.getAsJsonObject(), attributes, player);
+        CombatSettings settings = parseModule(filled);
+        Defense defense = settings.defense();
+        boolean armor = CombatAttributes.armorFromAttributes(filled);
+        Defense attributed = new Defense(defense.maximumHealth(), defense.armor(), defense.invincible(), defense.knockback(), defense.protectedFromIgnored(),
+                defense.protectFromRange(), defense.healRateTicks(), defense.invulnerableTicks(), defense.armorFromEquipment(),
+                armor ? attributes.value("armor") : 0, armor ? attributes.value("armor_toughness") : 0, attributes.value("knockback_resistance"));
+        return Optional.of(new CombatSettings(settings.enabled(), settings.reviewAccepted(), settings.targets(), settings.ignores(), settings.avoids(),
+                settings.targeting(), settings.avoidance(), settings.squad(), settings.guard(), settings.pursuit(), settings.melee(), settings.ranged(),
+                attributed, settings.death(), settings.respawn(), settings.greetings(), settings.targetableByMobs()));
     }
 
     /** The settings to run, or empty when combat is absent, off, or an import whose review was not accepted. */
@@ -274,7 +293,7 @@ public record CombatSettings(boolean enabled, boolean reviewAccepted, TargetRule
                 "armorFromEquipment");
         return new Defense(reader.number("maximumHealth", 20, 1, 2048), reader.number("armor", 0, 0, 1), reader.bool("invincible", false), reader.bool("knockback", true),
                 reader.bool("protectedFromIgnored", false), reader.number("protectFromRange", 0, 0, 256), reader.integer("healRateTicks", 0, 0, 72000),
-                reader.integer("invulnerableTicks", 10, 0, 100), reader.bool("armorFromEquipment", false));
+                reader.integer("invulnerableTicks", 10, 0, 100), reader.bool("armorFromEquipment", false), 0, 0, 0);
     }
     private static Death death(Reader reader) {
         reader.known("drops", "experience", "victimDrops");

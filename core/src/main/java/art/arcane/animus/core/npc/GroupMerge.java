@@ -15,7 +15,7 @@ import java.util.TreeMap;
 
 /**
  * The effective definition of an NPC that lists trait groups. Groups apply in list order, then the NPC's own fields:
- * objects merge key by key, recursively; {@code behaviors} and {@code tags} append without duplicates; other arrays and
+ * objects merge key by key, recursively, and {@code attributes} ids lose any {@code minecraft:} namespace first; {@code behaviors} and {@code tags} append without duplicates; other arrays and
  * scalars replace. A group's {@code skins} pool sets one {@code skin} picked by a stable hash of the NPC UUID, which the
  * NPC's own {@code skin} still overrides. {@code animus-web/lib/logic/npc/group_merge.dart} implements the same rules.
  */
@@ -25,7 +25,7 @@ public final class GroupMerge {
     private static final Set<String> APPENDED = Set.of("behaviors", "tags");
 
     /**
-     * @param provenance top-level fields and {@code modules.<id>} paths mapped to the last source that set them: a group id
+     * @param provenance top-level fields, {@code modules.<id>} and {@code attributes.<id>} paths mapped to the last source that set them: a group id
      *                   or {@code npc}. Identity and state fields are left out; they only ever come from the NPC.
      */
     public record Result(JsonObject effective, Map<String, String> provenance) {
@@ -70,6 +70,7 @@ public final class GroupMerge {
                 provenance.put("skin", label);
                 continue;
             }
+            if (key.equals(NpcAttributes.FIELD) && value.isJsonObject()) value = bareAttributes(value.getAsJsonObject());
             JsonElement current = target.get(key);
             if (APPENDED.contains(key) && value.isJsonArray() && current != null && current.isJsonArray()) {
                 JsonArray combined = current.getAsJsonArray();
@@ -77,9 +78,18 @@ public final class GroupMerge {
             } else if (value.isJsonObject() && current != null && current.isJsonObject()) deep(current.getAsJsonObject(), value.getAsJsonObject());
             else target.add(key, value.deepCopy());
             if (GroupDocument.REFUSED.contains(key)) continue;
-            if (key.equals("modules") && value.isJsonObject()) for (String module : value.getAsJsonObject().keySet()) provenance.put("modules." + module, label);
+            if ((key.equals("modules") || key.equals(NpcAttributes.FIELD)) && value.isJsonObject())
+                for (String child : value.getAsJsonObject().keySet()) provenance.put(key + "." + child, label);
             else provenance.put(key, label);
         }
+    }
+
+    /** Attribute ids without the {@code minecraft:} namespace, so {@code minecraft:scale} in a group and {@code scale} on the NPC are one attribute. */
+    private static JsonObject bareAttributes(JsonObject attributes) {
+        JsonObject bare = new JsonObject();
+        for (Map.Entry<String, JsonElement> entry : attributes.entrySet())
+            bare.add(NpcAttributes.id(entry.getKey()).orElse(entry.getKey()), entry.getValue());
+        return bare;
     }
 
     private static void deep(JsonObject target, JsonObject source) {
