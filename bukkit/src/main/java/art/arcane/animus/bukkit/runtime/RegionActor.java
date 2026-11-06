@@ -241,7 +241,7 @@ final class RegionActor implements RegionOwner.Body {
                 else if (!host.packets.bonesAvailable()) rigProblem = "display bones are unavailable on this server build";
                 else {
                     List<String> problems = new ArrayList<>();
-                    rig = NpcRig.bind(rigId, catalog, host.geometry(spec.type()).seat(), DefinitionItems::stack, problems).orElse(null);
+                    rig = NpcRig.bind(rigId, catalog, host.geometry(spec.type()).seat(), DefinitionItems::stack, Optional.of(new ItemStack(org.bukkit.Material.AIR)), problems).orElse(null);
                     if (rig == null) rigProblem = String.join("; ", problems.subList(0, Math.min(3, problems.size())));
                 }
                 if (had || rig != null) appearance++;
@@ -249,7 +249,10 @@ final class RegionActor implements RegionOwner.Body {
         }
         if (rig == null || !state.snapshot().active()) return;
         boolean walking = route != null && route.execution != null && !route.execution.finished();
-        for (RigPlayback.Finished done : rig.tick(turns, walking)) host.animationFinished(uuid, done.animation(), done.layer());
+        rig.equip(equipment, ItemStack::clone);
+        NpcRig.Step step = rig.tick(turns, walking);
+        for (RigPlayback.Fired fired : step.events()) host.animationEvent(uuid, fired);
+        for (RigPlayback.Finished done : step.finished()) host.animationFinished(uuid, done.animation(), done.layer());
         if (rig.due(turns, yaw) && host.budget.cosmeticAllowed() && host.budget.take(RegionBudget.Kind.RIG_PLANS, 1) > 0) rig.plan(turns, yaw, host.rigs().sampleTicks(), System.nanoTime());
     }
     void playAnimation(String animation, double speed, Optional<String> loop, int layer) {
@@ -1505,7 +1508,7 @@ final class RegionActor implements RegionOwner.Body {
                 && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
                 && previous.lookRevision() == lookRevision && previous.swings() == swings) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
-        equipment.forEach((slot, item) -> items.put(slot, item.clone()));
+        (rig == null ? equipment : rig.bodyEquipment(equipment)).forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
                 Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), look, lookRevision, swings);
     }

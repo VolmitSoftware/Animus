@@ -323,6 +323,7 @@ public final class NativeProtocolClient {
                 Map<String, Object> field = new LinkedHashMap<>();
                 field.put("id", item.id());
                 if (item.value() instanceof Number || item.value() instanceof Boolean) field.put("value", item.value());
+                else if (item.value() instanceof ItemStack stack) field.put("item", stack.isEmpty() ? "empty" : BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
                 fields.add(field);
             }
             event("metadata", "id", p.id(), "entries", p.packedItems().size(), "fields", fields);

@@ -288,7 +288,7 @@ final class RegionViewer {
             if (packetBudget <= 0 || bones + shown.displays().size() > host.rigs().maximumBones()) return 0;
             try { body.bones = host.packets.createBones(body.body, shown.displays()); }
             catch (RuntimeException invalid) { body.rigFailed = true; host.cosmeticFailed(this, "rig bones", body.actor, invalid); return 0; }
-            body.rigIdentity = shown.identity(); body.view = new RigView(body.bones.count()); bones += body.bones.count();
+            body.rigIdentity = shown.identity(); body.socketRevision = shown.socketRevision(); body.view = new RigView(body.bones.count()); bones += body.bones.count();
             try {
                 host.packets.showBones(player, body.body, body.bones, pose(now), List.of(frame.targets()), shown.hideBody()).whenComplete((nothing, failure) -> enqueue(() -> {
                     if (failure != null) { if (host.current(this) && !body.retired && !host.cosmeticFailed(this, "show bones", body.actor, failure)) body.rigFailed = true; return; }
@@ -298,6 +298,17 @@ final class RegionViewer {
             return 1;
         }
         if (!body.bonesShown || rigBudget[0] <= 0) return 0;
+        if (body.socketRevision != shown.socketRevision()) {
+            int[] sockets = shown.socketIndices();
+            body.socketRevision = shown.socketRevision();
+            rigBudget[0] -= sockets.length;
+            try {
+                host.packets.restyleBones(player, body.bones, sockets, shown.socketDisplays()).whenComplete((nothing, failure) -> {
+                    if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "socket items", body.actor, failure); });
+                });
+            } catch (RuntimeException failure) { host.cosmeticFailed(this, "socket items", body.actor, failure); }
+            if (rigBudget[0] <= 0) return 0;
+        }
         int[] due = body.view.due(frame, rigBudget[0]);
         if (due.length == 0) return 0;
         long nanos = System.nanoTime();
@@ -486,7 +497,7 @@ final class RegionViewer {
     private static final class Presented {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, looking, bonesShown, rigFailed;
-        long pose, equipment, rigIdentity, look, swings;
+        long pose, equipment, rigIdentity, socketRevision, look, swings;
         int dragonPhase = DragonBody.PHASE_HOVERING;
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
