@@ -20,7 +20,7 @@ const int routeMaxWait = 12000;
 const double routeDefaultLinkDistance = 32;
 
 /// Fields a route keeps, in the module or in its route document.
-const List<String> routeFields = <String>['mode', 'speed', 'order', 'loop', 'waitTicks', 'points', 'guides', 'linkDistance', 'wander'];
+const List<String> routeFields = <String>['mode', 'speed', 'order', 'loop', 'waitTicks', 'points', 'guides', 'linkDistance', 'wander', 'seed', 'startOffset', 'jitter'];
 
 /// One point or guide.
 class RouteNode {

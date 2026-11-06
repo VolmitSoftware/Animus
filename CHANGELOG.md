@@ -112,9 +112,11 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- Routes share well between NPCs: `seed`, `startOffset: random`, `waitTicks` ranges, `jitter`, point `weight` for random order and `next` junctions for sequence order, with field-named validation.
 
 ### Changed
 
+- Random choices on routes (`random` and `wander` orders, and the new route randomness) are seeded from the NPC UUID and route by default, so each NPC repeats its own choices after a restart. Set `"seed": "random"` for the old clock-seeded behavior.
 - Manual runs stay limited to one per NPC; trigger-started executions are counted separately and use scoped variables, resolving player and relationship variables from the triggering player.
 - `/animus behaviors inspect` answers with current waits, conditions and recent steps, and `/animus behaviors trace` lists every active run with its origin. Startup logs every behavior catalog diagnostic.
 - Behavior validation rejects invalid literal capability arguments and reports unavailable capabilities separately.
