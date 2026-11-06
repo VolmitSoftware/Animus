@@ -96,7 +96,8 @@ async function run(browser, viewport, label, skinFile) {
   page.setDefaultTimeout(15000);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  page.on('console', (message) => { if (message.type() === 'error') errors.push(`${message.text()} (${message.location().url})`); });
+  // The brand lane ships the mark asset; until then its 404 is expected.
+  page.on('console', (message) => { if (message.type() === 'error' && !message.location().url.includes('animus-mark')) errors.push(`${message.text()} (${message.location().url})`); });
 
   // A blank, named workspace lands on the New page.
   await go(page, '');
@@ -228,10 +229,16 @@ async function run(browser, viewport, label, skinFile) {
   await page.getByRole('link', {name: /Preview Greeter/}).waitFor();
   await shot(page, label, '08-starter');
 
+  // With no server paired, the sync page says how to pair one.
+  await go(page, `#/workspace/${encodeURIComponent(workspace)}/sync`);
+  await page.locator('[data-testid="sync-no-server"]', {hasText: 'Run /animus editor pair on the server'}).waitFor();
+  await page.getByRole('button', {name: 'Pair a server'}).waitFor();
+  await shot(page, label, '08b-sync-no-server');
+
   // Pair with the fake server, pull a document, change it here, push.
   const {code: pairing} = await control('pair?paths=direct', {});
   await go(page, `#/pair/${pairing}`);
-  await page.getByRole('button', {name: 'Pair'}).click();
+  await page.getByRole('button', {name: 'Pair', exact: true}).click();
   await page.waitForFunction(() => location.hash.startsWith('#/server/'));
   await go(page, `#/workspace/${encodeURIComponent(workspace)}/sync`);
   await page.getByRole('heading', {name: 'Send to a server'}).waitFor();
@@ -256,14 +263,23 @@ async function run(browser, viewport, label, skinFile) {
   await page.getByText('The server accepts this selection.').waitFor();
   await shot(page, label, '09-push-validated');
   await page.getByLabel('Change message', {exact: true}).fill('Offline sketches');
+  // Replacing a server copy asks first; Escape cancels and sends nothing.
   await page.getByRole('button', {name: /^Push \d+/}).click();
+  await page.getByRole('alertdialog').getByText('Replace 1 server copy with yours?').waitFor();
+  await shot(page, label, '09b-replace-confirm');
+  await page.keyboard.press('Escape');
+  await page.getByRole('alertdialog').waitFor({state: 'detached'});
+  await page.waitForFunction(() => document.activeElement?.id === 'animus-sync-push');
+  assert.notEqual((await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`)).source.name, 'Baker Bea', 'cancel sent nothing');
+  await page.getByRole('button', {name: /^Push \d+/}).click();
+  await page.getByRole('alertdialog').getByRole('button', {name: 'Replace and push'}).click();
   await page.locator('.animus-ok', {hasText: /The server applied \d+ documents? as change/}).waitFor();
   const state = await control('state');
   const baker = await control(`document?kind=npc&id=${encodeURIComponent('town/baker')}`);
   assert.equal(baker.source.name, 'Baker Bea', 'the chosen overwrite reached the server');
   assert.ok(state.documents.some((document) => document.kind === 'npc' && document.id === 'town/old-tom'), 'the new NPC reached the server');
   await shot(page, label, '10-pushed');
-  await page.getByText(/0 new to the server, 0 different/).waitFor();
+  await page.locator('[data-testid="sync-nothing"]', {hasText: /already match the server\. Nothing to push\./}).waitFor();
 
   assert.deepEqual(errors, []);
   await context.close();

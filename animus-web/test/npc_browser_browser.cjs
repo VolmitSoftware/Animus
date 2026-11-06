@@ -41,7 +41,8 @@ function watch(page) {
   const errors = [];
   page.on('pageerror', (error) => errors.push(String(error)));
   page.on('console', (message) => {
-    if (message.type() === 'error') errors.push(message.text());
+    // The brand lane ships the pairing page's mark asset; until then its 404 is expected.
+    if (message.type() === 'error' && !message.location().url.includes('animus-mark')) errors.push(message.text());
   });
   return errors;
 }
@@ -245,11 +246,11 @@ async function server(browser, viewport, tag) {
   page.setDefaultTimeout(15000);
   const errors = watch(page);
   await page.goto(`${site}/#/pair/${code}`);
-  await page.getByRole('heading', {name: /Pair with/}).waitFor();
-  await page.getByRole('button', {name: 'Pair'}).click();
+  await page.locator('[data-testid="pair-fingerprint"]').waitFor();
+  await page.getByRole('button', {name: 'Pair', exact: true}).click();
   await page.waitForFunction(() => location.hash.startsWith('#/server/'));
   await page.getByText(/documents on the server/).waitFor();
-  for (const id of ['harbor/dockhand', 'harbor/ferryman']) await page.getByRole('checkbox', {name: `npc ${id}`}).check();
+  for (const id of ['harbor/dockhand', 'harbor/ferryman']) await page.getByRole('checkbox', {name: id, exact: true}).check();
   await page.getByRole('button', {name: 'Open 2'}).click();
   await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/'));
   await page.locator('.animus-tree-browse').click();
