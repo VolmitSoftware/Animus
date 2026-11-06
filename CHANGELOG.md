@@ -112,6 +112,10 @@
 - Server-wide behaviors with join, quit, chat, command, start, timer, death, respawn, world-change and module triggers, plus Animus-managed commands.
 - Message, title, actionbar, teleport, give-item, take-item and give-book actions, and a player override on player actions.
 - Flags hold any value and can expire; durable state stores lists, maps and expiry.
+- The web editor converts a Denizen folder in the browser and downloads its staged bundle.
+- The editor's live bar says when the pairing is about to expire and offers Pair again when the server ends it.
+- The editor's Sync page can ask the server what became of a push whose answer was lost.
+- The fake server gains test controls for token expiry, forced errors, lost apply answers, relay errors, limit closes and an offline player.
 
 ### Changed
 
@@ -175,6 +179,12 @@
 - The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
 - User documentation moved to the central docs wiki; developer notes live in `dev/`.
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
+- Every server error in the editor says what happened and what to do next, in plain words.
+- The pairing page leads with the server's name and fingerprint, and Remember this browser is a switch.
+- Undo last apply, Take server version, Accept the deletion, replacing server copies on push, and import Apply, Accept all and Roll back ask first.
+- The server catalog in the editor is grouped by kind and shows each document's revision in words.
+- The converter screen names all four sources, leads the Citizens review with its warnings and lists skipped dtlTraders files.
+- Live editing for a server runs in one browser tab at a time; another tab waits and takes over.
 
 ### Fixed
 
@@ -211,6 +221,17 @@
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
 - The editor theme toggle switches themes without a reload.
 - Assignments whose only content was `on assignment` now give their NPCs a behavior.
+- Two editor tabs on one server no longer lose each other's live edits.
+- The editor never sends a change set it could not record, so a lost answer can always be recovered.
+- Pairing tries the relay when the direct path refuses or errors.
+- A connection attempt that fails in an unexpected way retries instead of stopping silently.
+- Ending a preview that the server did not end now says so; leaving the workspace ends its preview.
+- A change set whose status check fails no longer waits forever; Check again and Stop waiting are offered.
+- An undo that conflicts no longer offers your draft as the side to keep.
+- A spawn cut short by a lost connection is not reported as done.
+- A failed catalog load no longer shows Loading forever.
+- Forgetting a server removes its live workspace, and tabs no longer overwrite each other's saved servers.
+- An apply the browser resent after a dropped connection is recovered instead of reported as refused.
 
 ### Notes
 

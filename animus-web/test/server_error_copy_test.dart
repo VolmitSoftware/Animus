@@ -14,7 +14,7 @@ List<String> _enum(Map<String, Object?> defs, List<String> path) {
 void _sound(String code, ErrorCopy copy) {
   expect(copy.cause, endsWith('.'), reason: code);
   expect(copy.next, endsWith('.'), reason: code);
-  expect(copy.text, isNot(contains('—')), reason: code);
+  expect(copy.text, isNot(contains('\u2014')), reason: code);
   expect(copy.text, isNot(contains('..')), reason: code);
 }
 
