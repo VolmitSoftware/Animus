@@ -17,6 +17,8 @@ final class RepositoryFiles {
         }
         throw new IllegalStateException("Repository root not found");
     }
+    /** A page of the Animus section in the VolmitSoftware/docs checkout beside this repository. */
+    static Path wikiPage(String page) { return root().resolveSibling("docs").resolve("animus").resolve(page); }
     static Path packs() { return root().resolve("examples/packs"); }
     static List<Path> packDirectories() throws IOException {
         try (Stream<Path> children = Files.list(packs())) { return children.filter(Files::isDirectory).sorted().toList(); }

@@ -2,7 +2,7 @@
 /// `denizen` namespace, chest GUIs and behavior state, with the same staged bytes as the server. Assignment and
 /// interact scripts become NPC behaviors; task scripts routines and manual-run behaviors, procedures routines that
 /// return a value; world, command and book scripts server behaviors; inventory scripts chest GUIs. Everything that does
-/// not convert is listed in the report with its reason. See docs/migrating-from-citizens.md.
+/// not convert is listed in the report with its reason. See wiki animus/13-migrating-from-citizens.
 library;
 
 import 'dart:collection';

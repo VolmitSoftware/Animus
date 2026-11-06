@@ -27,6 +27,6 @@ public abstract class PlayerListHooks {
 
     @Inject(method = "respawn", at = @At("RETURN"))
     private void animus$respawned(ServerPlayer old, boolean keepInventory, Entity.RemovalReason reason, CallbackInfoReturnable<ServerPlayer> callback) {
-        ModHooks.respawned(callback.getReturnValue());
+        ModHooks.respawned(old, callback.getReturnValue());
     }
 }

@@ -98,6 +98,36 @@ class DenizenDropInTest {
         }
     }
 
+    @Test void acceptingDenizenEnablesTheImportsServerBehaviorsAndRollbackRemovesThem() throws Exception {
+        leaveServerFolders();
+        try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
+            NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
+            CitizensDropIn flow = dropIn(store, npcs);
+            flow.execute(new String[0]);
+            String reportPath = flow.status().getAsJsonObject("denizen").get("report").getAsString();
+            JsonObject report = art.arcane.animus.core.storage.JsonDocuments.object(store.read(reportPath));
+            JsonArray servers = new JsonArray();
+            servers.add("denizen:world/welcome");
+            servers.add("Not An Id");
+            report.add("serverBehaviors", servers);
+            DocumentStore.atomic(store.resolve(reportPath), art.arcane.animus.core.storage.JsonDocuments.write(report));
+            DocumentStore.atomic(store.resolve("server-behaviors.json"), "{\"schemaVersion\":1,\"behaviors\":[\"town:clock\"]}\n");
+
+            flow.execute(new String[]{"apply"});
+            String receipt = store.read(reportPath.replace("report.json", "receipt.json"));
+            assertTrue(receipt.contains("\"serverBehaviors\": [\n    \"denizen:world/welcome\"\n  ]"), receipt);
+            assertEquals(List.of("town:clock"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")), "apply enables nothing");
+
+            String accepted = joined(flow.execute(new String[]{"accept", "denizen"}));
+            assertTrue(accepted.contains("Denizen server behaviors enabled in server-behaviors.json"), accepted);
+            assertEquals(List.of("town:clock", "denizen:world/welcome"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")));
+            assertTrue(joined(flow.execute(new String[]{"accept", "denizen"})).contains("Nothing waiting in denizen"));
+
+            flow.execute(new String[]{"rollback"});
+            assertEquals(List.of("town:clock"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")));
+        }
+    }
+
     @Test void acceptingTwiceListsEachBehaviorOnce() {
         JsonObject definition = new JsonObject();
         JsonArray existing = new JsonArray();

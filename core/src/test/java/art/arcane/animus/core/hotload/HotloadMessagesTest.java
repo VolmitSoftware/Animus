@@ -10,7 +10,7 @@ class HotloadMessagesTest {
     @Test void appliedLinesMatchAdaptsFormatWithAnimusBranding() {
         List<String> lines = HotloadMessages.applied("npcs/town/guard.json",
                 List.of(new HotloadDiff.Change("name", "\"Guard\"", "\"Captain\"")), (String key) -> false);
-        assertEquals(List.of(RichText.colorize("&7[&5Animus&7]: &aAnimus Hotloaded: &f[npcs/town/guard.json] &b[name] &7[\"Guard\" -> \"Captain\"]")), lines);
+        assertEquals(List.of(RichText.colorize("&8[&#FF5FA8Animus&8]&7: &aAnimus Hotloaded: &f[npcs/town/guard.json] &#FFB3D6[name] &7[\"Guard\" -> \"Captain\"]")), lines);
         assertEquals("[Animus]: Animus Hotloaded: [npcs/town/guard.json] [name] [\"Guard\" -> \"Captain\"]",
                 RichText.sectionRuns(lines.getFirst()).stream().map(RichText.Run::text).reduce("", String::concat));
     }
@@ -20,7 +20,7 @@ class HotloadMessagesTest {
         for (int index = 0; index < 15; index++) changes.add(new HotloadDiff.Change("key" + index, "1", "2"));
         List<String> lines = HotloadMessages.applied("config.toml", changes, (String key) -> false);
         assertEquals(13, lines.size());
-        assertEquals(RichText.colorize("&7[&5Animus&7]: &aAnimus Hotloaded: &f[config.toml] &7[3 additional changes omitted]"), lines.getLast());
+        assertEquals(RichText.colorize("&8[&#FF5FA8Animus&8]&7: &aAnimus Hotloaded: &f[config.toml] &7[3 additional changes omitted]"), lines.getLast());
     }
 
     @Test void restartOnlyKeysSaySoAndLiveKeysDoNot() {

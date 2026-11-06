@@ -31,7 +31,7 @@ import java.util.zip.ZipOutputStream;
  * {@code pack/assets/}, where the editor's rig export puts its item definitions, models and textures, plus the same
  * sources made from each {@code models/<namespace>/<name>.bbmodel} (rig {@code namespace:name}) by the editor's import
  * rules. A bone shows {@code minecraft:paper} with {@code item_model="animus:<rig path>/<bone>"}; the layout is in
- * docs/runtime.md, "Resource pack layout". The zip is reproducible: sorted, stored entries with one fixed time. A
+ * the wiki page animus/06-rigs-animations, "Resource pack layout". The zip is reproducible: sorted, stored entries with one fixed time. A
  * mergeable folder and the rig and animation documents made from models are written beside it. Input is bounded and
  * nothing is fetched.
  */

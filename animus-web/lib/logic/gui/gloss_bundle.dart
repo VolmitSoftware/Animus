@@ -2,7 +2,7 @@
 /// workspace schema 2) to and from Animus documents, for the kinds Animus
 /// adopts: chest GUIs, holographic menus, holograms, text animations and
 /// presets. A GUI made
-/// in Gloss Web opens here, and the reverse (docs/editor-design.md, section 3).
+/// in Gloss Web opens here, and the reverse (dev/editor-design.md, section 3).
 library;
 
 import 'dart:convert';
