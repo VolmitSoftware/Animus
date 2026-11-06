@@ -164,6 +164,11 @@
 - Every `config.toml` key applies live (only `npcs.enabled` on Folia still needs a restart): a lowered budget lets work in flight finish, editor listener and relay changes restart only that part with paired tokens kept, and `[modules] enabled` switches modules live (changing a module jar still needs a restart).
 - Editor undo steps are kept in IndexedDB and survive a reload.
 - Undo and clearing treat multi-block objects as one group.
+- Animus's own chat, splash, debug, dialogue, hire and shop colours use the pink, black and grey palette (`#FF5FA8` / `#E0408C` / `#FFB3D6`), with legacy fallbacks on the Bukkit console.
+- Unstyled dialogue answers keep green for agreeing ids and red for declining ids, and cycle through pinks for the rest.
+- Boss bars default to pink.
+- The editor theme uses a pink accent on near-black or light-grey surfaces, with redrawn icons.
+- User documentation moved to the central docs wiki; developer notes live in `dev/`.
 
 ### Fixed
 
@@ -198,6 +203,7 @@
 - Imported Sentinel NPCs with `respawnTime` 0 stay dead; a negative value deletes the NPC on death, undoable with `/animus rollback`; imported guards never target their owner.
 - A player who logs out while riding is saved at the NPC's feet instead of beside it.
 - Death-trigger routines can speak, play sounds and show particles for the NPC that died.
+- The editor theme toggle switches themes without a reload.
 
 ### Notes
 
