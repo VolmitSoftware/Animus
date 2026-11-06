@@ -102,5 +102,13 @@ JsonList moveItem(JsonList list, int from, int to) {
   return out;
 }
 
+/// A JSON key as a label: `cooldownTicks` reads "Cooldown ticks".
+String humanizeKey(String key) {
+  final String spaced = key
+      .replaceAllMapped(RegExp(r'(?<=[a-z0-9])([A-Z])'), (Match m) => ' ${m.group(1)!.toLowerCase()}')
+      .replaceAll('_', ' ');
+  return spaced.isEmpty ? key : '${spaced[0].toUpperCase()}${spaced.substring(1)}';
+}
+
 /// The editor's file format: two-space indent and a final newline.
 String prettyJson(Object? value) => '${const JsonEncoder.withIndent('  ').convert(value)}\n';
