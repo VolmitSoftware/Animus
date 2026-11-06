@@ -171,12 +171,19 @@ final class EditorHarness implements AutoCloseable {
     EditorResponse send(String method, String target, String token, JsonObject body) throws Exception { return send(method, target, token, body, true); }
 
     EditorResponse send(String method, String target, String token, JsonObject body, boolean count) throws Exception {
+        return request(request(method, target, token, body, count));
+    }
+
+    /** A counted request, for a test that sends it itself. */
+    EditorRequest request(String method, String target, String token, JsonObject body) { return request(method, target, token, body, true); }
+
+    private EditorRequest request(String method, String target, String token, JsonObject body, boolean count) {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Origin", ORIGIN);
         if (token != null) headers.put("Authorization", "Bearer " + token);
         if (count && (method.equals("POST") || method.equals("DELETE"))) headers.put("X-Animus-Counter", Long.toString(++counter));
         headers.put(EditorReplies.PEER_HEADER, "127.0.0.1");
-        return request(new EditorRequest(EditorRequest.Transport.DIRECT, method, target, headers, Optional.ofNullable(body)));
+        return new EditorRequest(EditorRequest.Transport.DIRECT, method, target, headers, Optional.ofNullable(body));
     }
 
     long nextCounter() { return ++counter; }

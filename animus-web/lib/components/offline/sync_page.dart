@@ -15,7 +15,7 @@ import '../../services/server/error_copy.dart';
 import '../../services/server/server_connection.dart';
 import '../../services/server/server_profiles.dart';
 import '../../state/editor_store.dart';
-import '../../state/live_session.dart';
+import '../../state/catalog_entry.dart';
 import '../../state/server_hub.dart';
 import '../../state/workspace_repository.dart';
 import '../../state/workspace_route.dart';

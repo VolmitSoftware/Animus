@@ -220,6 +220,9 @@
 - Web editor: an NPC's navigation plays a recording with `once`, `loop` or `pingpong`.
 - Web editor: ranged waits take a min and max field; routes edit `seed`, `startOffset`, `jitter`, point `weight` and `next` junctions, checked as the server checks them.
 - Web editor: renaming a recording or group updates the NPCs and routes that name it.
+- Rollback receipts rotate at startup by `files.backupsKept` and `files.backupDays`, removing stored copies only they used.
+- Schema migrations cover routes, recordings, groups, chest GUIs, holograms, text animations, rigs, animations, pack manifests and `server-behaviors.json`.
+- Web editor: the live bar shows Resyncing after a reconnect, then one line saying what changed.
 
 ### Changed
 
@@ -455,6 +458,8 @@
 - Bukkit NPC positions, admin create, teleports, combat locations, GUI teleports, shop chests and WorldGuard checks accept dimension keys such as `minecraft:the_nether`.
 - `npc.world` gives the same form as `player.world`: the world name on Bukkit, the dimension key on mods.
 - Clicks on NPC-bound holograms count only in the NPC's world.
+- An editor request queued before its token was revoked or expired no longer reads or writes.
+- An editor browser that stops reading events no longer stalls event delivery to other editors.
 
 ### Notes
 

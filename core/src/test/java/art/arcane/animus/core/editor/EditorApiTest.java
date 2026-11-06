@@ -5,6 +5,7 @@ import art.arcane.animus.core.editor.transport.EditorEventSink;
 import art.arcane.animus.core.editor.transport.EditorEventStream;
 import art.arcane.animus.core.editor.transport.EditorRequest;
 import art.arcane.animus.core.editor.transport.EditorResponse;
+import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -19,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The API over a copy of schema/fixtures/export, with every response checked against editor-v1.schema.json. */
@@ -140,6 +144,79 @@ class EditorApiTest {
         String other = harness.token();
         harness.clock.advance(Duration.ofDays(8));
         error("token-expired", 401, harness.send("GET", "/v1/catalog", other, null));
+    }
+
+    @Test
+    void request_queuedWhenTheTokenIsRevoked_neitherWritesNorReads() throws Exception {
+        String token = harness.token();
+        String before = harness.read(GREETER);
+        JsonObject current = greeter();
+        CountDownLatch hold = new CountDownLatch(1);
+        harness.lane.execute(() -> {
+            try { hold.await(); }
+            catch (InterruptedException stopped) { Thread.currentThread().interrupt(); }
+        });
+        CompletableFuture<EditorResponse> apply = harness.api.handle(harness.request("POST", "/v1/changes", token, set("key-0000000000000031",
+                change("npc", "examples/greeter", current, renamed(current, "Late"))))).toCompletableFuture();
+        CompletableFuture<EditorResponse> read = harness.api.handle(harness.request("GET", "/v1/documents/npc/examples/greeter", token, null)).toCompletableFuture();
+        harness.api.revoke(token.substring(4, token.indexOf('.')), "token-revoked");
+        hold.countDown();
+        error("token-revoked", 401, apply.get(5, TimeUnit.SECONDS));
+        error("token-revoked", 401, read.get(5, TimeUnit.SECONDS));
+        assertEquals(before, harness.read(GREETER), "a revoked session's queued apply writes nothing");
+        assertTrue(harness.host.applied.isEmpty());
+    }
+
+    @Test
+    void request_queuedWhenTheTokenExpires_isRefused() throws Exception {
+        String token = harness.token();
+        CountDownLatch hold = new CountDownLatch(1);
+        harness.lane.execute(() -> {
+            try { hold.await(); }
+            catch (InterruptedException stopped) { Thread.currentThread().interrupt(); }
+        });
+        CompletableFuture<EditorResponse> read = harness.api.handle(harness.request("GET", "/v1/catalog", token, null)).toCompletableFuture();
+        harness.clock.advance(Duration.ofDays(8));
+        hold.countDown();
+        error("token-expired", 401, read.get(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void apply_twoSessionsOnOneDocument_secondIsConflictNotOverwrite() throws Exception {
+        String first = harness.token(), second = harness.token();
+        JsonObject base = greeter();
+        assertEquals(200, harness.send("POST", "/v1/changes", first, set("key-0000000000000032", change("npc", "examples/greeter", base, renamed(base, "Mine")))).status());
+        EditorResponse late = harness.send("POST", "/v1/changes", second, set("key-0000000000000033", change("npc", "examples/greeter", base, renamed(base, "Theirs"))));
+        assertEquals(409, late.status());
+        JsonObject conflict = valid("change-conflict", late).getAsJsonArray("conflicts").get(0).getAsJsonObject();
+        assertEquals(base.get("revision").getAsLong(), conflict.get("baseRevision").getAsLong());
+        assertEquals(2, conflict.getAsJsonObject("current").get("revision").getAsLong());
+        assertEquals("Mine", conflict.getAsJsonObject("current").getAsJsonObject("source").get("name").getAsString());
+        assertTrue(harness.read(GREETER).contains("\"Mine\""));
+    }
+
+    @Test
+    void apply_afterAnInGameCommandEdit_isConflict_andAStaleCommandIsRefusedToo() throws Exception {
+        String token = harness.token();
+        JsonObject opened = greeter();
+        NpcRepository.Draft draft = harness.npcs.draft("greeter");
+        JsonObject commanded = draft.document();
+        commanded.addProperty("name", "Commanded");
+        harness.npcs.apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), commanded));
+        EditorResponse response = harness.send("POST", "/v1/changes", token, set("key-0000000000000034", change("npc", "examples/greeter", opened, renamed(opened, "Edited"))));
+        assertEquals(409, response.status());
+        assertEquals("Commanded", valid("change-conflict", response).getAsJsonArray("conflicts").get(0).getAsJsonObject()
+                .getAsJsonObject("current").getAsJsonObject("source").get("name").getAsString());
+
+        NpcRepository.Draft stale = harness.npcs.draft("greeter");
+        JsonObject fresh = greeter();
+        assertEquals(200, harness.send("POST", "/v1/changes", token, set("key-0000000000000035", change("npc", "examples/greeter", fresh, renamed(fresh, "Editor")))).status());
+        JsonObject old = stale.document();
+        old.addProperty("name", "Old command");
+        java.io.IOException refused = assertThrows(java.io.IOException.class,
+                () -> harness.npcs.apply(new NpcRepository.Draft(stale.path(), stale.expectedHash(), stale.expectedRevision(), old)));
+        assertTrue(refused.getMessage().contains("Conflict"), refused.getMessage());
+        assertTrue(harness.read(GREETER).contains("\"Editor\""), "the command never overwrites the editor's apply");
     }
 
     @Test

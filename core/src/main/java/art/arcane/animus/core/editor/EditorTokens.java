@@ -128,6 +128,13 @@ public final class EditorTokens {
         return used;
     }
 
+    /** Refuses a token revoked or expired since its request was authenticated, as work queued for it starts. */
+    public synchronized void stillValid(String tokenId) throws EditorError {
+        Token token = tokens.get(tokenId);
+        if (token == null) throw new EditorError(EditorError.Code.TOKEN_REVOKED, "This token was revoked.");
+        if (!now().isBefore(token.expires())) throw new EditorError(EditorError.Code.TOKEN_EXPIRED, "This token expired; pair the browser again.");
+    }
+
     /** Accepts a mutating request's counter, which must exceed every earlier one for the token, and stores it before the request runs. */
     public synchronized void advance(String tokenId, long counter) throws EditorError, IOException {
         Token token = tokens.get(tokenId);
