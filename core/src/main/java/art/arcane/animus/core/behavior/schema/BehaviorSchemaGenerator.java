@@ -6,11 +6,14 @@ import art.arcane.animus.core.behavior.BehaviorNodeType;
 import art.arcane.animus.core.behavior.BehaviorExpression;
 import art.arcane.animus.core.behavior.BehaviorProgram;
 import art.arcane.animus.core.behavior.BehaviorValues;
+import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.catalog.PackManifest;
+import art.arcane.animus.core.behavior.trigger.ServerEvent;
 import art.arcane.animus.core.behavior.trigger.TriggerBinding;
 import art.arcane.animus.core.behavior.trigger.TriggerCompiler;
 import art.arcane.animus.core.behavior.trigger.TriggerKind;
 import art.arcane.animus.core.control.RideSettings;
+import art.arcane.animus.core.gui.GuiExpression;
 import art.arcane.animus.core.control.LookClose;
 import art.arcane.animus.core.navigation.WaypointSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
@@ -110,6 +113,9 @@ public final class BehaviorSchemaGenerator {
             }
         }
         root.add("properties", properties);
+        JsonArray serverRules = new JsonArray();
+        serverRules.add(serverRule());
+        root.add("allOf", serverRules);
         JsonObject definitions = new JsonObject();
         definitions.add("identifier", described(pattern(IDENTIFIER), "1-64 lowercase letters, digits, _ or -, starting with a letter or digit."));
         definitions.add("module-capability", moduleCapability());
@@ -148,6 +154,40 @@ public final class BehaviorSchemaGenerator {
         examples.add(example);
         root.add("examples", examples);
         return root;
+    }
+
+    /**
+     * What {@code "server": true} changes, as the compiler checks it: only server events, a timer of at least
+     * {@link TriggerCompiler#MIN_SERVER_INTERVAL_TICKS} ticks, and no npc or relationship variables. Without it, only NPC events.
+     */
+    private static JsonObject serverRule() {
+        JsonObject condition = property("server", constant(true));
+        condition.add("required", strings("server"));
+        JsonObject server = new JsonObject();
+        JsonObject serverProperties = new JsonObject();
+        JsonObject scope = described(choices(List.of("execution", "player", "global")), "A server behavior has no NPC: execution, player or global.");
+        JsonObject variable = new JsonObject();
+        variable.add("properties", property("scope", scope).getAsJsonObject("properties"));
+        JsonObject variables = new JsonObject();
+        variables.add("additionalProperties", variable);
+        serverProperties.add("variables", variables);
+        JsonObject serverTrigger = property("event", described(choices(TriggerCompiler.names(true)), "A server behavior uses server events only."));
+        JsonArray timer = new JsonArray();
+        timer.add(when("event", TriggerKind.TIMER.jsonName(), property("intervalTicks",
+                described(range("integer", TriggerCompiler.MIN_SERVER_INTERVAL_TICKS, TriggerCompiler.MAX_INTERVAL_TICKS), "Server behaviors use at least " + TriggerCompiler.MIN_SERVER_INTERVAL_TICKS + " ticks."))));
+        serverTrigger.add("allOf", timer);
+        JsonObject serverTriggers = new JsonObject();
+        serverTriggers.add("items", serverTrigger);
+        serverProperties.add("triggers", serverTriggers);
+        server.add("properties", serverProperties);
+        JsonObject npcTriggers = new JsonObject();
+        npcTriggers.add("items", property("event", described(choices(TriggerCompiler.names(false)), "Server events need \"server\": true.")));
+        JsonObject npc = property("triggers", npcTriggers);
+        JsonObject rule = new JsonObject();
+        rule.add("if", condition);
+        rule.add("then", server);
+        rule.add("else", npc);
+        return rule;
     }
 
     /** Registered capabilities of one kind, each with its description for editors. */
@@ -766,6 +806,7 @@ public final class BehaviorSchemaGenerator {
             entry.addProperty("privileged", descriptor.privileged());
             entry.addProperty("available", availability.available());
             entry.addProperty("reason", availability.reason());
+            entry.addProperty("reach", BuiltinCapabilities.npcOnly(descriptor.key()) ? "npc" : "both");
             JsonObject schema = argumentSchema(descriptor);
             Set<String> required = names(schema.get("required"));
             JsonObject arguments = new JsonObject();
@@ -788,6 +829,8 @@ public final class BehaviorSchemaGenerator {
             trigger.addProperty("description", kind.description());
             trigger.addProperty("carriesPlayer", kind.carriesPlayer());
             trigger.addProperty("reach", kind.reach().name().toLowerCase(Locale.ROOT));
+            List<String> context = ServerEvent.contextKeys(kind);
+            if (!context.isEmpty()) trigger.add("context", strings(context.toArray(String[]::new)));
             JsonObject fields = new JsonObject();
             for (String name : kind.keys()) {
                 Field field = name.equals("event") ? new Field(constant(kind.jsonName()), "event", true) : triggerField(name);
@@ -814,9 +857,28 @@ public final class BehaviorSchemaGenerator {
         language.add("variableScopes", strings(scopes().toArray(String[]::new)));
         language.add("variableLifetimes", strings(lifetimes().toArray(String[]::new)));
         language.add("documentFields", strings(documentFields().toArray(String[]::new)));
+        language.add("expressions", expressionLanguage());
         root.add("language", language);
         return root;
     }
+    /** What behavior expressions can name: roots, facts, flag scopes and functions, with the declared-name rule. */
+    private static JsonObject expressionLanguage() {
+        JsonObject language = new JsonObject();
+        language.addProperty("maxLength", BehaviorExpression.MAX_LENGTH);
+        language.addProperty("namePattern", "^" + BehaviorExpression.NAME.pattern() + "$");
+        language.add("roots", strings(BehaviorExpression.ROOTS.toArray(String[]::new)));
+        language.add("reserved", strings(new java.util.TreeSet<>(BehaviorExpression.RESERVED).toArray(String[]::new)));
+        JsonObject facts = new JsonObject();
+        facts.add("player", strings(BehaviorExpression.PLAYER_FACTS.toArray(String[]::new)));
+        facts.add("npc", strings(BehaviorExpression.NPC_FACTS.toArray(String[]::new)));
+        facts.add("server", strings(BehaviorExpression.SERVER_FACTS.toArray(String[]::new)));
+        language.add("facts", facts);
+        language.add("flagScopes", strings(BehaviorExpression.FLAG_SCOPES.toArray(String[]::new)));
+        language.add("functions", strings(BehaviorExpression.FUNCTIONS.toArray(String[]::new)));
+        language.add("standardFunctions", strings(GuiExpression.STANDARD_FUNCTIONS.toArray(String[]::new)));
+        return language;
+    }
+
     private static JsonObject completion(Field field) {
         JsonObject entry = completion(field.schema(), field.required());
         entry.addProperty("type", field.completion());

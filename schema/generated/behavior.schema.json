@@ -72,6 +72,111 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "server": {
+            "const": true
+          }
+        },
+        "required": [
+          "server"
+        ]
+      },
+      "then": {
+        "properties": {
+          "variables": {
+            "additionalProperties": {
+              "properties": {
+                "scope": {
+                  "enum": [
+                    "execution",
+                    "player",
+                    "global"
+                  ],
+                  "description": "A server behavior has no NPC: execution, player or global."
+                }
+              }
+            }
+          },
+          "triggers": {
+            "items": {
+              "properties": {
+                "event": {
+                  "enum": [
+                    "timer",
+                    "module",
+                    "player_join",
+                    "player_quit",
+                    "player_chat",
+                    "command",
+                    "server_start",
+                    "player_death",
+                    "player_respawn",
+                    "player_world_change"
+                  ],
+                  "description": "A server behavior uses server events only."
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "event": {
+                        "const": "timer"
+                      }
+                    },
+                    "required": [
+                      "event"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "intervalTicks": {
+                        "type": "integer",
+                        "minimum": 20,
+                        "maximum": 72000,
+                        "description": "Server behaviors use at least 20 ticks."
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "triggers": {
+            "items": {
+              "properties": {
+                "event": {
+                  "enum": [
+                    "interaction",
+                    "proximity",
+                    "spawn",
+                    "despawn",
+                    "damage",
+                    "death",
+                    "waypoint",
+                    "timer",
+                    "dialogue_choice",
+                    "module",
+                    "build_finished",
+                    "build_paused",
+                    "animation_finished"
+                  ],
+                  "description": "Server events need \"server\": true."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "identifier": {
       "type": "string",
