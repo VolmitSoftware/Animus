@@ -87,7 +87,7 @@ final class RecorderLook {
     /** A stack in the definition item shape; components the item shape cannot hold are left out. Empty for air. */
     static Optional<NpcItem> item(ItemStack stack) {
         if (stack == null || stack.getType().isAir() || stack.getAmount() < 1) return Optional.empty();
-        String id = stack.getType().getKeyOrThrow().toString();
+        String id = stack.getType().getKey().toString();
         if (!NpcItem.validId(id)) return Optional.empty();
         Optional<String> components = Optional.empty();
         if (stack.hasItemMeta()) {
