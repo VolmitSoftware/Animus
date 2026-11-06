@@ -81,6 +81,11 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "counter": "X-Animus-Counter: a strictly increasing integer per token on every mutating request (POST and DELETE except pair). A value at or below the last accepted one is refused with counter-replayed.",
     "origin": "Origin must equal one of [editor] allowedOrigins exactly, or the request is refused with origin-not-allowed."
   },
+  "changeSets": {
+    "write": "A change with source writes the document; baseRevision and baseHash null create one that must not exist yet.",
+    "delete": "A change with delete removes the document; it needs the baseRevision and baseHash of what it removes.",
+    "move": "A change with source and from moves the document from from.id to id in one transaction: the file at id is written with revision one above the old one and the file at from.id is removed. baseRevision and baseHash are those of the document at from.id. A conflict names from.id when that document changed or is gone, and id when a document already exists there. The applied answer lists id with from, the catalog event lists id and deletes from.id, and undoing the change moves the document back."
+  },
   "endpoints": [
     {"method": "GET", "path": "/v1/hello", "scope": null, "request": null, "responses": {"200": "hello-response"}},
     {"method": "POST", "path": "/v1/pair", "scope": null, "auth": "pairing-secret", "request": "pair-request", "responses": {"200": "pair-response", "401": "error-response", "410": "error-response"}},
@@ -364,6 +369,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "change": {
       "type": "object",
+      "description": "One document of a change set: source writes it, delete removes it. A move is source with from: the document leaves from.id for id in one step, its base is the document at from.id, and id must not exist yet.",
       "additionalProperties": false,
       "required": ["kind", "id", "baseRevision", "baseHash"],
       "properties": {
@@ -372,12 +378,21 @@ const Map<String, String> sharedSchemaSources = <String, String>{
         "baseRevision": {"type": ["integer", "null"], "minimum": 0, "description": "null creates a document that must not exist yet."},
         "baseHash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "source": {"type": "object"},
-        "delete": {"const": true}
+        "delete": {"const": true},
+        "from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": {"id": {"$ref": "#/$defs/documentId"}},
+          "description": "The id this document moves from, same kind. baseRevision and baseHash are those of the document at that id. The server writes the new file and removes the old one in one transaction, with revision one above the old one, and refuses with conflict when the old document changed or the new id exists."
+        }
       },
       "oneOf": [
         {"required": ["source"], "not": {"required": ["delete"]}},
-        {"required": ["delete"], "not": {"required": ["source"]}, "properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
-      ]
+        {"required": ["delete"], "not": {"anyOf": [{"required": ["source"]}, {"required": ["from"]}]}, "properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
+      ],
+      "if": {"required": ["from"]},
+      "then": {"properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
     },
     "change-set": {
       "type": "object",
@@ -444,7 +459,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               "kind": {"$ref": "#/$defs/kind"},
               "id": {"$ref": "#/$defs/documentId"},
               "revision": {"$ref": "#/$defs/revision"},
-              "hash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}], "description": "null after a delete."}
+              "hash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}], "description": "null after a delete."},
+              "from": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id"],
+                "properties": {"id": {"$ref": "#/$defs/documentId"}},
+                "description": "Set when the document moved here from this id, which no longer exists. Undoing a move answers the old id, with from naming the id it left."
+              }
             }
           }
         }

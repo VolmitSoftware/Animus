@@ -190,6 +190,7 @@
     },
     "change": {
       "type": "object",
+      "description": "One document of a change set: source writes it, delete removes it. A move is source with from: the document leaves from.id for id in one step, its base is the document at from.id, and id must not exist yet.",
       "additionalProperties": false,
       "required": ["kind", "id", "baseRevision", "baseHash"],
       "properties": {
@@ -198,12 +199,21 @@
         "baseRevision": {"type": ["integer", "null"], "minimum": 0, "description": "null creates a document that must not exist yet."},
         "baseHash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "source": {"type": "object"},
-        "delete": {"const": true}
+        "delete": {"const": true},
+        "from": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": {"id": {"$ref": "#/$defs/documentId"}},
+          "description": "The id this document moves from, same kind. baseRevision and baseHash are those of the document at that id. The server writes the new file and removes the old one in one transaction, with revision one above the old one, and refuses with conflict when the old document changed or the new id exists."
+        }
       },
       "oneOf": [
         {"required": ["source"], "not": {"required": ["delete"]}},
-        {"required": ["delete"], "not": {"required": ["source"]}, "properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
-      ]
+        {"required": ["delete"], "not": {"anyOf": [{"required": ["source"]}, {"required": ["from"]}]}, "properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
+      ],
+      "if": {"required": ["from"]},
+      "then": {"properties": {"baseRevision": {"type": "integer"}, "baseHash": {"type": "string"}}}
     },
     "change-set": {
       "type": "object",
@@ -270,7 +280,14 @@
               "kind": {"$ref": "#/$defs/kind"},
               "id": {"$ref": "#/$defs/documentId"},
               "revision": {"$ref": "#/$defs/revision"},
-              "hash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}], "description": "null after a delete."}
+              "hash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}], "description": "null after a delete."},
+              "from": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id"],
+                "properties": {"id": {"$ref": "#/$defs/documentId"}},
+                "description": "Set when the document moved here from this id, which no longer exists. Undoing a move answers the old id, with from naming the id it left."
+              }
             }
           }
         }

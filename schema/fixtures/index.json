@@ -344,6 +344,12 @@
       "schema": "editor-v1.schema.json"
     },
     {
+      "path": "editor/messages/change-set.1.json",
+      "definition": "change-set",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
       "path": "editor/messages/validate-response.0.json",
       "definition": "validate-response",
       "valid": true,
@@ -381,6 +387,12 @@
     },
     {
       "path": "editor/messages/change-applied.0.json",
+      "definition": "change-applied",
+      "valid": true,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/change-applied.1.json",
       "definition": "change-applied",
       "valid": true,
       "schema": "editor-v1.schema.json"
@@ -465,6 +477,18 @@
     },
     {
       "path": "editor/messages/invalid/change-set.2.json",
+      "definition": "change-set",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/change-set.3.json",
+      "definition": "change-set",
+      "valid": false,
+      "schema": "editor-v1.schema.json"
+    },
+    {
+      "path": "editor/messages/invalid/change-set.4.json",
       "definition": "change-set",
       "valid": false,
       "schema": "editor-v1.schema.json"
