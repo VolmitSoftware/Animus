@@ -34,29 +34,36 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 /**
- * Builds on a single-owner runtime: Bukkit and Paper's main thread, or a mod server's thread. Schematics are read and
- * planned on one worker thread, block palettes are matched on the owner, saved state is written on the shared file
- * lane, and every block change happens in the owner tick. Folia gives each NPC its own region owner, so builds are
- * unavailable there.
+ * Builds. Schematics are read and planned on one worker thread, block palettes are matched on the service's owner, and
+ * saved state is written on the shared file lane.
+ * <p>
+ * On a single-owner runtime (Bukkit and Paper's main thread, or a mod server's thread) the owner also runs every
+ * build's tick and every command. On a regionized server ({@link Regions}, Folia) the owner is the global region: it
+ * keeps the build records, runs commands and saves, and sends each build out for one turn at a time to the region that
+ * owns where the build works now (see {@link BuildSession#focus}). A build out on a turn is touched only by that region
+ * until the turn comes back; a command for it waits until then. Block changes, the NPCs' own movement and scaffolding all
+ * happen on that region, which reads only chunks it owns.
  *
  * @param <P> the platform's online player
  * @param <I> the platform's item stack
@@ -66,16 +73,39 @@ public final class BuildService<P, I> implements AutoCloseable {
     private static final String STATE = "state/builds";
     private static final Pattern FILE = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\\.(schem|nbt|schematic)");
     private static final int TICKS_PER_SECOND = 20, MAXIMUM_REPORT_LINES = 8, MAXIMUM_LISTED = 200, BATCH_CHARACTERS = 2 * 1024 * 1024;
+    /** Commands waiting for the owner, and how many owner ticks one may wait for its build to come back from a turn. */
+    private static final int MAXIMUM_COMMANDS = 64, COMMAND_WAIT_TICKS = 200;
+    /** A turn no region started in this long is taken back; the build is sent again. */
+    private static final long TURN_TIMEOUT_NANOS = 10_000_000_000L, SHUTDOWN_WAIT_NANOS = 1_000_000_000L;
 
-    /** What a platform adds to block access for builds. Owner thread. */
+    /** What a platform adds to block access for builds. Owner thread; player methods on the player's owner. */
     public interface Platform<P, I> extends BuildWorld {
         record Held(String item, int count) {}
         /** An item stack for an item id, or the platform's empty stack. */
         I stack(Optional<String> item);
         Optional<Held> held(P player);
         void takeHeld(P player, int count);
+        /** Regionized servers: hands items back to the player, dropping what does not fit at their feet. */
+        default void give(P player, String item, long count) { throw new UnsupportedOperationException("Only regionized servers hand donations back"); }
         void tell(P player, String message);
     }
+
+    /** A regionized server's region schedulers, as builds use them. */
+    public interface Regions {
+        /** Runs the work on the region that owns the chunk, at that region's next tick; false when refused. */
+        boolean run(String world, int chunkX, int chunkZ, Runnable work);
+        /** Why a turn cannot be sent to the chunk now (for example, it is not known to be loaded), or null. */
+        String unreachable(String world, int chunkX, int chunkZ);
+    }
+
+    /** A command for a build that is out on a region turn; the command runs again once the build is back. */
+    public static final class Busy extends RuntimeException {
+        Busy(String id) { super("Build " + id + " is busy on its region", null, false, false); }
+    }
+
+    private record Command(Runnable work, Consumer<String> refused, int waited) {}
+    /** What commands and status read of a build while it is out on a turn: its state when it left. */
+    private record View(BuildSession.State state, List<String> team, String status) {}
 
     /** A request to start a build. An empty origin means the block the leader stands in. */
     public record Start(String leader, String schematic, Optional<BlockPos> origin, BuildOptions options, Optional<UUID> startedBy) {
@@ -88,7 +118,13 @@ public final class BuildService<P, I> implements AutoCloseable {
     private record Loaded(Schematic schematic, String hash) {}
 
     private final AnimusRuntime runtime;
-    private final PersistedNpcService<P, I> living;
+    private final BuildNpcs<P, I> living;
+    /** Regionized servers only; null where the owner runs every build tick itself. */
+    private final Regions regions;
+    private final BuildTurns turns;
+    private final Map<String, View> views = new HashMap<>();
+    private final ConcurrentLinkedQueue<Command> commands = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger queuedCommands = new AtomicInteger();
     private final Executor files;
     private final Platform<P, I> platform;
     private final BuildProtection.Gate protection;
@@ -104,7 +140,10 @@ public final class BuildService<P, I> implements AutoCloseable {
     private boolean restored, paused;
     private final Map<String, BuildSession> sessions = new LinkedHashMap<>();
     private final Set<String> loading = new HashSet<>();
-    private final Set<String> dirty = new TreeSet<>();
+    /** Concurrent: a build out on a region turn marks itself changed there. */
+    private final Set<String> dirty = new ConcurrentSkipListSet<>();
+    /** A build stopped, finished or paused somewhere and wants its record saved at the next owner tick. */
+    private volatile boolean urgentSave;
     private final Set<String> saving = new HashSet<>();
     private final ConcurrentLinkedQueue<Runnable> completions = new ConcurrentLinkedQueue<>();
     private final Crew crew = new Crew();
@@ -121,15 +160,18 @@ public final class BuildService<P, I> implements AutoCloseable {
     /**
      * Construct on the owner thread.
      *
+     * @param regions a regionized server's region schedulers, or null where {@code ticks} runs every build itself
      * @param unavailable why builds cannot run on this platform, or null
      */
-    public BuildService(AnimusRuntime runtime, PersistedNpcService<P, I> living, Executor files, Platform<P, I> platform,
+    public BuildService(AnimusRuntime runtime, BuildNpcs<P, I> living, Executor files, Platform<P, I> platform,
                         BuildProtection protection, String protectionName, Function<Runnable, AutoCloseable> ticks,
-                        Supplier<TriggerSink> triggers, Consumer<String> log, String unavailable) {
+                        Supplier<TriggerSink> triggers, Consumer<String> log, Regions regions, String unavailable) {
         this.runtime = Objects.requireNonNull(runtime); this.files = Objects.requireNonNull(files);
         this.protectionName = Objects.requireNonNull(protectionName); this.triggers = Objects.requireNonNull(triggers);
         this.log = Objects.requireNonNull(log);
         this.living = living; this.platform = platform;
+        this.regions = regions;
+        turns = regions == null ? null : new BuildTurns(regions, TURN_TIMEOUT_NANOS);
         this.protection = new BuildProtection.Gate(Objects.requireNonNull(protection), log);
         settings = runtime.buildSettings();
         platformReason = unavailable != null ? unavailable : living == null ? "unavailable because the NPC runtime is: missing" : null;
@@ -146,6 +188,8 @@ public final class BuildService<P, I> implements AutoCloseable {
     }
 
     public boolean available() { return unavailable().isEmpty() && !closed; }
+    /** Builds take region turns: commands are queued for the global region and answer later. */
+    public boolean regionized() { return regions != null; }
     /** Why builds cannot run now: the platform, {@code builds.enabled = false}, or an unavailable NPC runtime. Follows a hotload. */
     public Optional<String> unavailable() {
         if (platformReason != null) return Optional.of(platformReason);
@@ -162,8 +206,8 @@ public final class BuildService<P, I> implements AutoCloseable {
     public String status() {
         Optional<String> reason = unavailable();
         if (reason.isPresent()) return "Builds unavailable: " + reason.get() + (sessions.isEmpty() ? "" : " | saved=" + sessions.size());
-        long open = sessions.values().stream().filter((BuildSession session) -> session.state().open()).count();
-        return "Builds ready | open=" + open + "/" + settings.maximumBuilds() + " | saved=" + sessions.size() + " | loading=" + loading.size()
+        return "Builds ready" + (regions == null ? "" : " on Folia regions") + " | open=" + open() + "/" + settings.maximumBuilds() + " | saved=" + sessions.size()
+                + " | loading=" + loading.size() + (turns == null ? "" : " | region-turns=" + turns.sent() + " out=" + turns.outstanding() + " lost=" + turns.lost())
                 + " | protection=" + protectionName + " | protection-denials=" + protection.denials() + " | protection-failures=" + protection.failures()
                 + (saveFailures > 0 ? " | save-failures=" + saveFailures : "");
     }
@@ -171,7 +215,7 @@ public final class BuildService<P, I> implements AutoCloseable {
     public List<String> list() {
         requireAvailable();
         List<String> lines = new ArrayList<>();
-        for (BuildSession session : sessions.values()) lines.add(session.status());
+        for (BuildSession session : sessions.values()) lines.add(statusOf(session));
         for (String id : loading) lines.add("Build " + id + ": loading");
         if (lines.isEmpty()) lines.add("No builds. Start one with /animus build start <npc-id> <schematic>");
         return lines;
@@ -224,8 +268,7 @@ public final class BuildService<P, I> implements AutoCloseable {
         Optional<BuildSession> member = memberOf(id);
         if (member.isPresent()) throw new IllegalStateException("NPC " + id + " already works on build " + member.get().id() + "; cancel it first");
         if (loading.contains(id)) throw new IllegalStateException("Build " + id + " is already loading");
-        long open = sessions.values().stream().filter((BuildSession session) -> session.state().open()).count();
-        if (open + loading.size() >= settings.maximumBuilds()) throw new IllegalStateException("At most " + settings.maximumBuilds() + " builds may run at once (config.toml builds.maximumBuilds)");
+        if (open() + loading.size() >= settings.maximumBuilds()) throw new IllegalStateException("At most " + settings.maximumBuilds() + " builds may run at once (config.toml builds.maximumBuilds)");
         BlockPos origin = request.origin().orElse(BlockPos.containing(leader.position().point()));
         String world = leader.position().world();
         loading.add(id);
@@ -239,7 +282,7 @@ public final class BuildService<P, I> implements AutoCloseable {
                 catch (RuntimeException failure) { failed.accept(PersistedNpcService.concise(failure)); return; }
                 submit(() -> {
                     BuildPlan plan = BuildPlanner.plan(loaded.schematic(), palette.palette(), palette.placeable(), request.options(), origin);
-                    post(() -> {
+                    post(() -> whenHome(id, () -> {
                         loading.remove(id);
                         if (closed) return;
                         if (memberOf(id).isPresent()) { reply.accept("Cannot start build " + id + ": the NPC joined another build meanwhile"); return; }
@@ -259,7 +302,7 @@ public final class BuildService<P, I> implements AutoCloseable {
                         if (previous != null) summary.append("; the NPC's previous build record and its undo were discarded");
                         reply.accept(summary.toString());
                         palette.report().stream().limit(MAXIMUM_REPORT_LINES).forEach(reply);
-                    });
+                    }));
                 }, failed);
             });
         }, failed);
@@ -280,6 +323,7 @@ public final class BuildService<P, I> implements AutoCloseable {
         BuildSession session = sessions.get(reference);
         if (session == null) session = memberOf(reference).orElse(null);
         if (session == null) throw new IllegalArgumentException(loading.contains(reference) ? "Build " + reference + " is still loading" : "No build for " + reference);
+        if (turns != null && turns.out(session.id())) throw new Busy(session.id());
         return session;
     }
 
@@ -307,7 +351,7 @@ public final class BuildService<P, I> implements AutoCloseable {
     }
 
     /** A player hands over the stack in their main hand. Only items the build still needs are taken. */
-    public String donate(String reference, UUID player) {
+    private String donate(String reference, UUID player) {
         BuildSession session = session(reference);
         P online = living.players().owned(player).orElseThrow(() -> new IllegalStateException("Only an online player can donate"));
         Platform.Held held = platform.held(online).orElseThrow(() -> new IllegalArgumentException("Hold the items to donate in your main hand"));
@@ -319,10 +363,68 @@ public final class BuildService<P, I> implements AutoCloseable {
     }
 
     /**
-     * The {@code animus:build} behavior action, on the owner. Refusals carry their reason back to the behavior; a start
-     * answers once loading begins, and its result goes to the server log.
+     * {@code donate} from a command, on the player's own owner. A single-owner server answers at once. On a regionized
+     * server the held stack is taken first and handed to the build's owner, which keeps what the build still needs; the
+     * rest goes back to the player on their own region, so no item is ever counted twice.
+     */
+    public void donateHeld(String reference, UUID player, Consumer<String> reply) {
+        if (regions == null) { reply.accept(donate(reference, player)); return; }
+        requireAvailable();
+        P online = living.players().owned(player).orElseThrow(() -> new IllegalStateException("Only an online player can donate"));
+        Platform.Held held = platform.held(online).orElseThrow(() -> new IllegalArgumentException("Hold the items to donate in your main hand"));
+        platform.takeHeld(online, held.count());
+        Consumer<String> giveBack = (String message) -> {
+            if (!living.players().deliver(player, (P back) -> { platform.give(back, held.item(), held.count()); reply.accept(message); }))
+                log.accept("Cannot hand " + held.count() + " " + held.item() + " back to player " + player + ", who left: " + message);
+        };
+        boolean queued = command(() -> {
+            BuildSession session = session(reference);
+            session.bind(platform);
+            long taken;
+            try { taken = session.donate(held.item(), held.count()); }
+            catch (IllegalStateException refused) { giveBack.accept("Animus build: " + refused.getMessage()); return; }
+            long rest = held.count() - taken;
+            String message = taken == 0 ? "Build " + session.id() + " does not need " + held.item() : "Donated " + taken + " " + held.item() + " to build " + session.id();
+            if (rest <= 0) { living.players().deliver(player, (P back) -> reply.accept(message)); return; }
+            if (!living.players().deliver(player, (P back) -> { platform.give(back, held.item(), rest); reply.accept(message); }))
+                log.accept("Cannot hand " + rest + " " + held.item() + " back to player " + player + ", who left");
+        }, (String refused) -> giveBack.accept("Animus build: " + refused));
+        if (!queued) giveBack.accept("Animus build: build commands are busy; try again");
+    }
+
+    /**
+     * Runs a command on the service's owner. A single-owner server runs it now. A regionized server queues it for the
+     * global region; a command that finds its build out on a region turn ({@link Busy}) runs again when the build is
+     * back, for at most ten seconds. False when the queue is full or builds have stopped.
+     */
+    public boolean command(Runnable work, Consumer<String> refused) {
+        if (regions == null) { work.run(); return true; }
+        if (closed) return false;
+        if (queuedCommands.incrementAndGet() > MAXIMUM_COMMANDS) { queuedCommands.decrementAndGet(); return false; }
+        commands.add(new Command(work, refused, 0));
+        return true;
+    }
+
+    /**
+     * The {@code animus:build} behavior action. Refusals carry their reason back to the behavior; a start answers once
+     * loading begins, and its result goes to the server log. On a regionized server the behavior runs on its NPC's
+     * region, so the operation is queued for the service's owner, answers {@code queued}, and logs its result.
      */
     public String behavior(String npc, BehaviorPlatform.BuildOperation operation, Optional<String> schematic, Optional<Vec3> origin, Map<String, String> words) {
+        if (regions != null) {
+            Consumer<String> logged = (String line) -> log.accept("Build " + npc + " (behavior " + operation.name().toLowerCase(java.util.Locale.ROOT) + "): " + line);
+            if (!command(() -> {
+                try { logged.accept(ownerBehavior(npc, operation, schematic, origin, words)); }
+                catch (CapabilityRefusal refused) { logged.accept(refused.getMessage()); }
+            }, logged)) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "build-refused", "Build commands are busy; try again");
+            JsonObject response = new JsonObject();
+            response.addProperty("build", npc);
+            response.addProperty("state", "queued");
+            return response.toString();
+        }
+        return ownerBehavior(npc, operation, schematic, origin, words);
+    }
+    private String ownerBehavior(String npc, BehaviorPlatform.BuildOperation operation, Optional<String> schematic, Optional<Vec3> origin, Map<String, String> words) {
         try {
             String result = switch (operation) {
                 case START -> {
@@ -349,9 +451,24 @@ public final class BuildService<P, I> implements AutoCloseable {
 
     /** The open or saved build an NPC belongs to. */
     public Optional<BuildSession> memberOf(String npc) {
-        for (BuildSession session : sessions.values())
-            if ((session.state().open() || session.state() == BuildSession.State.UNDOING) && session.team().contains(npc)) return Optional.of(session);
+        for (BuildSession session : sessions.values()) {
+            BuildSession.State state = stateOf(session);
+            if ((state.open() || state == BuildSession.State.UNDOING) && teamOf(session).contains(npc)) return Optional.of(session);
+        }
         return Optional.empty();
+    }
+
+    // A build's state as the owner may read it: the session itself at home, or what it was when it left on a turn.
+
+    private boolean out(BuildSession session) { return turns != null && turns.out(session.id()); }
+    private BuildSession.State stateOf(BuildSession session) { View view = out(session) ? views.get(session.id()) : null; return view == null ? session.state() : view.state(); }
+    private List<String> teamOf(BuildSession session) { View view = out(session) ? views.get(session.id()) : null; return view == null ? session.team() : view.team(); }
+    private String statusOf(BuildSession session) { View view = out(session) ? views.get(session.id()) : null; return view == null ? session.status() : view.status(); }
+    private long open() { return sessions.values().stream().filter((BuildSession session) -> stateOf(session).open()).count(); }
+    /** Runs the work now when the build is at home, otherwise again on a later owner tick. */
+    private void whenHome(String id, Runnable work) {
+        if (turns != null && turns.out(id)) { post(() -> whenHome(id, work)); return; }
+        work.run();
     }
 
     // Owner tick
@@ -359,10 +476,19 @@ public final class BuildService<P, I> implements AutoCloseable {
     private void tick() {
         if (closed) return;
         tick++;
-        for (Runnable completion; (completion = completions.poll()) != null; ) {
+        // Work posted while this runs waits for the next tick, so a build still out cannot spin here.
+        for (int pending = completions.size(); pending > 0; pending--) {
+            Runnable completion = completions.poll();
+            if (completion == null) break;
             try { completion.run(); }
             catch (RuntimeException failure) { log.accept("Build work failed: " + PersistedNpcService.concise(failure)); }
         }
+        if (turns != null) for (String id : turns.collect(System.nanoTime())) {
+            views.remove(id);
+            BuildSession session = sessions.get(id);
+            if (session != null && paused) session.stopCrew(crew);
+        }
+        runCommands();
         BuildSettings current = settings;
         if (!current.enabled() || !living.available()) { pause(); return; }
         paused = false;
@@ -374,25 +500,63 @@ public final class BuildService<P, I> implements AutoCloseable {
             rotation = (rotation + 1) % order.size();
             for (int index = 0; index < order.size(); index++) {
                 BuildSession session = order.get((index + rotation) % order.size());
-                try { session.tick(context); }
-                catch (RuntimeException failure) {
-                    log.accept("Build " + session.id() + " stopped after an error: " + PersistedNpcService.concise(failure));
-                    session.fail("stopped after an error: " + PersistedNpcService.concise(failure));
-                    session.stopCrew(crew);
-                }
+                if (turns != null) { send(session, current); continue; }
+                turn(session, context);
             }
         }
+        if (urgentSave) { urgentSave = false; lastSave = Long.MIN_VALUE / 2; }
         if (!dirty.isEmpty() && tick - lastSave >= (long) current.saveSeconds() * TICKS_PER_SECOND) save(false);
+    }
+    private void turn(BuildSession session, BuildSession.Context context) {
+        try { session.tick(context); }
+        catch (RuntimeException failure) {
+            log.accept("Build " + session.id() + " stopped after an error: " + PersistedNpcService.concise(failure));
+            session.fail("stopped after an error: " + PersistedNpcService.concise(failure));
+            session.stopCrew(crew);
+        }
+    }
+    /**
+     * Regionized servers: sends a build that has work for one turn to the region that owns where it works now. Its own
+     * budget applies to that turn. A build whose place cannot take a turn waits with the reason.
+     */
+    private void send(BuildSession session, BuildSettings current) {
+        if (turns.out(session.id()) || !session.wantsTurn()) return;
+        BlockPos focus = session.focus(crew);
+        View view = new View(session.state(), session.team(), session.status());
+        BuildSession.Context context = new BuildSession.Context(platform, crew, protection,
+                new BuildSession.Budget(current.placementsPerTick(), current.checksPerTick(), current.undoPerTick()));
+        views.put(session.id(), view);
+        String refused = turns.send(session.id(), session.world(), focus, System.nanoTime(), () -> turn(session, context));
+        if (refused == null) return;
+        views.remove(session.id());
+        session.unreachable(refused);
+    }
+
+    /** Owner tick: queued commands, each once; a command whose build is out waits for a later tick. */
+    private void runCommands() {
+        for (int pending = queuedCommands.get(); pending > 0; pending--) {
+            Command command = commands.poll();
+            if (command == null) break;
+            try { command.work().run(); queuedCommands.decrementAndGet(); }
+            catch (Busy busy) {
+                if (command.waited() < COMMAND_WAIT_TICKS) commands.add(new Command(command.work(), command.refused(), command.waited() + 1));
+                else { queuedCommands.decrementAndGet(); refuse(command, busy.getMessage() + " for too long; try again"); }
+            } catch (RuntimeException failure) { queuedCommands.decrementAndGet(); refuse(command, PersistedNpcService.concise(failure)); }
+        }
+    }
+    private void refuse(Command command, String why) {
+        try { command.refused().accept(why); }
+        catch (RuntimeException ignored) { /* A failing reply cannot stop the other commands. */ }
     }
 
     /**
      * Builds were turned off or the NPC runtime went away: crews stop where they stand and progress is saved. Open builds
-     * keep their state and continue from it once builds are on again.
+     * keep their state and continue from it once builds are on again. A build out on a turn stops when it comes back.
      */
     private void pause() {
         if (paused) return;
         paused = true;
-        for (BuildSession session : sessions.values()) session.stopCrew(crew);
+        for (BuildSession session : sessions.values()) if (!out(session)) session.stopCrew(crew);
         if (!dirty.isEmpty()) save(false);
     }
 
@@ -409,7 +573,8 @@ public final class BuildService<P, I> implements AutoCloseable {
         for (String id : List.copyOf(dirty)) {
             BuildSession session = sessions.get(id);
             if (session == null) { dirty.remove(id); continue; }
-            if (!now && saving.contains(id)) continue;
+            // A build out on a region turn is saved after it comes back.
+            if (out(session) || !now && saving.contains(id)) continue;
             dirty.remove(id);
             List<DocumentStore.Generated> documents = documents(session);
             if (now) {
@@ -423,7 +588,10 @@ public final class BuildService<P, I> implements AutoCloseable {
                     String failure = write(id, session, documents);
                     post(() -> {
                         saving.remove(id);
-                        if (failure != null) { saveFailures++; session.journal().forgetSaved(); dirty.add(id); log.accept("Cannot save build " + id + ": " + failure); }
+                        if (failure == null) return;
+                        saveFailures++;
+                        log.accept("Cannot save build " + id + ": " + failure);
+                        whenHome(id, () -> { session.journal().forgetSaved(); dirty.add(id); });
                     });
                 });
             } catch (RejectedExecutionException full) { saving.remove(id); dirty.add(id); session.journal().forgetSaved(); }
@@ -565,7 +733,7 @@ public final class BuildService<P, I> implements AutoCloseable {
     /** Rebuilds the plan of a restored open build from its schematic; a changed or missing file stops it with the reason. */
     private void replan(BuildSession session) {
         loading.add(session.id());
-        Consumer<String> failed = (String failure) -> { loading.remove(session.id()); session.fail("cannot resume: " + failure + "; undo still works"); };
+        Consumer<String> failed = (String failure) -> whenHome(session.id(), () -> { loading.remove(session.id()); session.fail("cannot resume: " + failure + "; undo still works"); });
         submit(() -> {
             Loaded loaded = read(session.schematic());
             if (!loaded.hash().equals(session.schematicHash())) throw new IOException(session.schematic() + " changed since the build started");
@@ -575,11 +743,11 @@ public final class BuildService<P, I> implements AutoCloseable {
                 catch (RuntimeException failure) { failed.accept(PersistedNpcService.concise(failure)); return; }
                 submit(() -> {
                     BuildPlan plan = BuildPlanner.plan(loaded.schematic(), palette.palette(), palette.placeable(), session.options(), session.origin());
-                    post(() -> {
+                    post(() -> whenHome(session.id(), () -> {
                         loading.remove(session.id());
                         try { session.attach(plan); }
                         catch (IllegalArgumentException mismatch) { session.fail("cannot resume: " + mismatch.getMessage() + "; undo still works"); }
-                    });
+                    }));
                 }, failed);
             });
         }, failed);
@@ -588,15 +756,27 @@ public final class BuildService<P, I> implements AutoCloseable {
     @Override public void close() {
         if (closed || worker == null) { closed = true; return; }
         try { settingsListener.close(); } catch (Exception ignored) { /* Removing a listener cannot fail. */ }
-        // Scaffolding never outlives the server: it comes down now, and the saved build no longer lists it.
-        BuildSession.Context context = new BuildSession.Context(platform, crew, protection, new BuildSession.Budget(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
-        for (BuildSession session : sessions.values()) {
-            session.stopCrew(crew);
-            try { session.dismantle(context); }
-            catch (RuntimeException failure) { log.accept("Cannot take down the scaffolding of build " + session.id() + ": " + PersistedNpcService.concise(failure)); }
-        }
         try { if (ticker != null) ticker.close(); }
         catch (Exception ignored) { /* the tick checks closed */ }
+        if (turns == null) {
+            // Scaffolding never outlives the server: it comes down now, and the saved build no longer lists it.
+            BuildSession.Context context = new BuildSession.Context(platform, crew, protection, new BuildSession.Budget(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
+            for (BuildSession session : sessions.values()) {
+                session.stopCrew(crew);
+                try { session.dismantle(context); }
+                catch (RuntimeException failure) { log.accept("Cannot take down the scaffolding of build " + session.id() + ": " + PersistedNpcService.concise(failure)); }
+            }
+        } else {
+            // No region takes work while the plugin stops, so standing scaffolding stays listed and comes down after the restart.
+            List<String> running = turns.close(SHUTDOWN_WAIT_NANOS);
+            for (String id : running) {
+                BuildSession session = sessions.remove(id);
+                dirty.remove(id);
+                if (session != null) log.accept("Build " + id + " was still on its region at shutdown; its last saved record stays");
+            }
+            views.clear();
+            for (Command command; (command = commands.poll()) != null; ) refuse(command, "builds stopped");
+        }
         // A lane write still queued is skipped once the final save is done, so its chunks are written again here.
         for (String id : saving) {
             BuildSession session = sessions.get(id);
@@ -621,6 +801,7 @@ public final class BuildService<P, I> implements AutoCloseable {
                 return new Member(npc, definition.get().uuid(), active.state().position(), box.max().x() - box.min().x(), box.max().y() - box.min().y());
             });
         }
+        @Override public boolean here(String npc) { return living.here(npc); }
         @Override public boolean routing(String npc) { return living.routing(npc); }
         @Override public void walk(String npc, WorldPosition goal, double speed) { living.navigate(npc, goal, MovementProfile.Mode.WALK, speed); }
         @Override public void stop(String npc) {
@@ -643,13 +824,15 @@ public final class BuildService<P, I> implements AutoCloseable {
     private final class Listener implements BuildSession.Listener {
         @Override public void paused(BuildSession session, String reason) { publish(session, TriggerEvent.BuildPaused::new); }
         @Override public void finished(BuildSession session) { publish(session, TriggerEvent.BuildFinished::new); log.accept("Build " + session.id() + " finished"); }
+        /** On the owner, or on the region running the build's turn. */
         @Override public void changed(BuildSession session) {
             boolean urgent = !session.state().open() || session.state() == BuildSession.State.PAUSED;
             dirty.add(session.id());
-            if (urgent) lastSave = Long.MIN_VALUE / 2;
+            if (urgent) urgentSave = true;
         }
+        /** Reaches the player on their own owner, which may be another region. */
         @Override public void tell(Optional<UUID> player, String message) {
-            player.flatMap((UUID id) -> living.players().owned(id)).ifPresent((P online) -> platform.tell(online, message));
+            player.ifPresent((UUID id) -> living.players().deliver(id, (P online) -> platform.tell(online, message)));
         }
         private void publish(BuildSession session, Function<UUID, TriggerEvent> event) {
             TriggerSink sink = triggers.get();

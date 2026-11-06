@@ -4,6 +4,7 @@ import art.arcane.animus.core.navigation.BlockPos;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -27,11 +28,11 @@ public interface BuildProtection {
 
     Decision decide(Request request);
 
-    /** Fail-closed front of an adapter with denial and failure counts. */
+    /** Fail-closed front of an adapter with denial and failure counts; on Folia several regions ask it at once. */
     final class Gate {
         private final BuildProtection adapter;
         private final Consumer<String> diagnostics;
-        private long denials, failures;
+        private final AtomicLong denials = new AtomicLong(), failures = new AtomicLong();
 
         public Gate(BuildProtection adapter, Consumer<String> diagnostics) {
             this.adapter = Objects.requireNonNull(adapter);
@@ -42,16 +43,16 @@ public interface BuildProtection {
             Decision decision;
             try { decision = adapter.decide(request); }
             catch (RuntimeException | LinkageError failure) {
-                if (failures++ < 8) diagnostics.accept("Build protection failed closed: " + failure);
-                denials++;
+                if (failures.getAndIncrement() < 8) diagnostics.accept("Build protection failed closed: " + failure);
+                denials.incrementAndGet();
                 return false;
             }
             if (decision == Decision.ALLOW) return true;
-            if (decision == null && failures++ < 8) diagnostics.accept("Build protection returned no decision; failed closed");
-            denials++;
+            if (decision == null && failures.getAndIncrement() < 8) diagnostics.accept("Build protection returned no decision; failed closed");
+            denials.incrementAndGet();
             return false;
         }
-        public long denials() { return denials; }
-        public long failures() { return failures; }
+        public long denials() { return denials.get(); }
+        public long failures() { return failures.get(); }
     }
 }

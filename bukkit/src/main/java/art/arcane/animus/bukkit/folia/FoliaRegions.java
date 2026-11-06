@@ -70,10 +70,10 @@ public final class FoliaRegions implements RegionScheduler {
     }
     /** Repeats on the player's owner until cancelled or the player retires. */
     public AutoCloseable repeat(Player player, Runnable action, Runnable retired) { return repeat(player, action, retired, 1L, 1L); }
-    /** Repeats on the player's owner every {@code period} ticks until cancelled or the player retires. */
-    public AutoCloseable repeat(Player player, Runnable action, Runnable retired, long delay, long period) {
+    /** Repeats on the entity's owner every {@code period} ticks until cancelled or the entity retires. */
+    public AutoCloseable repeat(Entity entity, Runnable action, Runnable retired, long delay, long period) {
         try {
-            Object task = entityRepeat.invoke(entityScheduler.invoke(player), plugin, (Consumer<Object>) ignored -> action.run(), retired, delay, period);
+            Object task = entityRepeat.invoke(entityScheduler.invoke(entity), plugin, (Consumer<Object>) ignored -> action.run(), retired, delay, period);
             if (task == null) { retired.run(); return () -> {}; }
             return () -> cancel.invoke(task);
         } catch (ReflectiveOperationException | RuntimeException failure) { retired.run(); return () -> {}; }

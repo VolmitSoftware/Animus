@@ -82,7 +82,7 @@ final class RegionActor implements RegionOwner.Body {
                        long appearance, float yaw, float pitch, boolean onGround, long pose,
                        Map<EquipmentSlot, ItemStack> equipment, long equipmentRevision, int ids,
                        String navigation, long arrivals, boolean ride, boolean mount, long revision, NpcRig.Snapshot<ItemStack> rig, int dragonPhase,
-                       List<UUID> passengers, Player rider, CombatView combat) {}
+                       List<UUID> passengers, Player rider, CombatView combat, long swings) {}
     /** What other combat engines and status read of this NPC's combat; null when it has none. */
     record CombatView(CombatSettings settings, CombatLoadout loadout, UUID guarded, String status, int helpers) {}
     /** A passenger whose vehicle another region owns steps onto its seat at most this often. */
@@ -131,7 +131,7 @@ final class RegionActor implements RegionOwner.Body {
     private long nextLook;
     float yaw, pitch;
     private boolean onGround = true;
-    private long pose, arrivals, turns, appearance, equipmentRevision, revision;
+    private long pose, arrivals, turns, appearance, equipmentRevision, revision, swings;
     private double fallSpeed;
     private Route route;
     private WaypointProgress waypoints;
@@ -701,6 +701,29 @@ final class RegionActor implements RegionOwner.Body {
     }
     WorldPosition position() { return state.snapshot().position(); }
 
+    // ---- Builds, on the owner ----
+
+    /** A route is running or about to be planned. */
+    boolean routing() { return route != null || routeRead != null; }
+    /** Swings the arm for every viewer, which sees the new count on its own region. */
+    void swing() { swings++; publish(true); }
+    /**
+     * Moves the NPC at once onto clear, supported ground this region holds and has loaded, as a build's last resort;
+     * false leaves it where it is. A move into another chunk hands the NPC on at the end of its next turn.
+     */
+    boolean relocate(WorldPosition destination) {
+        if (seated || mount || riding.active() || !owner.riders().isEmpty() || !state.snapshot().active() || !destination.world().equals(state.snapshot().position().world())) return false;
+        World world = host.world(destination.world());
+        if (world == null) return false;
+        ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
+        ChunkPosition chunk = destination.chunk();
+        if (!owned.owns(chunk.x(), chunk.z()) || !world.isChunkLoaded(chunk.x(), chunk.z())) return false;
+        if (!LiveMovementProbe.check(world, owned, destination.point(), destination.point(), hullWidth(), hullHeight(), MotionValidator.Medium.GROUND, true, 256).clear())
+            return false;
+        place(destination);
+        return true;
+    }
+
     private void navigate() {
         Route current = route;
         if (turns < current.nextAttempt) return;
@@ -1089,11 +1112,12 @@ final class RegionActor implements RegionOwner.Body {
         if (previous != null && previous.live() == presented && previous.snapshot().equals(snapshot) && previous.appearance() == appearance
                 && previous.pose() == pose && previous.equipmentRevision() == equipmentRevision && previous.arrivals() == arrivals
                 && Objects.equals(previous.navigation(), navigation()) && previous.rig() == rigSnapshot() && previous.dragonPhase() == dragonPhase
-                && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())) return;
+                && previous.passengers().equals(passengers()) && previous.rider() == rider() && Objects.equals(previous.combat(), combatView())
+                && previous.swings() == swings) return;
         Map<EquipmentSlot, ItemStack> items = new EnumMap<>(EquipmentSlot.class);
         equipment.forEach((slot, item) -> items.put(slot, item.clone()));
         publication = new Publication(presented, snapshot, spec, spec.type(), displayName, displaySkin, appearance, yaw, pitch, onGround, pose,
-                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView());
+                Map.copyOf(items), equipmentRevision, NpcPresentation.nativeIds(host.packets, spec, displayName, ids), navigation(), arrivals, ride != null, mount, ++revision, rigSnapshot(), dragonPhase, passengers(), rider(), combatView(), swings);
     }
     private Player rider() { return riding.rider(); }
     private NpcRig.Snapshot<ItemStack> rigSnapshot() {

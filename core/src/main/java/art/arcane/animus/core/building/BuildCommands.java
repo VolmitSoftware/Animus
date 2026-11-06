@@ -14,8 +14,8 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * {@code /animus build ...}, the same on every platform. Runs on the actor's owner, which on every platform that builds
- * is the single server owner. {@code donate} needs only {@code animus.build.donate}; everything else needs
+ * {@code /animus build ...}, the same on every platform. Runs on the build service's owner (see {@link #execute}).
+ * {@code donate} needs only {@code animus.build.donate}; everything else needs
  * {@code animus.admin}, which the shared command set checks first.
  */
 public final class BuildCommands implements AnimusCommands.Extra {
@@ -38,11 +38,36 @@ public final class BuildCommands implements AnimusCommands.Extra {
         return arguments.length == 3 && arguments[0].equalsIgnoreCase("build") && arguments[2].equalsIgnoreCase("donate");
     }
 
+    /**
+     * Donations run on the player's own owner. Every other form runs on the build service's owner: at once on a
+     * single-owner server, or queued for the global region on Folia, which answers through the actor's own owner.
+     */
     @Override public void execute(CommandActor actor, String[] arguments) {
         Optional<String> refused = unavailable.get();
         if (refused.isPresent()) { actor.tell("Builds unavailable: " + refused.get()); return; }
         BuildService<?, ?> builds = service.get();
         Consumer<String> reply = (String line) -> { if (!actor.reply(() -> actor.tell(line))) actor.tell(line); };
+        if (donation(arguments)) {
+            try {
+                if (actor.player().isEmpty()) throw new IllegalArgumentException("Only a player can donate items");
+                builds.donateHeld(arguments[1], actor.player().get(), actor::tell);
+            } catch (RuntimeException failure) { actor.tell("Animus build: " + failure.getMessage()); }
+            return;
+        }
+        CommandActor owner = builds.regionized() ? new Answering(actor, reply) : actor;
+        if (!builds.command(() -> run(owner, builds, arguments, reply), (String why) -> reply.accept("Animus build: " + why)))
+            actor.tell("Animus build: build commands are busy; try again");
+    }
+
+    /** The actor as the service's owner may use it: every answer goes through the actor's own owner. */
+    private record Answering(CommandActor actor, Consumer<String> reply) implements CommandActor {
+        @Override public boolean permitted(String node) { return actor.permitted(node); }
+        @Override public void tell(String message) { reply.accept(message); }
+        @Override public Optional<java.util.UUID> player() { return actor.player(); }
+        @Override public boolean reply(Runnable action) { return actor.reply(action); }
+    }
+
+    private static void run(CommandActor actor, BuildService<?, ?> builds, String[] arguments, Consumer<String> reply) {
         try {
             String first = arguments.length < 2 ? "status" : arguments[1].toLowerCase(Locale.ROOT);
             switch (first) {
@@ -64,6 +89,8 @@ public final class BuildCommands implements AnimusCommands.Extra {
                 case "start" -> start(actor, builds, arguments, reply);
                 default -> operate(actor, builds, arguments);
             }
+        } catch (BuildService.Busy busy) {
+            throw busy;
         } catch (IOException | RuntimeException failure) {
             actor.tell("Animus build: " + failure.getMessage());
         }
@@ -109,10 +136,6 @@ public final class BuildCommands implements AnimusCommands.Extra {
             case "cancel" -> actor.tell(builds.cancel(reference));
             case "undo" -> actor.tell(builds.undo(reference));
             case "survey" -> builds.survey(reference).stream().limit(40).forEach(actor::tell);
-            case "donate" -> {
-                if (actor.player().isEmpty()) throw new IllegalArgumentException("Only a player can donate items");
-                actor.tell(builds.donate(reference, actor.player().get()));
-            }
             case "team" -> {
                 if (arguments.length != 5 || !List.of("add", "remove").contains(arguments[3].toLowerCase(Locale.ROOT)))
                     throw new IllegalArgumentException("build <build-or-npc> team add|remove <npc-id>");

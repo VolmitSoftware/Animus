@@ -30,6 +30,7 @@ import art.arcane.animus.bukkit.packet.NativeDisplayAdapter;
 import art.arcane.animus.core.gui.HoloService;
 import art.arcane.animus.core.presentation.DisplayTransport;
 import art.arcane.animus.bukkit.runtime.BukkitRuntimeHost;
+import art.arcane.animus.bukkit.runtime.RegionBuildNpcs;
 import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.AnimusSplash;
@@ -45,6 +46,7 @@ import art.arcane.animus.core.building.BuildService;
 import art.arcane.animus.core.behavior.builtin.DialogueChoice;
 import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
+import art.arcane.animus.core.behavior.trigger.TriggerSink;
 import art.arcane.animus.core.behavior.SnapshotFacts;
 import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.virtual.VirtualNpcState;
@@ -79,6 +81,7 @@ import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -95,7 +98,6 @@ public final class AnimusPlugin extends JavaPlugin {
     private NpcRuntime<Player, ItemStack> living;
     private RuntimeCombatService combat;
     private BuildService<Player, ItemStack> builds;
-    private String buildsUnavailable;
     private ExtensionRuntime extensions;
     private volatile BehaviorCommands behaviors;
     private BuiltinCapabilities builtins;
@@ -189,7 +191,7 @@ public final class AnimusPlugin extends JavaPlugin {
             guis.reload(catalog -> {});
             getLogger().info(shops.status());
             getLogger().info(guis.status());
-            startBuilds(mainThread);
+            startBuilds(mainThread, living instanceof RegionNpcRuntime regionized ? regionized : null, regions);
             BukkitOwners scheduling = new BukkitOwners(this, regions);
             builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, this::buildsRefusal,
                     (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread),
@@ -386,27 +388,30 @@ public final class AnimusPlugin extends JavaPlugin {
         }
     }
 
-    /** Builds run on the main thread only; Folia gives every NPC its own region owner, so they are unavailable there. */
-    private void startBuilds(PersistedNpcService<Player, ItemStack> mainThread) {
-        if (mainThread == null) {
-            buildsUnavailable = "unavailable on Folia: a build site, its NPC team and its material container have no shared region owner, and no handoff for a build exists yet";
-            getLogger().info("Builds " + buildsUnavailable);
-            return;
+    /**
+     * Builds run on the main thread on Bukkit and Paper. On Folia the global region keeps the build records and sends
+     * each build's turns to the region that owns where it works ({@link RegionBuildNpcs}).
+     */
+    private void startBuilds(PersistedNpcService<Player, ItemStack> mainThread, RegionNpcRuntime regionized, FoliaRegions folia) {
+        RegionFlags.Binding flags = RegionFlags.bind(getServer());
+        BuildProtection protection = flags == null ? BuildProtection.NONE : new RegionBuildProtection(flags.flags());
+        String name = flags == null ? "none installed" : flags.describe("every block change is denied");
+        Supplier<TriggerSink> triggers = () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); };
+        if (mainThread != null) {
+            builds = new BuildService<>(runtime, mainThread, commands, new BukkitBuildPlatform(getServer(), null), runtime.moduleHooks().buildProtection(protection), name,
+                    tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel, triggers, (String message) -> getLogger().info(message), null, null);
+        } else {
+            RegionBuildNpcs npcs = new RegionBuildNpcs(regionized);
+            builds = new BuildService<>(runtime, npcs, commands, new BukkitBuildPlatform(getServer(), npcs.ownership()), runtime.moduleHooks().buildProtection(protection), name,
+                    folia::globalTicks, triggers, (String message) -> getLogger().info(message), npcs.turns(), null);
         }
-        RegionFlags.Binding regions = RegionFlags.bind(getServer());
-        BuildProtection protection = regions == null ? BuildProtection.NONE : new RegionBuildProtection(regions.flags());
-        String name = regions == null ? "none installed" : regions.describe("every block change is denied");
-        builds = new BuildService<>(runtime, mainThread, commands, new BukkitBuildPlatform(getServer()), runtime.moduleHooks().buildProtection(protection), name,
-                tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel,
-                () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); },
-                (String message) -> getLogger().info(message), null);
         getLogger().info(builds.status());
     }
 
     /** Why builds cannot run now, or null; follows {@code builds.enabled} in config.toml live. */
     private String buildsRefusal() {
         BuildService<Player, ItemStack> service = builds;
-        return service != null ? service.unavailable().orElse(null) : buildsUnavailable;
+        return service != null ? service.unavailable().orElse(null) : "not started";
     }
 
     private void publishChoice(DialogueChoice choice) {
