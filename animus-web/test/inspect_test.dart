@@ -7,6 +7,7 @@ import 'package:animus_editor/logic/inspect/completion_catalog.dart';
 import 'package:animus_editor/logic/inspect/inspect_schemas.dart';
 import 'package:animus_editor/logic/inspect/json_completion.dart';
 import 'package:animus_editor/logic/inspect/json_outline.dart';
+import 'package:animus_editor/logic/inspect/json_syntax.dart';
 import 'package:animus_editor/logic/inspect/schema_fields.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
@@ -235,7 +236,7 @@ void main() {
       expect(parallel.containsKey('steps'), isFalse);
       expect(asList(parallel['branches']), hasLength(1));
       final JsonMap repeat = changeNodeType(sequence, 'repeat', catalog);
-      expect(repeat['count'], 0);
+      expect(repeat['count'], 1, reason: 'a new repeat runs its body once');
       expect(asMap(repeat['body'])['type'], 'wait');
       expect(repeat['note'], 'kept');
       final JsonMap wait = changeNodeType(sequence, 'wait', catalog);
@@ -275,7 +276,7 @@ void main() {
       final JsonMap timer = changeTriggerEvent(trigger, 'timer', catalog);
       expect(timer, <String, Object?>{'id': 'near', 'event': 'timer', 'routine': 'wave', 'x-extra': true, 'intervalTicks': 1});
       final JsonMap fresh = defaultTrigger('proximity', catalog, <String>['proximity']);
-      expect(fresh['id'], 'proximity-2');
+      expect(fresh['id'], 'proximity_2');
       expect(fresh['phase'], 'enter');
       expect(fresh['radius'], 1);
     });
@@ -296,7 +297,30 @@ void main() {
       expect(insertItem(<Object?>[1, 2], 1, 9), <Object?>[1, 9, 2]);
       expect(removeItem(<Object?>[1, 2], 0), <Object?>[2]);
       expect(unknownKeys(<String, Object?>{'type': 'wait', 'ticks': 1, 'x': 2}, <String>['ticks']), <String>['x']);
-      expect(uniqueName('main', <String>['main', 'main-2']), 'main-3');
+      expect(uniqueName('main', <String>['main', 'main_2']), 'main_3');
+      expect(uniqueName('flag', <String>['flag']), matches(RegExp(r'^[a-z][a-z0-9_]{0,63}$')), reason: 'expressions must be able to read it');
+    });
+  });
+
+  group('json syntax', () {
+    test('should place the first problem by line and column in words', () {
+      expect(jsonSyntaxProblem('{"a": 1}'), isNull);
+      final JsonSyntaxProblem missing = jsonSyntaxProblem('{\n  "a": 1\n  "b": 2\n}')!;
+      expect((missing.line, missing.column), (3, 3));
+      expect(missing.text, 'Line 3, column 3: expected a comma or } after the value, found a quote');
+      expect(jsonSyntaxProblem('{"a": [1, 2,]}')!.message, 'remove the comma before ]');
+      expect(jsonSyntaxProblem('{"a": 1,}')!.message, 'remove the comma before }');
+      expect(jsonSyntaxProblem('{"a": "x')!.message, contains('never closed'));
+      expect(jsonSyntaxProblem("{'a': 1}")!.message, contains('double quotes'));
+      expect(jsonSyntaxProblem('{"a": 1')!.message, contains('ends early'));
+      expect(jsonSyntaxProblem('')!.message, contains('empty'));
+    });
+
+    test('should complete names inside an expression string in the code view', () {
+      const String text = '{"variables": {"count": {"type": "integer", "initial": 0}}, "routines": {"main": {"type": "while", "expression": "co';
+      final List<JsonSuggestion> found = suggestJson(text, text.length, schemas.behavior, catalog: catalog);
+      final JsonSuggestion count = found.firstWhere((JsonSuggestion suggestion) => suggestion.label == 'count');
+      expect(count.applyTo(text).$1, endsWith('"expression": "count'));
     });
   });
 }

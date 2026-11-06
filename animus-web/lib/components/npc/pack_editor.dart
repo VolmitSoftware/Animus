@@ -57,7 +57,6 @@ class _PackEditorState extends State<PackEditor> {
               path: r'$',
               diagnostics: component.diagnostics,
               skip: const <String>{'modules'},
-              humanize: true,
               onChanged: (JsonMap next) => _write(next, 'fields'),
             ),
           ],

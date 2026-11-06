@@ -34,6 +34,7 @@ const List<DocumentKind> listedKinds = <DocumentKind>[
   DocumentKind.skin,
   DocumentKind.textAnimation,
   DocumentKind.presets,
+  DocumentKind.serverBehaviors,
 ];
 
 /// The id of the sidebar's search box, which Ctrl+F and `/` focus.

@@ -1,12 +1,18 @@
 // Opens ../schema/fixtures/export in the built site at desktop and phone
-// widths and checks the NPC inspector (a field edit and a workspace
-// behavior added), the behavior node editor (a trigger field, a node type
-// change and a new step), and the code view (key and value completion,
-// diagnostics mapped to a gutter line that jumps), with no console errors.
+// widths, in the dark and light themes, and checks the NPC inspector (a
+// field edit and a workspace behavior added), the behavior node editor (a
+// trigger field, a node type change, a new step, a list variable with
+// items, a while with an expression, a foreach over the list, a set from an
+// expression, a template placeholder argument, the server switch changing
+// the trigger list, keyboard moves in the tree), the server behaviors list
+// (created, an entry added), a dry run of a loop, and the code view (key,
+// value and expression completion, diagnostics mapped to a gutter line that
+// jumps, a JSON syntax error placed by line), with no console errors and no
+// sideways scrolling.
 //
-//   python3 -m http.server 8098 --bind 127.0.0.1 --directory build/jaspr
+//   python3 -m http.server <port> --bind 127.0.0.1 --directory build/jaspr
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
-//     ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/inspectors_browser.cjs
+//     ANIMUS_WEB_URL=http://127.0.0.1:<port> ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/inspectors_browser.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -48,8 +54,34 @@ async function caretAt(page, needle, after) {
   return area;
 }
 
-async function run(browser, viewport, tag) {
+async function noOverflow(page, where) {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  if (overflow <= 1) return;
+  const wide = await page.evaluate(() => {
+    const limit = document.documentElement.clientWidth;
+    return Array.from(document.querySelectorAll('body *'))
+      .map(element => [element, element.getBoundingClientRect().left + Math.max(element.scrollWidth, element.getBoundingClientRect().width)])
+      .filter(([, right]) => right > limit + 1)
+      .sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([element, right]) => `${element.tagName.toLowerCase()}.${element.className} [${element.getAttribute('aria-label') || ''}] in ${(element.parentElement.closest('[data-node-path],[data-variable],[data-routine],.animus-gui-row') || {className: '-'}).className} reaches ${Math.round(right)}`);
+  });
+  const chain = await page.evaluate(() => {
+    const limit = document.documentElement.clientWidth;
+    const input = Array.from(document.querySelectorAll('input, textarea, select')).find(element => element.getBoundingClientRect().right > limit + 1);
+    const out = [];
+    for (let node = input; node && out.length < 14; node = node.parentElement) {
+      const rect = node.getBoundingClientRect();
+      out.push(`${node.tagName.toLowerCase()}.${String(node.className).split(' ')[0]} l=${Math.round(rect.left)} w=${Math.round(rect.width)}`);
+    }
+    return out;
+  });
+  if (process.env.ANIMUS_DEBUG) await shot(page, 'overflow-debug');
+  assert.fail(`${where}: ${overflow}px of sideways scrolling, from ${wide.join('; ')}${process.env.ANIMUS_DEBUG ? `\n${chain.join('\n')}` : ''}`);
+}
+
+async function run(browser, viewport, tag, theme) {
   const context = await browser.newContext({viewport});
+  await context.addInitScript(mode => window.localStorage.setItem('animus.theme', mode), theme);
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   const errors = [];
@@ -95,11 +127,12 @@ async function run(browser, viewport, tag) {
   await page.getByRole('tab', {name: 'Visual'}).click();
   const editor = page.locator('.animus-behavior-editor');
   await editor.waitFor();
+  await noOverflow(page, `${tag} behavior editor as opened`);
   const trigger = editor.locator('[data-node-path="$.triggers[1]"]');
   await trigger.getByLabel('radius', {exact: true}).fill('8');
   await page.waitForTimeout(300);
   const step = editor.locator('[data-node-path="$.routines.wave.steps[1]"]');
-  await step.locator('.animus-node-head select').first().selectOption('wait');
+  await step.locator('.animus-node-tools select').first().selectOption('wait');
   await step.getByLabel('ticks', {exact: true}).waitFor();
   await page.waitForTimeout(300);
   const wave = editor.locator('[data-routine="wave"]');
@@ -114,6 +147,133 @@ async function run(browser, viewport, tag) {
   assert.deepEqual(json.routines.wave.steps[1], {type: 'wait', ticks: 1});
   assert.deepEqual(json.routines.wave.steps[2], {type: 'call', routine: 'main'});
   assert.equal(json.routines.main.steps[1].then.arguments.text, 'Good to see you again.');
+
+  // Denizen v2 parts: a list variable with items, loops, expressions, a placeholder.
+  const variables = editor.locator('details.animus-gui-section', {has: page.locator('summary', {hasText: 'Variables'})});
+  await variables.locator('summary').first().click();
+  await variables.getByRole('button', {name: 'Add variable'}).click();
+  const flag = editor.locator('[data-variable="flag"]');
+  await flag.waitFor();
+  await flag.getByLabel('Variable 1 name').fill('names');
+  await editor.locator('[data-variable="names"]').waitFor();
+  const names = editor.locator('[data-variable="names"]');
+  await names.locator('select').first().selectOption('list');
+  await names.getByRole('button', {name: 'Add item'}).click();
+  await names.getByLabel('Starting value of names item 1', {exact: true}).fill('Alex');
+  await page.waitForTimeout(300);
+  await selectWith(wave, 'Add step').selectOption('while');
+  const loop = editor.locator('[data-node-path="$.routines.wave.steps[3]"]');
+  const expression = loop.getByLabel('Expression of step 4');
+  await expression.fill('len(na');
+  await loop.getByRole('option').filter({hasText: 'names'}).first().waitFor();
+  await expression.press('Enter');
+  await expression.pressSequentially(') < 1');
+  await page.waitForTimeout(200);
+  assert.equal(await loop.locator('.animus-gui-problem.is-error').count(), 0, 'the while expression checks clean');
+  await expression.fill('len(names) <');
+  await loop.locator('.animus-gui-problem.is-error').first().waitFor();
+  await expression.fill('len(names) < 1');
+  await wave.locator('.animus-add-node select').last().selectOption('foreach');
+  const each = editor.locator('[data-node-path="$.routines.wave.steps[4]"]');
+  await each.waitFor();
+  await wave.locator('.animus-add-node select').last().selectOption('set');
+  const set = editor.locator('[data-node-path="$.routines.wave.steps[5]"]');
+  await set.locator('select', {has: page.locator('option', {hasText: /^item \(any\)$/})}).first().selectOption('item');
+  await page.waitForTimeout(200);
+  await set.locator('select').filter({has: page.locator('option', {hasText: 'From an expression'})}).first().selectOption('expression');
+  await set.getByLabel('Value of step 6 expression').fill('len(names)');
+  await page.waitForTimeout(200);
+  const greet = editor.locator('[data-node-path="$.routines.main.steps[1].else.steps[0]"]');
+  await greet.locator('[data-argument="text"] select').first().selectOption('template');
+  await greet.getByLabel('Text template').fill('Hi {{ player.name }}');
+  await page.waitForTimeout(300);
+  await shot(page, `${tag}-behavior-v2`);
+  await noOverflow(page, `${tag} behavior editor`);
+  json = await codeOf(page);
+  assert.deepEqual(json.variables.names, {type: 'list', initial: ['Alex']});
+  assert.deepEqual(json.routines.wave.steps[3], {type: 'while', expression: 'len(names) < 1', body: {type: 'sequence', steps: []}});
+  assert.deepEqual(json.routines.wave.steps[4].list, {variable: 'names'});
+  assert.equal(json.routines.wave.steps[4].as, 'item');
+  assert.equal(json.variables.item.type, 'any', 'the foreach declared its item');
+  assert.deepEqual(json.routines.wave.steps[5], {type: 'set', variable: 'item', value: {expression: 'len(names)'}});
+  assert.equal(json.routines.main.steps[1].else.steps[0].arguments.text, null);
+  assert.deepEqual(json.routines.main.steps[1].else.steps[0].templates, {'/text': 'Hi {{ player.name }}'});
+
+  // Keyboard: Down moves to the next row, Left closes it.
+  const rows = editor.locator('[data-routine="wave"] .animus-node-summary');
+  await rows.first().focus();
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.evaluate(() => document.activeElement.closest('details').dataset.nodePath), '$.routines.wave.steps[0]');
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await editor.locator('details[data-node-path="$.routines.wave.steps[0]"]').getAttribute('open'), null);
+  await page.keyboard.press('ArrowRight');
+
+  // Dry run of the loop: one pass per item.
+  await page.getByRole('tab', {name: 'Preview'}).click();
+  await page.getByRole('heading', {name: 'Dry run'}).waitFor();
+  await page.getByRole('button', {name: /^near: /}).click();
+  await page.getByRole('button', {name: 'Show all'}).click();
+  await page.locator('.animus-dryrun-step', {hasText: 'Item 1 of 1: item is "Alex".'}).waitFor();
+  await page.locator('.animus-dryrun-step', {hasText: 'The loop does not run: its expression is false.'}).waitFor();
+  await page.locator('.animus-dryrun-step', {hasText: 'Sets item to 1.'}).waitFor();
+  await shot(page, `${tag}-dry-run-loop`);
+  await noOverflow(page, `${tag} dry run`);
+
+  // The server switch swaps NPC events for server events.
+  await page.getByRole('tab', {name: 'Visual'}).click();
+  const addTrigger = selectWith(editor, 'Add a trigger');
+  const events = () => addTrigger.evaluate(element => Array.from(element.options).map(option => option.value));
+  assert.ok((await events()).includes('interaction'), 'an NPC behavior offers interaction');
+  assert.ok(!(await events()).includes('player_join'), 'an NPC behavior hides server events');
+  await editor.getByLabel('Run on the server with no NPC').click();
+  await page.waitForTimeout(300);
+  assert.ok((await events()).includes('player_join'), 'a server behavior offers player_join');
+  assert.ok(!(await events()).includes('interaction'), 'a server behavior hides NPC events');
+  await addTrigger.selectOption('player_join');
+  await editor.locator('[data-event="player_join"]').waitFor();
+  await editor.locator('[data-event="interaction"] .animus-gui-problem.is-error').first().waitFor();
+  await shot(page, `${tag}-server-switch`);
+  json = await codeOf(page);
+  assert.equal(json.server, true);
+  assert.equal(json.triggers.at(-1).event, 'player_join');
+
+  // The server behaviors list: created with the workspace's server behaviors, then edited.
+  const workspace = await page.evaluate(() => decodeURIComponent(location.hash.split('/')[2]));
+  await page.goto(`${process.env.ANIMUS_WEB_URL}/#/workspace/${encodeURIComponent(workspace)}/new/server-behaviors`);
+  await page.getByRole('heading', {name: 'New server behaviors list'}).waitFor();
+  await page.getByText('listing the 1 server behavior in this workspace: greeter:greeter').waitFor();
+  await page.getByRole('button', {name: 'Create server behaviors list'}).click();
+  await page.locator('.animus-document-header').getByText('server-behaviors.json').waitFor();
+  await page.getByRole('tab', {name: 'Visual'}).click();
+  const list = page.locator('.animus-server-behaviors');
+  await list.waitFor();
+  await list.locator('[data-behavior="greeter:greeter"]').waitFor();
+  await list.getByRole('button', {name: 'Remove greeter:greeter from the list'}).click();
+  await list.getByText('The list is empty, so no server behavior runs. Add one below.').waitFor();
+  await selectWith(list, 'Add a server behavior').selectOption('greeter:greeter');
+  await list.locator('[data-behavior="greeter:greeter"]').waitFor();
+  await shot(page, `${tag}-server-behaviors`);
+  await noOverflow(page, `${tag} server behaviors`);
+  json = await codeOf(page);
+  assert.deepEqual(json, {schemaVersion: 1, behaviors: ['greeter:greeter']});
+  await open(page, 'greeter:greeter');
+
+  // Code view: expression completion and a JSON syntax error placed by line.
+  await page.getByRole('tab', {name: 'Code'}).click();
+  let codeArea = await caretAt(page, '"expression": "len(names) < 1"', 19);
+  await codeArea.pressSequentially(' && na');
+  await page.getByRole('option').filter({hasText: 'names'}).first().waitFor();
+  await shot(page, `${tag}-code-expression-completion`);
+  await codeArea.press('Escape');
+  const broken = (await codeArea.inputValue()).replace('"entry": "main",', '"entry": "main"');
+  await codeArea.fill(broken);
+  await page.locator('.animus-code-syntax').getByText(/^Line \d+, column \d+: expected a comma or \} after the value/).waitFor();
+  assert.ok(await page.locator('.animus-code-line.has-mark.is-error').count() >= 1, 'the gutter marks the broken line');
+  await shot(page, `${tag}-code-syntax`);
+  await page.getByRole('button', {name: 'Discard'}).click();
+  await page.getByRole('tab', {name: 'Visual'}).click();
+  await editor.getByLabel('Run on the server with no NPC').click();
+  await page.waitForTimeout(300);
 
   // Code view value completion and diagnostics by line.
   await page.getByRole('tab', {name: 'Code'}).click();
@@ -144,8 +304,10 @@ async function run(browser, viewport, tag) {
 (async () => {
   const browser = await chromium.launch({headless: true});
   try {
-    await run(browser, {width: 1440, height: 1000}, 'desktop');
-    await run(browser, {width: 390, height: 844}, 'phone');
+    for (const theme of ['dark', 'light']) {
+      await run(browser, {width: 1440, height: 900}, `desktop-${theme}`, theme);
+      await run(browser, {width: 390, height: 844}, `phone-${theme}`, theme);
+    }
     console.log('inspectors_browser: ok');
   } finally {
     await browser.close();

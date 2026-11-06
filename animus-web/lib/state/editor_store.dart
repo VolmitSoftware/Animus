@@ -27,6 +27,7 @@ class DocumentChange {
 
 /// Where a new document of [kind] with [id] lives in the data folder.
 String documentPath(DocumentKind kind, String id) {
+  if (kind == DocumentKind.serverBehaviors) return DocumentKind.serverBehaviorsPath;
   final int colon = id.indexOf(':');
   final String relative = colon < 0 ? id : '${id.substring(0, colon)}/${id.substring(colon + 1)}';
   return '${kind.folder}/$relative.json';

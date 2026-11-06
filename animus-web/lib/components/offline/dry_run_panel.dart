@@ -64,7 +64,24 @@ class _DryRunPanelState extends State<DryRunPanel> {
     return npcs.firstWhere((AnimusDocument npc) => npc.id == _npc, orElse: () => npcs.first);
   }
 
-  DryRunSession? get _session => _inputs == null ? null : dryRun(_behavior, _inputs!);
+  String? _ranSource;
+  DryRunInputs? _ranInputs;
+  DryRunSession? _ran;
+
+  /// The session for [inputs] on the current document, run once per
+  /// change of either; a build reads it several times.
+  DryRunSession _run(DryRunInputs inputs) {
+    final String source = component.document.source;
+    final DryRunSession? cached = _ran;
+    if (cached != null && identical(inputs, _ranInputs) && source == _ranSource) return cached;
+    final DryRunSession session = dryRun(_behavior, inputs);
+    _ranSource = source;
+    _ranInputs = inputs;
+    _ran = session;
+    return session;
+  }
+
+  DryRunSession? get _session => _inputs == null ? null : _run(_inputs!);
 
   List<DryRunStep> _steps(DryRunSession session) => <DryRunStep>[for (final DryRunRun run in session.runs) ...run.steps];
 
@@ -72,7 +89,7 @@ class _DryRunPanelState extends State<DryRunPanel> {
     final DryRunSession? before = _session;
     setState(() {
       _inputs = inputs;
-      final int total = dryRun(_behavior, inputs).stepCount;
+      final int total = _run(inputs).stepCount;
       _shown = keepShown && before != null ? (before.stepCount + 1).clamp(0, total) : (total == 0 ? 0 : 1);
     });
   }
@@ -81,7 +98,7 @@ class _DryRunPanelState extends State<DryRunPanel> {
   void didUpdateWidget(DryRunPanel oldComponent) {
     super.didUpdateWidget(oldComponent);
     if (oldComponent.document.source != component.document.source && _inputs != null) {
-      _shown = _shown.clamp(0, dryRun(_behavior, _inputs!).stepCount);
+      _shown = _shown.clamp(0, _run(_inputs!).stepCount);
     }
   }
 
@@ -125,8 +142,8 @@ class _DryRunPanelState extends State<DryRunPanel> {
     return dom.section(classes: 'animus-panel animus-dryrun', attributes: const <String, String>{'aria-label': 'Dry run'}, <Widget>[
       const dom.h3(<Widget>[Component.text('Dry run')]),
       const dom.p(classes: 'animus-preview-label', <Widget>[
-        Component.text('Runs in this browser only. Flags and quest stages live in this run; '
-            'anything marked server only (commands, combat, shop trades and money) is listed, not run.'),
+        Component.text('Runs in this browser only. Flags, quest stages and variables live in this session; expressions use sample player and NPC facts. '
+            'Steps tagged server only (commands, combat, items, shop trades and money) are listed, not run; steps tagged assumed can be flipped.'),
       ]),
       dom.div(classes: 'animus-dryrun-layout${actor == null ? '' : ' has-stage'}', <Widget>[
         if (actor != null)

@@ -90,6 +90,7 @@ class FakeApi {
     'menu': 'gloss/gloss.schema.json',
     'hologram': 'gloss/gloss-holograms.schema.json',
     'presets': 'gloss/gloss-presets.schema.json',
+    'server-behaviors': 'server-behaviors-v1.schema.json',
   };
 
   final FakeSettings settings;

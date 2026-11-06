@@ -599,7 +599,7 @@ public final class EditorApi implements EditorRequestHandler {
     }
 
     /** Kinds an import writes: NPCs and skins, generated behaviors, and the shops and layouts of dtlTraders and Shopkeepers. */
-    private static final Set<DocumentKind> IMPORTED = EnumSet.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY);
+    private static final Set<DocumentKind> IMPORTED = EnumSet.of(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.BEHAVIOR, DocumentKind.SHOP, DocumentKind.INVENTORY, DocumentKind.SERVER_BEHAVIORS);
 
     private EditorImports imports() { return new EditorImports(parts.documents().store(), parts.npcs(), parts.importHost()); }
 

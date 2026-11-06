@@ -18,9 +18,8 @@ import '../gui/gui_fields.dart';
 
 int _nextListId = 0;
 
-/// A label with a required marker; [humanize] turns `waitTicks` into "Wait ticks".
-String fieldLabel(FieldSpec field, {String? label, bool humanize = false}) =>
-    '${label ?? (humanize ? humanizeKey(field.key) : field.key)}${field.required ? ' *' : ''}';
+/// A label with a required marker; keys read as words (`waitTicks` is "Wait ticks").
+String fieldLabel(FieldSpec field, {String? label}) => '${label ?? humanizeKey(field.key)}${field.required ? ' *' : ''}';
 
 /// An element id for the control at [path], so a row label can name it.
 String controlId(String path) => 'animus-field-${path.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}';
@@ -77,15 +76,11 @@ class InspectField extends StatelessWidget {
     this.suggestions = const <FieldOption>[],
     this.schema,
     this.label,
-    this.humanize = false,
     super.key,
   });
 
   final FieldSpec field;
   final Object? value;
-
-  /// Labels read as words (`Wait ticks`) instead of the raw key.
-  final bool humanize;
 
   /// The field's path, as diagnostics name it.
   final String path;
@@ -105,7 +100,7 @@ class InspectField extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool nested = field.kind == FieldKind.object || field.kind == FieldKind.array || field.kind == FieldKind.any;
     return InspectRow(
-      label: fieldLabel(field, label: label, humanize: humanize),
+      label: fieldLabel(field, label: label),
       labelFor: controlId(path),
       help: field.help,
       problems: fieldProblems(field, value, path, diagnostics, nested: nested),
@@ -117,7 +112,6 @@ class InspectField extends StatelessWidget {
         diagnostics: diagnostics,
         suggestions: suggestions,
         schema: schema,
-        humanize: humanize,
       ),
     );
   }
@@ -133,7 +127,6 @@ class InspectControl extends StatelessWidget {
     this.diagnostics = const <Diagnostic>[],
     this.suggestions = const <FieldOption>[],
     this.schema,
-    this.humanize = false,
     super.key,
   });
 
@@ -144,7 +137,6 @@ class InspectControl extends StatelessWidget {
   final List<Diagnostic> diagnostics;
   final List<FieldOption> suggestions;
   final SchemaView? schema;
-  final bool humanize;
 
   @override
   Widget build(BuildContext context) {
@@ -170,14 +162,14 @@ class InspectControl extends StatelessWidget {
           value: current is String ? current : null,
           options: options,
           allowNone: !field.required,
-          noneLabel: field.required ? 'Pick one of ${options.length}' : 'Not set',
+          noneLabel: field.required ? 'Pick ${humanizeKey(field.key).toLowerCase()}' : 'Not set',
           labels: <String, String>{for (final FieldOption option in field.options) option.label: option.label},
           onChanged: onChanged,
         );
       case FieldKind.boolean:
         if (current is bool || current == null) {
           return dom.div(classes: 'animus-row', <Widget>[
-            GuiSwitch(value: current == true, label: humanize ? humanizeKey(field.key) : field.key, onChanged: onChanged),
+            GuiSwitch(value: current == true, label: humanizeKey(field.key), onChanged: onChanged),
             if (current != null && !field.required)
               Button.ghost(label: 'Unset', size: ButtonSize.small, onPressed: () => onChanged(null)),
           ]);
@@ -198,7 +190,7 @@ class InspectControl extends StatelessWidget {
             value: current as String? ?? '',
             label: field.key,
             suggestions: suggestions,
-            placeholder: field.pattern,
+            placeholder: field.bounds.isEmpty ? null : field.bounds,
             onChanged: (String next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
         }
@@ -211,7 +203,6 @@ class InspectControl extends StatelessWidget {
             value: asMap(current),
             path: path,
             diagnostics: diagnostics,
-            humanize: humanize,
             onChanged: (JsonMap next) => onChanged(next.isEmpty && !field.required ? null : next),
           );
         }
@@ -243,7 +234,6 @@ class InspectObject extends StatelessWidget {
     required this.onChanged,
     this.diagnostics = const <Diagnostic>[],
     this.skip = const <String>{},
-    this.humanize = false,
     super.key,
   });
 
@@ -257,8 +247,6 @@ class InspectObject extends StatelessWidget {
   /// Keys another part of the inspector shows.
   final Set<String> skip;
 
-  /// Labels read as words instead of raw keys.
-  final bool humanize;
 
   @override
   Widget build(BuildContext context) {
@@ -275,7 +263,6 @@ class InspectObject extends StatelessWidget {
             path: childPath(path, field.key),
             diagnostics: diagnostics,
             schema: schema,
-            humanize: humanize,
             onChanged: (Object? next) => put(field.key, next),
           ),
       for (final MapEntry<String, Object?> entry in value.entries)

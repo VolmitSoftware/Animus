@@ -133,7 +133,6 @@ class _NpcInspectorState extends State<NpcInspector> {
     suggestions: suggestions,
     schema: _schema,
     label: label,
-    humanize: true,
     onChanged: (Object? value) => _write(<JsonStep>[key], value),
   );
 
@@ -374,7 +373,6 @@ class _NpcInspectorState extends State<NpcInspector> {
             value: at,
             path: r'$.position',
             diagnostics: _diagnostics,
-            humanize: true,
             onChanged: (JsonMap value) => _write(<JsonStep>['position'], value),
           ),
         _field('poses', label: 'Named facings'),
@@ -691,7 +689,6 @@ class _NpcInspectorState extends State<NpcInspector> {
             value: value,
             path: path,
             diagnostics: _diagnostics,
-            humanize: true,
             onChanged: (JsonMap next) => _putModule(key, next),
           )
         else ...<Widget>[
@@ -736,7 +733,6 @@ class _NpcInspectorState extends State<NpcInspector> {
           path: r'$',
           diagnostics: _diagnostics,
           skip: _laidOut,
-          humanize: true,
           onChanged: (JsonMap value) => component.onJson(value, coalesce: 'npc:other'),
         ),
       ],
