@@ -385,7 +385,7 @@ public final class AnimusPlugin extends JavaPlugin {
         };
         EditorService service = new EditorService(runtime, new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(runtime, commands, owners, extensions,
                 modulePlatform.name().toLowerCase(Locale.ROOT), "", features,
-                (Player player) -> player.hasPermission("animus.admin"), (String message) -> getLogger().info(message))), (String message) -> getLogger().info(message));
+                (Player player) -> player.hasPermission("animus.admin"), new BukkitEditorNotices(this, replies), (String message) -> getLogger().info(message))), (String message) -> getLogger().info(message));
         try {
             service.start();
             editor = service;
