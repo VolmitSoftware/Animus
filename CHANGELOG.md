@@ -308,6 +308,9 @@
 - Web editor: checkboxes, radios and range thumbs are square; rig keyframes, events and gizmo handles take a 44 px target on phones.
 - Web editor: the NPC preview wears a placeholder skin instead of the default one when no skin texture is loaded, offline or online, and its skin line names it.
 - The Denizen importer converts world comparisons and `in:<world>` switches to `same_world`.
+- Combat NPCs ask protection before choosing a target and every 10 ticks while chasing it, and never choose an invincible NPC or an invulnerable entity.
+- A protected or cancelled hit, melee or projectile, ends the fight at once and leaves that target alone for 5 seconds.
+- Hits on an NPC with `defense.invincible` report `PROTECTED` instead of `NO_CHANGE`.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -455,6 +458,8 @@
 - Bukkit NPC positions, admin create, teleports, combat locations, GUI teleports, shop chests and WorldGuard checks accept dimension keys such as `minecraft:the_nether`.
 - `npc.world` gives the same form as `player.world`: the world name on Bukkit, the dimension key on mods.
 - Clicks on NPC-bound holograms count only in the NPC's world.
+- A respawned combat NPC refills its ammunition, forgets old refusals and greetings, and walks back to its post.
+- On Folia, an NPC's projectiles now hit NPCs that other regions own, credited to the NPC that fired them.
 
 ### Notes
 

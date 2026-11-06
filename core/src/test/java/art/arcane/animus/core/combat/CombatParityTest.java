@@ -203,8 +203,9 @@ class CombatParityTest {
         UUID zombie = world.monster("minecraft:zombie", 8, 0);
         run(2);
         UUID helper = world.launched.keySet().iterator().next();
+        int asked = protectionCalls.size();
         engine().helperHitReal(helper, mob(zombie));
-        assertEquals(1, protectionCalls.size());
+        assertEquals(asked + 1, protectionCalls.size(), "The landing asks protection once more");
         assertEquals(List.of(new CombatSettings.Effect("minecraft:poison", 0, 100)), world.effects.get(zombie));
         assertTrue(engine().registered(npc));
     }

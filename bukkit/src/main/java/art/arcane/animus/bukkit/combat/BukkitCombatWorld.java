@@ -134,7 +134,7 @@ public final class BukkitCombatWorld extends RuntimeCombatWorld<Player, ItemStac
         }
         Set<String> effects = new HashSet<>();
         for (PotionEffect effect : creature.getActivePotionEffects()) effects.add(effect.getType().getKey().toString());
-        return new CombatTarget.Details(maximum == null ? 0 : maximum.getValue(), mainHand, offHand, worn, effects);
+        return new CombatTarget.Details(maximum == null ? 0 : maximum.getValue(), mainHand, offHand, worn, effects, creature.isInvulnerable());
     }
     private static String item(ItemStack stack) {
         return stack == null || stack.getType() == Material.AIR ? CombatLoadout.EMPTY : stack.getType().getKey().toString();
