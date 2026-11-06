@@ -159,9 +159,13 @@ class _ServerImportPanelState extends State<ServerImportPanel> {
         if (uploadProblem(upload, path) != null) uploadProblem(upload, path)!,
     ];
     return dom.section(classes: 'animus-panel animus-server-import', attributes: const <String, String>{'aria-label': 'Import on a server'}, <Widget>[
-      labelWithTip(const dom.h2(<Widget>[Component.text('Import on a server')]),
-          'Nothing installs until you apply. Imported NPCs stay despawned with features off until accepted.', 'Server import',
-          docs: Docs.liveImports),
+      const dom.h2(<Widget>[
+        InfoTip(
+          tip: 'Nothing installs until you apply. Imported NPCs stay despawned with features off until accepted.',
+          docs: Docs.liveImports,
+          child: Component.text('Import on a server'),
+        ),
+      ]),
       if (servers.isEmpty)
         const dom.p(<Widget>[Component.text('No servers paired. Run /animus editor pair scopes=read,import,apply:npcs,apply:behaviors,apply:gui and open its link.')])
       else ...<Widget>[

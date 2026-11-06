@@ -1,7 +1,9 @@
-/// The one info control: a square "i" next to a label. Hover or keyboard
-/// focus shows a short tooltip (the link's aria-describedby), a click opens
-/// the wiki page, and a tap on a touch screen toggles the tooltip, which then
-/// carries the wiki link. Escape hides it.
+/// Help on a label or heading: the text itself carries a short tooltip. It
+/// gets a dotted underline and takes keyboard focus. Hover (after a short
+/// delay) or focus shows the tooltip (the text's aria-describedby), Escape
+/// hides it, Enter opens the wiki page, and a tap toggles it. The tooltip
+/// holds a Docs link and stays open while the pointer is over it. A mouse
+/// click does nothing of its own, so a label still focuses its control.
 library;
 
 import 'dart:js_interop';
@@ -30,13 +32,13 @@ class DocsScope extends InheritedComponent {
 }
 
 class InfoTip extends StatefulWidget {
-  const InfoTip({required this.text, required this.topic, this.docs, super.key});
+  const InfoTip({required this.tip, required this.child, this.docs, super.key});
 
   /// One or two short sentences; longer text is cut to two.
-  final String text;
+  final String tip;
 
-  /// What the tip is about, for the link's accessible name ("Folder docs").
-  final String topic;
+  /// The visible text that carries the tip.
+  final Widget child;
 
   /// The wiki heading; null uses the surrounding [DocsScope].
   final DocLink? docs;
@@ -46,7 +48,7 @@ class InfoTip extends StatefulWidget {
 }
 
 class _InfoTipState extends State<InfoTip> {
-  final String _id = 'animus-info-${_nextTipId++}';
+  final String _id = 'animus-tip-${_nextTipId++}';
   bool _open = false;
   bool _dismissed = false;
   bool _touch = false;
@@ -63,14 +65,16 @@ class _InfoTipState extends State<InfoTip> {
     _outside = null;
   }
 
+  bool _inside(web.EventTarget? target) {
+    final web.Element? root = web.document.getElementById('$_id-wrap');
+    return root != null && target != null && target.isA<web.Node>() && root.contains(target as web.Node);
+  }
+
   void _setOpen(bool open) {
     _stopOutside();
     if (open) {
       _outside = ((web.Event event) {
-        final web.Element? root = web.document.getElementById('$_id-wrap');
-        final web.EventTarget? target = event.target;
-        if (root != null && target != null && target.isA<web.Node>() && root.contains(target as web.Node)) return;
-        _setOpen(false);
+        if (!_inside(event.target)) _setOpen(false);
       }).toJS;
       web.document.addEventListener('pointerdown', _outside);
     }
@@ -78,27 +82,44 @@ class _InfoTipState extends State<InfoTip> {
     _place();
   }
 
-  /// Keeps the tooltip inside the viewport: it opens under the button and
+  /// Keeps the tooltip inside the viewport: it opens under the text and
   /// shifts left when the right edge would pass the window.
   void _place() {
     web.window.setTimeout((() {
       final web.HTMLElement? tip = web.document.getElementById(_id) as web.HTMLElement?;
       final web.HTMLElement? pop = tip?.parentElement as web.HTMLElement?;
       if (pop == null) return;
-      pop.style.setProperty('--animus-info-shift', '0px');
+      pop.style.setProperty('--animus-tip-shift', '0px');
       final web.DOMRect box = pop.getBoundingClientRect();
       final double room = web.document.documentElement!.clientWidth - 8 - box.right;
       final double shift = room < 0 ? (room < -box.left + 8 ? -box.left + 8 : room) : 0;
-      pop.style.setProperty('--animus-info-shift', '${shift}px');
+      pop.style.setProperty('--animus-tip-shift', '${shift}px');
     }).toJS, 0.toJS);
+  }
+
+  void _onKey(web.Event raw, String url) {
+    final web.KeyboardEvent event = raw as web.KeyboardEvent;
+    if (event.key == 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      web.window.open(url, '_blank', 'noopener');
+    } else if (event.key == 'Escape' && (_open || !_dismissed)) {
+      event.preventDefault();
+      event.stopPropagation();
+      _stopOutside();
+      setState(() {
+        _open = false;
+        _dismissed = true;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final DocLink link = component.docs ?? DocsScope.of(context);
+    final String url = (component.docs ?? DocsScope.of(context)).url;
     return dom.span(
       id: '$_id-wrap',
-      classes: 'animus-info${_open ? ' is-open' : ''}${_dismissed ? ' is-dismissed' : ''}',
+      classes: 'animus-tip${_open ? ' is-open' : ''}${_dismissed ? ' is-dismissed' : ''}',
       events: <String, void Function(web.Event)>{
         'pointerenter': (web.Event _) => _place(),
         'pointerleave': (web.Event _) {
@@ -106,64 +127,45 @@ class _InfoTipState extends State<InfoTip> {
         },
         'focusin': (web.Event _) => _place(),
         'focusout': (web.Event event) {
-          final web.EventTarget? next = (event as web.FocusEvent).relatedTarget;
-          final web.Element? root = web.document.getElementById('$_id-wrap');
-          if (next != null && root != null && next.isA<web.Node>() && root.contains(next as web.Node)) return;
+          if (_inside((event as web.FocusEvent).relatedTarget)) return;
           if (_dismissed) setState(() => _dismissed = false);
-          if (_open) _setOpen(false);
-        },
-        'keydown': (web.Event raw) {
-          if ((raw as web.KeyboardEvent).key != 'Escape') return;
-          if (_open || !_dismissed) {
-            raw.preventDefault();
-            raw.stopPropagation();
-            _stopOutside();
-            setState(() {
-              _open = false;
-              _dismissed = true;
-            });
-          }
+          if (_open && !_touch) _setOpen(false);
         },
       },
       <Widget>[
-        dom.a(
-          href: link.url,
-          classes: 'animus-info-button',
-          attributes: <String, String>{
-            'target': '_blank',
-            'rel': 'noopener',
-            'aria-label': '${component.topic} docs',
-            'aria-describedby': _id,
-          },
+        dom.span(
+          classes: 'animus-tip-text',
+          attributes: <String, String>{'tabindex': '0', 'role': 'link', 'aria-describedby': _id},
           events: <String, void Function(web.Event)>{
+            'keydown': (web.Event event) => _onKey(event, url),
             'pointerdown': (web.Event raw) => _touch = (raw as web.PointerEvent).pointerType == 'touch',
             'click': (web.Event event) {
               if (!_touch) return;
+              // A tap shows the tip instead of focusing a label's control
+              // or toggling a section.
               event.preventDefault();
               _setOpen(!_open);
             },
           },
-          const <Widget>[Component.text('i')],
+          <Widget>[component.child],
         ),
-        dom.span(classes: 'animus-info-pop', <Widget>[
-          dom.span(id: _id, attributes: const <String, String>{'role': 'tooltip'}, <Widget>[Component.text(tipText(component.text))]),
-          if (_open)
-            dom.a(
-              href: link.url,
-              classes: 'animus-info-docs',
-              attributes: const <String, String>{'target': '_blank', 'rel': 'noopener'},
-              const <Widget>[Component.text('Docs')],
-            ),
+        // Hidden from the accessibility tree so a heading or label name
+        // stays its own text; the text's aria-describedby still reads the
+        // tip, and Enter on the text reaches the Docs link's page.
+        dom.span(classes: 'animus-tip-pop', attributes: const <String, String>{'aria-hidden': 'true'}, <Widget>[
+          dom.span(id: _id, attributes: const <String, String>{'role': 'tooltip'}, <Widget>[Component.text(tipText(component.tip))]),
+          dom.a(
+            href: url,
+            classes: 'animus-tip-docs',
+            attributes: const <String, String>{'target': '_blank', 'rel': 'noopener', 'tabindex': '-1'},
+            const <Widget>[Component.text('Docs')],
+          ),
         ]),
       ],
     );
   }
 }
 
-/// [label] followed by an [InfoTip] when there is [tip] text.
-Widget labelWithTip(Widget label, String? tip, String topic, {DocLink? docs}) {
-  if (tip == null || tip.trim().isEmpty) return label;
-  // The required marker is not part of the topic's name.
-  final String name = topic.replaceFirst(RegExp(r'\s*\*$'), '');
-  return dom.span(classes: 'animus-label-tip', <Widget>[label, InfoTip(text: tip, topic: name, docs: docs)]);
-}
+/// [text] carrying [tip], or [text] alone when there is no tip.
+Widget withTip(Widget text, String? tip, {DocLink? docs}) =>
+    tip == null || tip.trim().isEmpty ? text : InfoTip(tip: tip, docs: docs, child: text);

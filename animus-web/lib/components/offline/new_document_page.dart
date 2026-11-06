@@ -448,7 +448,7 @@ class _NewDocumentPageState extends State<NewDocumentPage> {
     final bool exists = (kind == DocumentKind.presets && component.store.document(kind, 'presets') != null) ||
         (kind == DocumentKind.serverBehaviors && component.store.document(kind, DocumentKind.serverBehaviorsId) != null);
     return dom.section(classes: 'animus-panel animus-new-form', attributes: <String, String>{'aria-label': 'New ${_inSentence(kind)}'}, <Widget>[
-      labelWithTip(dom.h2(<Widget>[Component.text('New ${_inSentence(kind)}')]), '${kindPurpose(kind)}.', _singular(kind), docs: Docs.forKind(kind)),
+      dom.h2(<Widget>[InfoTip(tip: '${kindPurpose(kind)}.', docs: Docs.forKind(kind), child: Component.text('New ${_inSentence(kind)}'))]),
       ...fields,
       if (_problem != null) dom.p(classes: 'animus-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_problem!)]),
       dom.div(classes: 'animus-row', <Widget>[
