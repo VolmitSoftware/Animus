@@ -114,6 +114,8 @@ The [Folia runtime](https://github.com/VolmitSoftware/docs/blob/master/animus/15
 
 `--scenarios combatedges` (not in the default set) runs `qa/multiplexor/live-combat-edges.mjs` on Paper or Folia: an invincible NPC is never targeted, a disengage mid-chase walks the NPC home, arrows have no shooter and none stay after a despawn, and a respawn away from the post walks back. Use `--instance-name animus-combatedges-<platform>-<version>`; `--template <dir>` holding a `server.jar` stands in for the baseline instance.
 
+`--scenarios swinglook` (not in the default set) runs `qa/multiplexor/live-swing-look.mjs` on Paper or Folia: the client sees an arm swing for every melee hit, the living use flag set while an archer fights and cleared after, and no head or body rotation from an armor stand whose look-close is off. Use `--instance-name animus-swinglook-<platform>-<version>`.
+
 ## Mod servers
 
 `qa/multiplexor/live-features.mjs --project fabric|neoforge|forge` runs the same native-client scenarios against a Fabric, NeoForge or Forge server. It creates `animus-mod-<loader>-<version>` in that loader's consumer profile with `server create --type <loader> --mc <version> --loader <version> --auto-build --isolated`, taking the loader versions from `gradle/targets.json`, and puts the given mod jar in `mods/`. Data lives in `config/animus/`. The native client borrows the vanilla libraries of the matching `animus-baseline-paper-<version>` instance, which must exist. There is no Bukkit QA fixture, so `--fixture` is refused and the `animusqa` cell probes and `qa/combat-client.mjs` are skipped.

@@ -33,6 +33,9 @@ class MockCombatWorld implements CombatWorld {
     final Map<UUID, List<CombatSettings.Effect>> effects = new HashMap<>();
     final Map<UUID, RangedWeapon> launched = new HashMap<>();
     final Set<String> permissions = new HashSet<>();
+    final Map<UUID, Integer> swings = new HashMap<>();
+    final Map<UUID, Boolean> drawn = new HashMap<>();
+    int drawChanges;
     int experience, realScans, npcScans, helperLaunches, stops, teleports, lineChecks;
     boolean blocked, unavailableTerrain, walkInstantly, refuseHelpers, playersAway;
     int playerChecks;
@@ -148,6 +151,8 @@ class MockCombatWorld implements CombatWorld {
         return true;
     }
     @Override public void face(UUID npc, Vec3 point) {}
+    @Override public void swing(UUID npc) { swings.merge(npc, 1, Integer::sum); }
+    @Override public void drawing(UUID npc, boolean drawing) { drawn.put(npc, drawing); drawChanges++; }
     @Override public double yaw(UUID npc) { return yaw; }
     @Override public DamageOutcome damageReal(UUID attacker, CombatTarget target, double amount, DamageKind kind, double reach, double knockback, boolean victimDrops) {
         if (realStatus != DamageStatus.APPLIED) return new DamageOutcome(realStatus, 0, false);

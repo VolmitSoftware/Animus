@@ -237,6 +237,7 @@
 - Shop `layout` draws the chest window in a chest GUI, with the offers in its list area and paged by its own buttons.
 - `/animus shop problems` lists notes about offers a shop's window style cannot show exactly.
 - Web editor: Style and Layout fields in the shop editor, with a trading screen preview.
+- Combat NPCs with a bow, crossbow or trident hold it drawn while a target is in range and lower it after.
 
 ### Changed
 
@@ -492,6 +493,10 @@
 - On Folia, an NPC's projectiles now hit NPCs that other regions own, credited to the NPC that fired them.
 - A full packet queue no longer drops a player's view of every NPC; moves and spawns wait for the queue to drain.
 - Far fight and chat watchers on Folia no longer use up the 64 deliveries before nearby ones hear the event.
+- Combat NPCs now swing their arm on every melee hit and every thrown shot, on Paper, Spigot, Folia and mod servers.
+- Attack swings go out with moves, so they are no longer delayed by cosmetic pauses or skipped as stale.
+- Controlled iron golems, ravagers, hoglins, zoglins and wardens show their own attack animation instead of a swing.
+- Imported armor stands no longer turn to players unless their Citizens save turns look-close on.
 
 ### Notes
 

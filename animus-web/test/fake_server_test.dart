@@ -759,11 +759,11 @@ void main() {
       final Map<String, Object?> staged = review(await call('POST', '/animus/v1/imports/stage', token: token, body: <String, Object?>{}));
       expect(staged['state'], 'staged');
       final String importId = (staged['citizens']! as Map<String, Object?>)['importId']! as String;
-      expect(((staged['reports']! as Map<String, Object?>)['citizens']! as Map<String, Object?>)['records'], 5);
+      expect(((staged['reports']! as Map<String, Object?>)['citizens']! as Map<String, Object?>)['records'], 6);
       expect((await call('POST', '/animus/v1/imports/${'0' * 64}/apply', token: token)).errorCode, 'conflict');
       final Map<String, Object?> applied = review(await call('POST', '/animus/v1/imports/$importId/apply', token: token));
       expect(applied['state'], 'applied');
-      expect(applied['npcs'], 5);
+      expect(applied['npcs'], 6);
       final Map<String, Object?> catalog = await events.nextOf('catalog');
       expect(catalog['documents'], isNotEmpty);
       final int waiting = (applied['pending']! as Map<String, Object?>).values.fold(0, (int sum, Object? n) => sum + (n! as int));
