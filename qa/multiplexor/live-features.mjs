@@ -3,6 +3,7 @@
 // acting as players through the native-codec client. Prints one line per check; details go to --results.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer, connect } from 'node:net';
 import path from 'node:path';
@@ -447,6 +448,15 @@ async function values(owner, npc = 'st') {
   const lines = owner.events.slice(from).filter(e => e.event === 'chat' && e.text.startsWith('State » ')).map(e => e.text.slice('State » '.length));
   return { lines: lines.filter(line => line !== 'report-end'), execution };
 }
+// An offline server stores no player skins, so the scenario writes its own unsigned one, named by its content hash.
+function syntheticSkin() {
+  const texture = Buffer.from(JSON.stringify({ textures: { SKIN: { url: 'http://textures.minecraft.net/texture/1a4af718455d4aab528e7a61f86fa25e6a369d1768dcb13f7df319a713eb810b' } } })).toString('base64');
+  const text = JSON.stringify({ textureRaw: texture, signature: null }) + '\n';
+  const hash = createHash('sha256').update(text, 'utf8').digest('hex');
+  mkdirSync(path.join(data, 'skins'), { recursive: true });
+  writeFileSync(path.join(data, 'skins', `${hash}.json`), text);
+  return hash;
+}
 async function state() {
   server.behavior('live:state', stateDoc());
   await server.reload();
@@ -741,7 +751,7 @@ async function actions() {
     let result = await runDoc(owner, 'appear', action('animus:set-appearance', { name: 'Renamed' }));
     assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));
     await owner.wait(e => e.event === 'player_info' && e.uuid === uuid && e.name === 'Renamed', from, 5000);
-    const skin = readdirSync(path.join(data, 'skins')).find(file => file.endsWith('.json'))?.replace('.json', '');
+    const skin = syntheticSkin();
     from = owner.events.length;
     result = await runDoc(owner, 'appear', action('animus:set-appearance', { skin }));
     assert.equal(result.state, 'COMPLETED', diagnosticOf(result.text));

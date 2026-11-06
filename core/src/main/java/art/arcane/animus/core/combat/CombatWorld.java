@@ -42,6 +42,15 @@ public interface CombatWorld {
     /** Ends combat movement and resumes any held waypoint patrol. */
     void release(UUID npc);
     boolean teleport(UUID npc, WorldPosition destination);
+    /**
+     * Where the NPC stands guard: its definition's position, which a fight never moves. Empty for an NPC that patrols a
+     * route, whose fights end where it left the route, and for a platform that does not know.
+     */
+    default Optional<WorldPosition> post(UUID npc) { return Optional.empty(); }
+    /** A short straight step onto clear, supported ground at the point, checked along the way; false leaves the NPC in place. */
+    default boolean step(UUID npc, WorldPosition to) { return false; }
+    /** Turns the NPC back to its definition's facing and pose, standing. */
+    default void restorePose(UUID npc) {}
     void face(UUID npc, Vec3 point);
     /** Horizontal facing in degrees; yaw 0 faces positive Z. */
     double yaw(UUID npc);

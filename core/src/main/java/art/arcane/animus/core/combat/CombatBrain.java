@@ -18,7 +18,16 @@ import java.util.function.Supplier;
 
 /** One NPC's combat state machine. Owned by the engine and driven only on its thread. */
 final class CombatBrain {
-    private static final double RETURN_TOLERANCE = 1.5;
+    /** How close across, and up or down, a returning NPC must stand to its post to be on it. */
+    private static final double ON_POST = .3, ON_POST_HEIGHT = .6, ARRIVED = .001;
+    /**
+     * A returning NPC whose walk stopped within this of its post, as a path that ends beside a goal it cannot reach does,
+     * takes a short final step onto it; a refused step is a nudge instead.
+     */
+    private static final double FINAL_STEP = 2.5, FINAL_STEP_HEIGHT = 2;
+    /** A return walk that has not moved this far for {@link #FINAL_STEP_TICKS} has ended; for {@link #RETURN_STALL_TICKS}, it is planned again. */
+    private static final double STALLED = .05;
+    private static final long FINAL_STEP_TICKS = 10, RETURN_STALL_TICKS = 100;
     private static final int STUCK_LIMIT = 3;
     private static final int VISIBILITY_CANDIDATES = 8;
     private static final double FIELD_OF_VIEW_COSINE = Math.cos(Math.toRadians(70));
@@ -65,7 +74,11 @@ final class CombatBrain {
     private boolean alertPending;
     private boolean deathHandled;
     private boolean regionReported;
+    /** Where this fight's leash runs from and where it returns: the post, or where a patrolling NPC left its route. */
     private WorldPosition anchor;
+    /** Where the returning NPC last moved and when, to tell a walk that ended from one still under way. */
+    private WorldPosition returnFrom;
+    private long returnMovedAt;
     private WorldPosition deathPlace;
     private SpatialNpcIndex.Cursor npcCursor;
     private List<CombatTarget> lastSeen = List.of();
@@ -430,17 +443,21 @@ final class CombatBrain {
 
     private enum Goal { PURSUE, RETURN, FLEE }
 
-    private void plan(long now, VirtualNpcState.Snapshot self, WorldPosition goal, Goal purpose) {
-        if (now < nextPlan || !engine.takePath()) return;
+    /** True when a new walk toward the goal was accepted. */
+    private boolean plan(long now, VirtualNpcState.Snapshot self, WorldPosition goal, Goal purpose) {
+        if (now < nextPlan || !engine.takePath()) return false;
         nextPlan = now + settings.pursuit().replanTicks();
         CombatWorld.MoveStatus status = world.move(npc, goal, speed());
         if (status == CombatWorld.MoveStatus.ACCEPTED) {
             moving = true;
             stuck = 0;
-        } else if (status == CombatWorld.MoveStatus.REJECTED && ++stuck >= STUCK_LIMIT) {
+            return true;
+        }
+        if (status == CombatWorld.MoveStatus.REJECTED && ++stuck >= STUCK_LIMIT) {
             stuck = 0;
             stuck(self, goal, purpose);
         }
+        return false;
     }
 
     private void stuck(VirtualNpcState.Snapshot self, WorldPosition goal, Goal purpose) {
@@ -477,17 +494,55 @@ final class CombatBrain {
         threat = from;
         target = null;
         forced = false;
-        if (anchor == null) anchor = self.position();
+        if (anchor == null) anchor = anchorFor(self.position());
+    }
+
+    /** The post when the NPC has one in this world, never where a fight last left it; otherwise where it stands now. */
+    private WorldPosition anchorFor(WorldPosition here) {
+        return world.post(npc).filter((WorldPosition post) -> post.world().equals(here.world())).orElse(here);
+    }
+
+    private static boolean on(WorldPosition anchor, WorldPosition here) {
+        Vec3 a = anchor.point(), b = here.point();
+        return Math.hypot(a.x() - b.x(), a.z() - b.z()) <= ON_POST && Math.abs(a.y() - b.y()) <= ON_POST_HEIGHT;
     }
 
     private long returning(long now, VirtualNpcState.Snapshot self) {
-        if (anchor == null || !anchor.world().equals(self.position().world())
-                || anchor.point().distance(self.position().point()) <= RETURN_TOLERANCE) {
+        WorldPosition here = self.position();
+        if (anchor == null || !anchor.world().equals(here.world())) {
             finish();
             return 1;
         }
-        plan(now, self, anchor, Goal.RETURN);
+        if (on(anchor, here)) {
+            // Close enough to count as there; the last fraction is a step onto the post itself when the ground allows it.
+            if (here.point().distance(anchor.point()) > ARRIVED) world.step(npc, anchor);
+            arrive();
+            return 1;
+        }
+        if (returnFrom == null || !returnFrom.world().equals(here.world()) || returnFrom.point().distance(here.point()) >= STALLED) {
+            returnFrom = here;
+            returnMovedAt = now;
+        }
+        long still = now - returnMovedAt;
+        Vec3 offset = anchor.point().subtract(here.point());
+        if (still >= FINAL_STEP_TICKS && Math.hypot(offset.x(), offset.z()) <= FINAL_STEP && Math.abs(offset.y()) <= FINAL_STEP_HEIGHT) {
+            // The walk ended beside the post, as a path that cannot reach it does: step the rest of the way, or be nudged.
+            if (moving) { world.stop(npc); moving = false; }
+            if (world.step(npc, anchor) || world.teleport(npc, anchor)) {
+                arrive();
+                return 1;
+            }
+        }
+        // One walk to the post at a time: asking again restarts its planning, so only a walk that ended or stalled is replaced.
+        if ((!moving || still >= RETURN_STALL_TICKS) && plan(now, self, anchor, Goal.RETURN)) returnMovedAt = now;
         return Math.min(5, settings.pursuit().replanTicks());
+    }
+
+    /** On the post again: the fight is over and the NPC faces and stands as its definition says. */
+    private void arrive() {
+        boolean posted = world.post(npc).isPresent();
+        finish();
+        if (posted) world.restorePose(npc);
     }
 
     /** The fight ended: go back to the post when configured, otherwise hand back to any patrol now. */
@@ -496,10 +551,15 @@ final class CombatBrain {
         forced = false;
         alertPending = false;
         if (guarded == null && settings.pursuit().returnToPost() && anchor != null && anchor.world().equals(self.position().world())
-                && anchor.point().distance(self.position().point()) > RETURN_TOLERANCE) {
+                && !on(anchor, self.position())) {
             state = CombatState.RETURNING;
             nextPlan = 0;
             stuck = 0;
+            returnFrom = null;
+            // The chase walk is not a walk to the post; the next turn replaces it.
+            moving = false;
+        } else if (guarded == null && settings.pursuit().returnToPost()) {
+            arrive();
         } else {
             finish();
         }
@@ -509,7 +569,9 @@ final class CombatBrain {
     private void finish() {
         boolean wasEngaged = anchor != null || moving || state != CombatState.IDLE;
         state = CombatState.IDLE;
+        // The next fight anchors at the post again, never where this one stopped.
         anchor = null;
+        returnFrom = null;
         moving = false;
         stuck = 0;
         if (wasEngaged) world.release(npc);
@@ -616,7 +678,7 @@ final class CombatBrain {
         alertPending = true;
         stuck = 0;
         nextPlan = 0;
-        if (anchor == null) anchor = self.position();
+        if (anchor == null) anchor = anchorFor(self.position());
         if (settings.squad().name().isPresent()) {
             alertPending = false;
             engine.alertSquad(this, self, ref);
@@ -634,7 +696,7 @@ final class CombatBrain {
         reactionUntil = now + settings.targeting().reactionTicks();
         nextPlan = 0;
         stuck = 0;
-        if (anchor == null) anchor = self.get().position();
+        if (anchor == null) anchor = anchorFor(self.get().position());
     }
 
     void force(TargetRef ref) {

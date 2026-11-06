@@ -445,6 +445,28 @@ final class RegionActor implements RegionOwner.Body {
         stopRoute("cancelled by combat lifecycle/position change");
         combatChanged(before, state.move(spot));
     }
+    /** Where this NPC stands guard: its definition's position, unless it patrols waypoints or a reusable route. */
+    Optional<WorldPosition> post() {
+        if (!state.snapshot().active() || routeSource != null || WaypointSettings.parse(spec.definition()).isPresent()) return Optional.empty();
+        return Optional.of(spec.position());
+    }
+    /** A short step onto clear, supported ground at the point, swept along the way, within ground this region holds. */
+    boolean combatStep(WorldPosition to) {
+        if (!placeable(state.snapshot().active(), seated, riding)) return false;
+        WorldPosition from = state.snapshot().position();
+        World world = host.world(to.world());
+        if (world == null || !to.world().equals(from.world())) return false;
+        ChunkPosition chunk = to.chunk();
+        if (!host.regions.owns(world, chunk.x(), chunk.z(), chunk.x(), chunk.z())) return false;
+        Optional<WorldPosition> spot = clearSpot(world, to, hullWidth(), hullHeight());
+        if (spot.isEmpty()) return false;
+        ChunkOwnership owned = (int x, int z) -> host.regions.owns(world, x, z, x, z);
+        if (!LiveMovementProbe.check(world, owned, from.point(), spot.get().point(), hullWidth(), hullHeight(), MotionValidator.Medium.GROUND, true, 256).clear()) return false;
+        place(spot.get());
+        return true;
+    }
+    /** Back to the definition's facing, standing. */
+    void restorePose() { setPose(spec.yaw(), spec.pitch(), true); publish(true); }
     /** Knockback: a short slide onto clear, supported ground this region holds; otherwise the NPC stays put. */
     void combatKnockback(Vec3 direction, double strength) {
         double horizontal = Math.hypot(direction.x(), direction.z());
