@@ -12,6 +12,8 @@ import net.minecraft.world.phys.Vec3;
 
 /** Exact 26.3 native API. Wire IDs and codecs still come from its own jar. */
 final class ProtocolRevision {
+    /** 26.3 sends the main-arm swing as a punch with no hand. */
+    static Packet<?> swing() { return ServerboundPunchPacket.INSTANCE; }
     static List<Packet<?>> acknowledgments(int id, PositionMoveRotation position) {
         Vec3 v = position.position();
         // Verified against 26.3 ClientPacketListener.handleMovePlayer: the

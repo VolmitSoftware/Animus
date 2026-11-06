@@ -119,6 +119,9 @@
 - Performance recording documents (`recordings/<id>.json`): frames, swing, equipment and door events, a byte-exact serialized form, hotload and editor apply, and `schema/recording-v1.schema.json`.
 - Recording core for playback: frame simplification within 0.02 blocks and 2 degrees, and a once, loop or pingpong cursor with interpolated poses, capped event windows and catch-up skips.
 - `[recordings]` settings in `config.toml` for sampling, length, file size, sessions, ghosts and previews, all applied live.
+- `/animus record start|stop|cancel|status|ghost|preview` captures a player's movement, sneaking, swings, equipment and door use into `recordings/<id>.json` as one rollback-able transaction, on the player's own thread on Folia.
+- Recording sessions end and save on quit, death, world change, a teleport over 8 blocks or `maximumTicks`; a recording over `maximumFileBytes` is held until it is stopped again or cancelled.
+- A viewer-private, glowing ghost of the recorder replays the last `ghostStretchTicks` every `ghostIntervalTicks` while recording, and `/animus record preview <id>` plays a saved recording once for the requesting player.
 
 ### Changed
 
