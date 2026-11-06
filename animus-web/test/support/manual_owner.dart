@@ -12,6 +12,9 @@ class ManualOwner implements SessionOwner {
   @override
   bool get owned => _owned;
 
+  @override
+  bool get waiting => !_owned;
+
   set owned(bool value) {
     if (value == _owned) return;
     _owned = value;

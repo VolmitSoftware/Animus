@@ -77,7 +77,7 @@ class _LiveBarState extends State<LiveBar> {
       for (final AppliedChange change in (binding?.history ?? const <AppliedChange>[]).reversed)
         if (!change.undone && change.undoOf == null) change,
     ];
-    final String? cause = !owned ? LiveSession.otherTab : (status.online ? null : phaseHint(status, hasToken: session.connection.token != null));
+    final String? cause = session.waiting ? LiveSession.otherTab : (status.online ? null : phaseHint(status, hasToken: session.connection.token != null));
     final String? expiry = status.online ? expiryLine(session.connection.tokenLeft) : null;
     final bool pairAgain = status.phase == ConnectionPhase.needsPairing || (status.phase == ConnectionPhase.offline && session.connection.token == null);
     return dom.section(classes: 'animus-live', attributes: const <String, String>{'aria-label': 'Live editing'}, <Widget>[

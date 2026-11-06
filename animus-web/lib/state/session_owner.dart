@@ -9,6 +9,9 @@ import 'dart:async';
 abstract class SessionOwner {
   bool get owned;
 
+  /// Known to be held by another tab (not merely not granted yet).
+  bool get waiting;
+
   /// Emits the new value whenever [owned] changes.
   Stream<bool> get changes;
 
@@ -22,6 +25,9 @@ class SoleOwner implements SessionOwner {
 
   @override
   bool get owned => true;
+
+  @override
+  bool get waiting => false;
 
   @override
   Stream<bool> get changes => const Stream<bool>.empty();

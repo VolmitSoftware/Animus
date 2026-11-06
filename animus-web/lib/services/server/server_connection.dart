@@ -467,7 +467,8 @@ class ServerConnection {
       return;
     }
     final String? closing = reason == null ? null : closingCopy.keys.where(reason.contains).firstOrNull;
-    _connectionLost(transport.path, closing != null ? closingCopy[closing]! : transportCopy('stream-closed'));
+    final ErrorCopy? path = transportErrorCopy[reason] ?? relayErrorCopy[reason];
+    _connectionLost(transport.path, closing != null ? closingCopy[closing]! : path ?? transportCopy('stream-closed'));
   }
 
   void _needsPairing(ErrorCopy problem) {

@@ -11,37 +11,54 @@ import 'package:web/web.dart' as web;
 import '../../state/session_owner.dart';
 
 class WebLockOwner implements SessionOwner {
-  /// Queues for the exclusive lock `animus-live-<serverId>`.
-  WebLockOwner(String serverId) {
+  /// Asks for the exclusive lock `animus-live-<serverId>`: at once when it is
+  /// free, else after saying another tab holds it and queueing for it.
+  WebLockOwner(String serverId) : _name = 'animus-live-$serverId' {
     try {
-      web.window.navigator.locks.request(
-        'animus-live-$serverId',
-        web.LockOptions(mode: 'exclusive'),
-        ((web.Lock? lock) {
-          if (_released) return Future<void>.value().toJS;
-          _set(true);
-          return _held.future.toJS;
-        }).toJS,
-      );
+      _request(ifAvailable: true);
     } on Object {
       // No Web Locks (an old browser): this tab owns the session alone.
-      _set(true);
+      _set(owned: true, waiting: false);
     }
   }
 
+  final String _name;
   final Completer<void> _held = Completer<void>();
   final StreamController<bool> _changes = StreamController<bool>.broadcast(sync: true);
   bool _owned = false;
+  bool _waiting = false;
   bool _released = false;
 
-  void _set(bool value) {
-    if (value == _owned) return;
-    _owned = value;
-    _changes.add(value);
+  void _request({required bool ifAvailable}) {
+    web.window.navigator.locks.request(
+      _name,
+      web.LockOptions(mode: 'exclusive', ifAvailable: ifAvailable),
+      ((web.Lock? lock) {
+        if (_released) return Future<void>.value().toJS;
+        if (lock == null) {
+          // Another tab holds it: say so, and wait in line.
+          _set(owned: false, waiting: true);
+          _request(ifAvailable: false);
+          return Future<void>.value().toJS;
+        }
+        _set(owned: true, waiting: false);
+        return _held.future.toJS;
+      }).toJS,
+    );
+  }
+
+  void _set({required bool owned, required bool waiting}) {
+    final bool changed = owned != _owned || waiting != _waiting;
+    _owned = owned;
+    _waiting = waiting;
+    if (changed && !_changes.isClosed) _changes.add(owned);
   }
 
   @override
   bool get owned => _owned;
+
+  @override
+  bool get waiting => _waiting;
 
   @override
   Stream<bool> get changes => _changes.stream;
@@ -50,7 +67,7 @@ class WebLockOwner implements SessionOwner {
   Future<void> release() async {
     _released = true;
     if (!_held.isCompleted) _held.complete();
-    _set(false);
+    _set(owned: false, waiting: false);
     await _changes.close();
   }
 }
