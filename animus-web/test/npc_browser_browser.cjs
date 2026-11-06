@@ -1,17 +1,21 @@
 // Opens test/fixtures/npc_browser in the built site at desktop and phone
 // widths, in the dark and the light theme, and checks the NPC browser
-// (search, the folder tree by mouse and keyboard, tag filters, empty
-// states, bulk tag and folder edits undone in one step each, a bulk module
-// switch, the delete confirm and Escape), the NPC inspector (its parts and
+// (search, the nested folder tree by mouse and keyboard with expand,
+// collapse and counts, folder create, rename, move and delete each undone
+// in one step, NPCs moved into a nested folder, the export zip's nested
+// paths, tag filters, empty states, bulk tag and folder edits undone in one
+// step each, a bulk module switch, the delete confirm and Escape), the NPC
+// inspector (its parts and
 // their summaries, pose, owner, hologram lines with a preview, armor stand
 // parts and angles, the rig picker), the route editor (a point added on the
 // grid, one dragged, one nudged and one added and removed from the
 // keyboard), the combat editor (an out-of-range value flagged, then fixed),
 // the equipment and skin editors, the skin document's summary and the
 // conversation view. Then, against the fake server loaded with the same
-// fixture, it spawns and despawns a selection on the server (the despawn
-// asks first) and shows that a token without the spawn scope cannot. No
-// console errors and no sideways scrolling anywhere.
+// fixture, it renames a folder, applies it as moves, sees the moved paths
+// on the server and undoes the apply, spawns and despawns a selection on
+// the server (the despawn asks first) and shows that a token without the
+// spawn scope cannot. No console errors and no sideways scrolling anywhere.
 //
 //   python3 tool/serve_site.py --port <WEB_PORT> &
 //   dart run tool/fake_server.dart --port=<FAKE_PORT> --origin=http://127.0.0.1:<WEB_PORT> --data=test/fixtures/npc_browser &
@@ -77,7 +81,9 @@ async function waitRows(page, expected) {
   await page.waitForFunction((want) => {
     const got = [...document.querySelectorAll('.animus-npc-row[data-npc]')].map((element) => element.getAttribute('data-npc'));
     return JSON.stringify(got) === JSON.stringify(want);
-  }, expected);
+  }, expected).catch(async (error) => {
+    throw new Error(`rows are ${JSON.stringify(await rows(page))}, not ${JSON.stringify(expected)}: ${error.message}`);
+  });
 }
 
 async function search(page, text) {
@@ -111,6 +117,26 @@ async function part(inspector, id) {
   return details;
 }
 
+/** The tree item of a folder ('' is npcs/ itself). */
+function folderItem(page, folder) {
+  return page.locator(`.animus-npc-tree [role="treeitem"][data-folder="${folder}"]`);
+}
+
+async function folderCount(page, folder) {
+  return Number(await folderItem(page, folder).locator('.animus-count').textContent());
+}
+
+/** Runs a folder action on the selected folder and returns its form. */
+async function folderAction(page, name) {
+  const actions = page.getByRole('group', {name: 'Folder actions'});
+  await actions.getByRole('button', {name, exact: true}).click();
+  return actions;
+}
+
+async function focusedFolder(page) {
+  return page.evaluate(() => document.activeElement?.getAttribute('data-folder'));
+}
+
 async function focusedLabel(page) {
   return page.evaluate(() => document.activeElement?.getAttribute('aria-label'));
 }
@@ -129,7 +155,7 @@ async function local(browser, viewport, tag, theme) {
   await (await sidebar(page)).locator('.animus-tree-browse').click();
   const browserPanel = page.getByRole('region', {name: 'NPC browser'});
   await browserPanel.waitFor();
-  const all = ['harbor/dockhand', 'harbor/ferryman', 'town/baker', 'town/guard-north', 'town/guard-south', 'wild/golem-keeper'];
+  const all = ['crier', 'harbor/dockhand', 'harbor/ferryman', 'town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'wild/golem-keeper'];
   await waitRows(page, all);
   await shot(page, `${tag}-01-browser`);
   await noSidewaysScroll(page, `${tag} browser`);
@@ -147,29 +173,151 @@ async function local(browser, viewport, tag, theme) {
   await browserPanel.locator('.animus-npc-empty').getByRole('button', {name: 'Clear search'}).click();
   await waitRows(page, all);
 
-  // Folder tree by mouse.
+  // Folder tree by mouse: nested folders, a folder's own count, and its
+  // subtree's count once collapsed.
   const tree = page.getByRole('tree', {name: 'Folders'});
-  await tree.getByRole('treeitem', {name: /^Folder harbor/}).click();
-  await waitRows(page, ['harbor/dockhand', 'harbor/ferryman']);
-  assert.equal(await page.getByLabel('Search NPCs', {exact: true}).inputValue(), 'folder:harbor');
-  assert.equal(await tree.getByRole('treeitem', {name: /^Folder harbor/}).getAttribute('aria-selected'), 'true');
-  await tree.getByRole('treeitem', {name: /^Folder harbor/}).click();
+  assert.deepEqual(await tree.locator('[role="treeitem"]').evaluateAll((items) => items.map((item) => `${item.getAttribute('aria-level')}:${item.dataset.folder}`)),
+    ['1:', '2:harbor', '2:town', '3:town/market', '4:town/market/stalls', '2:wild']);
+  assert.equal(await folderCount(page, ''), 1, 'npcs/ itself holds the crier');
+  assert.equal(await folderCount(page, 'town'), 3);
+  await folderItem(page, 'town').click();
+  await waitRows(page, ['town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
+  assert.equal(await page.getByLabel('Search NPCs', {exact: true}).inputValue(), 'folder:town');
+  assert.equal(await folderItem(page, 'town').getAttribute('aria-selected'), 'true');
+  await folderItem(page, 'town').locator('[data-testid="tree-toggle"]').click();
+  await folderItem(page, 'town/market').waitFor({state: 'detached'});
+  assert.equal(await folderItem(page, 'town').getAttribute('aria-expanded'), 'false');
+  assert.equal(await folderCount(page, 'town'), 5, 'a collapsed folder counts its subtree');
+  assert.match(await folderItem(page, 'town').getAttribute('aria-label'), /5 NPCs with its folders/);
+  await shot(page, `${tag}-02b-tree-collapsed`);
+  await folderItem(page, 'town').locator('[data-testid="tree-toggle"]').click();
+  await folderItem(page, 'town/market').waitFor();
+  await search(page, 'folder:=town');
+  await waitRows(page, ['town/baker', 'town/guard-north', 'town/guard-south']);
+  await search(page, '');
   await waitRows(page, all);
 
-  // Folder tree by keyboard: one tab stop, arrows, Home, End and Enter.
+  // Folder tree by keyboard: one tab stop, arrows, Home, End and Enter,
+  // Right expands then enters, Left collapses then returns to the parent.
   assert.equal(await tree.locator('[role="treeitem"][tabindex="0"]').count(), 1, 'the tree has one tab stop');
-  await tree.getByRole('treeitem', {name: /^All folders/}).focus();
+  await folderItem(page, '').focus();
   await page.keyboard.press('ArrowDown');
-  assert.match(await focusedLabel(page), /^Folder harbor/);
+  assert.equal(await focusedFolder(page), 'harbor');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await focusedFolder(page), 'town');
+  await page.keyboard.press('ArrowLeft');
+  await folderItem(page, 'town/market').waitFor({state: 'detached'});
+  await page.keyboard.press('ArrowRight');
+  await folderItem(page, 'town/market').waitFor();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await focusedFolder(page), 'town/market');
+  await page.keyboard.press('ArrowLeft');
+  await folderItem(page, 'town/market/stalls').waitFor({state: 'detached'});
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await focusedFolder(page), 'town');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await focusedFolder(page), 'town/market');
+  await page.keyboard.press('ArrowRight');
+  await folderItem(page, 'town/market/stalls').waitFor();
   await page.keyboard.press('End');
-  assert.match(await focusedLabel(page), /^Folder wild/);
+  assert.equal(await focusedFolder(page), 'wild');
   await page.keyboard.press('Enter');
   await waitRows(page, ['wild/golem-keeper']);
   await page.keyboard.press('Home');
-  assert.match(await focusedLabel(page), /^All folders/);
+  assert.equal(await focusedFolder(page), '');
   await page.keyboard.press('Enter');
   await waitRows(page, all);
   assert.equal(await tree.locator('[role="treeitem"][tabindex="0"]').count(), 1);
+  // The page remembers collapsed folders for this workspace.
+  await folderItem(page, 'wild').focus();
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await focusedFolder(page), 'town/market');
+  await page.keyboard.press('ArrowLeft');
+  await folderItem(page, 'town/market/stalls').waitFor({state: 'detached'});
+  assert.ok((await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith('animus.npc-folders.collapsed.')).map((key) => localStorage.getItem(key)))).some((value) => value.includes('town/market')));
+  await page.keyboard.press('ArrowRight');
+  await folderItem(page, 'town/market/stalls').waitFor();
+
+  // New folder: a bad name is refused in the server's words; a good one
+  // shows empty until an NPC lands there.
+  await folderItem(page, 'harbor').click();
+  let actions = await folderAction(page, 'New folder');
+  await actions.getByLabel('New folder in npcs/harbor/').fill('Bad Name');
+  await actions.getByRole('button', {name: 'Make folder'}).click();
+  await actions.getByTestId('folder-problem').filter({hasText: 'expected the folder under npcs/: empty, or up to 8 names of 1\u201364 lowercase letters'}).waitFor();
+  await shot(page, `${tag}-02c-folder-refused`);
+  await actions.getByLabel('New folder in npcs/harbor/').fill('docks');
+  await actions.getByRole('button', {name: 'Make folder'}).click();
+  await folderItem(page, 'harbor/docks').waitFor();
+  assert.equal(await folderCount(page, 'harbor/docks'), 0);
+  await browserPanel.getByText('npcs/harbor/docks/ holds no NPCs yet.', {exact: false}).waitFor();
+  await browserPanel.locator('.animus-npc-empty').getByRole('link', {name: 'New NPC in npcs/harbor/docks/'}).waitFor();
+  await shot(page, `${tag}-02d-folder-empty`);
+  await search(page, '');
+  await waitRows(page, all);
+
+  // Move two NPCs into the nested folder with the bulk picker, in one step.
+  await select(page, 'crier');
+  await select(page, 'harbor/dockhand');
+  const picker = page.getByRole('group', {name: 'Bulk edit'});
+  await picker.getByLabel('Move to', {exact: true}).selectOption('harbor/docks');
+  await picker.getByRole('button', {name: 'Move to npcs/harbor/docks/'}).click();
+  const docked = ['harbor/ferryman', 'harbor/docks/dockhand', 'harbor/docks/crier', 'town/baker', 'town/guard-north', 'town/guard-south', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'wild/golem-keeper'];
+  await waitRows(page, docked);
+  assert.equal(await folderCount(page, ''), 0);
+  assert.equal(await folderCount(page, 'harbor/docks'), 2);
+  await page.getByRole('button', {name: 'Clear selection'}).click();
+
+  // Rename a folder with a subtree, then undo it in one step.
+  await folderItem(page, 'town/market').click();
+  actions = await folderAction(page, 'Rename');
+  await actions.getByLabel('New name for npcs/town/market/').fill('bazaar');
+  await actions.getByRole('button', {name: 'Rename folder'}).click();
+  await folderItem(page, 'town/bazaar/stalls').waitFor();
+  await waitRows(page, ['town/bazaar/fishmonger', 'town/bazaar/stalls/cartwright']);
+  await shot(page, `${tag}-02e-folder-renamed`);
+  await topbarAction(page, 'Undo');
+  await folderItem(page, 'town/market/stalls').waitFor();
+  await folderItem(page, 'town/bazaar').waitFor({state: 'detached'});
+
+  // Move a folder under another one, then undo.
+  await folderItem(page, 'town/market').click();
+  actions = await folderAction(page, 'Move');
+  await actions.getByLabel('Move npcs/town/market/ into').selectOption('harbor');
+  await actions.getByRole('button', {name: 'Move folder'}).click();
+  await folderItem(page, 'harbor/market/stalls').waitFor();
+  await waitRows(page, ['harbor/market/fishmonger', 'harbor/market/stalls/cartwright']);
+  await topbarAction(page, 'Undo');
+  await folderItem(page, 'town/market/stalls').waitFor();
+
+  // Delete: a folder with NPCs says why not; an empty one goes.
+  await folderItem(page, 'town').click();
+  actions = await folderAction(page, 'Delete');
+  await actions.getByText('npcs/town/ holds 5 NPCs; move or delete them first.').waitFor();
+  await actions.getByRole('button', {name: 'Back'}).click();
+  await folderItem(page, 'wild').click();
+  actions = await folderAction(page, 'New folder');
+  await actions.getByLabel('New folder in npcs/wild/').fill('caves');
+  await actions.getByRole('button', {name: 'Make folder'}).click();
+  await folderItem(page, 'wild/caves').waitFor();
+  actions = await folderAction(page, 'Delete');
+  await actions.getByRole('button', {name: 'Remove folder'}).click();
+  await folderItem(page, 'wild/caves').waitFor({state: 'detached'});
+  await noSidewaysScroll(page, `${tag} folders`);
+
+  // Export writes the nested paths.
+  const download = page.waitForEvent('download');
+  await topbarAction(page, 'Export the data folder zip', {menu: 'export'});
+  const zip = fs.readFileSync(await (await download).path());
+  for (const entry of ['npcs/harbor/docks/crier.json', 'npcs/harbor/docks/dockhand.json', 'npcs/town/market/stalls/cartwright.json']) {
+    assert.ok(zip.includes(Buffer.from(entry)), `zip holds ${entry}`);
+  }
+
+  // Undo the NPC move: everything is back where the fixture has it.
+  await topbarAction(page, 'Undo');
+  await search(page, '');
+  await waitRows(page, all);
 
   await page.locator('.animus-npc-folders').getByRole('button', {name: /^quest 1$/}).click();
   await waitRows(page, ['harbor/ferryman']);
@@ -190,9 +338,9 @@ async function local(browser, viewport, tag, theme) {
   assert.deepEqual(await tagsOf(page, 'harbor/ferryman'), ['quest'], 'unselected NPCs keep their tags');
   await page.getByRole('checkbox', {name: 'Select town/baker', exact: true}).uncheck();
   await bulk.getByText('2 NPCs selected').waitFor();
-  await bulk.getByLabel('Folder', {exact: true}).fill('watch');
-  await bulk.getByRole('button', {name: 'Move to folder'}).click();
-  await waitRows(page, ['harbor/dockhand', 'harbor/ferryman', 'town/baker', 'watch/guard-north', 'watch/guard-south', 'wild/golem-keeper']);
+  await bulk.getByLabel('Or a new path', {exact: true}).fill('watch/night');
+  await bulk.getByRole('button', {name: 'Move to npcs/watch/night/'}).click();
+  await waitRows(page, ['crier', 'harbor/dockhand', 'harbor/ferryman', 'town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright', 'watch/night/guard-north', 'watch/night/guard-south', 'wild/golem-keeper']);
   await shot(page, `${tag}-04-bulk`);
   await topbarAction(page, 'Undo');
   await waitRows(page, all);
@@ -203,7 +351,7 @@ async function local(browser, viewport, tag, theme) {
 
   // Bulk module switch: combat off on both guards, then undo.
   await page.getByRole('checkbox', {name: 'Select every NPC shown'}).check();
-  await bulk.getByText('6 NPCs selected').waitFor();
+  await bulk.getByText('9 NPCs selected').waitFor();
   await page.getByRole('checkbox', {name: 'Select every NPC shown'}).uncheck();
   await select(page, 'town/guard-north');
   await select(page, 'town/guard-south');
@@ -441,7 +589,69 @@ async function pairWith(page, scopes) {
   return page.getByRole('group', {name: 'Bulk edit'});
 }
 
+/** The list's empty state names the gone folder and how to get back. */
+async function browserEmpty(page, text) {
+  const empty = page.getByRole('region', {name: 'NPC browser'}).locator('.animus-npc-empty');
+  await empty.getByText(text, {exact: false}).waitFor();
+  await empty.getByRole('button', {name: 'Show every NPC'}).waitFor();
+}
+
+async function serverDocuments() {
+  const state = await control('state');
+  return state.documents.filter((document) => document.kind === 'npc').map((document) => document.id).sort();
+}
+
+/** A server workspace with every NPC open: rename town/market, apply, undo. */
+async function serverFolders(browser, viewport, tag, theme) {
+  const {context, page, errors} = await open(browser, viewport, theme);
+  await control('reset', {});
+  const {code} = await control('pair?paths=direct', {});
+  await page.goto(`${site}/#/pair/${code}`);
+  await page.locator('[data-testid="pair-fingerprint"]').waitFor();
+  await page.getByRole('button', {name: 'Pair', exact: true}).click();
+  await page.waitForFunction(() => location.hash.startsWith('#/server/'));
+  await page.getByText(/documents on the server/).waitFor();
+  for (const id of ['town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright']) await page.getByRole('checkbox', {name: id, exact: true}).check();
+  await page.getByRole('button', {name: 'Open 3'}).click();
+  await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/'));
+  await (await sidebar(page)).locator('.animus-tree-browse').click();
+  await waitRows(page, ['town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
+  const before = await serverDocuments();
+  await folderItem(page, 'town/market').click();
+  const actions = await folderAction(page, 'Rename');
+  await actions.getByLabel('New name for npcs/town/market/').fill('bazaar');
+  await actions.getByRole('button', {name: 'Rename folder'}).click();
+  await folderItem(page, 'town/bazaar/stalls').waitFor();
+  await page.getByTestId('draft-count').filter({hasText: '2 changed drafts, 2 moved'}).waitFor();
+  await page.locator('.animus-live-drafts').getByText('npc town/market/fishmonger to town/bazaar/fishmonger').waitFor();
+  await shot(page, `${tag}-15a-server-moves`);
+  await page.getByRole('button', {name: 'Apply 2'}).click();
+  await page.getByTestId('live-last').filter({hasText: 'Applied 2 documents, 2 moved'}).waitFor();
+  await page.getByTestId('draft-count').filter({hasText: 'No changed drafts'}).waitFor();
+  const moved = await serverDocuments();
+  assert.ok(moved.includes('town/bazaar/fishmonger') && moved.includes('town/bazaar/stalls/cartwright'), `the server has the moved paths: ${moved}`);
+  assert.ok(!moved.includes('town/market/fishmonger') && !moved.includes('town/market/stalls/cartwright'), 'the old paths are gone');
+  assert.equal(moved.length, before.length);
+  const state = await control('state');
+  const fish = state.documents.find((document) => document.id === 'town/bazaar/fishmonger');
+  assert.equal(fish.revision, 2, 'a move keeps the revision chain');
+  await page.getByRole('button', {name: 'Undo last apply'}).click();
+  await page.getByRole('alertdialog').getByText('Undo the last apply on the server?').waitFor();
+  await page.getByRole('button', {name: 'Undo on the server'}).click();
+  await page.getByTestId('live-last').filter({hasText: 'Undid 2 documents, 2 moved'}).waitFor();
+  assert.deepEqual(await serverDocuments(), before, 'undo moves them back');
+  await browserEmpty(page, 'npcs/town/bazaar/ holds no NPCs yet.');
+  await search(page, '');
+  await waitRows(page, ['town/baker', 'town/market/fishmonger', 'town/market/stalls/cartwright']);
+  await page.getByTestId('draft-count').filter({hasText: 'No changed drafts'}).waitFor();
+  await shot(page, `${tag}-15b-server-undone`);
+  await noSidewaysScroll(page, `${tag} server folders`);
+  assert.deepEqual(errors, [], `${tag}: console errors on the server folder rename`);
+  await context.close();
+}
+
 async function server(browser, viewport, tag, theme) {
+  await serverFolders(browser, viewport, tag, theme);
   {
     const {context, page, errors} = await open(browser, viewport, theme);
     const bulk = await pairWith(page, 'spawn');

@@ -111,14 +111,15 @@ class NpcEntry {
   ];
 }
 
-/// Every NPC definition of a workspace, sorted by folder then name.
+/// Every NPC definition of a workspace, sorted by folder (as the tree
+/// lists them) then name.
 List<NpcEntry> npcEntries(Iterable<AnimusDocument> documents) {
   final List<NpcEntry> entries = <NpcEntry>[
     for (final AnimusDocument document in documents)
       if (document.kind == DocumentKind.npc) NpcEntry.of(document),
   ];
   entries.sort((NpcEntry a, NpcEntry b) {
-    final int folder = a.folder.compareTo(b.folder);
+    final int folder = compareNpcFolders(a.folder, b.folder);
     if (folder != 0) return folder;
     final int name = a.name.toLowerCase().compareTo(b.name.toLowerCase());
     return name != 0 ? name : a.key.compareTo(b.key);

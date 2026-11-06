@@ -397,7 +397,9 @@ class _NpcBrowserState extends State<NpcBrowser> {
         label: 'Move to',
         onChanged: (String value) => setState(() => _moveTarget = value),
       ),
+      const dom.label(classes: 'animus-npc-folder-label', htmlFor: 'animus-npc-move-path', <Widget>[Component.text('Or a new path')]),
       GuiTextInput(
+        id: 'animus-npc-move-path',
         value: _folder,
         label: 'Or a new path',
         placeholder: 'town/market',
