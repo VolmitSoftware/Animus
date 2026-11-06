@@ -497,6 +497,11 @@
 - Attack swings go out with moves, so they are no longer delayed by cosmetic pauses or skipped as stale.
 - Controlled iron golems, ravagers, hoglins, zoglins and wardens show their own attack animation instead of a swing.
 - Imported armor stands no longer turn to players unless their Citizens save turns look-close on.
+- Editor fields show a range once, under the field, instead of again as the placeholder.
+- Editor number fields are as wide as their allowed range; the control moves under its label in narrow panels.
+- Nested settings such as movement and stuck lay out as full-width groups instead of squeezed columns.
+- The editor NPC list hides its type and world columns when its own column is narrow.
+- Clicking an NPC inspector label focuses its text or number field.
 
 ### Notes
 

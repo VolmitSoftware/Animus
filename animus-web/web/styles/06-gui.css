@@ -275,6 +275,8 @@ button.animus-chest-slot:focus-visible {
 .animus-gui-actions,
 .animus-gui-lines {
   display: grid;
+  /* One column that never widens past the panel for a long line inside. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   min-width: 0;
 }
@@ -308,6 +310,8 @@ button.animus-chest-slot:focus-visible {
 
 .animus-gui-control {
   display: grid;
+  /* A select's longest option or a long value never widens the column. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem;
   min-width: 0;
 }
@@ -336,7 +340,7 @@ button.animus-chest-slot:focus-visible {
   display: grid;
   gap: 0.25rem;
   min-width: 0;
-  flex: 1 1 10rem;
+  flex: 1 1 16rem;
 }
 
 .animus-gui-input {
@@ -367,9 +371,9 @@ button.animus-chest-slot:focus-visible {
 
 .animus-gui-input.is-number {
   /* As wide as the widest value the field allows, plus padding and the
-     step arrows; --animus-digits comes from the field's range. */
-  width: calc(var(--animus-digits, 8) * 1ch + 2.75rem);
-  max-width: 100%;
+     step arrows; --animus-digits comes from the field's range. The 100%
+     cap lets a narrow cell shrink it instead of being pushed open. */
+  width: min(100%, calc(var(--animus-digits, 8) * 1ch + 2.75rem));
   flex: 0 0 auto;
 }
 
@@ -457,6 +461,7 @@ button.animus-chest-slot:focus-visible {
 
 .animus-gui-section-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   padding: 0.375rem 0 0.25rem;
   min-width: 0;

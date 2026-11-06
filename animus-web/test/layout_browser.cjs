@@ -56,7 +56,13 @@ async function scan(page) {
       // Visually hidden labels are 1 px boxes read only by screen readers.
       if (style.clipPath.startsWith('inset(50%') || /rect\(0(px)?,? 0/.test(style.clip)) return false;
       const box = el.getBoundingClientRect();
-      return box.width > 1 && box.height > 1;
+      if (box.width <= 1 || box.height <= 1) return false;
+      // Inside a visually hidden box, such as a table head kept for screen readers.
+      for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+        const outer = up.getBoundingClientRect();
+        if ((outer.width <= 1 || outer.height <= 1) && getComputedStyle(up).overflow !== 'visible') return false;
+      }
+      return true;
     };
     const flows = el => !['absolute', 'fixed', 'sticky'].includes(getComputedStyle(el).position);
     // The part of [el] its clipping ancestors leave visible.
@@ -106,7 +112,8 @@ async function scan(page) {
         if (style.textOverflow === 'ellipsis') continue;
         out.push(`clipped ${describe(el)} hides ${extra}px`);
       } else if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
-        if (el.matches('[data-scroll-x], .animus-tabs, [role="tablist"]')) continue;
+        // Tab strips and the animation timeline scroll sideways by design.
+        if (el.matches('.animus-tabs, [role="tablist"], .animus-rig-lanes')) continue;
         out.push(`side scroll ${describe(el)} by ${extra}px`);
       }
     }
@@ -116,8 +123,11 @@ async function scan(page) {
     const lines = [];
     for (const el of all) {
       const style = getComputedStyle(el);
+      // A sticky label stays in view over content scrolling under it.
+      if (style.position === 'sticky') continue;
       const box = el.getBoundingClientRect();
-      const width = side => style[`border${side}Style`] !== 'none' && style[`border${side}Style`] !== 'hidden' ? parseFloat(style[`border${side}Width`]) || 0 : 0;
+      const clear = colour => colour === 'transparent' || /rgba\([^)]*,\s*0\)$/.test(colour);
+      const width = side => ['none', 'hidden'].includes(style[`border${side}Style`]) || clear(style[`border${side}Color`]) ? 0 : parseFloat(style[`border${side}Width`]) || 0;
       if (width('Left') > 0) lines.push({el, x: box.left, top: box.top, bottom: box.bottom});
       if (width('Right') > 0) lines.push({el, x: box.right, top: box.top, bottom: box.bottom});
       if (width('Top') > 0) lines.push({el, y: box.top, left: box.left, right: box.right});
@@ -165,7 +175,14 @@ async function scan(page) {
         text = el.options[el.selectedIndex].text;
         need = textWidth(text, style);
       }
-      if (text && need > room + 1) out.push(`narrow ${describe(el)} needs ${Math.ceil(need)}px, has ${Math.floor(room)}px for "${text.slice(0, 28)}"`);
+      // A select or text field already as wide as its column has all the
+      // room the layout gives; a long option or example then truncates. A
+      // number field always has to fit.
+      const column = el.parentElement.closest(':not(.arcane-native-select-shell):not([class$="-select-wrapper"])');
+      const columnStyle = getComputedStyle(column);
+      const columnWidth = column.clientWidth - parseFloat(columnStyle.paddingLeft) - parseFloat(columnStyle.paddingRight);
+      const full = el.type !== 'number' && el.getBoundingClientRect().width >= columnWidth - 1;
+      if (text && need > room + 1 && !full) out.push(`narrow ${describe(el)} needs ${Math.ceil(need)}px, has ${Math.floor(room)}px for "${text.slice(0, 28)}"`);
     }
 
     // A range or hint said twice: as the placeholder and again under the field.
