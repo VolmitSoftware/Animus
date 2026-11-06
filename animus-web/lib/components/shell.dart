@@ -23,6 +23,7 @@ import '../state/workspace_repository.dart';
 import '../state/workspace_route.dart';
 import 'brand_mark.dart';
 import 'citizens_screen.dart';
+import '../logic/command_search.dart';
 import 'command_palette.dart';
 import 'document_view.dart';
 import 'gui/gui_fields.dart';

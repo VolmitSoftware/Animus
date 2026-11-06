@@ -201,6 +201,17 @@ void main() {
       expect(await locks.tab().tryHold(workspaceLockName(snapshot.id)), isTrue);
     });
 
+    test('should carry tab notices as JSON and drop malformed ones', () {
+      final WorkspaceEvent event = WorkspaceEvent.fromJson(
+        const WorkspaceEvent(WorkspaceEventKind.saved, 'ws-1', generation: 7).toJson(),
+      )!;
+      expect(event.kind, WorkspaceEventKind.saved);
+      expect(event.workspaceId, 'ws-1');
+      expect(event.generation, 7);
+      expect(WorkspaceEvent.fromJson(<String, Object?>{'kind': 'renamed', 'id': 'ws-1'}), isNull);
+      expect(WorkspaceEvent.fromJson('saved'), isNull);
+    });
+
     test('should keep unknown fields when a workspace is stored and loaded', () async {
       final Map<String, Uint8List> files = <String, Uint8List>{
         'npcs/a/b.json': Uint8List.fromList(utf8.encode('{"futureField": {"x": 1}}')),
