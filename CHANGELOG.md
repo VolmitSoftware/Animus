@@ -220,6 +220,8 @@
 - Web editor: an NPC's navigation plays a recording with `once`, `loop` or `pingpong`.
 - Web editor: ranged waits take a min and max field; routes edit `seed`, `startOffset`, `jitter`, point `weight` and `next` junctions, checked as the server checks them.
 - Web editor: renaming a recording or group updates the NPCs and routes that name it.
+- Animation events play during playback: each sound or particle runs at the NPC for nearby players when its clip reaches the event's tick, every cycle, and stops when the clip stops or starts fading.
+- Rig sockets show the NPC's item for each socketed equipment slot on that bone, posed like a held or worn item, and follow the bone's animation; the body no longer shows that slot.
 
 ### Changed
 
@@ -308,6 +310,7 @@
 - Web editor: checkboxes, radios and range thumbs are square; rig keyframes, events and gizmo handles take a 44 px target on phones.
 - Web editor: the NPC preview wears a placeholder skin instead of the default one when no skin texture is loaded, offline or online, and its skin line names it.
 - The Denizen importer converts world comparisons and `in:<world>` switches to `same_world`.
+- Animation events refuse `player`, `at: player` and `audience: trigger`, and the web editor's event form no longer offers them.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

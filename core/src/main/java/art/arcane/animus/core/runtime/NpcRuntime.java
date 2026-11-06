@@ -61,6 +61,8 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     boolean cosmeticAllowed();
     /** Connect during startup, before the first NPC can activate. */
     void bindTriggers(TriggerDispatcher dispatcher);
+    /** Connect during startup: where rig animation events run. Runtimes without rigs ignore it. */
+    default void animationEvents(art.arcane.animus.core.rig.NpcRig.Events events) {}
     void refresh();
     List<String> validateActivation(NpcDefinition definition);
     String inspect(String id);

@@ -403,7 +403,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
     @Override public Bones createBones(BodyTransport.Body presented, List<BoneDisplay<ItemStack>> displays) {
         Body body = checkBody(presented);
         if (nativeApi.bones == null) throw new IllegalStateException("Rig display bones are unavailable on this server build");
-        if (displays.isEmpty() || displays.size() > 64) throw new IllegalArgumentException("A rig shows 1..64 bones");
+        if (displays.isEmpty() || displays.size() > art.arcane.animus.core.rig.NpcRig.MAX_DISPLAYS) throw new IllegalArgumentException("A rig shows 1.." + art.arcane.animus.core.rig.NpcRig.MAX_DISPLAYS + " displays");
         List<List<Object>> content = new ArrayList<>(displays.size());
         Object[] types = new Object[displays.size()];
         try {
@@ -462,6 +462,28 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
                 if (indices[i] < 0 || indices[i] >= bones.ids.length) throw new IllegalArgumentException("Unknown bone index " + indices[i]);
                 packets.add(nativeApi.metadataPacket.newInstance(bones.ids[indices[i]], nativeApi.bones.transform(transforms[i], Math.max(0, durations[i]))));
             }
+            write(session, bones.body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
+    @Override public CompletionStage<Void> restyleBones(Player viewer, BodyTransport.Bones restyled, int[] indices, List<BoneDisplay<ItemStack>> displays) {
+        Bones bones = checkBones(restyled, null);
+        if (indices.length != displays.size()) return failed("Every restyled bone needs a display");
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
+        if (session.bones.get(bones.body.entityId) != bones) return failed("Bones are not shown to this viewer");
+        List<Object> packets = new ArrayList<>(indices.length);
+        try {
+            for (int i = 0; i < indices.length; i++) {
+                if (indices[i] < 0 || indices[i] >= bones.ids.length) return failed("Unknown bone index " + indices[i]);
+                if (nativeApi.bones.type(displays.get(i)) != bones.types[indices[i]]) return failed("A restyled bone keeps its kind");
+                packets.add(nativeApi.metadataPacket.newInstance(bones.ids[indices[i]], nativeApi.bones.content(displays.get(i))));
+            }
+        } catch (ReflectiveOperationException failure) { return failed("Cannot build rig bones: " + failure.getClass().getSimpleName()); }
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, false, () -> {
+            if (session.bones.get(bones.body.entityId) != bones) throw new CancellationException("Bones were removed");
             write(session, bones.body, PacketKind.RIG_BONES, packets).whenComplete((nothing, failure) -> complete(result, failure));
         });
         return result;

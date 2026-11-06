@@ -107,6 +107,10 @@ public interface BodyTransport<P, I> extends AutoCloseable {
     default CompletionStage<Void> moveBones(P viewer, Bones bones, int[] indices, art.arcane.animus.core.rig.DisplayTransform[] transforms, int[] durations) {
         return java.util.concurrent.CompletableFuture.failedFuture(new IllegalStateException("Rig display bones are unavailable on this server"));
     }
+    /** One metadata packet per listed bone: its new content, such as a socket's item. The kind of each bone stays as created. */
+    default CompletionStage<Void> restyleBones(P viewer, Bones bones, int[] indices, List<BoneDisplay<I>> displays) {
+        return java.util.concurrent.CompletableFuture.failedFuture(new IllegalStateException("Rig display bones are unavailable on this server"));
+    }
     /** Removes the bones from the viewer and the roster. Despawning the body, forgetting the viewer and closing remove them as well. */
     default CompletionStage<Void> hideBones(P viewer, Bones bones) { return java.util.concurrent.CompletableFuture.completedFuture(null); }
     @Override void close();
