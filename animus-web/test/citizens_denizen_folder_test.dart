@@ -16,7 +16,7 @@ Map<String, String> _picked(String root, String folder) => <String, String>{
 void main() {
   test('should read a picked Denizen folder the way the server importer does', () {
     final DenizenFolder folder = denizenFolderOf(_picked('denizen/town/Denizen', 'Denizen'));
-    expect(folder.input.scripts.keys, <String>['broken.dsc', 'extra/again.dsc', 'town.dsc']);
+    expect(folder.input.scripts.keys, <String>['broken.dsc', 'crier.dsc', 'extra/again.dsc', 'town.dsc']);
     expect(folder.input.serverFlags, isNotNull);
     expect(folder.input.playerFlags.keys, <String>['00000000-0000-4000-8000-0000000000a1', 'notauuid']);
     expect(folder.skipped, isEmpty);
