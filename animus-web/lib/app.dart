@@ -7,6 +7,7 @@ import 'model/server_binding.dart';
 import 'services/browser.dart';
 import 'services/server/server_connection.dart';
 import 'services/server/server_profiles.dart';
+import 'services/server/session_lock.dart';
 import 'state/editor_store.dart';
 import 'state/live_session.dart';
 import 'state/server_hub.dart';
@@ -62,7 +63,8 @@ class _AnimusAppState extends State<AnimusApp> {
     previous?.dispose();
     if (serverId == null) return;
     final ServerConnection connection = component.hub.connection(serverId);
-    final LiveSession session = LiveSession(store: component.store, connection: connection, serverId: serverId);
+    // One tab per server runs live editing; see SessionOwner.
+    final LiveSession session = LiveSession(store: component.store, connection: connection, serverId: serverId, owner: WebLockOwner(serverId));
     session.addListener(() {
       if (mounted) setState(() {});
     });

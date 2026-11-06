@@ -6,9 +6,11 @@ import '../logic/json_merge.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import '../model/server_binding.dart';
+import '../services/server/error_copy.dart';
 import '../services/server/server_connection.dart';
 import '../services/server/transport.dart';
 import 'editor_store.dart';
+import 'session_owner.dart';
 import 'workspace_repository.dart';
 
 /// One `documentVersion` from the catalog.
@@ -65,20 +67,19 @@ class PreviewState {
 
   bool get running => state == 'running';
 
+  /// The state in plain words, for the live bar.
+  String get stateLine => switch (state) {
+        'running' => 'running',
+        'expired' => 'reached its time limit and ended. Preview again to keep looking',
+        'player-left' => 'ended because your player left the server. Join again, then preview',
+        _ => 'ended',
+      };
+
   /// The live bar's line about hidden live NPCs, or null when the preview hides none or has ended.
   String? get hiddenLine => running && hidden.isNotEmpty
       ? 'Live NPC${hidden.length == 1 ? '' : 's'} hidden for you while previewing: ${hidden.join(', ')}'
       : null;
 }
-
-/// Plain words for the `reason` of a `closing` event, keeping the code.
-String closingReason(Object? reason) => switch (reason) {
-      'limit' => 'this editor fell too far behind on server events (limit); it reconnects and reloads what changed',
-      'token-revoked' => 'the pairing was revoked (token-revoked)',
-      'token-expired' => 'the pairing expired (token-expired)',
-      'server-stopping' => 'the server is stopping (server-stopping)',
-      _ => '$reason',
-    };
 
 enum NoticeLevel { info, success, warning, error }
 
@@ -97,13 +98,23 @@ typedef LiveListener = void Function();
 /// with revisions, conflicts and their merge, change status after a
 /// reconnect, undo through the server, and refreshes from the event stream.
 class LiveSession {
-  LiveSession({required this.store, required this.connection, required this.serverId, String Function()? newKey, DateTime Function()? now})
-      : _newKey = newKey ?? newIdempotencyKey,
+  LiveSession({
+    required this.store,
+    required this.connection,
+    required this.serverId,
+    SessionOwner? owner,
+    String Function()? newKey,
+    DateTime Function()? now,
+  })  : owner = owner ?? SoleOwner(),
+        _newKey = newKey ?? newIdempotencyKey,
         _now = now ?? DateTime.now;
 
   final EditorStore store;
   final ServerConnection connection;
   final String serverId;
+
+  /// Whether this tab runs live editing for the server; see [SessionOwner].
+  final SessionOwner owner;
   final String Function() _newKey;
   final DateTime Function() _now;
   final List<LiveListener> _listeners = <LiveListener>[];
@@ -112,6 +123,9 @@ class LiveSession {
 
   List<CatalogEntry> catalog = const <CatalogEntry>[];
   bool catalogLoaded = false;
+
+  /// Why the last catalog load failed, until one succeeds.
+  ErrorCopy? catalogProblem;
   final Map<String, List<Diagnostic>> serverDiagnostics = <String, List<Diagnostic>>{};
   final Map<String, ConflictView> conflicts = <String, ConflictView>{};
 
@@ -151,14 +165,40 @@ class LiveSession {
   void start() {
     _subscriptions.add(connection.statuses.listen(_status));
     _subscriptions.add(connection.events.listen((Map<String, Object?> event) => unawaited(_event(event))));
-    if (connection.status.online) unawaited(_online());
+    _subscriptions.add(owner.changes.listen(_ownership));
+    if (connection.status.online && owned) unawaited(_online());
   }
 
+  /// The tab may edit live: it owns the session for this server.
+  bool get owned => owner.owned;
+
+  static const String otherTab = 'Live editing for this server runs in another tab of this browser. Use that tab, or close it to edit here.';
+
+  void _ownership(bool owned) {
+    if (owned) {
+      _notice(NoticeLevel.info, 'This tab now runs live editing for this server.');
+      if (connection.status.online) unawaited(_online());
+    } else {
+      _changed();
+    }
+  }
+
+  /// Stops the session: a preview it started ends (it shows nothing once the
+  /// editor moved away), and another tab may take over.
   Future<void> dispose() async {
     for (final StreamSubscription<Object?> subscription in _subscriptions) {
       await subscription.cancel();
     }
     _subscriptions.clear();
+    final PreviewState? running = preview;
+    if (owned && running != null && running.running && connection.status.online) {
+      try {
+        await connection.request(ApiRequest('DELETE', '/v1/previews/${Uri.encodeComponent(running.id)}'));
+      } on Object {
+        // The server ends it at its expiry or when the stream closes.
+      }
+    }
+    await owner.release();
     await _notices.close();
   }
 
@@ -185,9 +225,11 @@ class LiveSession {
     final ConnectionPhase previous = _lastPhase;
     _lastPhase = status.phase;
     if (status.online && previous != ConnectionPhase.online) {
-      unawaited(_online());
+      if (owned) unawaited(_online());
     } else if (!status.online && previous == ConnectionPhase.online) {
-      _notice(NoticeLevel.warning, 'Connection lost: ${status.message ?? status.label}. Drafts stay in this browser.');
+      // One notice per loss; the closing event that caused it adds none.
+      _notice(status.phase == ConnectionPhase.needsPairing ? NoticeLevel.error : NoticeLevel.warning,
+          '${status.message ?? 'The connection to the server was lost.'} Drafts stay in this browser.');
     }
     _changed();
   }
@@ -218,14 +260,18 @@ class LiveSession {
     try {
       return await connection.request(request);
     } on NotConnected catch (offline) {
-      _notice(NoticeLevel.error, 'Could not $what: ${offline.status.message ?? 'not connected'}.');
+      _notice(NoticeLevel.error, 'Could not $what. ${offline.status.message ?? 'The server is not connected. Connect from the server page, then try again.'}');
     } on TransportFailure catch (failure) {
-      _notice(NoticeLevel.error, 'Could not $what: ${failure.message}. Reconnecting.');
+      _notice(NoticeLevel.error, 'Could not $what. ${failure.message}');
     }
     return null;
   }
 
   Future<T?> _run<T>(String label, Future<T?> Function() task) async {
+    if (!owned) {
+      _notice(NoticeLevel.warning, otherTab);
+      return null;
+    }
     busy = label;
     _changed();
     try {
@@ -240,6 +286,7 @@ class LiveSession {
       '/v1/documents/${kind.wireName}/${id.split('/').map(Uri.encodeComponent).join('/')}';
 
   Future<void> loadCatalog() async {
+    catalogProblem = null;
     final List<CatalogEntry> entries = <CatalogEntry>[];
     String? after;
     for (int page = 0; page < 64; page++) {
@@ -247,10 +294,16 @@ class LiveSession {
         ApiRequest('GET', after == null ? '/v1/catalog' : '/v1/catalog?after=${Uri.encodeQueryComponent(after)}'),
         'load the catalog',
       );
-      if (response == null) return;
+      if (response == null) {
+        catalogProblem = connection.status.problem ?? transportCopy('dropped');
+        _changed();
+        return;
+      }
       final Object? body = response.body;
       if (!response.ok || body is! Map<String, Object?>) {
-        _notice(NoticeLevel.error, 'The catalog failed: ${response.errorMessage}');
+        catalogProblem = response.problem;
+        _notice(NoticeLevel.error, 'Could not load the catalog. ${response.problem.text}');
+        _changed();
         return;
       }
       for (final Object? raw in (body['documents'] as List<Object?>?) ?? const <Object?>[]) {
@@ -271,8 +324,8 @@ class LiveSession {
     if (response == null) return null;
     if (response.status == 404) return (null, const <Diagnostic>[]);
     final Object? body = response.body;
-    if (!response.ok || body is! Map<String, Object?>) {
-      _notice(NoticeLevel.error, 'Reading ${kind.wireName} $id failed: ${response.errorMessage}');
+    if (!response.ok || body is! Map<String, Object?> || body['revision'] is! num) {
+      _notice(NoticeLevel.error, 'Could not read ${kind.label.toLowerCase()} $id. ${response.problem.text}');
       return null;
     }
     return (
@@ -323,7 +376,7 @@ class LiveSession {
         if (response == null) return false;
         final Object? body = response.body;
         if (!response.ok || body is! Map<String, Object?>) {
-          _notice(NoticeLevel.error, 'Validation failed: ${response.errorMessage}');
+          _notice(NoticeLevel.error, 'Could not validate. ${response.problem.text}');
           return false;
         }
         for (final DraftChange draft in drafts) {
@@ -337,8 +390,7 @@ class LiveSession {
           errors += diagnostics.where((Diagnostic diagnostic) => diagnostic.severity == DiagnosticSeverity.error).length;
         }
         final bool valid = body['valid'] == true;
-        _notice(valid ? NoticeLevel.success : NoticeLevel.warning,
-            valid ? 'The server accepts ${changes.length} document${changes.length == 1 ? '' : 's'}.' : 'The server found $errors error${errors == 1 ? '' : 's'}.');
+        _notice(valid ? NoticeLevel.success : NoticeLevel.warning, validationLine(valid, changes.length, errors));
         return valid;
       }) ??
       false;
@@ -395,7 +447,7 @@ class LiveSession {
           final List<Diagnostic> diagnostics = _errorDiagnostics(response);
           if (diagnostics.isNotEmpty && drafts.length == 1) serverDiagnostics[drafts.first.key] = diagnostics;
           if (response.errorCode == 'not-found') preview = null;
-          _notice(NoticeLevel.error, 'Preview refused: ${response.errorMessage}');
+          _notice(NoticeLevel.error, 'Could not preview. ${response.problem.text}');
           return;
         }
         preview = PreviewState(
@@ -422,6 +474,11 @@ class LiveSession {
         if (running == null) return;
         final ApiResponse? response = await _call(ApiRequest('DELETE', '/v1/previews/${Uri.encodeComponent(running.id)}'), 'end the preview');
         if (response == null) return;
+        // 404: the server already ended it (expired, or the player left).
+        if (!response.ok && response.status != 404) {
+          _notice(NoticeLevel.error, 'The preview is still running. ${response.problem.text}');
+          return;
+        }
         // The preview event may have ended it (and said so) already.
         final bool announced = !(preview?.running ?? false);
         preview = PreviewState(running.id, 'ended', running.expiresAt, running.npcs, running.hidden);
@@ -429,20 +486,23 @@ class LiveSession {
       });
 
   /// Sends every changed draft as one change set. Nothing is written unless
-  /// all of them still match their server base.
-  Future<void> apply({String? message}) => _run<void>('Applying', () async {
+  /// all of them still match their server base. True when the server applied
+  /// it; the change set is only sent once its pending record is stored, so a
+  /// lost answer can always be asked for again.
+  Future<bool> apply({String? message}) async =>
+      await _run<bool>('Applying', () async {
         final ServerBinding? server = binding;
         final WorkspaceSnapshot? workspace = store.workspace;
-        if (server == null || workspace == null) return;
+        if (server == null || workspace == null) return false;
         final List<DraftChange> drafts = pendingDrafts(workspace.documents, server);
         final List<DraftChange> blocked = <DraftChange>[for (final DraftChange draft in drafts) if (draft.problem != null) draft];
         if (blocked.isNotEmpty) {
           _notice(NoticeLevel.error, 'Fix ${blocked.map((DraftChange draft) => draft.id).join(', ')} first: ${blocked.first.problem}');
-          return;
+          return false;
         }
         if (drafts.isEmpty) {
           _notice(NoticeLevel.info, 'No changes to apply.');
-          return;
+          return false;
         }
         final String key = _newKey();
         final PendingChange pending = PendingChange(
@@ -451,12 +511,13 @@ class LiveSession {
           sentAt: _now().toUtc(),
           message: message,
         );
-        await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: <PendingChange>[...binding.pending, pending]), undoable: false);
+        if (!await _recordPending(pending)) return false;
         final Map<String, ({String path, Object? source})> sent = <String, ({String path, Object? source})>{
           for (final DraftChange draft in drafts)
             if (draft.change?['source'] != null)
               draft.key: (path: store.document(draft.kind, draft.id)?.path ?? documentPath(draft.kind, draft.id), source: draft.change!['source']),
         };
+        bool applied = false;
         await _settling(key, () async {
           final ApiResponse? response = await _call(
             ApiRequest('POST', '/v1/changes', body: <String, Object?>{
@@ -466,9 +527,22 @@ class LiveSession {
             }),
             'apply',
           );
-          if (response != null) await _outcome(response, pending, sent);
+          if (response != null) applied = await _outcome(response, pending, sent);
         });
-      });
+        return applied;
+      }) ??
+      false;
+
+  /// Stores [pending] in the workspace and reports whether it is there now.
+  /// The store keeps the other tab's copy when two tabs write at once; a
+  /// change set whose record was lost that way is never sent.
+  Future<bool> _recordPending(PendingChange pending) async {
+    await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: <PendingChange>[...binding.pending, pending]), undoable: false);
+    if (_pendingOf(pending.idempotencyKey) != null) return true;
+    _notice(NoticeLevel.error, 'Nothing was sent: this browser could not store the change record, so its answer could not be recovered. '
+        'Reload this tab and try again.');
+    return false;
+  }
 
   /// Keys whose answer this session is reading now; their `change` events
   /// are left to that answer.
@@ -483,28 +557,44 @@ class LiveSession {
     }
   }
 
-  Future<void> _outcome(ApiResponse response, PendingChange pending, Map<String, ({String path, Object? source})>? sent) async {
+  /// Settles [pending] from the server's answer. True when it applied.
+  Future<bool> _outcome(ApiResponse response, PendingChange pending, Map<String, ({String path, Object? source})>? sent) async {
     final ChangeOutcome? outcome = ChangeOutcome.parse(response.body);
+    final int count = switch (outcome) {
+      ChangeConflicted(:final List<ServerConflict> conflicts) => conflicts.length,
+      ChangeInvalid(:final Map<String, List<Diagnostic>> diagnostics) => diagnostics.length,
+      _ => 0,
+    };
+    final String documents = '$count document${count == 1 ? '' : 's'}';
     switch (outcome) {
       case final ChangeApplied applied:
         await _applied(applied, pending, sent);
+        return true;
+      case final ChangeConflicted conflicted when pending.undoOf != null:
+        // The documents moved on after that apply: undoing it would throw
+        // the later edit away, so the server kept them. There is no draft of
+        // the undo to merge; refresh the clean copies instead.
+        await _dropPending(pending.idempotencyKey);
+        _notice(NoticeLevel.warning, 'Undo stopped: $documents changed on the server after that apply, so nothing was written. '
+            'Edit ${conflicted.conflicts.map((ServerConflict conflict) => conflict.id).join(', ')} by hand to go back.');
+        await _absorb(<String>[for (final ServerConflict conflict in conflicted.conflicts) conflict.key]);
       case final ChangeConflicted conflicted:
         await _dropPending(pending.idempotencyKey);
         _conflicts(conflicted.conflicts);
-        _notice(NoticeLevel.warning,
-            '${pending.undoOf == null ? 'Apply' : 'Undo'} stopped: ${conflicted.conflicts.length} document${conflicted.conflicts.length == 1 ? '' : 's'} changed on the server. Nothing was written.');
+        _notice(NoticeLevel.warning, 'Apply stopped: $documents changed on the server, so nothing was written. Merge each one below, then apply again.');
       case final ChangeInvalid invalid:
         await _dropPending(pending.idempotencyKey);
         serverDiagnostics.addAll(invalid.diagnostics);
-        _notice(NoticeLevel.error, 'The server refused the change set: ${invalid.diagnostics.length} document${invalid.diagnostics.length == 1 ? '' : 's'} have errors. Nothing was written.');
+        _notice(NoticeLevel.error, 'The server refused the change set because $documents have errors, so nothing was written. Fix the marked fields, then apply again.');
       case null:
         if (response.status >= 500 || response.errorCode == 'busy' || response.errorCode == 'rate-limited') {
-          _notice(NoticeLevel.warning, 'The server is busy (${response.errorMessage}). The change set is kept; its status is checked on the next connect.');
-          return;
+          _notice(NoticeLevel.warning, '${response.problem.cause} The change set is kept; the editor asks what became of it on the next connect.');
+          return false;
         }
         await _dropPending(pending.idempotencyKey);
-        _notice(NoticeLevel.error, 'The server refused the change set: ${response.errorMessage}');
+        _notice(NoticeLevel.error, 'The server refused the change set. ${response.problem.text}');
     }
+    return false;
   }
 
   Future<void> _dropPending(String key) => store.commit(
@@ -553,7 +643,7 @@ class LiveSession {
         final AppliedChange? change = server.history.where((AppliedChange entry) => entry.changeId == changeId).firstOrNull;
         final String key = _newKey();
         final PendingChange pending = PendingChange(idempotencyKey: key, documents: change?.documents ?? const <String>[], sentAt: _now().toUtc(), undoOf: changeId);
-        await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: <PendingChange>[...binding.pending, pending]), undoable: false);
+        if (!await _recordPending(pending)) return;
         await _settling(key, () async {
           final ApiResponse? response = await _call(
             ApiRequest('POST', '/v1/changes/${Uri.encodeComponent(changeId)}/undo', body: <String, Object?>{'idempotencyKey': key}),
@@ -569,38 +659,47 @@ class LiveSession {
   Future<int> spawnNpcs(List<String> ids, {required bool spawn}) async =>
       await _run<int>(spawn ? 'Spawning' : 'Despawning', () async {
         int accepted = 0;
+        int sent = 0;
         final List<String> refused = <String>[];
+        ErrorCopy? reason;
         for (final String id in ids) {
           final ApiResponse? response = await _call(
             ApiRequest('POST', '/v1/npcs/${Uri.encodeComponent(id)}/${spawn ? 'spawn' : 'despawn'}'),
             spawn ? 'spawn $id' : 'despawn $id',
           );
+          // The connection failed: _call said so, and the rest are not sent.
           if (response == null) break;
+          sent++;
           if (response.ok) {
             accepted++;
           } else {
-            refused.add('$id: ${response.errorMessage}');
+            refused.add(id);
+            reason ??= response.problem;
           }
         }
-        final String verb = spawn ? 'Spawned' : 'Despawned';
-        if (refused.isEmpty) {
-          _notice(NoticeLevel.success, '$verb $accepted NPC${accepted == 1 ? '' : 's'} on the server.');
-        } else {
-          _notice(NoticeLevel.warning, '$verb $accepted; refused ${refused.length}: ${refused.take(3).join('; ')}');
-        }
+        _notice(refused.isEmpty && sent == ids.length ? NoticeLevel.success : NoticeLevel.warning,
+            spawnLine(spawn: spawn, total: ids.length, sent: sent, accepted: accepted, refused: refused, reason: reason));
         return accepted;
       }) ??
       0;
 
+  /// Why the last status check of an unanswered change set failed.
+  ErrorCopy? pendingProblem;
+
   /// Asks the server what became of every unanswered change set.
   Future<void> recoverPending() async {
     final ServerBinding? server = binding;
-    if (server == null) return;
+    if (server == null || !owned) return;
+    pendingProblem = null;
     for (final PendingChange pending in List<PendingChange>.of(server.pending)) {
       final ApiResponse? response = await _call(ApiRequest('GET', '/v1/changes/${Uri.encodeComponent(pending.idempotencyKey)}'), 'check a change set');
       if (response == null) return;
       final Object? body = response.body;
-      if (!response.ok || body is! Map<String, Object?>) continue;
+      if (!response.ok || body is! Map<String, Object?>) {
+        pendingProblem = response.problem;
+        _notice(NoticeLevel.warning, 'Could not check a change set sent earlier. ${response.problem.cause} Press Check again, or Stop waiting to drop it.');
+        continue;
+      }
       // A change event may have settled it while the status was on its way.
       if (_pendingOf(pending.idempotencyKey) == null) continue;
       switch (body['status']) {
@@ -614,6 +713,17 @@ class LiveSession {
       }
     }
   }
+
+  /// Asks again about every unanswered change set, from the live bar.
+  Future<void> checkPending() => _run<void>('Checking', recoverPending);
+
+  /// Gives up on unanswered change sets whose status cannot be read. The
+  /// drafts stay; a later apply sends them again against the current bases.
+  Future<void> forgetPending() => _run<void>('Forgetting', () async {
+        await store.commit(server: (ServerBinding binding) => binding.copyWith(pending: const <PendingChange>[]), undoable: false);
+        pendingProblem = null;
+        _notice(NoticeLevel.info, 'Stopped waiting for the server. Your drafts are unchanged; compare them with the server before applying again.');
+      });
 
   PendingChange? _pendingOf(String key) {
     for (final PendingChange change in binding?.pending ?? const <PendingChange>[]) {
@@ -712,6 +822,10 @@ class LiveSession {
   Future<void> resolve(String key, {bool dropDraft = false}) async {
     final ConflictView? view = conflicts[key];
     if (view == null) return;
+    if (!owned) {
+      _notice(NoticeLevel.warning, otherTab);
+      return;
+    }
     final ServerBase? current = view.server;
     final Object? merged = dropDraft ? (current?.source) : resolveMerge(view.merge, view.choices);
     final bool remove = merged == null || isAbsent(merged);
@@ -742,6 +856,7 @@ class LiveSession {
   }
 
   Future<void> _event(Map<String, Object?> event) async {
+    if (!owned) return;
     switch (event['type']) {
       case 'catalog':
         final ServerBinding? server = binding;
@@ -768,7 +883,7 @@ class LiveSession {
         final PreviewState? running = preview;
         if (running != null && running.id == event['previewId']) {
           preview = PreviewState(running.id, '${event['state']}', running.expiresAt, running.npcs, running.hidden);
-          if (running.running && !preview!.running) _notice(NoticeLevel.info, 'Preview ${event['state']}.');
+          if (running.running && !preview!.running) _notice(NoticeLevel.info, 'The preview ${preview!.stateLine}.');
           _changed();
         }
       case 'diagnostics':
@@ -778,8 +893,8 @@ class LiveSession {
         _changed();
       case 'change':
         await _changeEvent(event['result']);
-      case 'closing':
-        _notice(NoticeLevel.warning, 'The server is closing the connection: ${closingReason(event['reason'])}.');
+      // 'closing' ends the stream, and the connection status that follows
+      // says why; a second notice here would repeat it.
     }
   }
 
@@ -788,4 +903,23 @@ class LiveSession {
     next.sort((CatalogEntry a, CatalogEntry b) => a.path.compareTo(b.path));
     catalog = next;
   }
+}
+
+/// The live log line after a server validation.
+String validationLine(bool valid, int documents, int errors) {
+  if (valid) return 'The server accepts $documents document${documents == 1 ? '' : 's'}.';
+  if (errors == 0) return 'The server did not accept the drafts but named no error. Check the server console, then validate again.';
+  return 'The server found $errors error${errors == 1 ? '' : 's'}. Fix the marked fields, then validate again.';
+}
+
+/// The live log line after spawning or despawning a selection.
+String spawnLine({required bool spawn, required int total, required int sent, required int accepted, required List<String> refused, ErrorCopy? reason}) {
+  final String verb = spawn ? 'Spawned' : 'Despawned';
+  final String npcs = 'NPC${total == 1 ? '' : 's'}';
+  final List<String> parts = <String>[
+    if (sent == total && refused.isEmpty) '$verb $accepted $npcs on the server.' else '$verb $accepted of $total $npcs.',
+    if (refused.isNotEmpty) 'The server refused ${refused.take(3).join(', ')}${refused.length > 3 ? ' and ${refused.length - 3} more' : ''}: ${reason?.text ?? ''}',
+    if (sent < total) 'The connection failed before ${total - sent} could be sent; select them again once it reconnects.',
+  ];
+  return parts.join(' ').trim();
 }
