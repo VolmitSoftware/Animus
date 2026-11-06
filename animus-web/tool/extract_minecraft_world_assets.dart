@@ -1,5 +1,6 @@
-/// Extracts the textures and model JSON the NPC preview draws from a client
-/// jar into `web/assets/mc/<version>/`.
+/// Extracts the textures and model JSON the NPC preview draws, and the
+/// registry ids completion offers offline, from a client jar into
+/// `web/assets/mc/<version>/`.
 ///
 /// Usage:
 ///   dart run tool/extract_minecraft_world_assets.dart \
@@ -18,6 +19,7 @@ import 'package:crypto/crypto.dart';
 
 import 'mc_extract/jar_assets.dart';
 import 'mc_extract/pack_writer.dart';
+import 'mc_extract/registry_writer.dart';
 
 Future<void> main(List<String> arguments) async {
   final Map<String, String> options = _options(arguments);
@@ -38,6 +40,7 @@ Future<void> main(List<String> arguments) async {
     generatedAt: DateTime.now().toUtc().toIso8601String(),
     entityTextures: mcEntityTextureIds,
   ).write(output);
+  RegistryWriter(jar).write(output, version);
   stdout.writeln('Wrote ${output.path}');
 }
 

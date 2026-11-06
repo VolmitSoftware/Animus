@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'package:animus_editor/logic/json_schema.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
+import 'package:animus_editor/logic/suggest/completion_sources.dart';
 import 'package:test/test.dart';
 
 import '../tool/fake_server/server.dart';
@@ -220,6 +221,15 @@ void main() {
     expectMessage('error-response', missing.body);
     final Reply capabilities = await call('GET', '/animus/v1/capabilities', token: await pairToken());
     expectMessage('capabilities-response', capabilities.body);
+  });
+
+  test('should list registries, commands and PlaceholderAPI identifiers for completion', () async {
+    final Reply reply = await call('GET', '/animus/v1/lookups', token: await pairToken());
+    expectMessage('lookups-response', reply.body);
+    final ServerLookups lookups = ServerLookups.fromJson(reply.json);
+    expect(lookups.registries[RegistryKind.item], contains('diamond_sword'));
+    expect(lookups.commands, contains('spawn'));
+    expect(lookups.papi, contains('player'));
   });
 
   test('schemas are keyed by kind', () async {

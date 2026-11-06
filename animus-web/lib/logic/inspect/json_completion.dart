@@ -5,8 +5,12 @@ library;
 
 import 'dart:convert';
 
-import '../gui/gui_expression.dart' show ExpressionCompletion;
 import '../gui/gui_json.dart';
+import '../suggest/completion_item.dart';
+import '../suggest/completion_sources.dart';
+import '../suggest/field_profile.dart';
+import '../suggest/field_profiles.dart';
+import '../suggest/text_completion.dart';
 import '../../model/document_kind.dart';
 import 'behavior_language.dart';
 import 'behavior_operands.dart';
@@ -27,12 +31,25 @@ class JsonSuggestion {
     this.detail = '',
     this.isKey = false,
     this.caretBack = 0,
+    this.kind = CompletionKind.value,
+    this.type = '',
+    this.swatch,
+    this.reopen = false,
   });
 
   final String label;
   final String insert;
   final String detail;
   final bool isKey;
+  final CompletionKind kind;
+  final String type;
+  final String? swatch;
+
+  /// Whether the list opens again after it is accepted.
+  final bool reopen;
+
+  /// The row the shared list shows for this.
+  CompletionItem get item => CompletionItem(label: label, insert: insert, kind: isKey ? CompletionKind.key : kind, type: type, detail: detail, swatch: swatch);
   final int replaceStart;
   final int replaceEnd;
 
@@ -57,6 +74,7 @@ List<JsonSuggestion> suggestJson(
   SchemaView schema, {
   CompletionCatalog? catalog,
   ValueHints? hints,
+  CompletionSources sources = CompletionSources.empty,
 }) {
   final JsonOutline outline = scanJson(text, caret: caret);
   final CaretContext? context = outline.caret;
@@ -69,8 +87,11 @@ List<JsonSuggestion> suggestJson(
     return _keys(context, container, containerSchema, schema, catalog, root);
   }
   if (catalog != null && context.quoted) {
-    final bool? template = _expressionField(context);
-    if (template != null) return _expression(context, catalog, root, template: template);
+    final FieldProfile profile = _stringProfile(context, root, catalog);
+    if (!profile.isNone) {
+      final List<JsonSuggestion> inside = _inString(context, profile, catalog, sources, root);
+      if (inside.isNotEmpty || profile.values.isEmpty) return inside;
+    }
   }
   return _values(context, container, containerSchema, schema, catalog, hints, root);
 }
@@ -187,43 +208,75 @@ List<JsonSuggestion> _values(
   return out.take(_limit).toList();
 }
 
-/// Whether the string at the caret holds a behavior expression (false) or
-/// template (true): `expression` fields and operands, `template` operands,
-/// and the values of `expressions` and `templates` pointer maps.
-bool? _expressionField(CaretContext context) {
+/// What the string at the caret holds: a behavior expression (`expression`
+/// fields and operands, `expressions` pointer maps), a template (`template`
+/// operands, `templates` maps), a capability argument's text or id, or a
+/// trigger filter.
+FieldProfile _stringProfile(CaretContext context, Object? root, CompletionCatalog catalog) {
   final String? key = context.key;
-  final JsonStep? parent = context.container.isEmpty ? null : context.container.last;
-  if (parent == 'expressions') return false;
-  if (parent == 'templates') return true;
-  if (key == 'expression') return false;
-  if (key == 'template') return true;
-  return null;
+  final List<JsonStep> container = context.container;
+  final JsonStep? parent = container.isEmpty ? null : container.last;
+  if (parent == 'expressions' || key == 'expression') return FieldProfile.behaviorExpression;
+  if (parent == 'templates' || key == 'template') return FieldProfile.behaviorTemplate;
+  if (key == null) return FieldProfile.none;
+  if (parent == 'arguments') {
+    final JsonMap node = asMap(readIn(root, container.sublist(0, container.length - 1)));
+    return argumentProfile(asString(node['capability']), key);
+  }
+  if (container.length >= 2 && container[container.length - 2] == 'triggers' && parent is int) {
+    final TriggerSpec? trigger = catalog.triggers[asString(asMap(readIn(root, container))['event'])];
+    final FieldSpec? field = trigger?.fields.where((FieldSpec spec) => spec.key == key).firstOrNull;
+    if (field != null) return triggerFieldProfile(key, type: fieldType(field));
+  }
+  return FieldProfile.none;
 }
 
-List<JsonSuggestion> _expression(CaretContext context, CompletionCatalog catalog, Object? root, {required bool template}) {
+/// Completion inside the string at the caret, in the field's own syntax.
+List<JsonSuggestion> _inString(CaretContext context, FieldProfile profile, CompletionCatalog catalog, CompletionSources sources, Object? root) {
   final JsonMap document = asMap(root);
-  final ExpressionScope scope = ExpressionScope(
-    language: catalog.expressions,
-    variables: <String, String>{
-      for (final MapEntry<String, Object?> entry in asMap(document['variables']).entries) entry.key: asString(asMap(entry.value)['type']) ?? 'any',
+  final BehaviorNames behavior = BehaviorNames(
+    scope: ExpressionScope(
+      language: catalog.expressions,
+      variables: <String, String>{
+        for (final MapEntry<String, Object?> entry in asMap(document['variables']).entries) entry.key: asString(asMap(entry.value)['type']) ?? 'any',
+      },
+      contextKeys: <String>{
+        for (final Object? trigger in asList(document['triggers'])) ...catalog.triggers[asString(asMap(trigger)['event'])]?.context ?? const <String>[],
+      }.toList(),
+      server: document['server'] == true,
+    ),
+    variableScopes: <String, String>{
+      for (final MapEntry<String, Object?> entry in asMap(document['variables']).entries)
+        if (asString(asMap(entry.value)['scope']) case final String scope) entry.key: scope,
     },
-    contextKeys: <String>{
-      for (final Object? trigger in asList(document['triggers'])) ...catalog.triggers[asString(asMap(trigger)['event'])]?.context ?? const <String>[],
-    }.toList(),
-    server: document['server'] == true,
   );
   final String typed = context.prefix;
   final int base = context.replaceStart + 1;
+  final CompletionResult result = completeText(typed, typed.length, profile, CompletionEnv(sources: sources.copyWith(catalog: catalog), behavior: behavior));
   return <JsonSuggestion>[
-    for (final ExpressionCompletion completion in completeBehaviorExpression(typed, typed.length, scope, template: template, limit: _limit))
-      JsonSuggestion(
-        label: completion.label,
-        insert: completion.insert,
-        detail: completion.detail,
-        replaceStart: base + completion.replaceFrom,
-        replaceEnd: base + completion.replaceTo,
-      ),
+    for (final CompletionItem item in result.items.take(_limit))
+      if (_plain(item.insert) case (final String insert, final int back))
+        JsonSuggestion(
+          label: item.label,
+          insert: insert,
+          caretBack: back,
+          detail: item.detail,
+          kind: item.kind,
+          type: item.type,
+          swatch: item.swatch,
+          reopen: item.reopen,
+          replaceStart: base + result.from,
+          replaceEnd: base + result.to,
+        ),
   ];
+}
+
+/// A snippet as JSON string text and how far before its end the caret
+/// lands (its first stop).
+(String, int) _plain(String snippet) {
+  final AppliedCompletion applied = applySnippet('', 0, 0, snippet);
+  String escape(String text) => text.replaceAll(r'\', r'\\').replaceAll('"', r'\"');
+  return (escape(applied.text), escape(applied.text.substring(applied.selectionStart)).length);
 }
 
 /// For the `bindings`, `expressions` or `templates` map of an action or

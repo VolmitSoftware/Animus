@@ -219,15 +219,6 @@
   overflow-wrap: anywhere;
 }
 
-.animus-expr-completions {
-  top: auto;
-}
-
-.animus-expr .animus-gui-completions {
-  position: static;
-  margin-top: 0.25rem;
-}
-
 .animus-value-editor {
   display: grid;
   grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
@@ -488,22 +479,6 @@
   outline-offset: -2px;
 }
 
-.animus-code-completions {
-  right: auto;
-  width: min(22rem, 100%);
-  max-width: 100%;
-}
-
-.animus-code-completions li {
-  display: grid;
-  gap: 0.125rem;
-}
-
-.animus-code-completions li span {
-  font-size: 0.75rem;
-  overflow-wrap: anywhere;
-}
-
 .animus-code-status {
   font-size: 0.75rem;
 }
@@ -547,9 +522,5 @@
   .animus-code-gutter,
   .animus-code-area {
     height: 24rem;
-  }
-
-  .animus-code-completions {
-    width: 100%;
   }
 }

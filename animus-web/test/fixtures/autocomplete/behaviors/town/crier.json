@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "town:crier",
+  "entry": "main",
+  "variables": {
+    "visits": {"type": "integer", "scope": "player", "lifetime": "persistent", "initial": 0}
+  },
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {"type": "condition", "expression": "true", "then": {"type": "action", "capability": "animus:say", "arguments": {"text": "Welcome back"}}},
+        {"type": "action", "capability": "animus:give-item", "arguments": {"item": "bread", "amount": 1}}
+      ]
+    }
+  },
+  "triggers": [
+    {"id": "click", "event": "interaction", "cooldownTicks": 40}
+  ]
+}

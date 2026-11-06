@@ -9,6 +9,9 @@ import 'package:jaspr/jaspr.dart' show Component;
 
 import '../../logic/gui/gui_json.dart';
 import '../../logic/inspect/schema_fields.dart';
+import '../../logic/suggest/completion_sources.dart';
+import '../../logic/suggest/field_profile.dart';
+import '../../logic/suggest/field_profiles.dart';
 import '../../logic/npc/npc_appearance.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
@@ -97,6 +100,7 @@ class NpcInventoryEditor extends StatelessWidget {
         SuggestInput(
           value: asString(item['id']) ?? '',
           label: 'Slot $slot item',
+          profile: idProfile(const ValueRef.registry(RegistryKind.item)),
           placeholder: 'minecraft:bread',
           suggestions: const <FieldOption>[FieldOption('minecraft:arrow'), FieldOption('minecraft:bread'), FieldOption('minecraft:emerald')],
           onChanged: (String text) => field('id', text.trim()),

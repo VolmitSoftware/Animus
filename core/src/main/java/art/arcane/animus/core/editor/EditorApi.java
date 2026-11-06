@@ -23,6 +23,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -32,6 +33,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -160,6 +163,7 @@ public final class EditorApi implements EditorRequestHandler {
             case "GET" -> switch (first) {
                 case "capabilities" -> n == 1 ? new Route(EditorScope.READ, false, this::capabilities) : null;
                 case "schemas" -> n == 1 ? new Route(EditorScope.READ, false, this::schemas) : null;
+                case "lookups" -> n == 1 ? new Route(EditorScope.READ, false, this::lookups) : null;
                 case "catalog" -> n == 1 ? new Route(EditorScope.READ, false, this::catalog) : null;
                 case "documents" -> n >= 3 ? new Route(EditorScope.READ, false, this::document) : null;
                 case "skins" -> n == 3 && s[2].equals("texture.png") ? new Route(EditorScope.READ, false, this::skin) : null;
@@ -323,6 +327,22 @@ public final class EditorApi implements EditorRequestHandler {
         }
         body.add("modules", modules);
         return done(EditorResponse.json(200, body));
+    }
+
+    private CompletionStage<EditorResponse> lookups(EditorRequest request, EditorTokens.Token token, String[] segments) {
+        EditorHost.Lookups lookups = parts.host().lookups();
+        JsonObject body = new JsonObject(), registries = new JsonObject();
+        new TreeMap<>(lookups.registries()).forEach((String kind, List<String> ids) -> registries.add(kind, sortedArray(ids)));
+        body.add("registries", registries);
+        body.add("commands", sortedArray(lookups.commands()));
+        body.add("papi", sortedArray(lookups.papi()));
+        return done(EditorResponse.json(200, body));
+    }
+
+    private static JsonArray sortedArray(Collection<String> values) {
+        JsonArray out = new JsonArray();
+        new TreeSet<>(values).forEach(out::add);
+        return out;
     }
 
     private CompletionStage<EditorResponse> schemas(EditorRequest request, EditorTokens.Token token, String[] segments) throws EditorError {

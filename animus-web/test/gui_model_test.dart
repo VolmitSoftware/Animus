@@ -13,6 +13,9 @@ import 'package:animus_editor/logic/gui/gui_templates.dart';
 import 'package:animus_editor/logic/gui/gui_text.dart';
 import 'package:animus_editor/logic/gui/gui_validation.dart';
 import 'package:animus_editor/logic/shared_schemas.dart';
+import 'package:animus_editor/logic/suggest/completion_item.dart';
+import 'package:animus_editor/logic/suggest/field_profile.dart';
+import 'package:animus_editor/logic/suggest/text_completion.dart';
 import 'package:animus_editor/mc/npc/mc_text.dart';
 import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
@@ -70,14 +73,16 @@ void main() {
     });
 
     test('should complete names and functions only inside holes of a template', () {
-      final List<ExpressionCompletion> names = completeExpression('Hi {{ vie', 9, template: true);
-      expect(names.map((ExpressionCompletion c) => c.label), contains('viewer.name'));
-      final (String text, int caret) = names.firstWhere((ExpressionCompletion c) => c.label == 'viewer.name').applyTo('Hi {{ vie');
-      expect(text, 'Hi {{ viewer.name');
-      expect(caret, text.length);
-      expect(completeExpression('Hi vie', 6, template: true), isEmpty);
-      expect(completeExpression('cla', 3, template: false).map((ExpressionCompletion c) => c.label), contains('clamp()'));
-      expect(completeExpression('Hi {{ ', 6, template: true), isNotEmpty);
+      const CompletionEnv env = CompletionEnv();
+      List<String> labels(CompletionResult result) => <String>[for (final CompletionItem item in result.items) item.label];
+      final CompletionResult names = completeText('Hi {{ vie', 9, FieldProfile.guiText, env);
+      expect(labels(names), contains('viewer.name'));
+      final AppliedCompletion applied = names.apply('Hi {{ vie', names.items.firstWhere((CompletionItem c) => c.label == 'viewer.name'));
+      expect(applied.text, 'Hi {{ viewer.name');
+      expect(applied.selectionStart, applied.text.length);
+      expect(completeText('Hi vie', 6, FieldProfile.guiText, env).items, isEmpty);
+      expect(labels(completeText('cla', 3, FieldProfile.guiExpression, env)), contains('clamp()'));
+      expect(completeText('Hi {{ ', 6, FieldProfile.guiText, env).items, isNotEmpty);
     });
   });
 
