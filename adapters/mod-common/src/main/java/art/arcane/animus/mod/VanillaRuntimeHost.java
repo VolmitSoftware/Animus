@@ -118,6 +118,7 @@ final class VanillaRuntimeHost implements RuntimeHost<ServerPlayer, ItemStack> {
 
     @Override public ItemStack item(NpcItem item, String path, List<String> errors) { return stack(server, item, path, errors); }
     @Override public ItemStack copy(ItemStack item) { return item.copy(); }
+    @Override public Optional<ItemStack> emptyItem() { return Optional.of(ItemStack.EMPTY); }
 
     @Override public boolean interactionAllowed(ServerPlayer player, UUID npc, Interaction action, double distance) { return interactions.allowed(player, npc, action); }
     @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) {}

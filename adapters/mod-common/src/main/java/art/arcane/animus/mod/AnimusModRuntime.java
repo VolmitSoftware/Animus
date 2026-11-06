@@ -95,6 +95,7 @@ public final class AnimusModRuntime {
         ExtensionRuntime extensions;
         volatile BehaviorCommands behaviors;
         ModServerBehaviors serverBehaviors;
+        ModRecordings recordings;
         AnimusDirector commands;
         volatile EditorService editor;
         final DebugWatch watch = new DebugWatch();
@@ -190,12 +191,13 @@ public final class AnimusModRuntime {
             next.behaviors.facts(facts);
             next.serverBehaviors = new ModServerBehaviors(server, servers, facts, LOGGER::info);
             next.ticks.every(measured.timed(Subsystem.BEHAVIORS, next.serverBehaviors::tick));
+            next.recordings = new ModRecordings(server, next.ticks, next.runtime, files, LOGGER::info, LOGGER::warn);
             DebugCommands debugCommands = new DebugCommands(() -> measured, owner.watch,
                     (String id) -> owner.runtime.isRunning() ? owner.runtime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
                     () -> { EditorService active = owner.editor; return active == null ? List.of("Editor: off") : active.status(); });
             next.commands = new AnimusCommandTree(new CommandServices(next.runtime, files, next.living, () -> owner.behaviors, next.extensions, next.builtins,
                     next.combat.control(), next.shops, next.guis, new BuildCommands(() -> owner.builds, owner.builds::unavailable), new EditorCommands(() -> owner.editor, files),
-                    debugCommands, BUKKIT_ONLY, () -> List.of(server.getPlayerNames()), () -> owner.stopping)).director();
+                    debugCommands, BUKKIT_ONLY, next.recordings.sessions(), () -> List.of(server.getPlayerNames()), () -> owner.stopping)).director();
             measured.extra("combat.waiting", next.combat::waiting);
             measured.extra("combat.load", next.combat::load);
             measured.extra("editor.streams", () -> { EditorService active = owner.editor; return active == null ? 0 : active.eventStreams(); });
@@ -236,6 +238,7 @@ public final class AnimusModRuntime {
         EditorService editor = active.editor;
         active.editor = null;
         if (editor != null) editor.close();
+        if (active.recordings != null) active.recordings.close();
         if (active.serverBehaviors != null) active.serverBehaviors.close();
         if (active.behaviors != null) active.behaviors.close();
         if (active.builtins != null) active.builtins.close();
@@ -320,6 +323,14 @@ public final class AnimusModRuntime {
         VanillaBodyTransport transport = active == null ? null : active.host.transport();
         if (transport != null && transport.interact(player, entityId, attack, hand, secondary)) return true;
         return active != null && active.displays != null && active.displays.interact(player, entityId, attack, hand, secondary);
+    }
+    void swung(ServerPlayer player, net.minecraft.world.InteractionHand hand) {
+        Running active = running;
+        if (active != null && active.recordings != null) active.recordings.swung(player, hand);
+    }
+    void usedBlock(ServerPlayer player, net.minecraft.world.InteractionHand hand, net.minecraft.core.BlockPos at) {
+        Running active = running;
+        if (active != null && active.recordings != null) active.recordings.used(player, hand, at);
     }
     void input(ServerPlayer player, Input input) {
         Running active = running;

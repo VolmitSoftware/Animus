@@ -217,6 +217,16 @@ class BehaviorSchemaAgreementTest {
         JsonObject speed = JsonDocuments.object(base);
         speed.add("modules", JsonDocuments.object("{\"animus:navigation\":{\"enabled\":true,\"speed\":9,\"points\":[{\"x\":0,\"y\":64,\"z\":0}]}}"));
         invalid.put("navigation speed", speed);
+        for (String conflict : List.of("\"route\":\"a\"", "\"points\":[{\"x\":0,\"y\":64,\"z\":0}]", "\"order\":\"random\"", "\"playback\":\"reverse\"")) {
+            JsonObject recording = JsonDocuments.object(base);
+            recording.add("modules", JsonDocuments.object("{\"animus:navigation\":{\"enabled\":true,\"recording\":\"market-walk\"," + conflict + "}}"));
+            invalid.put("recording with " + conflict, recording);
+        }
+        for (String reference : List.of("\"recording\":\"Market Walk\"", "\"playback\":\"once\",\"points\":[{\"x\":0,\"y\":64,\"z\":0}]")) {
+            JsonObject recording = JsonDocuments.object(base);
+            recording.add("modules", JsonDocuments.object("{\"animus:navigation\":{\"enabled\":true," + reference + "}}"));
+            invalid.put("navigation " + reference, recording);
+        }
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("pose", "{\"pose\":\"flying\"}");
         fields.put("pose for a non-player body", "{\"type\":\"minecraft:villager\",\"pose\":\"sitting\"}");
@@ -252,6 +262,10 @@ class BehaviorSchemaAgreementTest {
             assertFalse(npcs.validate(specimen.getValue()).isEmpty(), "schema accepted: " + specimen.getKey());
             assertFalse(NpcDefinition.validate(specimen.getValue()).isEmpty(), "definition accepted: " + specimen.getKey());
         }
+        JsonObject played = JsonDocuments.object(base);
+        played.add("modules", JsonDocuments.object("{\"animus:navigation\":{\"enabled\":true,\"recording\":\"market-walk\",\"playback\":\"pingpong\"}}"));
+        assertEquals(List.of(), npcs.validate(played));
+        assertEquals(List.of(), NpcDefinition.validate(played));
         JsonObject preserved = JsonDocuments.object(base);
         preserved.add("modules", JsonDocuments.object("{\"someone:else\":{\"anything\":true}}"));
         preserved.addProperty("futureField", 1);

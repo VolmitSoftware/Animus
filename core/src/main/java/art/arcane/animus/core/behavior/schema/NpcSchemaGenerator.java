@@ -27,6 +27,7 @@ import art.arcane.animus.core.shop.ShopDocument;
 import art.arcane.animus.core.storage.NpcPaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -94,6 +95,12 @@ public final class NpcSchemaGenerator {
         tags.addProperty("maxItems", NpcDefinition.MAX_TAGS);
         tags.addProperty("uniqueItems", true);
         properties.add("tags", tags);
+        JsonObject groups = described(type("array"), "Trait groups under groups/ whose values this NPC takes, in merge order; the NPC's own fields win.");
+        groups.add("items", pattern("^[a-z0-9][a-z0-9_-]{0,63}$"));
+        groups.addProperty("minItems", 1);
+        groups.addProperty("maxItems", NpcDefinition.MAX_GROUPS);
+        groups.addProperty("uniqueItems", true);
+        properties.add("groups", groups);
         JsonObject rig = described(closed(), "The rig under rigs/ this NPC's body shows.");
         rig.add("required", strings("id"));
         JsonObject rigId = pattern("^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$");
@@ -351,20 +358,36 @@ public final class NpcSchemaGenerator {
         properties.add("enabled", type("boolean"));
         properties.add("reviewAccepted", type("boolean"));
         properties.add("route", pattern(IDENTIFIER));
+        JsonObject recording = pattern(IDENTIFIER);
+        recording.addProperty("maxLength", 64);
+        properties.add("recording", described(recording, "A recording under recordings/ to play instead of a route."));
+        properties.add("playback", described(choices(List.of("once", "loop", "pingpong")), "Recording only: once, loop (the default) or pingpong."));
         routeFields(properties);
         navigation.add("properties", properties);
         JsonObject routed = new JsonObject();
         routed.add("if", required("route"));
         JsonObject exclusive = new JsonObject();
-        exclusive.add("not", anyRequired(List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander")));
+        List<String> routedExcludes = new ArrayList<>(WaypointSettings.ROUTE_FIELDS);
+        routedExcludes.add("recording");
+        exclusive.add("not", anyRequired(routedExcludes));
         routed.add("then", exclusive);
         JsonObject inline = new JsonObject();
         JsonArray inlineRules = new JsonArray();
         inlineRules.add(pointCount());
         inline.add("allOf", inlineRules);
-        routed.add("else", inline);
+        JsonObject played = new JsonObject();
+        played.add("if", required("recording"));
+        JsonObject recordingExclusive = new JsonObject();
+        recordingExclusive.add("not", anyRequired(WaypointSettings.ROUTE_FIELDS));
+        played.add("then", recordingExclusive);
+        played.add("else", inline);
+        routed.add("else", played);
         JsonArray rules = new JsonArray();
         rules.add(whenEnabled(routed));
+        JsonObject playbackRule = new JsonObject();
+        playbackRule.add("if", required("playback"));
+        playbackRule.add("then", required("recording"));
+        rules.add(whenEnabled(playbackRule));
         orderRules(rules);
         navigation.add("allOf", rules);
         return navigation;
@@ -397,10 +420,43 @@ public final class NpcSchemaGenerator {
         properties.add("speed", described(range("number", 1, 5), "Blocks per second. 2 by default."));
         properties.add("order", described(choices(List.of("sequence", "pingpong", "random", "wander")), "How the next point is chosen. sequence by default."));
         properties.add("loop", described(type("boolean"), "Order sequence only: start again from the first point."));
-        properties.add("waitTicks", described(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), "Wait before the first leg and after each arrival."));
+        properties.add("waitTicks", described(waitTicks(), "Wait before the first leg and after each arrival: ticks, or [min, max] drawn per arrival."));
+        properties.add("seed", described(choices(List.of("npc", "random")), "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."));
+        properties.add("startOffset", described(choices(List.of("first", "random")), "random: start at a random point after a random 0..waitTicks wait. first by default."));
+        properties.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Leg goals move by a random whole-block x/z offset within this radius."));
         JsonObject point = coordinate();
-        point.getAsJsonObject("properties").add("waitTicks", described(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), "Wait after arriving here, instead of the route's."));
-        properties.add("points", list(point, 0, WaypointSettings.MAXIMUM_POINTS, "Route points in the NPC's world; wander centres for order wander."));
+        JsonObject pointFields = point.getAsJsonObject("properties");
+        pointFields.add("waitTicks", described(waitTicks(), "Wait after arriving here, instead of the route's."));
+        pointFields.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Jitter radius of this point, instead of the route's."));
+        pointFields.add("weight", described(range("integer", 1, WaypointSettings.MAXIMUM_WEIGHT), "Order random only: how often this point is chosen."));
+        JsonObject junction = closed();
+        junction.add("required", strings("to"));
+        JsonObject way = new JsonObject();
+        way.add("to", range("integer", 0, WaypointSettings.MAXIMUM_POINTS - 1));
+        way.add("weight", range("integer", 1, WaypointSettings.MAXIMUM_WEIGHT));
+        junction.add("properties", way);
+        pointFields.add("next", list(junction, 1, WaypointSettings.MAXIMUM_JUNCTIONS, "Order sequence only: after this point, the next point is drawn from these by weight."));
+        point.add("not", anyRequired(List.of("recording", "fromTick", "toTick", "playback")));
+        JsonObject step = described(type("object"), "A recording step: walk to the segment's first frame, play it once, then go on from its last frame.");
+        step.add("required", strings("recording"));
+        JsonObject stepFields = new JsonObject();
+        JsonObject recording = pattern(IDENTIFIER);
+        recording.addProperty("maxLength", 64);
+        stepFields.add("recording", described(recording, "A recording under recordings/."));
+        stepFields.add("fromTick", described(range("integer", 0, WaypointSettings.MAXIMUM_STEP_TICK), "First tick of the segment, 0 by default; below toTick."));
+        stepFields.add("toTick", described(range("integer", 1, WaypointSettings.MAXIMUM_STEP_TICK), "Last tick of the segment; the recording's durationTicks by default."));
+        stepFields.add("playback", described(constant("once"), "A step plays once; loop and pingpong are refused because the route must go on."));
+        stepFields.add("waitTicks", pointFields.get("waitTicks"));
+        stepFields.add("weight", pointFields.get("weight"));
+        stepFields.add("next", pointFields.get("next"));
+        step.add("properties", stepFields);
+        step.add("not", anyRequired(List.of("x", "y", "z", "jitter")));
+        JsonArray kinds = new JsonArray();
+        kinds.add(point);
+        kinds.add(step);
+        JsonObject either = new JsonObject();
+        either.add("oneOf", kinds);
+        properties.add("points", list(either, 0, WaypointSettings.MAXIMUM_POINTS, "Route points in the NPC's world, or recording steps; wander centres for order wander."));
         properties.add("guides", list(coordinate(), 0, WaypointSettings.MAXIMUM_GUIDES, "Order random only: helper nodes a path may pass through."));
         properties.add("linkDistance", described(range("number", WaypointSettings.MINIMUM_LINK_DISTANCE, WaypointSettings.MAXIMUM_LINK_DISTANCE), "Order random only: the longest link between two nodes."));
         JsonObject wander = described(closed(), "Order wander only.");
@@ -433,6 +489,51 @@ public final class NpcSchemaGenerator {
         rules.add(onlyWithOrder("guides", "random", false));
         rules.add(onlyWithOrder("linkDistance", "random", false));
         rules.add(onlyWithOrder("wander", "wander", false));
+        rules.add(pointOnlyWithOrder("weight", "random", false));
+        rules.add(pointOnlyWithOrder("next", "sequence", true));
+        JsonObject noSteps = new JsonObject();
+        noSteps.add("if", orderIs("wander"));
+        JsonObject stepless = new JsonObject();
+        stepless.add("not", anyRequired(List.of("recording")));
+        JsonObject centres = new JsonObject();
+        centres.add("items", stepless);
+        noSteps.add("then", property("points", centres));
+        rules.add(noSteps);
+        JsonObject noJitter = new JsonObject();
+        noJitter.add("if", orderIs("wander"));
+        JsonObject refused = new JsonObject();
+        refused.add("not", anyRequired(List.of("jitter")));
+        noJitter.add("then", refused);
+        rules.add(noJitter);
+    }
+
+    private static JsonObject waitTicks() {
+        JsonObject between = list(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), 2, 2, "[min, max] in ticks, min not above max.");
+        JsonArray either = new JsonArray();
+        either.add(range("integer", 0, WaypointSettings.MAXIMUM_WAIT));
+        either.add(between);
+        JsonObject wait = new JsonObject();
+        wait.add("oneOf", either);
+        return wait;
+    }
+
+    /** A point field that only one order reads; the default order counts when it is the default. */
+    private static JsonObject pointOnlyWithOrder(String field, String order, boolean isDefault) {
+        JsonObject rule = new JsonObject();
+        JsonObject other = new JsonObject();
+        if (isDefault) {
+            other.add("required", strings("order"));
+            JsonObject same = new JsonObject();
+            same.add("properties", property("order", constant(order)).getAsJsonObject("properties"));
+            other.add("not", same);
+        } else other.add("not", orderIs(order));
+        rule.add("if", other);
+        JsonObject without = new JsonObject();
+        without.add("not", anyRequired(List.of(field)));
+        JsonObject items = new JsonObject();
+        items.add("items", without);
+        rule.add("then", property("points", items));
+        return rule;
     }
 
     private static JsonObject coordinate() {

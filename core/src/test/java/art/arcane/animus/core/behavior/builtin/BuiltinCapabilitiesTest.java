@@ -43,7 +43,7 @@ class BuiltinCapabilitiesTest {
         @Override public CompletionStage<Outcome<List<Diagnostic>>> validate(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
         @Override public CompletionStage<Outcome<DefinitionSnapshot>> apply(DefinitionEdit edit) { throw new UnsupportedOperationException(); }
     };
-    private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "look", "pose", "set-appearance",
+    private static final Set<String> ACTIONS = Set.of("say", "choices", "command", "navigate", "stop-navigation", "play-recording", "resume-patrol", "look", "pose", "set-appearance",
             "set-equipment", "play-sound", "spawn-particle", "combat-control", "build", "set-flag", "set-quest-state", "advance-quest-state", "open-shop", "open-gui",
             "play-animation", "stop-animation", "message", "title", "actionbar", "teleport", "give-item", "take-item", "give-book");
     private static final Set<String> CONDITIONS = Set.of("has-permission", "npc-state", "player-in-range", "flag-state", "quest-state");
@@ -190,6 +190,7 @@ class BuiltinCapabilitiesTest {
                 Map.entry("choices", "{\"id\":\"c\",\"prompt\":\"p\",\"options\":[{\"id\":\"a\",\"text\":\"A\"},{\"id\":\"a\",\"text\":\"B\"}]}"),
                 Map.entry("command", "{\"command\":\"/say hi\"}"),
                 Map.entry("navigate", "{\"route\":\"Bad Route\"}"),
+                Map.entry("play-recording", "{\"recording\":\"Bad Walk\"}"),
                 Map.entry("set-appearance", "{\"skin\":\"abc\"}"),
                 Map.entry("set-equipment", "{\"slot\":\"head\",\"item\":\"NOT A KEY\"}"),
                 Map.entry("play-sound", "{\"sound\":\"NOT A KEY\"}"),
@@ -218,6 +219,8 @@ class BuiltinCapabilitiesTest {
         Map<String, String> valid = new java.util.LinkedHashMap<>();
         valid.put("navigate", "{\"x\":1,\"y\":64,\"z\":3,\"mode\":\"fly\",\"speed\":3}");
         valid.put("stop-navigation", "{}");
+        valid.put("play-recording", "{\"recording\":\"market-walk\",\"playback\":\"once\"}");
+        valid.put("resume-patrol", "{}");
         valid.put("look", "{\"x\":1,\"y\":64,\"z\":3}");
         valid.put("pose", "{\"pose\":\"rest\"}");
         valid.put("set-appearance", "{\"name\":\"Guard\"}");
@@ -231,7 +234,7 @@ class BuiltinCapabilitiesTest {
             Outcome<String> outcome = action(entry.getKey(), entry.getValue());
             assertEquals(Outcome.Status.OK, outcome.status(), entry.getKey() + outcome.diagnostics());
         }
-        assertEquals(List.of("navigate:FLY:3.0", "stop", "look-point", "pose:rest", "appearance:Guard:false", "equipment:MAIN_HAND:minecraft:iron_sword",
+        assertEquals(List.of("navigate:FLY:3.0", "stop", "recording:market-walk:once", "resume", "look-point", "pose:rest", "appearance:Guard:false", "equipment:MAIN_HAND:minecraft:iron_sword",
                 "sound:minecraft:entity.villager.yes", "particle:minecraft:flame:8", "combat:TARGET:true",
                 "animation:town:golem/wave:2.0:pingpong:2", "stop-animation:2:10"), platform.calls);
     }
@@ -270,6 +273,8 @@ class BuiltinCapabilitiesTest {
                 Map.entry("combat-control", "{\"operation\":\"enable\"}"),
                 Map.entry("navigate", "{\"x\":1,\"y\":64,\"z\":3}"),
                 Map.entry("stop-navigation", "{}"),
+                Map.entry("play-recording", "{\"recording\":\"market-walk\"}"),
+                Map.entry("resume-patrol", "{}"),
                 Map.entry("look", "{\"x\":1,\"y\":64,\"z\":3}"),
                 Map.entry("set-appearance", "{\"name\":\"Guard\"}"),
                 Map.entry("set-equipment", "{\"slot\":\"head\"}"),

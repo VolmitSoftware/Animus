@@ -293,7 +293,7 @@ void main() {
     test('sequence links follow the order and close a loop', () {
       final RouteSpec spec = RouteSpec(navigation());
       expect(spec.points, hasLength(4));
-      expect(spec.points[1].waitTicks, 60);
+      expect(spec.points[1].waitTicks, const RouteWait(60, 60));
       expect(spec.links, <(int, int)>[(0, 1), (1, 2), (2, 3), (3, 0)]);
       expect(RouteSpec(<String, Object?>{...navigation(), 'loop': false}).links, hasLength(3));
       expect(RouteSpec(<String, Object?>{...navigation(), 'order': 'pingpong'}).links, hasLength(3));
@@ -343,7 +343,7 @@ void main() {
 
     test('bounds cover nodes and the NPC with a square and a sensible step', () {
       final RouteSpec spec = RouteSpec(navigation());
-      final RouteBounds bounds = RouteBounds.around(spec.nodes, extra: <(double, double)>[(4.5, -6.5)]);
+      final RouteBounds bounds = RouteBounds.around(spec.placed, extra: <(double, double)>[(4.5, -6.5)]);
       expect(bounds.minX <= 4 && bounds.maxX >= 12 && bounds.minZ <= -6.5 && bounds.maxZ >= 4, isTrue);
       expect(bounds.width, bounds.depth);
       expect(bounds.step, 1);

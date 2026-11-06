@@ -18,7 +18,7 @@ import java.util.List;
 public record PluginSettings(String statusMessage, boolean packetProofEnabled, NpcRuntimeSettings npcs,
                              FileWorkSettings files, ModuleSettings modules, BehaviorSettings behaviors, CombatBudgets combat, BuildSettings builds,
                              ShopSettings shops, EditorRelaySettings relay, EditorSettings editor, RigSettings rigs,
-                             NavigationSettings navigation, HotloadSettings hotload) {
+                             NavigationSettings navigation, HotloadSettings hotload, RecordingSettings recordings) {
     public static PluginSettings load(DocumentStore store) throws IOException {
         Path toml = store.resolve("config.toml");
         if (Files.exists(toml)) return readToml(toml);
@@ -46,6 +46,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             document.add("rigs", new Gson().toJsonTree(RigSettings.DEFAULT));
             document.add("navigation", new Gson().toJsonTree(NavigationSettings.DEFAULT));
             document.add("hotload", new Gson().toJsonTree(HotloadSettings.DEFAULT));
+            document.add("recordings", new Gson().toJsonTree(RecordingSettings.DEFAULT));
         }
         String encoded;
         try { encoded = TomlCodec.toToml(document); }
@@ -139,8 +140,11 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         HotloadSettings hotloadSettings;
         try { hotloadSettings = hotload(table(data.getAsJsonObject(), "hotload")); }
         catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": hotload: " + e.getMessage(), e); }
+        RecordingSettings recordingSettings;
+        try { recordingSettings = recordings(table(data.getAsJsonObject(), "recordings")); }
+        catch (IllegalArgumentException | ArithmeticException e) { throw new IOException(path + ": recordings: " + e.getMessage(), e); }
         return new PluginSettings(message.getAsString(), proof != null && proof.getAsBoolean(), npcSettings, fileSettings, moduleSettings, behaviorSettings, combatBudgets, buildSettings, shopSettings,
-                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings);
+                relaySettings, editorSettings, rigSettings, navigationSettings, hotloadSettings, recordingSettings);
     }
 
     private static HotloadSettings hotload(JsonObject document) {
@@ -151,6 +155,20 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         return new HotloadSettings(bool(document, "enabled", defaults.enabled()), bool(document, "sound", defaults.sound()),
                 integer(document, "maximumFiles", defaults.maximumFiles()), integer(document, "readsPerPoll", defaults.readsPerPoll()),
                 integer(document, "maximumFileBytes", defaults.maximumFileBytes()));
+    }
+
+    private static RecordingSettings recordings(JsonObject document) {
+        RecordingSettings defaults = RecordingSettings.DEFAULT;
+        for (String key : document.keySet())
+            if (!java.util.Set.of("enabled", "sampleTicks", "maximumTicks", "maximumFileBytes", "maximumSessions", "ghostEnabled", "ghostIntervalTicks",
+                    "ghostStretchTicks", "ghostGlow", "ghostColor", "maximumPreviews").contains(key))
+                throw new IllegalArgumentException(key + " is not a recording setting");
+        return new RecordingSettings(bool(document, "enabled", defaults.enabled()), integer(document, "sampleTicks", defaults.sampleTicks()),
+                integer(document, "maximumTicks", defaults.maximumTicks()), integer(document, "maximumFileBytes", defaults.maximumFileBytes()),
+                integer(document, "maximumSessions", defaults.maximumSessions()), bool(document, "ghostEnabled", defaults.ghostEnabled()),
+                integer(document, "ghostIntervalTicks", defaults.ghostIntervalTicks()), integer(document, "ghostStretchTicks", defaults.ghostStretchTicks()),
+                bool(document, "ghostGlow", defaults.ghostGlow()), text(document, "ghostColor", defaults.ghostColor()),
+                integer(document, "maximumPreviews", defaults.maximumPreviews()));
     }
 
     private static NavigationSettings navigation(JsonObject document) {

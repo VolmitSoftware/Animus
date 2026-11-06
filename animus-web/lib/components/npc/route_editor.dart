@@ -6,6 +6,8 @@
 /// and place in the order. From the keyboard, Tab reaches each point:
 /// arrows move it a quarter block (Shift for a whole block), Delete removes
 /// it, Enter picks it, and "Add point at" adds one by its x, y and z.
+/// Recording steps have no position: they are listed and numbered with the
+/// points, picked from the list, and edited by recording and tick range.
 library;
 
 import 'dart:js_interop';
@@ -19,11 +21,18 @@ import 'package:web/web.dart' as web;
 import '../../logic/gui/gui_json.dart';
 import '../../logic/npc/route_model.dart';
 import '../../model/animus_document.dart';
+import '../../model/document_kind.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
 import '../rig/rig_gizmo.dart' show eventNumber;
 
 int _nextGridId = 0;
+
+/// The recording documents in [documents] by id, with their durationTicks.
+Map<String, int?> routeRecordings(List<AnimusDocument> documents) => <String, int?>{
+      for (final AnimusDocument document in documents)
+        if (document.kind == DocumentKind.recording) document.id: asInt(asMap(document.json)['durationTicks']),
+    };
 
 enum RouteTool { point, guide, select }
 
@@ -35,6 +44,7 @@ class RouteEditor extends StatefulWidget {
     this.path = r'$',
     this.diagnostics = const <Diagnostic>[],
     this.readOnly = false,
+    this.recordings = const <String, int?>{},
     super.key,
   });
 
@@ -49,6 +59,9 @@ class RouteEditor extends StatefulWidget {
   final String path;
   final List<Diagnostic> diagnostics;
   final bool readOnly;
+
+  /// The workspace's recordings by id, with their durationTicks when known.
+  final Map<String, int?> recordings;
 
   @override
   State<RouteEditor> createState() => _RouteEditorState();
@@ -157,8 +170,9 @@ class _RouteEditorState extends State<RouteEditor> {
     if (at == null) return;
     final RouteSpec spec = RouteSpec(_route);
     final bool guide = _tool == RouteTool.guide;
-    final List<RouteNode> same = guide ? spec.guides : spec.points;
-    final double y = same.isNotEmpty ? same.last.y : (spec.points.isNotEmpty ? spec.points.last.y : (component.origin?.$2 ?? 64).floorToDouble());
+    final List<RouteEntry> same = guide ? spec.guides : spec.points;
+    final RouteNode? sameLast = _lastPlaced(same), pointLast = _lastPlaced(spec.points);
+    final double y = sameLast?.y ?? pointLast?.y ?? (component.origin?.$2 ?? 64).floorToDouble();
     _write(addRouteNode(_route, snapBlock(at.$1), y, snapBlock(at.$2), guide: guide));
     setState(() => _picked = (guide ? 'guides' : 'points', same.length));
   }
@@ -196,10 +210,12 @@ class _RouteEditorState extends State<RouteEditor> {
     });
   }
 
-  /// Where "Add point at" puts a node: the typed axes, else the last point,
-  /// else the NPC.
+  static RouteNode? _lastPlaced(List<RouteEntry> entries) => entries.whereType<RouteNode>().lastOrNull;
+
+  /// Where "Add point at" puts a node: the typed axes, else the last point
+  /// with a position, else the NPC.
   (double, double, double) _addAt(RouteSpec spec) {
-    final RouteNode? last = spec.points.isNotEmpty ? spec.points.last : null;
+    final RouteNode? last = _lastPlaced(spec.points);
     final (double, double, double)? origin = component.origin;
     final double x = _addX?.toDouble() ?? last?.x ?? origin?.$1.floorToDouble() ?? 0;
     final double y = _addY?.toDouble() ?? last?.y ?? origin?.$2.floorToDouble() ?? 64;
@@ -237,6 +253,16 @@ class _RouteEditorState extends State<RouteEditor> {
       dom.div(classes: 'animus-row', <Widget>[
         Button.secondary(label: 'Add point', size: ButtonSize.small, disabled: spec.points.length >= routeMaxPoints, onPressed: () => add(false)),
         if (spec.order == 'random') Button.ghost(label: 'Add guide', size: ButtonSize.small, onPressed: () => add(true)),
+        if (spec.order != 'wander')
+          Button.ghost(
+            label: 'Add recording step',
+            size: ButtonSize.small,
+            disabled: spec.points.length >= routeMaxPoints,
+            onPressed: () {
+              _write(addRouteStep(_route, component.recordings.keys.firstOrNull ?? ''));
+              setState(() => _picked = ('points', spec.points.length));
+            },
+          ),
         if (walking && y != y.roundToDouble())
           const dom.span(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('Walking points stand on whole blocks; use a whole y.')]),
       ]),
@@ -274,7 +300,7 @@ class _RouteEditorState extends State<RouteEditor> {
           for (final Diagnostic problem in _problems)
             dom.li(classes: 'animus-gui-problem is-${problem.severity.name}', <Widget>[dom.code(<Widget>[Component.text(problem.path)]), Component.text(' ${problem.message}')]),
         ]),
-      if (picked != null && !component.readOnly) _pickedEditor(picked),
+      if (picked != null && !component.readOnly) _pickedEditor(picked, RouteSpec(_route)),
       _nodeList(spec, picked),
     ]);
   }
@@ -364,10 +390,10 @@ class _RouteEditorState extends State<RouteEditor> {
   Widget _grid(RouteSpec spec, (String, int)? picked) {
     final (double, double, double)? origin = component.origin;
     final RouteBounds bounds = _dragBounds ??
-        RouteBounds.around(spec.nodes, extra: <(double, double)>[
+        RouteBounds.around(spec.placed, extra: <(double, double)>[
           if (origin != null) (origin.$1, origin.$3),
           if (spec.order == 'wander')
-            for (final RouteNode point in spec.points) ...<(double, double)>[(point.x - spec.wanderRadius, point.z - spec.wanderRadius), (point.x + spec.wanderRadius, point.z + spec.wanderRadius)],
+            for (final RouteNode point in spec.points.whereType<RouteNode>()) ...<(double, double)>[(point.x - spec.wanderRadius, point.z - spec.wanderRadius), (point.x + spec.wanderRadius, point.z + spec.wanderRadius)],
         ]);
     final double step = bounds.step;
     final double radius = math.max(0.3, bounds.width / 70);
@@ -377,19 +403,18 @@ class _RouteEditorState extends State<RouteEditor> {
       for (double z = (bounds.minZ / step).ceilToDouble() * step; z <= bounds.maxZ; z += step)
         dom.line(const <Component>[], x1: _n(bounds.minX), y1: _n(z), x2: _n(bounds.maxX), y2: _n(z), classes: 'animus-route-gridline${z == 0 ? ' is-axis' : ''}'),
     ];
-    final List<RouteNode> nodes = spec.nodes;
     final List<Component> links = <Component>[
       for (final (int a, int b) in spec.links)
         dom.line(
           const <Component>[],
-          x1: _n(nodes[a].x),
-          y1: _n(nodes[a].z),
-          x2: _n(nodes[b].x),
-          y2: _n(nodes[b].z),
+          x1: _n(spec.positionOf(a)!.x),
+          y1: _n(spec.positionOf(a)!.z),
+          x2: _n(spec.positionOf(b)!.x),
+          y2: _n(spec.positionOf(b)!.z),
           classes: 'animus-route-link${spec.order == 'random' ? ' is-mesh' : ''}',
         ),
       if (spec.order == 'wander')
-        for (final RouteNode point in spec.points)
+        for (final RouteNode point in spec.points.whereType<RouteNode>())
           dom.rect(
             const <Component>[],
             x: _n(point.x - spec.wanderRadius),
@@ -404,8 +429,10 @@ class _RouteEditorState extends State<RouteEditor> {
         dom.circle(const <Component>[], cx: _n(origin.$1), cy: _n(origin.$3), r: _n(radius * 1.3), classes: 'animus-route-npc'),
         _label(origin.$1, origin.$3 - radius * 2, 'NPC', radius, 'is-npc'),
       ],
-      for (int index = 0; index < spec.guides.length; index++) _node('guides', index, spec.guides[index], radius * 0.8, picked, bounds, '${spec.points.length + index}'),
-      for (int index = 0; index < spec.points.length; index++) _node('points', index, spec.points[index], radius, picked, bounds, '$index'),
+      for (int index = 0; index < spec.guides.length; index++)
+        if (spec.guides[index] case final RouteNode guide) _node('guides', index, guide, radius * 0.8, picked, bounds, '${spec.points.length + index}'),
+      for (int index = 0; index < spec.points.length; index++)
+        if (spec.points[index] case final RouteNode point) _node('points', index, point, radius, picked, bounds, '$index'),
     ];
     return dom.div(classes: 'animus-route-grid-wrap', <Widget>[
       dom.svg(
@@ -415,7 +442,7 @@ class _RouteEditorState extends State<RouteEditor> {
         viewBox: '${_n(bounds.minX)} ${_n(bounds.minZ)} ${_n(bounds.width)} ${_n(bounds.depth)}',
         attributes: <String, String>{
           'role': 'img',
-          'aria-label': 'Route grid, top down: ${spec.points.length} points, ${spec.guides.length} guides, x ${bounds.minX.toInt()} to ${bounds.maxX.toInt()}, z ${bounds.minZ.toInt()} to ${bounds.maxZ.toInt()}',
+          'aria-label': 'Route grid, top down: ${spec.points.length} points${_steps(spec)}, ${spec.guides.length} guides, x ${bounds.minX.toInt()} to ${bounds.maxX.toInt()}, z ${bounds.minZ.toInt()} to ${bounds.maxZ.toInt()}',
           'data-min-x': _n(bounds.minX),
           'data-min-z': _n(bounds.minZ),
           'data-size': _n(bounds.width),
@@ -429,6 +456,12 @@ class _RouteEditorState extends State<RouteEditor> {
         dom.span(<Widget>[Component.text('x ${bounds.minX.toInt()} to ${bounds.maxX.toInt()}, z ${bounds.minZ.toInt()} to ${bounds.maxZ.toInt()}; north is up; grid every ${step.toInt()} block${step == 1 ? '' : 's'}')]),
       ]),
     ]);
+  }
+
+  /// How many of the points are recording steps, which the grid cannot draw.
+  static String _steps(RouteSpec spec) {
+    final int steps = spec.points.whereType<RouteStep>().length;
+    return steps == 0 ? '' : ' ($steps recording step${steps == 1 ? '' : 's'}, not drawn)';
   }
 
   Component _label(double x, double z, String text, double radius, String kind) => Component.element(
@@ -496,38 +529,38 @@ class _RouteEditorState extends State<RouteEditor> {
         'click': (web.Event event) => event.stopPropagation(),
       };
 
-  Widget _pickedEditor((String, int) picked) {
+  Widget _pickedEditor((String, int) picked, RouteSpec spec) {
     final (String key, int index) = picked;
     final JsonMap node = asMap(asList(_route[key])[index]);
     final bool guide = key == 'guides';
-    void set(String field, num? value) {
-      final List<Object?> list = List<Object?>.of(asList(_route[key]));
-      final JsonMap next = <String, Object?>{...node};
-      if (value == null) {
-        next.remove(field);
-      } else {
-        next[field] = value;
-      }
-      list[index] = next;
-      _write(<String, Object?>{..._route, key: list});
-    }
+    final bool step = !guide && node.containsKey('recording');
+    void set(String field, Object? value) => _write(setRouteNodeField(_route, key, index, field, value));
 
     final int count = asList(_route[key]).length;
-    final String label = guide ? 'Guide $index' : 'Point $index';
+    final String label = guide ? 'Guide $index' : (step ? 'Step $index' : 'Point $index');
+    final RouteWait? wait = RouteWait.fromJson(node['waitTicks']);
+    final Widget waitField = dom.label(<Widget>[
+      const dom.span(<Widget>[Component.text('Wait ticks')]),
+      GuiNumberInput(
+        value: wait == null || wait.ranged ? null : wait.min,
+        label: '$label waitTicks',
+        placeholder: wait != null && wait.ranged ? '$wait' : 'route',
+        onChanged: (num? value) => set('waitTicks', value?.toInt()),
+      ),
+    ]);
     return dom.div(classes: 'animus-route-picked', attributes: <String, String>{'role': 'group', 'aria-label': 'Selected $label'}, <Widget>[
       dom.strong(<Widget>[Component.text(label)]),
-      dom.div(classes: 'animus-route-coords', <Widget>[
-        for (final String axis in const <String>['x', 'y', 'z'])
-          dom.label(<Widget>[
-            dom.span(<Widget>[Component.text(axis)]),
-            GuiNumberInput(value: asDouble(node[axis]), integer: false, label: '$label $axis', onChanged: (num? value) => set(axis, value ?? 0)),
-          ]),
-        if (!guide)
-          dom.label(<Widget>[
-            const dom.span(<Widget>[Component.text('Wait ticks')]),
-            GuiNumberInput(value: asInt(node['waitTicks']), label: '$label waitTicks', placeholder: 'route', onChanged: (num? value) => set('waitTicks', value?.toInt())),
-          ]),
-      ]),
+      if (step)
+        _stepFields(node, label, set, waitField)
+      else
+        dom.div(classes: 'animus-route-coords', <Widget>[
+          for (final String axis in const <String>['x', 'y', 'z'])
+            dom.label(<Widget>[
+              dom.span(<Widget>[Component.text(axis)]),
+              GuiNumberInput(value: asDouble(node[axis]), integer: false, label: '$label $axis', onChanged: (num? value) => set(axis, value ?? 0)),
+            ]),
+          if (!guide) waitField,
+        ]),
       dom.div(classes: 'animus-row', <Widget>[
         if (!guide) ...<Widget>[
           Button.ghost(
@@ -548,6 +581,21 @@ class _RouteEditorState extends State<RouteEditor> {
               setState(() => _picked = (key, index + 1));
             },
           ),
+          if (step)
+            Button.ghost(
+              label: 'Make a position',
+              size: ButtonSize.small,
+              onPressed: () {
+                final (double x, double y, double z) = _addAt(spec);
+                _write(routeStepToPosition(_route, index, x, y, z));
+              },
+            )
+          else if (spec.order != 'wander')
+            Button.ghost(
+              label: 'Make a recording step',
+              size: ButtonSize.small,
+              onPressed: () => _write(routePointToStep(_route, index, component.recordings.keys.firstOrNull ?? '')),
+            ),
         ],
         Button.ghost(
           label: 'Remove $label',
@@ -561,6 +609,43 @@ class _RouteEditorState extends State<RouteEditor> {
     ]);
   }
 
+  /// A step's recording, tick range and wait. The recording is picked from
+  /// the workspace's recordings, or typed when the workspace has none.
+  Widget _stepFields(JsonMap node, String label, void Function(String field, Object? value) set, Widget waitField) {
+    final String recording = asString(node['recording']) ?? '';
+    final Map<String, int?> recordings = component.recordings;
+    final int? duration = recordings[recording];
+    final String recordingId = '$_gridId-recording';
+    return dom.div(classes: 'animus-route-step', <Widget>[
+      GuiRow(
+        label: 'Recording',
+        forId: recordingId,
+        help: recordings.isEmpty
+            ? 'No recordings in this workspace. Type the id of one under recordings/ on the server.'
+            : 'Walks to the segment\'s first frame, plays it once, then goes on from its last frame.',
+        child: recordings.isEmpty
+            ? GuiTextInput(id: recordingId, value: recording, placeholder: 'recording id', label: '$label recording', onChanged: (String value) => set('recording', value.trim()))
+            : GuiSelect(id: recordingId, value: recording.isEmpty ? null : recording, options: recordings.keys.toList(), onChanged: (String? value) => set('recording', value ?? '')),
+      ),
+      dom.div(classes: 'animus-route-coords', <Widget>[
+        dom.label(<Widget>[
+          const dom.span(<Widget>[Component.text('From tick')]),
+          GuiNumberInput(value: asInt(node['fromTick']), label: '$label fromTick', placeholder: '0', onChanged: (num? value) => set('fromTick', value?.toInt())),
+        ]),
+        dom.label(<Widget>[
+          const dom.span(<Widget>[Component.text('To tick')]),
+          GuiNumberInput(
+            value: asInt(node['toTick']),
+            label: '$label toTick',
+            placeholder: duration == null ? 'end' : 'end ($duration)',
+            onChanged: (num? value) => set('toTick', value?.toInt()),
+          ),
+        ]),
+        waitField,
+      ]),
+    ]);
+  }
+
   Widget _nodeList(RouteSpec spec, (String, int)? picked) {
     if (spec.nodes.isEmpty) {
       return dom.p(classes: 'animus-muted', <Widget>[
@@ -569,22 +654,32 @@ class _RouteEditorState extends State<RouteEditor> {
             : 'No points yet. Click the grid, or enter x, y and z under Add point at and press Add point.'),
       ]);
     }
-    String wait(RouteNode node) => node.guide ? '-' : (node.waitTicks == null ? 'route (${spec.waitTicks})' : '${node.waitTicks}');
+    String wait(RouteEntry node) => node.guide ? '-' : (node.waitTicks == null ? 'route (${spec.waitTicks})' : '${node.waitTicks}');
+    String kind(RouteEntry node) => switch (node) {
+          RouteStep() => 'step',
+          _ when node.guide => 'guide',
+          _ => 'point',
+        };
+    String where(RouteEntry node) => switch (node) {
+          RouteNode() => '${_coord(node.x)}, ${_coord(node.y)}, ${_coord(node.z)}',
+          RouteStep() => '${node.recording.isEmpty ? 'no recording' : node.recording}, ticks ${node.fromTick} to ${node.toTick ?? 'end'}',
+          RouteOther() => 'missing x, y or z',
+        };
     return dom.ol(classes: 'animus-route-list', attributes: const <String, String>{'aria-label': 'Route points'}, <Widget>[
       for (int index = 0; index < spec.nodes.length; index++)
         dom.li(
-          classes: picked != null && picked == (spec.nodes[index].guide ? 'guides' : 'points', spec.nodes[index].guide ? index - spec.points.length : index) ? 'is-selected' : null,
+          classes: picked != null && picked == _listKey(spec, index) ? 'is-selected' : null,
           <Widget>[
             dom.button(
               classes: 'animus-route-list-item',
               attributes: const <String, String>{'type': 'button'},
               events: <String, void Function(web.Event)>{
-                'click': (web.Event _) => setState(() => _picked = spec.nodes[index].guide ? ('guides', index - spec.points.length) : ('points', index)),
+                'click': (web.Event _) => setState(() => _picked = _listKey(spec, index)),
               },
               <Widget>[
                 dom.code(<Widget>[Component.text('$index')]),
-                dom.span(<Widget>[Component.text(spec.nodes[index].guide ? 'guide' : 'point')]),
-                dom.span(<Widget>[Component.text('${_coord(spec.nodes[index].x)}, ${_coord(spec.nodes[index].y)}, ${_coord(spec.nodes[index].z)}')]),
+                dom.span(<Widget>[Component.text(kind(spec.nodes[index]))]),
+                dom.span(<Widget>[Component.text(where(spec.nodes[index]))]),
                 dom.span(classes: 'animus-muted', <Widget>[Component.text('wait ${wait(spec.nodes[index])}')]),
               ],
             ),
@@ -592,6 +687,8 @@ class _RouteEditorState extends State<RouteEditor> {
         ),
     ]);
   }
+
+  static (String, int) _listKey(RouteSpec spec, int number) => number < spec.points.length ? ('points', number) : ('guides', number - spec.points.length);
 
   static String _coord(double value) => value == value.roundToDouble() ? '${value.toInt()}' : '$value';
 }

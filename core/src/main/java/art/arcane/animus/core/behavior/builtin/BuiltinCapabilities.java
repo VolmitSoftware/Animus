@@ -35,6 +35,7 @@ import art.arcane.animus.core.extension.BuiltinPolicy;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.navigation.MovementProfile;
+import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.virtual.Vec3;
 import com.google.gson.JsonArray;
@@ -77,7 +78,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final int MAXIMUM_RANDOM_STAGE_BOUND = 1_000_000;
     private static final String IDENTIFIER = "[a-z0-9][a-z0-9_-]*";
     private static final String FLAG_STATE = BehaviorFlags.FLAGS, QUEST_STATE = BehaviorFlags.QUESTS;
-    private static final Key NAVIGATE = new Key(NAMESPACE, "navigate");
+    private static final Key NAVIGATE = new Key(NAMESPACE, "navigate"), PLAY_RECORDING = new Key(NAMESPACE, "play-recording");
+    private static final String RECORDING_ID = "[a-z0-9][a-z0-9_-]{0,63}";
     private static final int DEFAULT_WAIT_TICKS = 1200, MINIMUM_WAIT_TICKS = 20, MAXIMUM_WAIT_TICKS = 12_000;
     private static final long OWNER_TICK_MILLIS = 50, LAGGING_OWNER_ALLOWANCE = 2, WAIT_DEADLINE_SLACK_MILLIS = 5000;
     private static final String RESOURCE_KEY = "[a-z0-9_.-]+:[a-z0-9_./-]+";
@@ -85,7 +87,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final long MAXIMUM_EXPIRY_SECONDS = 31_536_000L;
     private static final int MAXIMUM_ITEMS = 6400;
     /** Capabilities that need an NPC body or NPC presence; a server behavior's run refuses them as no-npc. */
-    private static final Set<String> NPC_ONLY = Set.of("say", "look", "navigate", "stop-navigation", "set-appearance", "set-equipment", "combat-control",
+    private static final Set<String> NPC_ONLY = Set.of("say", "look", "navigate", "stop-navigation", "play-recording", "resume-patrol", "set-appearance", "set-equipment", "combat-control",
             "build", "play-animation", "stop-animation", "npc-state", "player-in-range", "choices");
     /** Whether a capability needs an NPC body or NPC presence, so a server behavior cannot run it. */
     public static boolean npcOnly(Key key) { return key.namespace().equals(NAMESPACE) && NPC_ONLY.contains(key.name()); }
@@ -203,9 +205,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         return List.copyOf(problems);
     }
 
-    /** A waiting navigate is bounded by its own timeout instead of the short module deadline. */
+    /** A waiting navigate or recording playback is bounded by its own timeout instead of the short module deadline. */
     @Override public OptionalLong deadlineMillis(Key key, String argumentsJson) {
-        if (!key.equals(NAVIGATE)) return OptionalLong.empty();
+        if (!key.equals(NAVIGATE) && !key.equals(PLAY_RECORDING)) return OptionalLong.empty();
         try {
             JsonObject arguments = JsonDocuments.object(argumentsJson);
             if (!flag(arguments, "wait", false)) return OptionalLong.empty();
@@ -378,6 +380,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         action("stop-navigation", Effect.WORLD, "Stops the NPC's current route and any route it is following.", schema(""),
                 (arguments, problems) -> {},
                 call -> onOwner(call, () -> result("stopped", platform.stopNavigation(call.npc()))));
+        action("play-recording", Effect.WORLD, "Replaces the NPC's route with a recording it walks to and plays once, in a loop (the default) or back and forth. With wait, a once playback completes when it ends.",
+                schema(string("recording", 64) + "," + choice("playback", "once", "loop", "pingpong") + "," + bool("wait") + "," + integer("timeoutTicks", MINIMUM_WAIT_TICKS, MAXIMUM_WAIT_TICKS),
+                        required("recording")),
+                BuiltinCapabilities::checkPlayRecording, this::playRecording);
+        action("resume-patrol", Effect.WORLD, "Restarts the route or recording the NPC's definition declares; a stopped recording continues where it stopped. Reports resumed or nothing-to-resume.",
+                schema(""), (arguments, problems) -> {},
+                call -> onOwner(call, () -> status(platform.resumePatrol(call.npc()) ? "resumed" : "nothing-to-resume")));
         action("look", Effect.WORLD, "Turns the NPC toward a position or the triggering player.",
                 schema(COORDINATES + ",\"target\":{\"const\":\"player\"}", "\"oneOf\":[{" + required("target") + "},{" + required("x", "y", "z") + "}]"),
                 (arguments, problems) -> {},
@@ -733,17 +742,25 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         return onOwnerOrPlayer(call, player, () -> result("delivered", platform.openScreen(call.npc(), player, kind, id) ? 1 : 0));
     }
 
-    private CompletionStage<String> navigate(Call call) {
-        Supplier<JsonObject> start = routeStarter(call);
+    private CompletionStage<String> navigate(Call call) { return awaitable(call, routeStarter(call), "arrived"); }
+
+    private CompletionStage<String> playRecording(Call call) {
+        String recording = text(call.arguments, "recording").orElseThrow();
+        Playback playback = text(call.arguments, "playback").flatMap(Playback::parse).orElse(Playback.DEFAULT);
+        return awaitable(call, () -> { platform.playRecording(call.npc(), recording, playback); return new JsonObject(); }, "finished");
+    }
+
+    /** Starts the movement on the owner; with wait, completes when the route finishes and marks the response with {@code finished}. */
+    private CompletionStage<String> awaitable(Call call, Supplier<JsonObject> start, String finished) {
         if (!flag(call.arguments, "wait", false)) return onOwner(call, () -> start.get().toString());
         int timeout = timeoutTicks(call.arguments);
         CompletionStage<CompletionStage<String>> waiting = onOwner(call, () -> {
             waits.requireCapacity();
             JsonObject response = start.get();
-            response.addProperty("arrived", true);
+            response.addProperty(finished, true);
             return waits.watch(call.npc(), call.invocation.cancellation(), platform.routeFinished(call.npc()), response.toString(), timeout);
         });
-        return waiting.thenCompose(arrival -> arrival);
+        return waiting.thenCompose((CompletionStage<String> arrival) -> arrival);
     }
 
     private Supplier<JsonObject> routeStarter(Call call) {
@@ -808,6 +825,15 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         matches(arguments, "route", IDENTIFIER, problems);
         if (arguments.has("mode") || arguments.has("speed"))
             problems.add(problem("$.route", "route-owns-movement", "A reusable route keeps its own mode and speed"));
+    }
+
+    private static void checkPlayRecording(JsonObject arguments, List<Diagnostic> problems) {
+        if (arguments.has("timeoutTicks") && !flag(arguments, "wait", false))
+            problems.add(problem("$.timeoutTicks", "navigation-timeout-without-wait", "timeoutTicks applies only with wait set to true"));
+        if (!arguments.get("recording").getAsString().matches(RECORDING_ID))
+            problems.add(problem("$.recording", "recording-id", "recording is a recording id: lowercase letters, digits, _ or -, starting with a letter or digit"));
+        if (flag(arguments, "wait", false) && !text(arguments, "playback").orElse(Playback.DEFAULT.key()).equals(Playback.ONCE.key()))
+            problems.add(problem("$.wait", "play-recording-wait-loop", "Only a once playback finishes; wait needs playback set to once"));
     }
 
     private static void checkAppearance(JsonObject arguments, List<Diagnostic> problems) {
@@ -948,6 +974,11 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static String result(String name, int value) {
         JsonObject response = new JsonObject();
         response.addProperty(name, value);
+        return response.toString();
+    }
+    private static String status(String value) {
+        JsonObject response = new JsonObject();
+        response.addProperty("result", value);
         return response.toString();
     }
     private static String result(String name, boolean value) {

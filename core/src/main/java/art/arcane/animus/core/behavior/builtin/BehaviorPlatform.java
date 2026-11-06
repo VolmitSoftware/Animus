@@ -4,6 +4,7 @@ import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.core.extension.CapabilityRefusal;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.EquipmentSlot;
+import art.arcane.animus.core.recording.Playback;
 import art.arcane.animus.core.virtual.Vec3;
 import java.util.List;
 import java.util.Objects;
@@ -110,6 +111,13 @@ public interface BehaviorPlatform {
     CompletionStage<Void> routeFinished(NpcHandle npc);
     String navigationStatus(NpcHandle npc);
     boolean stopNavigation(NpcHandle npc);
+    /**
+     * Replaces the NPC's route with a recording it walks to and plays. {@link #routeFinished} called right after completes
+     * when a {@code once} playback ends; a looping playback never finishes.
+     */
+    void playRecording(NpcHandle npc, String recording, Playback playback);
+    /** Restarts the definition's own route or recording. False when the definition declares nothing to resume. */
+    boolean resumePatrol(NpcHandle npc);
     void look(NpcHandle npc, Vec3 target);
     void lookAtPlayer(NpcHandle npc, UUID player);
     /** Turns the NPC to one of its definition's named poses; refuses a pose it does not declare. */

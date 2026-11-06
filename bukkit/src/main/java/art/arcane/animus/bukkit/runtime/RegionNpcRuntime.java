@@ -100,7 +100,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     final AnimusRuntime runtime;
     final Executor io;
     /** The tables of config.toml a hotload may replace here. */
-    record Live(PersistedNpcService.Settings npcs, NavigationSettings navigation, RigSettings rigs) {}
+    record Live(PersistedNpcService.Settings npcs, NavigationSettings navigation, RigSettings rigs, art.arcane.animus.core.config.RecordingSettings recordings) {}
     final FoliaRegions regions;
     /** Doors change on the region that owns their chunk; a door left behind in another region is closed by its owner. */
     final BukkitDoors doors;
@@ -170,7 +170,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         previews = new ViewerPreviews(io, runtime.documents());
         Live initial = new Live(Objects.requireNonNull(settings),
                 runtime.isRunning() ? runtime.navigationSettings() : NavigationSettings.DEFAULT,
-                runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT);
+                runtime.isRunning() ? runtime.rigSettings() : RigSettings.DEFAULT,
+                runtime.isRunning() ? runtime.recordingSettings() : art.arcane.animus.core.config.RecordingSettings.DEFAULT);
         CombatBudgets combatBudgets = runtime.isRunning() ? runtime.combatBudgets() : CombatBudgets.DEFAULT;
         live = new RegionPickup<>(regions, initial);
         budget = new RegionBudget(regions, limits(initial, combatBudgets));
@@ -209,10 +210,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     PersistedNpcService.Settings settings() { return live.current().npcs(); }
     NavigationSettings navigationSettings() { return live.current().navigation(); }
     RigSettings rigs() { return live.current().rigs(); }
+    art.arcane.animus.core.config.RecordingSettings recordings() { return live.current().recordings(); }
 
     /** On the file lane after a hotload: publishes only; each region adopts the new settings at its next region tick. */
     private void published(PluginSettings next) {
-        Live adopted = new Live(PersistedNpcService.Settings.from(next.npcs()), next.navigation(), next.rigs());
+        Live adopted = new Live(PersistedNpcService.Settings.from(next.npcs()), next.navigation(), next.rigs(), next.recordings());
         budget.limits(limits(adopted, next.combat()));
         live.publish(adopted);
     }
@@ -250,9 +252,10 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         int visible = 0;
         for (RegionViewer viewer : viewers.values()) visible += viewer.shown.get();
         int sleeping = 0;
-        for (RegionActor actor : actors.values()) if (actor.routeSleeping) sleeping++;
+        int playing = 0;
+        for (RegionActor actor : actors.values()) { if (actor.routeSleeping) sleeping++; if (actor.performance.playing) playing++; }
         return "NPC runtime ready on Folia regions | active=" + index.size() + " | dormant=" + Math.max(0, actors.size() - index.size())
-                + " | routes-sleeping=" + sleeping + " | navigation-pressure=" + navigationPressureStatus
+                + " | routes-sleeping=" + sleeping + " | recordings=" + playing + " | navigation-pressure=" + navigationPressureStatus
                 + " | viewers=" + viewers.size() + " | visible=" + visible + " | handoffs=" + transfers.size() + " | file-reads=" + reads.get()
                 + " | accepted=" + accepted.get() + " | rejected=" + rejected.get() + " | path-jobs=" + navigation.outstandingJobs()
                 + " | mounted=" + mounts.vehicleOf().size() + " | mount-problems=" + mounts.diagnostics().size() + " | riders=" + rides.size()
@@ -467,6 +470,8 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void pose(String id, String pose) { navigable(id).pose(Objects.requireNonNull(pose)); }
     @Override public void followRoute(String id, String route) { navigable(id).followRoute(route); }
     @Override public CompletableFuture<Void> awaitRoute(String id) { return navigable(id).awaitRoute(); }
+    @Override public void playRecording(String id, String recording, art.arcane.animus.core.recording.Playback playback) { navigable(id).playRecording(recording, playback); }
+    @Override public boolean resumePatrol(String id) { return navigable(id).resumePatrol(); }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) { navigable(id).setAppearance(name, skin, reset); }
     @Override public void setEquipment(String id, EquipmentSlot slot, ItemStack item) { navigable(id).setEquipment(slot, item); }
     @Override public void playAnimation(String id, String animation, double speed, Optional<String> loop, int layer) { navigable(id).playAnimation(animation, speed, loop, layer); }
@@ -499,7 +504,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
         }
     }
     /** The runtime key, the UUID, of the world a definition names by name, UUID or dimension key. */
-    private String worldKey(String name) {
+    String worldKey(String name) {
         World world = BukkitWorldLookup.find(plugin.getServer(), name);
         return world == null ? null : world.getUID().toString();
     }

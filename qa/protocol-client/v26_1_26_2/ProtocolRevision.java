@@ -14,6 +14,7 @@ import net.minecraft.world.phys.Vec3;
  * This does not share or relabel protocol IDs, entity data, or packet codecs.
  */
 final class ProtocolRevision {
+    static Packet<?> swing() { return new ServerboundSwingPacket(net.minecraft.world.InteractionHand.MAIN_HAND); }
     static List<Packet<?>> acknowledgments(int id, PositionMoveRotation position) {
         // Both exact client jars send the ID acknowledgment then PosRot.
         return List.of(new ServerboundAcceptTeleportationPacket(id),

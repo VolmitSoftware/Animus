@@ -298,6 +298,105 @@
         "schema": false,
         "java": false
       }
+    },
+    {
+      "path": "recordings/market-loop.json",
+      "kind": "recording",
+      "id": "market-loop",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "recordings/roundtrip-input.json",
+      "kind": "recording",
+      "id": "market-loop",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "recordings/too-many-frames.json",
+      "kind": "recording",
+      "id": "market-loop",
+      "expect": {
+        "schema": true,
+        "java": false
+      }
+    },
+    {
+      "path": "recordings/bad-event.json",
+      "kind": "recording",
+      "id": "market-loop",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "groups/town-guards.json",
+      "kind": "group",
+      "id": "town-guards",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "groups/harbor.json",
+      "kind": "group",
+      "id": "harbor",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "groups/market-skins.json",
+      "kind": "group",
+      "id": "market-skins",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "groups/refused-identity.json",
+      "kind": "group",
+      "id": "refused-identity",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "groups/refused-values.json",
+      "kind": "group",
+      "id": "refused-values",
+      "expect": {
+        "schema": true,
+        "java": false
+      }
+    },
+    {
+      "path": "groups/refused-nested.json",
+      "kind": "group",
+      "id": "refused-nested",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "groups/refused-id-mismatch.json",
+      "kind": "group",
+      "id": "refused-id-mismatch",
+      "expect": {
+        "schema": true,
+        "java": false
+      }
     }
   ],
   "messages": [

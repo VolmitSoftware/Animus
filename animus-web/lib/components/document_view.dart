@@ -371,6 +371,7 @@ class _DocumentPaneState extends State<DocumentPane> {
             value: json,
             path: r'$',
             diagnostics: _allDiagnostics(document),
+            recordings: routeRecordings(workspace),
             onChanged: (JsonMap value) => onJson(value, coalesce: 'route'),
           ),
         ]),

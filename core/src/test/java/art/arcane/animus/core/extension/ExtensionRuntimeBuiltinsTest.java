@@ -58,6 +58,8 @@ class ExtensionRuntimeBuiltinsTest {
         @Override public CompletionStage<Void> routeFinished(NpcHandle npc) { throw new AssertionError(); }
         @Override public String navigationStatus(NpcHandle npc) { throw new AssertionError(); }
         @Override public boolean stopNavigation(NpcHandle npc) { throw new AssertionError(); }
+        @Override public void playRecording(NpcHandle npc, String recording, art.arcane.animus.core.recording.Playback playback) { throw new AssertionError(); }
+        @Override public boolean resumePatrol(NpcHandle npc) { throw new AssertionError(); }
         @Override public void look(NpcHandle npc, Vec3 target) { throw new AssertionError(); }
         @Override public void lookAtPlayer(NpcHandle npc, UUID player) { throw new AssertionError(); }
         @Override public void pose(NpcHandle npc, String pose) { throw new AssertionError(); }
