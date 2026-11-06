@@ -123,6 +123,9 @@
 - `@selected` for the selected NPC wherever a command takes an NPC id.
 - Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
 - `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
+- World-event server triggers: `player_area`, inventory open/close/click, item drop/pickup/consume, block click/place/break, `player_damaged`, `player_damage_entity` and `player_kill`, with filters and `cancel` conditions on Bukkit, Folia and mods.
+- `npc.citizens_id` and `server.players` facts; `players`, `player_info`, `player_flag` and `player_has_flag` functions; `[behaviors.server] maximumAreas`.
+- Denizen converter v4 converts area events from `notables.yml` and literal notes, the new world events with `determine cancelled`, player-list targets, and flag names joined with tags.
 
 ### Changed
 
@@ -246,6 +249,8 @@
 - Hotload notices wait until edited behaviors, shops, GUIs, holograms and menus are live.
 - Hotload no longer reports numerically equal values, such as `0.0` and `0`, as changed.
 - Plain command replies carry the `[Animus]` prefix, refusals show in red and successes in green.
+- Denizen `<npc.id>` reads the Citizens id, so imported and newly written flags agree.
+- A rate-limited sneak-click on an NPC falls through to its shop, as in Denizen.
 
 ### Notes
 
