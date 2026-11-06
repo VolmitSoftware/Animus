@@ -1,7 +1,8 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.text.ChatLine;
+import art.arcane.animus.core.text.DocsLink;
 import art.arcane.animus.core.text.Palette;
-import art.arcane.animus.core.text.RichText;
 import art.arcane.volmlib.util.director.DirectorTextResolver;
 import art.arcane.volmlib.util.director.compat.DirectorEngineFactory;
 import art.arcane.volmlib.util.director.DirectorEngineOptions;
@@ -41,7 +42,7 @@ public final class AnimusDirector {
     /** Help in Animus's pinks on grey. */
     public static final DirectorMiniMenu.Theme THEME = new DirectorMiniMenu.Theme("#FF5FA8", "#E0408C", "#E0408C", "#555555", "#AAAAAA", "#FF5FA8", "#FFB3D6", "#777777");
     private static final TextKey UNEXPECTED = TextKey.of(DirectorRuntimeMessages.UNEXPECTED_ARGUMENT.id(),
-            "Unexpected argument \"{argument}\"; optional values are written key=value, such as page=2");
+            "Unexpected \"{argument}\"; optional values are key=value, such as page=2");
     /** Director's English, with Animus's own example for an unkeyed optional value. */
     public static final DirectorTextResolver TEXT = (TextKey key, MessageArgs arguments) ->
             DirectorTextResolver.ENGLISH.resolve(key.id().equals(UNEXPECTED.id()) ? UNEXPECTED : key, arguments);
@@ -83,17 +84,17 @@ public final class AnimusDirector {
         DirectorRoute route = engine.route(invocation);
         if (!route.invocable()) {
             DirectorRuntimeNode reached = route.node() == null ? engine.getRoot() : route.node();
-            actor.tell(Palette.error("Unknown command: /" + label + " " + String.join(" ", tokens)));
+            actor.tell(Palette.error("Unknown command /" + label + " " + String.join(" ", tokens)));
             help(actor, reached, 0);
             return;
         }
         DirectorRuntimeNode node = route.node();
         for (DirectorRuntimeNode gate = node; gate != null; gate = gate.getParent())
             if (!gate.getDescriptor().getOrigin().validFor(actor.player().isPresent())) {
-                actor.tell(Palette.error(actor.player().isPresent() ? "Run this command from the console." : "Only a player can use this command."));
+                actor.tell(Palette.error(actor.player().isPresent() ? "Console only" : "Players only"));
                 return;
             }
-        if (!allowed(actor, node)) { actor.tell(Palette.error("You do not have permission to use this command.")); return; }
+        if (!allowed(actor, node)) { actor.tell(Palette.error("No permission: " + permission(node))); return; }
         boolean hidden = hidden(node);
         sender.quiet = hidden;
         CommandActor previous = CURRENT.get();
@@ -104,7 +105,7 @@ public final class AnimusDirector {
         if (result.isSuccess()) return;
         // A hidden command answers every refusal the same way, so a forged click learns nothing.
         if (hidden) actor.tell(Palette.error(ChoiceCommands.NOT_AVAILABLE));
-        else actor.plain(RichText.colorize(Palette.PREFIX + "&7Usage: &f" + usage(node)));
+        else actor.rich(ChatLine.of(Palette.PREFIX + "&7Usage: &f" + usage(node)).docs(DocsLink.ARGUMENTS));
     }
 
     /** {@code /animus path <required> [optional=default]}. */
@@ -121,7 +122,7 @@ public final class AnimusDirector {
     /** One page of help for a group, listing what the actor may run. */
     public void help(CommandActor actor, DirectorRuntimeNode node, int page) {
         DirectorRuntimeNode group = node.isInvocable() && node.getParent() != null ? node.getParent() : node;
-        if (!visible(actor, group)) { actor.tell(Palette.error("You do not have permission to use this command.")); return; }
+        if (!visible(actor, group)) { actor.tell(Palette.error("No permission: " + permission(group))); return; }
         List<DirectorRuntimeNode> entries = group.getChildren().stream().filter((DirectorRuntimeNode child) -> visible(actor, child))
                 .sorted(Comparator.comparing((DirectorRuntimeNode child) -> child.getDescriptor().getName(), String.CASE_INSENSITIVE_ORDER)).toList();
         actor.menu(new DirectorMiniMenu.DirectorHelpPage(group, entries, page, DirectorMiniMenu.MAX_ENTRIES_PER_PAGE));

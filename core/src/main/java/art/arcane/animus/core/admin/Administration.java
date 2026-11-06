@@ -11,6 +11,8 @@ import art.arcane.animus.core.extension.ModuleHooks;
 import art.arcane.animus.api.ImportConverters;
 import art.arcane.animus.core.npc.*;
 import art.arcane.animus.core.storage.*;
+import art.arcane.animus.core.text.DocsLink;
+import art.arcane.animus.core.text.Palette;
 import com.google.gson.*;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -35,11 +37,16 @@ public final class Administration {
                 + " relay " + (runtime.editorRelaySettings().enabled() ? "on" : "off");
     }
 
+    /**
+     * The headline first: version, platform, definition and group counts and any file problems with the command that names
+     * them. Then the settings in effect and the runtime line with the configured status message, for the details.
+     */
     public List<String> status() {
-        List<String> lines = new ArrayList<>(List.of(runtime.status(), "NPC definitions: " + runtime.npcs().all().size() + "; trait groups: "
-                + runtime.npcs().groups().groups().size() + " group-problems=" + runtime.npcs().groupProblems().size(), settingsInEffect()));
-        if (!runtime.npcs().diagnostics().isEmpty()) lines.add("Definition file problems: " + runtime.npcs().diagnostics().size() + "; validate for field errors; retained definitions remain active");
-        return List.copyOf(lines);
+        int problems = runtime.npcs().diagnostics().size() + runtime.npcs().groupProblems().size(), groups = runtime.npcs().groups().groups().size();
+        String headline = "v" + art.arcane.animus.core.BuildIdentity.VERSION + " on " + runtime.environment().platform() + " " + runtime.environment().minecraftVersion()
+                + " | " + runtime.npcs().all().size() + " NPCs" + (groups == 0 ? "" : ", " + groups + " groups")
+                + (problems == 0 ? "" : " | " + problems + " file problem" + (problems == 1 ? "" : "s") + ", see /animus validate");
+        return List.of(headline, settingsInEffect(), runtime.status());
     }
 
     /** Every definition as {@code id | name | revision}, in repository order. */
@@ -47,20 +54,42 @@ public final class Administration {
         return runtime.npcs().all().stream().map((NpcDefinition definition) -> definition.id() + " | " + definition.name() + " | revision " + definition.revision()).toList();
     }
 
-    /** The stored JSON, then for an NPC with groups its effective JSON, where each field came from and any group problem. */
-    public List<String> inspect(String id) throws IOException {
+    /**
+     * What {@code /animus inspect} shows: the effective definition, its stored and effective JSON, where each field came
+     * from when trait groups apply, and the group problem, if any.
+     */
+    public record Inspection(NpcDefinition effective, String stored, String merged, List<String> provenance, Optional<String> problem) {
+        /** {@code id | name | type | revision | spawned or dormant | groups} for the head line. */
+        public String summary() {
+            JsonObject data = effective.json();
+            return effective.qualifiedId() + " | " + effective.name() + " | " + text(data, "type") + " | rev " + effective.revision()
+                    + " | " + (effective.spawned() ? "spawned" : "dormant") + (effective.groups().isEmpty() ? "" : " | groups " + String.join(", ", effective.groups()));
+        }
+
+        /** {@code world x y z} of the definition's position, or empty when it has none. */
+        public String position() {
+            JsonElement position = effective.json().get("position");
+            if (position == null || !position.isJsonObject()) return "";
+            JsonObject at = position.getAsJsonObject();
+            return text(at, "world") + " " + number(at, "x") + " " + number(at, "y") + " " + number(at, "z");
+        }
+
+        private static String text(JsonObject object, String key) { return object.has(key) && object.get(key).isJsonPrimitive() ? object.get(key).getAsString() : "?"; }
+
+        private static String number(JsonObject object, String key) {
+            if (!object.has(key) || !object.get(key).isJsonPrimitive()) return "?";
+            double value = object.get(key).getAsDouble();
+            return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value);
+        }
+    }
+
+    public Inspection inspect(String id) throws IOException {
         NpcRepository.Draft draft = runtime.npcs().draft(id);
-        List<String> lines = new ArrayList<>(List.of(draft.document().toString()));
-        NpcDefinition effective = runtime.npcs().find(id).orElseThrow(() -> new IOException("Unknown NPC: " + id));
-        NpcDefinition stored = NpcDefinition.parse(JsonDocuments.write(draft.document()));
-        if (stored.groups().isEmpty()) return lines;
-        lines.add("Effective (groups: " + String.join(", ", stored.groups()) + ")");
-        lines.add(effective.json().toString());
-        lines.add("from: " + String.join(", ", runtime.npcs().provenance(id).entrySet().stream()
-                .map((Map.Entry<String, String> entry) -> entry.getKey() + "<-" + entry.getValue()).toList()));
-        String problem = runtime.npcs().groupProblems().get(draft.path());
-        if (problem != null) lines.add("group-problem=" + problem);
-        return lines;
+        NpcDefinition effective = runtime.npcs().find(id).orElseThrow(() -> new IOException("Unknown NPC " + id));
+        List<String> provenance = effective.groups().isEmpty() ? List.of() : runtime.npcs().provenance(id).entrySet().stream()
+                .map((Map.Entry<String, String> entry) -> entry.getKey() + " from " + entry.getValue()).toList();
+        return new Inspection(effective, draft.document().toString(), effective.json().toString(), provenance,
+                Optional.ofNullable(runtime.npcs().groupProblems().get(draft.path())));
     }
 
     public String create(String id, String type, String world, double x, double y, double z, String group, String name) throws IOException {
@@ -76,7 +105,7 @@ public final class Administration {
         position.addProperty("yaw", 0); position.addProperty("pitch", 0); object.add("position", position);
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
         String tx = runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
-        return "Created dormant " + definition.id() + "; transaction " + tx;
+        return "Created dormant " + definition.id() + "; tx " + tx;
     }
 
     /** Merges the top-level fields of a JSON object into the definition. */
@@ -84,7 +113,7 @@ public final class Administration {
         NpcRepository.Draft draft = runtime.npcs().draft(id);
         JsonObject fields = JsonDocuments.object(patch);
         JsonObject edited = draft.document(); fields.entrySet().forEach(e -> edited.add(e.getKey(), e.getValue()));
-        return "Saved; transaction " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
+        return "Saved " + id + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), edited));
     }
 
     public String spawned(String id, boolean spawn) throws IOException {
@@ -92,7 +121,7 @@ public final class Administration {
         JsonObject document = draft.document();
         document.addProperty("spawned", spawn);
         String tx = runtime.npcs().apply(new NpcRepository.Draft(draft.path(), draft.expectedHash(), draft.expectedRevision(), document));
-        return (spawn ? "Spawn requested for " : "Despawn requested for ") + id + "; transaction " + tx;
+        return (spawn ? "Spawn requested for " : "Despawn requested for ") + id + "; tx " + tx;
     }
 
     public String duplicate(String id, String copy) throws IOException {
@@ -100,17 +129,17 @@ public final class Administration {
         object.addProperty("id", copy); object.addProperty("uuid", UUID.randomUUID().toString());
         object.addProperty("revision", 1); object.addProperty("spawned", false); object.remove("migration");
         NpcDefinition definition = NpcDefinition.parse(JsonDocuments.write(object));
-        return "Cloned; transaction " + runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
+        return "Cloned " + id + " as dormant " + copy + "; tx " + runtime.npcs().apply(new NpcRepository.Draft(definition.path(), "missing", 0, object));
     }
 
-    public String delete(String id) throws IOException { return "Deleted; rollback transaction " + runtime.npcs().delete(id); }
+    public String delete(String id) throws IOException { return "Deleted " + id + "; tx " + runtime.npcs().delete(id); }
 
-    public List<String> validate() throws IOException { return checked("validate", runtime.npcs().validate()); }
+    public List<String> validate() throws IOException { return checked("All definitions valid", runtime.npcs().validate()); }
 
-    public List<String> reload() throws IOException { return checked("reload", runtime.npcs().reload()); }
+    public List<String> reload() throws IOException { return checked("Reloaded", runtime.npcs().reload()); }
 
     private List<String> checked(String operation, List<String> errors) {
-        return errors.isEmpty() ? List.of(operation + " successful; " + runtime.npcs().all().size() + " active definitions") : errors;
+        return errors.isEmpty() ? List.of(operation + "; " + runtime.npcs().all().size() + " active") : errors;
     }
 
     /** One step of the Citizens drop-in flow; the catalogs its transactions touched reload even when it fails part way. */
@@ -123,7 +152,7 @@ public final class Administration {
         if (dropIn.settingsChanged()) {
             // accept commands and rollback edit config.toml; apply it now instead of waiting for a hotload.
             try { runtime.applySettings(art.arcane.animus.core.config.PluginSettings.load(runtime.documents())); }
-            catch (IOException | RuntimeException failure) { lines.add("config.toml changed but was not applied (" + failure.getMessage() + "); it applies at the next hotload or restart"); }
+            catch (IOException | RuntimeException failure) { lines.add("config.toml changed but not applied: " + failure.getMessage() + "; it applies at the next hotload or restart"); }
         }
         return lines;
     }
@@ -134,31 +163,30 @@ public final class Administration {
      * {@code worlds} renames Citizens worlds; a converter is chosen by key or by the file.
      */
     public List<String> preview(String file, Optional<String> converter, Map<String, String> worlds) throws IOException {
-        if (!file.matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Use a plain filename under imports/inbox/");
+        if (!file.matches("[a-zA-Z0-9_-]+\\.[a-zA-Z0-9]{1,8}")) throw new IOException("Give a plain file name under imports/inbox/, such as saves.yml");
         CitizensImporter importer = new CitizensImporter();
         Path path = runtime.documents().resolve("imports/inbox/" + file);
         CitizensImporter.Preview preview;
         if (converter.isEmpty() && file.endsWith(".yml") && CitizensImporter.recognizes(JsonDocuments.read(path)))
             preview = importer.preview(path, runtime.documents(), worlds);
         else {
-            if (!worlds.isEmpty()) throw new IOException("World mappings apply only to Citizens imports");
+            if (!worlds.isEmpty()) throw new IOException("worlds= applies only to Citizens saves");
             ImportConverters.Source source = ModuleImports.source(path);
             ModuleHooks.Converter selected = ModuleImports.select(runtime.moduleHooks(), source, converter);
             preview = ModuleImports.preview(runtime.documents(), source, selected);
             if (preview.valid() != preview.records())
-                return List.of("Preview " + preview.id() + " by " + selected.descriptor().key(), "Records: " + preview.records() + ", valid: " + preview.valid(),
-                        "Review " + preview.directory().resolve("report.json") + "; fix the source or converter before import apply.");
+                return List.of(Palette.error("Preview " + preview.id() + " by " + selected.descriptor().key() + ": " + (preview.records() - preview.valid()) + " of " + preview.records() + " records invalid"),
+                        "Fix the source or converter and preview again; details in " + report(preview.id()));
         }
-        return List.of("Preview " + preview.id(), "Records: " + preview.records() + ", valid: " + preview.valid() + ", skins: " + preview.skins(), "Review " + preview.directory().resolve("report.json") + " before import apply.");
+        return List.of("Preview " + preview.id() + ": " + preview.records() + " records, " + preview.valid() + " valid, " + preview.skins() + " skins; nothing installed",
+                "Review " + report(preview.id()) + ", then /animus import apply " + preview.id() + " " + DocsLink.IMPORTS.url());
     }
 
     /** Stages how a preview lands next to existing definitions: {@code reject}, {@code replace} or {@code duplicate} with a copy label. */
     public List<String> stage(String importId, String mode, Optional<String> label) throws IOException {
         ImportApplications.Preview application = ImportApplications.stage(runtime.documents(), importId, mode, label.orElse(null));
-        return List.of("Application " + application.applicationId(),
-                "Mode: " + application.mode() + "; records: " + application.records() + "; replacements: " + application.replacements(),
-                "Review " + application.report(),
-                "Apply with /animus import apply-plan " + importId + " " + application.applicationId());
+        return List.of("Application " + application.applicationId() + ": " + application.mode() + ", " + application.records() + " records, " + application.replacements() + " replacements",
+                "Review " + relative(application.report()) + ", then /animus import apply-plan " + importId + " " + application.applicationId());
     }
 
     public List<String> apply(String importId) throws IOException { return installed(new CitizensImporter().apply(runtime.documents(), importId)); }
@@ -168,10 +196,20 @@ public final class Administration {
     private List<String> installed(String tx) throws IOException {
         List<String> errors = runtime.npcs().reload();
         List<String> notes = catalogs(List.of(tx), false);
-        if (!errors.isEmpty()) throw new IOException("Import stored; these definition files were refused and keep their last valid version: " + String.join("; ", errors));
-        List<String> lines = new ArrayList<>(List.of("Installed dormant definitions; transaction " + tx));
+        if (!errors.isEmpty()) throw new IOException("Import stored, but these files were refused and keep their last valid version: " + String.join("; ", errors));
+        if (tx.equals("already-applied")) return List.of("Already installed; nothing changed");
+        List<String> lines = new ArrayList<>(List.of(Palette.success("Installed dormant NPCs; tx " + tx)));
         lines.addAll(notes);
         return lines;
+    }
+
+    /** Where a preview's report lives, under the Animus data folder. */
+    private static String report(String importId) { return "imports/" + importId + "/report.json"; }
+
+    /** A path under the Animus data folder as the operator reads it there. */
+    private String relative(Path path) throws IOException {
+        Path root = runtime.documents().resolve("imports").getParent();
+        return path.startsWith(root) ? root.relativize(path).toString().replace('\\', '/') : path.toString();
     }
 
     public List<String> rollback(String transaction) throws IOException {
@@ -179,8 +217,8 @@ public final class Administration {
         // Rebuild after an explicit undo, which intentionally restores older revisions.
         List<String> errors = runtime.npcs().reloadAfterRollback();
         List<String> notes = catalogs(List.of(tx), true);
-        if (!errors.isEmpty()) throw new IOException("Rollback stored; reload failed: " + String.join("; ", errors));
-        List<String> lines = new ArrayList<>(List.of("Rolled back; inverse transaction " + tx));
+        if (!errors.isEmpty()) throw new IOException("Rollback stored, but reload failed: " + String.join("; ", errors));
+        List<String> lines = new ArrayList<>(List.of(Palette.success("Rolled back " + transaction + "; tx " + tx)));
         lines.addAll(notes);
         return lines;
     }
@@ -193,7 +231,7 @@ public final class Administration {
         if (transactions.isEmpty()) return List.of();
         CatalogChange change;
         try { change = CatalogChange.of(runtime.documents(), transactions, rollback).without(DocumentKind.NPC, DocumentKind.SKIN, DocumentKind.ROUTE, DocumentKind.RECORDING, DocumentKind.GROUP); }
-        catch (IOException unreadable) { return List.of("Catalogs not reloaded (" + unreadable.getMessage() + "); run /animus shop reload, /animus gui reload and /animus behaviors reload"); }
+        catch (IOException unreadable) { return List.of(Palette.error("Catalogs not reloaded: " + unreadable.getMessage() + "; run /animus shop reload, gui reload and behaviors reload")); }
         if (!change.empty()) runtime.catalogs().reload(change);
         return List.of();
     }

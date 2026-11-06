@@ -10,17 +10,17 @@ class HotloadMessagesTest {
     @Test void appliedLinesMatchAdaptsFormatWithAnimusBranding() {
         List<String> lines = HotloadMessages.applied("npcs/town/guard.json",
                 List.of(new HotloadDiff.Change("name", "\"Guard\"", "\"Captain\"")), (String key) -> false);
-        assertEquals(List.of(RichText.colorize("&8[&#FF5FA8Animus&8]&7: &aAnimus Hotloaded: &f[npcs/town/guard.json] &#FFB3D6[name] &7[\"Guard\" -> \"Captain\"]")), lines);
-        assertEquals("[Animus]: Animus Hotloaded: [npcs/town/guard.json] [name] [\"Guard\" -> \"Captain\"]",
+        assertEquals(List.of(RichText.colorize("&8[&#FF5FA8Animus&8]&7: &aHotloaded &f[npcs/town/guard.json] &#FFB3D6[name] &7[\"Guard\" -> \"Captain\"]")), lines);
+        assertEquals("[Animus]: Hotloaded [npcs/town/guard.json] [name] [\"Guard\" -> \"Captain\"]",
                 RichText.sectionRuns(lines.getFirst()).stream().map(RichText.Run::text).reduce("", String::concat));
     }
 
-    @Test void moreThanTwelveChangesAreTruncatedWithACount() {
+    @Test void moreThanFiveChangesAreTruncatedWithACount() {
         List<HotloadDiff.Change> changes = new ArrayList<>();
         for (int index = 0; index < 15; index++) changes.add(new HotloadDiff.Change("key" + index, "1", "2"));
         List<String> lines = HotloadMessages.applied("config.toml", changes, (String key) -> false);
-        assertEquals(13, lines.size());
-        assertEquals(RichText.colorize("&8[&#FF5FA8Animus&8]&7: &aAnimus Hotloaded: &f[config.toml] &7[3 additional changes omitted]"), lines.getLast());
+        assertEquals(6, lines.size());
+        assertEquals(RichText.colorize("&8[&#FF5FA8Animus&8]&7: &aHotloaded &f[config.toml] &7[+10 more changes]"), lines.getLast());
     }
 
     @Test void restartOnlyKeysSaySoAndLiveKeysDoNot() {
@@ -40,7 +40,7 @@ class HotloadMessagesTest {
 
     @Test void refusalCarriesTheFieldError() {
         String line = HotloadMessages.refused("npcs/town/guard.json", "$.position.y: expected number", HotloadMessages.KEPT);
-        assertEquals("[Animus]: Animus Hotload refused: [npcs/town/guard.json] $.position.y: expected number [kept the last valid version]",
+        assertEquals("[Animus]: Hotload refused [npcs/town/guard.json] $.position.y: expected number [kept the last valid version]",
                 RichText.sectionRuns(line).stream().map(RichText.Run::text).reduce("", String::concat));
     }
 }

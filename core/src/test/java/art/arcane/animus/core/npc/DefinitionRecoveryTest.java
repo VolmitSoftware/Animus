@@ -42,7 +42,7 @@ class DefinitionRecoveryTest {
             assertEquals(broken, Files.readString(root.resolve(PATH)));
             assertThrows(IOException.class, () -> rename(runtime.npcs(), "guard", "Do not overwrite"));
             assertEquals(broken, Files.readString(root.resolve(PATH)));
-            assertTrue(new Administration(runtime).status().stream().anyMatch(line -> line.contains("Definition file problems: 1")));
+            assertTrue(new Administration(runtime).status().stream().anyMatch(line -> line.contains("| 1 file problem, see /animus validate")));
             Files.writeString(root.resolve(PATH), valid);
             assertTrue(runtime.npcs().reload().isEmpty()); assertTrue(runtime.npcs().diagnostics().isEmpty());
         }

@@ -6,6 +6,7 @@ import art.arcane.animus.core.config.EditorSettings;
 import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.editor.relay.EditorRelayClient;
 import art.arcane.animus.core.editor.transport.EditorRequestHandler;
+import art.arcane.animus.core.text.DocsLink;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
@@ -138,11 +139,11 @@ public final class EditorService implements AutoCloseable {
             started.start();
             listener = started;
             state = "ready";
-            log.accept(started.describe());
+            log.accept("Editor " + started.describe());
         } catch (IOException | RuntimeException failure) {
             started.close();
             listenerProblem = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
-            state = "ready; listener failed: " + listenerProblem;
+            state = "ready";
             log.accept("Editor listener could not start: " + listenerProblem);
         }
     }
@@ -283,17 +284,48 @@ public final class EditorService implements AutoCloseable {
     /** The relay connection is registered, for diagnostics. */
     public synchronized boolean relayRegistered() { return relay != null && relay.isRegistered(); }
 
+    /**
+     * At most two lines: the state with listener, relay and counts, then the fingerprint the pairing page shows and the
+     * first problem, if any.
+     */
     public synchronized List<String> status() {
-        List<String> lines = new ArrayList<>();
-        lines.add("Editor: " + state);
-        if (api == null) return lines;
+        if (api == null) return List.of("Editor " + state);
         EditorApi.Parts parts = api.parts();
-        lines.add("Editor fingerprint " + parts.identity().fingerprint() + " | tokens=" + parts.tokens().list().size()
-                + " | pairings waiting=" + parts.tokens().pendingPairings() + " | event streams=" + parts.events().open() + " | previews=" + parts.previews().count());
-        lines.add(listener == null ? "Editor listener off" + (settings.listenerEnabled() ? " (failed to start" + (listenerProblem.isEmpty() ? "" : ": " + listenerProblem) + ")" : "; set [editor] listenerEnabled = true") : listener.describe());
-        lines.add(relay == null ? "Editor relay off; set [editor] relayEnabled = true" : "Editor relay " + relaySettings.url() + " | " + (relay.isRegistered() ? "registered" : "connecting"));
-        lines.add("Editor previews " + (host.previews().isPresent() ? "available" : "unavailable: " + host.previewsUnavailable()));
-        return lines;
+        String relayed = relay == null ? "relay off" : "relay " + relaySettings.url() + (relay.isRegistered() ? " registered" : " connecting");
+        String summary = "Editor " + state + " | " + (listener == null ? "listener off" : listener.describe()) + " | " + relayed + " | " + counts(parts)
+                + " | " + parts.events().open() + " streams | " + parts.previews().count() + " previews";
+        String problem = problem();
+        return List.of(summary, "Fingerprint " + parts.identity().fingerprint() + (problem.isEmpty() ? "" : " | " + problem));
+    }
+
+    /** The short form of {@link #status} for chat: state, listener port, relay state, tokens and the first problem. */
+    public synchronized String headline() {
+        if (api == null) return "Editor " + state;
+        String problem = problem();
+        return "Editor " + state + " | " + (listener == null ? "listener off" : "listener :" + listener.port())
+                + " | relay " + (relay == null ? "off" : relay.isRegistered() ? "registered" : "connecting") + " | " + counts(api.parts())
+                + (problem.isEmpty() ? "" : " | " + problem);
+    }
+
+    private static String counts(EditorApi.Parts parts) {
+        int waiting = parts.tokens().pendingPairings();
+        return parts.tokens().list().size() + " tokens" + (waiting == 0 ? "" : ", " + waiting + " pairing");
+    }
+
+    /** How the editor is reached, for the enable line: {@code :8123}, {@code relay}, both, {@code unreachable} or {@code off}. */
+    public synchronized String reach() {
+        if (api == null) return "off";
+        String port = listener == null ? "" : ":" + listener.port();
+        if (relay == null) return port.isEmpty() ? "unreachable" : port;
+        return port.isEmpty() ? "relay" : port + " + relay";
+    }
+
+    /** What keeps the editor from working fully, or empty. */
+    public synchronized String problem() {
+        if (api == null) return "";
+        if (listener == null && settings.listenerEnabled()) return "listener failed" + (listenerProblem.isEmpty() ? "" : ": " + listenerProblem);
+        if (listener == null && relay == null) return "no listener or relay; turn one on in [editor] " + DocsLink.CONNECTING.url();
+        return host.previews().isEmpty() ? "previews unavailable: " + host.previewsUnavailable() : "";
     }
 
     @Override
