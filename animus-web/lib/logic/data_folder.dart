@@ -11,6 +11,7 @@ import 'package:archive/archive.dart';
 import '../model/animus_document.dart';
 import '../model/document_kind.dart';
 import 'gui/gui_validation.dart';
+import 'inspect/json_syntax.dart';
 import 'npc/combat_settings.dart';
 import 'rig_validation.dart';
 import 'shared_schemas.dart';
@@ -202,7 +203,7 @@ AnimusDocument validateSource(DocumentLocation location, String path, String sou
     json = jsonDecode(source);
   } on FormatException catch (invalid) {
     return AnimusDocument(kind: location.kind, id: location.id, path: path, source: source, json: null, diagnostics: <Diagnostic>[
-      Diagnostic(DiagnosticSeverity.error, r'$', 'invalid JSON: ${invalid.message}', code: 'json'),
+      Diagnostic(DiagnosticSeverity.error, r'$', 'Not valid JSON. ${jsonSyntaxProblem(source)?.text ?? invalid.message}.', code: 'json'),
     ]);
   }
   final List<Diagnostic> diagnostics = <Diagnostic>[
