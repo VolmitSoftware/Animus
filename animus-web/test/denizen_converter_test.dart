@@ -97,10 +97,10 @@ void main() {
 
     test('aggregate counts', () {
       final DenizenPreview preview = convertDenizen(_folder('town/Denizen', citizens: 'town/saves.yml'));
-      expect(preview.behaviors, 4);
+      expect(preview.behaviors, 8);
       expect(preview.bindings, 1);
-      expect(preview.flagsImported, 7);
-      expect(preview.flagsPreserved, 4);
+      expect(preview.flagsImported, 15);
+      expect(preview.flagsPreserved, 2);
     });
   });
 
@@ -141,13 +141,31 @@ void main() {
       expect(script.items.first.children!.items.single.text, 'narrate hi');
     });
 
-    test('flag files flatten sub-flags and keep expiring flags marked', () {
-      final DenizenFlagValues values = denizenFlagFile('a:true\n\\exb:map@[__value=5;__expiration=time@x]\nc:map@[__value=map@[d=map@[__value=e&scf]]]\nk\\cox:1\n');
-      expect(values.flags.keys.toList(), <String>['a', 'b', 'c.d', 'k:x']);
+    test('flag files flatten sub-flags and read expiry', () {
+      final DenizenFlagValues values = denizenFlagFile(
+          'a:true\n\\exb:map@[__value=5;__expiration=time@2030/01/01_00:00:00:0000_+00:00]\nc:map@[__value=map@[d=map@[__value=e&scf]]]\nk\\cox:1\nm:map@[__value=map@[x=1;y=two]]\n');
+      expect(values.flags.keys.toList(), <String>['a', 'b', 'c.d', 'k:x', 'm']);
       expect(values.flags['b']!.expires, isTrue);
+      expect(values.flags['b']!.expiresAt, 1893456000000);
       expect(values.flags['c.d']!.value, 'e;f');
+      expect(values.flags['m']!.value, 'map@[x=1;y=two]', reason: "a __value map of plain values is the flag's map value");
       expect(denizenStage('12'), 12);
       expect(denizenStage('-1'), isNull);
+    });
+
+    test('flag values become typed JSON', () {
+      expect(denizenTyped('true').type, 'boolean');
+      expect(denizenTyped('-12').type, 'integer');
+      expect(denizenTyped('2.5').type, 'decimal');
+      expect(denizenTyped('Bob').type, 'string');
+      final DenizenTyped list = denizenTyped('li@gold|3|a&pipeb|');
+      expect(list.type, 'list');
+      expect(list.value.toString(), '["gold",3,"a|b"]');
+      final DenizenTyped map = denizenTyped('map@[name=Ann;level=4;tags=li@x|y|]');
+      expect(map.type, 'map');
+      expect(map.value.toString(), '{"level":4,"name":"Ann","tags":["x","y"]}');
+      expect(denizenTyped('li@${'x|' * 300}').reason, isNotEmpty, reason: 'lists above 256 items are refused');
+      expect(denizenExpiration('time@soon'), 0);
     });
 
     test('sound names become resource keys', () {
