@@ -419,32 +419,12 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
 
     @Override public Bones createBones(BodyTransport.Body presented, List<BoneDisplay<ItemStack>> displays) {
         Body body = checkBody(presented);
-        if (displays.isEmpty() || displays.size() > 64) throw new IllegalArgumentException("A rig shows 1..64 bones");
+        if (displays.isEmpty() || displays.size() > art.arcane.animus.core.rig.NpcRig.MAX_DISPLAYS) throw new IllegalArgumentException("A rig shows 1.." + art.arcane.animus.core.rig.NpcRig.MAX_DISPLAYS + " displays");
         List<List<SynchedEntityData.DataValue<?>>> content = new ArrayList<>(displays.size());
         EntityType<?>[] boneTypes = new EntityType<?>[displays.size()];
         for (int i = 0; i < displays.size(); i++) {
-            BoneDisplay<ItemStack> bone = displays.get(i);
-            List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
-            switch (bone.kind()) {
-                case ITEM -> {
-                    boneTypes[i] = itemDisplayType;
-                    values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$stack(), bone.item().copy()));
-                    values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$context(), bone.itemContext()));
-                }
-                case BLOCK -> {
-                    boneTypes[i] = blockDisplayType;
-                    values.add(SynchedEntityData.DataValue.create(BlockDisplayDataAccess.animus$state(), blockState(bone.block())));
-                }
-                case TEXT -> {
-                    boneTypes[i] = textDisplayType;
-                    values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), (Component) ModText.component(bone.text())));
-                    values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$billboard(), bone.billboard()));
-                    values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$lineWidth(), bone.lineWidth()));
-                    values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$background(), bone.background()));
-                    if (bone.shadow()) values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$styleFlags(), (byte) 0x01));
-                }
-            }
-            content.add(values);
+            boneTypes[i] = boneType(displays.get(i));
+            content.add(boneContent(displays.get(i)));
         }
         int[] boneIds = new int[displays.size()];
         for (int start = 0; start < boneIds.length; start += 16) {
@@ -452,6 +432,29 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
             for (int i = 0; i < count; i++) boneIds[start + i] = first + i;
         }
         return new Bones(this, body, boneIds, boneTypes, content);
+    }
+
+    private EntityType<?> boneType(BoneDisplay<ItemStack> bone) {
+        return switch (bone.kind()) { case ITEM -> itemDisplayType; case BLOCK -> blockDisplayType; case TEXT -> textDisplayType; };
+    }
+    /** The bone's fixed content. Block states are parsed here, so an invalid one is refused before anything is sent. */
+    private static List<SynchedEntityData.DataValue<?>> boneContent(BoneDisplay<ItemStack> bone) {
+        List<SynchedEntityData.DataValue<?>> values = new ArrayList<>();
+        switch (bone.kind()) {
+            case ITEM -> {
+                values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$stack(), bone.item().copy()));
+                values.add(SynchedEntityData.DataValue.create(ItemDisplayDataAccess.animus$context(), bone.itemContext()));
+            }
+            case BLOCK -> values.add(SynchedEntityData.DataValue.create(BlockDisplayDataAccess.animus$state(), blockState(bone.block())));
+            case TEXT -> {
+                values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$text(), (Component) ModText.component(bone.text())));
+                values.add(SynchedEntityData.DataValue.create(DisplayDataAccess.animus$billboard(), bone.billboard()));
+                values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$lineWidth(), bone.lineWidth()));
+                values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$background(), bone.background()));
+                if (bone.shadow()) values.add(SynchedEntityData.DataValue.create(TextDisplayDataAccess.animus$styleFlags(), (byte) 0x01));
+            }
+        }
+        return values;
     }
 
     private static net.minecraft.world.level.block.state.BlockState blockState(String text) {
@@ -492,6 +495,22 @@ final class VanillaBodyTransport implements BodyTransport<ServerPlayer, ItemStac
         for (int i = 0; i < indices.length; i++) {
             if (indices[i] < 0 || indices[i] >= bones.ids.length) return failed("Unknown bone index " + indices[i]);
             packets.add(new ClientboundSetEntityDataPacket(bones.ids[indices[i]], transformValues(transforms[i], Math.max(0, durations[i]))));
+        }
+        send(session, bones.body, PacketKind.RIG_BONES, packets);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override public CompletionStage<Void> restyleBones(ServerPlayer viewer, BodyTransport.Bones restyled, int[] indices, List<BoneDisplay<ItemStack>> displays) {
+        Bones bones = checkBones(restyled, null);
+        if (indices.length != displays.size()) return failed("Every restyled bone needs a display");
+        Session session = existing(viewer);
+        if (session == null) return unwatched("Viewer is not watched");
+        if (session.bones.get(bones.body.entityId) != bones) return failed("Bones are not shown to this viewer");
+        List<Packet<ClientGamePacketListener>> packets = new ArrayList<>(indices.length);
+        for (int i = 0; i < indices.length; i++) {
+            if (indices[i] < 0 || indices[i] >= bones.ids.length) return failed("Unknown bone index " + indices[i]);
+            if (boneType(displays.get(i)) != bones.types[indices[i]]) return failed("A restyled bone keeps its kind");
+            packets.add(new ClientboundSetEntityDataPacket(bones.ids[indices[i]], boneContent(displays.get(i))));
         }
         send(session, bones.body, PacketKind.RIG_BONES, packets);
         return CompletableFuture.completedFuture(null);

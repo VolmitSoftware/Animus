@@ -14,21 +14,29 @@ import java.util.function.Function;
  * else plays there, and the segment planner that turns sampled poses into interpolated display updates.
  * <p>
  * Segments start at {@code sampleTicks} and grow while every bone moves linearly within 0.01 blocks and 0.5 degrees,
- * up to {@link #MAX_SEGMENT} ticks; a visibility change, a clip ending or a fade ending closes a segment. Owner only.
+ * up to {@link #MAX_SEGMENT} ticks; a visibility change, a clip ending or a fade ending closes a segment. Frames carry the
+ * rig's display bones and then one entry per socket, which follows its bone's own transform. Owner only.
  */
 public final class RigPlayback {
     public static final int LAYERS = 4, MAX_SEGMENT = 20, MAX_FADE = 40;
     public static final double MIN_SPEED = 0.25, MAX_SPEED = 4;
+    /** Events one NPC runs per tick at most; the rest of that tick's events are dropped. */
+    public static final int MAX_EVENTS_PER_TICK = 16;
     private static final double TRANSLATION_TOLERANCE = 0.01, LINEAR_TOLERANCE = Math.sin(Math.toRadians(0.5));
 
     /** A played clip reached its end: a once clip stopped, or a hold clip now holds its last frame. */
     public record Finished(String animation, int layer) {}
+    /** A clip's event came due on a layer. */
+    public record Fired(String animation, int layer, AnimationDocument.Event event) {}
 
     private static final class Playing {
         final AnimationDocument animation; final double speed; final Optional<AnimationDocument.Loop> loop; final long start; final boolean explicit;
         long fadeStart = -1; int fadeTicks; boolean reported;
+        /** The last tick whose events ran. */
+        long evented;
         Playing(AnimationDocument animation, double speed, Optional<AnimationDocument.Loop> loop, long start, boolean explicit) {
             this.animation = animation; this.speed = speed; this.loop = loop; this.start = start; this.explicit = explicit;
+            evented = start - 1;
         }
         RigSampler.Layer at(double tick) {
             double weight = fadeStart < 0 ? 1 : fadeTicks == 0 ? 0 : 1 - (tick - fadeStart) / fadeTicks;
@@ -40,7 +48,9 @@ public final class RigPlayback {
     private final RigDocument rig;
     private Function<String, Optional<AnimationDocument>> animations;
     private final SeatGeometry seat;
+    /** Bone index of each frame entry: display bones, then socket bones. */
     private final int[] shown;
+    private final int sockets;
     private final Playing[] layers = new Playing[LAYERS];
     private final List<Finished> finished = new ArrayList<>();
     private boolean moving, changed = true;
@@ -51,7 +61,11 @@ public final class RigPlayback {
     /** @param seat the body's passenger point; bones ride there, so their transforms are taken relative to it */
     public RigPlayback(RigDocument rig, Function<String, Optional<AnimationDocument>> animations, SeatGeometry seat) {
         this.rig = Objects.requireNonNull(rig); this.animations = Objects.requireNonNull(animations); this.seat = Objects.requireNonNull(seat);
-        shown = rig.displayBones();
+        int[] bones = rig.displayBones();
+        sockets = rig.sockets().size();
+        shown = java.util.Arrays.copyOf(bones, bones.length + sockets);
+        int next = bones.length;
+        for (String bone : rig.sockets().values()) shown[next++] = rig.index(bone);
         ambient(0);
     }
 
@@ -122,6 +136,39 @@ public final class RigPlayback {
         return result;
     }
 
+    /**
+     * Events of every playing clip whose time passed since the last call, in layer then event order. A stopping clip
+     * runs none. A gap longer than one cycle runs each event of a looping clip at most once.
+     */
+    public List<Fired> events(long now) {
+        List<Fired> fired = new ArrayList<>();
+        for (int i = 0; i < LAYERS; i++) {
+            Playing playing = layers[i];
+            if (playing == null) continue;
+            long from = playing.evented;
+            playing.evented = Math.max(from, now);
+            if (playing.fadeStart >= 0 || now <= from || playing.animation.events().isEmpty()) continue;
+            double duration = playing.animation.durationTicks(), after = (from - playing.start) * playing.speed, until = (now - playing.start) * playing.speed;
+            AnimationDocument.Loop mode = playing.loop.orElse(playing.animation.loop());
+            double period = mode == AnimationDocument.Loop.LOOP ? duration : mode == AnimationDocument.Loop.PINGPONG ? 2 * duration : Double.POSITIVE_INFINITY;
+            after = Math.max(after, until - period);
+            for (AnimationDocument.Event event : playing.animation.events()) {
+                if (fired.size() >= MAX_EVENTS_PER_TICK) return fired;
+                int times = mode == AnimationDocument.Loop.PINGPONG && event.tick() != 0 && event.tick() != duration
+                        ? passes(event.tick(), period, after, until) + passes(period - event.tick(), period, after, until)
+                        : passes(event.tick(), period, after, until);
+                for (int n = 0; n < times && fired.size() < MAX_EVENTS_PER_TICK; n++) fired.add(new Fired(playing.animation.id(), i, event));
+            }
+        }
+        return fired;
+    }
+    /** How many of {@code position + k * period} (k >= 0) lie in (after, until]. */
+    private static int passes(double position, double period, double after, double until) {
+        if (Double.isInfinite(period)) return after < position && position <= until ? 1 : 0;
+        double first = Math.max(0, Math.floor((after - position) / period) + 1), last = Math.floor((until - position) / period);
+        return last < first ? 0 : (int) (last - first + 1);
+    }
+
     /** True when {@link #plan} would make a new segment now. */
     public boolean due(long now, float yaw) {
         return frame == null || changed || yaw != plannedYaw || now >= frame.startTick() + frame.durationTicks();
@@ -184,7 +231,7 @@ public final class RigPlayback {
         boolean[] visible = new boolean[shown.length];
         for (int i = 0; i < shown.length; i++) {
             RigSampler.BonePose bone = pose.bones().get(shown[i]);
-            matrices[i] = bone.visual().orElse(bone.model());
+            matrices[i] = i >= shown.length - sockets ? bone.model() : bone.visual().orElse(bone.model());
             visible[i] = bone.visible();
         }
         return new Sample(matrices, visible);

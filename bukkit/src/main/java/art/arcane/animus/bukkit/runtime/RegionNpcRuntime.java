@@ -132,6 +132,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     volatile NativeViewerEpoch epochs;
     volatile BukkitNavigationBridge navigation;
     volatile TriggerDispatcher triggers;
+    private volatile art.arcane.animus.core.rig.NpcRig.Events animationEvents;
     volatile InteractionListener<Player> interactions;
     volatile InteractionObserver observer;
     private final Map<String, Geometry> geometries = new HashMap<>();
@@ -238,6 +239,7 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     @Override public void observeInteractions(InteractionObserver observer) { this.observer = observer; }
     @Override public boolean switchesLive() { return false; }
     @Override public void bindTriggers(TriggerDispatcher dispatcher) { dispatcher.hide(previews); triggers = dispatcher; }
+    @Override public void animationEvents(art.arcane.animus.core.rig.NpcRig.Events events) { animationEvents = events; }
     @Override public void refresh() { refresh.set(true); }
     @Override public PlayerAccess<Player> players() { return players; }
     @Override public ViewerPreviews previews() { return previews; }
@@ -524,6 +526,11 @@ public final class RegionNpcRuntime implements NpcRuntime<Player, ItemStack>, Li
     void releaseRead() { reads.decrementAndGet(); }
     void activated(UUID npc) { TriggerDispatcher dispatcher = triggers; if (dispatcher != null) dispatcher.activated(npc); }
     void waypoint(UUID npc, int waypoint) { TriggerDispatcher dispatcher = triggers; if (dispatcher != null) dispatcher.publish(new TriggerEvent.Waypoint(npc, waypoint)); }
+    /** On the NPC's region owner. */
+    void animationEvent(UUID npc, art.arcane.animus.core.rig.RigPlayback.Fired fired) {
+        art.arcane.animus.core.rig.NpcRig.Events events = animationEvents;
+        if (events != null) events.fired(npc, fired);
+    }
     void animationFinished(UUID npc, String animation, int layer) {
         TriggerDispatcher dispatcher = triggers;
         if (dispatcher != null) dispatcher.publish(new TriggerEvent.AnimationFinished(npc, animation, layer));

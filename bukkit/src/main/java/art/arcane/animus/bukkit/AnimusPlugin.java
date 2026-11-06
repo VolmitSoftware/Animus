@@ -19,7 +19,10 @@ import org.bukkit.plugin.ServicePriority;
 import art.arcane.animus.core.migration.CitizensDropIn;
 import art.arcane.animus.core.migration.CitizensGuard;
 import art.arcane.animus.core.hire.HireService;
+import art.arcane.animus.api.Capabilities;
+import art.arcane.animus.api.NpcHandle;
 import art.arcane.animus.api.Platform;
+import art.arcane.animus.core.rig.AnimationEventRunner;
 import art.arcane.animus.bukkit.event.VirtualNpcDialogueChoiceEvent;
 import art.arcane.animus.bukkit.folia.FoliaRegions;
 import art.arcane.animus.bukkit.folia.FoliaStationaryProofService;
@@ -211,6 +214,8 @@ public final class AnimusPlugin extends JavaPlugin {
             extensions.follow(runtime);
             ExtensionRuntime modules = extensions;
             living.observeInteractions(modules::interacted);
+            living.animationEvents(new AnimationEventRunner((Capabilities.Key key, NpcHandle npc, String arguments) -> modules.action(key, npc, Optional.empty(), arguments),
+                    (String message) -> getLogger().info(message)));
             proof.observeInteractions(modules::interacted);
             if (foliaProof != null) foliaProof.observeInteractions(modules::interacted);
             behaviors = new BehaviorCommands(getDataFolder().toPath(), runtime, extensions, message -> getLogger().info(message));
