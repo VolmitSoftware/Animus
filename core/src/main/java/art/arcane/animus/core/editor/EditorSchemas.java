@@ -31,6 +31,7 @@ public final class EditorSchemas {
         names.put("menu", "gloss/gloss.schema.json");
         names.put("hologram", "gloss/gloss-holograms.schema.json");
         names.put("presets", "gloss/gloss-presets.schema.json");
+        names.put("server-behaviors", "server-behaviors-v1.schema.json");
         return Map.copyOf(names);
     }
 

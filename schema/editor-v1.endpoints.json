@@ -51,7 +51,8 @@
     "text-animation": {"folder": "gui/text-animations", "applyScope": "apply:gui", "schema": null},
     "presets": {"folder": "gui", "applyScope": "apply:gui", "schema": "gloss/gloss-presets.schema.json"},
     "rig": {"folder": "rigs", "applyScope": "apply:rigs", "schema": "rig-v1.schema.json"},
-    "animation": {"folder": "animations", "applyScope": "apply:rigs", "schema": "animation-v1.schema.json"}
+    "animation": {"folder": "animations", "applyScope": "apply:rigs", "schema": "animation-v1.schema.json"},
+    "server-behaviors": {"folder": "", "applyScope": "apply:behaviors", "schema": "server-behaviors-v1.schema.json"}
   },
   "pairing": {
     "prefix": "ANM1.",
