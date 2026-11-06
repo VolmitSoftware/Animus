@@ -384,7 +384,7 @@ JsonMap newRoute({(double, double, double) origin = (0, 64, 0), String mode = 'w
     'schemaVersion': 1,
     'mode': mode,
     'speed': 2,
-    'order': 'sequential',
+    'order': 'sequence',
     'waitTicks': 40,
     'points': <Object?>[
       for (final (double dx, double dz) in const <(double, double)>[(0, 0), (6, 0), (6, 6), (0, 6)])

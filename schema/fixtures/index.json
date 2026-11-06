@@ -217,6 +217,33 @@
         "schema": true,
         "java": false
       }
+    },
+    {
+      "path": "documents/route/town-patrol.json",
+      "kind": "route",
+      "id": "town-patrol",
+      "expect": {
+        "schema": true,
+        "java": true
+      }
+    },
+    {
+      "path": "documents/route/loop-with-random.json",
+      "kind": "route",
+      "id": "loop-with-random",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
+    },
+    {
+      "path": "documents/route/no-points.json",
+      "kind": "route",
+      "id": "no-points",
+      "expect": {
+        "schema": false,
+        "java": false
+      }
     }
   ],
   "messages": [

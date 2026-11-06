@@ -80,6 +80,10 @@ class SharedSchemaContractTest {
                 BehaviorCompiler.Result result = BehaviorCompiler.compile(object.toString());
                 yield result.program().isPresent() ? List.of() : result.diagnostics().stream().map(Object::toString).toList();
             }
+            case "route" -> {
+                try { art.arcane.animus.core.navigation.WaypointSettings.document(source); yield List.of(); }
+                catch (IOException | IllegalArgumentException invalid) { yield List.of(invalid.getMessage()); }
+            }
             case "pack" -> {
                 try { PackManifest.parse(source, id); yield List.of(); }
                 catch (IllegalArgumentException invalid) { yield List.of(invalid.getMessage()); }

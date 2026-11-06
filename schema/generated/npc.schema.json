@@ -575,12 +575,14 @@
                 "walk",
                 "swim",
                 "fly"
-              ]
+              ],
+              "description": "walk by default. Walking points stand on whole-block heights."
             },
             "speed": {
               "type": "number",
               "minimum": 1,
-              "maximum": 5
+              "maximum": 5,
+              "description": "Blocks per second. 2 by default."
             },
             "order": {
               "enum": [
@@ -683,12 +685,14 @@
                 "radius": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 32
+                  "maximum": 32,
+                  "description": "Blocks from a centre."
                 },
                 "height": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 8
+                  "maximum": 8,
+                  "description": "Blocks up or down from a centre."
                 }
               }
             }

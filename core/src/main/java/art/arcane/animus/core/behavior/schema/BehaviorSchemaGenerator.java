@@ -32,7 +32,7 @@ import java.util.Set;
 public final class BehaviorSchemaGenerator {
     public static final String DIALECT = "https://json-schema.org/draft/2020-12/schema";
     public static final int MAXIMUM_DOCUMENT_BYTES = 2 * 1024 * 1024, MAXIMUM_TOTAL_BYTES = 4 * 1024 * 1024;
-    public static final String BEHAVIOR = "schemas/behavior.schema.json", NPC = "schemas/npc.schema.json", PACK = "schemas/pack.schema.json", COMPLETIONS = "schemas/completions.json";
+    public static final String BEHAVIOR = "schemas/behavior.schema.json", NPC = "schemas/npc.schema.json", PACK = "schemas/pack.schema.json", ROUTE = "schemas/route.schema.json", COMPLETIONS = "schemas/completions.json";
     private static final String IDENTIFIER = "^[a-z0-9][a-z0-9_-]{0,63}$";
     private static final String KEY = "^[a-z0-9][a-z0-9_-]{0,63}:[a-z0-9][a-z0-9_-]{0,63}$";
     private static final String BEHAVIOR_ID = "^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$";
@@ -45,6 +45,7 @@ public final class BehaviorSchemaGenerator {
         Map<String, String> documents = new LinkedHashMap<>();
         documents.put(BEHAVIOR, JsonDocuments.write(behaviorSchema(capabilities)));
         documents.put(NPC, JsonDocuments.write(NpcSchemaGenerator.schema()));
+        documents.put(ROUTE, JsonDocuments.write(NpcSchemaGenerator.routeSchema()));
         documents.put(PACK, JsonDocuments.write(packSchema()));
         documents.put(COMPLETIONS, JsonDocuments.write(completions(capabilities)));
         long total = 0;

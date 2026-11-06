@@ -350,8 +350,50 @@ public final class NpcSchemaGenerator {
         properties.add("enabled", type("boolean"));
         properties.add("reviewAccepted", type("boolean"));
         properties.add("route", pattern(IDENTIFIER));
-        properties.add("mode", choices(List.of("walk", "swim", "fly")));
-        properties.add("speed", range("number", 1, 5));
+        routeFields(properties);
+        navigation.add("properties", properties);
+        JsonObject routed = new JsonObject();
+        routed.add("if", required("route"));
+        JsonObject exclusive = new JsonObject();
+        exclusive.add("not", anyRequired(List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander")));
+        routed.add("then", exclusive);
+        JsonObject inline = new JsonObject();
+        JsonArray inlineRules = new JsonArray();
+        inlineRules.add(pointCount());
+        inline.add("allOf", inlineRules);
+        routed.add("else", inline);
+        JsonArray rules = new JsonArray();
+        rules.add(whenEnabled(routed));
+        orderRules(rules);
+        navigation.add("allOf", rules);
+        return navigation;
+    }
+
+    /** A reusable route under routes/, read by {@code WaypointSettings.document}. Unknown fields are kept. */
+    public static JsonObject routeSchema() {
+        JsonObject root = new JsonObject();
+        root.addProperty("$schema", BehaviorSchemaGenerator.DIALECT);
+        root.addProperty("title", "Animus reusable route");
+        root.addProperty("description", "routes/<id>.json: points NPCs follow when their animus:navigation names this route. Unknown fields are kept as written.");
+        root.addProperty("type", "object");
+        root.add("required", strings("schemaVersion"));
+        JsonObject properties = new JsonObject();
+        properties.add("schemaVersion", constant(1));
+        routeFields(properties);
+        root.add("properties", properties);
+        JsonArray rules = new JsonArray();
+        rules.add(pointCount());
+        orderRules(rules);
+        JsonObject noReference = new JsonObject();
+        noReference.add("not", required("route"));
+        rules.add(noReference);
+        root.add("allOf", rules);
+        return root;
+    }
+
+    private static void routeFields(JsonObject properties) {
+        properties.add("mode", described(choices(List.of("walk", "swim", "fly")), "walk by default. Walking points stand on whole-block heights."));
+        properties.add("speed", described(range("number", 1, 5), "Blocks per second. 2 by default."));
         properties.add("order", described(choices(List.of("sequence", "pingpong", "random", "wander")), "How the next point is chosen. sequence by default."));
         properties.add("loop", described(type("boolean"), "Order sequence only: start again from the first point."));
         properties.add("waitTicks", described(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), "Wait before the first leg and after each arrival."));
@@ -362,17 +404,14 @@ public final class NpcSchemaGenerator {
         properties.add("linkDistance", described(range("number", WaypointSettings.MINIMUM_LINK_DISTANCE, WaypointSettings.MAXIMUM_LINK_DISTANCE), "Order random only: the longest link between two nodes."));
         JsonObject wander = described(closed(), "Order wander only.");
         JsonObject area = new JsonObject();
-        area.add("radius", range("integer", 1, WaypointSettings.Wander.MAXIMUM_RADIUS));
-        area.add("height", range("integer", 0, WaypointSettings.Wander.MAXIMUM_HEIGHT));
+        area.add("radius", described(range("integer", 1, WaypointSettings.Wander.MAXIMUM_RADIUS), "Blocks from a centre."));
+        area.add("height", described(range("integer", 0, WaypointSettings.Wander.MAXIMUM_HEIGHT), "Blocks up or down from a centre."));
         wander.add("properties", area);
         properties.add("wander", wander);
-        navigation.add("properties", properties);
-        JsonObject routed = new JsonObject();
-        routed.add("if", required("route"));
-        JsonObject exclusive = new JsonObject();
-        exclusive.add("not", anyRequired(List.of("points", "mode", "speed", "order", "loop", "waitTicks", "guides", "linkDistance", "wander")));
-        routed.add("then", exclusive);
-        JsonObject inline = new JsonObject();
+    }
+
+    /** Wander takes at most its centres and may have none; every other order needs at least one point. */
+    private static JsonObject pointCount() {
         JsonObject wandering = new JsonObject();
         wandering.add("if", orderIs("wander"));
         JsonObject centres = new JsonObject();
@@ -385,18 +424,14 @@ public final class NpcSchemaGenerator {
         some.addProperty("minItems", 1);
         listed.add("properties", property("points", some).getAsJsonObject("properties"));
         wandering.add("else", listed);
-        JsonArray inlineRules = new JsonArray();
-        inlineRules.add(wandering);
-        inline.add("allOf", inlineRules);
-        routed.add("else", inline);
-        JsonArray rules = new JsonArray();
-        rules.add(whenEnabled(routed));
+        return wandering;
+    }
+
+    private static void orderRules(JsonArray rules) {
         rules.add(onlyWithOrder("loop", "sequence", true));
         rules.add(onlyWithOrder("guides", "random", false));
         rules.add(onlyWithOrder("linkDistance", "random", false));
         rules.add(onlyWithOrder("wander", "wander", false));
-        navigation.add("allOf", rules);
-        return navigation;
     }
 
     private static JsonObject coordinate() {

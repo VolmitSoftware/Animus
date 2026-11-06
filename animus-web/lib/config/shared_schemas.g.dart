@@ -114,7 +114,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   },
   "kinds": {
     "npc": {"folder": "npcs", "applyScope": "apply:npcs", "schema": "generated/npc.schema.json"},
-    "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": null},
+    "route": {"folder": "routes", "applyScope": "apply:npcs", "schema": "generated/route.schema.json"},
     "skin": {"folder": "skins", "applyScope": "apply:npcs", "schema": null},
     "behavior": {"folder": "behaviors", "applyScope": "apply:behaviors", "schema": "generated/behavior.schema.json"},
     "pack": {"folder": "packs", "applyScope": "apply:behaviors", "schema": "generated/pack.schema.json"},
@@ -333,7 +333,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       "properties": {
         "schemas": {
           "type": "object",
-          "description": "Schema name (npc, behavior, pack, completions, shop, inventory, rig, animation and the Gloss kinds) to schema document.",
+          "description": "Schema name (npc, route, behavior, pack, completions, shop, inventory, rig, animation and the Gloss kinds) to schema document.",
           "additionalProperties": {"type": "object"}
         }
       }
@@ -8710,12 +8710,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "walk",
                 "swim",
                 "fly"
-              ]
+              ],
+              "description": "walk by default. Walking points stand on whole-block heights."
             },
             "speed": {
               "type": "number",
               "minimum": 1,
-              "maximum": 5
+              "maximum": 5,
+              "description": "Blocks per second. 2 by default."
             },
             "order": {
               "enum": [
@@ -8818,12 +8820,14 @@ const Map<String, String> sharedSchemaSources = <String, String>{
                 "radius": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 32
+                  "maximum": 32,
+                  "description": "Blocks from a centre."
                 },
                 "height": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 8
+                  "maximum": 8,
+                  "description": "Blocks up or down from a centre."
                 }
               }
             }
@@ -10647,6 +10651,251 @@ const Map<String, String> sharedSchemaSources = <String, String>{
       }
     }
   }
+}
+''',
+  'generated/route.schema.json': r'''
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Animus reusable route",
+  "description": "routes/<id>.json: points NPCs follow when their animus:navigation names this route. Unknown fields are kept as written.",
+  "type": "object",
+  "required": [
+    "schemaVersion"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "mode": {
+      "enum": [
+        "walk",
+        "swim",
+        "fly"
+      ],
+      "description": "walk by default. Walking points stand on whole-block heights."
+    },
+    "speed": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Blocks per second. 2 by default."
+    },
+    "order": {
+      "enum": [
+        "sequence",
+        "pingpong",
+        "random",
+        "wander"
+      ],
+      "description": "How the next point is chosen. sequence by default."
+    },
+    "loop": {
+      "type": "boolean",
+      "description": "Order sequence only: start again from the first point."
+    },
+    "waitTicks": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 12000,
+      "description": "Wait before the first leg and after each arrival."
+    },
+    "points": {
+      "type": "array",
+      "description": "Route points in the NPC's world; wander centres for order wander.",
+      "minItems": 0,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "y": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "z": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "waitTicks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12000,
+            "description": "Wait after arriving here, instead of the route's."
+          }
+        }
+      }
+    },
+    "guides": {
+      "type": "array",
+      "description": "Order random only: helper nodes a path may pass through.",
+      "minItems": 0,
+      "maxItems": 1024,
+      "items": {
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "z"
+        ],
+        "properties": {
+          "x": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "y": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          },
+          "z": {
+            "type": "number",
+            "minimum": -29999984,
+            "maximum": 29999984
+          }
+        }
+      }
+    },
+    "linkDistance": {
+      "type": "number",
+      "minimum": 1.0,
+      "maximum": 256.0,
+      "description": "Order random only: the longest link between two nodes."
+    },
+    "wander": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Order wander only.",
+      "properties": {
+        "radius": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "description": "Blocks from a centre."
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8,
+          "description": "Blocks up or down from a centre."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "order": {
+            "const": "wander"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      },
+      "then": {
+        "properties": {
+          "points": {
+            "maxItems": 64
+          }
+        }
+      },
+      "else": {
+        "required": [
+          "points"
+        ],
+        "properties": {
+          "points": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "loop"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order": {
+            "const": "sequence"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "guides"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order": {
+            "const": "random"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "linkDistance"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order": {
+            "const": "random"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "wander"
+        ]
+      },
+      "then": {
+        "properties": {
+          "order": {
+            "const": "wander"
+          }
+        },
+        "required": [
+          "order"
+        ]
+      }
+    },
+    {
+      "not": {
+        "required": [
+          "route"
+        ]
+      }
+    }
+  ]
 }
 ''',
   'gloss/fixtures/animation-flash.json': r'''
