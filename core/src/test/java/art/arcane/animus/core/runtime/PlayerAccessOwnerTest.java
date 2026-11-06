@@ -1,5 +1,8 @@
 package art.arcane.animus.core.runtime;
 
+import java.util.Optional;
+import art.arcane.animus.core.editor.EditorNotice;
+import art.arcane.animus.core.editor.EditorNoticeChannel;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.Platform;
 import art.arcane.animus.core.RuntimeEnvironment;
@@ -68,7 +71,10 @@ class PlayerAccessOwnerTest {
     void theEditorAdminRecheckFromItsTimerThreadAnswersOnTheOwner() throws IOException {
         ViewerWatchRaceTest.Harness harness = harness();
         RuntimeEditorHost<ViewerWatchRaceTest.Player> host = new RuntimeEditorHost<>(new RuntimeEditorHost.Parts<>(harness.runtime, Runnable::run, harness.service, null,
-                "test", "", Map::of, (ViewerWatchRaceTest.Player player) -> false, (String line) -> {}));
+                "test", "", Map::of, (ViewerWatchRaceTest.Player player) -> false, new EditorNoticeChannel() {
+                    @Override public Optional<String> name(UUID player) { return Optional.empty(); }
+                    @Override public void deliver(EditorNotice notice) {}
+                }, (String line) -> {}));
         harness.ownerThread = false;
         List<EditorHost.Admin> answers = new ArrayList<>();
 
