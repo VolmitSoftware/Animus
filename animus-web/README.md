@@ -38,6 +38,7 @@ The browser check opens `../schema/fixtures/export` in the built site at desktop
 
 ```sh
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/home_browser.cjs
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/brand_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/npc_preview_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/rig_editor_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/gui_editors_browser.cjs
@@ -51,6 +52,8 @@ PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animu
 ```
 
 `offline_editor_browser.cjs` makes a blank workspace and one document of every kind from its guided step, duplicates and deletes with undo, fixes a broken id, plays a rig animation on an NPC, dry-runs a dialogue (answering its prompt) and a shop (a server-only step), exports the zip, checks persistence across a reload and the starter workspace, then pairs with the fake server, pulls an NPC, changes it and pushes the workspace with that conflict resolved, at both widths with no console errors and no sideways scrolling.
+
+`brand_browser.cjs` checks the Animus colours (`lib/config/brand.dart`: pink `#FF5FA8` on near-black `#0D0D0F` in dark, deep pink `#C2185B` on `#F5F3F4` in light, greys for text and borders) in both themes at both widths: the surfaces and `theme-color`, the primary button's fill and contrast, the pink focus ring, the selected view tab, grey panels and the theme toggle, with no console errors and no sideways scrolling.
 
 `rig_editor_browser.cjs` opens `test/fixtures/rig_editor` (the shared golem rig and two clips), moves a bone with the gizmo, undoes it, renames a bone, keys and scrubs an animation, plays it, downloads the server files and the workspace zip, and imports `test/fixtures/bbmodel/robot.bbmodel`, at both widths with no console errors.
 

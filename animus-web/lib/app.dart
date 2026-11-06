@@ -1,8 +1,8 @@
 import 'package:arcane_jaspr/arcane_jaspr.dart';
-import 'package:arcane_jaspr_ascii/arcane_jaspr_ascii.dart';
 import 'package:jaspr/jaspr.dart' show Component;
 
 import 'components/shell.dart';
+import 'config/animus_stylesheet.dart';
 import 'model/server_binding.dart';
 import 'services/browser.dart';
 import 'services/server/server_connection.dart';
@@ -125,7 +125,7 @@ class _AnimusAppState extends State<AnimusApp> {
   Widget build(BuildContext context) {
     return ArcaneApp(
       brightness: _brightness,
-      stylesheet: const AsciiStylesheet(),
+      stylesheet: const AnimusStylesheet(),
       // Client mode hydrates every callback, and the CSP allows no inline script.
       includeFallbackScripts: false,
       home: Component.fragment(<Widget>[

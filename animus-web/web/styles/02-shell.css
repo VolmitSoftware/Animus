@@ -31,7 +31,10 @@
   width: 1.75rem;
   height: 1.75rem;
   border-radius: var(--animus-radius);
-  border: 1px solid var(--animus-border);
+  /* The favicon in small: a black tile with the pink A in both themes. */
+  border: 1px solid #e0408c;
+  background: #0d0d0f;
+  color: #ff5fa8;
   font-family: var(--font-mono);
 }
 

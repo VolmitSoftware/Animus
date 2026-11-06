@@ -181,6 +181,44 @@ public final class RichText {
         return Optional.of(String.valueOf(SECTION) + code);
     }
 
+    /** The RGB of a vanilla colour code such as {@code d}. */
+    public static int legacyRgb(char code) {
+        int index = COLOURS.indexOf(Character.toLowerCase(code));
+        if (index < 0) throw new IllegalArgumentException("Not a colour code: " + code);
+        return PALETTE[index];
+    }
+
+    /** The vanilla colour code closest to {@code rgb}. */
+    public static char nearestLegacy(int rgb) {
+        int best = 0;
+        long bestDistance = Long.MAX_VALUE;
+        for (int index = 0; index < PALETTE.length; index++) {
+            int red = (rgb >> 16 & 0xFF) - (PALETTE[index] >> 16 & 0xFF), green = (rgb >> 8 & 0xFF) - (PALETTE[index] >> 8 & 0xFF), blue = (rgb & 0xFF) - (PALETTE[index] & 0xFF);
+            long distance = (long) red * red + (long) green * green + (long) blue * blue;
+            if (distance < bestDistance) { bestDistance = distance; best = index; }
+        }
+        return COLOURS.charAt(best);
+    }
+
+    /** Section-coded text with every hex colour replaced by its legacy fallback (see {@link Palette#legacyOf}), for receivers without hex. */
+    public static String legacy(String coloured) {
+        if (coloured == null || coloured.indexOf(SECTION) < 0) return coloured;
+        StringBuilder out = new StringBuilder(coloured.length());
+        int index = 0;
+        while (index < coloured.length()) {
+            if (coloured.charAt(index) == SECTION && sectionHex(coloured, index)) {
+                StringBuilder digits = new StringBuilder(6);
+                for (int digit = 0; digit < 6; digit++) digits.append(coloured.charAt(index + 3 + digit * 2));
+                out.append(SECTION).append(Palette.legacyOf(Integer.parseInt(digits.toString(), 16)));
+                index += 14;
+                continue;
+            }
+            out.append(coloured.charAt(index));
+            index++;
+        }
+        return out.toString();
+    }
+
     private static String unescape(String text) {
         if (text.indexOf('\\') < 0) return text;
         StringBuilder out = new StringBuilder(text.length());
