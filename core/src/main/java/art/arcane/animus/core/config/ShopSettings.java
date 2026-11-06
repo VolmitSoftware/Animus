@@ -1,5 +1,6 @@
 package art.arcane.animus.core.config;
 
+import art.arcane.animus.core.text.Palette;
 import java.text.DecimalFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -63,10 +64,10 @@ public record ShopSettings(boolean enabled, String economy, String priceFormat, 
         texts.put("stockLine", "&7Stock: &f{left}");
         texts.put("lockedLine", "&cNeeds permission");
         texts.put("stackLine", "&8Shift-click for a stack");
-        texts.put("previous", "&aPrevious page");
-        texts.put("next", "&aNext page");
+        texts.put("previous", Palette.PINK + "Previous page");
+        texts.put("next", Palette.PINK + "Next page");
         texts.put("close", "&cClose");
-        texts.put("mode", "&eShowing: {mode}");
+        texts.put("mode", Palette.PINK_LIGHT + "Showing: {mode}");
         texts.put("modeHint", "&7Click to switch");
         texts.put("modeBuy", "Buy");
         texts.put("modeSell", "Sell");
