@@ -101,7 +101,7 @@ public final class HotloadValidation {
         if (!errors.isEmpty()) return Verdict.refused(errors.getFirst() + (errors.size() > 1 ? " (and " + (errors.size() - 1) + " more)" : ""));
         if (kind != DocumentKind.NPC) return Verdict.reload(kind);
         try {
-            return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.of(NpcDefinition.parse(snapshot.content())));
+            return new Verdict(Optional.empty(), Optional.of(kind), Optional.empty(), Optional.empty(), Optional.of(NpcDefinition.read(path, snapshot.content())));
         } catch (IOException invalid) { return Verdict.refused(String.valueOf(invalid.getMessage())); }
     }
 

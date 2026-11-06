@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "behavior": "animus:flags/denizen",
+  "scope": "npc",
+  "npc": "00000000-0000-4000-8000-000000000004",
+  "values": {
+    "assigned-crier_assignment": {
+      "type": "boolean",
+      "value": true
+    }
+  }
+}

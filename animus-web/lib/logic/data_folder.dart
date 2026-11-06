@@ -47,7 +47,7 @@ DocumentLocation? locateDocument(String path) {
   bool valid(List<String> rest) => rest.every(_segment.hasMatch);
   switch (parts.first) {
     case 'npcs':
-      return parts.length == 3 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.npc, '${parts[1]}/${parts[2]}') : null;
+      return parts.length >= 2 && parts.length <= 10 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.npc, parts.sublist(1).join('/')) : null;
     case 'routes':
       return parts.length == 2 && valid(parts.sublist(1)) ? DocumentLocation(DocumentKind.route, parts[1]) : null;
     case 'skins':

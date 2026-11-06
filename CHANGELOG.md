@@ -116,6 +116,10 @@
 - Denizen `sentinel` commands and `trait state sentinel` convert to combat control.
 - `/animus import citizens accept commands` adds the command namespaces converted behaviors need to config.toml.
 - `[editor] port = 0` binds any free port.
+- NPC files can sit directly in `npcs/` or in up to 8 nested folders; the folder becomes the group.
+- Interaction triggers take a `consume` condition; a matched click skips shops, hiring, GUIs, riding and selection.
+- Click runs read `context.sneaking` and `context.hand`.
+- Denizen right clicks on NPCs convert, with sneak, hand and NPC checks, `ratelimit`, built flag names and `run <npc.flag[...]>`.
 
 ### Changed
 
@@ -181,6 +185,9 @@
 - The Denizen converter (version 2) converts definitions, conditions, loops, flags, procedures, world, command, data, book and inventory scripts, and the common tags.
 - Import preview and review name the command namespaces converted behaviors need.
 - Skins on non-player NPCs are explained as never shown by Citizens.
+- Citizens imports go in `npcs/<world>/` without region folders (converter v12).
+- Re-importing updates a moved NPC in place rather than installing it again.
+- Denizen converter v3; world click events become `denizen:world-npc/*` behaviors bound to every NPC.
 
 ### Fixed
 
@@ -221,6 +228,13 @@
 - Stuck NPCs teleport onto the waypoint's surface instead of inside the block.
 - Waypoint sets with no points are no longer counted as kept but not run.
 - The editor pairing test no longer races for a port.
+- One import apply no longer erases Shopkeepers shops from NPCs that also get Denizen behaviors.
+- Import edits made from an outdated NPC copy are refused instead of overwriting newer changes.
+- Titles, subtitles and action bars of only spaces no longer invalidate converted behaviors.
+- Converted books with a blank title or author fall back to the script name or Server.
+- Clicking an already selected NPC no longer repeats "Selected ... via INTERACT".
+- Hotload notices wait until edited behaviors, shops, GUIs, holograms and menus are live.
+- Hotload no longer reports numerically equal values, such as `0.0` and `0`, as changed.
 
 ### Notes
 

@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
@@ -134,22 +135,26 @@ public final class HoloService<P, S> implements AutoCloseable {
         HologramView(String key, HologramDocument document, Optional<UUID> npc) { this.key = key; this.document = document; this.npc = npc; }
     }
 
-    /** Reads every document on the file lane, then the chest GUIs and shops, and reports problems. */
-    public void reload(Consumer<HoloCatalog> done) {
+    /** Reads every document on the file lane, then the chest GUIs and shops, and reports problems. The result completes once the new catalog is live, or at once when the queue refuses the work. */
+    public CompletableFuture<Void> reload(Consumer<HoloCatalog> done) {
+        CompletableFuture<Void> published = new CompletableFuture<>();
         try {
             files.execute(() -> {
-                HoloCatalog next;
-                try { next = HoloCatalog.load(data, runtime.behaviorSettings().actions()::commandAllowed); }
-                catch (IOException | RuntimeException failure) {
-                    log.accept("Hologram and menu catalog could not be read: " + failure.getMessage());
-                    next = new HoloCatalog(catalog.holograms(), catalog.menus(), catalog.animations(), List.of("catalog: " + failure.getMessage()));
-                }
-                next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
-                catalog = next;
-                next.problems().stream().limit(40).forEach((String problem) -> log.accept("Hologram or menu refused: " + problem));
-                done.accept(next);
+                try {
+                    HoloCatalog next;
+                    try { next = HoloCatalog.load(data, runtime.behaviorSettings().actions()::commandAllowed); }
+                    catch (IOException | RuntimeException failure) {
+                        log.accept("Hologram and menu catalog could not be read: " + failure.getMessage());
+                        next = new HoloCatalog(catalog.holograms(), catalog.menus(), catalog.animations(), List.of("catalog: " + failure.getMessage()));
+                    }
+                    next = next.retaining(catalog, data, runtime.behaviorSettings().actions()::commandAllowed);
+                    catalog = next;
+                    next.problems().stream().limit(40).forEach((String problem) -> log.accept("Hologram or menu refused: " + problem));
+                    done.accept(next);
+                } finally { published.complete(null); }
             });
-        } catch (RejectedExecutionException full) { log.accept("Hologram and menu reload refused: the file queue is full"); }
+        } catch (RejectedExecutionException full) { log.accept("Hologram and menu reload refused: the file queue is full"); published.complete(null); }
+        return published;
     }
 
     /** One owner tick for one online player. */

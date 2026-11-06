@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000031",
+  "id": "citizens-31",
+  "group": "world",
+  "name": "Shadow",
+  "type": "minecraft:player",
+  "spawned": false,
+  "migration": {
+    "importId": "422e5c989fcb1593adb1b901b20abf74f3d8a2644d1153d3524dc7b9d67adff0",
+    "citizensId": 31,
+    "originalSpawned": false,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 31,
+    "y": 64,
+    "z": 31,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "PLAYER",
+      "location": {
+        "world": "world",
+        "x": 31,
+        "y": 64,
+        "z": 31
+      },
+      "spawned": false,
+      "owner": {
+        "name": "someone"
+      },
+      "equipment": "notamap",
+      "inventory": {}
+    }
+  }
+}
