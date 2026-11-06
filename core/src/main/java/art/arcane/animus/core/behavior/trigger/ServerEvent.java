@@ -31,6 +31,9 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
             case PLAYER_CHAT, PLAYER_DEATH -> List.of("message");
             case PLAYER_WORLD_CHANGE -> List.of("from", "to");
             case COMMAND -> List.of("command", "alias", "args", "raw_args");
+            case PROJECTILE_LAUNCH -> List.of("projectile", "projectile_uuid", "shooter", "shooter_uuid", "location", "world", "x", "y", "z");
+            case PROJECTILE_HIT -> List.of("projectile", "projectile_uuid", "shooter", "shooter_uuid", "entity", "entity_uuid", "block", "location", "world", "x", "y", "z");
+            case ENTITY_SHOOT_BOW -> List.of("shooter", "shooter_uuid", "bow", "projectile", "projectile_uuid", "force", "hand", "location", "world", "x", "y", "z");
             default -> List.of();
         };
     }
@@ -76,6 +79,11 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
     private static Map<String, Object> blockContext(String block, String world, long x, long y, long z) {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("block", block);
+        context.putAll(position(world, x, y, z));
+        return context;
+    }
+    private static Map<String, Object> position(String world, long x, long y, long z) {
+        Map<String, Object> context = new LinkedHashMap<>();
         context.put("world", world);
         context.put("x", x);
         context.put("y", y);
@@ -94,6 +102,37 @@ public record ServerEvent(TriggerKind kind, Optional<UUID> player, Map<String, O
     /** The player kills the living entity {@code entity}. */
     public static ServerEvent kill(UUID player, String entity, UUID entityId) {
         return of(TriggerKind.PLAYER_KILL, player, Map.of("entity", entity, "entity_uuid", entityId.toString()));
+    }
+    /**
+     * A launched projectile at its block position. {@code shooter} is the shooter's entity type and {@code shooterId} its UUID,
+     * both empty for none; {@code player} is the shooter when a player launched it.
+     */
+    public static ServerEvent projectileLaunch(Optional<UUID> player, String projectile, UUID projectileId, String shooter, String shooterId, String world, long x, long y, long z) {
+        Map<String, Object> context = position(world, x, y, z);
+        context.putAll(projectile(projectile, projectileId, shooter, shooterId));
+        return new ServerEvent(TriggerKind.PROJECTILE_LAUNCH, player, context, Optional.empty());
+    }
+    /** A projectile hitting the entity {@code entity} or the block {@code block}, the other empty; the position is the hit block or the projectile's own block. */
+    public static ServerEvent projectileHit(Optional<UUID> player, String projectile, UUID projectileId, String shooter, String shooterId,
+            String entity, String entityId, String block, String world, long x, long y, long z) {
+        Map<String, Object> context = blockContext(block, world, x, y, z);
+        context.putAll(projectile(projectile, projectileId, shooter, shooterId));
+        context.put("entity", entity);
+        context.put("entity_uuid", entityId);
+        return new ServerEvent(TriggerKind.PROJECTILE_HIT, player, context, Optional.empty());
+    }
+    /** A bow or crossbow shot from {@code hand} at the shooter's block position; {@code force} is a player's bow draw from 0 to 1, otherwise 1. */
+    public static ServerEvent shootBow(Optional<UUID> player, String shooter, UUID shooterId, String bow, String projectile, UUID projectileId,
+            double force, String hand, String world, long x, long y, long z) {
+        Map<String, Object> context = position(world, x, y, z);
+        context.putAll(projectile(projectile, projectileId, shooter, shooterId.toString()));
+        context.put("bow", bow);
+        context.put("force", Math.max(0.0, Math.min(1.0, force)));
+        context.put("hand", hand);
+        return new ServerEvent(TriggerKind.ENTITY_SHOOT_BOW, player, context, Optional.empty());
+    }
+    private static Map<String, Object> projectile(String projectile, UUID projectileId, String shooter, String shooterId) {
+        return Map.of("projectile", projectile, "projectile_uuid", projectileId.toString(), "shooter", shooter, "shooter_uuid", shooterId);
     }
     public static ServerEvent serverStart() { return new ServerEvent(TriggerKind.SERVER_START, Optional.empty(), Map.of(), Optional.empty()); }
     public static ServerEvent timer() { return new ServerEvent(TriggerKind.TIMER, Optional.empty(), Map.of(), Optional.empty()); }

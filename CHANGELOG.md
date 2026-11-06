@@ -220,6 +220,8 @@
 - Web editor: an NPC's navigation plays a recording with `once`, `loop` or `pingpong`.
 - Web editor: ranged waits take a min and max field; routes edit `seed`, `startOffset`, `jitter`, point `weight` and `next` junctions, checked as the server checks them.
 - Web editor: renaming a recording or group updates the NPCs and routes that name it.
+- Server triggers `projectile_launch`, `projectile_hit` and `entity_shoot_bow`, with `projectile`, `shooter`, `entity`, `block` and `bow` filters and `cancel` conditions on Bukkit, Folia and mods.
+- Denizen converter v5 converts projectile launch, hit and collide events and bow shots, with their switches and `determine cancelled`.
 
 ### Changed
 

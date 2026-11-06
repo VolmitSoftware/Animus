@@ -55,6 +55,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -397,6 +398,7 @@ public final class AnimusModRuntime {
     }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }
     boolean suppressesDrops(LivingEntity entity) { Running active = running; return active != null && active.combat.suppressesDrops(entity); }
+    boolean helper(Entity entity) { Running active = running; return active != null && active.combat.helper(entity); }
     /** Server behaviors of the running server, or null. */
     ModServerBehaviors serverBehaviors() { Running active = running; return active == null ? null : active.serverBehaviors; }
 }

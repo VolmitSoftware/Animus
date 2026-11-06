@@ -219,8 +219,9 @@ final class VanillaCombatWorld extends RuntimeCombatWorld<ServerPlayer, ItemStac
         if (projectile instanceof AbstractArrow arrow) arrow.pickup = AbstractArrow.Pickup.DISALLOWED;
         projectile.setPos(point.x(), point.y(), point.z());
         projectile.setDeltaMovement(vanilla(velocity));
-        if (!level.addFreshEntity(projectile)) return Optional.empty();
+        // Known as a helper before it enters the world, so its launch publishes no server trigger.
         helpers.add(projectile.getUUID());
+        if (!level.addFreshEntity(projectile)) { helpers.remove(projectile.getUUID()); return Optional.empty(); }
         return Optional.of(projectile.getUUID());
     }
     @Override public Optional<Vec3> helperPosition(UUID helper) {

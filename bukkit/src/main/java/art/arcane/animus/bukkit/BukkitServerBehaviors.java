@@ -33,6 +33,11 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.entity.Projectile;
+import art.arcane.animus.bukkit.combat.BukkitCombatWorld;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
@@ -308,6 +313,44 @@ final class BukkitServerBehaviors implements Listener, AutoCloseable {
         ServerTriggerDispatcher dispatcher = killer == null ? null : listening(TriggerKind.PLAYER_KILL);
         if (dispatcher != null) dispatcher.publish(ServerEvent.kill(killer.getUniqueId(), typeKey(victim), victim.getUniqueId()));
     }
+
+    /** Real projectiles only: an NPC's combat helpers publish nothing, and their hits are cancelled before this sees them. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void projectileLaunch(ProjectileLaunchEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PROJECTILE_LAUNCH);
+        if (dispatcher == null || BukkitCombatWorld.launching()) return;
+        Projectile projectile = event.getEntity();
+        Entity shooter = projectile.getShooter() instanceof Entity source ? source : null;
+        Location at = projectile.getLocation();
+        if (dispatcher.decide(ServerEvent.projectileLaunch(playerOf(shooter), typeKey(projectile), projectile.getUniqueId(), shooter == null ? "" : typeKey(shooter),
+                shooter == null ? "" : shooter.getUniqueId().toString(), projectile.getWorld().getName(), at.getBlockX(), at.getBlockY(), at.getBlockZ()))) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void projectileHit(ProjectileHitEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.PROJECTILE_HIT);
+        if (dispatcher == null) return;
+        Projectile projectile = event.getEntity();
+        Entity shooter = projectile.getShooter() instanceof Entity source ? source : null, hit = event.getHitEntity();
+        Block block = event.getHitBlock();
+        Location at = block != null ? block.getLocation() : projectile.getLocation();
+        if (dispatcher.decide(ServerEvent.projectileHit(playerOf(shooter), typeKey(projectile), projectile.getUniqueId(), shooter == null ? "" : typeKey(shooter),
+                shooter == null ? "" : shooter.getUniqueId().toString(), hit == null ? "" : typeKey(hit), hit == null ? "" : hit.getUniqueId().toString(),
+                block == null ? "" : block.getType().getKey().toString(), projectile.getWorld().getName(), at.getBlockX(), at.getBlockY(), at.getBlockZ()))) event.setCancelled(true);
+    }
+
+    /** Force is a player's bow draw; crossbows and mobs report 1, as on mod servers. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true) public void shootBow(EntityShootBowEvent event) {
+        ServerTriggerDispatcher dispatcher = listening(TriggerKind.ENTITY_SHOOT_BOW);
+        if (dispatcher == null) return;
+        LivingEntity shooter = event.getEntity();
+        ItemStack bow = event.getBow();
+        Entity projectile = event.getProjectile();
+        Location at = shooter.getLocation();
+        double force = shooter instanceof Player && bow != null && bow.getType() == Material.BOW ? event.getForce() : 1;
+        if (dispatcher.decide(ServerEvent.shootBow(playerOf(shooter), typeKey(shooter), shooter.getUniqueId(), itemKey(bow), typeKey(projectile), projectile.getUniqueId(),
+                force, event.getHand() == EquipmentSlot.OFF_HAND ? "off_hand" : "main_hand", shooter.getWorld().getName(), at.getBlockX(), at.getBlockY(), at.getBlockZ()))) event.setCancelled(true);
+    }
+
+    private static Optional<UUID> playerOf(Entity shooter) { return shooter instanceof Player player ? Optional.of(player.getUniqueId()) : Optional.empty(); }
 
     /** The dispatcher when an enabled trigger listens for this kind, else null, so hot handlers return before allocating. */
     private ServerTriggerDispatcher listening(TriggerKind kind) {
