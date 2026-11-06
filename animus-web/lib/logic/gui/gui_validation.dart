@@ -1,5 +1,5 @@
 /// Browser checks for GUI documents beyond the JSON schemas, matching what
-/// the server refuses at load (docs/gui.md, docs/shops.md): Gloss-only
+/// the server refuses at load (wiki animus/11-guis-holograms-menus, wiki animus/10-shops): Gloss-only
 /// actions, components and icons named at the exact field, expression
 /// errors, `call` targets and loops, mask and slot bounds, shop grids, and a
 /// note wherever a command needs the command allow-list.

@@ -17,7 +17,9 @@ import art.arcane.animus.api.TrustedModule;
 import art.arcane.animus.api.Version;
 import art.arcane.animus.core.behavior.BehaviorFlags;
 import art.arcane.animus.core.behavior.BehaviorProgram;
+import art.arcane.animus.core.behavior.BehaviorValues;
 import art.arcane.animus.core.behavior.BehaviorState;
+import art.arcane.animus.core.behavior.ServerNpc;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.AppearanceChange;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.BuildOperation;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.Audience;
@@ -35,7 +37,9 @@ import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.storage.JsonDocuments;
 import art.arcane.animus.core.virtual.Vec3;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.time.Duration;
@@ -56,6 +60,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.IntUnaryOperator;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
@@ -77,6 +82,11 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final long OWNER_TICK_MILLIS = 50, LAGGING_OWNER_ALLOWANCE = 2, WAIT_DEADLINE_SLACK_MILLIS = 5000;
     private static final String RESOURCE_KEY = "[a-z0-9_.-]+:[a-z0-9_./-]+";
     private static final String ANIMATION_ID = "[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}";
+    private static final long MAXIMUM_EXPIRY_SECONDS = 31_536_000L;
+    private static final int MAXIMUM_ITEMS = 6400;
+    /** Capabilities that need an NPC body or NPC presence; a server behavior's run refuses them as no-npc. */
+    private static final Set<String> NPC_ONLY = Set.of("say", "look", "navigate", "stop-navigation", "set-appearance", "set-equipment", "combat-control",
+            "build", "play-animation", "stop-animation", "npc-state", "player-in-range", "choices");
     private static final String PERMISSION = "[A-Za-z0-9_-]+(\\.[A-Za-z0-9_*-]+)*";
 
     /** Decides what a capability may do when previewed and whether it needs the platform owner. */
@@ -102,6 +112,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private volatile BuiltinActionSettings settings;
     private final Consumer<String> log;
     private final IntUnaryOperator randomBelow;
+    private final LongSupplier clock;
     private final OwnerActionQueue queue;
     private final NavigationWaits waits;
     private final PendingChoices choices;
@@ -117,12 +128,23 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     /** {@code randomBelow} returns a uniform integer in [0, bound) and may be called from any module worker. */
     BuiltinCapabilities(BehaviorPlatform platform, BehaviorState state, DialogueChoiceSink choiceSink,
                         BuiltinActionSettings settings, Consumer<String> log, IntUnaryOperator randomBelow) {
+        this(platform, state, choiceSink, settings, log, randomBelow, System::currentTimeMillis);
+    }
+
+    /** {@code clock} is epoch milliseconds for flag expiry. */
+    BuiltinCapabilities(BehaviorPlatform platform, BehaviorState state, DialogueChoiceSink choiceSink,
+                        BuiltinActionSettings settings, Consumer<String> log, IntUnaryOperator randomBelow, LongSupplier clock) {
         this.randomBelow = Objects.requireNonNull(randomBelow);
+        this.clock = Objects.requireNonNull(clock);
         this.platform = Objects.requireNonNull(platform);
         this.state = Objects.requireNonNull(state);
         this.settings = Objects.requireNonNull(settings);
         this.log = Objects.requireNonNull(log);
-        queue = new OwnerActionQueue(new OwnerActionQueue.Limits(settings.actionsPerTick(), settings.actionsPerNpcPerTick(), settings.queuedActions()), platform::onNpcOwner);
+        queue = new OwnerActionQueue(new OwnerActionQueue.Limits(settings.actionsPerTick(), settings.actionsPerNpcPerTick(), settings.queuedActions()), new OwnerActionQueue.Router() {
+            @Override public boolean dispatch(NpcHandle npc, Runnable work, Consumer<String> refused) { return platform.onNpcOwner(npc, work, refused); }
+            @Override public boolean player(UUID player, Runnable work, Consumer<String> refused) { return platform.onPlayerOwner(player, work, refused); }
+            @Override public boolean global(Runnable work, Consumer<String> refused) { return platform.onGlobalOwner(work, refused); }
+        });
         waits = new NavigationWaits(settings.navigationWaits(), platform);
         choices = new PendingChoices(settings.pendingChoices(), choiceSink, System::nanoTime,
                 failure -> this.log.accept("Dialogue choice listener failed: " + failure.getClass().getSimpleName()));
@@ -214,6 +236,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
 
     private <T> CompletionStage<T> invoke(Spec spec, Body<T> body, Invocation invocation) throws IOException {
         Call call = new Call(invocation, JsonDocuments.object(invocation.argumentsJson()));
+        if (NPC_ONLY.contains(spec.key.name())) requireNpc(call);
         if (invocation.preview() && refusedInPreview(spec, call.arguments))
             throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "preview-refused", spec.key + " is not available in a preview");
         return body.run(call);
@@ -222,7 +245,8 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static boolean refusedInPreview(Spec spec, JsonObject arguments) {
         return switch (spec.effect) {
             case STATE_READ, OWNER_READ -> false;
-            case PRESENTATION -> text(arguments, "audience").orElse("trigger").equals("nearby");
+            case PRESENTATION -> text(arguments, "audience").orElse("trigger").equals("nearby") || arguments.has("player")
+                    || !text(arguments, "to").orElse("trigger").equals("trigger");
             case STATE_WRITE, WORLD, PRIVILEGED -> true;
         };
     }
@@ -234,6 +258,28 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
             if (reason.isPresent()) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "platform-unavailable", reason.get());
             return work.get();
         });
+    }
+
+    /** Player-addressed work of a server run, and the player-only actions, run where the player is owned. */
+    private <T> CompletionStage<T> onPlayer(Call call, UUID player, Supplier<T> work) {
+        return queue.submit(OwnerActionQueue.Route.player(call.npc(), player), call.invocation.cancellation(), () -> available(work));
+    }
+    /** Broadcasts and console work run on the global owner. */
+    private <T> CompletionStage<T> onGlobal(Call call, Supplier<T> work) {
+        return queue.submit(OwnerActionQueue.Route.global(call.npc()), call.invocation.cancellation(), () -> available(work));
+    }
+    /** An NPC run keeps its NPC's owner; a server run goes to the player's owner. */
+    private <T> CompletionStage<T> onOwnerOrPlayer(Call call, UUID player, Supplier<T> work) {
+        return server(call) ? onPlayer(call, player, work) : onOwner(call, work);
+    }
+    private <T> T available(Supplier<T> work) {
+        Optional<String> reason = platform.unavailable();
+        if (reason.isPresent()) throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "platform-unavailable", reason.get());
+        return work.get();
+    }
+    private static boolean server(Call call) { return ServerNpc.is(call.npc()); }
+    private static void requireNpc(Call call) {
+        if (server(call)) throw new CapabilityRefusal(Outcome.Status.INVALID, "no-npc", "A server behavior has no NPC for this capability");
     }
 
     private void register(String name, Effect effect, Kind kind, String description, String schema, Semantics semantics, Body<String> action, Body<Boolean> condition) {
@@ -261,6 +307,12 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static final String COORDINATES = number("x", -30_000_000, 30_000_000) + "," + number("y", -30_000_000, 30_000_000) + "," + number("z", -30_000_000, 30_000_000);
     private static final String AUDIENCE = choice("audience", "trigger", "nearby") + "," + number("radius", 1, 64);
     private static final String STATE = string("name", 64) + "," + choice("scope", "global", "npc", "player", "relationship");
+    /** Names an online player by UUID instead of the triggering player. */
+    private static final String PLAYER = string("player", 36);
+    private static final String ANY_VALUE = "\"value\":{\"description\":\"Any JSON value: true, false, a number, text, a list or a map\"}";
+    private static String texts(String name, int minimum, int maximum, int length) {
+        return "\"" + name + "\":{\"type\":\"array\",\"minItems\":" + minimum + ",\"maxItems\":" + maximum + ",\"items\":{\"type\":\"string\",\"maxLength\":" + length + "}}";
+    }
 
     private void registerConditions() {
         condition("has-permission", Effect.OWNER_READ, "True when the triggering player holds a permission. False when there is no triggering player.",
@@ -270,7 +322,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     if (call.player().isEmpty()) return onOwner(call, () -> false);
                     UUID player = call.player().get();
                     String node = text(call.arguments, "permission").orElseThrow();
-                    return onOwner(call, () -> platform.hasPermission(player, node));
+                    return onOwnerOrPlayer(call, player, () -> platform.hasPermission(player, node));
                 });
         condition("npc-state", Effect.OWNER_READ, "Compares the NPC's spawned state and current health.",
                 schema(bool("spawned") + "," + number("minimumHealth", 0, 1_000_000) + "," + number("maximumHealth", 0, 1_000_000),
@@ -287,13 +339,10 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     Optional<UUID> player = anyone ? Optional.empty() : call.player();
                     return onOwner(call, () -> platform.playerInRange(call.npc(), player, radius));
                 });
-        condition("flag-state", Effect.STATE_READ, "Compares a flag. An unset flag is false.",
-                schema(STATE + "," + bool("value"), required("name")),
-                (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
-                call -> {
-                    boolean expected = flag(call.arguments, "value", true);
-                    return CompletableFuture.completedFuture(read(slot(call, FLAG_STATE), UNSET_FLAG).equals(new BehaviorProgram.Value(BehaviorProgram.Type.BOOLEAN, expected)));
-                });
+        condition("flag-state", Effect.STATE_READ, "Compares a flag with value (true by default) by exact JSON equality. An unset or expired flag is false: it equals false and nothing else.",
+                schema(STATE + "," + ANY_VALUE, required("name")),
+                BuiltinCapabilities::checkFlagValue,
+                call -> CompletableFuture.completedFuture(flagEquals(slot(call, FLAG_STATE), flagValue(call.arguments))));
         condition("quest-state", Effect.STATE_READ, "Compares a quest stage. An unset quest is stage zero.",
                 schema(STATE + "," + integer("equals", 0, 1_000_000_000_000L) + "," + integer("atLeast", 0, 1_000_000_000_000L) + "," + integer("atMost", 0, 1_000_000_000_000L),
                         required("name"), "\"anyOf\":[" + "{" + required("equals") + "},{" + required("atLeast") + "},{" + required("atMost") + "}]"),
@@ -302,13 +351,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     private void registerActions() {
-        action("say", Effect.PRESENTATION, "Sends dialogue text to the triggering player or to nearby players; {player_name} becomes the triggering player's name.",
-                schema(string("text", 1024) + "," + AUDIENCE, required("text")),
-                (arguments, problems) -> plainText(arguments, "text", problems),
+        action("say", Effect.PRESENTATION, "Sends dialogue text to the triggering player, the player named by player, or nearby players; {player_name} becomes that player's name.",
+                schema(string("text", 1024) + "," + AUDIENCE + "," + PLAYER, required("text")),
+                (arguments, problems) -> { plainText(arguments, "text", problems); checkPlayer(arguments, problems); },
                 call -> {
                     Audience audience = audience(call);
                     String written = text(call.arguments, "text").orElseThrow();
-                    Optional<UUID> named = written.contains(PLAYER_NAME_TOKEN) ? Optional.of(requirePlayer(call)) : Optional.empty();
+                    Optional<UUID> named = written.contains(PLAYER_NAME_TOKEN) ? Optional.of(target(call)) : Optional.empty();
                     return onOwner(call, () -> delivered(platform.say(call.npc(), audience, withPlayerName(written, named))));
                 });
         action("choices", Effect.WORLD, "Presents clickable options to the triggering player and publishes the validated click.",
@@ -318,7 +367,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                         required("id", "prompt", "options")),
                 BuiltinCapabilities::checkChoices, this::presentChoices);
         action("command", Effect.PRIVILEGED, "Runs a console or player command; {player} becomes the triggering player's UUID and {player_name} their name. Allowed only for behaviors on the TOML allow-list, and never in a preview.",
-                schema(string("command", 1024) + "," + choice("as", "console", "player"), required("command")),
+                schema(string("command", 1024) + "," + choice("as", "console", "player") + "," + PLAYER, required("command")),
                 BuiltinCapabilities::checkCommand, this::runCommand);
         action("navigate", Effect.WORLD, "Starts a route to a position in the NPC's world, or follows a reusable route. Completes when requested, or on arrival with wait.",
                 schema(string("route", 64) + "," + COORDINATES + "," + choice("mode", "walk", "swim", "fly") + "," + number("speed", 1, 5) + "," + bool("wait") + "," + integer("timeoutTicks", MINIMUM_WAIT_TICKS, MAXIMUM_WAIT_TICKS),
@@ -356,21 +405,31 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     Optional<String> item = text(call.arguments, "item");
                     return onOwner(call, () -> { platform.setEquipment(call.npc(), slot, item); return "{}"; });
                 });
-        action("play-sound", Effect.PRESENTATION, "Plays a sound at the NPC for the triggering player or nearby players.",
-                schema(string("sound", 128) + "," + number("volume", 0, 4) + "," + number("pitch", 0.5, 2) + "," + AUDIENCE, required("sound")),
-                (arguments, problems) -> matches(arguments, "sound", RESOURCE_KEY, problems),
+        action("play-sound", Effect.PRESENTATION, "Plays a sound at the NPC, or with at: player at the player, for the triggering player or nearby players. Server behaviors play at the player.",
+                schema(string("sound", 128) + "," + number("volume", 0, 4) + "," + number("pitch", 0.5, 2) + "," + AUDIENCE + "," + choice("at", "npc", "player") + "," + PLAYER, required("sound")),
+                (arguments, problems) -> { matches(arguments, "sound", RESOURCE_KEY, problems); checkPlayer(arguments, problems); },
                 call -> {
-                    Audience audience = audience(call);
                     SoundEffect sound = new SoundEffect(text(call.arguments, "sound").orElseThrow(), (float) decimal(call.arguments, "volume").orElse(1), (float) decimal(call.arguments, "pitch").orElse(1));
+                    if (atPlayer(call)) {
+                        UUID anchor = target(call);
+                        Audience audience = audience(call);
+                        return onPlayer(call, anchor, () -> delivered(platform.playSoundAtPlayer(anchor, audience, sound)));
+                    }
+                    Audience audience = audience(call);
                     return onOwner(call, () -> delivered(platform.playSound(call.npc(), audience, sound)));
                 });
-        action("spawn-particle", Effect.PRESENTATION, "Shows a particle effect at the NPC to the triggering player or nearby players.",
-                schema(string("particle", 128) + "," + integer("count", 1, 64) + "," + number("spread", 0, 8) + "," + AUDIENCE, required("particle")),
-                (arguments, problems) -> matches(arguments, "particle", RESOURCE_KEY, problems),
+        action("spawn-particle", Effect.PRESENTATION, "Shows a particle effect at the NPC, or with at: player at the player, to the triggering player or nearby players. Server behaviors show it at the player.",
+                schema(string("particle", 128) + "," + integer("count", 1, 64) + "," + number("spread", 0, 8) + "," + AUDIENCE + "," + choice("at", "npc", "player") + "," + PLAYER, required("particle")),
+                (arguments, problems) -> { matches(arguments, "particle", RESOURCE_KEY, problems); checkPlayer(arguments, problems); },
                 call -> {
-                    Audience audience = audience(call);
                     int count = call.arguments.has("count") ? call.arguments.get("count").getAsInt() : 1;
                     ParticleEffect particle = new ParticleEffect(text(call.arguments, "particle").orElseThrow(), count, decimal(call.arguments, "spread").orElse(0));
+                    if (atPlayer(call)) {
+                        UUID anchor = target(call);
+                        Audience audience = audience(call);
+                        return onPlayer(call, anchor, () -> delivered(platform.spawnParticleAtPlayer(anchor, audience, particle)));
+                    }
+                    Audience audience = audience(call);
                     return onOwner(call, () -> delivered(platform.spawnParticle(call.npc(), audience, particle)));
                 });
         action("combat-control", Effect.WORLD, "Engages or disengages the NPC's combat, attacks or releases a target, or guards a participant (no target stops guarding; player is the triggering player). Needs enabled combat settings; protection still applies.",
@@ -384,13 +443,13 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     return onOwner(call, () -> { platform.combat(call.npc(), operation, target); return "{}"; });
                 });
         action("open-shop", Effect.WORLD, "Opens a shop for the triggering player.",
-                schema(string("shop", 256), required("shop")),
-                (arguments, problems) -> matches(arguments, "shop", art.arcane.animus.core.shop.ShopDocument.ID, problems),
+                schema(string("shop", 256) + "," + PLAYER, required("shop")),
+                (arguments, problems) -> { matches(arguments, "shop", art.arcane.animus.core.shop.ShopDocument.ID, problems); checkPlayer(arguments, problems); },
                 call -> openScreen(call, BehaviorPlatform.ScreenKind.SHOP, "shop"));
         action("open-gui", Effect.WORLD, "Opens a chest GUI (kind inventory, the default), holographic menu, shop or, with Gloss installed, a Gloss menu for the triggering player.",
-                schema(string("gui", 256) + "," + choice("kind", "inventory", "menu", "shop", "gloss"), required("gui")),
-                (arguments, problems) -> matches(arguments, "gui", screenKind(arguments) == BehaviorPlatform.ScreenKind.GLOSS
-                        ? art.arcane.animus.core.gui.GuiBinding.GLOSS_ID : art.arcane.animus.core.shop.ShopDocument.ID, problems),
+                schema(string("gui", 256) + "," + choice("kind", "inventory", "menu", "shop", "gloss") + "," + PLAYER, required("gui")),
+                (arguments, problems) -> { matches(arguments, "gui", screenKind(arguments) == BehaviorPlatform.ScreenKind.GLOSS
+                        ? art.arcane.animus.core.gui.GuiBinding.GLOSS_ID : art.arcane.animus.core.shop.ShopDocument.ID, problems); checkPlayer(arguments, problems); },
                 call -> openScreen(call, screenKind(call.arguments), "gui"));
         action("build", Effect.WORLD, "Starts, pauses, resumes, cancels or undoes the NPC's build. A start names a schematic in the schematics folder, or uses the NPC's saved builder section; it builds at x, y, z or where the NPC stands. Protection still applies.",
                 schema(choice("operation", "start", "pause", "resume", "cancel", "undo") + "," + string("schematic", 132) + "," + COORDINATES + ","
@@ -425,10 +484,16 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     int fade = call.arguments.has("fadeTicks") ? call.arguments.get("fadeTicks").getAsInt() : 0;
                     return onOwner(call, () -> { platform.stopAnimation(call.npc(), layer, fade); return "{}"; });
                 });
-        action("set-flag", Effect.STATE_WRITE, "Sets a flag, true unless value says otherwise.",
-                schema(STATE + "," + bool("value"), required("name")),
-                (arguments, problems) -> matches(arguments, "name", IDENTIFIER, problems),
-                call -> { write(slot(call, FLAG_STATE), new BehaviorProgram.Value(BehaviorProgram.Type.BOOLEAN, flag(call.arguments, "value", true))); return CompletableFuture.completedFuture("{}"); });
+        action("set-flag", Effect.STATE_WRITE, "Sets a flag to value (true by default: any JSON value), optionally for expireSeconds; clear: true unsets it.",
+                schema(STATE + "," + ANY_VALUE + "," + integer("expireSeconds", 1, MAXIMUM_EXPIRY_SECONDS) + ",\"clear\":{\"const\":true}", required("name")),
+                BuiltinCapabilities::checkSetFlag,
+                call -> {
+                    StateSlot slot = slot(call, FLAG_STATE);
+                    long now = clock.getAsLong();
+                    if (flag(call.arguments, "clear", false)) write(slot, UNSET_FLAG, OptionalLong.of(now));
+                    else write(slot, flagValue(call.arguments), call.arguments.has("expireSeconds") ? OptionalLong.of(now + call.arguments.get("expireSeconds").getAsLong() * 1000L) : OptionalLong.empty());
+                    return CompletableFuture.completedFuture("{}");
+                });
         action("set-quest-state", Effect.STATE_WRITE, "Sets a quest stage to value, or to a random stage from zero to below random.",
                 schema(STATE + "," + integer("value", 0, 1_000_000_000_000L) + "," + integer("random", 1, MAXIMUM_RANDOM_STAGE_BOUND),
                         required("name"), "\"oneOf\":[{" + required("value") + "},{" + required("random") + "}]"),
@@ -448,6 +513,169 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
                     response.addProperty("value", advance(slot(call, QUEST_STATE), by, maximum));
                     return CompletableFuture.completedFuture(response.toString());
                 });
+        registerPlayerActions();
+    }
+
+    /** Actions that address players rather than an NPC. Server behaviors use them; NPC behaviors may too. */
+    private void registerPlayerActions() {
+        action("message", Effect.PRESENTATION, "Sends formatted text without a speaker: to the triggering player (trigger, the default) or the player named by player, every online player (all), the players in the NPC's or triggering player's world (world), or the console. {player_name} becomes the player's name.",
+                schema(string("text", 1024) + "," + choice("to", "trigger", "all", "world", "console") + "," + PLAYER, required("text")),
+                (arguments, problems) -> { plainText(arguments, "text", problems); checkPlayer(arguments, problems);
+                    if (arguments.has("player") && !text(arguments, "to").orElse("trigger").equals("trigger")) problems.add(problem("$.player", "message-player", "player is used only when to is trigger")); },
+                this::message);
+        action("title", Effect.PRESENTATION, "Shows a title and subtitle to the triggering player, or the player named by player.",
+                schema(string("title", 256) + "," + string("subtitle", 256) + "," + integer("fadeIn", 0, 72000) + "," + integer("stay", 0, 72000) + "," + integer("fadeOut", 0, 72000) + "," + PLAYER,
+                        "\"anyOf\":[{" + required("title") + "},{" + required("subtitle") + "}]"),
+                (arguments, problems) -> { if (arguments.has("title")) plainText(arguments, "title", problems); if (arguments.has("subtitle")) plainText(arguments, "subtitle", problems); checkPlayer(arguments, problems); },
+                call -> {
+                    UUID player = target(call);
+                    BehaviorPlatform.Title title = new BehaviorPlatform.Title(text(call.arguments, "title"), text(call.arguments, "subtitle"),
+                            ticks(call.arguments, "fadeIn", 10), ticks(call.arguments, "stay", 70), ticks(call.arguments, "fadeOut", 20));
+                    return onPlayer(call, player, () -> delivered(platform.title(player, named(title, player))));
+                });
+        action("actionbar", Effect.PRESENTATION, "Shows action bar text to the triggering player, or the player named by player.",
+                schema(string("text", 256) + "," + PLAYER, required("text")),
+                (arguments, problems) -> { plainText(arguments, "text", problems); checkPlayer(arguments, problems); },
+                call -> {
+                    UUID player = target(call);
+                    String written = text(call.arguments, "text").orElseThrow();
+                    return onPlayer(call, player, () -> delivered(platform.actionbar(player, withPlayerName(written, written.contains(PLAYER_NAME_TOKEN) ? Optional.of(player) : Optional.empty()))));
+                });
+        action("teleport", Effect.WORLD, "Teleports the triggering player (target: player, the default), or the NPC (target: npc), to x, y, z with optional world, yaw and pitch, or to the NPC or the player.",
+                schema(choice("target", "player", "npc") + "," + COORDINATES + "," + string("world", 64) + "," + number("yaw", -360, 360) + "," + number("pitch", -90, 90) + "," + choice("to", "npc", "player") + "," + PLAYER,
+                        "\"oneOf\":[{" + required("x", "y", "z") + "},{" + required("to") + "}]"),
+                BuiltinCapabilities::checkTeleport, this::teleport);
+        action("give-item", Effect.WORLD, "Gives the triggering player, or the player named by player, amount of an item (1 by default), with an optional name and lore. Reports given.",
+                schema(string("item", 128) + "," + integer("amount", 1, MAXIMUM_ITEMS) + "," + string("name", 256) + "," + texts("lore", 1, 16, 256) + "," + PLAYER, required("item")),
+                (arguments, problems) -> { matches(arguments, "item", RESOURCE_KEY, problems); if (arguments.has("name")) plainText(arguments, "name", problems); checkPlayer(arguments, problems); },
+                call -> {
+                    UUID player = target(call);
+                    List<String> lore = new ArrayList<>();
+                    if (call.arguments.has("lore")) for (JsonElement line : call.arguments.getAsJsonArray("lore")) lore.add(line.getAsString());
+                    BehaviorPlatform.ItemGift gift = new BehaviorPlatform.ItemGift(text(call.arguments, "item").orElseThrow(), amount(call.arguments), text(call.arguments, "name"), lore);
+                    return onPlayer(call, player, () -> result("given", platform.giveItem(player, gift)));
+                });
+        action("take-item", Effect.WORLD, "Takes up to amount (1 by default) of an item from the triggering player, or the player named by player. Reports taken, never more than held.",
+                schema(string("item", 128) + "," + integer("amount", 1, MAXIMUM_ITEMS) + "," + PLAYER, required("item")),
+                (arguments, problems) -> { matches(arguments, "item", RESOURCE_KEY, problems); checkPlayer(arguments, problems); },
+                call -> {
+                    UUID player = target(call);
+                    String item = text(call.arguments, "item").orElseThrow();
+                    int amount = amount(call.arguments);
+                    return onPlayer(call, player, () -> result("taken", Math.min(amount, Math.max(0, platform.takeItem(player, item, amount)))));
+                });
+        action("give-book", Effect.WORLD, "Gives the triggering player, or the player named by player, a written book. Pages use the dialogue colour codes. Reports given.",
+                schema(string("title", 32) + "," + string("author", 32) + "," + texts("pages", 1, 50, 1024) + "," + PLAYER, required("title", "author", "pages")),
+                (arguments, problems) -> { plainText(arguments, "title", problems); plainText(arguments, "author", problems); checkPlayer(arguments, problems); },
+                call -> {
+                    UUID player = target(call);
+                    List<String> pages = new ArrayList<>();
+                    for (JsonElement page : call.arguments.getAsJsonArray("pages")) pages.add(page.getAsString());
+                    BehaviorPlatform.Book book = new BehaviorPlatform.Book(text(call.arguments, "title").orElseThrow(), text(call.arguments, "author").orElseThrow(), pages);
+                    return onPlayer(call, player, () -> result("given", platform.giveBook(player, book)));
+                });
+    }
+
+    private CompletionStage<String> message(Call call) {
+        String written = text(call.arguments, "text").orElseThrow();
+        BehaviorPlatform.MessageTarget to = switch (text(call.arguments, "to").orElse("trigger")) {
+            case "all" -> BehaviorPlatform.MessageTarget.ALL;
+            case "world" -> BehaviorPlatform.MessageTarget.WORLD;
+            case "console" -> BehaviorPlatform.MessageTarget.CONSOLE;
+            default -> BehaviorPlatform.MessageTarget.PLAYER;
+        };
+        return switch (to) {
+            case PLAYER -> {
+                UUID player = target(call);
+                yield onPlayer(call, player, () -> delivered(platform.message(call.npc(), Optional.of(player), to, withPlayerName(written, named(written, player)))));
+            }
+            case WORLD -> {
+                if (server(call)) {
+                    UUID player = requirePlayer(call);
+                    yield onPlayer(call, player, () -> delivered(platform.message(call.npc(), Optional.of(player), to, withPlayerName(written, named(written, player)))));
+                }
+                Optional<UUID> player = call.player();
+                yield onOwner(call, () -> delivered(platform.message(call.npc(), player, to, withPlayerName(written, player.filter(ignored -> written.contains(PLAYER_NAME_TOKEN))))));
+            }
+            case ALL, CONSOLE -> {
+                Optional<UUID> named = written.contains(PLAYER_NAME_TOKEN) ? Optional.of(requirePlayer(call)) : Optional.empty();
+                yield onGlobal(call, () -> delivered(platform.message(call.npc(), call.player(), to, withPlayerName(written, named))));
+            }
+        };
+    }
+
+    private CompletionStage<String> teleport(Call call) {
+        BehaviorPlatform.Destination destination;
+        if (call.arguments.has("to")) {
+            if (text(call.arguments, "to").orElseThrow().equals("npc")) { requireNpc(call); destination = new BehaviorPlatform.ToNpc(); }
+            else destination = new BehaviorPlatform.ToPlayer(target(call));
+        } else destination = new BehaviorPlatform.Point(text(call.arguments, "world"), point(call.arguments), decimal(call.arguments, "yaw"), decimal(call.arguments, "pitch"));
+        if (text(call.arguments, "target").orElse("player").equals("npc")) {
+            requireNpc(call);
+            BehaviorPlatform.Destination to = destination;
+            return onOwner(call, () -> { platform.teleportNpc(call.npc(), to); return "{}"; });
+        }
+        UUID player = target(call);
+        BehaviorPlatform.Destination to = destination;
+        return onPlayer(call, player, () -> result("teleported", platform.teleportPlayer(player, call.npc(), to)));
+    }
+
+    private static void checkTeleport(JsonObject arguments, List<Diagnostic> problems) {
+        checkPlayer(arguments, problems);
+        String target = text(arguments, "target").orElse("player");
+        if (arguments.has("to") && arguments.get("to").getAsString().equals(target))
+            problems.add(problem("$.to", "teleport-to-self", "to names the target itself"));
+        if (arguments.has("to") && (arguments.has("world") || arguments.has("yaw") || arguments.has("pitch")))
+            problems.add(problem("$.to", "teleport-destination", "world, yaw and pitch belong to an x, y, z destination"));
+        if (arguments.has("world")) matches(arguments, "world", "[A-Za-z0-9_./:-]{1,64}", problems);
+    }
+
+    private static int ticks(JsonObject arguments, String name, int fallback) { return arguments.has(name) ? arguments.get(name).getAsInt() : fallback; }
+    private static int amount(JsonObject arguments) { return arguments.has("amount") ? arguments.get("amount").getAsInt() : 1; }
+    private static Optional<UUID> named(String text, UUID player) { return text.contains(PLAYER_NAME_TOKEN) ? Optional.of(player) : Optional.empty(); }
+    /** Owner only. Fills {player_name} in the title and subtitle. */
+    private BehaviorPlatform.Title named(BehaviorPlatform.Title title, UUID player) {
+        return new BehaviorPlatform.Title(title.title().map(text -> withPlayerName(text, named(text, player))), title.subtitle().map(text -> withPlayerName(text, named(text, player))),
+                title.fadeIn(), title.stay(), title.fadeOut());
+    }
+    /** Server behaviors always address the player; NPC behaviors use the NPC unless at says player. */
+    private static boolean atPlayer(Call call) {
+        String at = text(call.arguments, "at").orElse(server(call) ? "player" : "npc");
+        if (at.equals("npc")) requireNpc(call);
+        return at.equals("player");
+    }
+
+    /** A flag value is any JSON value within the behavior value bounds: lists, maps and text up to 4096 bytes. */
+    private static void checkFlagValue(JsonObject arguments, List<Diagnostic> problems) {
+        matches(arguments, "name", IDENTIFIER, problems);
+        if (!arguments.has("value") || arguments.get("value").isJsonNull()) return;
+        try { BehaviorValues.read(arguments.get("value")); }
+        catch (IllegalArgumentException | ArithmeticException invalid) { problems.add(problem("$.value", "flag-value-unsupported", "Flag value is outside the value bounds: " + invalid.getMessage())); }
+    }
+    private static void checkSetFlag(JsonObject arguments, List<Diagnostic> problems) {
+        checkFlagValue(arguments, problems);
+        if (arguments.has("clear") && (arguments.has("value") || arguments.has("expireSeconds")))
+            problems.add(problem("$.clear", "flag-clear", "clear unsets the flag and cannot be combined with value or expireSeconds"));
+    }
+    /** The typed value of a flag argument by the canonical JSON rules: true when absent. */
+    private static BehaviorProgram.Value flagValue(JsonObject arguments) {
+        if (!arguments.has("value") || arguments.get("value").isJsonNull()) return new BehaviorProgram.Value(BehaviorProgram.Type.BOOLEAN, true);
+        try { return BehaviorValues.read(arguments.get("value")); }
+        catch (IllegalArgumentException | ArithmeticException invalid) {
+            throw new CapabilityRefusal(Outcome.Status.INVALID, "flag-value-unsupported", "Flag value is outside the value bounds");
+        }
+    }
+    /** Exact typed equality. An unset or expired flag equals false only; a stored value of another type equals nothing. */
+    private boolean flagEquals(StateSlot slot, BehaviorProgram.Value expected) {
+        BehaviorProgram.Value unset = new BehaviorProgram.Value(expected.type(), expected.value());
+        BehaviorProgram.Value stored;
+        try { stored = state.read(slot.subject, slot.name, slot.declaration, unset, slot.type); }
+        catch (BehaviorState.Rejected rejected) {
+            if (rejected.diagnostic().code().equals("behavior-state-type-mismatch")) return false;
+            throw new CapabilityRefusal(rejected.status(), rejected.diagnostic());
+        }
+        if (stored == unset) return expected.equals(UNSET_FLAG);
+        return stored.equals(expected);
     }
 
     private CompletionStage<String> presentChoices(Call call) {
@@ -473,17 +701,19 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         if (call.invocation.preview() || behavior.isEmpty() || !settings.commandAllowed(behavior.get()))
             throw new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "privileged-capability-not-granted", "This behavior is not on the command allow-list");
         CommandSource source = text(call.arguments, "as").orElse("console").equals("player") ? CommandSource.PLAYER : CommandSource.CONSOLE;
-        Optional<UUID> player = source == CommandSource.PLAYER ? Optional.of(requirePlayer(call)) : Optional.empty();
+        Optional<UUID> player = source == CommandSource.PLAYER ? Optional.of(target(call)) : Optional.empty();
         String written = text(call.arguments, "command").orElseThrow();
-        String identified = written.contains(PLAYER_TOKEN) ? written.replace(PLAYER_TOKEN, requirePlayer(call).toString()) : written;
-        Optional<UUID> named = identified.contains(PLAYER_NAME_TOKEN) ? Optional.of(requirePlayer(call)) : Optional.empty();
-        return onOwner(call, () -> {
+        String identified = written.contains(PLAYER_TOKEN) ? written.replace(PLAYER_TOKEN, target(call).toString()) : written;
+        Optional<UUID> named = identified.contains(PLAYER_NAME_TOKEN) ? Optional.of(target(call)) : Optional.empty();
+        Supplier<String> work = () -> {
             String command = withPlayerName(identified, named);
             log.accept("Behavior command: behavior=" + behavior.get() + " npc=" + call.npc().uuid() + " as=" + source.name().toLowerCase(Locale.ROOT)
                     + player.map(id -> " player=" + id).orElse("") + " command=" + command.substring(0, Math.min(command.length(), MAXIMUM_LOGGED_COMMAND)));
             platform.runCommand(source, player, command);
             return "{}";
-        });
+        };
+        if (!server(call)) return onOwner(call, work);
+        return player.isPresent() ? onPlayer(call, player.get(), work) : named.isPresent() ? onPlayer(call, named.get(), work) : onGlobal(call, work);
     }
 
     private static BehaviorPlatform.ScreenKind screenKind(JsonObject arguments) {
@@ -496,9 +726,9 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     }
 
     private CompletionStage<String> openScreen(Call call, BehaviorPlatform.ScreenKind kind, String field) {
-        UUID player = requirePlayer(call);
+        UUID player = target(call);
         String id = text(call.arguments, field).orElseThrow();
-        return onOwner(call, () -> result("delivered", platform.openScreen(call.npc(), player, kind, id) ? 1 : 0));
+        return onOwnerOrPlayer(call, player, () -> result("delivered", platform.openScreen(call.npc(), player, kind, id) ? 1 : 0));
     }
 
     private CompletionStage<String> navigate(Call call) {
@@ -564,6 +794,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
 
     private static void checkCommand(JsonObject arguments, List<Diagnostic> problems) {
         plainText(arguments, "command", problems);
+        checkPlayer(arguments, problems);
         if (arguments.get("command").getAsString().startsWith("/"))
             problems.add(problem("$.command", "command-leading-slash", "Write the command without a leading slash"));
     }
@@ -627,7 +858,10 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
      */
     private static StateSlot slot(Call call, String identity) {
         String behavior = call.invocation.behavior().orElseThrow(() -> new CapabilityRefusal(Outcome.Status.INVALID, "no-behavior-namespace", "Flags and quests belong to a behavior namespace, and this call has no behavior"));
-        BehaviorProgram.ScopedVariable declaration = BehaviorFlags.declaration(text(call.arguments, "scope").orElse("player"));
+        String scopeName = text(call.arguments, "scope").orElse("player");
+        if ((scopeName.equals("npc") || scopeName.equals("relationship")) && server(call))
+            throw new CapabilityRefusal(Outcome.Status.INVALID, "no-npc", "A server behavior has no NPC: use player or global flags and quests");
+        BehaviorProgram.ScopedVariable declaration = BehaviorFlags.declaration(scopeName);
         if (declaration.scope().requiresPlayer()) requirePlayer(call);
         return new StateSlot(BehaviorFlags.subject(identity, behavior, call.npc().uuid(), call.player()), text(call.arguments, "name").orElseThrow(), declaration,
                 identity.equals(FLAG_STATE) ? BehaviorProgram.Type.ANY : BehaviorProgram.Type.INTEGER);
@@ -662,7 +896,7 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
     private static Audience audience(Call call) {
         if (text(call.arguments, "audience").orElse("trigger").equals("nearby"))
             return new Audience(Optional.empty(), decimal(call.arguments, "radius").orElse(16));
-        return new Audience(Optional.of(requirePlayer(call)), 0);
+        return new Audience(Optional.of(target(call)), 0);
     }
 
     /** Owner only. Replaces {player_name} with the player's current name. */
@@ -670,6 +904,22 @@ public final class BuiltinCapabilities implements TrustedModule, BuiltinPolicy, 
         if (player.isEmpty()) return text;
         String name = platform.playerName(player.get()).orElseThrow(() -> new CapabilityRefusal(Outcome.Status.UNAVAILABLE, "player-name-unknown", "The triggering player's name is not known"));
         return text.replace(PLAYER_NAME_TOKEN, name);
+    }
+
+    /** The player named by the player argument, or the triggering player. */
+    private static UUID target(Call call) {
+        Optional<String> named = text(call.arguments, "player");
+        if (named.isPresent()) {
+            try { return UUID.fromString(named.get()); }
+            catch (IllegalArgumentException invalid) { throw new CapabilityRefusal(Outcome.Status.INVALID, "player-uuid", "player must be a player UUID"); }
+        }
+        return requirePlayer(call);
+    }
+    private static void checkPlayer(JsonObject arguments, List<Diagnostic> problems) {
+        if (!arguments.has("player")) return;
+        String player = arguments.get("player").getAsString();
+        try { if (!UUID.fromString(player).toString().equals(player)) throw new IllegalArgumentException(); }
+        catch (IllegalArgumentException invalid) { problems.add(problem("$.player", "player-uuid", "player must be a lowercase player UUID")); }
     }
 
     private static UUID requirePlayer(Call call) {

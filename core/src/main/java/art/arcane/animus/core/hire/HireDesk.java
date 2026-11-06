@@ -1,5 +1,6 @@
 package art.arcane.animus.core.hire;
 
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.gui.GuiModel;
 import art.arcane.animus.core.gui.Screen;
 import art.arcane.animus.core.gui.ScreenFrame;
@@ -115,7 +116,7 @@ public final class HireDesk<P, S> {
         if (current.isEmpty()) return "&7" + RichText.plain(npcName) + " is not hired.";
         if (!current.get().player().equals(id)) return "&cOnly " + current.get().playerName() + " can dismiss " + RichText.plain(npcName) + ".";
         expire(current.get());
-        return "&e" + RichText.plain(npcName) + " is dismissed. &7Stay safe out there.";
+        return Palette.PINK_LIGHT + RichText.plain(npcName) + " is dismissed. &7Stay safe out there.";
     }
 
     static String duration(Duration duration) {
@@ -129,7 +130,7 @@ public final class HireDesk<P, S> {
 
     static String price(HireTerms terms, Economy economy) {
         List<String> parts = new ArrayList<>();
-        if (terms.price().signum() > 0) parts.add("&e" + economy.format(terms.price()));
+        if (terms.price().signum() > 0) parts.add(Palette.PINK_LIGHT + economy.format(terms.price()));
         for (NpcItem item : terms.items()) parts.add("&f" + item.count() + "x " + itemName(item.id()));
         return parts.isEmpty() ? "&anothing" : String.join("&7, ", parts);
     }
@@ -167,16 +168,16 @@ public final class HireDesk<P, S> {
             Map<Integer, ScreenFrame.Item> items = new LinkedHashMap<>();
             buttons.clear();
             String status = mine ? "&eWorking for you" : taken ? "&cWorking for " + current.get().playerName() : "&aAvailable for hire";
-            items.put(GUARD, item("minecraft:player_head", "&6" + npcName, List.of("&7Status: " + status, "&7Bodyguard for hire")));
+            items.put(GUARD, item("minecraft:player_head", Palette.PINK + npcName, List.of("&7Status: " + status, "&7Bodyguard for hire")));
             List<String> cost = new ArrayList<>();
             cost.add("&7Price per hire:");
             if (terms.free()) cost.add(" &aFree");
-            if (terms.price().signum() > 0) cost.add(" &e" + economy.format(terms.price()) + (economy.unavailable().isPresent() ? " &c(no economy)" : ""));
+            if (terms.price().signum() > 0) cost.add(" " + Palette.PINK_LIGHT + economy.format(terms.price()) + (economy.unavailable().isPresent() ? " &c(no economy)" : ""));
             for (NpcItem item : terms.items()) cost.add(" &f" + item.count() + "x " + itemName(item.id()));
-            items.put(COST, item(terms.price().signum() > 0 ? "minecraft:gold_ingot" : terms.items().isEmpty() ? "minecraft:paper" : terms.items().getFirst().id(), "&6Cost", cost));
+            items.put(COST, item(terms.price().signum() > 0 ? "minecraft:gold_ingot" : terms.items().isEmpty() ? "minecraft:paper" : terms.items().getFirst().id(), Palette.PINK + "Cost", cost));
             List<String> time = new ArrayList<>(List.of("&7Each hire lasts &f" + duration(terms.duration())));
             if (mine) time.add("&7Time left: &f" + duration(Duration.between(now, current.get().expires())));
-            items.put(TIME, item("minecraft:clock", "&bDuration", time));
+            items.put(TIME, item("minecraft:clock", Palette.PINK + "Duration", time));
             items.put(PERKS, item("minecraft:shield", "&aWhat you get", List.of("&7Follows you wherever you go", "&7Fights whatever attacks you", "&7Only you can dismiss it")));
             if (taken) items.put(HIRE, item("minecraft:gray_concrete", "&7Unavailable", List.of("&7Already hired by " + current.get().playerName())));
             else button(items, HIRE, "minecraft:lime_concrete", mine ? "&a&lRenew" : "&a&lHire", List.of("&7Pay " + price(terms, economy), mine ? "&7Adds " + duration(terms.duration()) : "&7Hire for " + duration(terms.duration())),

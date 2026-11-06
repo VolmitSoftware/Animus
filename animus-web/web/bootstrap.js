@@ -11,5 +11,5 @@
   root.classList.remove('light', 'dark');
   root.classList.add(mode);
   var color = document.getElementById('animus-theme-color');
-  if (color) { color.setAttribute('content', mode === 'light' ? '#f6f5f0' : '#111310'); }
+  if (color) { color.setAttribute('content', mode === 'light' ? '#f5f3f4' : '#0d0d0f'); }
 })();

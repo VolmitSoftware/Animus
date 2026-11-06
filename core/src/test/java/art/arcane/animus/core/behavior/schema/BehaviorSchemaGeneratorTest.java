@@ -10,6 +10,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class BehaviorSchemaGeneratorTest {
     private static Capabilities.Availability module(String name, Capabilities.Kind kind, String schema) {
@@ -125,7 +127,9 @@ class BehaviorSchemaGeneratorTest {
     }
 
     @Test void documentationNamesEveryBuiltInCapabilityEventAndNode() throws Exception {
-        String documentation = Files.readString(RepositoryFiles.root().resolve("docs/behaviors.md"));
+        Path page = RepositoryFiles.wikiPage("07-behaviors.md");
+        assumeTrue(Files.isRegularFile(page), "docs checkout not beside the repository");
+        String documentation = Files.readString(page);
         try (OfflineCapabilities offline = new OfflineCapabilities()) {
             for (Capabilities.Availability capability : offline.capabilities())
                 assertTrue(documentation.contains("`" + capability.descriptor().key() + "`"), capability.descriptor().key() + " is undocumented");

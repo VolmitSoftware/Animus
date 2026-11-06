@@ -1,6 +1,6 @@
 /// Native waypoint routes (`modules["animus:navigation"]` inline, or a
 /// `routes/<id>.json` document), read for drawing and edited as JSON. The
-/// rules are those of docs/runtime.md "Initial movement and routes".
+/// rules are those of wiki animus/04-npc-definitions "Initial movement and routes".
 library;
 
 import 'dart:math' as math;

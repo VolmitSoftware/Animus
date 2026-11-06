@@ -195,7 +195,7 @@
 }
 
 .animus-code-area:focus-visible {
-  outline: 2px solid var(--ring, #4d8ef7);
+  outline: 2px solid var(--ring, #ff5fa8);
   outline-offset: -2px;
 }
 

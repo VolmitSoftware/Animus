@@ -1,6 +1,7 @@
 package art.arcane.animus.core.behavior.builtin;
 
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform.ChoiceOption;
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.core.text.TextPart;
 import java.util.ArrayList;
@@ -11,16 +12,20 @@ import java.util.Set;
 
 /**
  * How NPC speech and clickable answers look on every platform. Speech reads {@code Name » text}; answers are
- * bracketed, coloured buttons with hover text. Unstyled packs get a palette and a red closing answer.
+ * bracketed, coloured buttons with hover text. Unstyled packs get a green agreeing answer, a red closing answer and
+ * Animus pinks and greys for the rest.
  */
 public final class DialogueFormat {
     public static final Set<String> STYLES = Set.of("bold", "italic", "underlined", "plain");
-    private static final String SPEAKER = "§6";
+    private static final String SPEAKER = RichText.colorize(Palette.PINK.code());
     private static final String DIVIDER = "§8 » ";
     private static final String BODY = "§f";
     private static final String BRACKET = "§8";
+    private static final String POSITIVE = "§a";
     private static final String NEGATIVE = "§c";
-    private static final List<String> PALETTE = List.of("§a", "§b", "§e", "§d", "§6", "§9", "§3", "§f");
+    private static final List<String> PALETTE = List.of(Palette.PINK, Palette.PINK_LIGHT, Palette.TEXT, Palette.PINK_DEEP, Palette.GREY)
+            .stream().map((Palette tone) -> RichText.colorize(tone.code())).toList();
+    private static final Set<String> AGREES = Set.of("yes", "accept", "agree", "ok", "okay", "sure", "confirm", "hire", "buy", "deal");
     private static final Set<String> DECLINES = Set.of("no", "pass", "cancel", "decline", "leave", "later", "goodbye", "bye",
             "refuse", "not-now", "close", "nevermind", "never-mind", "no-thanks");
 
@@ -51,7 +56,9 @@ public final class DialogueFormat {
     static String colour(ChoiceOption option, int index, int count) {
         Optional<String> chosen = option.colour().flatMap(RichText::colourCode);
         if (chosen.isPresent()) return chosen.get();
-        if (count > 1 && DECLINES.contains(option.id().toLowerCase(Locale.ROOT))) return NEGATIVE;
+        String id = option.id().toLowerCase(Locale.ROOT);
+        if (count > 1 && DECLINES.contains(id)) return NEGATIVE;
+        if (AGREES.contains(id)) return POSITIVE;
         return PALETTE.get(index % PALETTE.size());
     }
 

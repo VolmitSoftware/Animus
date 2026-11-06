@@ -14,7 +14,10 @@ import art.arcane.animus.core.Platform;
 import art.arcane.animus.core.RuntimeEnvironment;
 import art.arcane.animus.core.behavior.builtin.BuiltinCapabilities;
 import art.arcane.animus.core.behavior.builtin.DialogueTriggers;
+import art.arcane.animus.core.behavior.SnapshotFacts;
+import art.arcane.animus.core.behavior.trigger.ServerTriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
+import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.building.BuildProtection;
 import art.arcane.animus.core.building.BuildService;
@@ -54,6 +57,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.HitResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -93,6 +97,7 @@ public final class AnimusModRuntime {
         BuiltinCapabilities builtins;
         ExtensionRuntime extensions;
         volatile BehaviorCommands behaviors;
+        ModServerBehaviors serverBehaviors;
         AnimusCommands commands;
         volatile EditorService editor;
         final DebugWatch watch = new DebugWatch();
@@ -180,7 +185,14 @@ public final class AnimusModRuntime {
                     new ModOperators(server), screenService::refreshOpen, LOGGER::info));
             next.hotload.start();
             TriggerDispatcher triggers = next.behaviors.triggers();
-            if (triggers != null) next.ticks.every(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, next.living, LOGGER::info));
+            ServerTriggerDispatcher servers = next.behaviors.servers();
+            if (triggers != null) next.ticks.every(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, servers, next.living, LOGGER::info));
+            NpcRepository definitions = next.runtime.npcs();
+            PersistedNpcService<ServerPlayer, ItemStack> npcs = next.living;
+            SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(definitions::snapshot, npcs::state));
+            next.behaviors.facts(facts);
+            next.serverBehaviors = new ModServerBehaviors(server, servers, facts, LOGGER::info);
+            next.ticks.every(measured.timed(Subsystem.BEHAVIORS, next.serverBehaviors::tick));
             next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
                     next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
                             "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files),
@@ -227,6 +239,7 @@ public final class AnimusModRuntime {
         EditorService editor = active.editor;
         active.editor = null;
         if (editor != null) editor.close();
+        if (active.serverBehaviors != null) active.serverBehaviors.close();
         if (active.behaviors != null) active.behaviors.close();
         if (active.builtins != null) active.builtins.close();
         if (active.screens != null) active.screens.closeAll();
@@ -326,20 +339,35 @@ public final class AnimusModRuntime {
         if (active.guis != null) active.guis.teleported(player);
         active.living.teleported(player);
     }
-    void joined(ServerPlayer player) { Running active = running; if (active != null) active.living.joined(player); }
+    void joined(ServerPlayer player) {
+        Running active = running;
+        if (active == null) return;
+        active.living.joined(player);
+        if (active.serverBehaviors != null) active.serverBehaviors.joined(player);
+    }
     void quit(ServerPlayer player) {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().quit(player);
         if (active.guis != null) active.guis.quit(player);
         active.living.quit(player);
+        if (active.serverBehaviors != null) active.serverBehaviors.quit(player);
     }
-    void respawned(ServerPlayer player) {
+    void respawned(ServerPlayer old, ServerPlayer player) {
         Running active = running;
         if (active == null) return;
         if (active.shops != null) active.shops.screens().worldChanged(player);
         if (active.guis != null) active.guis.worldChanged(player);
         active.living.respawned(player);
+        if (active.serverBehaviors != null) {
+            active.serverBehaviors.respawned(player);
+            active.serverBehaviors.worldChanged(player, ModWorldKeys.key(old.level()), ModWorldKeys.key(player.level()));
+        }
+    }
+    /** A teleport that ended in another dimension. */
+    void worldChanged(ServerPlayer player, Level from) {
+        Running active = running;
+        if (active != null && active.serverBehaviors != null) active.serverBehaviors.worldChanged(player, ModWorldKeys.key(from), ModWorldKeys.key(player.level()));
     }
     void died(ServerPlayer player) {
         Running active = running;
@@ -347,9 +375,15 @@ public final class AnimusModRuntime {
         if (active.shops != null) active.shops.screens().died(player);
         if (active.guis != null) active.guis.died(player);
         active.living.died(player);
+        if (active.serverBehaviors != null) active.serverBehaviors.died(player);
     }
     void realDamaged(LivingEntity victim, DamageSource source) { Running active = running; if (active != null) active.combat.realDamaged(victim, source); }
-    void chat(ServerPlayer player, String message) { Running active = running; if (active != null) active.combat.chat(player, message); }
+    void chat(ServerPlayer player, String message) {
+        Running active = running;
+        if (active == null) return;
+        active.combat.chat(player, message);
+        if (active.serverBehaviors != null) active.serverBehaviors.chat(player, message);
+    }
     boolean helperHit(Projectile projectile, HitResult hit) { Running active = running; return active != null && active.combat.helperHit(projectile, hit); }
     boolean suppressesDrops(LivingEntity entity) { Running active = running; return active != null && active.combat.suppressesDrops(entity); }
 }

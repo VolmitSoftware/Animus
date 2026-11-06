@@ -100,4 +100,25 @@ class BukkitBehaviorPlatformTest {
         assertEquals(1, say(Optional.of(ALEX)));
         assertEquals(List.of(ALEX, BLAKE, ALEX), reached);
     }
+
+    @Test void giftsSplitIntoFullStacksAndTakingNeverExceedsWhatIsHeld() {
+        assertArrayEquals(new int[] {64, 64, 2}, BukkitBehaviorPlatform.stacks(130, 64));
+        assertArrayEquals(new int[] {1, 1}, BukkitBehaviorPlatform.stacks(2, 1));
+        assertArrayEquals(new int[] {16}, BukkitBehaviorPlatform.stacks(16, 16));
+        assertArrayEquals(new int[] {}, BukkitBehaviorPlatform.stacks(0, 64));
+
+        int[] held = {5, 0, 10};
+        assertEquals(12, BukkitBehaviorPlatform.take(held, 12));
+        assertArrayEquals(new int[] {0, 0, 3}, held);
+        assertEquals(3, BukkitBehaviorPlatform.take(held, 50), "only what is held is taken");
+        assertArrayEquals(new int[] {0, 0, 0}, held);
+        assertEquals(0, BukkitBehaviorPlatform.take(held, 1));
+        assertEquals(0, BukkitBehaviorPlatform.take(new int[] {4}, -2));
+    }
+
+    @Test void titleTicksStayWithinTheirRange() {
+        assertEquals(0, BukkitBehaviorPlatform.ticks(-5));
+        assertEquals(20, BukkitBehaviorPlatform.ticks(20));
+        assertEquals(72000, BukkitBehaviorPlatform.ticks(100000));
+    }
 }

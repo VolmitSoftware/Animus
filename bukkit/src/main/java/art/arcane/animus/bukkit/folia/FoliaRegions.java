@@ -59,10 +59,21 @@ public final class FoliaRegions implements RegionScheduler {
             return accepted;
         } catch (ReflectiveOperationException | RuntimeException failure) { retired.run(); return false; }
     }
+    /**
+     * Runs on the entity's owner; unlike {@link #execute(Entity, Runnable, Runnable)}, {@code retired} runs only when an
+     * accepted task is later dropped because the entity left. False when the scheduler did not accept the work.
+     */
+    public boolean submit(Entity entity, Runnable action, Runnable retired) {
+        if (!plugin.isEnabled()) return false;
+        try { return (boolean) entityExecute.invoke(entityScheduler.invoke(entity), plugin, action, retired, 1L); }
+        catch (ReflectiveOperationException | RuntimeException failure) { return false; }
+    }
     /** Repeats on the player's owner until cancelled or the player retires. */
-    public AutoCloseable repeat(Player player, Runnable action, Runnable retired) {
+    public AutoCloseable repeat(Player player, Runnable action, Runnable retired) { return repeat(player, action, retired, 1L, 1L); }
+    /** Repeats on the player's owner every {@code period} ticks until cancelled or the player retires. */
+    public AutoCloseable repeat(Player player, Runnable action, Runnable retired, long delay, long period) {
         try {
-            Object task = entityRepeat.invoke(entityScheduler.invoke(player), plugin, (Consumer<Object>) ignored -> action.run(), retired, 1L, 1L);
+            Object task = entityRepeat.invoke(entityScheduler.invoke(player), plugin, (Consumer<Object>) ignored -> action.run(), retired, delay, period);
             if (task == null) { retired.run(); return () -> {}; }
             return () -> cancel.invoke(task);
         } catch (ReflectiveOperationException | RuntimeException failure) { retired.run(); return () -> {}; }
@@ -72,9 +83,11 @@ public final class FoliaRegions implements RegionScheduler {
         try { globalExecute.invoke(globalScheduler.invoke(server), plugin, action); return true; }
         catch (ReflectiveOperationException | RuntimeException failure) { return false; }
     }
-    public AutoCloseable globalTicks(Runnable tick) {
+    public AutoCloseable globalTicks(Runnable tick) { return globalTicks(tick, 1L); }
+    /** Repeats on the global region every {@code period} ticks until cancelled. */
+    public AutoCloseable globalTicks(Runnable tick, long period) {
         try {
-            Object task = globalRepeat.invoke(globalScheduler.invoke(server), plugin, (Consumer<Object>) ignored -> tick.run(), 1L, 1L);
+            Object task = globalRepeat.invoke(globalScheduler.invoke(server), plugin, (Consumer<Object>) ignored -> tick.run(), period, period);
             return () -> cancel.invoke(task);
         } catch (ReflectiveOperationException | RuntimeException failure) { throw new IllegalStateException("Global region scheduler refused the task", failure); }
     }

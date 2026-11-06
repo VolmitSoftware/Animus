@@ -9,15 +9,17 @@ import java.util.*;
  * initial value and {@code declared} its declared type ({@code any} accepts every concrete value); {@code scoped} lists
  * the variables shared beyond one execution. No platform objects or mutable runtime state.
  */
-public record BehaviorProgram(String id,String entry,Map<String,Value> initial,Map<String,Type> declared,Map<String,ScopedVariable> scoped,Map<String,Node> routines,int nodes,List<TriggerBinding> triggers) {
+public record BehaviorProgram(String id,String entry,Map<String,Value> initial,Map<String,Type> declared,Map<String,ScopedVariable> scoped,Map<String,Node> routines,int nodes,List<TriggerBinding> triggers,boolean server) {
     public BehaviorProgram{
         initial=Map.copyOf(initial);scoped=Map.copyOf(scoped);routines=Map.copyOf(routines);triggers=List.copyOf(triggers);
         Map<String,Type> types=new HashMap<>();for(Map.Entry<String,Value> variable:initial.entrySet())types.put(variable.getKey(),declared.getOrDefault(variable.getKey(),variable.getValue().type()));declared=Map.copyOf(types);
     }
-    /** Every declared type is the type of its initial value. */
-    public BehaviorProgram(String id,String entry,Map<String,Value> initial,Map<String,ScopedVariable> scoped,Map<String,Node> routines,int nodes,List<TriggerBinding> triggers){this(id,entry,initial,Map.of(),scoped,routines,nodes,triggers);}
+    /** An NPC behavior whose declared types are the types of its initial values. */
+    public BehaviorProgram(String id,String entry,Map<String,Value> initial,Map<String,ScopedVariable> scoped,Map<String,Node> routines,int nodes,List<TriggerBinding> triggers){this(id,entry,initial,Map.of(),scoped,routines,nodes,triggers,false);}
+    /** {@code server} marks a server-wide behavior: it runs with {@link ServerNpc#HANDLE} instead of an NPC. */
+    public BehaviorProgram(String id,String entry,Map<String,Value> initial,Map<String,ScopedVariable> scoped,Map<String,Node> routines,int nodes,List<TriggerBinding> triggers,boolean server){this(id,entry,initial,Map.of(),scoped,routines,nodes,triggers,server);}
     /** The same compiled program started from another declared routine. Scoped variables stay shared with every other entry. */
-    public BehaviorProgram withEntry(String routine){return new BehaviorProgram(id,routine,initial,declared,scoped,routines,nodes,triggers);}
+    public BehaviorProgram withEntry(String routine){return new BehaviorProgram(id,routine,initial,declared,scoped,routines,nodes,triggers,server);}
     /** Value types. A runtime value never has type {@code ANY}; it is a declaration type only. */
     public enum Type { BOOLEAN, INTEGER, DECIMAL, STRING, LIST, MAP, ANY }
     public enum Scope {

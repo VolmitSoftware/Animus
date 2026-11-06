@@ -231,7 +231,7 @@ class TriggerDispatcherTest {
             @Override public String status(){return on.get()?"ready":"NPC runtime disabled in config.toml";}
             @Override public void bindTriggers(TriggerDispatcher dispatcher){bound.add(dispatcher);}
         };
-        TriggerLink link=new TriggerLink(fresh,living,log::add);
+        TriggerLink link=new TriggerLink(fresh,null,living,log::add);
         assertEquals(List.of(fresh),bound);assertFalse(fresh.available());assertTrue(fresh.snapshot().reason().contains("disabled"));
         on.set(true);link.run();assertTrue(fresh.available());
         on.set(false);link.run();link.run();assertFalse(fresh.available());assertEquals(2,log.size());

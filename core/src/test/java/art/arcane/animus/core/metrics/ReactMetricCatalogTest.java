@@ -3,6 +3,7 @@ package art.arcane.animus.core.metrics;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,8 +76,9 @@ class ReactMetricCatalogTest {
     }
 
     @Test void docsListEveryKey() throws Exception {
-        Path docs = Path.of(System.getProperty("animusSchemaDirectory")).getParent().resolve("docs/react.md");
-        String text = Files.readString(docs);
-        for (ReactMetricCatalog.Spec spec : ReactMetricCatalog.SPECS) assertTrue(text.contains("`" + spec.key() + "`"), "docs/react.md lacks " + spec.key());
+        Path page = Path.of(System.getProperty("animusSchemaDirectory")).getParent().resolveSibling("docs").resolve("animus/17-debug-react-metrics.md");
+        assumeTrue(Files.isRegularFile(page), "docs checkout not beside the repository");
+        String text = Files.readString(page);
+        for (ReactMetricCatalog.Spec spec : ReactMetricCatalog.SPECS) assertTrue(text.contains("`" + spec.key() + "`"), page + " lacks " + spec.key());
     }
 }
