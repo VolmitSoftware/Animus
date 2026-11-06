@@ -9,6 +9,7 @@ import '../logic/gui/gui_json.dart';
 import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
+import '../logic/inspect/server_behaviors.dart';
 import '../logic/npc/route_model.dart';
 import '../logic/offline/document_fixes.dart';
 import '../model/animus_document.dart';
@@ -24,6 +25,7 @@ import 'gui/shop_editor.dart';
 import 'inspect/behavior_editor.dart';
 import 'inspect/json_code_editor.dart';
 import 'inspect/npc_inspector.dart';
+import 'inspect/server_behaviors_editor.dart';
 import 'npc/route_editor.dart';
 import 'npc_preview.dart';
 
@@ -309,6 +311,15 @@ class _DocumentPaneState extends State<DocumentPane> {
     if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.behavior) {
       return BehaviorEditor(document: document, onJson: onJson, schemas: _schemas, diagnostics: _allDiagnostics(document));
     }
+    if (json is Map<String, Object?> && onJson != null && document.kind == DocumentKind.serverBehaviors) {
+      return ServerBehaviorsEditor(
+        document: document,
+        onJson: onJson,
+        workspaceDocuments: component.workspaceDocuments,
+        onOpen: component.onOpen,
+        diagnostics: <Diagnostic>[..._allDiagnostics(document), ...serverBehaviorsDiagnostics(json, component.workspaceDocuments)],
+      );
+    }
     if (json is! Map<String, Object?>) {
       return const dom.section(classes: 'animus-panel', <Widget>[Component.text('The document is not a JSON object.')]);
     }
@@ -462,6 +473,12 @@ List<(String, String)> previewFacts(DocumentKind kind, Map<String, Object?> json
         ('Routines', '${count(json['routines'])}'),
         ('Triggers', '${count(json['triggers'])}'),
         ('Variables', '${count(json['variables'])}'),
+      ];
+    case DocumentKind.serverBehaviors:
+      final List<Object?> listed = json['behaviors'] is List<Object?> ? json['behaviors']! as List<Object?> : const <Object?>[];
+      return <(String, String)>[
+        ('Runs', listed.isEmpty ? 'nothing: the list is empty' : '${listed.length} server behavior${listed.length == 1 ? '' : 's'}'),
+        ('Order', listed.isEmpty ? '-' : listed.join(', ')),
       ];
     case DocumentKind.rig:
       return <(String, String)>[

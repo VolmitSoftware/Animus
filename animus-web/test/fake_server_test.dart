@@ -226,7 +226,7 @@ void main() {
     final Reply reply = await call('GET', '/animus/v1/schemas', token: await pairToken());
     expectMessage('schemas-response', reply.body);
     expect((reply.json['schemas']! as Map<String, Object?>).keys.toSet(),
-        <String>{'npc', 'behavior', 'pack', 'completions', 'shop', 'inventory', 'rig', 'animation', 'menu', 'hologram', 'presets'});
+        <String>{'npc', 'behavior', 'pack', 'completions', 'shop', 'inventory', 'rig', 'animation', 'menu', 'hologram', 'presets', 'server-behaviors'});
   });
 
   test('the catalog pages with after and filters by kind', () async {
