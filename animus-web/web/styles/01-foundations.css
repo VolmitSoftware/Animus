@@ -35,9 +35,9 @@
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --animus-gap: 0.75rem;
   --animus-radius: 0.5rem;
-  --animus-panel: var(--card, #181a16);
-  --animus-border: var(--border, #2c2f29);
-  --animus-muted: var(--muted-foreground, #9aa094);
+  --animus-panel: var(--card, #161518);
+  --animus-border: var(--border, #343036);
+  --animus-muted: var(--muted-foreground, #aba5aa);
   --animus-error: var(--destructive, #e5484d);
   --animus-ok: #46a758;
 }
@@ -50,13 +50,13 @@ body {
 }
 
 html.dark body {
-  background: #111310;
-  color: #e8ebe3;
+  background: #0d0d0f;
+  color: #f3f0f2;
 }
 
 html.light body {
-  background: #f6f5f0;
-  color: #242822;
+  background: #f5f3f4;
+  color: #141214;
 }
 
 body {
