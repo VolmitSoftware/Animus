@@ -156,6 +156,7 @@ final class RegionViewer {
                 if (body.spawnFinished && !body.moving && body.pose != now.pose()) { move(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && !body.equipping && sent < packetBudget && body.equipment != now.equipmentRevision()) { equip(body, now); sent++; if (!host.current(this)) return sent; }
                 if (body.spawnFinished && sent < packetBudget && body.dragonPhase != now.dragonPhase() && now.type().equals(DragonBody.TYPE)) { phase(body, now.dragonPhase()); sent++; if (!host.current(this)) return sent; }
+                if (body.spawnFinished && sent < packetBudget && body.swings != now.swings()) { swing(body, now.swings()); sent++; if (!host.current(this)) return sent; }
             }
         }
         if (ready && retirements.isEmpty() && sent < packetBudget) { sent += rosters(packetBudget - sent); if (!host.current(this)) return sent; }
@@ -226,6 +227,15 @@ final class RegionViewer {
                 if (failure != null && host.current(this) && !body.retired) host.cosmeticFailed(this, "equipment", body.actor, failure);
             }));
         } catch (RuntimeException failure) { body.equipping = false; body.equipment = now.equipmentRevision(); host.cosmeticFailed(this, "equipment", body.actor, failure); }
+    }
+    /** Cosmetic: one arm swing for any number the owner published since the last; a failed send is not retried. */
+    private void swing(Presented body, long swings) {
+        body.swings = swings;
+        try {
+            host.packets.swing(player, body.body).whenComplete((nothing, failure) -> {
+                if (failure != null) enqueue(() -> { if (host.current(this) && !body.retired) host.cosmeticFailed(this, "swing", body.actor, failure); });
+            });
+        } catch (RuntimeException failure) { host.cosmeticFailed(this, "swing", body.actor, failure); }
     }
     /** Cosmetic: the dragon's wing phase from its owner's publication. A failed send is tried again on a later update. */
     private void phase(Presented body, int phase) {
@@ -462,7 +472,7 @@ final class RegionViewer {
     private static final class Presented {
         final RegionActor actor; final NativePacketAdapter.Body body; final long appearance; final int ids;
         boolean bound, retired, spawnFinished, despawnFinished, moving, equipping, bonesShown, rigFailed;
-        long pose, equipment, rigIdentity;
+        long pose, equipment, rigIdentity, swings;
         int dragonPhase = DragonBody.PHASE_HOVERING;
         /** The passenger roster last sent for this vehicle; null when unknown, so the next update sends it again. */
         List<Integer> sentRoster;
@@ -470,6 +480,7 @@ final class RegionViewer {
         Presented(RegionActor actor, NativePacketAdapter.Body body, RegionActor.Publication now) {
             this.actor = actor; this.body = body; appearance = now.appearance(); ids = body.entityIds().length; pose = now.pose();
             equipment = now.equipment().isEmpty() ? now.equipmentRevision() : -1;
+            swings = now.swings();
         }
     }
 }

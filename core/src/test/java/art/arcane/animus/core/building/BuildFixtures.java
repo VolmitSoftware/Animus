@@ -62,7 +62,12 @@ final class BuildFixtures {
         int minimumY = -64, maximumY = 320;
 
         @Override public boolean worldLoaded(String world) { return world.equals(WORLD); }
-        @Override public boolean chunkLoaded(String world, int chunkX, int chunkZ) { return !unloaded.contains(key(chunkX, chunkZ)); }
+        /** Loaded chunks another region owns: this thread can neither read nor change them. */
+        final Set<Long> foreign = new HashSet<>();
+        @Override public boolean chunkLoaded(String world, int chunkX, int chunkZ) { return !unloaded.contains(key(chunkX, chunkZ)) && !foreign.contains(key(chunkX, chunkZ)); }
+        @Override public boolean elsewhere(String world, int chunkX, int chunkZ) { return foreign.contains(key(chunkX, chunkZ)); }
+        void foreign(int chunkX, int chunkZ) { foreign.add(key(chunkX, chunkZ)); }
+        void own(int chunkX, int chunkZ) { foreign.remove(key(chunkX, chunkZ)); }
         @Override public Optional<String> block(String world, BlockPos at) {
             if (at.y() < minimumY || at.y() >= maximumY || !chunkLoaded(world, Math.floorDiv(at.x(), 16), Math.floorDiv(at.z(), 16))) return Optional.empty();
             return Optional.of(blocks.getOrDefault(at, "minecraft:air"));
@@ -117,16 +122,29 @@ final class BuildFixtures {
             members.put(id, member);
             return member;
         }
+        /** Active NPCs owned by another region: present, but never moved from this thread. */
+        final Set<String> elsewhere = new HashSet<>();
+        final List<String> walkers = new ArrayList<>();
+
         @Override public Optional<Member> member(String npc) { return Optional.ofNullable(members.get(npc)); }
+        @Override public boolean here(String npc) { return !elsewhere.contains(npc); }
         @Override public boolean routing(String npc) { return false; }
         @Override public void walk(String npc, WorldPosition goal, double speed) {
+            if (elsewhere.contains(npc)) throw new IllegalStateException(npc + " is owned by another region");
             walks.add(goal);
+            walkers.add(npc);
             if (walkInstantly && walkable.test(goal)) move(npc, goal);
         }
         @Override public void stop(String npc) { stops++; }
-        @Override public boolean relocate(String npc, WorldPosition to) { relocations++; move(npc, to); return true; }
+        @Override public boolean relocate(String npc, WorldPosition to) {
+            if (elsewhere.contains(npc)) throw new IllegalStateException(npc + " is owned by another region");
+            relocations++; move(npc, to); return true;
+        }
         @Override public void face(String npc, WorldPosition at) { }
-        @Override public void swing(String npc) { swings.merge(npc, 1, Integer::sum); }
+        @Override public void swing(String npc) {
+            if (elsewhere.contains(npc)) throw new IllegalStateException(npc + " is owned by another region");
+            swings.merge(npc, 1, Integer::sum);
+        }
         @Override public void hold(String npc, Optional<String> item) { held.put(npc, item); }
         @Override public void terrainChanged(String world, BlockPos at) { terrain.add(at); }
         private void move(String npc, WorldPosition to) {

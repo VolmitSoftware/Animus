@@ -2,6 +2,7 @@ package art.arcane.animus.core.runtime;
 
 import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.building.BuildNpcs;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
 import art.arcane.animus.core.combat.CombatSettings;
@@ -99,7 +100,7 @@ import java.util.function.Predicate;
  * @param <P> the platform's online player
  * @param <I> the platform's item stack
  */
-public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
+public final class PersistedNpcService<P, I> implements NpcRuntime<P, I>, BuildNpcs<P, I> {
     public record Settings(boolean enabled, double viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick,
                            int packetsPerTick, int pendingSpawnsPerViewer, int lookUpdatesPerTick) {
         public static final Settings DEFAULT = from(NpcRuntimeSettings.DEFAULT);
