@@ -40,8 +40,8 @@ class ConverterBehaviorsTest {
     @Test void writesSchemasOffline() throws Exception {
         Path output = root.resolve("out");
         String result = ConverterMain.run(new String[]{"schema", output.toString()});
-        assertTrue(result.contains("4 files"), result);
-        for (String name : List.of("behavior.schema.json", "npc.schema.json", "pack.schema.json", "completions.json"))
+        assertTrue(result.contains("5 files"), result);
+        for (String name : List.of("behavior.schema.json", "npc.schema.json", "route.schema.json", "pack.schema.json", "completions.json"))
             assertTrue(Files.isRegularFile(output.resolve("schemas").resolve(name)), name);
     }
 }
