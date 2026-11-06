@@ -86,4 +86,29 @@ class RecordingRunTest {
         assertEquals(0, run.playback().cursor());
         assertFalse(run.finished());
     }
+
+    @Test void aStepPlaysItsSegmentOnceAndKeepsTheEndThroughCatchUpRewindAndResume() {
+        RecordingRun run = RecordingRun.step(LINE, 3, 100, 300);
+        assertTrue(run.step()); assertEquals(3, run.point());
+        assertEquals(10, run.goal().x(), 1e-9, "the walk in goes to the segment's first frame");
+        assertEquals("step=recording:walk cursor=100/300 state=walking-in", run.describe());
+        run.arrived();
+        for (int i = 0; i < 180; i++) run.playback().advance();
+        run.refused();
+        assertEquals(30, run.goal().x(), 1e-9, "catch-up stops at the segment's end, not 40 ticks on");
+        run.arrived();
+        assertEquals(300, run.playback().cursor());
+        assertTrue(run.finished());
+        run.playback().advance();
+        assertEquals(300, run.playback().cursor(), "a step never plays past toTick");
+        RecordingRun stopped = RecordingRun.step(LINE, 3, 100, 300);
+        stopped.arrived();
+        for (int i = 0; i < 20; i++) stopped.playback().advance();
+        RecordingRun resumed = stopped.resumed();
+        assertEquals(RecordingRun.Phase.WALKING_IN, resumed.phase()); assertEquals(120, resumed.playback().cursor());
+        assertEquals(300, resumed.playback().end()); assertEquals(3, resumed.point());
+        assertThrows(IllegalArgumentException.class, () -> RecordingRun.step(LINE, 0, 300, 300));
+        assertThrows(IllegalArgumentException.class, () -> RecordingRun.step(LINE, 0, 0, 1001));
+        assertFalse(new RecordingRun(ONCE, LINE).step());
+    }
 }

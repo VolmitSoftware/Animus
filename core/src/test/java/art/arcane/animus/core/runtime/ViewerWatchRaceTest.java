@@ -121,6 +121,8 @@ class ViewerWatchRaceTest {
         final FakeTransport transport = new FakeTransport();
         final FakeHost host = new FakeHost(this);
         final List<Runnable> ticks = new ArrayList<>();
+        /** The waypoint indexes the host was told were reached, in order. */
+        final List<Integer> reached = new ArrayList<>();
         MotionValidator.Sampler terrain;
         volatile boolean playersAway;
         /** What {@code resolveWorld} answers; every reference names itself by default. */
@@ -241,6 +243,6 @@ class ViewerWatchRaceTest {
         @Override public Object item(NpcItem item, String path, List<String> errors) { return new Object(); }
         @Override public Object copy(Object item) { return item; }
         @Override public boolean interactionAllowed(Player player, UUID npc, Interaction action, double distance) { return true; }
-        @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) {}
+        @Override public void waypointReached(UUID npc, String id, UUID route, int waypoint, WorldPosition at) { harness.reached.add(waypoint); }
     }
 }

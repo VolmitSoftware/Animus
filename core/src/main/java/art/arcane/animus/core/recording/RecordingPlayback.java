@@ -33,6 +33,8 @@ public final class RecordingPlayback {
 
     private final RecordingDocument document;
     private final Playback mode;
+    /** The tick a {@code once} playback ends on: durationTicks, or the last tick of a route step's segment. */
+    private final int end;
     private final ArrayDeque<RecordingEvent> pending = new ArrayDeque<>();
     private int cursor;
     private Direction direction;
@@ -44,19 +46,35 @@ public final class RecordingPlayback {
      * @throws IllegalArgumentException when {@code startTick} is outside 0..durationTicks
      */
     public RecordingPlayback(RecordingDocument document, Playback mode, int startTick) {
-        this(document, new State(startTick, Direction.FORWARD, mode));
+        this(document, new State(startTick, Direction.FORWARD, mode), document.durationTicks());
         queue(startTick, pending);
     }
 
-    private RecordingPlayback(RecordingDocument document, State state) {
+    private RecordingPlayback(RecordingDocument document, State state, int end) {
         this.document = Objects.requireNonNull(document);
         Objects.requireNonNull(state);
-        if (state.cursor() < 0 || state.cursor() > document.durationTicks())
-            throw new IllegalArgumentException("Playback cursor " + state.cursor() + " is outside 0.." + document.durationTicks());
+        if (end < 0 || end > document.durationTicks() || (state.mode() != Playback.ONCE && end != document.durationTicks()))
+            throw new IllegalArgumentException("Playback end " + end + " is outside 0.." + document.durationTicks());
+        if (state.cursor() < 0 || state.cursor() > end)
+            throw new IllegalArgumentException("Playback cursor " + state.cursor() + " is outside 0.." + end);
         if (state.mode() == Playback.ONCE && state.direction() == Direction.BACKWARD) throw new IllegalArgumentException("A once playback only plays forward");
+        this.end = end;
         mode = state.mode();
         cursor = state.cursor();
         direction = state.direction();
+    }
+
+    /**
+     * A {@code once} playback of the ticks {@code fromTick..toTick}, as a route step plays it: it starts on {@code fromTick}
+     * with that tick's events due and finishes on {@code toTick}.
+     *
+     * @throws IllegalArgumentException unless {@code 0 <= fromTick < toTick <= durationTicks}
+     */
+    public static RecordingPlayback segment(RecordingDocument document, int fromTick, int toTick) {
+        if (fromTick < 0 || fromTick >= toTick) throw new IllegalArgumentException("A segment needs 0 <= fromTick < toTick");
+        RecordingPlayback playback = new RecordingPlayback(document, new State(fromTick, Direction.FORWARD, Playback.ONCE), toTick);
+        playback.queue(fromTick, playback.pending);
+        return playback;
     }
 
     /**
@@ -65,7 +83,10 @@ public final class RecordingPlayback {
      *
      * @throws IllegalArgumentException when the state does not fit this document
      */
-    public static RecordingPlayback resume(RecordingDocument document, State state) { return new RecordingPlayback(document, state); }
+    public static RecordingPlayback resume(RecordingDocument document, State state) { return new RecordingPlayback(document, state, document.durationTicks()); }
+
+    /** {@link #resume} with this playback's document and end: a segment stays a segment. */
+    public RecordingPlayback resume(State state) { return new RecordingPlayback(document, state, end); }
 
     public RecordingDocument document() { return document; }
 
@@ -74,11 +95,14 @@ public final class RecordingPlayback {
     /** The tick of the recording the playback is at, 0..durationTicks. */
     public int cursor() { return cursor; }
 
+    /** The tick a {@code once} playback finishes on; durationTicks unless it plays a segment. */
+    public int end() { return end; }
+
     public Direction direction() { return direction; }
 
     public State state() { return new State(cursor, direction, mode); }
 
-    /** Moves one tick: {@code once} stays on the last tick, {@code loop} goes from the last tick to 0, {@code pingpong} turns at both ends. */
+    /** Moves one tick: {@code once} stays on its end tick, {@code loop} goes from the last tick to 0, {@code pingpong} turns at both ends. */
     public void advance() {
         if (step()) queue(cursor, pending);
     }
@@ -91,7 +115,7 @@ public final class RecordingPlayback {
         if (ticks < 0) throw new IllegalArgumentException("Cannot skip a negative number of ticks");
         int duration = document.durationTicks();
         int remaining = switch (mode) {
-            case ONCE -> Math.min(ticks, duration);
+            case ONCE -> Math.min(ticks, end - cursor);
             case LOOP -> ticks % (duration + 1);
             case PINGPONG -> ticks % (2 * duration);
         };
@@ -119,8 +143,8 @@ public final class RecordingPlayback {
         return List.copyOf(due);
     }
 
-    /** True once a {@code once} playback is on its last tick and has handed out every event. Loops never finish. */
-    public boolean finished() { return mode == Playback.ONCE && cursor == document.durationTicks() && pending.isEmpty(); }
+    /** True once a {@code once} playback is on its end tick and has handed out every event. Loops never finish. */
+    public boolean finished() { return mode == Playback.ONCE && cursor == end && pending.isEmpty(); }
 
     /** The absolute pose at the cursor: linear position, shortest-arc yaw, linear pitch, and the earlier frame's flags. */
     public RecordingPose pose() {
@@ -152,7 +176,7 @@ public final class RecordingPlayback {
         int duration = document.durationTicks();
         switch (mode) {
             case ONCE -> {
-                if (cursor == duration) return false;
+                if (cursor == end) return false;
                 cursor++;
             }
             case LOOP -> cursor = cursor == duration ? 0 : cursor + 1;
