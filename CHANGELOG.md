@@ -522,6 +522,11 @@
 - After `/animus editor pair`, the editor's minute permission re-check no longer fails with "NPC runtime requires the owner thread" on Paper, Spigot and mod servers; it runs on the server thread. A repeating editor task failure is now one WARN line, repeated at most every 10 minutes with a count.
 - A route's `maximumFall` now counts levels as Citizens and the game do, so an NPC with a fall of 1 drops from a ledge onto a slab or path one level down instead of reporting the leg blocked and teleporting.
 - A walking NPC now moves at its configured speed; distance left over when a step reached a path node was dropped, which held a fast player body near 6 blocks a second.
+- Editor fields show a range once, under the field, instead of again as the placeholder.
+- Editor number fields are as wide as their allowed range; the control moves under its label in narrow panels.
+- Nested settings such as movement and stuck lay out as full-width groups instead of squeezed columns.
+- The editor NPC list hides its type and world columns when its own column is narrow.
+- Clicking an NPC inspector label focuses its text or number field.
 
 ### Notes
 

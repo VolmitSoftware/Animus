@@ -99,7 +99,7 @@ class _RouteWaitInputState extends State<RouteWaitInput> {
       if (ranged) ...<Widget>[
         dom.label(classes: 'animus-route-wait-end', <Widget>[
           const dom.span(<Widget>[Component.text('Min')]),
-          GuiNumberInput(id: '${component.id}-min', value: ends[0], label: '$label waitTicks min', placeholder: '0', onChanged: (num? value) => _end(0, value)),
+          GuiNumberInput(id: component.id, value: ends[0], label: '$label waitTicks min', placeholder: '0', onChanged: (num? value) => _end(0, value)),
         ]),
         dom.label(classes: 'animus-route-wait-end', <Widget>[
           const dom.span(<Widget>[Component.text('Max')]),
