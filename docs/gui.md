@@ -73,7 +73,7 @@ Chest GUIs, holograms and menus share these actions. Every action may have `trig
 | `parallel` | Runs each list in `branches` side by side. A `delay` or `stop` in one branch affects only that branch; the list goes on once every branch has started. |
 | `repeat` | Runs `steps` up to `times` times, `everyTicks` apart (0 runs them all at once). `while` is checked before each pass; false ends the loop. |
 | `teleport` | Moves the viewer to `world` (a key such as `minecraft:the_nether`), `x`, `y`, `z`, `yaw` and `pitch`. A world that is not loaded stops the list. |
-| `bossbar` | Shows a boss bar on the lane `id` for `ticks` (default 100; 0 hides the lane), with `title`, `progress` (0 to 1), `color` and `style`. A new bar on the same lane replaces the old one. `priority` is read and checked; Animus shows every lane. |
+| `bossbar` | Shows a boss bar on the lane `id` for `ticks` (default 100; 0 hides the lane), with `title`, `progress` (0 to 1), `color` (default `pink`) and `style`. A new bar on the same lane replaces the old one. `priority` is read and checked; Animus shows every lane. |
 | `broadcast` | Sends `message` to the whole server, the viewer's world or a `radius` around the viewer (`scope` `server`, `world` or `radius`), optionally only to players with `permission`. |
 | `effect` | Gives the viewer the potion `effect` for `ticks` at `amplifier`. An unknown effect stops the list. |
 | `particle` | Spawns `count` particles that only the viewer sees, spread by `offset`, at the viewer or, for holograms and menus, `"at": "location"`. |

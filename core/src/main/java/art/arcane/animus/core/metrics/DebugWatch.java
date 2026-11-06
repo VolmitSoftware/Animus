@@ -1,5 +1,6 @@
 package art.arcane.animus.core.metrics;
 
+import art.arcane.animus.core.text.Palette;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -38,7 +39,7 @@ public final class DebugWatch {
     public static String line(MetricsSnapshot snapshot) {
         MetricsSnapshot.Rates second = snapshot.second(), ten = snapshot.tenSeconds();
         RuntimeGauges gauges = snapshot.gauges();
-        return String.format(Locale.ROOT, "&6Animus &7npcs &f%d&7/&f%d &8| &7out &f%.0f&7 pkt/s &f%s&7/s &8| &7in &f%.1f&7/s &8| &f%.2f&7 ms/tick &8(&f%.1f%%&8)%s",
+        return String.format(Locale.ROOT, Palette.PINK + "Animus &7npcs &f%d&7/&f%d &8| &7out &f%.0f&7 pkt/s &f%s&7/s &8| &7in &f%.1f&7/s &8| &f%.2f&7 ms/tick &8(&f%.1f%%&8)%s",
                 gauges.active(), gauges.definitions(), second.packetsPerSecond(), DebugFormat.bytes(second.bytesPerSecond()), second.inboundPerSecond(),
                 ten.serverMillisPerTick(), ten.serverTickShare() * 100,
                 gauges.navigationPressured() || gauges.presentationStrained() ? " &c" + (gauges.navigationPressured() ? "nav-pressure " : "") + (gauges.presentationStrained() ? "strained" : "") : "");
