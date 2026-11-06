@@ -10,6 +10,8 @@ import '../../model/document_kind.dart';
 import 'gui_catalog.dart';
 import 'gui_expression.dart';
 import 'gui_json.dart';
+import 'gui_presets.dart';
+import 'shop_entries.dart';
 
 /// Codes the editors and tests look for.
 const String refusedCode = 'refused';
@@ -262,7 +264,7 @@ final class _Checker {
     if (version is num && version != inventorySchemaVersion) {
       error(r'$.schemaVersion', 'schemaVersion $version is not supported; Animus reads chest GUIs of version $inventorySchemaVersion');
     }
-    if (json.containsKey('preset')) error(r'$.preset', 'Gloss presets are not available in Animus; copy the preset\'s fields in');
+    if (json.containsKey('preset') && json['preset'] != null) error(r'$.preset', presetRefusal);
     namedActions(json, names);
     template(json['title'], r'$.title', names);
     condition(json['show'], r'$.show', names);
@@ -359,9 +361,7 @@ final class _Checker {
     if (version is num && version != hologramSchemaVersion) {
       error(r'$.schemaVersion', 'schemaVersion $version is not supported; Animus reads holograms of version $hologramSchemaVersion');
     }
-    if (json.containsKey('preset') && json['preset'] != null) {
-      error(r'$.preset', 'Gloss presets are not available in Animus; copy the preset\'s fields in');
-    }
+    if (json.containsKey('preset') && json['preset'] != null) error(r'$.preset', presetRefusal);
     condition(json['show'], r'$.show', names);
     presentationExtras(json, r'$');
     _lines(json['lines'], r'$.lines', names);
@@ -405,6 +405,8 @@ final class _Checker {
       error(r'$.defaultMode', "defaultMode '$defaultMode' is not one of the enabled modes", code: layoutCode);
     }
     if (modes.toSet().length != modes.length) error(r'$.modes', 'each mode may appear once', code: layoutCode);
+    final bool container = isContainerShop(json);
+    _owner(json, container);
     final Map<String, String> entryIds = <String, String>{};
     final JsonList pages = asList(json['pages']);
     for (int pageIndex = 0; pageIndex < pages.length; pageIndex++) {
@@ -427,6 +429,7 @@ final class _Checker {
             if (control != null) warning(path, 'slot $slot sits under the $control control and is hidden while that control shows', layoutCode);
           }
           final String type = asString(entry['type']) ?? 'static';
+          _entryFields(entry, path, type, container);
           final List<String> grids = shopGridsFor(type);
           if (!grids.contains(mode)) {
             error(childPath(path, 'type'), "a $type entry belongs in the ${grids.join(' or ')} grid, not $mode", code: layoutCode);
@@ -460,6 +463,58 @@ final class _Checker {
         }
       }
     }
+  }
+
+  static final RegExp _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$');
+
+  /// `owner` and `containers`, as ShopDocument checks them.
+  void _owner(JsonMap json, bool container) {
+    final Object? owner = json['owner'];
+    if (owner != null) {
+      if (owner is! Map<String, Object?>) {
+        error(r'$.owner', 'expected {"uuid": "...", "name": "..."}', code: layoutCode);
+      } else if (!_uuid.hasMatch(asString(owner['uuid']) ?? '')) {
+        error(r'$.owner.uuid', 'expected canonical player UUID', code: layoutCode);
+      }
+    }
+    if (!json.containsKey('containers')) return;
+    final Object? raw = json['containers'];
+    if (raw is! List<Object?> || raw.isEmpty || raw.length > 8) {
+      error(r'$.containers', 'expected an array of 1 to 8 containers', code: layoutCode);
+      return;
+    }
+    if (owner == null) error(r'$.owner', 'a shop with containers needs an owner', code: layoutCode);
+    final Set<String> seen = <String>{};
+    for (int index = 0; index < raw.length; index++) {
+      final String path = indexPath(r'$.containers', index);
+      final JsonMap box = asMap(raw[index]);
+      for (final String axis in const <String>['x', 'y', 'z']) {
+        if (asInt(box[axis]) == null) error(childPath(path, axis), 'expected integer', code: layoutCode);
+      }
+      if (!seen.add('${box['world']}|${box['x']}|${box['y']}|${box['z']}')) error(path, 'this container is listed twice', code: layoutCode);
+    }
+  }
+
+  /// The per-type field rules and, in a container shop, its three limits.
+  void _entryFields(JsonMap entry, String path, String type, bool container) {
+    if (container) {
+      if (type != 'trade' && type != 'static') error(childPath(path, 'type'), 'a container shop has only trade and static entries', code: layoutCode);
+      if ((asDouble(entry['price']) ?? 0) > 0) error(childPath(path, 'price'), 'a container shop trades items for items; remove the price', code: layoutCode);
+      if (entry.containsKey('stock')) error(childPath(path, 'stock'), "a container shop's stock is its containers", code: layoutCode);
+    } else if (entry.containsKey('stock') && !shopEntryKeeps(type, 'stock')) {
+      error(childPath(path, 'stock'), 'stock applies to buy, command and trade entries', code: layoutCode);
+    }
+    if ((type == 'buy' || type == 'sell' || type == 'command') && entry['price'] == null) {
+      error(childPath(path, 'price'), 'expected a price; use 0 for free', code: layoutCode);
+    }
+    if (entry.containsKey('sellPartial') && type != 'sell') error(childPath(path, 'sellPartial'), 'applies only to sell entries', code: layoutCode);
+    for (final String key in const <String>['needs', 'gives']) {
+      if (entry.containsKey(key) && type != 'trade') error(childPath(path, key), 'needs and gives apply only to trade entries', code: layoutCode);
+      if (type == 'trade' && asList(entry[key]).isEmpty) error(childPath(path, key), 'expected a non-empty array of items', code: layoutCode);
+    }
+    if (type == 'command' && asList(entry['commands']).isEmpty) error(childPath(path, 'commands'), 'command entries need at least one command', code: layoutCode);
+    if (type == 'static' && asList(entry['commands']).isNotEmpty) error(childPath(path, 'commands'), 'static entries cannot run commands', code: layoutCode);
+    if (type == 'static' && entry.containsKey('limit')) error(childPath(path, 'limit'), 'static entries have no limits', code: layoutCode);
   }
 }
 

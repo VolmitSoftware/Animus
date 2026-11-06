@@ -8,9 +8,9 @@ import 'package:test/test.dart';
 void main() {
   group('hologram rows', () {
     test('should keep show and scale when a row value is edited', () {
-      final Object? row = <String, Object?>{'text': '&fOld', 'show': 'viewer.level > 1', 'scale': 2};
+      final JsonMap row = <String, Object?>{'text': '&fOld', 'show': 'viewer.level > 1', 'scale': 2};
       expect(withHologramLineValue(row, '&aNew'), <String, Object?>{'text': '&aNew', 'show': 'viewer.level > 1', 'scale': 2});
-      final Object? item = <String, Object?>{'item': <String, Object?>{'item': 'minecraft:stone', 'count': 3}, 'scale': 0.5};
+      final JsonMap item = <String, Object?>{'item': <String, Object?>{'item': 'minecraft:stone', 'count': 3}, 'scale': 0.5};
       expect(withHologramLineValue(item, <String, Object?>{'item': 'minecraft:diamond', 'count': 3}),
           <String, Object?>{'item': <String, Object?>{'item': 'minecraft:diamond', 'count': 3}, 'scale': 0.5});
     });
@@ -23,7 +23,7 @@ void main() {
     });
 
     test('should keep row fields when the kind changes and drop the old value', () {
-      final Object? row = <String, Object?>{'head': 'Notch', 'show': false, 'scale': 1.5};
+      final JsonMap row = <String, Object?>{'head': 'Notch', 'show': false, 'scale': 1.5};
       expect(withHologramLineKind(row, 'entity'), <String, Object?>{'entity': 'minecraft:pig', 'show': false, 'scale': 1.5});
       expect(withHologramLineKind('&fText', 'block'), <String, Object?>{'block': 'minecraft:stone'});
       expect(withHologramLineKind(<String, Object?>{'block': 'minecraft:stone'}, 'text'), '&fText');
