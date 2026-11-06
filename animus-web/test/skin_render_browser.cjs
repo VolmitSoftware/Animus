@@ -50,6 +50,7 @@ if (process.argv[2] === '--write-fixture') {
 }
 
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {closeDrawer, sidebar} = require('./support/shell.cjs');
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
 const fixture = process.env.ANIMUS_SKIN_FIXTURE || (() => { throw new Error('Set ANIMUS_SKIN_FIXTURE to the folder written by --write-fixture'); })();
@@ -175,7 +176,7 @@ async function run(browser, viewport, label) {
   await page.getByRole('button', {name: 'Pair'}).click();
   await page.locator('.animus-live .animus-pill[data-phase="online"]').waitFor();
   await page.getByText(/documents on the server/).waitFor();
-  for (const player of players) await page.getByRole('checkbox', {name: `npc ${player.id}`}).check();
+  for (const player of players) await page.getByRole('checkbox', {name: player.id, exact: true}).check();
   await page.getByRole('button', {name: 'Open 2'}).click();
   await page.waitForFunction(() => decodeURIComponent(location.hash).includes('/npc/'));
   const workspace = page.url().split('#')[1].split('/npc/')[0];
@@ -214,11 +215,12 @@ async function run(browser, viewport, label) {
   execFileSync('zip', ['-qr', zip, '.'], {cwd: folder});
   fetched.length = 0;
   await page.goto(`${site}/#/`);
-  await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: /Open zip/}).first().click();
   await (await chooser).setFiles(zip);
-  await page.locator('.animus-sidebar').getByText(classic.name, {exact: true}).waitFor();
+  await (await sidebar(page)).getByText(classic.name, {exact: true}).waitFor();
+  await closeDrawer(page);
   const offline = page.url().split('#')[1].split('?')[0].split('/npc/')[0];
   await page.goto(`${site}/#${offline}/npc/${encodeURIComponent(classic.id)}?view=preview`);
   await page.locator('[data-testid="npc-skin-state"]').getByText('the PNG kept in this workspace (classic)').waitFor();

@@ -26,19 +26,25 @@ abstract class SessionOwner {
 /// live editing, and a waiting tab takes over when the owner closes it or
 /// switches away. The store holds and releases the lock itself.
 class StoreOwner implements SessionOwner {
-  StoreOwner(this._store) : _last = _store.ownedByThisTab {
+  StoreOwner(this._store)
+      : _owned = _store.ownedByThisTab,
+        _waiting = _store.heldByAnotherTab {
     _store.addListener(_heard);
   }
 
   final EditorStore _store;
   final StreamController<bool> _changes = StreamController<bool>.broadcast(sync: true);
-  bool _last;
+  bool _owned;
+  bool _waiting;
 
+  /// Emits [owned] whenever ownership or waiting changes, as the session
+  /// expects from any owner.
   void _heard() {
-    final bool now = _store.ownedByThisTab;
-    if (now == _last) return;
-    _last = now;
-    if (!_changes.isClosed) _changes.add(now);
+    final bool owned = _store.ownedByThisTab, waiting = _store.heldByAnotherTab;
+    if (owned == _owned && waiting == _waiting) return;
+    _owned = owned;
+    _waiting = waiting;
+    if (!_changes.isClosed) _changes.add(owned);
   }
 
   @override

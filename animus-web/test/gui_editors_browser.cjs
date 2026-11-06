@@ -9,7 +9,7 @@
 // bundle export valid files, Gloss ids round-trip and a Gloss bundle
 // imports, with no console errors and no sideways scrolling.
 //
-//   python3 -m http.server <port> --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port <port>
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_WEB_URL=http://127.0.0.1:<port> ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/gui_editors_browser.cjs
 const assert = require('node:assert/strict');
@@ -18,6 +18,7 @@ const os = require('node:os');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {closeDrawer, openFromSidebar, sidebar, topbarAction} = require('./support/shell.cjs');
 
 const fixture = path.resolve(__dirname, 'fixtures/gui_editors');
 const bundle = path.resolve(__dirname, 'fixtures/gloss_bundle/gloss-workspace.json');
@@ -63,7 +64,7 @@ async function codeOf(page) {
 }
 
 async function open(page, sidebarText) {
-  await page.locator('.animus-sidebar').getByText(sidebarText, {exact: true}).first().click();
+  await openFromSidebar(page, sidebarText);
   await page.locator('.animus-document-header').waitFor();
 }
 
@@ -99,7 +100,7 @@ async function run(browser, viewport, tag, theme) {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
-  await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(fixture);
@@ -150,7 +151,7 @@ async function run(browser, viewport, tag, theme) {
   let painted = await codeOf(page);
   assert.equal(painted.mask[1], '####LLLL#', `${tag} brush stroke`);
   await page.getByLabel('Mask brush').selectOption('');
-  await page.getByRole('button', {name: 'Undo'}).click();
+  await topbarAction(page, 'Undo');
   await page.waitForTimeout(200);
   painted = await codeOf(page);
   assert.equal(painted.mask[1], '#LLLLLLL#');
@@ -290,7 +291,7 @@ async function run(browser, viewport, tag, theme) {
   json = await codeOf(page);
   assert.deepEqual(json.components[1].motion, {y: 0.5, ticks: 6});
   assert.deepEqual(json.components[1].data.tooltip, {lines: ['&7Opens the market'], delayTicks: 5});
-  for (let i = 0; i < 4; i++) await page.getByRole('button', {name: 'Undo'}).click();
+  for (let i = 0; i < 4; i++) await topbarAction(page, 'Undo');
   await page.waitForTimeout(200);
   json = await codeOf(page);
   assert.equal(json.components[1].motion, undefined);
@@ -333,7 +334,7 @@ async function run(browser, viewport, tag, theme) {
   await open(page, 'town:hub');
 
   // Undo reverts the last edit.
-  await page.getByRole('button', {name: 'Undo'}).click();
+  await topbarAction(page, 'Undo');
   await page.waitForTimeout(200);
   json = await codeOf(page);
   assert.equal(json.components[1].id, 'market');
@@ -343,7 +344,7 @@ async function run(browser, viewport, tag, theme) {
 
   // Data folder zip export.
   const zipDownload = page.waitForEvent('download');
-  await page.getByRole('button', {name: 'Export zip'}).click();
+  await topbarAction(page, 'Export the data folder zip', {menu: 'export'});
   const zipFile = path.join(scratch, `${tag}.zip`);
   await (await zipDownload).saveAs(zipFile);
   const entries = readZip(fs.readFileSync(zipFile));
@@ -363,7 +364,7 @@ async function run(browser, viewport, tag, theme) {
 
   // Gloss bundle export and import.
   const glossDownload = page.waitForEvent('download');
-  await page.getByRole('button', {name: 'Export Gloss bundle'}).click();
+  await topbarAction(page, 'Export a Gloss bundle', {menu: 'export'});
   const glossFile = path.join(scratch, `${tag}.gloss.json`);
   await (await glossDownload).saveAs(glossFile);
   const exported = JSON.parse(fs.readFileSync(glossFile, 'utf8'));
@@ -375,16 +376,31 @@ async function run(browser, viewport, tag, theme) {
   for (const document of exported.workspace.documents) JSON.parse(document.json);
   // Importing the export back keeps the Animus ids instead of gloss:town-hub.
   const backChooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: 'Import Gloss bundle'}).click();
+  await topbarAction(page, 'Import a Gloss bundle', {menu: 'import'});
   await (await backChooser).setFiles(glossFile);
+  // The same ids are in the workspace already, so the import asks first;
+  // Escape keeps the workspace as it is, then the second try replaces.
+  const confirm = page.locator('.animus-confirm', {hasText: 'Replace 5 documents'});
+  await confirm.waitFor();
+  await page.keyboard.press('Escape');
+  await confirm.waitFor({state: 'detached'});
+  const againChooser = page.waitForEvent('filechooser');
+  await topbarAction(page, 'Import a Gloss bundle', {menu: 'import'});
+  await (await againChooser).setFiles(glossFile);
+  await confirm.getByRole('button', {name: 'Replace and import'}).click();
+  await confirm.waitFor({state: 'detached'});
   await page.waitForTimeout(500);
-  assert.equal(await page.locator('.animus-sidebar').getByText('gloss:town-hub', {exact: true}).count(), 0);
-  await page.locator('.animus-sidebar').getByText('town:hub', {exact: true}).first().waitFor();
+  const tree = await sidebar(page);
+  assert.equal(await tree.getByText('gloss:town-hub', {exact: true}).count(), 0);
+  await tree.getByText('town:hub', {exact: true}).first().waitFor();
+  await closeDrawer(page);
   const bundleChooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', {name: 'Import Gloss bundle'}).click();
+  await topbarAction(page, 'Import a Gloss bundle', {menu: 'import'});
   await (await bundleChooser).setFiles(bundle);
-  await page.locator('.animus-sidebar').getByText('gloss:chest', {exact: true}).waitFor();
-  await page.locator('.animus-sidebar').getByText('gloss:lobby/main', {exact: true}).waitFor();
+  const loaded = await sidebar(page);
+  await loaded.getByText('gloss:chest', {exact: true}).waitFor();
+  await loaded.getByText('gloss:lobby/main', {exact: true}).waitFor();
+  await closeDrawer(page);
   await open(page, 'gloss:chest');
   await page.locator('.animus-chest-slot').first().waitFor();
   assert.equal(await page.locator('.animus-chest-slot').count(), 9);

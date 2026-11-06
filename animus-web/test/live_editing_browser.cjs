@@ -13,7 +13,7 @@
 // session owner. No console errors other than the browser's own network
 // lines while a path is down and its lines for answers the test forces.
 //
-//   python3 -m http.server 8098 --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port 8098
 //   dart run tool/fake_server.dart              # :9797, origin http://127.0.0.1:8098
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/live_editing_browser.cjs
@@ -23,6 +23,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {closeDrawer, sidebar} = require('./support/shell.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
@@ -166,7 +167,8 @@ async function run(browser, width, height, label, theme) {
   // Edit, validate, preview.
   await editDraft(page, (json) => { json.name = 'Greeter Prime'; });
   await page.locator('[data-testid="draft-count"]', {hasText: '1 changed draft'}).waitFor();
-  await page.locator('.animus-tree-item .animus-badge[data-draft="edited"]').first().waitFor();
+  await (await sidebar(page)).locator('.animus-tree-item .animus-badge[data-draft="edited"]').first().waitFor();
+  await closeDrawer(page);
   await expectNotice(page, 'The server accepts', () => click(page, 'Validate'));
   await page.getByRole('button', {name: 'Preview'}).click();
   await page.locator('[data-testid="preview-state"]', {hasText: 'for your player only'}).waitFor();

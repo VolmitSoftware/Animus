@@ -155,6 +155,7 @@
 - GUI editor: menu component motion, hover, click box, tooltip, icon styles, list flow, tab spacing and menu constants.
 - GUI editor: chest GUI select, refresh mode and condition ticks, icon count format and head refresh.
 - GUI editor: clicking a menu component on the stage selects it, with a pink ring on the selection.
+- Importing a Gloss bundle whose ids the workspace already has asks before replacing those documents, and the import notice lists what the bundle does not keep.
 
 ### Changed
 
@@ -326,6 +327,10 @@
 - GUI editor: chest window slot names include lore, lore shows on tap in previews, and tooltips wrap on phones.
 - GUI editor: text fields no longer render as grey slabs, and warnings meet contrast in the light theme.
 - GUI editor: invalid inventory arguments show the JSON error at the field instead of being ignored.
+- Pack manifests open in their typed editor instead of the read-only field list.
+- The Sync page keeps the push result on screen once the new compare has nothing left to send.
+- A second tab that waits for live editing says so when it takes over.
+- On phones the top bar leaves the connection state to the live bar, so More stays on screen.
 
 ### Notes
 

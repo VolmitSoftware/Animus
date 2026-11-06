@@ -7,7 +7,7 @@
 // fails on console errors, sideways scrolling, network requests during a
 // conversion, or when the runs disagree.
 //
-//   python3 -m http.server 8098 --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port 8098
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     CITIZENS_SAVES=../schema/fixtures/citizens/traits.yml CITIZENS_WORLDS='legacy=world;Old Nether=world_nether' \
 //     node test/citizens_converter_browser.cjs
@@ -40,8 +40,8 @@ async function run(browser, viewport, label, theme) {
   const requests = [];
   page.on('request', request => requests.push(request.url()));
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
-  await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
-  await page.getByRole('button', {name: 'Convert Citizens, Shopkeepers, dtlTraders or Denizen'}).click();
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
+  await page.getByRole('button', {name: 'Convert a Citizens, Shopkeepers, dtlTraders or Denizen save'}).click();
   await page.getByRole('heading', {name: 'Convert Citizens, Shopkeepers, dtlTraders and Denizen data'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Choose saves.yml'}).click();

@@ -7,13 +7,14 @@
 // under the stage. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
 // in the build.
 //
-//   python3 -m http.server <port> --bind 127.0.0.1 --directory build/jaspr
+//   python3 tool/serve_site.py --port <port>
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
 //     ANIMUS_WEB_URL=http://127.0.0.1:<port> ANIMUS_SCREENSHOTS=<folder> node test/npc_preview_browser.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const {closeDrawer, sidebar, topbarAction} = require('./support/shell.cjs');
 
 const folder = path.resolve(__dirname, 'fixtures/npc_preview');
 const shots = process.env.ANIMUS_SCREENSHOTS;
@@ -65,18 +66,20 @@ async function run(browser, viewport, label, dark) {
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
-  await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
+  await page.getByRole('heading', {name: 'From a data folder'}).waitFor();
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
-  await page.locator('.animus-sidebar').getByText('Hero', {exact: true}).waitFor();
+  await (await sidebar(page)).getByText('Hero', {exact: true}).waitFor();
+  await closeDrawer(page);
   const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
-  if (isDark !== dark) await page.getByRole('button', {name: dark ? 'Use dark theme' : 'Use light theme'}).click();
+  if (isDark !== dark) await topbarAction(page, dark ? 'Use dark theme' : 'Use light theme');
   await page.waitForFunction(want => document.documentElement.classList.contains(want ? 'dark' : 'light'), dark);
   const workspace = page.url().split('#')[1].split('?')[0];
   for (const [title, id] of samples) {
     await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent(id)}?view=preview`);
-    await page.locator('h2').getByText(title, {exact: true}).waitFor();
+    // The heading shows the name without its legacy colour codes.
+    await page.locator('h1').getByText(title.replace(/[&§][0-9a-fk-or]/gi, ''), {exact: true}).waitFor();
     const host = page.locator('.animus-mc-gl-host');
     await page.waitForFunction(() => {
       const element = document.querySelector('.animus-mc-gl-host');
