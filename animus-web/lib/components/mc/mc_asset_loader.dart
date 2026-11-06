@@ -119,11 +119,51 @@ final class McAssetPackData {
   }
 }
 
+/// Why the pack did not load, in the terms a stage reports.
+enum McPackFailure {
+  /// The site has no pack (HTTP 404): it was built without the extracted
+  /// Minecraft assets.
+  missing,
+
+  /// The request failed or the server answered with another error.
+  network,
+}
+
+/// A pack request the site answered with [status].
+final class McPackHttpError implements Exception {
+  const McPackHttpError(this.url, this.status);
+
+  final String url;
+  final int status;
+
+  @override
+  String toString() => 'GET $url: HTTP $status';
+}
+
 final class McAssetLoader {
   static const String version = '26.3';
   static Future<McAssetPackData>? _loading;
   static McAssetPackData? _loaded;
   static Object? _error;
+
+  /// True while the pack is being fetched and decoded.
+  static bool get loading => _loading != null && _loaded == null && _error == null;
+
+  static McPackFailure? get failure {
+    final Object? error = _error;
+    if (error == null) return null;
+    return error is McPackHttpError && error.status == 404 ? McPackFailure.missing : McPackFailure.network;
+  }
+
+  /// Forgets a failed load and starts again.
+  static Future<McAssetPackData> retry() {
+    if (_error != null) {
+      _error = null;
+      _loading = null;
+      notify();
+    }
+    return load();
+  }
   static final List<void Function()> _listeners = <void Function()>[];
 
   static final Map<String, String> _runtime = <String, String>{};
@@ -174,7 +214,7 @@ final class McAssetLoader {
 
   static Future<Map<String, Object?>> _json(String url) async {
     final web.Response response = await web.window.fetch(url.toJS).toDart;
-    if (!response.ok) throw StateError('GET $url: HTTP ${response.status}');
+    if (!response.ok) throw McPackHttpError(url, response.status);
     final String text = (await response.text().toDart).toDart;
     return jsonDecode(text) as Map<String, Object?>;
   }
@@ -183,7 +223,9 @@ final class McAssetLoader {
     final web.HTMLCanvasElement canvas = web.HTMLCanvasElement()
       ..width = image.naturalWidth
       ..height = image.naturalHeight;
-    final web.CanvasRenderingContext2D ctx = canvas.getContext('2d') as web.CanvasRenderingContext2D;
+    // Read once on the CPU: a GPU canvas would stall on the readback.
+    final web.CanvasRenderingContext2D ctx =
+        canvas.getContext('2d', <String, Object?>{'willReadFrequently': true}.jsify()) as web.CanvasRenderingContext2D;
     ctx.drawImage(image, 0, 0);
     final web.ImageData data = ctx.getImageData(0, 0, canvas.width, canvas.height);
     final Uint8ClampedList raw = data.data.toDart;
