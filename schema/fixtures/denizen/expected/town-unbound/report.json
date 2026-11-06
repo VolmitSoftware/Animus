@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
   "converterVersion": 2,
-  "importId": "92f6c8643137317467d2a229694365e49f17ba04c9b552a09ffa6fe55dfa328f",
+  "importId": "f1d16f458a20e938c1a81e7e80fabca7609705790acfb8507e954018aa1df0a2",
   "notice": "Data conversion only. Generated behaviors are listed on no NPC and server behaviors stay off until the denizen review is accepted, and commands stay denied until allow-listed.",
   "sources": {
     "scripts/broken.dsc": "ed429b9bba7215abe689fb88c25d060937970fdf6b4c75311ad50e5ae0200fd9",
     "scripts/extra/again.dsc": "290261c090c3747fdf9603f8538efa040226d80e00ab0e2e71d8ce5795c00b04",
-    "scripts/town.dsc": "9890e05e1a89d9e30196fc8e3ff087f8a8b09fb9c80664735f35021ae185921b",
+    "scripts/town.dsc": "2bfdaa81cc74b9cdee9e68c6b530c13ae5f8d93b72ad78e6209f77b5b13bcb1a",
     "server_flags.dat": "ed4e388c5f8df0d477b0a1d6ae44cc221e78c72c33b4a9c2693084f1743ed6b4",
     "player_flags/00000000-0000-4000-8000-0000000000a1.dat": "4f38b526b39da412d11984681d07e086360c91741b3af54f576f6ff1429014f9",
     "player_flags/notauuid.dat": "15620b61b6e54a6786a3086bf39f3c4e84bfc4b6e0e4213e8ecbc52cc6753abd"
   },
-  "behaviors": 8,
+  "behaviors": 9,
   "containers": {
     "assignment": {
       "total": 1,
@@ -20,8 +20,8 @@
       "preserved": 0
     },
     "book": {
-      "total": 1,
-      "converted": 1,
+      "total": 2,
+      "converted": 2,
       "partial": 0,
       "preserved": 0
     },
@@ -186,7 +186,7 @@
       "preserved": 0
     },
     "title": {
-      "converted": 2,
+      "converted": 3,
       "preserved": 0
     },
     "trigger": {
@@ -310,7 +310,7 @@
       "unmapped": 0
     },
     "&sp": {
-      "mapped": 1,
+      "mapped": 2,
       "unmapped": 0
     },
     "[definition]": {
@@ -399,6 +399,7 @@
   "npcUuids": {},
   "behaviorStatus": {
     "denizen:assignment/guard_assignment": "partial",
+    "denizen:book/notice_board": "complete",
     "denizen:book/town_guide": "complete",
     "denizen:command/reset_command": "complete",
     "denizen:interact/guard_quest": "partial",
@@ -411,6 +412,7 @@
     "denizen:interact/guard_quest"
   ],
   "serverBehaviors": [
+    "denizen:book/notice_board",
     "denizen:book/town_guide",
     "denizen:command/reset_command",
     "denizen:world/lantern_world"
@@ -424,40 +426,40 @@
   },
   "issues": [
     "broken.dsc: line 4: tabs are not allowed in indentation",
-    "town.dsc:125: script guard_data is defined again; the first definition in extra/again.dsc is used",
+    "town.dsc:126: script guard_data is defined again; the first definition in extra/again.dsc is used",
     "player_flags/notauuid.dat: the file name is not a lowercase player UUID; its flags are kept"
   ],
   "preserved": [
     {
-      "source": "town.dsc:125",
+      "source": "town.dsc:126",
       "container": "guard_data",
       "kind": "container",
       "item": "data",
       "reason": "script name defined twice; Denizen also refuses duplicates"
     },
     {
-      "source": "town.dsc:199",
+      "source": "town.dsc:207",
       "container": "gate_menu",
       "kind": "event",
       "item": "procedural items",
       "reason": "procedural items run a script to fill slots; Animus chest GUIs draw fixed items"
     },
     {
-      "source": "town.dsc:113",
+      "source": "town.dsc:114",
       "container": "greet_task",
       "kind": "command",
       "item": "adjust",
       "reason": "NPC mechanism skin_blob has no Animus equivalent"
     },
     {
-      "source": "town.dsc:95",
+      "source": "town.dsc:96",
       "container": "greet_task",
       "kind": "command",
       "item": "foreach",
       "reason": "server.online_players is a list of players; behaviors read only their number"
     },
     {
-      "source": "town.dsc:96",
+      "source": "town.dsc:97",
       "container": "greet_task",
       "kind": "command",
       "item": "narrate",
@@ -527,35 +529,35 @@
       "reason": "inside a damage trigger that is kept"
     },
     {
-      "source": "town.dsc:202",
+      "source": "town.dsc:210",
       "container": "lantern_format",
       "kind": "container",
       "item": "format",
       "reason": "format scripts shape Denizen's own chat output; Animus messages are written out in full"
     },
     {
-      "source": "town.dsc:142",
+      "source": "town.dsc:143",
       "container": "lantern_world",
       "kind": "event",
       "item": "world on player clicks in town_shop",
       "reason": "no Animus server trigger for the event player clicks in town_shop"
     },
     {
-      "source": "town.dsc:143",
+      "source": "town.dsc:144",
       "container": "lantern_world",
       "kind": "command",
       "item": "determine",
       "reason": "inside a world event that is kept"
     },
     {
-      "source": "town.dsc:144",
+      "source": "town.dsc:145",
       "container": "lantern_world",
       "kind": "event",
       "item": "world on npc spawns",
       "reason": "this event covers every NPC; Animus binds a behavior to each NPC instead"
     },
     {
-      "source": "town.dsc:145",
+      "source": "town.dsc:146",
       "container": "lantern_world",
       "kind": "command",
       "item": "announce",
@@ -581,12 +583,13 @@
     }
   ],
   "documents": {
-    "behaviors/denizen/assignment/guard_assignment.json": "1d4e6d80cb12767beebbe0062dda712659cfff1e8775aab5bc2345041d04e8e3",
+    "behaviors/denizen/assignment/guard_assignment.json": "66d9634094c37c202a722c168304c6cfea9ac4ff3247ecb6824fa4069d95b764",
+    "behaviors/denizen/book/notice_board.json": "0f9027882f80b883228d91d3a8c40d534dd892631d636b48a40806094d1f68fc",
     "behaviors/denizen/book/town_guide.json": "7537e7ae94d6b3c93ad75ff19ed71068f4f1d730b904099ecd2c1dd1a6253e1e",
     "behaviors/denizen/command/reset_command.json": "668be2e7f755825e365f2dfee924aebb3f6a3dd05873f4a0ec63a85247870f71",
     "behaviors/denizen/interact/guard_quest.json": "b5b6e5a86270dc9c309dd3656fe8b15696b03de888f596ea643781628b1ff6ed",
     "behaviors/denizen/task/gate_task.json": "e9034dc663e4f676543b625ca6c2c5c58eeb781b89bdf6f293c28e8a559c2ccf",
-    "behaviors/denizen/task/greet_task.json": "a018c9b62c05e916317c116c4deb741388bda3a01856dcf5b058c7060673e720",
+    "behaviors/denizen/task/greet_task.json": "2653617d9571f5b9815ed33927293550f80801a99c0fe324dfb1455a313c0a4c",
     "behaviors/denizen/task/tally_task.json": "0a54e9a73a65ea40eafe895cd0995fd8fc0213600d01b909222b89b5169b5785",
     "behaviors/denizen/world/lantern_world.json": "f6300f00a0b226af769eecda3d867aec00aeffec58a4b1e15f8b99283482814c",
     "guis/denizen/gate_menu.json": "fe8a3600f831d43d9dba48a1ee883f09818b3ef57bebb177ef9867b33f0f3d17",

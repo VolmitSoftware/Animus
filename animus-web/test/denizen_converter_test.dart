@@ -97,7 +97,7 @@ void main() {
 
     test('aggregate counts', () {
       final DenizenPreview preview = convertDenizen(_folder('town/Denizen', citizens: 'town/saves.yml'));
-      expect(preview.behaviors, 8);
+      expect(preview.behaviors, 9);
       expect(preview.bindings, 1);
       expect(preview.flagsImported, 15);
       expect(preview.flagsPreserved, 2);

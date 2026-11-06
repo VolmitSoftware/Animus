@@ -24,6 +24,9 @@ part 'denizen_events.dart';
 part 'denizen_expressions.dart';
 
 const int denizenConverterVersion = 2;
+
+/// The author a converted book gets when its Denizen author is blank.
+const String _blankBookAuthor = 'Server';
 const String _namespace = 'denizen';
 const int denizenMaximumFiles = 512;
 const int denizenMaximumPlayers = 10000;
@@ -1487,7 +1490,12 @@ class _Converter {
       final _Result<_Text> text = expressions.text(value, scope, pending, false, 0);
       if (text.failed) return _Result<JObject>.fail(text.reason!);
       if (!text.value!.isDynamic && text.value!.literal!.length > 32) return _Result<JObject>.fail('book $field longer than 32 characters');
-      action.text(field, text.value!);
+      // A signed book needs a visible title and author, so a blank one (often <&sp>) falls back to the script name or Server.
+      if (!text.value!.isDynamic && text.value!.literal!.trim().isEmpty) {
+        action.put(field, JString(field == 'title' ? book.name.substring(0, book.name.length < 32 ? book.name.length : 32) : _blankBookAuthor));
+      } else {
+        action.text(field, text.value!);
+      }
     }
     final DenizenNode? pages = book.body.get('text');
     if (pages is! DenizenSequence || pages.items.isEmpty) return const _Result<JObject>.fail('book script without text pages');
