@@ -210,7 +210,7 @@ public final class CitizensDropIn {
         JsonObject conversions = preview.summary().has("conversions") ? preview.summary().getAsJsonObject("conversions") : new JsonObject();
         int skinsKept = conversions.has("skinsKept") ? conversions.get("skinsKept").getAsInt() : 0;
         lines.add("Citizens save " + save.label() + ": " + preview.records() + " NPCs, " + preview.valid() + " valid, " + preview.skins() + " unique skins"
-                + (skinsKept > 0 ? ", " + skinsKept + " mob skins kept for review (skins show only on player bodies)" : "") + "; converter v" + preview.converterVersion());
+                + (skinsKept > 0 ? ", " + skinsKept + " skins on non-player NPCs kept unused (Citizens shows skins only on player NPCs)" : "") + "; converter v" + preview.converterVersion());
         lines.add("Folders: " + groups(preview.summary()));
         lines.addAll(summaryLines(preview));
         lines.add("Application " + application.mode() + ": " + application.records() + " definitions, " + application.replacements() + " replacements");
@@ -591,13 +591,29 @@ public final class CitizensDropIn {
             if (modules == null || !modules.has("citizens:review") || !modules.get("citizens:review").isJsonObject()) continue;
             JsonObject traits = modules.getAsJsonObject("citizens:review");
             List<String> behaviors = behaviors(definition);
-            if (traits.has("waypoints") && !modules.has("animus:navigation")) counts.merge("waypoints", 1, Integer::sum);
+            if (traits.has("waypoints") && !modules.has("animus:navigation") && hasPoints(traits.get("waypoints"))) counts.merge("waypoints", 1, Integer::sum);
             if (traits.has("commandtrait") && behaviors.stream().noneMatch((String id) -> id.startsWith("citizens:commands-"))) counts.merge("commands", 1, Integer::sum);
             if (traits.has("text") && behaviors.stream().noneMatch((String id) -> id.startsWith("citizens:text-"))) counts.merge("text", 1, Integer::sum);
             if (traits.has("lookclose") && !modules.has("animus:look-close")) counts.merge("lookclose", 1, Integer::sum);
             if (traits.keySet().stream().anyMatch((String trait) -> DENIZEN.contains(trait) || trait.startsWith("denizen"))) counts.merge("denizen", 1, Integer::sum);
         }
         return counts;
+    }
+
+    /**
+     * True when a kept waypoints trait holds a point of any provider. Citizens saves the trait with only its provider, or a
+     * guided link distance, for NPCs that never had a route; those convert to nothing because there is nothing to run.
+     */
+    static boolean hasPoints(JsonElement waypoints) {
+        if (waypoints == null || !waypoints.isJsonObject()) return false;
+        for (Map.Entry<String, JsonElement> provider : waypoints.getAsJsonObject().entrySet()) {
+            if (!provider.getValue().isJsonObject()) continue;
+            for (Map.Entry<String, JsonElement> list : provider.getValue().getAsJsonObject().entrySet()) {
+                JsonElement value = list.getValue();
+                if ((value.isJsonArray() && !value.getAsJsonArray().isEmpty()) || (value.isJsonObject() && !value.getAsJsonObject().isEmpty())) return true;
+            }
+        }
+        return false;
     }
 
     private static List<String> behaviors(JsonObject definition) {

@@ -116,7 +116,7 @@ class CitizensDropInTest {
             assertTrue(staged.contains("npcs/world-r0_-1/ 1") && staged.contains("npcs/world-r0_0/ 1") && staged.contains("npcs/world_nether-r0_0/ 1"), staged);
             assertTrue(staged.contains("1 shops"), staged);
             assertTrue(staged.contains("Off until accepted: spawn 2, patrols 0, combat 1, riding 1, shops 1, builder 0"), staged);
-            assertTrue(staged.contains("Kept, not run: denizen 1, waypoints 1"), staged);
+            assertTrue(staged.contains("Kept, not run: denizen 1\n") || staged.endsWith("Kept, not run: denizen 1"), staged);
             assertTrue(staged.contains("1 .schem/.nbt files") && staged.contains("1 old .schematic"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
             assertTrue(npcs.all().isEmpty());
@@ -141,7 +141,7 @@ class CitizensDropInTest {
             String review = joined(flow.execute(new String[]{"review"}));
             assertTrue(review.contains("spawn: 2 waiting") && review.contains("combat: 1 waiting") && review.contains("riding: 1 waiting")
                     && review.contains("shops: 1 waiting") && review.contains("builder: 0 waiting"), review);
-            assertTrue(review.contains("waypoints 1") && review.contains("denizen 1"), review);
+            assertTrue(review.contains("Kept but not run: denizen 1") && !review.contains("waypoints 1"), "an empty waypoint set is not a kept route: " + review);
 
             String combat = joined(flow.execute(new String[]{"accept", "combat"}));
             assertTrue(combat.contains("combat 1"), combat);
@@ -227,8 +227,20 @@ class CitizensDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             String preview = joined(dropIn(store, npcs).execute(new String[0]));
-            assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 mob skins kept for review"), preview);
+            assertTrue(preview.contains("1 NPCs, 1 valid") && preview.contains("1 skins on non-player NPCs kept unused (Citizens shows skins only on player NPCs)"), preview);
         }
+    }
+
+    /** Citizens writes a waypoints trait with only its provider, and no points, for most NPCs; there is no route to keep. */
+    @Test void anEmptyWaypointSetIsNotCountedAsKeptButNotRun() throws IOException {
+        JsonObject empty = JsonDocuments.object("""
+                {"modules": {"citizens:review": {"waypoints": {"provider": "linear"}}}}""");
+        JsonObject guided = JsonDocuments.object("""
+                {"modules": {"citizens:review": {"waypoints": {"provider": "guided", "guided": {"distance": 12.0}}}}}""");
+        JsonObject points = JsonDocuments.object("""
+                {"modules": {"citizens:review": {"waypoints": {"provider": "linear", "linear": {"points": [{"location": {"world": "w", "x": 1, "y": 2, "z": 3}}]}}}}}""");
+        assertEquals(java.util.Map.of(), CitizensDropIn.preserved(List.of(empty, guided)));
+        assertEquals(java.util.Map.of("waypoints", 1), CitizensDropIn.preserved(List.of(empty, guided, points)));
     }
 
     @Test void worldMappingsAndModesPassThroughToTheReviewedPlan() throws Exception {
