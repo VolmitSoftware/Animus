@@ -1,8 +1,11 @@
-/// Browser services: theme preference, hash routing and file picking.
+/// Browser services: theme preference, hash routing, file picking, the keys,
+/// focus and unload hooks the shell uses, and the cross-tab channel and
+/// locks behind the workspace store.
 library;
 
 import 'dart:async';
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart' show Brightness;
@@ -10,12 +13,22 @@ import 'package:web/web.dart' as web;
 
 import '../config/brand.dart';
 import '../logic/data_folder.dart';
+import '../state/workspace_coordination.dart';
 
 const String themeKey = 'animus.theme';
 
+/// The stored theme, or the system's when nothing is stored (bootstrap.js
+/// makes the same choice before paint).
 Brightness loadBrightness() {
   try {
-    return web.window.localStorage.getItem(themeKey) == 'light' ? Brightness.light : Brightness.dark;
+    final String? stored = web.window.localStorage.getItem(themeKey);
+    if (stored == 'light') return Brightness.light;
+    if (stored == 'dark') return Brightness.dark;
+  } on Object {
+    // Private mode: fall through to the system preference.
+  }
+  try {
+    return web.window.matchMedia('(prefers-color-scheme: light)').matches ? Brightness.light : Brightness.dark;
   } on Object {
     return Brightness.dark;
   }
@@ -154,4 +167,209 @@ void downloadBytes(String name, Uint8List bytes, {String type = 'application/zip
   anchor.click();
   anchor.remove();
   Timer(const Duration(seconds: 30), () => web.URL.revokeObjectURL(url));
+}
+
+/// Calls [handler] for every key pressed in the page; returns a function
+/// that stops it.
+void Function() onKeyDown(void Function(web.KeyboardEvent event) handler) {
+  final JSFunction callback = ((web.KeyboardEvent event) => handler(event)).toJS;
+  web.window.addEventListener('keydown', callback);
+  return () => web.window.removeEventListener('keydown', callback);
+}
+
+/// True when [target] takes typing (a text box, text area, select or
+/// editable element), where page shortcuts leave keys alone.
+bool isTypingTarget(web.EventTarget? target) {
+  if (target == null || !target.isA<web.HTMLElement>()) return false;
+  final web.HTMLElement element = target as web.HTMLElement;
+  if (element.isContentEditable) return true;
+  final String tag = element.tagName.toUpperCase();
+  if (tag == 'TEXTAREA' || tag == 'SELECT') return true;
+  if (tag != 'INPUT') return false;
+  const Set<String> nonText = <String>{'checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'};
+  return !nonText.contains((element as web.HTMLInputElement).type);
+}
+
+/// Focuses the element with [id] once it is on the page and is not
+/// [previous] (the element that stood there before a re-render), giving up
+/// after about a second and a half.
+void focusWhenShown(String id, {web.Element? previous}) {
+  int tries = 0;
+  void attempt() {
+    final web.Element? element = web.document.getElementById(id);
+    if (element != null && !identical(element, previous)) {
+      (element as web.HTMLElement).focus();
+      return;
+    }
+    if (++tries > 90) {
+      (element as web.HTMLElement?)?.focus();
+      return;
+    }
+    web.window.setTimeout(attempt.toJS, 16.toJS);
+  }
+
+  web.window.setTimeout(attempt.toJS, 0.toJS);
+}
+
+/// The id every screen gives its main heading, which takes focus after a
+/// create, rename, duplicate or delete.
+const String mainHeadingId = 'animus-main-heading';
+
+/// Moves focus to the main heading of the screen that is about to show.
+void focusMainHeading() => focusWhenShown(mainHeadingId, previous: web.document.getElementById(mainHeadingId));
+
+/// Focuses the element with [id] now, when it exists.
+void focusById(String id) => (web.document.getElementById(id) as web.HTMLElement?)?.focus();
+
+/// Stops the page behind a drawer or dialog from scrolling.
+void setScrollLocked(bool locked) {
+  final web.DOMTokenList classes = web.document.documentElement!.classList;
+  if (locked) {
+    classes.add('animus-scroll-locked');
+  } else {
+    classes.remove('animus-scroll-locked');
+  }
+}
+
+final List<bool Function()> _unloadGuards = <bool Function()>[];
+bool _unloadInstalled = false;
+
+/// While [blocked] returns true, closing or reloading the tab asks first.
+/// Returns a function that removes the guard.
+void Function() guardUnload(bool Function() blocked) {
+  if (!_unloadInstalled) {
+    _unloadInstalled = true;
+    web.window.addEventListener('beforeunload', ((web.Event event) {
+      if (!_unloadGuards.any((bool Function() guard) => guard())) return;
+      event.preventDefault();
+      // Older browsers ask only when returnValue is set.
+      (event as JSObject)['returnValue'] = ''.toJS;
+    }).toJS);
+  }
+  _unloadGuards.add(blocked);
+  return () => _unloadGuards.remove(blocked);
+}
+
+bool _persistAsked = false;
+
+/// Asks the browser once to keep this site's storage under pressure.
+void requestPersistentStorage() {
+  if (_persistAsked) return;
+  _persistAsked = true;
+  try {
+    web.window.navigator.storage.persist().toDart.then((JSBoolean _) {}, onError: (Object _) {});
+  } on Object {
+    return;
+  }
+}
+
+/// Save and delete notices between tabs over `BroadcastChannel`.
+class BrowserWorkspaceEvents implements WorkspaceEvents {
+  BrowserWorkspaceEvents._(this._channel);
+
+  static const String channelName = 'animus.workspace';
+
+  final web.BroadcastChannel _channel;
+
+  /// The channel, or no notices when the browser has no BroadcastChannel.
+  static WorkspaceEvents open() {
+    try {
+      return BrowserWorkspaceEvents._(web.BroadcastChannel(channelName));
+    } on Object {
+      return const SilentWorkspaceEvents();
+    }
+  }
+
+  @override
+  void announce(WorkspaceEvent event) {
+    try {
+      _channel.postMessage(event.toJson().jsify());
+    } on Object {
+      return;
+    }
+  }
+
+  @override
+  void listen(void Function(WorkspaceEvent event) listener) {
+    _channel.addEventListener('message', ((web.MessageEvent message) {
+      final WorkspaceEvent? event = WorkspaceEvent.fromJson(message.data.dartify());
+      if (event != null) listener(event);
+    }).toJS);
+  }
+}
+
+/// Named exclusive locks over Web Locks (`navigator.locks`), held until
+/// [release] or until the tab closes.
+///
+/// ```dart
+/// final WorkspaceLocks locks = BrowserWorkspaceLocks.open();
+/// if (await locks.tryHold('animus.workspace.ws-1')) { /* this tab owns it */ }
+/// await locks.hold('animus.workspace.ws-1'); // waits for the owner to let go
+/// locks.release('animus.workspace.ws-1');
+/// ```
+class BrowserWorkspaceLocks implements WorkspaceLocks {
+  BrowserWorkspaceLocks._(this._manager);
+
+  final web.LockManager _manager;
+  final Map<String, Completer<void>> _held = <String, Completer<void>>{};
+  final Map<String, web.AbortController> _waiting = <String, web.AbortController>{};
+
+  /// The browser's locks, or locks every tab owns when Web Locks is missing.
+  static WorkspaceLocks open() {
+    try {
+      final JSAny? manager = (web.window.navigator as JSObject)['locks'];
+      if (manager == null || manager.isUndefinedOrNull) return const UnsharedWorkspaceLocks();
+      return BrowserWorkspaceLocks._(manager as web.LockManager);
+    } on Object {
+      return const UnsharedWorkspaceLocks();
+    }
+  }
+
+  JSFunction _granted(String name, void Function(bool granted) done) => ((JSAny? lock) {
+        if (lock == null || lock.isUndefinedOrNull) {
+          done(false);
+          return null;
+        }
+        final Completer<void> release = Completer<void>();
+        _held[name] = release;
+        done(true);
+        return release.future.toJS;
+      }).toJS;
+
+  @override
+  Future<bool> tryHold(String name) {
+    if (_held.containsKey(name)) return Future<bool>.value(true);
+    final Completer<bool> result = Completer<bool>();
+    void done(bool granted) {
+      if (!result.isCompleted) result.complete(granted);
+    }
+
+    try {
+      _manager.request(name, web.LockOptions(ifAvailable: true), _granted(name, done)).toDart.then((JSAny? _) {}, onError: (Object _) => done(false));
+    } on Object {
+      done(true);
+    }
+    return result.future;
+  }
+
+  @override
+  Future<void> hold(String name) {
+    if (_held.containsKey(name)) return Future<void>.value();
+    final Completer<void> result = Completer<void>();
+    final web.AbortController abort = web.AbortController();
+    _waiting[name] = abort;
+    void done(bool granted) {
+      _waiting.remove(name);
+      if (granted && !result.isCompleted) result.complete();
+    }
+
+    _manager.request(name, web.LockOptions(signal: abort.signal), _granted(name, done)).toDart.then((JSAny? _) {}, onError: (Object _) {});
+    return result.future;
+  }
+
+  @override
+  void release(String name) {
+    _waiting.remove(name)?.abort();
+    _held.remove(name)?.complete();
+  }
 }
