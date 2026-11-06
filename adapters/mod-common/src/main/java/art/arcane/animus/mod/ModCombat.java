@@ -1,5 +1,6 @@
 package art.arcane.animus.mod;
 
+import art.arcane.animus.core.command.CombatControl;
 import art.arcane.animus.core.hire.CombatGuarding;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.builtin.BehaviorPlatform;
@@ -42,8 +43,7 @@ import net.minecraft.world.phys.HitResult;
  */
 final class ModCombat implements AutoCloseable {
     static final String PROTECTION = "none (mod servers have no standard protection API)";
-    static final String MOB_CONTROL_UNAVAILABLE = "Mob control is not available on mod servers; use combat <npc-id> target or guard";
-    private static final String USAGE = CombatModule.MODULE_USAGE + " | attack <npc-id> <target-uuid> [damage]";
+    static final String MOB_CONTROL_UNAVAILABLE = "Mob control is not available on mod servers; use /animus combat target or combat guard";
     private final AnimusRuntime runtime;
     private final PersistedNpcService<ServerPlayer, ItemStack> living;
     private final VanillaCombatWorld world;
@@ -62,15 +62,18 @@ final class ModCombat implements AutoCloseable {
                 + " | pursuit-regions=unavailable (no protection plugin)";
     }
 
-    String execute(String[] args) {
-        if (args.length > 0 && args[0].equals("combat")) {
-            if (args.length == 1 || args.length == 2 && args[1].equals("status")) return status();
-            return module.execute(args);
-        }
-        if (args[0].equals("target")) throw new IllegalStateException(MOB_CONTROL_UNAVAILABLE);
-        if (args.length < 3 || args.length > 4) throw new IllegalArgumentException(USAGE);
-        if (world == null) throw new IllegalStateException(status());
-        return attack(args[1], CombatModule.uuid(args[2]), args.length == 4 ? Double.parseDouble(args[3]) : AttackProfile.DEFAULT.damage());
+    /** The platform side of {@code /animus combat}, {@code attack} and {@code target}. */
+    CombatControl control() {
+        return new CombatControl() {
+            @Override public String status() { return ModCombat.this.status(); }
+            @Override public String npc(String npc, Operation operation, Optional<UUID> target) { return module.command(npc, operation, target); }
+            @Override public String attack(String npc, UUID target, double damage) {
+                if (world == null) throw new IllegalStateException(ModCombat.this.status());
+                return ModCombat.this.attack(npc, target, damage);
+            }
+            @Override public String control(String npc, UUID mob) { throw new IllegalStateException(MOB_CONTROL_UNAVAILABLE); }
+            @Override public String releaseMobs(String npc) { throw new IllegalStateException(MOB_CONTROL_UNAVAILABLE); }
+        };
     }
 
     String operate(UUID npc, BehaviorPlatform.CombatOperation operation, Optional<UUID> target) { return module.operate(npc, operation, target); }

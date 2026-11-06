@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import java.util.Map;
 import art.arcane.animus.core.editor.SharedFixtures;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
@@ -46,22 +47,22 @@ class ShopkeepersDropInTest {
         leave("admin.yml", "plugins/Shopkeepers/data/save.yml");
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
-            String staged = joined(dropIn(store, npcs).execute(new String[0]));
+            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
             assertTrue(staged.contains("Shopkeepers plugins/Shopkeepers/data/save.yml: 6 shops"), staged);
             assertTrue(staged.contains("2 found, 1 not found"), staged);
             shopkeepersRunning.set(true);
-            IOException refused = assertThrows(IOException.class, () -> dropIn(store, npcs).execute(new String[]{"apply"}));
+            IOException refused = assertThrows(IOException.class, () -> dropIn(store, npcs).applyStaged());
             assertTrue(refused.getMessage().contains("Shopkeepers is still enabled"));
             shopkeepersRunning.set(false);
-            String applied = joined(dropIn(store, npcs).execute(new String[]{"apply"}));
+            String applied = joined(dropIn(store, npcs).applyStaged());
             assertTrue(applied.contains("2 bound to Citizens NPCs, 1 wait for their NPC"), applied);
             assertEquals(Optional.of(false), shop(npcs, "citizens-0").map((JsonObject module) -> module.get("reviewAccepted").getAsBoolean()));
             assertTrue(npcs.all().stream().anyMatch((NpcDefinition definition) -> definition.id().equals("shopkeeper-3")));
-            String review = joined(dropIn(store, npcs).execute(new String[]{"review"}));
+            String review = joined(dropIn(store, npcs).reviewApplied());
             assertTrue(review.contains("shops: 3 waiting"), review);
-            dropIn(store, npcs).execute(new String[]{"accept", "shops"});
+            dropIn(store, npcs).acceptCategories(List.of("shops"));
             assertEquals(Optional.of(true), shop(npcs, "citizens-0").map((JsonObject module) -> module.get("reviewAccepted").getAsBoolean()));
-            dropIn(store, npcs).execute(new String[]{"rollback"});
+            dropIn(store, npcs).rollbackApplied();
             assertNull(store.read("shops/shopkeepers/shop-1.json"));
             assertTrue(npcs.all().isEmpty());
         }
@@ -72,17 +73,17 @@ class ShopkeepersDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             assertTrue(dropIn(store, npcs).startupNotice().orElseThrow().contains("Shopkeepers migration: found imports/shopkeepers/save.yml"));
-            String staged = joined(dropIn(store, npcs).execute(new String[0]));
+            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
             assertTrue(staged.contains("3 unchecked"), staged);
-            String applied = joined(dropIn(store, npcs).execute(new String[]{"apply"}));
+            String applied = joined(dropIn(store, npcs).applyStaged());
             assertTrue(applied.contains("0 bound to Citizens NPCs, 3 wait"), applied);
             assertNotNull(store.read("shops/shopkeepers/shop-1.json"));
             leave("admin-citizens.yml", "plugins/Animus/imports/saves.yml");
-            dropIn(store, npcs).execute(new String[0]);
-            String later = joined(dropIn(store, npcs).execute(new String[]{"apply"}));
+            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of());
+            String later = joined(dropIn(store, npcs).applyStaged());
             assertTrue(later.contains("Bound 2 Shopkeepers shops to their Citizens NPCs"), later);
             assertEquals(Optional.of("shopkeepers:shop-5"), shop(npcs, "citizens-7").map((JsonObject module) -> module.get("shop").getAsString()));
-            dropIn(store, npcs).execute(new String[]{"rollback"});
+            dropIn(store, npcs).rollbackApplied();
             assertNull(store.read("shops/shopkeepers/shop-5.json"));
             assertTrue(npcs.all().isEmpty());
         }
@@ -92,20 +93,20 @@ class ShopkeepersDropInTest {
         leave("admin-citizens.yml", "plugins/Animus/imports/saves.yml");
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
-            dropIn(store, npcs).execute(new String[0]);
-            dropIn(store, npcs).execute(new String[]{"apply"});
+            dropIn(store, npcs).preview("reject", Optional.empty(), Map.of());
+            dropIn(store, npcs).applyStaged();
             assertTrue(shop(npcs, "citizens-0").isEmpty());
             leave("player.yml", "plugins/Animus/imports/shopkeepers/save.yml");
             leave("player-config.yml", "plugins/Animus/imports/shopkeepers/config.yml");
             leave("admin.yml", "plugins/Animus/imports/shopkeepers/save.yml");
-            String staged = joined(dropIn(store, npcs).execute(new String[0]));
+            String staged = joined(dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
             assertTrue(staged.contains("with its config.yml"), staged);
-            String applied = joined(dropIn(store, npcs).execute(new String[]{"apply"}));
+            String applied = joined(dropIn(store, npcs).applyStaged());
             assertTrue(applied.contains("2 bound to Citizens NPCs"), applied);
             assertTrue(shop(npcs, "citizens-0").isPresent());
-            IOException again = assertThrows(IOException.class, () -> dropIn(store, npcs).execute(new String[0]));
+            IOException again = assertThrows(IOException.class, () -> dropIn(store, npcs).preview("reject", Optional.empty(), Map.of()));
             assertTrue(again.getMessage().contains("already applied"));
-            dropIn(store, npcs).execute(new String[]{"rollback"});
+            dropIn(store, npcs).rollbackApplied();
             assertTrue(npcs.all().isEmpty());
         }
     }
