@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit.runtime;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.virtual.SpatialNpcIndex;
 import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.MovementSettings;
@@ -833,10 +834,11 @@ final class RegionActor implements RegionOwner.Body {
     /** Terrain blocks the leg for good: logged once per NPC with the leg, then the route fails as any failed leg does. */
     private void blockLeg(Route current, String reason) {
         if (exactPoint(current, reason)) return;
-        if (!blockedWarned) {
-            blockedWarned = true;
-            host.plugin.getLogger().warning(PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
-                    current.leg != null && movement.teleportsWhenStuck()));
+        boolean once = AnimusLog.shared().debug();
+        if (!once || !blockedWarned) {
+            if (once) blockedWarned = true;
+            AnimusLog.shared().routine(PersistedNpcService.BLOCKED_LEGS, id, PersistedNpcService.blockedLeg(id, current.waypoint, current.origin, current.goal, reason,
+                    current.leg != null && movement.teleportsWhenStuck()), host.plugin.getLogger()::warning);
         }
         failLeg(current, reason);
     }

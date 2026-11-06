@@ -8,6 +8,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.level.Level;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
 
 /**
  * Where the shared mixins report. Every hook is a no-op while no runtime is running, so the mod costs nothing on a
@@ -30,6 +32,16 @@ public final class ModHooks {
     public static boolean interact(ServerPlayer player, int entityId, boolean attack, String hand, boolean secondary) {
         AnimusModRuntime active = runtime;
         return active != null && active.interact(player, entityId, attack, hand, secondary);
+    }
+    /** The player's arm-swing packet, on the owner pass. */
+    public static void swung(ServerPlayer player, InteractionHand hand) {
+        AnimusModRuntime active = runtime;
+        if (active != null) active.swung(player, hand);
+    }
+    /** The player's use-on-block packet, on the owner pass, before vanilla validates or applies it. */
+    public static void usedBlock(ServerPlayer player, InteractionHand hand, BlockPos at) {
+        AnimusModRuntime active = runtime;
+        if (active != null) active.usedBlock(player, hand, at);
     }
     public static void input(ServerPlayer player, Input input) {
         AnimusModRuntime active = runtime;

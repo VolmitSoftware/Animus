@@ -19,6 +19,7 @@
     "PlayerInfoUpdateAccess",
     "PlayerListHooks",
     "ProjectileHooks",
+    "RecordingPacketHooks",
     "ServerPlayerHooks",
     "TextDisplayDataAccess",
     "ZoglinDataAccess",

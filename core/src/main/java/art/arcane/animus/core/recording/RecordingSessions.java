@@ -3,6 +3,7 @@ package art.arcane.animus.core.recording;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.CatalogReloads;
 import art.arcane.animus.core.command.CommandActor;
+import art.arcane.animus.core.command.RecordingControl;
 import art.arcane.animus.core.config.PluginSettings;
 import art.arcane.animus.core.config.RecordingSettings;
 import art.arcane.animus.core.presentation.BodySkin;
@@ -29,7 +30,7 @@ import java.util.stream.Stream;
  * @param <P> the platform's online player
  * @param <I> the platform's item stack
  */
-public final class RecordingSessions<P, I> implements AutoCloseable {
+public final class RecordingSessions<P, I> implements RecordingControl, AutoCloseable {
     private final RecordingHost<P, I> host;
     private final AnimusRuntime runtime;
     private final Executor files;
@@ -67,7 +68,24 @@ public final class RecordingSessions<P, I> implements AutoCloseable {
 
     // Commands, each on the player's owner.
 
-    public void start(P player, CommandActor actor, String id) {
+    @Override public void start(CommandActor actor, String id) { player(actor, "start").ifPresent((P player) -> start(player, actor, id)); }
+    @Override public void stop(CommandActor actor) { player(actor, "stop").ifPresent((P player) -> stop(player, actor)); }
+    @Override public void cancel(CommandActor actor) { player(actor, "cancel").ifPresent((P player) -> cancel(player, actor)); }
+    @Override public List<String> status(CommandActor actor) { return status(actor.player().flatMap(host::player)); }
+    @Override public void ghost(CommandActor actor, Optional<Boolean> on) {
+        player(actor, "show the ghost of").ifPresent((P player) -> ghost(player, actor, on.orElseGet(() -> !ghostWanted(player))));
+    }
+    @Override public void preview(CommandActor actor, String id) { player(actor, "preview").ifPresent((P player) -> preview(player, actor, id)); }
+    @Override public void stopPreview(CommandActor actor) { player(actor, "stop the preview of").ifPresent((P player) -> stopPreview(player, actor)); }
+
+    /** The online player behind {@code actor}; empty after telling the console it cannot. */
+    private Optional<P> player(CommandActor actor, String verb) {
+        Optional<P> player = actor.player().flatMap(host::player);
+        if (player.isEmpty()) actor.tell("Only a player can " + verb + " a recording.");
+        return player;
+    }
+
+    void start(P player, CommandActor actor, String id) {
         if (!id.matches(RecordingDocument.ID)) { actor.tell("Recording ids are 1 to 64 lowercase letters, digits, _ or -."); return; }
         RecordingSettings current = settings;
         if (sessions.get(host.id(player)).isPresent()) { actor.tell("You are already recording; /animus record stop or cancel first."); return; }
@@ -81,7 +99,7 @@ public final class RecordingSessions<P, I> implements AutoCloseable {
         actor.tell("Recording " + id + ": sampling every " + current.sampleTicks() + " ticks, at most " + current.maximumTicks() + " ticks; ghost " + ghost + ". /animus record stop saves it.");
     }
 
-    public void stop(P player, CommandActor actor) {
+    void stop(P player, CommandActor actor) {
         Optional<RecordingSession<P, I>> found = sessions.get(host.id(player));
         if (found.isEmpty()) { actor.tell("You are not recording."); return; }
         RecordingSession<P, I> session = found.get();
@@ -89,7 +107,7 @@ public final class RecordingSessions<P, I> implements AutoCloseable {
         end(session, RecordingCapture.End.STOPPED);
     }
 
-    public void cancel(P player, CommandActor actor) {
+    void cancel(P player, CommandActor actor) {
         Optional<RecordingSession<P, I>> found = sessions.get(host.id(player));
         if (found.isEmpty()) { actor.tell("You are not recording."); return; }
         RecordingSession<P, I> session = found.get();
@@ -98,7 +116,7 @@ public final class RecordingSessions<P, I> implements AutoCloseable {
         actor.tell("Recording " + session.capture.id() + " discarded.");
     }
 
-    public void ghost(P player, CommandActor actor, boolean on) {
+    void ghost(P player, CommandActor actor, boolean on) {
         ghostChoice.put(host.id(player), on);
         if (!on) {
             sessions.get(host.id(player)).ifPresent(this::closeGhost);
@@ -110,7 +128,7 @@ public final class RecordingSessions<P, I> implements AutoCloseable {
         else actor.tell("Recording ghost on" + host.ghostsUnavailable().map((String reason) -> ", but ghosts are unavailable: " + reason).orElse("") + ".");
     }
 
-    public List<String> status(Optional<P> player) {
+    List<String> status(Optional<P> player) {
         RecordingSettings current = settings;
         List<String> lines = new ArrayList<>();
         lines.add("Recordings " + (current.enabled() ? "enabled" : "disabled") + " | sessions " + sessions.size() + "/" + current.maximumSessions()
@@ -123,7 +141,7 @@ public final class RecordingSessions<P, I> implements AutoCloseable {
         return lines;
     }
 
-    public void preview(P player, CommandActor actor, String id) {
+    void preview(P player, CommandActor actor, String id) {
         if (!id.matches(RecordingDocument.ID)) { actor.tell("Recording ids are 1 to 64 lowercase letters, digits, _ or -."); return; }
         RecordingSettings current = settings;
         if (!current.enabled()) { actor.tell("Recordings are disabled; set [recordings] enabled = true in config.toml."); return; }
@@ -146,14 +164,14 @@ public final class RecordingSessions<P, I> implements AutoCloseable {
         } catch (RejectedExecutionException busy) { actor.tell("The file queue is full; try the preview again shortly."); }
     }
 
-    public void stopPreview(P player, CommandActor actor) {
+    void stopPreview(P player, CommandActor actor) {
         Optional<Preview<P, I>> found = previews.get(host.id(player));
         if (found.isEmpty()) { actor.tell("No preview is playing."); return; }
         endPreview(found.get(), "stopped");
     }
 
     /** Recording ids for tab completion, from a listing refreshed on the file lane at most every five seconds. */
-    public List<String> ids() {
+    @Override public List<String> ids() {
         long now = System.nanoTime();
         if (now - idsRefreshed > 5_000_000_000L && !closed) {
             idsRefreshed = now;
@@ -305,7 +323,7 @@ public final class RecordingSessions<P, I> implements AutoCloseable {
         preview.task = host.everyTick(player, () -> tickPreview(preview), () -> endPreview(preview, null));
         RecordingDocument.Origin origin = document.origin();
         actor.tell("Previewing " + document.id() + " (" + document.durationTicks() + " ticks) at " + Math.round(origin.x()) + " " + Math.round(origin.y()) + " "
-                + Math.round(origin.z()) + ". /animus record preview " + document.id() + " stop ends it.");
+                + Math.round(origin.z()) + ". /animus record preview " + document.id() + " action=stop ends it.");
     }
 
     private void tickPreview(Preview<P, I> preview) {

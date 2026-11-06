@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
@@ -863,10 +864,12 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private void blockLeg(Route route, String reason) {
         Value value = route.value;
         if (exactPoint(route, reason)) return;
-        if (!value.blockedWarned) {
-            value.blockedWarned = true;
-            host.warn(blockedLeg(value.spec.definition().id(), route.waypoint, route.origin, route.goal, reason,
-                    route.leg != null && value.movement.teleportsWhenStuck()));
+        String id = value.spec.definition().id();
+        boolean once = AnimusLog.shared().debug();
+        if (!once || !value.blockedWarned) {
+            if (once) value.blockedWarned = true;
+            AnimusLog.shared().routine(BLOCKED_LEGS, id, blockedLeg(id, route.waypoint, route.origin, route.goal, reason,
+                    route.leg != null && value.movement.teleportsWhenStuck()), host::warn);
         }
         failLeg(route, reason);
     }
@@ -874,6 +877,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
      * The one log line for an NPC whose leg terrain blocks; shared by every runtime. An NPC whose movement teleports when
      * stuck goes on from the point instead of stopping.
      */
+    /** The routine diagnostic kind of a blocked leg, counted per NPC while debug mode is off. */
+    public static final String BLOCKED_LEGS = "NPCs hit blocked route legs";
+
     public static String blockedLeg(String npc, int waypoint, Vec3 from, WorldPosition to, String reason, boolean teleports) {
         return "NPC " + npc + (teleports ? " teleported" : " stopped") + ": terrain blocks its route leg" + (waypoint < 0 ? "" : " to waypoint " + waypoint)
                 + " from " + block(from) + " to " + block(to.point()) + " in " + to.world() + " (" + reason + "); later blocked legs of this NPC are not logged";

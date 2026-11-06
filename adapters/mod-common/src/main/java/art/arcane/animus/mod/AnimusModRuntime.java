@@ -21,9 +21,11 @@ import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.building.BuildCommands;
 import art.arcane.animus.core.building.BuildProtection;
 import art.arcane.animus.core.building.BuildService;
-import art.arcane.animus.core.command.AnimusCommands;
+import art.arcane.animus.core.command.AnimusCommandTree;
+import art.arcane.animus.core.command.AnimusDirector;
+import art.arcane.animus.core.command.CommandServices;
+import art.arcane.animus.core.command.ProofControl;
 import art.arcane.animus.core.command.BehaviorCommands;
-import art.arcane.animus.core.command.CommandActor;
 import art.arcane.animus.core.editor.EditorCommands;
 import art.arcane.animus.core.editor.EditorHost;
 import art.arcane.animus.core.editor.EditorService;
@@ -70,12 +72,7 @@ import org.slf4j.LoggerFactory;
 public final class AnimusModRuntime {
     private static final Logger LOGGER = LoggerFactory.getLogger(BuildIdentity.ID);
     /** Packet previews read Bukkit's server internals and are not part of the mod runtime. */
-    private static final AnimusCommands.Extra BUKKIT_ONLY = new AnimusCommands.Extra() {
-        @Override public void execute(CommandActor actor, String[] arguments) {
-            actor.tell("Packet proof previews are available only on Bukkit and Paper servers.");
-        }
-        @Override public List<String> complete(CommandActor actor, String[] arguments) { return List.of(); }
-    };
+    private static final ProofControl BUKKIT_ONLY = ProofControl.unavailable("Packet proof previews are available only on Bukkit and Paper servers.");
     /** A server correction moves a player less than this far; a real teleport moves it farther. */
     private static final double CORRECTION_SQUARED = 1.0;
     private final Platform platform;
@@ -98,7 +95,8 @@ public final class AnimusModRuntime {
         ExtensionRuntime extensions;
         volatile BehaviorCommands behaviors;
         ModServerBehaviors serverBehaviors;
-        AnimusCommands commands;
+        ModRecordings recordings;
+        AnimusDirector commands;
         volatile EditorService editor;
         final DebugWatch watch = new DebugWatch();
         art.arcane.animus.core.hotload.HotloadService hotload;
@@ -193,12 +191,13 @@ public final class AnimusModRuntime {
             next.behaviors.facts(facts);
             next.serverBehaviors = new ModServerBehaviors(server, servers, facts, LOGGER::info);
             next.ticks.every(measured.timed(Subsystem.BEHAVIORS, next.serverBehaviors::tick));
-            next.commands = new AnimusCommands(new AnimusCommands.Services(next.runtime, files, next.living, () -> owner.behaviors, next.extensions,
-                    next.builtins, next.combat::execute, Map.of("proof", BUKKIT_ONLY, "foliaproof", BUKKIT_ONLY, "build", new BuildCommands(() -> owner.builds, owner.builds::unavailable),
-                            "shop", next.shops.shopCommand(), "gui", next.guis.command(), "editor", new EditorCommands(() -> owner.editor, files),
-                            "debug", new DebugCommands(() -> measured, owner.watch,
-                                    (String id) -> owner.runtime.isRunning() ? owner.runtime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
-                                    () -> { EditorService active = owner.editor; return active == null ? List.of("Editor: off") : active.status(); })), () -> owner.stopping));
+            next.recordings = new ModRecordings(server, next.ticks, next.runtime, files, LOGGER::info, LOGGER::warn);
+            DebugCommands debugCommands = new DebugCommands(() -> measured, owner.watch,
+                    (String id) -> owner.runtime.isRunning() ? owner.runtime.npcs().find(id).map(NpcDefinition::uuid) : Optional.empty(),
+                    () -> { EditorService active = owner.editor; return active == null ? List.of("Editor: off") : active.status(); });
+            next.commands = new AnimusCommandTree(new CommandServices(next.runtime, files, next.living, () -> owner.behaviors, next.extensions, next.builtins,
+                    next.combat.control(), next.shops, next.guis, new BuildCommands(() -> owner.builds, owner.builds::unavailable), new EditorCommands(() -> owner.editor, files),
+                    debugCommands, BUKKIT_ONLY, next.recordings.sessions(), () -> List.of(server.getPlayerNames()), () -> owner.stopping)).director();
             measured.extra("combat.waiting", next.combat::waiting);
             measured.extra("combat.load", next.combat::load);
             measured.extra("editor.streams", () -> { EditorService active = owner.editor; return active == null ? 0 : active.eventStreams(); });
@@ -239,6 +238,7 @@ public final class AnimusModRuntime {
         EditorService editor = active.editor;
         active.editor = null;
         if (editor != null) editor.close();
+        if (active.recordings != null) active.recordings.close();
         if (active.serverBehaviors != null) active.serverBehaviors.close();
         if (active.behaviors != null) active.behaviors.close();
         if (active.builtins != null) active.builtins.close();
@@ -289,17 +289,20 @@ public final class AnimusModRuntime {
     private int run(CommandSourceStack source, String text) {
         Running active = running;
         if (active == null || active.stopping) { source.sendFailure(Component.literal("Animus is not running.")); return 0; }
-        active.commands.execute(new ModActor(source, active.ticks), ModCommandLine.words(text));
+        active.commands.execute(new ModActor(source, active.ticks), words(text));
         return 1;
     }
+    /** Completes the word being typed; a suggestion replaces only that word. */
     private CompletableFuture<Suggestions> suggest(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         Running active = running;
         if (active == null) return builder.buildFuture();
         String remaining = builder.getRemaining();
-        SuggestionsBuilder last = builder.createOffset(builder.getStart() + ModCommandLine.lastWordStart(remaining));
-        for (String option : active.commands.complete(new ModActor(context.getSource(), active.ticks), ModCommandLine.completionWords(remaining))) last.suggest(option);
+        SuggestionsBuilder last = builder.createOffset(builder.getStart() + remaining.lastIndexOf(' ') + 1);
+        for (String option : active.commands.complete(new ModActor(context.getSource(), active.ticks), remaining.split(" ", -1))) last.suggest(option);
         return last.buildFuture();
     }
+    /** The words of a command, split as a Bukkit command receives them. */
+    static String[] words(String text) { return text.isEmpty() ? new String[0] : text.split(" ", -1); }
     private art.arcane.animus.api.Platform modulePlatform() {
         return switch (platform) {
             case FABRIC -> art.arcane.animus.api.Platform.FABRIC;
@@ -320,6 +323,14 @@ public final class AnimusModRuntime {
         VanillaBodyTransport transport = active == null ? null : active.host.transport();
         if (transport != null && transport.interact(player, entityId, attack, hand, secondary)) return true;
         return active != null && active.displays != null && active.displays.interact(player, entityId, attack, hand, secondary);
+    }
+    void swung(ServerPlayer player, net.minecraft.world.InteractionHand hand) {
+        Running active = running;
+        if (active != null && active.recordings != null) active.recordings.swung(player, hand);
+    }
+    void usedBlock(ServerPlayer player, net.minecraft.world.InteractionHand hand, net.minecraft.core.BlockPos at) {
+        Running active = running;
+        if (active != null && active.recordings != null) active.recordings.used(player, hand, at);
     }
     void input(ServerPlayer player, Input input) {
         Running active = running;

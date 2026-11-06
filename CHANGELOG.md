@@ -124,9 +124,13 @@
 - Performance recording documents (`recordings/<id>.json`): frames, swing, equipment and door events, a byte-exact serialized form, hotload and editor apply, and `schema/recording-v1.schema.json`.
 - Recording core for playback: frame simplification within 0.02 blocks and 2 degrees, and a once, loop or pingpong cursor with interpolated poses, capped event windows and catch-up skips.
 - `[recordings]` settings in `config.toml` for sampling, length, file size, sessions, ghosts and previews, all applied live.
-- `/animus record start|stop|cancel|status|ghost|preview` captures a player's movement, sneaking, swings, equipment and door use into `recordings/<id>.json` as one rollback-able transaction, on the player's own thread on Folia.
+- `/animus record start <id>`, `stop`, `cancel`, `status`, `ghost on|off|toggle` and `preview <id> [action=stop]` capture a player's movement, sneaking, swings, equipment and door use into `recordings/<id>.json` as one rollback-able transaction, on the player's own thread on Folia.
 - Recording sessions end and save on quit, death, world change, a teleport over 8 blocks or `maximumTicks`; a recording over `maximumFileBytes` is held until it is stopped again or cancelled.
 - A viewer-private, glowing ghost of the recorder replays the last `ghostStretchTicks` every `ghostIntervalTicks` while recording, and `/animus record preview <id>` plays a saved recording once for the requesting player.
+- Recording on Fabric, NeoForge and Forge with the same `record` command, sampling, end rules, saves and ghosts; swings come from the swing packet (the punch packet on 26.3) and door use from the use-on-block packet.
+- `@selected` for the selected NPC wherever a command takes an NPC id.
+- Commands that take an NPC also accept its folder-qualified id or its `npcs/.../<id>.json` path.
+- `/animus debug mode` and `animus.debug.mode`; per-NPC route, activation and packet diagnostics are summarized every five minutes unless debug mode is on.
 
 ### Changed
 
@@ -196,6 +200,13 @@
 - Citizens imports go in `npcs/<world>/` without region folders (converter v12).
 - Re-importing updates a moved NPC in place rather than installing it again.
 - Denizen converter v3; world click events become `denizen:world-npc/*` behaviors bound to every NPC.
+- `/animus` runs on VolmLib's Director, the same on Bukkit, Folia and mod servers, with clickable paged help and permission-filtered tab completion.
+- Optional command values are always `key=value`; stray words and unknown keys are refused with the usage line.
+- Many commands have new shapes: `navigation`, `combat`, `build`, `import citizens preview`, `worlds=old:new`, comma-separated `accept` (including `commands`), `page=`, `player=` and `debug summary`.
+- `/animus navigate` treats whole-number x and z as the centre of that block.
+
+### Removed
+- The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
 
 ### Fixed
 
@@ -243,6 +254,7 @@
 - Clicking an already selected NPC no longer repeats "Selected ... via INTERACT".
 - Hotload notices wait until edited behaviors, shops, GUIs, holograms and menus are live.
 - Hotload no longer reports numerically equal values, such as `0.0` and `0`, as changed.
+- Plain command replies carry the `[Animus]` prefix, refusals show in red and successes in green.
 
 ### Notes
 
