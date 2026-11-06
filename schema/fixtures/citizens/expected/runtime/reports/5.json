@@ -1,0 +1,31 @@
+{
+  "citizensId": 5,
+  "presentationWarnings": [],
+  "runtimeWarnings": [
+    "/traits/lookclose/enabled: an armor stand keeps its own facing and pose, so the server's look-close default is not applied; set enabled in animus:look-close to turn it toward players"
+  ],
+  "fieldPathFormat": "json-pointer",
+  "fields": {
+    "/name": "CONVERTED",
+    "/uuid": "CONVERTED",
+    "/traits/type": "CONVERTED",
+    "/traits/location/world": "CONVERTED",
+    "/traits/location/x": "CONVERTED",
+    "/traits/location/y": "CONVERTED",
+    "/traits/location/z": "CONVERTED",
+    "/traits/lookclose/randomPitchRange/0": "CONVERTED",
+    "/traits/lookclose/randomPitchRange/1": "CONVERTED",
+    "/traits/lookclose/randomYawRange/0": "CONVERTED",
+    "/traits/lookclose/randomYawRange/1": "CONVERTED"
+  },
+  "reasons": {},
+  "worldRemaps": [
+    {
+      "source": "/traits/location",
+      "from": "old_town",
+      "to": "town"
+    }
+  ],
+  "references": [],
+  "validationErrors": []
+}

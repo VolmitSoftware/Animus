@@ -33,12 +33,13 @@ class ServerBehaviorsEditor extends StatelessWidget {
     final List<String> addable = <String>[for (final MapEntry<String, bool> entry in behaviors.entries) if (entry.value && !listed.contains(entry.key)) entry.key];
     void put(List<String> next) => onJson(writeAt(json, const <JsonStep>[], <String, Object?>{...json, 'schemaVersion': 1, 'behaviors': next}), coalesce: 'server-behaviors');
     return dom.section(classes: 'animus-panel animus-inspector animus-server-behaviors', attributes: const <String, String>{'aria-label': 'Server behaviors list'}, <Widget>[
-      labelWithTip(
-        const dom.h2(<Widget>[Component.text('Server behaviors')]),
-        'Only listed behaviors run, in this order. At most $serverBehaviorsMaximum.',
-        'Server behaviors',
-        docs: Docs.serverBehaviors,
-      ),
+      const dom.h2(<Widget>[
+        InfoTip(
+          tip: 'Only listed behaviors run, in this order. At most $serverBehaviorsMaximum.',
+          docs: Docs.serverBehaviors,
+          child: Component.text('Server behaviors'),
+        ),
+      ]),
       for (final Diagnostic problem in diagnostics)
         dom.p(classes: 'animus-gui-problem is-${problem.severity.name}', attributes: const <String, String>{'role': 'note'}, <Widget>[Component.text('${problem.path}: ${problem.message}')]),
       if (listed.isEmpty)
@@ -70,6 +71,7 @@ class ServerBehaviorsEditor extends StatelessWidget {
         const dom.p(classes: 'animus-gui-problem is-warning', <Widget>[Component.text('List full. Remove one to add another.')])
       else if (addable.isNotEmpty)
         GuiSelect(
+          references: DocumentKind.behavior,
           value: null,
           options: addable,
           noneLabel: 'Add a server behavior',

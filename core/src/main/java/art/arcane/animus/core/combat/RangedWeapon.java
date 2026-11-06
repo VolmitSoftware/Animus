@@ -32,6 +32,8 @@ public enum RangedWeapon {
     public Set<String> ammunition() { return ammunition; }
     /** Whether the projectile falls, so the shot is aimed higher with distance. */
     public boolean gravity() { return gravity; }
+    /** Whether the weapon is drawn before it is let go, as a bow, crossbow or trident is; anything else is thrown with a swing. */
+    public boolean drawn() { return this == ARROW || this == SPECTRAL_ARROW || this == TRIDENT; }
     public String jsonName() { return name().toLowerCase(Locale.ROOT); }
 
     public static Optional<RangedWeapon> parse(String value) {

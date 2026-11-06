@@ -131,6 +131,19 @@ class CitizensBehaviorsTest {
         assertEquals(0, mixed.getAsJsonArray("inferred").size());
     }
 
+    @Test void anArmorStandTurnsToPlayersOnlyWhenItsSaveSaysSo() {
+        JsonObject onlyFalse = defaults("{\"1\":{\"traits\":{\"lookclose\":{\"enabled\":false}}},\"2\":{\"traits\":{\"lookclose\":{\"range\":5}}}}");
+        CitizensBehaviors.Result inferred = CitizensBehaviors.map("2", "Statue", "world", json("{\"type\":\"ARMOR_STAND\",\"lookclose\":{\"range\":5}}"), json("{}"), onlyFalse);
+        assertFalse(inferred.lookClose().orElseThrow().get("enabled").getAsBoolean(), "the server default does not turn a posed stand");
+        assertEquals(List.of("/traits/lookclose/enabled: an armor stand keeps its own facing and pose, so the server's look-close default is not applied; "
+                + "set enabled in animus:look-close to turn it toward players"), inferred.warnings());
+        CitizensBehaviors.Result written = CitizensBehaviors.map("3", "Statue", "world", json("{\"type\":\"minecraft:armor_stand\",\"lookclose\":{\"enabled\":true}}"), json("{}"), onlyFalse);
+        assertTrue(written.lookClose().orElseThrow().get("enabled").getAsBoolean(), "a stand the save turns on still turns");
+        assertEquals(List.of(), written.warnings());
+        CitizensBehaviors.Result player = CitizensBehaviors.map("4", "Guard", "world", json("{\"type\":\"PLAYER\",\"lookclose\":{\"range\":5}}"), json("{}"), onlyFalse);
+        assertTrue(player.lookClose().orElseThrow().get("enabled").getAsBoolean(), "other bodies keep the server default");
+    }
+
     @Test void randomTalkCloseTextBecomesAProximityBehavior() throws IOException {
         CitizensBehaviors.Result result = map("{\"text\":{\"text\":[\"&aHello <player>!\",\"Line one<br>line two\"],\"talk-close\":true,\"random-talker\":true,\"range\":6,\"delay\":200}}");
         assertEquals(List.of("citizens:text-7"), result.behaviors());

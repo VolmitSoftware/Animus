@@ -13,13 +13,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** A chest GUI document open for one viewer: its page, its variant and its actions. */
+/**
+ * A chest GUI document open for one viewer: its page, its variant and its actions. With {@link Cells}, the host draws
+ * the list area itself, such as a shop drawing its offers into a layout GUI, and the list's source and template are
+ * not used.
+ */
 public final class GuiScreen<P, S> implements Screen {
+    /** What a host draws into the list area, one cell per entry, in pages. */
+    public interface Cells {
+        int size();
+        ScreenFrame.Item item(int index);
+        void click(int index, Click click);
+    }
+
     private final GuiDocument document;
     private final ScreenManager<P, S>.Viewer viewer;
     private final Screens<P, S> screens;
     private final Map<String, String> args;
     private final Map<Integer, Bound> bound = new HashMap<>();
+    private final Optional<Cells> cells;
+    private final Map<Integer, Integer> cellSlots = new HashMap<>();
     private List<Object> entries = List.of();
     private long entriesAt = Long.MIN_VALUE, renderedAt;
     private int page;
@@ -27,6 +40,11 @@ public final class GuiScreen<P, S> implements Screen {
     private record Bound(Component component, GuiExpression.Scope scope) {}
 
     public GuiScreen(GuiDocument document, ScreenManager<P, S>.Viewer viewer, Screens<P, S> screens, Map<String, String> args) {
+        this(document, viewer, screens, args, Optional.empty());
+    }
+
+    public GuiScreen(GuiDocument document, ScreenManager<P, S>.Viewer viewer, Screens<P, S> screens, Map<String, String> args, Optional<Cells> cells) {
+        this.cells = cells;
         this.document = document;
         this.viewer = viewer;
         this.screens = screens;
@@ -51,17 +69,25 @@ public final class GuiScreen<P, S> implements Screen {
         Map<Integer, Component> slots = variant.flatMap((GuiModel.Variant chosen) -> chosen.presentation().slots()).orElse(document.slots());
         Map<Integer, Component> resolved = GuiDocument.resolve(document.width(), mask, keys, slots);
         bound.clear();
-        document.list().ifPresent((GuiModel.ListSection list) -> entries(list, scope));
+        cellSlots.clear();
+        if (cells.isEmpty()) document.list().ifPresent((GuiModel.ListSection list) -> entries(list, scope));
         Map<Integer, ScreenFrame.Item> items = new LinkedHashMap<>();
         for (Map.Entry<Integer, Component> slot : resolved.entrySet()) place(slot.getKey(), slot.getValue(), scope, items);
         document.list().ifPresent((GuiModel.ListSection list) -> {
             List<Integer> area = GuiDocument.area(document.width(), mask, list.area());
             int size = list.pageSize().orElse(area.size());
-            List<Object> all = entries(list, scope);
-            page = Math.clamp(page, 0, pages(all.size(), size) - 1);
+            List<Object> all = cells.isPresent() ? List.of() : entries(list, scope);
+            int count = cells.map(Cells::size).orElse(all.size());
+            page = Math.clamp(page, 0, pages(count, size) - 1);
             for (int index = 0; index < area.size(); index++) {
                 int position = page * size + index;
-                if (index >= size || position >= all.size()) continue;
+                if (index >= size || position >= count) continue;
+                if (cells.isPresent()) {
+                    items.put(area.get(index), cells.get().item(position));
+                    bound.remove(area.get(index));
+                    cellSlots.put(area.get(index), position);
+                    continue;
+                }
                 Object entry = all.get(position);
                 GuiExpression.Scope entryScope = (String name) -> name.equals(list.variable()) ? entry : scope.variable(name);
                 place(area.get(index), list.template(), entryScope, items);
@@ -78,6 +104,8 @@ public final class GuiScreen<P, S> implements Screen {
     }
 
     @Override public void click(int slot, Click click) {
+        Integer cell = cellSlots.get(slot);
+        if (cell != null) { cells.orElseThrow().click(cell, click); return; }
         Bound target = bound.get(slot);
         if (target == null) return;
         switch (target.component()) {
@@ -124,6 +152,8 @@ public final class GuiScreen<P, S> implements Screen {
         return entries;
     }
 
+    private int listCount() { return cells.map(Cells::size).orElse(entries.size()); }
+
     private int listPageSize() {
         return document.list().map((GuiModel.ListSection list) -> list.pageSize().orElse(GuiDocument.area(document.width(), document.mask(), list.area()).size())).orElse(1);
     }
@@ -134,7 +164,7 @@ public final class GuiScreen<P, S> implements Screen {
         switch (navigate.mode()) {
             case PAGE -> {
                 int size = listPageSize();
-                int total = pages(entries.size(), size);
+                int total = pages(listCount(), size);
                 int next = switch (target.toLowerCase(java.util.Locale.ROOT)) {
                     case "next" -> page + 1;
                     case "prev", "previous" -> page - 1;
@@ -189,7 +219,7 @@ public final class GuiScreen<P, S> implements Screen {
                 case "session" -> viewer.session().get(property);
                 case "npc" -> screens.npc(viewer, property);
                 case "page" -> (double) (page + 1);
-                case "pages" -> (double) pages(entries.size(), listPageSize());
+                case "pages" -> (double) pages(listCount(), listPageSize());
                 default -> null;
             };
         };

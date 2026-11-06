@@ -10,11 +10,14 @@ import java.util.Set;
 /**
  * {@code modules["animus:shop"]} in an NPC definition: the shop a click opens. A sneaking administrator's click keeps
  * its selection meaning and opens nothing. An imported section opens nothing until its {@code "reviewAccepted"} is
- * literal {@code true}.
+ * literal {@code true}. {@code style} overrides the shop's window style for this NPC, and {@code villager} gives a
+ * villager body the profession and level its trading screen title shows; other bodies ignore it.
  */
-public record ShopBinding(String shop, OpenOn openOn) {
+public record ShopBinding(String shop, OpenOn openOn, Optional<ShopDocument.Style> style, Optional<Villager> villager) {
     public static final String MODULE = "animus:shop";
     public enum OpenOn { RIGHT, LEFT, BOTH }
+    /** A villager body's profession, such as {@code minecraft:farmer}, and its level from 1 (novice) to 5 (master). */
+    public record Villager(String profession, int level) {}
 
     public boolean opensOn(boolean attack) {
         return switch (openOn) { case RIGHT -> !attack; case LEFT -> attack; case BOTH -> true; };
@@ -31,7 +34,7 @@ public record ShopBinding(String shop, OpenOn openOn) {
         if (!value.isJsonObject()) throw new IllegalArgumentException(path + ": expected object");
         JsonObject module = value.getAsJsonObject();
         for (String key : module.keySet())
-            if (!Set.of("shop", "openOn", "imported", "reviewAccepted").contains(key)) throw new IllegalArgumentException(path + "." + key + ": unknown field");
+            if (!Set.of("shop", "openOn", "style", "villager", "imported", "reviewAccepted").contains(key)) throw new IllegalArgumentException(path + "." + key + ": unknown field");
         JsonElement shop = module.get("shop");
         if (shop == null || !shop.isJsonPrimitive() || !shop.getAsJsonPrimitive().isString() || !shop.getAsString().matches(ShopDocument.ID))
             throw new IllegalArgumentException(path + ".shop: expected a shop id such as town:baker");
@@ -42,6 +45,14 @@ public record ShopBinding(String shop, OpenOn openOn) {
                 throw new IllegalArgumentException(path + ".openOn: expected right, left or both");
             openOn = OpenOn.valueOf(text.getAsString().toUpperCase(Locale.ROOT));
         }
+        Optional<ShopDocument.Style> style = Optional.empty();
+        if (module.has("style")) {
+            JsonElement text = module.get("style");
+            style = text.isJsonPrimitive() && text.getAsJsonPrimitive().isString() ? ShopDocument.Style.of(text.getAsString()) : Optional.empty();
+            if (style.isEmpty()) throw new IllegalArgumentException(path + ".style: expected native or chest");
+        }
+        Villager villager = villager(module.get("villager"), path + ".villager");
+        boolean villagerBody = definition.has("type") && definition.get("type").isJsonPrimitive() && definition.get("type").getAsString().equals("minecraft:villager");
         boolean reviewed = false;
         if (module.has("reviewAccepted")) {
             JsonElement accepted = module.get("reviewAccepted");
@@ -49,6 +60,28 @@ public record ShopBinding(String shop, OpenOn openOn) {
             reviewed = accepted.getAsBoolean();
         }
         if (definition.has("migration") && module.has("imported") && !reviewed) return Optional.empty();
-        return Optional.of(new ShopBinding(shop.getAsString(), openOn));
+        return Optional.of(new ShopBinding(shop.getAsString(), openOn, style, villagerBody ? Optional.of(villager) : Optional.empty()));
+    }
+
+    private static Villager villager(JsonElement value, String path) {
+        if (value == null) return new Villager("minecraft:none", 1);
+        if (!value.isJsonObject()) throw new IllegalArgumentException(path + ": expected {\"profession\": \"minecraft:farmer\", \"level\": 1}");
+        JsonObject object = value.getAsJsonObject();
+        for (String key : object.keySet()) if (!Set.of("profession", "level").contains(key)) throw new IllegalArgumentException(path + "." + key + ": unknown field");
+        String profession = "minecraft:none";
+        if (object.has("profession")) {
+            JsonElement text = object.get("profession");
+            if (!text.isJsonPrimitive() || !text.getAsJsonPrimitive().isString() || !text.getAsString().matches("[a-z0-9_.-]+:[a-z0-9_/.-]+"))
+                throw new IllegalArgumentException(path + ".profession: expected a profession id such as minecraft:farmer");
+            profession = text.getAsString();
+        }
+        int level = 1;
+        if (object.has("level")) {
+            JsonElement number = object.get("level");
+            if (!number.isJsonPrimitive() || !number.getAsJsonPrimitive().isNumber() || !number.getAsString().matches("[1-5]"))
+                throw new IllegalArgumentException(path + ".level: expected integer 1..5");
+            level = number.getAsInt();
+        }
+        return new Villager(profession, level);
     }
 }

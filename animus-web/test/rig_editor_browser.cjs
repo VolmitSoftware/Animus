@@ -18,6 +18,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {closeDrawer, sidebar, topbarAction} = require('./support/shell.cjs');
+const {chooseAndWait, valueOf, waitForValue} = require('./support/select.cjs');
+
+const clipPicker = page => page.locator('.animus-rig-timeline button[role="combobox"]').first();
 
 const folder = path.resolve(__dirname, 'fixtures/rig_editor');
 const bbmodel = path.resolve(__dirname, 'fixtures/bbmodel/robot.bbmodel');
@@ -140,7 +143,8 @@ async function run(browser, viewport, label, dark) {
   await idle.getByText('is not in this workspace').waitFor();
   await idle.getByRole('button', {name: 'Create town:golem/idle'}).click();
   await page.waitForFunction(() => !document.querySelector('.animus-rig-name[data-name="idle"]').classList.contains('is-broken'));
-  assert.equal(await page.locator('.animus-rig-timeline select').first().inputValue(), 'town:golem/idle', 'the new clip opens');
+  await waitForValue(clipPicker(page), 'town:golem/idle').catch(() => {});
+  assert.equal(await valueOf(clipPicker(page)), 'town:golem/idle', 'the new clip opens');
   step(label, 'names: dangling idle marked, Create town:golem/idle -> fixed and opened');
 
   // Rename a name in place.
@@ -154,7 +158,7 @@ async function run(browser, viewport, label, dark) {
   await page.locator('.animus-rig-name[data-name="walk"]').waitFor();
   step(label, 'names: walk -> stroll -> walk renamed in place');
   await page.locator('.animus-rig-names-toggle').click();
-  await page.locator('.animus-rig-timeline select').first().selectOption('');
+  await chooseAndWait(clipPicker(page), '');
 
   // The bone tree answers the keyboard.
   await pane(page, 'Bones', phone);
@@ -196,7 +200,7 @@ async function run(browser, viewport, label, dark) {
 
   // The walk animation: key the second rotation track of the arm.
   await pane(page, 'Timeline', phone);
-  await page.locator('.animus-rig-timeline select').first().selectOption('town:golem/walk');
+  await chooseAndWait(clipPicker(page), 'town:golem/walk');
   await page.locator('.animus-rig-lane[data-track="3"]').waitFor();
   const keysOf = track => page.locator(`.animus-rig-lane[data-track="${track}"] .animus-rig-key`).count();
   const replaceKeys = await keysOf(2), addKeys = await keysOf(3);
@@ -210,7 +214,7 @@ async function run(browser, viewport, label, dark) {
 
   // Blend: track 1 becomes multiply.
   await page.locator('.animus-rig-lane[data-track="0"] .animus-rig-lane-label').click();
-  await page.locator('[aria-label="Track"] select').selectOption('multiply');
+  await chooseAndWait(page.locator('[aria-label="Track"] button[role="combobox"]'), 'multiply');
   await page.locator('.animus-rig-lane[data-track="0"] .animus-rig-blend').getByText('multiply').waitFor();
   step(label, 'track panel: blend replace -> multiply, lane shows multiply');
 
@@ -240,7 +244,7 @@ async function run(browser, viewport, label, dark) {
   // Bezier: a bad curve is explained at the field.
   await page.locator('.animus-rig-lane[data-track="0"] .animus-rig-key').first().click();
   const keyframe = page.locator('[aria-label="Keyframe"]');
-  await keyframe.locator('select').first().selectOption('bezier');
+  await chooseAndWait(keyframe.locator('button[role="combobox"]').first(), 'bezier');
   const curve = page.getByLabel('Bezier curve');
   await curve.waitFor();
   await curve.fill('bezier(.5,0,1,1)');
@@ -343,7 +347,7 @@ async function glance(browser, viewport, label, dark) {
   await page.goto(`${base}#${workspace}/rig/${encodeURIComponent('town:golem')}`);
   await page.locator('.animus-rig-editor').waitFor();
   if (viewport.width < 600) await pane(page, 'Timeline', true);
-  await page.locator('.animus-rig-timeline select').first().selectOption('town:golem/walk');
+  await chooseAndWait(clipPicker(page), 'town:golem/walk');
   await page.locator('.animus-rig-lane[data-track="0"]').waitFor();
   await drawn(page);
   await noOverflow(page, label);

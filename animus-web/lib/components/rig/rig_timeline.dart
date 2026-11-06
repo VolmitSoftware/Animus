@@ -14,6 +14,8 @@ import 'package:web/web.dart' as web;
 import '../../config/docs_links.dart';
 import '../../logic/rig_edit.dart';
 import '../../logic/rig_sampler.dart';
+import '../../model/document_kind.dart';
+import '../gui/gui_fields.dart';
 import '../info_tip.dart';
 import 'rig_events.dart';
 import 'rig_gizmo.dart';
@@ -165,17 +167,22 @@ class _RigTimelineState extends State<RigTimeline> {
   Widget build(BuildContext context) {
     _refocus();
     final JsonMap? animation = component.animation;
+    final String? restLabel = <String>[for (final (String label, String id) in component.animations) if (id.isEmpty) label].firstOrNull;
     return dom.div(classes: 'animus-rig-timeline', attributes: const <String, String>{'aria-label': 'Timeline'}, <Widget>[
       dom.div(classes: 'animus-rig-toolbar', <Widget>[
         dom.label(classes: 'animus-rig-field', <Widget>[
-          const dom.span(<Widget>[Component.text('Animation')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          const dom.span(<Widget>[
+            InfoTip(tip: 'Behaviors play animations by name. idle and walk play on their own.', docs: Docs.rigs, child: Component.text('Animation')),
+          ]),
+          GuiSelect(
             value: component.selected,
-            options: <ArcaneSelectOption>[
-              for (final (String label, String id) in component.animations) ArcaneSelectOption(label: label, value: id),
-            ],
-            onChanged: component.onAnimation,
+            options: <String>[for (final (String _, String id) in component.animations) if (id.isNotEmpty) id],
+            labels: <String, String>{for (final (String label, String id) in component.animations) if (id.isNotEmpty) id: label},
+            allowNone: restLabel != null,
+            noneLabel: restLabel ?? 'default',
+            hiddenLabel: 'Animation',
+            references: DocumentKind.animation,
+            onChanged: (String? value) => component.onAnimation(value ?? ''),
           ),
         ]),
         dom.div(classes: 'animus-row', <Widget>[
@@ -200,7 +207,6 @@ class _RigTimelineState extends State<RigTimeline> {
             const Component.text('Animation names'),
           ],
         ),
-        const InfoTip(text: 'Behaviors play animations by name. idle and walk play on their own.', topic: 'Animation names', docs: Docs.rigs),
         if (_namesOpen) dom.div(id: 'animus-rig-names', <Widget>[component.names]),
       ]),
       if (animation == null)
@@ -232,30 +238,27 @@ class _RigTimelineState extends State<RigTimeline> {
         ),
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Speed')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: '${component.speed}',
-            options: <ArcaneSelectOption>[
-              for (final double speed in playbackSpeeds) ArcaneSelectOption(label: '${formatTick(speed)}x', value: '$speed'),
-            ],
-            onChanged: (String value) => component.onSpeed(double.parse(value)),
+            options: <String>[for (final double speed in playbackSpeeds) '$speed'],
+            labels: <String, String>{for (final double speed in playbackSpeeds) '$speed': '${formatTick(speed)}x'},
+            hiddenLabel: 'Speed',
+            onChanged: (String? value) {
+              if (value != null) component.onSpeed(double.parse(value));
+            },
           ),
         ]),
         dom.label(key: ValueKey<String>('loop:$loop'), classes: 'animus-rig-field is-inline', <Widget>[
-          const dom.span(<Widget>[Component.text('Loop')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          dom.span(<Widget>[InfoTip(tip: loopDescriptions[loop] ?? loop, docs: Docs.animations, child: const Component.text('Loop'))]),
+          GuiSelect(
             value: loop,
-            options: const <ArcaneSelectOption>[
-              ArcaneSelectOption(label: 'once', value: 'once'),
-              ArcaneSelectOption(label: 'loop', value: 'loop'),
-              ArcaneSelectOption(label: 'pingpong', value: 'pingpong'),
-              ArcaneSelectOption(label: 'hold', value: 'hold'),
-            ],
-            onChanged: (String value) => component.onEdit((JsonMap json) => cloneJson(json)..['loop'] = value),
+            options: const <String>['once', 'loop', 'pingpong', 'hold'],
+            hiddenLabel: 'Loop',
+            onChanged: (String? value) {
+              if (value != null) component.onEdit((JsonMap json) => cloneJson(json)..['loop'] = value);
+            },
           ),
         ]),
-        InfoTip(text: loopDescriptions[loop] ?? loop, topic: 'Loop', docs: Docs.animations),
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Duration (ticks)')]),
           TextInput(
@@ -324,23 +327,25 @@ class _RigTimelineState extends State<RigTimeline> {
       dom.div(classes: 'animus-rig-toolbar animus-rig-keybar', <Widget>[
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Channel')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: component.keyTarget.name,
-            options: <ArcaneSelectOption>[
-              for (final TrackTarget target in TrackTarget.values) ArcaneSelectOption(label: target.name, value: target.name),
-            ],
-            onChanged: (String value) => component.onKeyTarget(TrackTarget.values.byName(value)),
+            options: <String>[for (final TrackTarget target in TrackTarget.values) target.name],
+            hiddenLabel: 'Channel',
+            onChanged: (String? value) {
+              if (value != null) component.onKeyTarget(TrackTarget.values.byName(value));
+            },
           ),
         ]),
         dom.label(classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('New track blend')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: component.keyTarget == TrackTarget.visible ? 'replace' : component.keyBlend.name,
-            disabled: component.keyTarget == TrackTarget.visible,
-            options: <ArcaneSelectOption>[for (final Blend blend in Blend.values) ArcaneSelectOption(label: blend.name, value: blend.name)],
-            onChanged: (String value) => component.onKeyBlend(Blend.values.byName(value)),
+            inactive: component.keyTarget == TrackTarget.visible,
+            options: <String>[for (final Blend blend in Blend.values) blend.name],
+            hiddenLabel: 'New track blend',
+            onChanged: (String? value) {
+              if (value != null) component.onKeyBlend(Blend.values.byName(value));
+            },
           ),
         ]),
         Button.secondary(

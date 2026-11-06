@@ -43,8 +43,17 @@ class AutocompleteInput extends StatefulWidget {
     this.classes = 'animus-gui-input',
     this.invalid = false,
     this.describedBy,
+    this.onKey,
+    this.attributes = const <String, String>{},
     super.key,
   });
+
+  /// Keys the list did not use go here first; true means it used the key
+  /// (the conversation editor's Enter and Backspace).
+  final bool Function(web.KeyboardEvent event)? onKey;
+
+  /// Extra attributes of the input element.
+  final Map<String, String> attributes;
 
   final String value;
   final void Function(String value) onChanged;
@@ -82,7 +91,10 @@ class AutocompleteInput extends StatefulWidget {
 }
 
 class _AutocompleteInputState extends State<AutocompleteInput> {
-  late final String _id = component.id ?? 'animus-ac-${_nextId++}';
+  final String _ownId = 'animus-ac-${_nextId++}';
+
+  /// Follows the component: a reused state may get a field with a new id.
+  String get _id => component.id ?? _ownId;
   String get _listId => '$_id-list';
   String get _hintsId => '$_id-hints';
 
@@ -97,6 +109,15 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
   String? _typed;
 
   String get _text => _typed ?? component.value;
+
+  @override
+  void didUpdateWidget(AutocompleteInput oldComponent) {
+    super.didUpdateWidget(oldComponent);
+    if (component.id == oldComponent.id) return;
+    _typed = null;
+    _open = false;
+    _stops = const <TabStop>[];
+  }
 
   bool get _textArea => component.multiline || component.oneLine;
 
@@ -228,6 +249,11 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
       _stops = const <TabStop>[];
       return;
     }
+    final bool Function(web.KeyboardEvent event)? handle = component.onKey;
+    if (handle != null && handle(key)) {
+      key.preventDefault();
+      return;
+    }
     if (key.key == 'ArrowDown' && !component.multiline && (key.altKey || component.profile.values.isNotEmpty)) {
       key.preventDefault();
       _suggest(forced: true);
@@ -310,6 +336,7 @@ class _AutocompleteInputState extends State<AutocompleteInput> {
       if (open) 'aria-activedescendant': suggestOptionId(_listId, _active),
       if (component.invalid) 'aria-invalid': 'true',
       if (describedBy.isNotEmpty) 'aria-describedby': describedBy,
+      ...component.attributes,
     };
     final Map<String, void Function(web.Event)> events = <String, void Function(web.Event)>{
       'input': _onInput,

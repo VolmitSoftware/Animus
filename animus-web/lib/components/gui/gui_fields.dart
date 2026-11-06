@@ -11,14 +11,18 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
+import '../../config/docs_links.dart';
 import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../mc/npc/mc_text.dart';
+import '../../logic/select/select_model.dart';
 import '../../model/animus_document.dart';
+import '../../model/document_kind.dart';
 import '../../logic/help_text.dart';
 import '../../logic/suggest/field_profile.dart';
 import '../info_tip.dart';
+import '../select/animus_select.dart';
 import '../suggest/autocomplete_input.dart';
 
 /// What a text field holds, which decides its checks and completion.
@@ -53,25 +57,24 @@ String guiPathId(String path) => 'animus-at-${path.replaceAll(RegExp(r'[^A-Za-z0
 /// the document has at [path]. With [forId] the label is a `<label for>`
 /// naming the control with that id.
 class GuiRow extends StatelessWidget {
-  const GuiRow({required this.label, required this.child, this.help, this.problems = const <Diagnostic>[], this.forId, super.key});
+  const GuiRow({required this.label, required this.child, this.help, this.tip, this.problems = const <Diagnostic>[], this.forId, super.key});
 
   final String label;
   final Widget child;
   final String? help;
+
+  /// Tip text on the label; with it, [help] always stays inline.
+  final String? tip;
   final List<Diagnostic> problems;
   final String? forId;
 
   @override
   Widget build(BuildContext context) {
-    final ({String? hint, String? tip}) split = splitHelp(help);
+    final ({String? hint, String? tip}) split = tip == null ? splitHelp(help) : (hint: help == null || help!.isEmpty ? null : help, tip: tip);
     return dom.div(classes: 'animus-gui-row${problems.any((Diagnostic d) => d.severity == DiagnosticSeverity.error) ? ' has-error' : ''}', <Widget>[
-      labelWithTip(
-        forId != null
-            ? dom.label(htmlFor: forId, classes: 'animus-gui-label', <Widget>[Component.text(label)])
-            : dom.span(classes: 'animus-gui-label', <Widget>[Component.text(label)]),
-        split.tip,
-        label,
-      ),
+      forId != null
+          ? dom.label(htmlFor: forId, classes: 'animus-gui-label', <Widget>[withTip(Component.text(label), split.tip)])
+          : dom.span(classes: 'animus-gui-label', <Widget>[withTip(Component.text(label), split.tip)]),
       dom.div(classes: 'animus-gui-control', <Widget>[
         child,
         if (split.hint != null) dom.span(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
@@ -244,7 +247,8 @@ class _GuiNumberInputState extends State<GuiNumberInput> {
   }
 }
 
-/// A choice from [options]. With [allowNone], an empty first entry clears it.
+/// A choice from [options]. With [allowNone], a first entry clears it.
+/// [references] makes it a document picker with "+ New" and "Manage" rows.
 class GuiSelect extends StatelessWidget {
   const GuiSelect({
     required this.value,
@@ -253,6 +257,11 @@ class GuiSelect extends StatelessWidget {
     this.allowNone = false,
     this.noneLabel = 'default',
     this.labels = const <String, String>{},
+    this.groups = const <String, String>{},
+    this.skinFaces = const <String, String>{},
+    this.disabled = const <String>{},
+    this.inactive = false,
+    this.references,
     this.id,
     this.label,
     this.hiddenLabel,
@@ -265,6 +274,19 @@ class GuiSelect extends StatelessWidget {
   final bool allowNone;
   final String noneLabel;
   final Map<String, String> labels;
+
+  /// The group heading of each option that has one.
+  final Map<String, String> groups;
+
+  /// The skin texture whose face shows beside an option.
+  final Map<String, String> skinFaces;
+
+  /// Options shown but not pickable.
+  final Set<String> disabled;
+
+  /// The whole control is disabled.
+  final bool inactive;
+  final DocumentKind? references;
 
   /// The element id, so a [GuiRow] label can point at it with `for`.
   final String? id;
@@ -279,27 +301,27 @@ class GuiSelect extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> all = <String>[...options, if (value != null && !options.contains(value)) value!];
-    final String? named = hiddenLabel;
-    if (named != null) {
-      final String own = id ?? guiFieldId();
-      return dom.span(classes: 'animus-gui-select', <Widget>[
-        dom.label(htmlFor: own, classes: 'animus-sr-only', <Widget>[Component.text(named)]),
-        _select(own, all),
-      ]);
-    }
-    return _select(id, all);
-  }
-
-  Widget _select(String? id, List<String> all) {
-    return ArcaneSelect(
-      size: ComponentSize.sm,
+    final List<String> all = <String>[...options, if (value != null && value!.isNotEmpty && !options.contains(value)) value!];
+    return AnimusSelect(
       id: id,
       label: label,
+      hiddenLabel: hiddenLabel,
       value: value ?? '',
-      options: <ArcaneSelectOption>[
-        if (allowNone || value == null) ArcaneSelectOption(label: noneLabel, value: ''),
-        for (final String option in all) ArcaneSelectOption(label: labels[option] ?? option, value: option),
+      placeholder: noneLabel,
+      references: references,
+      disabled: inactive,
+      options: <SelectOption>[
+        if (allowNone || value == null) SelectOption(label: noneLabel, value: ''),
+        for (final String option in all)
+          if (option.isNotEmpty)
+            SelectOption(
+              label: labels[option] ?? option,
+              value: option,
+              group: groups[option],
+              skinFace: skinFaces[option],
+              disabled: disabled.contains(option),
+              keywords: labels[option] == null ? const <String>[] : <String>[option],
+            ),
       ],
       onChanged: (String next) => onChanged(next.isEmpty ? null : next),
     );
@@ -413,24 +435,45 @@ class GuiStyledText extends StatelessWidget {
 }
 
 /// A collapsible group of fields.
-class GuiSection extends StatelessWidget {
-  const GuiSection({required this.title, required this.children, this.open = true, this.count, super.key});
+class GuiSection extends StatefulWidget {
+  const GuiSection({required this.title, required this.children, this.open = true, this.count, this.tip, this.docs, super.key});
 
   final String title;
   final List<Widget> children;
+
+  /// Whether the section starts open.
   final bool open;
   final int? count;
+
+  /// Tip text on the title, linking to [docs] or the surrounding page.
+  final String? tip;
+  final DocLink? docs;
+
+  @override
+  State<GuiSection> createState() => _GuiSectionState();
+}
+
+class _GuiSectionState extends State<GuiSection> {
+  /// Kept from the user's own open and close, so an edit that builds the
+  /// section again does not fold it back to [GuiSection.open].
+  late bool _open = component.open;
 
   @override
   Widget build(BuildContext context) => dom.details(
         classes: 'animus-gui-section',
-        attributes: <String, String>{if (open) 'open': ''},
+        attributes: <String, String>{if (_open) 'open': ''},
+        events: <String, void Function(web.Event)>{
+          'toggle': (web.Event event) {
+            final bool open = (event.currentTarget! as web.HTMLDetailsElement).open;
+            if (open != _open) setState(() => _open = open);
+          },
+        },
         <Widget>[
           dom.summary(<Widget>[
-            Component.text(title),
-            if (count != null) dom.span(classes: 'animus-count', <Widget>[Component.text('$count')]),
+            withTip(Component.text(component.title), component.tip, docs: component.docs),
+            if (component.count != null) dom.span(classes: 'animus-count', <Widget>[Component.text('${component.count}')]),
           ]),
-          dom.div(classes: 'animus-gui-section-body', children),
+          dom.div(classes: 'animus-gui-section-body', component.children),
         ],
       );
 }

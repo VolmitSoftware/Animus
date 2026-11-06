@@ -19,6 +19,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const {openFromSidebar} = require('./support/shell.cjs');
+const {choose, dropdownShowing} = require('./support/select.cjs');
 
 const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
 const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
@@ -74,7 +75,7 @@ async function run(browser, viewport, label, theme) {
   await page.getByRole('tab', {name: 'Visual'}).click();
   const list = page.locator('.animus-server-behaviors');
   await list.getByText('Nothing listed. Add one below.').waitFor();
-  await list.locator('select', {has: page.locator('option', {hasText: 'Add a server behavior'})}).first().selectOption('town:welcome');
+  await choose(dropdownShowing(list, 'Add a server behavior'), 'town:welcome');
   await list.locator('[data-behavior="town:welcome"]').getByText('Server behavior', {exact: true}).waitFor();
   await shot(page, `${label}-list`);
   const listed = async () => (await control('state')).documents.find(document => document.kind === 'server-behaviors');

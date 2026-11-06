@@ -62,7 +62,7 @@ class NpcSubhead extends StatelessWidget {
   Widget build(BuildContext context) {
     final ({String? hint, String? tip}) split = splitHelp(help);
     return dom.div(classes: 'animus-npc-subhead', <Widget>[
-      labelWithTip(dom.h4(<Widget>[Component.text(text)]), split.tip, text),
+      dom.h4(<Widget>[withTip(Component.text(text), split.tip)]),
       if (split.hint != null) dom.p(classes: 'animus-gui-help', <Widget>[Component.text(split.hint!)]),
     ]);
   }

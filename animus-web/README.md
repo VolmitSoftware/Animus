@@ -12,6 +12,14 @@ Saves that the browser refuses (out of space, storage switched off) keep the edi
 
 The brand mark is `web/assets/brand/animus-mark.svg` (the Animus triangle, stripe and diamond in the brand pinks and greys). `web/favicon.svg` is the mark on the near-black tile; `favicon.ico` (32 px, PNG inside), `apple-touch-icon.png` (180 px) and `icon-512.png` are rendered from it. `firebase.json` caches `/assets/brand/` for a year as immutable, so a changed mark needs a new file name. Show the mark with `<img src="/assets/brand/animus-mark.svg" width=".." height=".." alt="">`, or `BrandMark(size: ..)` in Dart.
 
+## Dropdowns and the sidebar
+
+Every choice is the editor's own dropdown (`lib/components/select`): `AnimusSelect` (or `GuiSelect` for a list of strings) and `SuggestInput` for text with suggestions; `test/no_native_select_test.dart` fails on a native `select` or `datalist`. Past eight options a dropdown has a search field. Keys: arrows, Home, End, Page Up and Down, type-ahead, Enter and Space, Escape (focus goes back to the control). At 760 px and below it opens as a sheet. A dropdown given `references` picks a document and ends with "+ New <kind>" and "Manage <kinds>": New opens the create form with the search text as the name and the current document's folder, and Create comes back with the new document picked (`lib/state/document_return.dart`); Manage opens `#/workspace/<id>/list/<kind>` (the NPC browser and recordings list for those kinds).
+
+Sidebar sections and NPC folders collapse from their headers (Enter or Space, Left and Right on a header); Collapse all and Expand all sit above them. What is collapsed is kept in localStorage per workspace (`animus.sidebar.collapsed.<id>`).
+
+`dropdowns_browser.cjs` checks keyboard-only picking, the search, "+ New rig" and Manage, the phone sheet, placement near the bottom and a collapsed section kept across a reload, at 1440 and 390 px in both themes.
+
 ## Working without a server
 
 New document (`#/workspace/<id>/new`) lists every kind with a guided first step that makes a valid document (`lib/logic/offline/new_documents.dart`): an NPC from its name, folder, body, skin (a PNG file or address, kept as `editor/skins/<hash>.png` so the preview wears it after a reload) and position, with a behavior from a template; behaviors from the greeter, dialogue, patrol, shop, guard and quest templates; packs, routes, shops, chest GUIs, menus, holograms, rigs (empty or a block figure), animations (empty, bob or wave), skins, text animations and presets. Schematics are not editor documents. Every document has Rename, Duplicate and Delete (confirmed, undoable); a move takes along the NPCs that list a renamed behavior and the animations and NPCs of a renamed rig. Diagnostics offer fixes where the editor knows the repair (`lib/logic/offline/document_fixes.dart`).
@@ -66,6 +74,7 @@ node test/server_behaviors_live_browser.cjs   # --data as its header describes
 node test/skin_render_browser.cjs    # --data from its --write-fixture run
 node test/groups_recordings_browser.cjs
 node test/info_tip_browser.cjs
+node test/dropdowns_browser.cjs
 ```
 
 `home_browser.cjs` checks the home page (one primary action, the three ways to start, the empty list), the skip link, renaming a workspace with Enter and Escape (focus goes back to Rename), deleting with Escape and Restore, the routes to a missing workspace or document (each names the cause and links back), then opens `../schema/fixtures/export` as a data folder: the listing, arrow keys in the document list, the document title as the page heading, the view tablist with arrow keys, a broken Code draft named in the header, and Split and Preview.
@@ -78,7 +87,7 @@ node test/info_tip_browser.cjs
 
 `gui_editors_browser.cjs` opens `test/fixtures/gui_editors` (a chest GUI with a list, toggle and variant, one with a Gloss-only action, a shop, a hologram, a menu, a text animation that names a preset and the presets document) at desktop and phone widths in both themes. It reaches a chest slot by keyboard, paints the mask by dragging, checks slot names and 44 px phone slots, changes a shop entry's type and makes a container shop, keeps a hologram row's `show` and `scale`, picks a menu component on the stage and edits its motion and tooltip, copies a preset's fields into the text animation and pauses its preview, adds a preset, and checks that refused actions are flagged at their field, completion and undo work, the data folder zip and Gloss bundle export valid files, Gloss ids round-trip and `test/fixtures/gloss_bundle/gloss-workspace.json` imports, with no console errors and no sideways scrolling.
 
-`info_tip_browser.cjs` checks the info control (`lib/components/info_tip.dart`) on an example NPC at 1440 px with a mouse and 390 px with touch, in both themes: hover and keyboard focus show the tooltip its `aria-describedby` names, Escape hides it, a click opens the wiki heading, a tap toggles the tooltip and its Docs link, and the control is square, flat and 44 px on phones.
+`info_tip_browser.cjs` checks the help tips (`lib/components/info_tip.dart`) on an example NPC at 1440 px with a mouse and 390 px with touch, in both themes: the label text carries a dotted underline and no icon, hover and keyboard focus show the tooltip its `aria-describedby` names, Escape hides it, Enter and the tooltip's Docs link open the wiki heading, a click on a label still focuses its field, a tap toggles the tooltip and a tap elsewhere closes it.
 
 `npc_preview_browser.cjs` opens `test/fixtures/npc_preview` (every body type, pose and equipment slot, a skin document) and checks that each NPC's Preview draws a non-blank canvas at 1440 px dark and 390 px light without sideways scrolling, that text, orbiting by mouse and keyboard work, that a loaded skin PNG is drawn and that a PNG of the wrong size says why under the stage, with no console errors. `ANIMUS_SCREENSHOTS` is optional and should point outside the repository.
 

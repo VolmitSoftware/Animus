@@ -2,10 +2,13 @@ package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.navigation.MovementProfile;
 import art.arcane.animus.core.npc.BodyTraits;
+import art.arcane.animus.core.npc.NpcAttributes;
+import art.arcane.animus.core.npc.VanillaAttributes;
 import art.arcane.animus.core.presentation.BodyRules;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
@@ -166,17 +169,6 @@ final class CitizensTraits {
         if (routed && !movement.has("avoidWater")) { movement.addProperty("avoidWater", false); any = true; }
         if (metadata != null && Boolean.TRUE.equals(bool(metadata.get("flyable")))) { movement.addProperty("fly", true); any = true; }
         if (metadata != null && Boolean.TRUE.equals(bool(metadata.get("pathfinder-open-doors")))) { movement.addProperty("openDoors", true); any = true; }
-        JsonObject attributes = object(object(traits.get("attributetrait")) == null ? null : traits.getAsJsonObject("attributetrait").get("attributes"));
-        JsonElement step = attributes == null ? null : attributes.get("minecraft:step_height");
-        if (number(step) && step.getAsDouble() >= 0) {
-            double height = Math.min(MovementProfile.MAX_STEP, step.getAsDouble());
-            movement.addProperty("stepHeight", height);
-            String path = "/traits/attributetrait/attributes/minecraft:step_height";
-            if (step.getAsDouble() > MovementProfile.MAX_STEP)
-                note(path, CitizensImporter.Status.CONVERTED, "Animus steps up at most 1.5 blocks without a jump, so higher steps are jumped");
-            else converted.add(path);
-            any = true;
-        }
         if (any) fields.add("movement", movement);
     }
 
@@ -236,10 +228,31 @@ final class CitizensTraits {
         JsonObject trait = object(traits.get("attributetrait"));
         JsonObject attributes = trait == null ? null : object(trait.get("attributes"));
         if (attributes == null) return;
-        for (String key : attributes.keySet()) {
-            if (key.equals("minecraft:step_height")) continue;
-            kept("/traits/attributetrait/attributes/" + CitizensBehaviors.pointer(key), "attribute " + key + " has no Animus setting");
+        JsonObject values = new JsonObject();
+        for (Map.Entry<String, JsonElement> entry : attributes.entrySet()) {
+            String path = "/traits/attributetrait/attributes/" + CitizensBehaviors.pointer(entry.getKey());
+            Optional<VanillaAttributes.Attribute> attribute = NpcAttributes.attribute(attributeId(entry.getKey()));
+            if (attribute.isEmpty()) { kept(path, "attribute " + entry.getKey() + " is not a vanilla attribute on any supported Minecraft version"); continue; }
+            if (!number(entry.getValue())) { kept(path, "the value is not a number"); continue; }
+            VanillaAttributes.Attribute known = attribute.get();
+            double value = entry.getValue().getAsDouble(), clamped = Math.max(known.minimum(), Math.min(known.maximum(), value));
+            if (clamped != value) warnings.add(path + ": " + NpcAttributes.format(value) + " is outside " + NpcAttributes.format(known.minimum()) + ".."
+                    + NpcAttributes.format(known.maximum()) + " for " + known.id() + " and became " + NpcAttributes.format(clamped));
+            values.add(known.id(), clamped == value ? entry.getValue() : new JsonPrimitive(clamped));
+            if (known.id().equals("step_height") && clamped > MovementProfile.MAX_STEP)
+                note(path, CitizensImporter.Status.CONVERTED, "Animus steps up at most 1.5 blocks without a jump, so higher steps are jumped");
+            else converted.add(path);
         }
+        if (!values.isEmpty()) fields.add(NpcAttributes.FIELD, values);
+    }
+
+    /** A Citizens attribute key as a vanilla id: {@code minecraft:scale}, and the older {@code generic_scale}, {@code generic.scale} and {@code zombie_spawn_reinforcements} forms. */
+    private static String attributeId(String key) {
+        String id = key.toLowerCase(Locale.ROOT);
+        if (id.startsWith(NpcAttributes.NAMESPACE)) id = id.substring(NpcAttributes.NAMESPACE.length());
+        id = id.replace('.', '_');
+        for (String prefix : List.of("generic_", "player_", "zombie_", "horse_")) if (id.startsWith(prefix)) return id.substring(prefix.length());
+        return id;
     }
 
     private void rotation() {

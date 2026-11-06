@@ -1,7 +1,8 @@
 /// Trait group merge, the same rules as the server's `GroupMerge`: groups
 /// apply in list order, then the NPC's own fields. Objects merge key by key,
-/// recursively; `behaviors` and `tags` append without duplicates; other arrays
-/// and scalars replace. A group's `skins` pool sets one `skin` picked by a
+/// recursively, and `attributes` ids lose any `minecraft:` namespace first;
+/// `behaviors` and `tags` append without duplicates; other arrays and scalars
+/// replace. A group's `skins` pool sets one `skin` picked by a
 /// stable hash of the NPC UUID, which the NPC's own `skin` still overrides.
 /// Shared cases: schema/fixtures/groups/cases.
 library;
@@ -9,6 +10,8 @@ library;
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
+
+import 'npc_attributes.dart';
 
 /// The provenance source of the NPC's own fields.
 const String groupMergeNpc = 'npc';
@@ -20,8 +23,8 @@ const Set<String> groupRefusedFields = <String>{
 
 const Set<String> _appended = <String>{'behaviors', 'tags'};
 
-/// The effective definition and, for top-level fields and `modules.<id>`
-/// paths, the last source that set them: a group id or `npc`.
+/// The effective definition and, for top-level fields, `modules.<id>` and
+/// `attributes.<id>` paths, the last source that set them: a group id or `npc`.
 class GroupMergeResult {
   const GroupMergeResult(this.effective, this.provenance);
 
@@ -58,7 +61,7 @@ String pickSkin(String uuid, List<String> skins) {
 void _apply(Map<String, Object?> target, Map<String, Object?> source, String label, String uuid, Map<String, String> provenance) {
   for (final MapEntry<String, Object?> entry in source.entries) {
     final String key = entry.key;
-    final Object? value = entry.value;
+    final Object? value = key == attributesField && entry.value is Map<String, Object?> ? bareAttributes(entry.value) : entry.value;
     if (key == 'skins' && label != groupMergeNpc && value is List<Object?>) {
       target['skin'] = pickSkin(uuid, value.cast<String>());
       provenance['skin'] = label;
@@ -75,9 +78,9 @@ void _apply(Map<String, Object?> target, Map<String, Object?> source, String lab
       target[key] = _copy(value);
     }
     if (groupRefusedFields.contains(key)) continue;
-    if (key == 'modules' && value is Map<String, Object?>) {
-      for (final String module in value.keys) {
-        provenance['modules.$module'] = label;
+    if ((key == 'modules' || key == attributesField) && value is Map<String, Object?>) {
+      for (final String child in value.keys) {
+        provenance['$key.$child'] = label;
       }
     } else {
       provenance[key] = label;

@@ -35,6 +35,24 @@ class PathExecutionTest {
         run(execution, snapshot, WALKER);
         assertEquals(new Vec3(1.75, 1, 2.5), execution.position());
     }
+    /**
+     * A step that reaches a path node short of the tick's distance carries the rest into the next step, so a walk over
+     * many nodes keeps the configured speed: 6 blocks at 0.43 blocks a tick take 14 ticks, not one per node and more.
+     */
+    @Test void distanceLeftAtANodeCarriesIntoTheNextStep() {
+        VoxelSnapshot snapshot = ground().build();
+        PathExecution execution = walk(snapshot, new Vec3(.5, 1, 2.5), new Vec3(6.5, 1, 2.5));
+        double perTick = 8.63 / 20;
+        int ticks = 0;
+        while (!execution.finished()) {
+            PathExecution.Proposal step = execution.next(perTick).orElseThrow();
+            assertTrue(step.from().distance(step.to()) <= 1 + 1e-9, "one step never exceeds a block");
+            execution.commit(step);
+            ticks++;
+            assertTrue(ticks < 100);
+        }
+        assertEquals((int) Math.ceil(6 / perTick), ticks);
+    }
     @Test void noOpDestinationDoesNotWiggleThroughTheVoxelCenter() {
         Vec3 position = new Vec3(.1, 1, 2.2);
         PathExecution execution = walk(ground().build(), position, position);
@@ -106,9 +124,12 @@ class PathExecutionTest {
     }
     private static void run(PathExecution execution, VoxelSnapshot snapshot, MovementProfile profile) {
         MotionValidator.Sampler terrain = snapshot::cell;
+        double carried = 0;
         for (int i = 0; i < 400 && !execution.finished(); i++) {
             PathExecution.Proposal step = execution.next(.2).orElseThrow();
-            assertTrue(step.from().distance(step.to()) <= .200001);
+            // A step goes the tick's distance plus what the step before had left at its node.
+            assertTrue(step.from().distance(step.to()) <= .200001 + carried);
+            carried = step.unused();
             assertTrue(MotionValidator.check(step.from(), step.to(), profile.width(), profile.height(), step.medium(), step.requireSupport(), 128, terrain).clear(), step.toString());
             if (step.landing()) assertTrue(MotionValidator.check(step.to(), step.to(), profile.width(), profile.height(), step.landingMedium(),
                     step.landingSupport(), 128, terrain).clear(), step.toString());

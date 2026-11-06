@@ -31,8 +31,10 @@ import java.util.function.Supplier;
 public final class RuntimeEditorHost<P> implements EditorHost {
     /** What the platform passes in. Applied changes reload through the runtime's {@link AnimusRuntime#catalogs()}. */
     public record Parts<P>(AnimusRuntime runtime, Executor files, NpcRuntime<P, ?> living, ExtensionRuntime extensions, String platform, String serverName, Supplier<Map<String, Feature>> features,
-                           Supplier<Lookups> lookups, Predicate<P> admin, Consumer<String> log) {
-        public Parts { Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(lookups); Objects.requireNonNull(log); }
+                           Supplier<Lookups> lookups, Predicate<P> admin, EditorNoticeChannel notices, Consumer<String> log) {
+        public Parts {
+            Objects.requireNonNull(runtime); Objects.requireNonNull(files); Objects.requireNonNull(living); Objects.requireNonNull(lookups); Objects.requireNonNull(notices); Objects.requireNonNull(log);
+        }
     }
 
     private final Parts<P> parts;
@@ -74,9 +76,12 @@ public final class RuntimeEditorHost<P> implements EditorHost {
         return result;
     }
 
-    @Override public void applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback) {
-        parts.runtime().catalogs().reload(new CatalogChange(kinds, removedBehaviors, rollback));
+    @Override public CompletionStage<List<String>> applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback) {
+        List<String> problems = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        return parts.runtime().catalogs().reloaded(new CatalogChange(kinds, removedBehaviors, rollback), problems::add).thenApply((Void live) -> List.copyOf(problems));
     }
+
+    @Override public EditorNoticeChannel notices() { return parts.notices(); }
 
     @Override public Optional<PreviewPresenter> previews() {
         if (!parts.living().available()) return Optional.empty();

@@ -12,6 +12,7 @@ import 'package:crypto/crypto.dart';
 import '../../model/document_kind.dart';
 import '../data_folder.dart';
 import '../gui/gui_json.dart';
+import '../conversation/conversation_edit.dart';
 import '../gui/gui_templates.dart';
 import '../npc/npc_paths.dart';
 import '../rig_edit.dart' show bonesOf, newAnimation, setKeyframe;
@@ -187,6 +188,7 @@ JsonMap newNpc(NpcSeed seed, {required String uuid}) {
 /// Behavior templates the New page offers, from the example packs.
 enum BehaviorTemplate {
   greeter('Greeter', 'Greets on click, waves nearby'),
+  conversation('Conversation', 'Lines and answers, edited as a tree'),
   dialogue('Dialogue', 'A question with answers'),
   patrol('Patrol', 'Walks a square on a timer'),
   shop('Shop', 'Opens a shop on click'),
@@ -225,6 +227,8 @@ JsonMap behaviorFromTemplate(BehaviorTemplate template, String id, {String? shop
   final List<JsonMap> triggers;
   String entry = 'main';
   switch (template) {
+    case BehaviorTemplate.conversation:
+      return newConversationBehavior(id);
     case BehaviorTemplate.greeter:
       routines = <String, Object?>{
         'main': _sequence(<JsonMap>[

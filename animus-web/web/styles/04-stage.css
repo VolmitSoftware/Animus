@@ -230,7 +230,7 @@ html.light {
 
 @media (max-width: 520px) {
   .animus-npc-preview-bar button,
-  .animus-npc-preview-bar select,
+  .animus-npc-preview-bar .animus-select-trigger,
   .animus-npc-preview-bar input,
   .animus-mc-status button {
     min-height: 44px;

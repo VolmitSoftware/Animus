@@ -46,14 +46,18 @@ public final class EditorService implements AutoCloseable {
     private final AtomicReference<PluginSettings> pending = new AtomicReference<>();
     private final ExecutorService restarts = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("Animus-editor-settings").factory());
     private final AutoCloseable settingsListener;
+    private static final Duration TASK_FAILURE_REPEAT = Duration.ofMinutes(10);
+    private final EditorTaskFailures taskFailures;
 
-    public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log) { this(runtime, host, log, Clock.systemUTC()); }
+    /** {@code log} takes INFO lines; {@code warn} takes failures of the periodic editor tasks, rate limited. */
+    public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log, Consumer<String> warn) { this(runtime, host, log, warn, Clock.systemUTC()); }
 
-    public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log, Clock clock) {
+    public EditorService(AnimusRuntime runtime, EditorHost host, Consumer<String> log, Consumer<String> warn, Clock clock) {
         this.runtime = Objects.requireNonNull(runtime);
         this.host = Objects.requireNonNull(host);
         this.log = Objects.requireNonNull(log);
         this.clock = Objects.requireNonNull(clock);
+        taskFailures = new EditorTaskFailures(warn, clock, TASK_FAILURE_REPEAT);
         settingsListener = runtime.onSettings(this::hotloaded);
     }
 
@@ -84,7 +88,8 @@ public final class EditorService implements AutoCloseable {
             events.publish(event);
         });
         timers = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("Animus-editor-timers").factory());
-        api = new EditorApi(new EditorApi.Parts(settings, relaySettings.enabled(), host, identity, tokens, audit, documents, changes, previews, events, runtime::npcs, runtime::importHost, timers, clock,
+        EditorNotices notices = new EditorNotices(() -> settings.notices(), host.notices(), log, System::nanoTime, art.arcane.animus.core.AnimusLog.shared()::debug);
+        api = new EditorApi(new EditorApi.Parts(settings, relaySettings.enabled(), host, identity, tokens, audit, documents, changes, previews, events, notices, runtime::npcs, runtime::importHost, timers, clock,
                 runtime.environment().minecraftVersion()));
         frames = scheduleFrames(events, settings.eventFramesPerSecond());
         EditorApi opened = api;
@@ -93,6 +98,7 @@ public final class EditorService implements AutoCloseable {
             catch (IOException failure) { log.accept("Editor token housekeeping failed: " + failure.getMessage()); }
         }), 1, 1, TimeUnit.SECONDS);
         timers.scheduleAtFixedRate(guard(opened::recheckAdmins), 60, 60, TimeUnit.SECONDS);
+        timers.scheduleAtFixedRate(guard(notices::tick), 100, 100, TimeUnit.MILLISECONDS);
         timers.scheduleAtFixedRate(guard(() -> {
             try {
                 host.files().execute(() -> {
@@ -214,7 +220,7 @@ public final class EditorService implements AutoCloseable {
     private Runnable guard(Runnable task) {
         return () -> {
             try { task.run(); }
-            catch (RuntimeException failure) { log.accept("Editor task failed: " + failure.getClass().getSimpleName() + ": " + failure.getMessage()); }
+            catch (RuntimeException failure) { taskFailures.failed(failure); }
         };
     }
 

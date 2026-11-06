@@ -60,9 +60,10 @@ final class EditorHarness implements AutoCloseable {
         final List<Boolean> rollbacks = new ArrayList<>();
         final List<String> presented = new ArrayList<>(), ended = new ArrayList<>();
         final Map<String, Consumer<String>> leave = new LinkedHashMap<>();
+        final List<EditorNotice> notices = new java.util.concurrent.CopyOnWriteArrayList<>();
         boolean online = true, previews = true, rejectFiles;
         Admin admin = Admin.ADMIN;
-        List<String> activation = List.of();
+        List<String> activation = List.of(), reloadProblems = List.of();
 
         @Override public String platform() { return "paper"; }
 
@@ -91,9 +92,18 @@ final class EditorHarness implements AutoCloseable {
 
         @Override public CompletionStage<List<String>> activationProblems(NpcDefinition definition) { return CompletableFuture.completedFuture(activation); }
 
-        @Override public void applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback) {
+        @Override public CompletionStage<List<String>> applied(Set<DocumentKind> kinds, Set<String> removedBehaviors, boolean rollback) {
             applied.add(kinds.isEmpty() ? EnumSet.noneOf(DocumentKind.class) : EnumSet.copyOf(kinds));
             rollbacks.add(rollback);
+            return CompletableFuture.completedFuture(reloadProblems);
+        }
+
+        @Override public EditorNoticeChannel notices() {
+            return new EditorNoticeChannel() {
+                @Override public Optional<String> name(UUID player) { return player.equals(ADMIN) ? Optional.of("Brian") : Optional.empty(); }
+
+                @Override public void deliver(EditorNotice notice) { notices.add(notice); }
+            };
         }
 
         @Override public Optional<PreviewPresenter> previews() {
@@ -121,6 +131,9 @@ final class EditorHarness implements AutoCloseable {
     final EditorApi api;
     final EditorSettings settings;
     final NpcRepository npcs;
+    /** The notice clock; {@link #flushNotices} moves it past the quiet window. */
+    volatile long nanos;
+    final EditorNotices notices;
     /** Whether the drop-in import sees Citizens as still running. */
     volatile boolean citizensRunning;
     final art.arcane.animus.core.migration.CitizensDropIn.Host importHost =
@@ -153,8 +166,9 @@ final class EditorHarness implements AutoCloseable {
             event.addProperty("state", state);
             events.publish(event);
         });
+        notices = new EditorNotices(settings::notices, host.notices(), (String line) -> {}, () -> nanos, () -> false);
         api = new EditorApi(new EditorApi.Parts(settings, false, host, EditorIdentity.loadOrCreate(store), new EditorTokens(store, clock), new EditorAudit(store, clock), documents,
-                new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours())), previews, events, () -> npcs, () -> importHost, timers, clock, "26.1.2"));
+                new EditorChanges(documents, clock, Duration.ofHours(settings.idempotencyHours())), previews, events, notices, () -> npcs, () -> importHost, timers, clock, "26.1.2"));
     }
 
     /** Pairs and returns the bearer token. */
@@ -191,6 +205,23 @@ final class EditorHarness implements AutoCloseable {
     }
 
     long nextCounter() { return ++counter; }
+
+    /** Lets the quiet window pass and returns the plain chat lines of the notices it sent. */
+    List<String> flushNotices() {
+        int before = host.notices.size();
+        nanos += EditorNotices.QUIET.toNanos();
+        notices.tick();
+        List<String> lines = new ArrayList<>();
+        for (EditorNotice notice : host.notices.subList(before, host.notices.size())) {
+            StringBuilder plain = new StringBuilder();
+            notice.chat().ifPresent((EditorNotice.Line line) -> {
+                String whole = line.text() + line.copy().map(EditorNotice.Copy::text).orElse("");
+                art.arcane.animus.core.text.RichText.sectionRuns(whole).forEach((art.arcane.animus.core.text.RichText.Run run) -> plain.append(run.text()));
+            });
+            lines.add(plain.toString());
+        }
+        return lines;
+    }
 
     EditorResponse request(EditorRequest request) throws Exception { return api.handle(request).toCompletableFuture().get(10, TimeUnit.SECONDS); }
 
