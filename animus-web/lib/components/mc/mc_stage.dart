@@ -1,6 +1,8 @@
 /// The 3D stage: one canvas the renderer draws into, a DOM layer for the
-/// text the client draws in world space (names and text displays), and the
-/// pointer, wheel and touch input that drives the orbit camera.
+/// text the client draws in world space (names and text displays), the
+/// pointer, wheel, touch and keyboard input that drives the orbit camera,
+/// and a status line under the stage that says what is loading, what failed
+/// and what the stage cannot draw.
 ///
 /// Jaspr renders the wrapper, the text layer and the controls; the canvas is
 /// created and owned imperatively under an element Jaspr renders empty and
@@ -19,6 +21,7 @@ import 'package:jaspr/dom.dart' as dom;
 import 'package:jaspr/jaspr.dart' show ChangeNotifier, Component;
 import 'package:web/web.dart' as web;
 
+import '../../mc/assets/mc_ids.dart';
 import '../../mc/npc/mc_text.dart';
 import '../../mc/npc/npc_scene.dart';
 import '../../mc/scene/mc_camera.dart';
@@ -27,6 +30,9 @@ import '../../mc/scene/mc_scene.dart';
 import 'mc_asset_loader.dart';
 import 'mc_gl.dart';
 import 'mc_gl_renderer.dart';
+
+/// Pixels of drag one arrow key press stands for.
+const double mcStageKeyStepPx = 24;
 
 /// What the stage draws and from where.
 final class McStageController extends ChangeNotifier {
@@ -40,8 +46,7 @@ final class McStageController extends ChangeNotifier {
   /// Frames rendered so far; the browser check reads `data-frames`.
   int frames = 0;
 
-  /// Nodes the last frame could not draw yet (texture decoding, or an item
-  /// the client draws with a special renderer).
+  /// Nodes the last frame could not draw yet (a texture still decoding).
   int unbuilt = 0;
 
   bool _webGlAvailable = true;
@@ -102,6 +107,21 @@ final class McStageController extends ChangeNotifier {
 /// camera ignores presses on them.
 typedef McStageOverlay = List<Widget> Function(McCamera camera, double widthPx, double heightPx);
 
+/// A line for a texture the renderer could not decode.
+String mcTextureNote(String id, {required bool fromPack}) => fromPack
+    ? 'The Minecraft texture $id could not be read, so its part is drawn plain white. Reload the page to fetch it again.'
+    : 'A loaded image (a skin or a rig texture) could not be read, so its part is drawn plain white. Load the PNG again or pick another one.';
+
+/// A line for an item the stage has no model for, from the resolver's reason.
+String mcItemNote(String item, String reason) {
+  final String id = item.contains(':') ? item : 'minecraft:${mcStrip(item)}';
+  if (reason.startsWith('special renderer')) {
+    return '$id is not drawn: the game draws it with its own renderer (shields, tridents, skulls, banners, chests and beds work this way), which the preview does not have.';
+  }
+  if (reason.startsWith('no item definition')) return '$id is not drawn: Minecraft 26.3 has no item with that id. Check the spelling.';
+  return '$id is not drawn: it has no model the preview can draw.';
+}
+
 class McStage extends StatefulWidget {
   const McStage({required this.controller, this.label = 'NPC preview', this.overlay, super.key});
 
@@ -119,6 +139,7 @@ class _McStageState extends State<McStage> {
   late final String _canvasHostId = '$_id-gl';
 
   web.HTMLElement? _host;
+  web.HTMLElement? _stage;
   McGl? _gl;
   McGlRenderer? _renderer;
   web.ResizeObserver? _resize;
@@ -128,7 +149,8 @@ class _McStageState extends State<McStage> {
   bool _dirty = true;
   bool _postFramePending = false;
   bool _disposed = false;
-  String? _problem;
+  bool _lost = false;
+  List<String> _notes = const <String>[];
 
   bool _dragging = false;
   bool _panning = false;
@@ -181,12 +203,13 @@ class _McStageState extends State<McStage> {
 
   void _onPack() {
     if (_disposed) return;
-    if (McAssetLoader.failed) {
-      setState(() => _problem = 'The Minecraft asset pack is missing. Run tool/extract_minecraft_world_assets.dart before building.');
-      return;
-    }
     _attachGl();
     _invalidate();
+    setState(() {});
+  }
+
+  void _retry() {
+    unawaited(McAssetLoader.retry().then<void>((McAssetPackData _) {}, onError: (Object _) {}));
   }
 
   void _schedulePostFrame() {
@@ -215,10 +238,17 @@ class _McStageState extends State<McStage> {
       _c.webGlAvailable = false;
     } else {
       _gl = gl;
-      gl.onRestored(_invalidate);
+      gl.onLost(() {
+        if (!_disposed) setState(() => _lost = true);
+      });
+      gl.onRestored(() {
+        if (_disposed) return;
+        setState(() => _lost = false);
+        _invalidate();
+      });
     }
     _attachGl();
-    final web.HTMLElement stage = web.document.getElementById(_id)! as web.HTMLElement;
+    final web.HTMLElement stage = _stage = web.document.getElementById(_id)! as web.HTMLElement;
     _observe(stage);
     _attachInput(stage);
     _requestFrame();
@@ -279,16 +309,24 @@ class _McStageState extends State<McStage> {
     _c.frames++;
     _host?.setAttribute('data-frames', '${_c.frames}');
     _host?.setAttribute('data-unbuilt', '${_c.unbuilt}');
+    final McAssetPackData? pack = McAssetLoader.loaded;
+    final List<String> notes = <String>[
+      for (final String id in renderer.failedTextures) mcTextureNote(id, fromPack: pack?.manifest.entityTextures.containsKey(id) ?? false),
+      for (final MapEntry<String, String> item in renderer.undrawable.entries) mcItemNote(item.key, item.value),
+    ];
+    if (notes.join('\n') != _notes.join('\n')) setState(() => _notes = notes);
   }
 
   // --- input ---------------------------------------------------------------
+
+  bool get _focused => _stage != null && identical(web.document.activeElement, _stage);
 
   void _attachInput(web.HTMLElement stage) {
     _detachInput();
     void on(String type, void Function(web.Event) handler) {
       final JSFunction fn = handler.toJS;
       _listeners[type] = fn;
-      stage.addEventListener(type, fn);
+      stage.addEventListener(type, fn, <String, Object?>{'passive': false}.jsify()! as JSObject);
     }
 
     on('pointerdown', (web.Event e) {
@@ -300,6 +338,7 @@ class _McStageState extends State<McStage> {
       _lastX = _num(p, 'clientX');
       _lastY = _num(p, 'clientY');
       stage.setPointerCapture(p.pointerId);
+      stage.classList.add('is-orbiting');
       _dragging = true;
       _panning = p.button == 1 || p.button == 2 || p.shiftKey;
     });
@@ -318,15 +357,37 @@ class _McStageState extends State<McStage> {
       _pointerId = null;
       _dragging = false;
       _panning = false;
+      stage.classList.remove('is-orbiting');
     }
 
     on('pointerup', release);
     on('pointercancel', release);
     on('contextmenu', (web.Event e) => e.preventDefault());
+    // The wheel zooms only with Ctrl (or a pinch on a trackpad) or once the
+    // stage has focus, so scrolling the page past the stage still scrolls.
     on('wheel', (web.Event e) {
-      e.preventDefault();
       final web.WheelEvent w = e as web.WheelEvent;
+      if (!w.ctrlKey && !w.metaKey && !_focused) return;
+      e.preventDefault();
       _c.camera = _c.camera.dollyBy(mcWheelPixels(_num(w, 'deltaY'), w.deltaMode));
+    });
+    on('keydown', (web.Event e) {
+      final web.KeyboardEvent k = e as web.KeyboardEvent;
+      if (!identical(k.target, stage)) return;
+      final McCamera camera = _c.camera;
+      final McCamera? next = switch (k.key) {
+        'ArrowLeft' => k.shiftKey ? camera.panBy(-mcStageKeyStepPx, 0, _heightPx) : camera.orbitBy(-mcStageKeyStepPx, 0),
+        'ArrowRight' => k.shiftKey ? camera.panBy(mcStageKeyStepPx, 0, _heightPx) : camera.orbitBy(mcStageKeyStepPx, 0),
+        'ArrowUp' => k.shiftKey ? camera.panBy(0, -mcStageKeyStepPx, _heightPx) : camera.orbitBy(0, -mcStageKeyStepPx),
+        'ArrowDown' => k.shiftKey ? camera.panBy(0, mcStageKeyStepPx, _heightPx) : camera.orbitBy(0, mcStageKeyStepPx),
+        '+' || '=' => camera.dollyBy(-120),
+        '-' || '_' => camera.dollyBy(120),
+        '0' => _c.home,
+        _ => null,
+      };
+      if (next == null) return;
+      e.preventDefault();
+      _c.camera = next;
     });
     on('touchstart', (web.Event e) {
       final web.TouchEvent t = e as web.TouchEvent;
@@ -405,19 +466,24 @@ class _McStageState extends State<McStage> {
       if (at == null) continue;
       final double fontPx = mcTextFontPx(_heightPx, at.z);
       out.add(dom.div(
-        classes: 'animus-mc-text${text.nameplate ? ' is-nameplate' : ''}',
+        classes: 'animus-mc-text${text.nameplate ? ' is-nameplate' : ''}${text.dim ? ' is-dim' : ''}',
         attributes: const <String, String>{'data-text': 'true'},
         styles: dom.Styles(raw: <String, String>{
           'left': '${at.x.toStringAsFixed(1)}px',
           'top': '${at.y.toStringAsFixed(1)}px',
           'font-size': '${fontPx.toStringAsFixed(2)}px',
+          // The client wraps text displays at their line width (200 by default).
+          'max-width': '${(fontPx * text.lineWidth / 8).toStringAsFixed(1)}px',
           'z-index': '${(1000 - at.z * 10).round().clamp(0, 1000)}',
+          if (text.background != null) 'background': _argb(text.background!),
+          if (text.shadow) 'text-shadow': '0.125em 0.125em 0 rgba(0, 0, 0, 0.75)',
         }),
         <Widget>[
           for (final List<McTextRun> runs in text.styled ?? <List<McTextRun>>[for (final String line in text.lines) mcLegacyRuns(line)])
             dom.div(classes: 'animus-mc-text-line', <Widget>[
               for (final McTextRun run in runs)
                 dom.span(
+                  classes: run.obfuscated ? 'is-obfuscated' : null,
                   styles: dom.Styles(raw: <String, String>{
                     'color': run.cssColor,
                     if (run.bold) 'font-weight': '700',
@@ -425,7 +491,7 @@ class _McStageState extends State<McStage> {
                     if (run.underlined || run.strikethrough)
                       'text-decoration': '${run.underlined ? 'underline ' : ''}${run.strikethrough ? 'line-through' : ''}'.trim(),
                   }),
-                  <Widget>[Component.text(run.text)],
+                  <Widget>[Component.text(run.obfuscated ? mcObfuscate(run.text) : run.text)],
                 ),
               if (runs.every((McTextRun run) => run.text.isEmpty)) const Component.text(' '),
             ]),
@@ -435,25 +501,74 @@ class _McStageState extends State<McStage> {
     return out;
   }
 
+  /// `#AARRGGBB` as a CSS colour.
+  static String _argb(String hex) {
+    final int value = int.tryParse(hex.substring(1), radix: 16) ?? 0x40000000;
+    return 'rgba(${(value >> 16) & 0xFF}, ${(value >> 8) & 0xFF}, ${value & 0xFF}, ${(((value >> 24) & 0xFF) / 255).toStringAsFixed(3)})';
+  }
+
+  /// The status line: what is loading, what failed and what to do, and what
+  /// the stage leaves out. Null when there is nothing to say.
+  (String, bool)? get _problem {
+    if (!_c.webGlAvailable) {
+      return (
+        'This browser cannot draw the 3D preview: WebGL2 is off or missing. Turn on hardware acceleration in the browser settings, '
+            'or open the editor in a current Chrome, Edge, Firefox or Safari.',
+        false,
+      );
+    }
+    if (_lost) return ('The graphics card reset and the preview stopped drawing. It comes back on its own; reload the page if it stays blank.', false);
+    return switch (McAssetLoader.failure) {
+      McPackFailure.missing => ('The model pack is not on this site. The preview needs the pack described in the README.', false),
+      McPackFailure.network => ('The models could not be downloaded. Check the connection and retry.', true),
+      null => null,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     _schedulePostFrame();
-    final String? problem = _problem ?? (_c.webGlAvailable ? null : 'This browser has no WebGL2, so the 3D preview is off.');
-    return dom.div(
-      id: _id,
-      classes: 'animus-mc-stage',
-      attributes: <String, String>{
-        'role': 'img',
-        'aria-label': component.label,
-        'data-webgl': _c.webGlAvailable ? 'ready' : 'unavailable',
-      },
-      <Widget>[
-        dom.div(id: _canvasHostId, classes: 'animus-mc-gl-host', attributes: <String, String>{'data-frames': '${_c.frames}'}, const <Widget>[]),
-        dom.div(classes: 'animus-mc-text-layer', _textLayer()),
-        if (component.overlay != null && _widthPx > 0 && _heightPx > 0)
-          dom.div(classes: 'animus-mc-overlay', component.overlay!(_c.camera, _widthPx, _heightPx)),
-        if (problem != null) dom.p(classes: 'animus-mc-problem', <Widget>[Component.text(problem)]),
-      ],
-    );
+    final (String, bool)? problem = _problem;
+    final bool loading = McAssetLoader.loading && _c.webGlAvailable;
+    return dom.div(classes: 'animus-mc-stage-frame', <Widget>[
+      dom.div(
+        id: _id,
+        classes: 'animus-mc-stage',
+        attributes: <String, String>{
+          'role': 'img',
+          'tabindex': '0',
+          'aria-label': component.label,
+          'aria-describedby': '$_id-keys $_id-status',
+          'data-webgl': _c.webGlAvailable ? 'ready' : 'unavailable',
+          'data-pack': loading ? 'loading' : (McAssetLoader.failure?.name ?? (McAssetLoader.loaded == null ? 'waiting' : 'ready')),
+        },
+        <Widget>[
+          dom.div(id: _canvasHostId, classes: 'animus-mc-gl-host', attributes: <String, String>{'data-frames': '${_c.frames}'}, const <Widget>[]),
+          dom.div(classes: 'animus-mc-text-layer', _textLayer()),
+          if (component.overlay != null && _widthPx > 0 && _heightPx > 0)
+            dom.div(classes: 'animus-mc-overlay', component.overlay!(_c.camera, _widthPx, _heightPx)),
+          if (loading)
+            const dom.div(classes: 'animus-mc-loading', attributes: <String, String>{'aria-hidden': 'true'}, <Widget>[
+              dom.span(classes: 'animus-mc-spinner', <Widget>[]),
+            ]),
+        ],
+      ),
+      dom.p(id: '$_id-keys', classes: 'animus-mc-keys', <Widget>[
+        const Component.text('Drag to orbit, Shift or right drag to pan, Ctrl and the wheel to zoom. With the stage focused: arrows orbit, '
+            'Shift and arrows pan, + and - zoom, 0 resets the view.'),
+      ]),
+      dom.div(id: '$_id-status', classes: 'animus-mc-status', attributes: const <String, String>{'aria-live': 'polite'}, <Widget>[
+        if (loading) const dom.p(<Widget>[Component.text('Loading the Minecraft models (about 2 MB).')]),
+        if (problem != null)
+          dom.p(classes: 'animus-mc-problem', <Widget>[
+            Component.text(problem.$1),
+            if (problem.$2) Button.secondary(label: 'Retry', size: ButtonSize.small, onPressed: _retry),
+          ]),
+        if (_notes.isNotEmpty)
+          dom.ul(classes: 'animus-npc-notes', <Widget>[
+            for (final String note in _notes) dom.li(<Widget>[Component.text(note)]),
+          ]),
+      ]),
+    ]);
   }
 }
