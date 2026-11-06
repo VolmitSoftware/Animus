@@ -301,4 +301,45 @@ class TriggerDispatcherTest {
         hiding.clear();assertFalse(dispatcher.hides(viewer,npc));
         assertEquals(Optional.of(true),dispatcher.publish(click()).value(),"the viewer's triggers return when the preview ends");
     }
+
+    private void consumption(art.arcane.animus.core.behavior.BehaviorState state){dispatcher.consumption(state,art.arcane.animus.core.behavior.BehaviorFacts.NONE);}
+    private TriggerEvent.Interaction sneak(boolean sneaking,TriggerEvent.Hand hand){return new TriggerEvent.Interaction(npc,viewer,TriggerEvent.Action.INTERACT,sneaking,hand);}
+    private void flag(art.arcane.animus.core.behavior.BehaviorState state,String scope,String name,Object value,BehaviorProgram.Type type){
+        state.write(art.arcane.animus.core.behavior.BehaviorFlags.subject(art.arcane.animus.core.behavior.BehaviorFlags.FLAGS,BEHAVIOR,npc,Optional.of(viewer)),
+                Map.of(name,new BehaviorProgram.Value(type,value)),Map.of(name,art.arcane.animus.core.behavior.BehaviorFlags.declaration(scope)));
+    }
+
+    @Test void aClickIsConsumedOnlyWhileTheConsumeConditionHolds()throws Exception{
+        art.arcane.animus.core.behavior.builtin.MemoryBehaviorState state=new art.arcane.animus.core.behavior.builtin.MemoryBehaviorState();
+        behavior("""
+                [{"id":"talk","event":"interaction","routine":"greet","consume":"context.sneaking && same(context.hand, 'main_hand') && has_flag('npc', 'story') && !has_flag('player', 'done')"}]""");
+        npc(true);dispatcher.activated(npc);consumption(state);pump();
+        assertFalse(dispatcher.click(sneak(true,TriggerEvent.Hand.MAIN_HAND)),"the NPC has no story flag yet");
+        flag(state,"npc","story","intro",BehaviorProgram.Type.STRING);
+        assertTrue(dispatcher.click(sneak(true,TriggerEvent.Hand.MAIN_HAND)));
+        assertFalse(dispatcher.click(sneak(false,TriggerEvent.Hand.MAIN_HAND)),"a plain click goes to the shop");
+        assertFalse(dispatcher.click(sneak(true,TriggerEvent.Hand.OFF_HAND)));
+        assertFalse(dispatcher.click(new TriggerEvent.Interaction(npc,viewer,TriggerEvent.Action.ATTACK,true,TriggerEvent.Hand.MAIN_HAND)),"the trigger takes interact hits only");
+        flag(state,"player","done",true,BehaviorProgram.Type.BOOLEAN);
+        assertFalse(dispatcher.click(sneak(true,TriggerEvent.Hand.MAIN_HAND)));
+    }
+    @Test void clicksWithoutAConsumeConditionOrConsumptionStayWithDefaultHandling()throws Exception{
+        behavior("[{\"id\":\"click\",\"event\":\"interaction\"},{\"id\":\"talk\",\"event\":\"interaction\",\"routine\":\"greet\",\"consume\":\"true\"}]");
+        npc(true);dispatcher.activated(npc);pump();
+        assertFalse(dispatcher.click(sneak(false,TriggerEvent.Hand.MAIN_HAND)),"nothing connected the state yet");
+        consumption(new art.arcane.animus.core.behavior.builtin.MemoryBehaviorState());
+        assertTrue(dispatcher.click(sneak(false,TriggerEvent.Hand.MAIN_HAND)));
+        dispatcher.behaviorsEnabled(false);
+        assertFalse(dispatcher.click(sneak(false,TriggerEvent.Hand.MAIN_HAND)),"disabled behaviors leave clicks to modules");
+    }
+    @Test void aFailingConsumeConditionDoesNotConsume()throws Exception{
+        behavior("[{\"id\":\"talk\",\"event\":\"interaction\",\"consume\":\"num(context.hand) > 1\"}]");
+        npc(true);dispatcher.activated(npc);consumption(new art.arcane.animus.core.behavior.builtin.MemoryBehaviorState());pump();
+        assertFalse(dispatcher.click(sneak(true,TriggerEvent.Hand.MAIN_HAND)));
+    }
+    @Test void aClickRunReadsTheClickContext()throws Exception{
+        behavior("[{\"id\":\"click\",\"event\":\"interaction\",\"routine\":\"greet\"}]");npc(true);dispatcher.activated(npc);pump();
+        dispatcher.click(sneak(true,TriggerEvent.Hand.OFF_HAND));pump();
+        assertEquals(Map.of("sneaking",true,"hand","off_hand"),started.getFirst().event());
+    }
 }

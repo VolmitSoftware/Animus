@@ -265,7 +265,7 @@ public final class BehaviorRuntime implements AutoCloseable {
         NpcDefinition definition=request.definition();
         Capture capture=new Capture(definition.id(),definition,definition.uuid(),definition.revision(),request.binding().behavior(),request.accepted(),request.player(),Optional.of(request));
         if(!current(capture))return Outcome.rejected(Outcome.Status.CONFLICT,"captured-source-changed","NPC or accepted behavior changed after trigger admission");
-        Outcome<UUID> result=engine.start(request.program(),new BehaviorEngine.Context(new NpcHandle(capture.npcUuid()),capture.player(),false,()->current(capture)));
+        Outcome<UUID> result=engine.start(request.program(),new BehaviorEngine.Context(new NpcHandle(capture.npcUuid()),capture.player(),false,()->current(capture),request.event()));
         result.value().ifPresent(id->{active.put(id,new Lease(id,capture));viewsChanged=true;});
         return result;
     }

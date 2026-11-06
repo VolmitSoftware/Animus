@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:assignment/crier_assignment",
+  "entry": "on-assignment",
+  "routines": {
+    "on-assignment": {
+      "type": "condition",
+      "expression": "!has_flag('npc', 'assigned-crier_assignment')",
+      "then": {
+        "type": "sequence",
+        "steps": [
+          {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "assigned-crier_assignment",
+              "scope": "npc"
+            }
+          },
+          {
+            "type": "action",
+            "capability": "animus:set-flag",
+            "arguments": {
+              "name": "dialogue_script",
+              "scope": "npc",
+              "value": "crier_story"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "triggers": [
+    {
+      "id": "on-assignment",
+      "event": "spawn",
+      "routine": "on-assignment"
+    }
+  ]
+}

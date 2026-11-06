@@ -537,7 +537,7 @@ class DenizenConverterTest {
         assertEquals("a.dsc:4", kept.get("source").getAsString());
         assertEquals("tag player.money has no Animus expression", kept.get("reason").getAsString());
         assertEquals("partial", output.report().getAsJsonObject("behaviorStatus").get("denizen:task/t").getAsString());
-        assertEquals(2, output.report().get("converterVersion").getAsInt());
+        assertEquals(3, output.report().get("converterVersion").getAsInt());
     }
 
     @Test void limitsCountLoopBodiesAndMissingElses() {
@@ -554,5 +554,106 @@ class DenizenConverterTest {
         for (int index = 0; index < 129; index++) variables.add("v" + index, object("{\"type\":\"any\",\"initial\":\"\"}"));
         document.add("variables", variables);
         assertEquals(Optional.of("has more than 128 variables"), BehaviorLimits.check(document, document.toString()));
+    }
+
+    private static JsonObject clickTrigger(String events) throws IOException {
+        return behavior("w:\n    type: world\n    events:\n" + events, "denizen:world-npc/w").getAsJsonArray("triggers").get(0).getAsJsonObject();
+    }
+
+    @Test void npcClickEventsBecomeAnNpcBehaviorThatConsumesWhereTheyCancel() throws IOException {
+        JsonObject trigger = clickTrigger("""
+                        on player right clicks npc:
+                        - if !<npc.has_flag[ambient]||false>:
+                            - stop
+                        - determine cancelled
+                """);
+        assertEquals("interaction", trigger.get("event").getAsString());
+        assertEquals("has_flag('npc', 'ambient')", trigger.get("consume").getAsString());
+        assertFalse(trigger.has("cooldownTicks"));
+    }
+
+    @Test void clickEventsThatNeverCancelOrCannotDecideInTimeConsumeNothing() throws IOException {
+        assertFalse(clickTrigger("""
+                        on player right clicks entity:
+                        - narrate "Hi"
+                """).has("consume"));
+        assertFalse(clickTrigger("""
+                        on player right clicks entity:
+                        - if !<player.has_permission[town.talk]>:
+                            - stop
+                        - determine cancelled
+                """).has("consume"), "a permission check is a capability, not a click-time expression");
+        assertFalse(clickTrigger("""
+                        on player right clicks entity:
+                        - wait 1t
+                        - determine passively cancelled
+                """).has("consume"), "after a wait the click is long gone");
+    }
+
+    @Test void aCancelAfterAPlainCommandStillConsumesAndPassivelyGoesOn() throws IOException {
+        JsonObject behavior = behavior("""
+                w:
+                    type: world
+                    events:
+                        on player right clicks entity:
+                        - if !<player.is_sneaking>:
+                            - actionbar "Sneak to talk"
+                            - stop
+                        - ratelimit <player> 3s
+                        - determine passively cancelled
+                        - narrate "Talking"
+                """, "denizen:world-npc/w");
+        JsonObject trigger = behavior.getAsJsonArray("triggers").get(0).getAsJsonObject();
+        assertEquals("context.sneaking", trigger.get("consume").getAsString());
+        JsonObject routine = behavior.getAsJsonObject("routines").getAsJsonObject("on-player-right-clicks-entity");
+        assertEquals("animus:actionbar", step(step(routine, 0).getAsJsonObject("then"), 0).get("capability").getAsString(), "a sneak prompt stays on the action bar");
+        assertEquals("has_flag('player', 'ratelimit-w-8')", step(routine, 1).get("expression").getAsString());
+        assertEquals(3, step(routine, 2).getAsJsonObject("arguments").get("expireSeconds").getAsInt());
+        assertEquals("animus:message", step(routine, 3).get("capability").getAsString());
+    }
+
+    @Test void runningTheTaskAFlagNamesChoosesAmongTheTasksScriptsGiveIt() throws IOException {
+        DenizenConverter.Output output = convert("""
+                w:
+                    type: world
+                    events:
+                        on player right clicks npc:
+                        - run <npc.flag[story]>
+                a_assignment:
+                    type: assignment
+                    actions:
+                        on assignment:
+                        - flag <npc> story:first_story
+                first_story:
+                    type: task
+                    script:
+                    - narrate "One"
+                second_story:
+                    type: task
+                    script:
+                    - narrate "Two"
+                b_task:
+                    type: task
+                    script:
+                    - flag npc story:second_story
+                """);
+        JsonObject routines = document(output, "denizen:world-npc/w").getAsJsonObject("routines");
+        JsonObject chosen = routines.getAsJsonObject("on-player-right-clicks-npc");
+        assertEquals("same(lower(text(flag('npc', 'story', ''))), 'first_story')", chosen.get("expression").getAsString());
+        assertEquals("task-first_story", chosen.getAsJsonObject("then").get("routine").getAsString());
+        assertEquals("task-second_story", chosen.getAsJsonObject("else").getAsJsonObject("then").get("routine").getAsString());
+        assertTrue(routines.has("task-second_story"));
+    }
+
+    @Test void flagNamesMayJoinTextAndTags() throws IOException {
+        JsonObject condition = step(main("""
+                t:
+                    type: task
+                    script:
+                    - if <player.has_flag[done_<npc.id>]>:
+                        - stop
+                    - narrate "x"
+                """), 0);
+        assertEquals("has_flag('player', ('done_' + text(npc.id)))", condition.get("expression").getAsString());
     }
 }

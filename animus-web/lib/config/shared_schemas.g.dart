@@ -5167,7 +5167,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     },
     "trigger-interaction": {
       "type": "object",
-      "description": "A viewer's validated hit on the NPC.",
+      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -5194,6 +5194,12 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "any"
           ],
           "description": "Which hit fires it; interact by default."
+        },
+        "consume": {
+          "type": "string",
+          "pattern": "\\S",
+          "maxLength": 4096,
+          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
         }
       },
       "required": [
@@ -7119,7 +7125,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
   ],
   "triggers": {
     "interaction": {
-      "description": "A viewer's validated hit on the NPC.",
+      "description": "A viewer's validated hit on the NPC. Runs read context.sneaking and context.hand (main_hand or off_hand).",
       "carriesPlayer": true,
       "reach": "npc",
       "fields": {
@@ -7154,6 +7160,13 @@ const Map<String, String> sharedSchemaSources = <String, String>{
             "any"
           ],
           "description": "Which hit fires it; interact by default."
+        },
+        "consume": {
+          "type": "expression",
+          "required": false,
+          "maxLength": 4096,
+          "pattern": "\\S",
+          "description": "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."
         }
       }
     },
