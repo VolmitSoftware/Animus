@@ -483,6 +483,8 @@
 - On Folia, an NPC's projectiles now hit NPCs that other regions own, credited to the NPC that fired them.
 - A full packet queue no longer drops a player's view of every NPC; moves and spawns wait for the queue to drain.
 - Far fight and chat watchers on Folia no longer use up the 64 deliveries before nearby ones hear the event.
+- Right-clicking a door, chest or other usable block on Paper no longer throws `NoSuchMethodError` for `Material.getKeyOrThrow`; the build now checks every server method the plugin calls against the Spigot and Paper APIs of 26.1.2, 26.2 and 26.3.
+- After `/animus editor pair`, the editor's minute permission re-check no longer fails with "NPC runtime requires the owner thread" on Paper, Spigot and mod servers; it runs on the server thread. A repeating editor task failure is now one WARN line, repeated at most every 10 minutes with a count.
 
 ### Notes
 
