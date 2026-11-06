@@ -1084,7 +1084,8 @@ final class DenizenCommands {
         Action action = new Action();
         boolean any = false;
         TreeMap<Integer, Long> times = new TreeMap<>();
-        for (Arg arg : command.args()) {
+        for (Arg written : command.args()) {
+            Arg arg = quotedPrefix(written, List.of("title", "subtitle", "fade_in", "stay", "fade_out", "targets"));
             switch (arg.prefix()) {
                 case "title", "subtitle" -> {
                     Result<Text> text = text(arg.value(), scope, pending, false, 256);
@@ -1105,6 +1106,14 @@ final class DenizenCommands {
         String[] names = {"fadeIn", "stay", "fadeOut"};
         for (Map.Entry<Integer, Long> time : times.entrySet()) action.put(names[time.getKey()], time.getValue());
         return Converted.of(reorder(action, List.of("title", "subtitle", "fadeIn", "stay", "fadeOut")).node("animus:title"));
+    }
+
+    /** Denizen reads a prefix inside quotes too: {@code "title:Town gate"} is the title argument. */
+    private static Arg quotedPrefix(Arg arg, List<String> names) {
+        if (!arg.quoted() || !arg.prefix().isEmpty()) return arg;
+        int colon = arg.value().indexOf(':');
+        if (colon <= 0 || !names.contains(arg.value().substring(0, colon).toLowerCase(Locale.ROOT))) return arg;
+        return new Arg(arg.value().substring(0, colon).toLowerCase(Locale.ROOT), arg.value().substring(colon + 1), true);
     }
 
     private Converted teleport(Command command, Scope scope) {

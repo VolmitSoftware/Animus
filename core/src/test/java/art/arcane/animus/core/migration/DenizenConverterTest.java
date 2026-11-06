@@ -218,6 +218,16 @@ class DenizenConverterTest {
         assertEquals(object("{\"particle\":\"minecraft:flame\",\"count\":4,\"at\":\"player\"}"), step(main, 5).getAsJsonObject("arguments"));
     }
 
+    @Test void quotedTitleArgumentsKeepTheirPrefix() throws IOException {
+        JsonObject main = main("""
+                t:
+                  type: task
+                  script:
+                  - title "title:<&6>Town gate" "subtitle:Welcome home" stay:2s
+                """);
+        assertEquals(object("{\"title\":\"&6Town gate\",\"subtitle\":\"Welcome home\",\"stay\":40}"), main.getAsJsonObject("arguments"));
+    }
+
     @Test void itemsBooksTeleportAndAdjustUseTheNewActions() throws IOException {
         DenizenConverter.Output output = convert("""
                 t:
