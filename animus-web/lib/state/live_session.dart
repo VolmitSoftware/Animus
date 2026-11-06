@@ -223,11 +223,35 @@ class LiveSession {
     final WorkspaceSnapshot? workspace = store.workspace;
     final ServerBinding? server = binding;
     if (workspace == null || server == null) return const <DraftChange>[];
-    return pendingDrafts(workspace.documents, server);
+    return pendingDrafts(workspace.documents, server, moves: _movesOf(workspace.documents, server));
+  }
+
+  List<AnimusDocument>? _movesDocuments;
+  ServerBinding? _movesBinding;
+  Map<String, String> _moves = const <String, String>{};
+
+  /// [draftMoves] for the workspace as it is, worked out once per change of
+  /// its documents or binding: the sidebar asks for every document's state.
+  Map<String, String> _movesOf(List<AnimusDocument> documents, ServerBinding server) {
+    if (!identical(documents, _movesDocuments) || !identical(server, _movesBinding)) {
+      _movesDocuments = documents;
+      _movesBinding = server;
+      _moves = draftMoves(documents, server);
+    }
+    return _moves;
+  }
+
+  /// NPCs moved in this browser since their server base: the new key to the
+  /// key the server has them at. The next apply sends each as one move.
+  Map<String, String> get moves {
+    final WorkspaceSnapshot? workspace = store.workspace;
+    final ServerBinding? server = binding;
+    return workspace == null || server == null ? const <String, String>{} : _movesOf(workspace.documents, server);
   }
 
   DraftState stateOf(DocumentKind kind, String id) {
     final String key = documentKey(kind, id);
+    if (moves.containsKey(key)) return DraftState.moved;
     return draftState(store.document(kind, id), binding?.bases[key]);
   }
 
@@ -522,7 +546,7 @@ class LiveSession {
         final ServerBinding? server = binding;
         final WorkspaceSnapshot? workspace = store.workspace;
         if (server == null || workspace == null) return false;
-        final List<DraftChange> drafts = pendingDrafts(workspace.documents, server);
+        final List<DraftChange> drafts = pendingDrafts(workspace.documents, server, moves: _movesOf(workspace.documents, server));
         final List<DraftChange> blocked = <DraftChange>[for (final DraftChange draft in drafts) if (draft.problem != null) draft];
         if (blocked.isNotEmpty) {
           _notice(NoticeLevel.error, 'Fix ${blocked.map((DraftChange draft) => draft.id).join(', ')} first: ${blocked.first.problem}');
@@ -535,7 +559,11 @@ class LiveSession {
         final String key = _newKey();
         final PendingChange pending = PendingChange(
           idempotencyKey: key,
-          documents: <String>[for (final DraftChange draft in drafts) draft.key],
+          // A move's old key is in flight too: its catalog deletion settles
+          // with the answer.
+          documents: <String>[
+            for (final DraftChange draft in drafts) ...<String>[draft.key, if (draft.from != null) documentKey(draft.kind, draft.from!)],
+          ],
           sentAt: _now().toUtc(),
           message: message,
         );
@@ -642,7 +670,11 @@ class LiveSession {
       // No local copy of what was written (a recovered or undone change
       // set): take the server's versions.
       await store.commit(server: (ServerBinding binding) => recordApplied(binding, applied, const <String, ({String path, Object? source})>{}, undoOf: pending.undoOf, at: _now().toUtc()), undoable: false);
-      await _absorb(<String>[for (final AppliedDocument document in applied.documents) document.key], replace: true);
+      // A move (or the undo of one) leaves its old id: absorbing it drops
+      // the local copy there.
+      await _absorb(<String>[
+        for (final AppliedDocument document in applied.documents) ...<String>[document.key, if (document.fromKey != null) document.fromKey!],
+      ], replace: true);
     } else {
       final Map<String, ({String path, Object? source})> stored = <String, ({String path, Object? source})>{};
       final List<DocumentChange> documents = <DocumentChange>[];
@@ -666,7 +698,7 @@ class LiveSession {
       conflicts.remove(document.key);
     }
     _notice(NoticeLevel.success,
-        '${pending.undoOf == null ? 'Applied' : 'Undid'} ${applied.documents.length} document${applied.documents.length == 1 ? '' : 's'} (change ${applied.changeId}).');
+        appliedLine(applied, undo: pending.undoOf != null));
   }
 
   /// Undoes an applied change set through the server's rollback receipt.
@@ -943,6 +975,14 @@ class LiveSession {
     next.sort((CatalogEntry a, CatalogEntry b) => a.path.compareTo(b.path));
     catalog = next;
   }
+}
+
+/// The live log line after an apply or undo, naming the moves in it.
+String appliedLine(ChangeApplied applied, {required bool undo}) {
+  final int count = applied.documents.length;
+  final int moved = applied.documents.where((AppliedDocument document) => document.from != null).length;
+  final String what = '$count document${count == 1 ? '' : 's'}${moved == 0 ? '' : ', $moved moved'}';
+  return '${undo ? 'Undid' : 'Applied'} $what (change ${applied.changeId}).';
 }
 
 /// The live log line after a server validation.

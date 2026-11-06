@@ -417,7 +417,8 @@ class FakeApi {
       List<Map<String, Object?>> diagnostics = <Map<String, Object?>>[];
       if (!change.delete) {
         final Map<String, Object?> source = copyJson(change.source)! as Map<String, Object?>;
-        if (revisioned.contains(change.kind)) source['revision'] = (documents.at(location.path)?.revision ?? 0) + 1;
+        final String base = change.from == null ? location.path : documents.locate(change.kind, change.from!).path;
+        if (revisioned.contains(change.kind)) source['revision'] = (documents.at(base)?.revision ?? 0) + 1;
         diagnostics = validateDocument(change.kind, change.id, location.path, source);
         final Object? references = source['behaviors'];
         if (change.kind == DocumentKind.npc && references is List<Object?>) {

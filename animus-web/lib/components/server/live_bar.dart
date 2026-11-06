@@ -84,7 +84,7 @@ class _LiveBarState extends State<LiveBar> {
       dom.div(classes: 'animus-live-head', <Widget>[
         ConnectionPill(status: status, hasToken: session.connection.token != null),
         dom.span(classes: 'animus-live-count', attributes: const <String, String>{'data-testid': 'draft-count'}, <Widget>[
-          Component.text(drafts.isEmpty ? 'No changed drafts' : '${drafts.length} changed draft${drafts.length == 1 ? '' : 's'}'),
+          Component.text(draftCountLine(drafts)),
         ]),
         if (binding != null && binding.pending.isNotEmpty)
           dom.span(classes: 'animus-badge', attributes: const <String, String>{'data-testid': 'pending-count'}, <Widget>[
@@ -209,7 +209,7 @@ class _LiveBarState extends State<LiveBar> {
           for (final DraftChange draft in drafts)
             dom.li(<Widget>[
               dom.span(classes: 'animus-badge is-${draft.state.name}', <Widget>[Component.text(_stateLabel(draft.state))]),
-              dom.code(<Widget>[Component.text('${draft.kind.wireName} ${draft.id}')]),
+              dom.code(<Widget>[Component.text('${draft.kind.wireName} ${draft.from == null ? '' : '${draft.from} to '}${draft.id}')]),
               if (session.stale.contains(draft.key)) const dom.span(classes: 'animus-badge is-error', <Widget>[Component.text('changed on server')]),
               if (session.stale.contains(draft.key))
                 Button.ghost(label: 'Merge', size: ButtonSize.small, disabled: !online || !idle, onPressed: () => session.merge(draft.key)),
@@ -236,8 +236,16 @@ String _stateLabel(DraftState state) => switch (state) {
       DraftState.modified => 'edited',
       DraftState.created => 'new',
       DraftState.deleted => 'deleted',
+      DraftState.moved => 'moved',
       DraftState.clean => 'same',
     };
+
+/// The live bar's draft count, with how many of them are moves.
+String draftCountLine(List<DraftChange> drafts) {
+  if (drafts.isEmpty) return 'No changed drafts';
+  final int moved = drafts.where((DraftChange draft) => draft.state == DraftState.moved).length;
+  return '${drafts.length} changed draft${drafts.length == 1 ? '' : 's'}${moved == 0 ? '' : ', $moved moved'}';
+}
 
 String _short(Object? value) {
   if (isAbsent(value)) return '(not present)';
@@ -352,6 +360,7 @@ String? draftBadge(LiveSession session, DocumentKind kind, String id) {
   return switch (session.stateOf(kind, id)) {
     DraftState.modified => 'edited',
     DraftState.created => 'new',
+    DraftState.moved => 'moved',
     _ => null,
   };
 }
