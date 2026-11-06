@@ -10,6 +10,7 @@ import 'package:jaspr/jaspr.dart' show Component;
 import 'package:web/web.dart' as web;
 
 import '../../logic/rig_edit.dart';
+import '../gui/gui_fields.dart';
 import 'rig_inspector.dart';
 
 class RigTree extends StatefulWidget {
@@ -160,15 +161,16 @@ class _RigTreeState extends State<RigTree> {
         ]),
         dom.label(classes: 'animus-rig-field', <Widget>[
           const dom.span(<Widget>[Component.text('Parent')]),
-          ArcaneSelect(
-            size: ComponentSize.sm,
+          GuiSelect(
             value: parentOf(boneById(rig, selected) ?? const <String, Object?>{}) ?? '',
-            options: <ArcaneSelectOption>[
-              const ArcaneSelectOption(label: '(rig origin)', value: ''),
+            options: <String>[
               for (final JsonMap bone in bones)
-                if (!under.contains(bone['id'])) ArcaneSelectOption(label: '${bone['id']}', value: '${bone['id']}'),
+                if (!under.contains(bone['id'])) '${bone['id']}',
             ],
-            onChanged: (String value) => component.onEdit((JsonMap json) => reparentBone(json, selected, value.isEmpty ? null : value)),
+            allowNone: true,
+            noneLabel: '(rig origin)',
+            hiddenLabel: 'Parent',
+            onChanged: (String? value) => component.onEdit((JsonMap json) => reparentBone(json, selected, value)),
           ),
         ]),
       ],

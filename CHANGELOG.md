@@ -231,6 +231,8 @@
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
 - Web editor: an info button beside labels shows a short note on hover, focus or tap and opens the matching wiki section.
+- Web editor: dropdowns that pick a rig, animation, route, recording, group, behavior, skin, shop, chest GUI or menu end with "+ New" (opens the create form with the typed text as the name and the current folder, then returns with the new document picked) and "Manage" (lists that kind). Recordings show how to record one in game instead.
+- Web editor: sidebar sections and NPC folders collapse from their headers, with Collapse all and Expand all; the state is kept per workspace.
 
 ### Changed
 
@@ -328,6 +330,7 @@
 - Mob targeting of NPCs reads the definitions again only after they change.
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
 - Web editor: shorter copy on every screen; field explanations moved from inline paragraphs into info buttons.
+- Web editor: every select and suggestion list is the editor's own square dropdown. Lists longer than eight entries have a search field, the keyboard works as in a native select, and phones get a full-width sheet with 44 px rows.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

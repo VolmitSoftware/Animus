@@ -16,9 +16,12 @@ import '../../logic/gui/gui_expression.dart';
 import '../../logic/gui/gui_json.dart';
 import '../../logic/gui/gui_text.dart';
 import '../../mc/npc/mc_text.dart';
+import '../../logic/select/select_model.dart';
 import '../../model/animus_document.dart';
+import '../../model/document_kind.dart';
 import '../../logic/help_text.dart';
 import '../info_tip.dart';
+import '../select/animus_select.dart';
 
 /// What a text field holds, which decides its checks and completion.
 enum GuiTextMode {
@@ -350,7 +353,8 @@ class _GuiNumberInputState extends State<GuiNumberInput> {
   }
 }
 
-/// A choice from [options]. With [allowNone], an empty first entry clears it.
+/// A choice from [options]. With [allowNone], a first entry clears it.
+/// [references] makes it a document picker with "+ New" and "Manage" rows.
 class GuiSelect extends StatelessWidget {
   const GuiSelect({
     required this.value,
@@ -359,6 +363,11 @@ class GuiSelect extends StatelessWidget {
     this.allowNone = false,
     this.noneLabel = 'default',
     this.labels = const <String, String>{},
+    this.groups = const <String, String>{},
+    this.skinFaces = const <String, String>{},
+    this.disabled = const <String>{},
+    this.inactive = false,
+    this.references,
     this.id,
     this.label,
     this.hiddenLabel,
@@ -371,6 +380,19 @@ class GuiSelect extends StatelessWidget {
   final bool allowNone;
   final String noneLabel;
   final Map<String, String> labels;
+
+  /// The group heading of each option that has one.
+  final Map<String, String> groups;
+
+  /// The skin texture whose face shows beside an option.
+  final Map<String, String> skinFaces;
+
+  /// Options shown but not pickable.
+  final Set<String> disabled;
+
+  /// The whole control is disabled.
+  final bool inactive;
+  final DocumentKind? references;
 
   /// The element id, so a [GuiRow] label can point at it with `for`.
   final String? id;
@@ -385,27 +407,27 @@ class GuiSelect extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> all = <String>[...options, if (value != null && !options.contains(value)) value!];
-    final String? named = hiddenLabel;
-    if (named != null) {
-      final String own = id ?? guiFieldId();
-      return dom.span(classes: 'animus-gui-select', <Widget>[
-        dom.label(htmlFor: own, classes: 'animus-sr-only', <Widget>[Component.text(named)]),
-        _select(own, all),
-      ]);
-    }
-    return _select(id, all);
-  }
-
-  Widget _select(String? id, List<String> all) {
-    return ArcaneSelect(
-      size: ComponentSize.sm,
+    final List<String> all = <String>[...options, if (value != null && value!.isNotEmpty && !options.contains(value)) value!];
+    return AnimusSelect(
       id: id,
       label: label,
+      hiddenLabel: hiddenLabel,
       value: value ?? '',
-      options: <ArcaneSelectOption>[
-        if (allowNone || value == null) ArcaneSelectOption(label: noneLabel, value: ''),
-        for (final String option in all) ArcaneSelectOption(label: labels[option] ?? option, value: option),
+      placeholder: noneLabel,
+      references: references,
+      disabled: inactive,
+      options: <SelectOption>[
+        if (allowNone || value == null) SelectOption(label: noneLabel, value: ''),
+        for (final String option in all)
+          if (option.isNotEmpty)
+            SelectOption(
+              label: labels[option] ?? option,
+              value: option,
+              group: groups[option],
+              skinFace: skinFaces[option],
+              disabled: disabled.contains(option),
+              keywords: labels[option] == null ? const <String>[] : <String>[option],
+            ),
       ],
       onChanged: (String next) => onChanged(next.isEmpty ? null : next),
     );

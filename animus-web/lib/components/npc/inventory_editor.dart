@@ -13,6 +13,7 @@ import '../../logic/npc/npc_appearance.dart';
 import '../../model/animus_document.dart';
 import '../gui/gui_fields.dart';
 import '../inspect/inspect_fields.dart';
+import '../select/suggest_input.dart';
 
 class NpcInventoryEditor extends StatelessWidget {
   const NpcInventoryEditor({required this.value, required this.onChanged, this.diagnostics = const <Diagnostic>[], super.key});

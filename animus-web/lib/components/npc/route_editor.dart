@@ -876,7 +876,7 @@ class _RouteEditorState extends State<RouteEditor> {
             : 'Walks to the segment\'s first frame, plays it once, then goes on from its last frame.',
         child: recordings.isEmpty
             ? GuiTextInput(id: recordingId, value: recording, placeholder: 'recording id', label: '$label recording', onChanged: (String value) => set('recording', value.trim()))
-            : GuiSelect(id: recordingId, value: recording.isEmpty ? null : recording, options: recordings.keys.toList(), onChanged: (String? value) => set('recording', value ?? '')),
+            : GuiSelect(references: DocumentKind.recording, id: recordingId, value: recording.isEmpty ? null : recording, options: recordings.keys.toList(), onChanged: (String? value) => set('recording', value ?? '')),
       ),
       dom.div(classes: 'animus-route-coords', <Widget>[
         dom.label(<Widget>[

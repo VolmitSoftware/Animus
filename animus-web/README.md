@@ -12,6 +12,14 @@ Saves that the browser refuses (out of space, storage switched off) keep the edi
 
 The brand mark is `web/assets/brand/animus-mark.svg` (the Animus triangle, stripe and diamond in the brand pinks and greys). `web/favicon.svg` is the mark on the near-black tile; `favicon.ico` (32 px, PNG inside), `apple-touch-icon.png` (180 px) and `icon-512.png` are rendered from it. `firebase.json` caches `/assets/brand/` for a year as immutable, so a changed mark needs a new file name. Show the mark with `<img src="/assets/brand/animus-mark.svg" width=".." height=".." alt="">`, or `BrandMark(size: ..)` in Dart.
 
+## Dropdowns and the sidebar
+
+Every choice is the editor's own dropdown (`lib/components/select`): `AnimusSelect` (or `GuiSelect` for a list of strings) and `SuggestInput` for text with suggestions; `test/no_native_select_test.dart` fails on a native `select` or `datalist`. Past eight options a dropdown has a search field. Keys: arrows, Home, End, Page Up and Down, type-ahead, Enter and Space, Escape (focus goes back to the control). At 760 px and below it opens as a sheet. A dropdown given `references` picks a document and ends with "+ New <kind>" and "Manage <kinds>": New opens the create form with the search text as the name and the current document's folder, and Create comes back with the new document picked (`lib/state/document_return.dart`); Manage opens `#/workspace/<id>/list/<kind>` (the NPC browser and recordings list for those kinds).
+
+Sidebar sections and NPC folders collapse from their headers (Enter or Space, Left and Right on a header); Collapse all and Expand all sit above them. What is collapsed is kept in localStorage per workspace (`animus.sidebar.collapsed.<id>`).
+
+`dropdowns_browser.cjs` checks keyboard-only picking, the search, "+ New rig" and Manage, the phone sheet, placement near the bottom and a collapsed section kept across a reload, at 1440 and 390 px in both themes.
+
 ## Working without a server
 
 New document (`#/workspace/<id>/new`) lists every kind with a guided first step that makes a valid document (`lib/logic/offline/new_documents.dart`): an NPC from its name, folder, body, skin (a PNG file or address, kept as `editor/skins/<hash>.png` so the preview wears it after a reload) and position, with a behavior from a template; behaviors from the greeter, dialogue, patrol, shop, guard and quest templates; packs, routes, shops, chest GUIs, menus, holograms, rigs (empty or a block figure), animations (empty, bob or wave), skins, text animations and presets. Schematics are not editor documents. Every document has Rename, Duplicate and Delete (confirmed, undoable); a move takes along the NPCs that list a renamed behavior and the animations and NPCs of a renamed rig. Diagnostics offer fixes where the editor knows the repair (`lib/logic/offline/document_fixes.dart`).
@@ -66,6 +74,7 @@ node test/server_behaviors_live_browser.cjs   # --data as its header describes
 node test/skin_render_browser.cjs    # --data from its --write-fixture run
 node test/groups_recordings_browser.cjs
 node test/info_tip_browser.cjs
+node test/dropdowns_browser.cjs
 ```
 
 `home_browser.cjs` checks the home page (one primary action, the three ways to start, the empty list), the skip link, renaming a workspace with Enter and Escape (focus goes back to Rename), deleting with Escape and Restore, the routes to a missing workspace or document (each names the cause and links back), then opens `../schema/fixtures/export` as a data folder: the listing, arrow keys in the document list, the document title as the page heading, the view tablist with arrow keys, a broken Code draft named in the header, and Split and Preview.
