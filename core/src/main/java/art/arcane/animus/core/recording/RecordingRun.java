@@ -28,6 +28,8 @@ public final class RecordingRun {
 
     private final RecordingSource source;
     private final RecordingDocument document;
+    /** The route point this run plays as a step, or -1 for a recording source or action. */
+    private final int point;
     private RecordingPlayback playback;
     private RecordingPlayback target;
     private Phase phase = Phase.WALKING_IN;
@@ -36,11 +38,22 @@ public final class RecordingRun {
 
     /** Starts from the first frame. */
     public RecordingRun(RecordingSource source, RecordingDocument document) {
-        this(source, document, new RecordingPlayback(document, source.playback(), 0));
+        this(source, document, new RecordingPlayback(document, source.playback(), 0), -1);
     }
 
-    private RecordingRun(RecordingSource source, RecordingDocument document, RecordingPlayback playback) {
-        this.source = Objects.requireNonNull(source); this.document = Objects.requireNonNull(document); this.playback = playback;
+    private RecordingRun(RecordingSource source, RecordingDocument document, RecordingPlayback playback, int point) {
+        this.source = Objects.requireNonNull(source); this.document = Objects.requireNonNull(document); this.playback = playback; this.point = point;
+    }
+
+    /**
+     * Route point {@code point} as a recording step: the ticks {@code fromTick..toTick} played once, walking in to the pose
+     * at {@code fromTick} first.
+     *
+     * @throws IllegalArgumentException unless {@code 0 <= fromTick < toTick <= durationTicks}
+     */
+    public static RecordingRun step(RecordingDocument document, int point, int fromTick, int toTick) {
+        if (point < 0) throw new IllegalArgumentException("A step belongs to a route point");
+        return new RecordingRun(new RecordingSource(document.id(), Playback.ONCE), document, RecordingPlayback.segment(document, fromTick, toTick), point);
     }
 
     /**
@@ -50,11 +63,17 @@ public final class RecordingRun {
     public static RecordingRun resume(RecordingSource source, RecordingDocument document, Optional<RecordingPlayback.State> state) {
         if (state.isEmpty() || state.get().mode() != source.playback() || state.get().cursor() > document.durationTicks())
             return new RecordingRun(source, document);
-        try { return new RecordingRun(source, document, RecordingPlayback.resume(document, state.get())); }
+        try { return new RecordingRun(source, document, RecordingPlayback.resume(document, state.get()), -1); }
         catch (IllegalArgumentException mismatched) { return new RecordingRun(source, document); }
     }
 
+    /** The same run continued from its cursor, walking in to the pose there first: a stopped run resuming. */
+    public RecordingRun resumed() { return new RecordingRun(source, document, playback.resume(playback.state()), point); }
+
     public RecordingSource source() { return source; }
+    /** True for a route step; {@link #point} names its route point. */
+    public boolean step() { return point >= 0; }
+    public int point() { return point; }
     public RecordingDocument document() { return document; }
     public Phase phase() { return phase; }
     public int skips() { return skips; }
@@ -114,22 +133,26 @@ public final class RecordingRun {
     }
 
     /** Puts the cursor back where it was before an advance whose step could not be taken this tick. */
-    public void rewind(RecordingPlayback.State before) { playback = RecordingPlayback.resume(document, before); }
+    public void rewind(RecordingPlayback.State before) { playback = playback.resume(before); }
 
     /** A {@code once} playback reached its last frame and ran every event. */
     public boolean finished() { return phase == Phase.PLAYING && playback.finished(); }
 
-    /** {@code recording=<id> playback=<mode> cursor=<tick>/<duration> state=<phase>}, for inspect and navigation status. */
+    /**
+     * {@code recording=<id> playback=<mode> cursor=<tick>/<duration> state=<phase>}, or for a route step
+     * {@code step=recording:<id> cursor=<tick>/<toTick> state=<phase>}, for inspect and navigation status.
+     */
     public String describe() { return describe(phase.key()); }
 
     /** The same line with another state word, such as {@code stopped} for a run kept after its NPC stopped. */
     public String describe(String state) {
+        if (step()) return "step=recording:" + source.recording() + " cursor=" + playback.cursor() + "/" + playback.end() + " state=" + state;
         return "recording=" + source.recording() + " playback=" + source.playback().key() + " cursor=" + playback.cursor() + "/" + document.durationTicks()
                 + " state=" + state;
     }
 
     private void catchUp() {
-        target = RecordingPlayback.resume(document, playback.state());
+        target = playback.resume(playback.state());
         target.skip(CATCH_UP_TICKS);
         phase = Phase.CATCHING_UP;
     }

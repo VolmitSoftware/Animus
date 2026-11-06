@@ -9,7 +9,6 @@ import art.arcane.animus.core.recording.RecordingRun;
 import art.arcane.animus.core.runtime.RecordingSteps;
 import art.arcane.animus.core.virtual.Vec3;
 import art.arcane.animus.core.virtual.WorldPosition;
-import java.util.Optional;
 
 /**
  * Recording playback of one region actor: the run playing now, the run kept after a stop for resuming, and the turn
@@ -99,10 +98,8 @@ final class RegionPlayback {
         walkIn(run);
     }
 
-    /** The run a new owner continues: the same cursor, mode and direction, walking in to the pose at the cursor. */
-    static RecordingRun handedOver(RecordingRun previous) {
-        return RecordingRun.resume(previous.source(), previous.document(), Optional.of(previous.state()));
-    }
+    /** The run a new owner continues: the same cursor, mode, direction and step segment, walking in to the pose at the cursor. */
+    static RecordingRun handedOver(RecordingRun previous) { return previous.resumed(); }
 
     /** A planned leg to the run's goal pose, or play at once when the body already stands there. */
     void walkIn(RecordingRun target) {

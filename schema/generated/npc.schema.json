@@ -665,91 +665,226 @@
             },
             "points": {
               "type": "array",
-              "description": "Route points in the NPC's world; wander centres for order wander.",
+              "description": "Route points in the NPC's world, or recording steps; wander centres for order wander.",
               "minItems": 0,
               "maxItems": 256,
               "items": {
-                "type": "object",
-                "required": [
-                  "x",
-                  "y",
-                  "z"
-                ],
-                "properties": {
-                  "x": {
-                    "type": "number",
-                    "minimum": -29999984,
-                    "maximum": 29999984
-                  },
-                  "y": {
-                    "type": "number",
-                    "minimum": -29999984,
-                    "maximum": 29999984
-                  },
-                  "z": {
-                    "type": "number",
-                    "minimum": -29999984,
-                    "maximum": 29999984
-                  },
-                  "waitTicks": {
-                    "oneOf": [
-                      {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "x",
+                      "y",
+                      "z"
+                    ],
+                    "properties": {
+                      "x": {
+                        "type": "number",
+                        "minimum": -29999984,
+                        "maximum": 29999984
+                      },
+                      "y": {
+                        "type": "number",
+                        "minimum": -29999984,
+                        "maximum": 29999984
+                      },
+                      "z": {
+                        "type": "number",
+                        "minimum": -29999984,
+                        "maximum": 29999984
+                      },
+                      "waitTicks": {
+                        "oneOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 12000
+                          },
+                          {
+                            "type": "array",
+                            "description": "[min, max] in ticks, min not above max.",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 12000
+                            }
+                          }
+                        ],
+                        "description": "Wait after arriving here, instead of the route's."
+                      },
+                      "jitter": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 12000
+                        "maximum": 8,
+                        "description": "Jitter radius of this point, instead of the route's."
                       },
-                      {
+                      "weight": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "description": "Order random only: how often this point is chosen."
+                      },
+                      "next": {
                         "type": "array",
-                        "description": "[min, max] in ticks, min not above max.",
-                        "minItems": 2,
-                        "maxItems": 2,
+                        "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
+                        "minItems": 1,
+                        "maxItems": 8,
                         "items": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 12000
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "to"
+                          ],
+                          "properties": {
+                            "to": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 255
+                            },
+                            "weight": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000
+                            }
+                          }
                         }
                       }
-                    ],
-                    "description": "Wait after arriving here, instead of the route's."
-                  },
-                  "jitter": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 8,
-                    "description": "Jitter radius of this point, instead of the route's."
-                  },
-                  "weight": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 1000,
-                    "description": "Order random only: how often this point is chosen."
-                  },
-                  "next": {
-                    "type": "array",
-                    "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
-                    "minItems": 1,
-                    "maxItems": 8,
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "to"
-                      ],
-                      "properties": {
-                        "to": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 255
+                    },
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "recording"
+                          ]
                         },
-                        "weight": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 1000
+                        {
+                          "required": [
+                            "fromTick"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "toTick"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "playback"
+                          ]
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "description": "A recording step: walk to the segment's first frame, play it once, then go on from its last frame.",
+                    "required": [
+                      "recording"
+                    ],
+                    "properties": {
+                      "recording": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+                        "maxLength": 64,
+                        "description": "A recording under recordings/."
+                      },
+                      "fromTick": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 72000,
+                        "description": "First tick of the segment, 0 by default; below toTick."
+                      },
+                      "toTick": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 72000,
+                        "description": "Last tick of the segment; the recording's durationTicks by default."
+                      },
+                      "playback": {
+                        "const": "once",
+                        "description": "A step plays once; loop and pingpong are refused because the route must go on."
+                      },
+                      "waitTicks": {
+                        "oneOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 12000
+                          },
+                          {
+                            "type": "array",
+                            "description": "[min, max] in ticks, min not above max.",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 12000
+                            }
+                          }
+                        ],
+                        "description": "Wait after arriving here, instead of the route's."
+                      },
+                      "weight": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "description": "Order random only: how often this point is chosen."
+                      },
+                      "next": {
+                        "type": "array",
+                        "description": "Order sequence only: after this point, the next point is drawn from these by weight.",
+                        "minItems": 1,
+                        "maxItems": 8,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "to"
+                          ],
+                          "properties": {
+                            "to": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 255
+                            },
+                            "weight": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000
+                            }
+                          }
                         }
                       }
+                    },
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "x"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "y"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "z"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "jitter"
+                          ]
+                        }
+                      ]
                     }
                   }
-                }
+                ]
               }
             },
             "guides": {
@@ -1148,6 +1283,35 @@
                           {
                             "required": [
                               "next"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "order": {
+                    "const": "wander"
+                  }
+                },
+                "required": [
+                  "order"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "points": {
+                    "items": {
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "recording"
                             ]
                           }
                         ]
