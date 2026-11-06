@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import java.util.Map;
 import art.arcane.animus.core.editor.SharedFixtures;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.npc.NpcRepository;
@@ -52,18 +53,18 @@ class DenizenDropInTest {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
             assertTrue(flow.startupNotice().orElseThrow().contains("plugins/Denizen/scripts"));
-            String staged = joined(flow.execute(new String[0]));
+            String staged = joined(flow.preview("reject", Optional.empty(), Map.of()));
             assertTrue(staged.contains("Denizen plugins/Denizen: 17 scripts; 12 behaviors for 4 NPCs; 16 flag values imported, 2 kept"), staged);
             assertTrue(staged.contains("commandNamespaces = [\"denizen\"]"), staged);
             assertTrue(staged.endsWith("Next: /animus import citizens apply"), staged);
 
             denizen.set(true);
-            IOException refused = assertThrows(IOException.class, () -> flow.execute(new String[]{"apply"}));
+            IOException refused = assertThrows(IOException.class, () -> flow.applyStaged());
             assertTrue(refused.getMessage().contains("Denizen is still enabled"), refused.getMessage());
             assertTrue(npcs.all().isEmpty(), "nothing installed while Denizen runs");
             denizen.set(false);
 
-            String applied = joined(flow.execute(new String[]{"apply"}));
+            String applied = joined(flow.applyStaged());
             assertTrue(applied.contains("Denizen behaviors installed in behaviors/denizen/"), applied);
             assertTrue(applied.contains("4 NPCs wait for accept denizen"), applied);
             assertNotNull(store.read("behaviors/denizen/interact/guard_quest.json"));
@@ -74,22 +75,22 @@ class DenizenDropInTest {
             assertTrue(guard.behaviors().stream().noneMatch((String id) -> id.startsWith("denizen:")), "behaviors stay off until accepted");
             assertTrue(guard.json().getAsJsonObject("modules").has(DenizenImporter.MODULE));
 
-            String review = joined(flow.execute(new String[]{"review"}));
+            String review = joined(flow.reviewApplied());
             assertTrue(review.contains("denizen: 4 waiting"), review);
             assertTrue(review.contains("Denizen import "), review);
             JsonObject status = flow.status();
             assertEquals("applied", status.getAsJsonObject("denizen").get("state").getAsString());
 
             denizen.set(true);
-            assertThrows(IOException.class, () -> flow.execute(new String[]{"accept", "denizen"}));
+            assertThrows(IOException.class, () -> flow.acceptCategories(List.of("denizen")));
             denizen.set(false);
-            String accepted = joined(flow.execute(new String[]{"accept", "denizen"}));
+            String accepted = joined(flow.acceptCategories(List.of("denizen")));
             assertTrue(accepted.contains("denizen 4"), accepted);
             guard = npcs.all().stream().filter((NpcDefinition npc) -> npc.id().equals("citizens-0")).findFirst().orElseThrow();
             assertEquals(List.of("denizen:assignment/guard_assignment", "denizen:interact/guard_quest", "denizen:world-npc/dialogue_starter"), guard.behaviors());
             assertTrue(guard.json().getAsJsonObject("modules").getAsJsonObject(DenizenImporter.MODULE).get("reviewAccepted").getAsBoolean());
 
-            flow.execute(new String[]{"rollback"});
+            flow.rollbackApplied();
             assertNull(store.read("behaviors/denizen/interact/guard_quest.json"));
             assertNull(store.read("gui/inventories/denizen/gate_menu.json"));
             assertNull(store.read(STATE));
@@ -103,7 +104,7 @@ class DenizenDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            flow.execute(new String[0]);
+            flow.preview("reject", Optional.empty(), Map.of());
             String reportPath = flow.status().getAsJsonObject("denizen").get("report").getAsString();
             JsonObject report = art.arcane.animus.core.storage.JsonDocuments.object(store.read(reportPath));
             JsonArray servers = new JsonArray();
@@ -113,17 +114,17 @@ class DenizenDropInTest {
             DocumentStore.atomic(store.resolve(reportPath), art.arcane.animus.core.storage.JsonDocuments.write(report));
             DocumentStore.atomic(store.resolve("server-behaviors.json"), "{\"schemaVersion\":1,\"behaviors\":[\"town:clock\"]}\n");
 
-            flow.execute(new String[]{"apply"});
+            flow.applyStaged();
             String receipt = store.read(reportPath.replace("report.json", "receipt.json"));
             assertTrue(receipt.contains("\"serverBehaviors\": [\n    \"denizen:world/welcome\"\n  ]"), receipt);
             assertEquals(List.of("town:clock"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")), "apply enables nothing");
 
-            String accepted = joined(flow.execute(new String[]{"accept", "denizen"}));
+            String accepted = joined(flow.acceptCategories(List.of("denizen")));
             assertTrue(accepted.contains("Denizen server behaviors enabled in server-behaviors.json"), accepted);
             assertEquals(List.of("town:clock", "denizen:world/welcome"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")));
-            assertTrue(joined(flow.execute(new String[]{"accept", "denizen"})).contains("Nothing waiting in denizen"));
+            assertTrue(joined(flow.acceptCategories(List.of("denizen"))).contains("Nothing waiting in denizen"));
 
-            flow.execute(new String[]{"rollback"});
+            flow.rollbackApplied();
             assertEquals(List.of("town:clock"), art.arcane.animus.core.behavior.catalog.ServerBehaviorList.parse(store.read("server-behaviors.json")));
         }
     }
@@ -176,8 +177,8 @@ class DenizenDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            flow.execute(new String[0]);
-            String applied = joined(flow.execute(new String[]{"apply"}));
+            flow.preview("reject", Optional.empty(), Map.of());
+            String applied = joined(flow.applyStaged());
             assertTrue(applied.contains("1 bound to Citizens NPCs"), applied);
             assertTrue(applied.contains("Denizen behaviors installed"), applied);
             JsonObject modules = npcs.find("citizens-0").orElseThrow().json().getAsJsonObject("modules");
@@ -213,9 +214,9 @@ class DenizenDropInTest {
         try (DocumentStore store = new DocumentStore(root.resolve("plugins/Animus"))) {
             NpcRepository npcs = new NpcRepository(store); npcs.loadForStartup();
             CitizensDropIn flow = dropIn(store, npcs);
-            flow.execute(new String[0]);
+            flow.preview("reject", Optional.empty(), Map.of());
             DocumentStore.atomic(store.resolve(STATE), "{}");
-            String applied = joined(flow.execute(new String[]{"apply"}));
+            String applied = joined(flow.applyStaged());
             assertTrue(applied.contains("Denizen import failed and nothing of it was installed") && applied.contains("Behavior state already stored"), applied);
             assertNull(store.read("behaviors/denizen/interact/guard_quest.json"));
             assertFalse(npcs.all().isEmpty(), "the Citizens import stays applied");

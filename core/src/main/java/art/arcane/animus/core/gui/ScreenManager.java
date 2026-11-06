@@ -1,5 +1,6 @@
 package art.arcane.animus.core.gui;
 
+import art.arcane.animus.core.AnimusLog;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -82,7 +83,10 @@ public final class ScreenManager<P, S> {
         /** Runs the work after the given number of owner ticks while the window stays open. */
         public boolean schedule(int ticks, Runnable work) {
             if (closed) return false;
-            if (pending.size() >= MAXIMUM_PENDING) { warn.accept("Screen for " + id + " has " + MAXIMUM_PENDING + " delayed actions; one was dropped"); return false; }
+            if (pending.size() >= MAXIMUM_PENDING) {
+                AnimusLog.shared().routine("screens dropped a delayed action at the limit", String.valueOf(id), "Screen for " + id + " has " + MAXIMUM_PENDING + " delayed actions; one was dropped", warn);
+                return false;
+            }
             pending.add(new Pending(tick + Math.max(1, ticks), work));
             return true;
         }

@@ -44,14 +44,16 @@ public enum Palette {
     }
 
     /**
-     * Colours the brand lead of a plain command reply: {@code Animus} or {@code Animus <area>:} in pink, the rest in grey,
-     * the rest's own text left exactly as written. A reply that does not start with Animus, or already carries section
-     * codes, is returned unchanged. Pass the result through {@link RichText#legacy} for a receiver without hex.
+     * The Animus look of a plain command reply. A reply that starts with {@code Animus} or {@code Animus <area>:} gets that
+     * lead in pink and the rest in grey; any other plain reply gets {@link #PREFIX}. The reply's own text is left exactly
+     * as written, and a reply that already carries section codes is returned unchanged. Pass the result through
+     * {@link RichText#legacy} for a receiver without hex.
      */
     public static String reply(String message) {
-        if (message == null || !message.startsWith("Animus") || message.indexOf(RichText.SECTION) >= 0) return message;
+        if (message == null || message.indexOf(RichText.SECTION) >= 0) return message;
         int lead = "Animus".length();
-        if (message.length() > lead && Character.isLetterOrDigit(message.charAt(lead))) return message;
+        if (!message.startsWith("Animus") || message.length() > lead && Character.isLetterOrDigit(message.charAt(lead)))
+            return RichText.colorize(PREFIX) + message;
         int colon = message.indexOf(':');
         boolean area = colon > 0 && colon <= 40 && message.substring(lead, colon).chars().allMatch((int c) -> c == ' ' || Character.isLetter(c));
         int end = area ? colon : lead;
@@ -59,4 +61,10 @@ public enum Palette {
         String head = RichText.colorize(PINK + message.substring(0, end) + (area ? DARK_GREY + ":" : "") + GREY);
         return head + rest;
     }
+
+    /** A refusal: the prefix, then the reason in semantic red. */
+    public static String error(String message) { return RichText.colorize(PREFIX + "&c") + message; }
+
+    /** A finished change: the prefix, then the result in semantic green. */
+    public static String success(String message) { return RichText.colorize(PREFIX + "&a") + message; }
 }
