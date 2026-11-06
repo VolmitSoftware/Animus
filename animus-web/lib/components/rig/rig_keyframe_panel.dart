@@ -5,7 +5,7 @@ library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart' hide Easing;
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
+import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 
 import '../../logic/rig_edit.dart';
 import '../../logic/rig_sampler.dart';
@@ -76,7 +76,9 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
     final bool visible = track['target'] == 'visible';
     return dom.div(classes: 'animus-rig-keyframe', attributes: const <String, String>{'aria-label': 'Track'}, <Widget>[
       dom.strong(<Widget>[Component.text('Track ${index + 1}: ${track['bone']} ${track['target']}')]),
-      dom.label(classes: 'animus-rig-field is-inline', <Widget>[
+      // Keyed by the value: a native select the user changed keeps its own
+      // selection when only the option attributes change.
+      dom.label(key: ValueKey<String>('blend:$index:$blend'), classes: 'animus-rig-field is-inline', <Widget>[
         const dom.span(<Widget>[Component.text('Blend')]),
         ArcaneSelect(
           size: ComponentSize.sm,
@@ -145,7 +147,7 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
             onBlur: () => _commitTick(selected),
           ),
         ]),
-        dom.label(classes: 'animus-rig-field is-inline', <Widget>[
+        dom.label(key: ValueKey<String>('easing:${selected.$1}:${selected.$2}:$easing'), classes: 'animus-rig-field is-inline', <Widget>[
           const dom.span(<Widget>[Component.text('Easing')]),
           ArcaneSelect(
             size: ComponentSize.sm,
@@ -173,7 +175,7 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
               dom.span(classes: 'animus-field-error', attributes: const <String, String>{'role': 'alert'}, <Widget>[Component.text(_bezierError!)]),
           ]),
         if (value is bool)
-          dom.label(classes: 'animus-rig-field is-inline', <Widget>[
+          dom.label(key: ValueKey<String>('visible:${selected.$1}:${selected.$2}:$value'), classes: 'animus-rig-field is-inline', <Widget>[
             const dom.span(<Widget>[Component.text('Visible')]),
             ArcaneSelect(
               size: ComponentSize.sm,

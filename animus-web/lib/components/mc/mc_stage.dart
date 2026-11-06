@@ -554,8 +554,8 @@ class _McStageState extends State<McStage> {
         ],
       ),
       dom.p(id: '$_id-keys', classes: 'animus-mc-keys', <Widget>[
-        const Component.text('Drag to orbit, Shift or right drag to pan, Ctrl and the wheel to zoom. With the stage focused: arrows orbit, '
-            'Shift and arrows pan, + and - zoom, 0 resets the view.'),
+        const Component.text('Drag to orbit, Shift or right drag to pan, Ctrl and the wheel to zoom. Focused: arrows orbit, '
+            'Shift and arrows pan, + and - zoom, 0 resets.'),
       ]),
       dom.div(id: '$_id-status', classes: 'animus-mc-status', attributes: const <String, String>{'aria-live': 'polite'}, <Widget>[
         if (loading) const dom.p(<Widget>[Component.text('Loading the Minecraft models (about 2 MB).')]),

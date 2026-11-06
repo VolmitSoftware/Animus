@@ -255,15 +255,33 @@ html.light .animus-rig-bone-link {
   padding: 0.25rem 0.75rem;
 }
 
-.animus-rig-names-box > summary {
+.animus-rig-names-toggle {
   min-height: 2.25rem;
+  width: 100%;
   display: flex;
+  gap: 0.5rem;
   align-items: center;
-  cursor: pointer;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
 }
 
-.animus-rig-names-box > summary:focus-visible {
+.animus-rig-names-toggle:hover {
+  text-decoration: underline;
+}
+
+.animus-rig-names-caret {
+  width: 1ch;
+  font-family: var(--font-mono);
+  color: var(--animus-muted);
+}
+
+.animus-rig-names-toggle:focus-visible {
   outline: 2px solid var(--ring, #ffb3d6);
   outline-offset: 2px;
 }
@@ -439,6 +457,13 @@ button.animus-rig-lane-label:focus-visible {
   color: var(--animus-muted);
 }
 
+.animus-rig-ruler-mark.is-end {
+  padding: 0 0.2rem 0 0;
+  border-left: 0;
+  border-right: 1px solid var(--animus-muted);
+  transform: translateX(-100%);
+}
+
 .animus-rig-ruler-event {
   position: absolute;
   bottom: 0;
@@ -605,7 +630,7 @@ button.animus-rig-lane-label:focus-visible {
   .animus-rig-editor button:not(.animus-rig-key):not(.animus-rig-event),
   .animus-rig-editor select,
   .animus-rig-editor input:not([type="range"]):not([type="checkbox"]),
-  .animus-rig-names-box > summary,
+  .animus-rig-names-toggle,
   button.animus-rig-lane-label {
     min-height: 44px;
   }

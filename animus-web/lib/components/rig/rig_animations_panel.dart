@@ -6,7 +6,7 @@ library;
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
-import 'package:jaspr/jaspr.dart' show Component;
+import 'package:jaspr/jaspr.dart' show Component, ValueKey;
 
 import '../../logic/rig_edit.dart';
 import 'rig_inspector.dart';
@@ -145,7 +145,7 @@ class _RigAnimationsPanelState extends State<RigAnimationsPanel> {
           onSubmitted: (String _) => _rename(name),
           onBlur: () => _rename(name),
         ),
-        dom.label(classes: 'animus-rig-field', <Widget>[
+        dom.label(key: ValueKey<String>('animation:$name:$id'), classes: 'animus-rig-field', <Widget>[
           dom.span(classes: 'animus-sr-only', <Widget>[Component.text('Animation for $name')]),
           ArcaneSelect(
             size: ComponentSize.sm,

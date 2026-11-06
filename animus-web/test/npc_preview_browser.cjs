@@ -1,12 +1,15 @@
 // Opens test/fixtures/npc_preview as a data folder in the built site and
 // checks that the Preview stage draws every sample NPC: frames rendered,
 // nothing left waiting for a texture, a canvas that is not one flat colour,
-// and no console errors, at desktop and phone widths. Needs the asset pack
-// (tool/extract_minecraft_world_assets.dart) in the build.
+// and no console errors, at desktop width in the dark theme and phone width
+// in the light one, with no horizontal overflow. It also orbits the stage
+// from the keyboard and checks that a skin PNG of the wrong size says why
+// under the stage. Needs the asset pack (tool/extract_minecraft_world_assets.dart)
+// in the build.
 //
-//   python3 -m http.server 8098 --bind 127.0.0.1 --directory build/jaspr
+//   python3 -m http.server <port> --bind 127.0.0.1 --directory build/jaspr
 //   PLAYWRIGHT_MODULE=/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright \
-//     ANIMUS_SCREENSHOTS=/tmp/shots node test/npc_preview_browser.cjs
+//     ANIMUS_WEB_URL=http://127.0.0.1:<port> ANIMUS_SCREENSHOTS=<folder> node test/npc_preview_browser.cjs
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -55,7 +58,7 @@ async function colours(page, png) {
   }, png.toString('base64'));
 }
 
-async function run(browser, viewport, label) {
+async function run(browser, viewport, label, dark) {
   const page = await browser.newPage({viewport});
   page.setDefaultTimeout(15000);
   const errors = [];
@@ -67,6 +70,9 @@ async function run(browser, viewport, label) {
   await page.getByRole('button', {name: 'Open folder'}).first().click();
   await (await chooser).setFiles(folder);
   await page.locator('.animus-sidebar').getByText('Hero', {exact: true}).waitFor();
+  const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+  if (isDark !== dark) await page.getByRole('button', {name: dark ? 'Use dark theme' : 'Use light theme'}).click();
+  await page.waitForFunction(want => document.documentElement.classList.contains(want ? 'dark' : 'light'), dark);
   const workspace = page.url().split('#')[1].split('?')[0];
   for (const [title, id] of samples) {
     await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/${encodeURIComponent(id)}?view=preview`);
@@ -97,6 +103,8 @@ async function run(browser, viewport, label) {
       }
     }
     assert.ok(await host.count() === 1);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 0, `${id}: ${overflow}px of horizontal overflow`);
   }
   // Text above the hero: the hologram lines and the native nameplate.
   await page.goto(`${page.url().split('#')[0]}#${workspace}/npc/players%2Fhero?view=split`);
@@ -112,6 +120,15 @@ async function run(browser, viewport, label) {
   await page.mouse.up();
   await page.waitForFunction(n => Number(document.querySelector('.animus-mc-gl-host').getAttribute('data-frames')) > n, before);
   if (shots) fs.writeFileSync(path.join(shots, `${label}-hero-split-orbit.png`), await page.screenshot({fullPage: true}));
+  // Orbit from the keyboard: the focused stage takes the arrow keys.
+  const keyed = Number(await page.locator('.animus-mc-gl-host').getAttribute('data-frames'));
+  await page.locator('.animus-mc-stage').focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('-');
+  await page.waitForFunction(n => Number(document.querySelector('.animus-mc-gl-host').getAttribute('data-frames')) > n, keyed);
+  await page.keyboard.press('0');
+  assert.equal(await page.locator('.animus-mc-stage').getAttribute('role'), 'img');
+  assert.ok((await page.locator('.animus-mc-stage').getAttribute('aria-describedby')).includes('-status'));
   // Load a skin PNG from a file: a generated 64x64 two-colour skin.
   const skin = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
@@ -124,7 +141,8 @@ async function run(browser, viewport, label) {
     context.fillRect(0, 32, 64, 32);
     return canvas.toDataURL('image/png').split(',')[1];
   });
-  const skinFile = path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'animus-skin-')), 'skin.png');
+  const scratch = fs.mkdtempSync(path.join(shots || require('node:os').tmpdir(), 'animus-skin-'));
+  const skinFile = path.join(scratch, 'skin.png');
   fs.writeFileSync(skinFile, Buffer.from(skin, 'base64'));
   const framesBefore = Number(await page.locator('.animus-mc-gl-host').getAttribute('data-frames'));
   const skinChooser = page.waitForEvent('filechooser');
@@ -136,7 +154,22 @@ async function run(browser, viewport, label) {
     return Number(element.getAttribute('data-frames')) > n && element.getAttribute('data-unbuilt') === '0';
   }, framesBefore);
   if (shots) fs.writeFileSync(path.join(shots, `${label}-hero-loaded-skin.png`), await page.locator('.animus-mc-stage').screenshot());
-  fs.rmSync(path.dirname(skinFile), {recursive: true, force: true});
+  // A PNG that is not a skin: the reason stays under the stage.
+  const tiny = await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 10;
+    canvas.height = 10;
+    canvas.getContext('2d').fillRect(0, 0, 10, 10);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  const tinyFile = path.join(scratch, 'tiny.png');
+  fs.writeFileSync(tinyFile, Buffer.from(tiny, 'base64'));
+  const tinyChooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', {name: 'Load skin PNG'}).click();
+  await (await tinyChooser).setFiles(tinyFile);
+  await page.locator('.animus-npc-notes').getByText('this image is 10x10. Pick a 64x64 Minecraft skin PNG.').waitFor();
+  if (shots) fs.writeFileSync(path.join(shots, `${label}-skin-failure.png`), await page.screenshot({fullPage: true}));
+  fs.rmSync(scratch, {recursive: true, force: true});
   assert.deepEqual(errors, []);
   await page.close();
 }
@@ -144,8 +177,8 @@ async function run(browser, viewport, label) {
 (async () => {
   const browser = await chromium.launch({headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']});
   try {
-    await run(browser, {width: 1440, height: 1000}, 'desktop');
-    await run(browser, {width: 390, height: 844}, 'phone');
+    await run(browser, {width: 1440, height: 900}, 'desktop-dark', true);
+    await run(browser, {width: 390, height: 844}, 'phone-light', false);
     console.log('npc_preview_browser: ok');
   } finally {
     await browser.close();
