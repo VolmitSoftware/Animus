@@ -214,14 +214,15 @@ class RuntimeSettingsHotloadTest {
     private static PersistedNpcService.Settings npcs(boolean enabled, int viewDistance, int maximumVisible, int maximumViewers, int updatesPerTick,
                                                      int packetsPerTick, int pendingSpawnsPerViewer, int lookUpdatesPerTick) {
         return PersistedNpcService.Settings.from(new NpcRuntimeSettings(enabled, viewDistance, maximumVisible, maximumViewers, updatesPerTick,
-                packetsPerTick, pendingSpawnsPerViewer, lookUpdatesPerTick));
+                packetsPerTick, pendingSpawnsPerViewer, lookUpdatesPerTick, 512, 24, 4));
     }
 
     /** Publishes settings as a hotload does, on a thread that is not the owner. */
     private static void apply(ViewerWatchRaceTest.Harness harness, PersistedNpcService.Settings npcs, NavigationSettings navigation, RigSettings rigs) throws IOException {
         PluginSettings base = PluginSettings.load(harness.runtime.documents());
         NpcRuntimeSettings table = new NpcRuntimeSettings(npcs.enabled(), (int) npcs.viewDistance(), npcs.maximumVisible(), npcs.maximumViewers(),
-                npcs.updatesPerTick(), npcs.packetsPerTick(), npcs.pendingSpawnsPerViewer(), npcs.lookUpdatesPerTick());
+                npcs.updatesPerTick(), npcs.packetsPerTick(), npcs.pendingSpawnsPerViewer(), npcs.lookUpdatesPerTick(),
+                npcs.simulationPerTick(), npcs.queuePerViewer(), npcs.degradedIntervalTicks());
         PluginSettings next = new PluginSettings(base.statusMessage(), base.packetProofEnabled(), table, base.files(), base.modules(), base.behaviors(),
                 base.combat(), base.builds(), base.shops(), base.relay(), base.editor(), rigs, navigation, base.hotload(), base.recordings());
         Thread lane = new Thread(() -> harness.runtime.applySettings(next), "file-lane");

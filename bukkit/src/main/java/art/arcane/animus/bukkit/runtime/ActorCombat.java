@@ -183,7 +183,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
     @Override public int alertPeers(String squad, UUID source, WorldPosition from, double range, TargetRef target, int limit) {
         return combat.alertSquad(actor, squad, from, range, target, limit);
     }
-    @Override public void foughtElsewhere(TargetRef attacker, TargetRef victim) { combat.fought(actor, attacker, victim); }
+    @Override public void foughtElsewhere(TargetRef attacker, TargetRef victim) { combat.fought(actor, attacker, victim, actor.state.snapshot().position()); }
 
     @Override public MoveStatus move(UUID npc, WorldPosition goal, double speed) { return npc.equals(actor.uuid) ? actor.combatMove(goal, speed) : MoveStatus.REJECTED; }
     @Override public String movement(UUID npc) { return npc.equals(actor.uuid) ? actor.navigationStatus() : "inactive"; }
@@ -297,7 +297,7 @@ final class ActorCombat implements CombatWorld, AutoCloseable {
                     || RegionViewer.position(at).point().distance(self.position().point()) > range) return;
             if (!combat.allowsNpcHit(self, victim)) return;
             DamageOutcome outcome = BukkitCombatWorld.damage(combat.plugin(), attacker, self, victim, amount, kind, knockback, victimDrops, combat.suppressedDrops, () -> true);
-            if (outcome.status() == DamageStatus.APPLIED) combat.fought(null, new TargetRef(TargetKind.NPC, attacker), target.ref());
+            if (outcome.status() == DamageStatus.APPLIED) combat.fought(null, new TargetRef(TargetKind.NPC, attacker), target.ref(), RegionViewer.position(at));
         });
         return new DamageOutcome(handed ? DamageStatus.SCHEDULED : DamageStatus.FAILED, 0, false);
     }

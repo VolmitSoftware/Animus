@@ -136,6 +136,9 @@ updatesPerTick = 16
 packetsPerTick = 32
 pendingSpawnsPerViewer = 8
 lookUpdatesPerTick = 32
+simulationPerTick = 512
+queuePerViewer = 24
+degradedIntervalTicks = 4
 
 [files]
 maximumOperations = 32

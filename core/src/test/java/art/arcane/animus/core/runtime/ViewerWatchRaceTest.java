@@ -169,6 +169,9 @@ class ViewerWatchRaceTest {
         volatile boolean watched, connected = true, equipment, presentation;
         volatile String spawnFailure;
         final AtomicInteger swings = new AtomicInteger(), equipped = new AtomicInteger();
+        /** While set, moves stay unfinished in {@link #held}, as on a slow connection. */
+        volatile boolean holdMoves;
+        final List<CompletableFuture<Void>> held = new ArrayList<>();
         /** Looks sent with {@link #look}, in order. */
         final List<art.arcane.animus.core.presentation.BodyLook> looks = new ArrayList<>();
         private void requireWatch() { if (!watched) throw new BodyTransport.ViewerUnwatched("Viewer must be watched before sending body packets"); }
@@ -191,7 +194,12 @@ class ViewerWatchRaceTest {
             spawned.incrementAndGet(); sent.add("spawn " + body.uuid());
             return CompletableFuture.completedFuture(null);
         }
-        @Override public CompletionStage<Void> move(Player viewer, Body body, BodyPose pose) { requireWatch(); sent.add("move " + body.uuid()); return CompletableFuture.completedFuture(null); }
+        @Override public CompletionStage<Void> move(Player viewer, Body body, BodyPose pose) {
+            requireWatch(); sent.add("move " + body.uuid());
+            if (!holdMoves) return CompletableFuture.completedFuture(null);
+            CompletableFuture<Void> waiting = new CompletableFuture<>(); held.add(waiting);
+            return waiting;
+        }
         @Override public CompletionStage<Void> passengers(Player viewer, Body vehicle, List<? extends Body> passengers, Player realRider, boolean authoritative) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> dragonPhase(Player viewer, Body dragon, int phase) { return CompletableFuture.completedFuture(null); }
         @Override public CompletionStage<Void> equipment(Player viewer, Body body, Map<EquipmentSlot, Object> items) { equipped.incrementAndGet(); return CompletableFuture.completedFuture(null); }

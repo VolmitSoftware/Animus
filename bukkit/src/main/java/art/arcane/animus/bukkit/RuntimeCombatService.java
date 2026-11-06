@@ -85,6 +85,8 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private BukkitTask task;
     private long ticks;
     private int targetableCursor;
+    private Map<String, NpcDefinition> targetableSource;
+    private List<NpcDefinition> targetableCache = List.of();
     /** Folia: combat runs on each NPC's region owner; null elsewhere. */
     private final RegionNpcRuntime regions;
     /** Why region combat cannot run, or null while it runs. */
@@ -204,9 +206,7 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
     private void drawMobs() {
         if (!bridge.available() || bridge.capabilities().controlledMobTypes().isEmpty()) return;
         prune();
-        List<NpcDefinition> targetable = new ArrayList<>();
-        for (NpcDefinition definition : runtime.npcs().snapshot().values())
-            if (CombatModule.targetableByMobs(definition)) targetable.add(definition);
+        List<NpcDefinition> targetable = targetable();
         if (targetable.isEmpty()) return;
         int passes = Math.min(TARGETABLE_NPCS_PER_PASS, targetable.size());
         for (int i = 0; i < passes; i++) {
@@ -214,6 +214,17 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
             try { draw(definition); }
             catch (RuntimeException refused) { /* Inactive, protected or at the control limit: the next pass tries again. */ }
         }
+    }
+
+    /** Definitions that mobs may target, read again only when the definition snapshot changes. */
+    private List<NpcDefinition> targetable() {
+        Map<String, NpcDefinition> snapshot = runtime.npcs().snapshot();
+        if (snapshot != targetableSource) {
+            List<NpcDefinition> found = new ArrayList<>();
+            for (NpcDefinition definition : snapshot.values()) if (CombatModule.targetableByMobs(definition)) found.add(definition);
+            targetableCache = List.copyOf(found); targetableSource = snapshot;
+        }
+        return targetableCache;
     }
 
     private void draw(NpcDefinition definition) {
