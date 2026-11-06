@@ -13,6 +13,7 @@ import '../logic/gui/text_animation.dart';
 import '../logic/inspect/inspect_schemas.dart';
 import '../logic/inspect/json_completion.dart';
 import '../logic/inspect/server_behaviors.dart';
+import '../logic/suggest/completion_sources.dart';
 import '../logic/npc/group_model.dart';
 import '../logic/npc/npc_catalog.dart';
 import '../logic/npc/route_model.dart';
@@ -42,6 +43,7 @@ import 'npc/route_editor.dart';
 import 'npc/skin_summary.dart';
 import 'npc_preview.dart';
 import 'info_tip.dart';
+import 'suggest/suggest_sources.dart';
 import '../config/docs_links.dart';
 
 /// Kinds with a visual editor and a painted or 3D preview.
@@ -63,6 +65,7 @@ class DocumentPane extends StatefulWidget {
     this.editor,
     this.serverDiagnostics = const <Diagnostic>[],
     this.liveSchemas,
+    this.liveLookups,
     this.workspaceDocuments = const <AnimusDocument>[],
     this.onOpen,
     this.onCommit,
@@ -97,6 +100,10 @@ class DocumentPane extends StatefulWidget {
   /// which includes loaded modules; null offline, where the embedded
   /// generated schemas apply.
   final Map<String, Object?>? liveSchemas;
+
+  /// The connected server's registries, commands and PlaceholderAPI
+  /// identifiers for completion; null offline.
+  final ServerLookups? liveLookups;
 
   /// Visual editor edits; null keeps the document read-only in Visual.
   final JsonEdit? onJson;
@@ -253,7 +260,11 @@ class _DocumentPaneState extends State<DocumentPane> {
         ),
       ]),
       _diagnostics(document),
-      dom.div(
+      SuggestSources(
+        documents: component.workspaceDocuments,
+        catalog: _schemas.catalog,
+        lookups: component.liveLookups,
+        child: dom.div(
         id: _panelId,
         classes: 'animus-views is-${view.name}${component.editor != null ? ' has-editor' : ''}',
         attributes: <String, String>{'role': 'tabpanel', 'aria-labelledby': TabStrip.tabId(_tabPrefix, selectedTab)},
@@ -267,6 +278,7 @@ class _DocumentPaneState extends State<DocumentPane> {
         if (component.editor == null && (view == ViewMode.preview || (view == ViewMode.split && _staged(document)))) _preview(document),
         if (view == ViewMode.code || view == ViewMode.split) _code(document),
       ]),
+      ),
     ]);
   }
 

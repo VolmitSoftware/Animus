@@ -92,6 +92,7 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     {"method": "POST", "path": "/v1/pair", "scope": null, "auth": "pairing-secret", "request": "pair-request", "responses": {"200": "pair-response", "401": "error-response", "410": "error-response"}},
     {"method": "GET", "path": "/v1/capabilities", "scope": "read", "request": null, "responses": {"200": "capabilities-response"}},
     {"method": "GET", "path": "/v1/schemas", "scope": "read", "request": null, "responses": {"200": "schemas-response"}},
+    {"method": "GET", "path": "/v1/lookups", "scope": "read", "request": null, "responses": {"200": "lookups-response"}},
     {"method": "GET", "path": "/v1/catalog", "scope": "read", "query": {"kind": "kind", "after": "string"}, "request": null, "responses": {"200": "catalog-response"}},
     {"method": "GET", "path": "/v1/documents/{kind}/{id}", "scope": "read", "request": null, "responses": {"200": "document-response", "404": "error-response"}},
     {"method": "GET", "path": "/v1/skins/{hash}/texture.png", "scope": "read", "request": null, "responses": {"200": "image/png", "404": "error-response"}},
@@ -334,6 +335,22 @@ const Map<String, String> sharedSchemaSources = <String, String>{
           }
         },
         "modules": {"type": "array", "items": {"type": "object", "required": ["id", "status"], "properties": {"id": {"type": "string"}, "status": {"type": "string"}}}}
+      }
+    },
+    "lookups-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registries", "commands", "papi"],
+      "description": "Ids the editor completes, each list sorted. Empty lists where the platform has none.",
+      "properties": {
+        "registries": {
+          "type": "object",
+          "description": "Registry kind (items, blocks, sounds, particles, entityTypes, enchantments, effects, attributes, worlds) to namespaced ids.",
+          "propertyNames": {"pattern": "^[a-zA-Z]{1,32}$"},
+          "additionalProperties": {"type": "array", "items": {"type": "string"}}
+        },
+        "commands": {"type": "array", "items": {"type": "string"}, "description": "Command labels the server knows, without /."},
+        "papi": {"type": "array", "items": {"type": "string"}, "description": "PlaceholderAPI expansion identifiers, when it is installed."}
       }
     },
     "schemas-response": {

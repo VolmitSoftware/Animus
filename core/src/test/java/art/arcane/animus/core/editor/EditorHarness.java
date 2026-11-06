@@ -80,6 +80,10 @@ final class EditorHarness implements AutoCloseable {
 
         @Override public List<Map.Entry<String, String>> modules() { return List.of(Map.entry("example", "ACTIVE")); }
 
+        @Override public Lookups lookups() {
+            return new Lookups(Map.of("items", List.of("minecraft:stone", "minecraft:apple"), "worlds", List.of("world")), List.of("tp", "animus", "give"), List.of("vault", "player"));
+        }
+
         @Override public List<Capabilities.Availability> capabilities() { return List.of(); }
 
         @Override public boolean online(UUID player) { return online; }

@@ -7,7 +7,6 @@
 library;
 
 import '../gui/gui_expr.dart';
-import '../gui/gui_expression.dart' show ExpressionCompletion;
 import '../gui/gui_json.dart';
 
 /// What expressions can name, from `completions.json`.
@@ -210,62 +209,4 @@ String? checkBehaviorTemplate(String text, ExpressionScope scope) {
     if (problem != null) return '{{ ${hole.source.trim()} }}: $problem';
   }
   return null;
-}
-
-final RegExp _identifierTail = RegExp(r'[A-Za-z_][A-Za-z0-9_.]*$');
-final RegExp _identifierChar = RegExp(r'[A-Za-z0-9_.]');
-
-/// Completions at [caret]: variables, roots, facts after `player.`,
-/// context keys after `context.` and functions. In a [template] they only
-/// appear inside an open `{{`.
-List<ExpressionCompletion> completeBehaviorExpression(String text, int caret, ExpressionScope scope, {bool template = false, int limit = 12}) {
-  final int at = caret.clamp(0, text.length);
-  final String before = text.substring(0, at);
-  if (template) {
-    final int open = before.lastIndexOf('{{');
-    if (open < 0 || before.lastIndexOf('}}') > open) return const <ExpressionCompletion>[];
-  }
-  final String prefix = _identifierTail.firstMatch(before)?.group(0) ?? '';
-  final String trimmed = before.trimRight();
-  final bool fresh = template ? trimmed.endsWith('{{') : trimmed.isEmpty || RegExp(r'[(,+\-*/%<>=!&|?:\[]$').hasMatch(trimmed);
-  if (prefix.isEmpty && !fresh) return const <ExpressionCompletion>[];
-  final int from = at - prefix.length;
-  int to = at;
-  while (to < text.length && _identifierChar.hasMatch(text[to])) {
-    to++;
-  }
-  final List<ExpressionCompletion> out = <ExpressionCompletion>[];
-  void offer(String label, String insert, String detail) {
-    if (label.startsWith(prefix) && label != prefix) out.add(ExpressionCompletion(label, insert, detail, replaceFrom: from, replaceTo: to));
-  }
-
-  final int dot = prefix.indexOf('.');
-  if (dot > 0) {
-    final String head = prefix.substring(0, dot);
-    final List<String>? facts = scope.language.facts[head];
-    if (facts != null) {
-      for (final String fact in facts) {
-        offer('$head.$fact', '$head.$fact', '$head fact');
-      }
-    } else if (head == 'context') {
-      for (final String key in scope.contextKeys) {
-        offer('context.$key', 'context.$key', 'from the event');
-      }
-    }
-    return out.take(limit).toList();
-  }
-  for (final MapEntry<String, String> variable in scope.variables.entries) {
-    if (scope.language.readable(variable.key)) offer(variable.key, variable.key, '${variable.value} variable');
-  }
-  for (final String root in scope.language.roots) {
-    if (root == 'npc' && scope.server) continue;
-    if (root == 'context' && scope.contextKeys.isEmpty) continue;
-    offer(root, '$root.', root == 'context' ? 'values the event carries' : '$root facts');
-  }
-  if (prefix.isNotEmpty) {
-    for (final String function in <String>[...scope.language.functions, ...scope.language.standardFunctions]) {
-      offer('$function()', '$function(', 'function');
-    }
-  }
-  return out.take(limit).toList();
 }

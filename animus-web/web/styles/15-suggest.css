@@ -1,0 +1,167 @@
+/* Inline autocomplete: the field, its underline layer and the listbox. */
+
+.animus-ac {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.animus-ac > input,
+.animus-ac > textarea {
+  min-width: 0;
+}
+
+/* The field's text again, invisible, with unknown names underlined. */
+.animus-ac-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  border: 0 solid transparent;
+  overflow: hidden;
+  white-space: pre;
+  color: transparent;
+  pointer-events: none;
+}
+
+.animus-ac-mirror.is-area {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.animus-ac-hint {
+  color: transparent;
+  background: none;
+  text-decoration: underline wavy var(--animus-warning);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.animus-suggest-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 40;
+  box-sizing: border-box;
+  width: max(100%, min(28rem, 92vw));
+  max-width: min(36rem, 92vw);
+  max-height: 16rem;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  border: 1px solid var(--animus-border);
+  border-radius: 0;
+  background: var(--popover, var(--animus-panel));
+  color: var(--foreground, inherit);
+  box-shadow: none;
+}
+
+.animus-suggest-list li {
+  display: grid;
+  grid-template-columns: 4rem auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'kind label label type'
+    'kind detail detail detail';
+  align-items: center;
+  column-gap: 0.5rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.animus-suggest-list li.is-active {
+  background: var(--accent, rgba(128, 128, 128, 0.2));
+  outline: 1px solid var(--ring, #ff5fa8);
+  outline-offset: -1px;
+}
+
+.animus-suggest-list li:hover {
+  background: var(--accent, rgba(128, 128, 128, 0.2));
+}
+
+.animus-suggest-kind {
+  grid-area: kind;
+  align-self: start;
+  padding-top: 0.0625rem;
+  color: var(--animus-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.animus-suggest-label {
+  grid-area: label;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.animus-suggest-swatch {
+  grid-area: label;
+  justify-self: end;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 1px solid var(--animus-border);
+  border-radius: 0;
+}
+
+.animus-suggest-list li:has(.animus-suggest-swatch) .animus-suggest-label {
+  padding-right: 1.25rem;
+}
+
+.animus-suggest-type {
+  grid-area: type;
+  color: var(--animus-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.animus-suggest-detail {
+  grid-area: detail;
+  min-width: 0;
+  color: var(--animus-muted);
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The code view places its list at the caret. */
+.animus-suggest-list.is-code {
+  top: auto;
+  width: min(28rem, 100%);
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .animus-suggest-list {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .animus-suggest-list li {
+    min-height: 44px;
+    grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+    grid-template-areas:
+      'kind label type'
+      'kind detail detail';
+  }
+}
+
+@media (forced-colors: active) {
+  .animus-suggest-list li.is-active {
+    outline: 2px solid Highlight;
+  }
+
+  .animus-ac-hint {
+    text-decoration-color: CanvasText;
+  }
+}

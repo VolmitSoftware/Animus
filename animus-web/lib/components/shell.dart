@@ -539,6 +539,7 @@ class _EditorShellState extends State<EditorShell> {
             editor: _rigEditor(workspace, document),
             serverDiagnostics: session?.serverDiagnostics[documentKey(document.kind, document.id)] ?? const <Diagnostic>[],
             liveSchemas: session?.schemas,
+            liveLookups: session?.lookups,
             workspaceDocuments: workspace.documents,
             onOpen: (DocumentKind kind, String id) => component.onNavigate(DocumentRoute(workspace.id, kind, id)),
             onCommit: (List<DocumentChange> changes, String label) => component.store.commit(documents: changes, label: label),

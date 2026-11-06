@@ -5,7 +5,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:js_interop';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:jaspr/dom.dart' as dom;
@@ -21,8 +20,10 @@ import '../../logic/select/select_model.dart';
 import '../../model/animus_document.dart';
 import '../../model/document_kind.dart';
 import '../../logic/help_text.dart';
+import '../../logic/suggest/field_profile.dart';
 import '../info_tip.dart';
 import '../select/animus_select.dart';
+import '../suggest/autocomplete_input.dart';
 
 /// What a text field holds, which decides its checks and completion.
 enum GuiTextMode {
@@ -99,13 +100,14 @@ List<Diagnostic> diagnosticsAt(List<Diagnostic> all, String path, {bool nested =
     ];
 
 /// A text field. Template and expression fields show their problems as you
-/// type and offer completions for names and functions.
+/// type; every field with a profile completes through [AutocompleteInput].
 class GuiTextInput extends StatefulWidget {
   const GuiTextInput({
     required this.value,
     required this.onChanged,
     this.mode = GuiTextMode.plain,
     this.names = ExpressionNames.standard,
+    this.profile,
     this.placeholder,
     this.multiline = false,
     this.label,
@@ -120,6 +122,10 @@ class GuiTextInput extends StatefulWidget {
   final void Function(String value) onChanged;
   final GuiTextMode mode;
   final ExpressionNames names;
+
+  /// What the field completes; by default the [mode]'s (GUI text or
+  /// expression, nothing for plain text).
+  final FieldProfile? profile;
   final String? placeholder;
   final bool multiline;
 
@@ -132,93 +138,25 @@ class GuiTextInput extends StatefulWidget {
 
 class _GuiTextInputState extends State<GuiTextInput> {
   late final String _id = component.id ?? guiFieldId();
-  List<ExpressionCompletion> _completions = const <ExpressionCompletion>[];
-  int _active = 0;
-  bool _focused = false;
 
-  /// What the user typed while focused. Saves land after later keystrokes,
-  /// so the field shows its own text until blur instead of a stale value.
+  /// The latest typed text, ahead of the saved value.
   String? _typed;
 
   String get _text => _typed ?? component.value;
 
-  web.HTMLElement? get _element => web.document.getElementById(_id) as web.HTMLElement?;
-
-  (String, int) _read(web.Event event) {
-    final web.EventTarget? target = event.target;
-    if (target != null && target.isA<web.HTMLTextAreaElement>()) {
-      final web.HTMLTextAreaElement area = target as web.HTMLTextAreaElement;
-      return (area.value, area.selectionStart);
-    }
-    if (target != null && target.isA<web.HTMLInputElement>()) {
-      final web.HTMLInputElement input = target as web.HTMLInputElement;
-      return (input.value, input.selectionStart ?? input.value.length);
-    }
-    return (_text, _text.length);
+  @override
+  void didUpdateWidget(GuiTextInput oldComponent) {
+    super.didUpdateWidget(oldComponent);
+    if (component.value != oldComponent.value && component.value != _typed) _typed = null;
   }
 
-  void _suggest(String text, int caret) {
-    if (component.mode == GuiTextMode.plain) return;
-    final List<ExpressionCompletion> next = completeExpression(
-      text,
-      caret,
-      template: component.mode == GuiTextMode.template,
-      names: component.names,
-    );
-    setState(() {
-      _completions = next;
-      _active = 0;
-    });
-  }
-
-  void _onInput(web.Event event) {
-    final (String text, int caret) = _read(event);
-    _typed = text;
-    component.onChanged(text);
-    _suggest(text, caret);
-  }
-
-  void _apply(ExpressionCompletion completion) {
-    final web.HTMLElement? element = _element;
-    String current = _text;
-    if (element != null && component.multiline) {
-      current = (element as web.HTMLTextAreaElement).value;
-    } else if (element != null) {
-      current = (element as web.HTMLInputElement).value;
-    }
-    final (String text, int caret) = completion.applyTo(current);
-    if (element != null && component.multiline) {
-      final web.HTMLTextAreaElement area = element as web.HTMLTextAreaElement;
-      area.value = text;
-      area.setSelectionRange(caret, caret);
-      area.focus();
-    } else if (element != null) {
-      final web.HTMLInputElement input = element as web.HTMLInputElement;
-      input.value = text;
-      input.setSelectionRange(caret, caret);
-      input.focus();
-    }
-    _typed = text;
-    component.onChanged(text);
-    _suggest(text, caret);
-  }
-
-  void _onKey(web.Event event) {
-    if (_completions.isEmpty || !event.isA<web.KeyboardEvent>()) return;
-    switch ((event as web.KeyboardEvent).key) {
-      case 'ArrowDown':
-        event.preventDefault();
-        setState(() => _active = (_active + 1) % _completions.length);
-      case 'ArrowUp':
-        event.preventDefault();
-        setState(() => _active = (_active - 1 + _completions.length) % _completions.length);
-      case 'Enter' || 'Tab':
-        event.preventDefault();
-        _apply(_completions[_active]);
-      case 'Escape':
-        setState(() => _completions = const <ExpressionCompletion>[]);
-    }
-  }
+  FieldProfile get _profile =>
+      component.profile ??
+      switch (component.mode) {
+        GuiTextMode.plain => FieldProfile.none,
+        GuiTextMode.template => FieldProfile.guiText,
+        GuiTextMode.expression => FieldProfile.guiExpression,
+      };
 
   String? get _problem {
     final String value = _text;
@@ -233,70 +171,26 @@ class _GuiTextInputState extends State<GuiTextInput> {
   @override
   Widget build(BuildContext context) {
     final String? problem = _problem;
-    final bool open = _focused && _completions.isNotEmpty;
-    final Map<String, String> attributes = <String, String>{
-      'autocomplete': 'off',
-      'spellcheck': 'false',
-      if (component.placeholder != null) 'placeholder': component.placeholder!,
-      if (component.label != null) 'aria-label': component.label!,
-      if (component.mode != GuiTextMode.plain) 'aria-autocomplete': 'list',
-      if (open) 'aria-expanded': 'true',
-      if (problem != null) 'aria-invalid': 'true',
-    };
-    final Map<String, void Function(web.Event)> events = <String, void Function(web.Event)>{
-      'input': _onInput,
-      'keydown': _onKey,
-      'focus': (web.Event event) {
-        _focused = true;
-        final (String text, int caret) = _read(event);
-        _suggest(text, caret);
-      },
-      'blur': (web.Event _) {
-        // A completion click lands before blur hides the list.
-        Future<void>.delayed(const Duration(milliseconds: 150), () {
-          if (mounted) {
-            setState(() {
-              _focused = false;
-              _typed = null;
-            });
-          }
-        });
-      },
-    };
-    final String classes = 'animus-gui-input${component.mode == GuiTextMode.plain ? '' : ' is-code'}${problem != null ? ' is-invalid' : ''}';
+    final String text = _text;
     return dom.div(classes: 'animus-gui-text', <Widget>[
-      if (component.multiline)
-        dom.textarea(
-          id: _id,
-          classes: classes,
-          rows: 3,
-          attributes: attributes,
-          events: events,
-          <Widget>[Component.text(_text)],
-        )
-      else
-        dom.input(id: _id, classes: classes, value: _text, attributes: attributes, events: events),
-      if (component.mode == GuiTextMode.template && (_text.contains('&') || _text.contains('<') || _text.contains('{{')))
-        dom.span(classes: 'animus-gui-sample', <Widget>[GuiStyledText(_text)]),
-      if (problem != null) dom.span(classes: 'animus-gui-problem is-error', <Widget>[Component.text(problem)]),
-      if (open)
-        dom.ul(classes: 'animus-gui-completions', attributes: const <String, String>{'role': 'listbox'}, <Widget>[
-          for (int index = 0; index < _completions.length; index++)
-            dom.li(
-              classes: index == _active ? 'is-active' : null,
-              attributes: <String, String>{'role': 'option', 'aria-selected': '${index == _active}'},
-              events: <String, void Function(web.Event)>{
-                'mousedown': (web.Event event) {
-                  event.preventDefault();
-                  _apply(_completions[index]);
-                },
-              },
-              <Widget>[
-                dom.code(<Widget>[Component.text(_completions[index].label)]),
-                dom.span(<Widget>[Component.text(_completions[index].detail)]),
-              ],
-            ),
-        ]),
+      AutocompleteInput(
+        id: _id,
+        value: component.value,
+        profile: _profile,
+        gui: component.names,
+        label: component.label,
+        placeholder: component.placeholder,
+        multiline: component.multiline,
+        invalid: problem != null,
+        describedBy: problem != null ? '$_id-problem' : null,
+        onChanged: (String next) {
+          setState(() => _typed = next);
+          component.onChanged(next);
+        },
+      ),
+      if (component.mode == GuiTextMode.template && (text.contains('&') || text.contains('<') || text.contains('{{')))
+        dom.span(classes: 'animus-gui-sample', <Widget>[GuiStyledText(text)]),
+      if (problem != null) dom.span(id: '$_id-problem', classes: 'animus-gui-problem is-error', <Widget>[Component.text(problem)]),
     ]);
   }
 }

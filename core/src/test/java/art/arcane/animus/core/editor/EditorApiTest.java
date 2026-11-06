@@ -281,6 +281,15 @@ class EditorApiTest {
     }
 
     @Test
+    void lookups_listRegistriesCommandsAndPlaceholderApiSorted() throws Exception {
+        JsonObject body = valid("lookups-response", harness.send("GET", "/v1/lookups", harness.token(), null));
+        assertEquals("[\"minecraft:apple\",\"minecraft:stone\"]", body.getAsJsonObject("registries").get("items").toString());
+        assertEquals("[\"world\"]", body.getAsJsonObject("registries").get("worlds").toString());
+        assertEquals("[\"animus\",\"give\",\"tp\"]", body.get("commands").toString());
+        assertEquals("[\"player\",\"vault\"]", body.get("papi").toString());
+    }
+
+    @Test
     void catalog_exportFixture_listsExpectedDocuments() throws Exception {
         JsonObject body = valid("catalog-response", harness.send("GET", "/v1/catalog", harness.token(), null));
         Set<String> listed = new HashSet<>();

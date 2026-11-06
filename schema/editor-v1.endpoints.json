@@ -17,6 +17,7 @@
     {"method": "POST", "path": "/v1/pair", "scope": null, "auth": "pairing-secret", "request": "pair-request", "responses": {"200": "pair-response", "401": "error-response", "410": "error-response"}},
     {"method": "GET", "path": "/v1/capabilities", "scope": "read", "request": null, "responses": {"200": "capabilities-response"}},
     {"method": "GET", "path": "/v1/schemas", "scope": "read", "request": null, "responses": {"200": "schemas-response"}},
+    {"method": "GET", "path": "/v1/lookups", "scope": "read", "request": null, "responses": {"200": "lookups-response"}},
     {"method": "GET", "path": "/v1/catalog", "scope": "read", "query": {"kind": "kind", "after": "string"}, "request": null, "responses": {"200": "catalog-response"}},
     {"method": "GET", "path": "/v1/documents/{kind}/{id}", "scope": "read", "request": null, "responses": {"200": "document-response", "404": "error-response"}},
     {"method": "GET", "path": "/v1/skins/{hash}/texture.png", "scope": "read", "request": null, "responses": {"200": "image/png", "404": "error-response"}},

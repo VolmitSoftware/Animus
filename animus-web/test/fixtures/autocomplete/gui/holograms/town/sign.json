@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 3,
+  "revision": 1,
+  "anchor": {"world": "world", "position": [0.5, 65, 0.5]},
+  "lines": [
+    "Town square"
+  ]
+}
