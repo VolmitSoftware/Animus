@@ -230,6 +230,11 @@
 - `[npcs] simulationPerTick` bounds idle fall and rig animation steps per tick (per region on Folia).
 - `[npcs] queuePerViewer` bounds the packet operations one player may have waiting; cosmetic updates stop first when it fills.
 - `[npcs] degradedIntervalTicks`: while a simulation, route or behavior budget runs short, cosmetic updates and distant NPC moves slow down; `/animus status` shows `presentation=degraded`.
+- Shops can open in the villager trading screen: `"style": "native"` or `"chest"` on the shop, on an NPC's `animus:shop` module (so trait groups can set it), with `[shops] style` as the server default and `style=` on `/animus shop open`. Every buy, sell, trade and command entry shows as an offer and trades through the same transactions, limits and stock as the chest window.
+- `animus:shop` `villager` (profession and level) shows a villager NPC's level in the trading screen title.
+- Shop `layout` draws the chest window in a chest GUI, with the offers in its list area and paged by its own buttons.
+- `/animus shop problems` lists notes about offers a shop's window style cannot show exactly.
+- Web editor: Style and Layout fields in the shop editor, with a trading screen preview.
 
 ### Changed
 
@@ -326,6 +331,7 @@
 - Look-close players, fight and chat witnesses, hologram placement and per-NPC viewer lookups use chunk indexes instead of scanning every player, watcher, hologram or viewer.
 - Mob targeting of NPCs reads the definitions again only after they change.
 - On Folia, chat reaches combat watchers from the speaker's region, so only watchers near the speaker hear it.
+- Shopkeepers imports open in the trading screen (`"style": "native"`), and villager profession and level move from the review section to `animus:shop` `villager`; the importer version is 2.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.

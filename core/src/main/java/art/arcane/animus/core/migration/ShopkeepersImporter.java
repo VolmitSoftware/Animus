@@ -35,7 +35,7 @@ import java.util.stream.Stream;
 
 /**
  * Converts a Shopkeepers {@code save.yml} into Animus shops. Every shopkeeper becomes the shop
- * {@code shopkeepers:shop-<id>} with one trade entry per offer. Admin shops have no stock limit. Player shops become
+ * {@code shopkeepers:shop-<id>} with one trade entry per offer, in the native trading screen as Shopkeepers shows it. Admin shops have no stock limit. Player shops become
  * owned shops whose stock is their containers: selling shops take the currency items Shopkeepers would ask for,
  * buying shops pay them out, trading shops swap their items. Citizens shopkeepers bind to the Animus NPC converted from
  * their Citizens NPC; mob shopkeepers become new NPCs of that mob at the shop; sign and virtual shopkeepers get a shop
@@ -48,7 +48,7 @@ import java.util.stream.Stream;
  * shopkeeper whose NPC is installed and returns the rest as pending.
  */
 public final class ShopkeepersImporter {
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
     public static final String NAMESPACE = "shopkeepers", IMPORTS = "imports/shopkeepers";
     static final String SHOP_PATH = "shops/shopkeepers/shop-(?:0|[1-9][0-9]{0,9})\\.json", NPC_PATH = "npcs/shopkeepers/shopkeeper-(?:0|[1-9][0-9]{0,9})\\.json";
     private static final int MAXIMUM_SHOPKEEPERS = 10_000, PER_PAGE = 45, MAXIMUM_STACK = 64;
@@ -191,6 +191,7 @@ public final class ShopkeepersImporter {
                     report.field("/tradePerm", Status.CONVERTED);
                 } else report.field("/tradePerm", Status.REQUIRES_REVIEW, "not a permission node Animus accepts; the shop is open to everyone; set permission by hand");
             }
+            shop.addProperty("style", "native");
             JsonArray modes = new JsonArray();
             modes.add("trade");
             shop.add("modes", modes);
@@ -545,9 +546,10 @@ public final class ShopkeepersImporter {
         migration.addProperty("originalSpawned", true);
         definition.add("migration", migration);
         JsonObject modules = new JsonObject();
-        modules.add(ShopBinding.MODULE, module(number, shopId));
         JsonObject review = object.deepCopy();
         review.remove("type");
+        Optional<JsonObject> villager = entity.equals("minecraft:villager") ? villager(review, report) : Optional.empty();
+        modules.add(ShopBinding.MODULE, module(number, shopId, villager));
         if (!review.isEmpty()) {
             modules.add("shopkeepers:review", review);
             for (String field : review.keySet()) report.field("/object/" + pointer(field), Status.REQUIRES_REVIEW, "mob settings are kept in the NPC's shopkeepers:review section");
@@ -557,11 +559,36 @@ public final class ShopkeepersImporter {
         return Optional.of(definition);
     }
 
+    /**
+     * A villager shopkeeper's profession and level for its trading screen title, taken out of the review section. Values
+     * Animus cannot read stay there for review.
+     */
+    private static Optional<JsonObject> villager(JsonObject review, ImportReport report) {
+        JsonObject villager = new JsonObject();
+        Optional<String> profession = string(review, "profession").map((String text) -> text.trim().toLowerCase(Locale.ROOT))
+                .map((String text) -> text.contains(":") ? text : "minecraft:" + text).filter((String text) -> text.matches("[a-z0-9_.-]+:[a-z0-9_/.-]+"));
+        if (profession.isPresent()) {
+            villager.addProperty("profession", profession.get());
+            review.remove("profession");
+            report.field("/object/profession", Status.CONVERTED);
+        }
+        Optional<Integer> level = ShopkeepersItems.integer(review.get("villagerLevel")).filter((Integer value) -> value >= 1 && value <= 5);
+        if (level.isPresent()) {
+            villager.addProperty("level", level.get());
+            review.remove("villagerLevel");
+            report.field("/object/villagerLevel", Status.CONVERTED);
+        }
+        return villager.isEmpty() ? Optional.empty() : Optional.of(villager);
+    }
+
     /** The {@code animus:shop} section an imported shopkeeper binding writes; it opens nothing until reviewed. */
-    static JsonObject module(int number, String shopId) {
+    static JsonObject module(int number, String shopId) { return module(number, shopId, Optional.empty()); }
+
+    private static JsonObject module(int number, String shopId, Optional<JsonObject> villager) {
         JsonObject module = new JsonObject();
         module.addProperty("shop", shopId);
         module.addProperty("openOn", "right");
+        villager.ifPresent((JsonObject look) -> module.add("villager", look));
         module.addProperty("reviewAccepted", false);
         JsonObject imported = new JsonObject();
         imported.addProperty("source", "Shopkeepers");

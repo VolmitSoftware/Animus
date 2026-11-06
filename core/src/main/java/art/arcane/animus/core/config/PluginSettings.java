@@ -234,6 +234,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
         JsonObject shops = new JsonObject();
         shops.addProperty("enabled", defaults.enabled());
         shops.addProperty("economy", defaults.economy());
+        shops.addProperty("style", defaults.style());
         shops.addProperty("priceFormat", defaults.priceFormat());
         shops.addProperty("flushMillis", defaults.flushMillis());
         return shops;
@@ -242,7 +243,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
     private static ShopSettings shops(JsonObject document) {
         ShopSettings defaults = ShopSettings.DEFAULT;
         for (String key : document.keySet())
-            if (!java.util.Set.of("enabled", "economy", "priceFormat", "flushMillis", "messages").contains(key)) throw new IllegalArgumentException(key + " is not a shop setting");
+            if (!java.util.Set.of("enabled", "economy", "style", "priceFormat", "flushMillis", "messages").contains(key)) throw new IllegalArgumentException(key + " is not a shop setting");
         java.util.Map<String, String> messages = new java.util.LinkedHashMap<>();
         for (java.util.Map.Entry<String, JsonElement> entry : table(document, "messages").entrySet()) {
             if (!entry.getValue().isJsonPrimitive() || !entry.getValue().getAsJsonPrimitive().isString())
@@ -250,7 +251,7 @@ public record PluginSettings(String statusMessage, boolean packetProofEnabled, N
             messages.put(entry.getKey(), entry.getValue().getAsString());
         }
         return new ShopSettings(bool(document, "enabled", defaults.enabled()), text(document, "economy", defaults.economy()),
-                text(document, "priceFormat", defaults.priceFormat()), integer(document, "flushMillis", defaults.flushMillis()), messages);
+                text(document, "style", defaults.style()), text(document, "priceFormat", defaults.priceFormat()), integer(document, "flushMillis", defaults.flushMillis()), messages);
     }
 
     private static String text(JsonObject document, String key, String fallback) {

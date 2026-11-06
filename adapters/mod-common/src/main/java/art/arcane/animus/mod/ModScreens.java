@@ -52,7 +52,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemLore;
 
 /**
- * Animus windows on mod servers, as vanilla chest menus that refuse every click (see {@link AnimusMenu}). Bound
+ * Animus windows on mod servers, as vanilla chest menus that refuse every click (see {@link AnimusMenu}), and shops
+ * in the villager trading screen (see {@link AnimusMerchantMenu}). Bound
  * clicks run on the next server tick, outside the click packet. Mod servers have no standard economy API, so money
  * is unavailable and money prices fail closed; item trades work.
  */
@@ -95,6 +96,8 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
     @Override public boolean permitted(ServerPlayer player, String node) { return VanillaRuntimeHost.permitted(player.permissions(), node); }
 
     @Override public Optional<Object> show(ServerPlayer player, ScreenFrame frame, Object window) {
+        if (frame.merchant().isPresent()) return merchant(player, frame, window);
+        if (window instanceof Trading trading && player.containerMenu == trading.menu) trading.menu.replaced = true;
         if (frame.width() != 9) return Optional.empty();
         if (window instanceof Window open && player.containerMenu == open.menu && open.title.equals(frame.title()) && open.menu.resolution().equals(frame.resolution())) {
             fill(open.menu, frame);
@@ -122,12 +125,52 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         Window(String title) { this.title = title; }
     }
 
-    private void clicked(ServerPlayer player, Window window, int slot, GuiModel.Click click) {
+    /** One open trading screen. */
+    private static final class Trading {
+        final String title;
+        AnimusMerchantMenu menu;
+        Trading(String title) { this.title = title; }
+    }
+
+    /** Sends new offers in place when only the offers changed; otherwise opens a new trading screen. */
+    private Optional<Object> merchant(ServerPlayer player, ScreenFrame frame, Object window) {
+        List<AnimusMerchantMenu.Offer> offers = new ArrayList<>();
+        for (ScreenFrame.Offer offer : frame.merchant().orElseThrow().offers())
+            offers.add(new AnimusMerchantMenu.Offer(trade(offer.costA()), offer.costB().map(this::trade).orElse(ItemStack.EMPTY), trade(offer.result()), offer.uses(), offer.maxUses()));
+        if (window instanceof Trading open && player.containerMenu == open.menu && open.title.equals(frame.title())) {
+            open.menu.offers(offers);
+            player.sendMerchantOffers(open.menu.containerId, open.menu.offers(), 0, 0, false, false);
+            return Optional.of(open);
+        }
+        if (window instanceof Trading open && player.containerMenu == open.menu) open.menu.replaced = true;
+        if (window instanceof Window open && player.containerMenu == open.menu) open.menu.replaced = true;
+        Trading next = new Trading(frame.title());
+        OptionalInt id = player.openMenu(new SimpleMenuProvider((int container, Inventory inventory, net.minecraft.world.entity.player.Player owner) -> {
+            AnimusMerchantMenu menu = AnimusMerchantMenu.create(container, inventory, offers,
+                    (AnimusMerchantMenu clicked, int offer, GuiModel.Click click) -> clicked(player, next, offer, click),
+                    (AnimusMerchantMenu closed, net.minecraft.world.entity.player.Player who) -> closed(player, next));
+            next.menu = menu;
+            return menu;
+        }, ModText.component(frame.title())));
+        if (id.isEmpty() || next.menu == null) return Optional.empty();
+        player.sendMerchantOffers(id.getAsInt(), next.menu.offers(), 0, 0, false, false);
+        AnimusMetrics metrics = AnimusMetrics.current();
+        metrics.sent(metrics.viewer(player.getUUID(), player.getGameProfile().name()), null, PacketKind.GUI_WINDOW, 1);
+        return Optional.of(next);
+    }
+
+    /** A display stack for the trading screen, at most one stack. */
+    private ItemStack trade(ScreenFrame.Item item) {
+        ItemStack stack = display(item);
+        return stack.isEmpty() ? stack : stack.copyWithCount(Math.clamp(stack.getCount(), 1, Math.max(1, stack.getMaxStackSize())));
+    }
+
+    private void clicked(ServerPlayer player, Object window, int slot, GuiModel.Click click) {
         ScreenManager<ServerPlayer, ItemStack> current = manager;
         if (current != null) ticks.later(() -> { if (!player.hasDisconnected()) current.click(player, window, slot, click); });
     }
 
-    private void closed(ServerPlayer player, Window window) {
+    private void closed(ServerPlayer player, Object window) {
         ScreenManager<ServerPlayer, ItemStack> current = manager;
         if (current != null) current.closed(player, window);
     }
@@ -147,6 +190,10 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
 
     @Override public void close(ServerPlayer player, Object window) {
         if (window instanceof Window open && player.containerMenu == open.menu) {
+            open.menu.replaced = true;
+            player.closeContainer();
+        }
+        if (window instanceof Trading open && player.containerMenu == open.menu) {
             open.menu.replaced = true;
             player.closeContainer();
         }
@@ -284,6 +331,7 @@ final class ModScreens implements ScreenHost<ServerPlayer, ItemStack> {
         for (UUID id : current.clear()) {
             ServerPlayer player = server.getPlayerList().getPlayer(id);
             if (player != null && player.containerMenu instanceof AnimusMenu menu) { menu.replaced = true; player.closeContainer(); }
+            if (player != null && player.containerMenu instanceof AnimusMerchantMenu menu) { menu.replaced = true; player.closeContainer(); }
         }
     }
 

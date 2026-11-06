@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-14",
   "title": "Ownerless",
+  "style": "native",
   "modes": [
     "trade"
   ],
