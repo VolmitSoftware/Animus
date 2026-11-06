@@ -19,8 +19,8 @@ const os = require('node:os');
 const path = require('node:path');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
-const site = (process.env.ANIMUS_WEB_URL || 'http://127.0.0.1:8098').replace(/\/$/, '');
-const fake = (process.env.ANIMUS_FAKE_URL || 'http://127.0.0.1:9797').replace(/\/$/, '');
+const site = (process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })()).replace(/\/$/, '');
+const fake = (process.env.ANIMUS_FAKE_URL || (() => { throw new Error('Set ANIMUS_FAKE_URL to your own fake server, never :9797'); })()).replace(/\/$/, '');
 const shots = process.env.ANIMUS_SCREENSHOTS;
 
 async function control(route, body) {

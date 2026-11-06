@@ -13,7 +13,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const exportFolder = path.resolve(__dirname, '../../schema/fixtures/export');
 const shots = process.env.ANIMUS_SCREENSHOTS;
-const url = process.env.ANIMUS_WEB_URL || 'http://127.0.0.1:8098/';
+const url = process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })();
 const themes = {
   dark: {background: 'rgb(13, 13, 15)', panel: 'rgb(22, 21, 24)', primary: 'rgb(255, 95, 168)', themeColor: '#0d0d0f'},
   light: {background: 'rgb(245, 243, 244)', panel: 'rgb(252, 250, 251)', primary: 'rgb(194, 24, 91)', themeColor: '#f5f3f4'},

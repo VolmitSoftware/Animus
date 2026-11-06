@@ -32,7 +32,7 @@ async function run(browser, viewport, label) {
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   const requests = [];
   page.on('request', request => requests.push(request.url()));
-  await page.goto(process.env.ANIMUS_WEB_URL || 'http://127.0.0.1:8098/');
+  await page.goto(process.env.ANIMUS_WEB_URL || (() => { throw new Error('Set ANIMUS_WEB_URL to the served site, never the shared :8098'); })());
   await page.getByRole('heading', {name: 'Open an Animus data folder'}).waitFor();
   await page.getByRole('button', {name: 'Convert Citizens save'}).click();
   await page.getByRole('heading', {name: 'Convert a Citizens save'}).waitFor();

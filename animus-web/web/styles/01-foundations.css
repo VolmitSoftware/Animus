@@ -38,8 +38,27 @@
   --animus-panel: var(--card, #161518);
   --animus-border: var(--border, #343036);
   --animus-muted: var(--muted-foreground, #aba5aa);
-  --animus-error: var(--destructive, #e5484d);
-  --animus-ok: #46a758;
+}
+
+/* Semantic colours, one set per theme, each at 4.5:1 or better on the
+   theme's background and card. Pink stays the accent; these mean yes, no
+   and caution only. */
+html.dark {
+  --animus-error: #f0616a;
+  --animus-error-foreground: #0d0d0f;
+  --animus-ok: #5dbf6e;
+  --animus-ok-foreground: #0d0d0f;
+  --animus-warning: #e2a336;
+  --animus-warning-foreground: #0d0d0f;
+}
+
+html.light {
+  --animus-error: #b42a32;
+  --animus-error-foreground: #ffffff;
+  --animus-ok: #2a7a38;
+  --animus-ok-foreground: #ffffff;
+  --animus-warning: #8a5a00;
+  --animus-warning-foreground: #ffffff;
 }
 
 html,
