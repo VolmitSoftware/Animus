@@ -565,11 +565,10 @@ class _McStageState extends State<McStage> {
         ],
       ),
       dom.p(id: '$_id-keys', classes: 'animus-mc-keys', <Widget>[
-        labelWithTip(
-          const dom.span(<Widget>[Component.text('Controls')]),
-          'Drag to orbit, Shift or right drag to pan, Ctrl and the wheel to zoom. Focused: arrows orbit, Shift and arrows pan, + and - zoom, 0 resets.',
-          'Preview controls',
+        const InfoTip(
+          tip: 'Drag to orbit, Shift or right drag to pan, Ctrl and the wheel to zoom. Focused: arrows orbit, Shift and arrows pan, + and - zoom, 0 resets.',
           docs: Docs.editorKeyboard,
+          child: Component.text('Controls'),
         ),
       ]),
       dom.div(id: '$_id-status', classes: 'animus-mc-status', attributes: const <String, String>{'aria-live': 'polite'}, <Widget>[

@@ -12351,6 +12351,31 @@ const Map<String, String> sharedSchemaSources = <String, String>{
               ],
               "description": "Which click opens it. right by default."
             },
+            "style": {
+              "enum": [
+                "native",
+                "chest"
+              ],
+              "description": "The window for this NPC: native (villager trading screen) or chest. The shop's own style by default."
+            },
+            "villager": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "A villager body's profession and level, shown in the trading screen title. Other bodies ignore it.",
+              "properties": {
+                "profession": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_.-]+:[a-z0-9_/.-]+$",
+                  "description": "Such as minecraft:farmer. minecraft:none by default."
+                },
+                "level": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 5,
+                  "description": "1 (novice) to 5 (master). 1 by default."
+                }
+              }
+            },
             "imported": {
               "description": "Kept from an import."
             },
@@ -20640,6 +20665,8 @@ const Map<String, String> sharedSchemaSources = <String, String>{
     "id": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$", "description": "namespace:path, matching this file's location."},
     "title": {"type": "string", "description": "Window title; & codes and MiniMessage. Defaults to the id."},
     "permission": {"$ref": "#/$defs/permission"},
+    "style": {"enum": ["native", "chest"], "description": "native opens the villager trading screen; chest opens the chest window. Defaults to [shops] style in config.toml. An NPC's animus:shop module can override it."},
+    "layout": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}:[a-z0-9_/-]{1,191}$", "description": "A chest GUI id whose list area shows the offers, in pages. Chest style only; without it the shop's own pages are shown."},
     "modes": {
       "type": "array",
       "minItems": 1,

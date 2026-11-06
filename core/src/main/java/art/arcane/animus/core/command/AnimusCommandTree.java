@@ -99,6 +99,7 @@ public final class AnimusCommandTree extends CommandGroup {
             case "player" -> services.players().get();
             case "viewer" -> services.debug().viewers();
             case "enabled" -> List.of("on", "off", "toggle");
+            case "style" -> List.of("native", "chest");
             case "recording" -> services.recordings().ids();
             case "action" -> List.of("play", "stop");
             case "categories" -> { List<String> categories = new ArrayList<>(CitizensDropIn.CATEGORIES); categories.add("all"); categories.add(CitizensDropIn.COMMANDS); yield categories; }

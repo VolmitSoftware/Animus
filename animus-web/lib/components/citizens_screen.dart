@@ -309,9 +309,13 @@ class _CitizensScreenState extends State<CitizensScreen> {
     final CitizensReview? review = _review;
     return dom.main_(classes: 'animus-home animus-citizens', <Widget>[
       dom.section(classes: 'animus-panel animus-home-intro', <Widget>[
-        labelWithTip(const dom.h1(<Widget>[Component.text(converterTitle)]),
-            'Files convert in this browser and are never uploaded unless you use Upload and stage. Imported NPCs stay dormant until reviewed on the server.', 'Converting',
-            docs: Docs.citizens),
+        const dom.h1(<Widget>[
+          InfoTip(
+            tip: 'Files convert in this browser and are never uploaded unless you use Upload and stage. Imported NPCs stay dormant until reviewed on the server.',
+            docs: Docs.citizens,
+            child: Component.text(converterTitle),
+          ),
+        ]),
         dom.div(classes: 'animus-row', <Widget>[
           Button.secondary(label: 'Choose saves.yml', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: _choose),
           dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_fileName ?? 'No Citizens save chosen')]),
@@ -352,9 +356,13 @@ class _CitizensScreenState extends State<CitizensScreen> {
 
   Widget _tradersPanel() {
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'dtlTraders files'}, <Widget>[
-      labelWithTip(const dom.h2(<Widget>[Component.text('dtlTraders files')]),
-          'Only the server converts these, with the Citizens save. Pick guis.yml, config.yml, messages.yml, data.dat and <shop>.yml files.', 'dtlTraders',
-          docs: Docs.dtlTraders),
+      const dom.h2(<Widget>[
+        InfoTip(
+          tip: 'Only the server converts these, with the Citizens save. Pick guis.yml, config.yml, messages.yml, data.dat and <shop>.yml files.',
+          docs: Docs.dtlTraders,
+          child: Component.text('dtlTraders files'),
+        ),
+      ]),
       dom.div(classes: 'animus-row', <Widget>[
         Button.secondary(label: 'Choose dtlTraders files', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: _chooseTraders),
         dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[
@@ -372,9 +380,13 @@ class _CitizensScreenState extends State<CitizensScreen> {
     final DenizenFolder? folder = _denizen;
     final DenizenPreview? preview = _denizenPreview;
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Denizen folder'}, <Widget>[
-      labelWithTip(const dom.h2(<Widget>[Component.text('Denizen folder')]),
-          'Pick plugins/Denizen. Assignments bind to NPCs in the Citizens save above, and behaviors stay off until reviewed on the server.', 'Denizen',
-          docs: Docs.denizen),
+      const dom.h2(<Widget>[
+        InfoTip(
+          tip: 'Pick plugins/Denizen. Assignments bind to NPCs in the Citizens save above, and behaviors stay off until reviewed on the server.',
+          docs: Docs.denizen,
+          child: Component.text('Denizen folder'),
+        ),
+      ]),
       dom.div(classes: 'animus-row', <Widget>[
         Button.secondary(label: 'Choose Denizen folder', icon: ArcaneIcon.folderOpen(), disabled: _busy, onPressed: _chooseDenizen),
         dom.span(classes: 'animus-muted animus-citizens-file', attributes: const <String, String>{'data-testid': 'denizen-folder'}, <Widget>[
@@ -430,9 +442,13 @@ class _CitizensScreenState extends State<CitizensScreen> {
   Widget _shopkeepersPanel() {
     final ShopkeepersPreview? shops = _shops;
     return dom.section(classes: 'animus-panel', attributes: const <String, String>{'aria-label': 'Shopkeepers shops'}, <Widget>[
-      labelWithTip(const dom.h2(<Widget>[Component.text('Shopkeepers shops')]),
-          'Add config.yml for its currency items. Citizens shopkeepers are checked against the saves.yml above, and shops stay closed until reviewed.', 'Shopkeepers',
-          docs: Docs.shopkeepers),
+      const dom.h2(<Widget>[
+        InfoTip(
+          tip: 'Add config.yml for its currency items. Citizens shopkeepers are checked against the saves.yml above, and shops stay closed until reviewed.',
+          docs: Docs.shopkeepers,
+          child: Component.text('Shopkeepers shops'),
+        ),
+      ]),
       dom.div(classes: 'animus-row', <Widget>[
         Button.secondary(label: 'Choose Shopkeepers save.yml', icon: ArcaneIcon.fileUp(), disabled: _busy, onPressed: () => _chooseShops(false)),
         dom.span(classes: 'animus-muted animus-citizens-file', <Widget>[Component.text(_shopSave?.$1 ?? 'No Shopkeepers save chosen')]),

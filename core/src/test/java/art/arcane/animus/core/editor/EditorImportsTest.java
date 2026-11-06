@@ -72,7 +72,7 @@ class EditorImportsTest {
         JsonObject staged = ok(harness.send("POST", "/v1/imports/stage", token, new JsonObject()));
         assertEquals("staged", staged.get("state").getAsString());
         String importId = staged.getAsJsonObject("citizens").get("importId").getAsString();
-        assertEquals(5, staged.getAsJsonObject("reports").getAsJsonObject("citizens").get("records").getAsInt());
+        assertEquals(6, staged.getAsJsonObject("reports").getAsJsonObject("citizens").get("records").getAsInt());
         assertFalse(staged.getAsJsonArray("lines").isEmpty());
         assertFalse(Files.exists(harness.root.resolve("npcs/citizens")), "staging installs nothing");
 
@@ -82,7 +82,7 @@ class EditorImportsTest {
         int before = harness.host.applied.size();
         JsonObject applied = ok(harness.send("POST", "/v1/imports/" + importId + "/apply", token, null));
         assertEquals("applied", applied.get("state").getAsString());
-        assertEquals(5, applied.get("npcs").getAsInt());
+        assertEquals(6, applied.get("npcs").getAsInt());
         assertTrue(harness.host.applied.size() > before, "the platform reloads after apply");
         int pending = 0;
         for (Map.Entry<String, JsonElement> entry : applied.getAsJsonObject("pending").entrySet()) pending += entry.getValue().getAsInt();

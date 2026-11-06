@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-6",
   "title": "Shopkeeper 6",
+  "style": "native",
   "modes": [
     "trade"
   ],

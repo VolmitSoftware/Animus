@@ -80,7 +80,9 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
     return dom.div(classes: 'animus-rig-keyframe', attributes: const <String, String>{'aria-label': 'Track'}, <Widget>[
       dom.strong(<Widget>[Component.text('Track ${index + 1}: ${track['bone']} ${track['target']}')]),
       dom.label(key: ValueKey<String>('blend:$index:$blend'), classes: 'animus-rig-field is-inline', <Widget>[
-        const dom.span(<Widget>[Component.text('Blend')]),
+        dom.span(<Widget>[
+          InfoTip(tip: visible ? 'Visible tracks always replace.' : blendDescriptions[blend] ?? '', docs: Docs.animations, child: const Component.text('Blend')),
+        ]),
         GuiSelect(
           value: visible ? 'replace' : blend,
           inactive: visible,
@@ -91,7 +93,6 @@ class _RigKeyframePanelState extends State<RigKeyframePanel> {
           },
         ),
       ]),
-      InfoTip(text: visible ? 'Visible tracks always replace.' : blendDescriptions[blend] ?? '', topic: 'Blend', docs: Docs.animations),
       Button.ghost(
         label: 'Move up',
         size: ButtonSize.small,

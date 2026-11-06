@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "converterVersion": 12,
   "fieldPathFormat": "json-pointer",
-  "importId": "7ec10dbc1646b1d67ec84931a6ca5c7091338755210f6ec8dbc35405d3e714f8",
-  "sourceSha256": "af47d1342d6ceb90babb1439357ec6f225b699137a6bc95e549fe1d9f3baed5d",
+  "importId": "8c17aa71272e5e65c1ba102be83b976a93eae88ac21618da606ed06331ba36aa",
+  "sourceSha256": "b0f736e8596bac6f209b6870af200dbf3b3c407aa3546d8b8488937f280c5ad8",
   "worldMap": {
     "old_town": "town"
   },
   "notice": "Data conversion only. Rendering, movement, behavior and combat require separate runtime validation. Imported NPCs are staged with spawned=false; converted combat stays disabled until its review is accepted.",
-  "records": 5,
-  "valid": 5,
+  "records": 6,
+  "valid": 6,
   "skins": 0,
   "behaviors": 3,
   "conversions": {
@@ -34,16 +34,17 @@
     ]
   },
   "traits": {
-    "type": 5,
-    "location": 5,
-    "lookclose": 3,
+    "type": 6,
+    "location": 6,
+    "lookclose": 4,
     "waypoints": 4,
     "text": 2,
     "commandtrait": 1
   },
   "types": {
     "player": 4,
-    "villager": 1
+    "villager": 1,
+    "armor_stand": 1
   },
   "sentinelFields": {},
   "sentinelMapping": {},
@@ -58,9 +59,10 @@
     "citizens-3: /traits/commandtrait/commands/3: the command costs money, experience or items, which Animus cannot charge; not converted",
     "citizens-3: /traits/commandtrait/commands/4/op: the command ran as an operator player; it now runs from the console",
     "citizens-3: /traits/commandtrait: commands stay denied until citizens:commands-3 is on the [behaviors.actions] commandBehaviors list in config.toml",
-    "citizens-4: /traits/waypoints/provider: waypoint provider spiral is not supported; kept in citizens:review"
+    "citizens-4: /traits/waypoints/provider: waypoint provider spiral is not supported; kept in citizens:review",
+    "citizens-5: /traits/lookclose/enabled: an armor stand keeps its own facing and pose, so the server's look-close default is not applied; set enabled in animus:look-close to turn it toward players"
   ],
-  "remappedLocations": 12,
+  "remappedLocations": 13,
   "resolvedReferences": 0,
   "unresolvedReferences": 0,
   "sourceFields": {},
@@ -69,16 +71,18 @@
     "1": "0a1b2c3d-0000-4000-8000-000000000301",
     "2": "0a1b2c3d-0000-4000-8000-000000000302",
     "3": "0a1b2c3d-0000-4000-8000-000000000303",
-    "4": "0a1b2c3d-0000-4000-8000-000000000304"
+    "4": "0a1b2c3d-0000-4000-8000-000000000304",
+    "5": "0a1b2c3d-0000-4000-8000-000000000305"
   },
   "documents": {
-    "npcs/town/citizens-0.json": "e91936c363b7c0b0943f928eb2770c8538c16effb8b1ade5936da8e994d740cd",
-    "npcs/town/citizens-1.json": "626ce41d8f79cd41090d3c40797fb2b2798c0769a6be0ba203464144262c4f7b",
+    "npcs/town/citizens-0.json": "16519340d79171c825bbb9b22a82c2ef78541a8edddb5a4a96ffef2a1401b9ad",
+    "npcs/town/citizens-1.json": "f2567a29a266c89b011d0a9b680f1b6e8a108d70ab89b17018c989dc4b368b61",
     "behaviors/citizens/text-2.json": "fd86b6d89e566471ce36cb74f5c889cd2355336dd7330f02375f7421cafd5674",
-    "npcs/town/citizens-2.json": "bafd3385d511828fc6921031f1dc188c45267995dd689abaf3449c41c870c0a9",
+    "npcs/town/citizens-2.json": "0c5a939ddbe60b763fa9bd79e5f188e55d9b3bf98799c306e23e06f7d5c35e19",
     "behaviors/citizens/text-3.json": "2500899a3646cabd0c82cd0c2ddc83ee3a2be0f694052a1b2e4ae7049be79f75",
     "behaviors/citizens/commands-3.json": "56f79ffcffec46c36987f97bd074c2cf148401ff4bdff425837ed408ff96417d",
-    "npcs/town/citizens-3.json": "0dbc7c5798fd8e5a474feff64e2167ed32620aaac4c243b41b6d634ea4dba9d6",
-    "npcs/town/citizens-4.json": "a7ee2768df49ad64689c92330c04b705a29a4f1389d9d30938f32cfb60654436"
+    "npcs/town/citizens-3.json": "f0624fa5f840add9206652fd0a4510182da9b1030dbf4ce2640e0b7ef2fa2a30",
+    "npcs/town/citizens-4.json": "d68eb1bee8c1b2d24df89e2aede9ede0f5bc72ba59b8f728eb7bc151210acda4",
+    "npcs/town/citizens-5.json": "40602deff121e2ec797ff29cfb52672b2a4997a25ef8faacf3b668bbe38ffa93"
   }
 }

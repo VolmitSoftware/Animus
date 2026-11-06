@@ -3,6 +3,7 @@
   "revision": 1,
   "id": "shopkeepers:shop-4",
   "title": "Closed Board",
+  "style": "native",
   "modes": [
     "trade"
   ],

@@ -617,6 +617,13 @@ class _RigEditorState extends State<RigEditor> {
       dom.div(classes: 'animus-rig-layout', attributes: <String, String>{'data-pane': _pane.name}, <Widget>[
         dom.div(classes: 'animus-rig-stage', <Widget>[
           dom.div(classes: 'animus-segmented', attributes: const <String, String>{'role': 'group', 'aria-label': 'Gizmo'}, <Widget>[
+            dom.span(classes: 'animus-rig-gizmo-caption', <Widget>[
+              InfoTip(
+                tip: _animation == _restPose ? 'Edits pivots, rest rotations and visual scales.' : 'Keys the selected bone at tick ${_round(_clipTime)}.',
+                docs: Docs.editorRigs,
+                child: const Component.text('Gizmo'),
+              ),
+            ]),
             for (final GizmoMode mode in GizmoMode.values)
               Button(
                 label: mode.label,
@@ -626,11 +633,6 @@ class _RigEditorState extends State<RigEditor> {
                 onPressed: () => setState(() => _mode = mode),
               ),
             Button.ghost(label: 'Reset view', size: ButtonSize.small, onPressed: _stage.resetCamera),
-            InfoTip(
-              text: _animation == _restPose ? 'Edits pivots, rest rotations and visual scales.' : 'Keys the selected bone at tick ${_round(_clipTime)}.',
-              topic: 'Gizmo',
-              docs: Docs.editorRigs,
-            ),
           ]),
           McStage(
             controller: _stage,

@@ -72,7 +72,7 @@
 }
 
 .animus-pair-paths code { overflow-wrap: anywhere; }
-.animus-pair-remember { display: grid; gap: 0.25rem; }
+.animus-pair-remember { display: flex; align-items: center; gap: 0.5rem; }
 .animus-pair-cancel { display: inline-flex; align-items: center; min-height: 2.75rem; padding-inline: 0.5rem; }
 .animus-pair-paste { margin-top: 0.75rem; }
 .animus-pair-paste > :first-child { flex: 1 1 16rem; }

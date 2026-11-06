@@ -112,8 +112,7 @@ class BehaviorEditor extends StatelessWidget {
     final JsonMap variables = asMap(doc['variables']);
     final List<String> names = variables.keys.toList();
     void put(JsonMap next) => _write(<JsonStep>['variables'], next.isEmpty ? null : next);
-    return GuiSection(title: 'Variables', count: variables.length, open: variables.isNotEmpty, children: <Widget>[
-      if (_spec('variables').description case final String about when about.isNotEmpty) InfoTip(text: about, topic: 'Variables', docs: Docs.behaviorVariables),
+    return GuiSection(title: 'Variables', count: variables.length, open: variables.isNotEmpty, tip: _spec('variables').description, docs: Docs.behaviorVariables, children: <Widget>[
       if (variables.isEmpty) const dom.p(classes: 'animus-muted', <Widget>[Component.text('No variables yet.')]),
       for (int index = 0; index < names.length; index++) _variable(doc, variables, names[index], index, put, server),
       Button.ghost(
@@ -194,8 +193,7 @@ class BehaviorEditor extends StatelessWidget {
   Widget _routines(JsonMap doc, BehaviorContext behavior) {
     final JsonMap routines = asMap(doc['routines']);
     final List<String> names = routines.keys.toList();
-    return GuiSection(title: 'Routines', count: routines.length, children: <Widget>[
-      if (_spec('routines').description case final String about when about.isNotEmpty) InfoTip(text: about, topic: 'Routines', docs: Docs.behaviorNodes),
+    return GuiSection(title: 'Routines', count: routines.length, tip: _spec('routines').description, docs: Docs.behaviorNodes, children: <Widget>[
       dom.div(classes: 'animus-behavior-tree', <Widget>[
         for (int index = 0; index < names.length; index++)
           dom.div(key: ValueKey<String>('routine-$index'), classes: 'animus-routine', attributes: <String, String>{'data-routine': names[index]}, <Widget>[
@@ -242,27 +240,28 @@ class BehaviorEditor extends StatelessWidget {
     void put(JsonList next) => _write(<JsonStep>['triggers'], next.isEmpty ? null : next);
     final List<String> ids = <String>[for (final Object? trigger in triggers) asString(asMap(trigger)['id']) ?? ''];
     final List<String> events = _catalog.eventsFor(server: behavior.server);
-    return GuiSection(title: 'Triggers', count: triggers.length, children: <Widget>[
-      InfoTip(
-        text: behavior.server ? 'Server events only. NPC events need Server behavior off.' : '${_spec('triggers').description ?? ''} Server events need Server behavior on.',
-        topic: 'Triggers',
-        docs: Docs.behaviorTriggers,
-      ),
-      if (triggers.isEmpty)
-        dom.p(classes: 'animus-muted', <Widget>[
-          Component.text(behavior.server ? 'No triggers yet. Add a join, chat or command trigger.' : 'No triggers yet. It runs only when called.'),
-        ]),
-      for (int index = 0; index < triggers.length; index++) _trigger(triggers, index, put, behavior),
-      GuiSelect(
-        value: null,
-        options: events,
-        noneLabel: 'Add a trigger',
-        label: 'Add a trigger',
-        onChanged: (String? event) {
-          if (event != null) put(<Object?>[...triggers, defaultTrigger(event, _catalog, ids, server: behavior.server)]);
-        },
-      ),
-    ]);
+    return GuiSection(
+      title: 'Triggers',
+      count: triggers.length,
+      tip: behavior.server ? 'Server events only. NPC events need Server behavior off.' : '${_spec('triggers').description ?? ''} Server events need Server behavior on.',
+      docs: Docs.behaviorTriggers,
+      children: <Widget>[
+        if (triggers.isEmpty)
+          dom.p(classes: 'animus-muted', <Widget>[
+            Component.text(behavior.server ? 'No triggers yet. Add a join, chat or command trigger.' : 'No triggers yet. It runs only when called.'),
+          ]),
+        for (int index = 0; index < triggers.length; index++) _trigger(triggers, index, put, behavior),
+        GuiSelect(
+          value: null,
+          options: events,
+          noneLabel: 'Add a trigger',
+          label: 'Add a trigger',
+          onChanged: (String? event) {
+            if (event != null) put(<Object?>[...triggers, defaultTrigger(event, _catalog, ids, server: behavior.server)]);
+          },
+        ),
+      ],
+    );
   }
 
   /// [field] with the server behavior timer minimum.
@@ -291,7 +290,9 @@ class BehaviorEditor extends StatelessWidget {
       attributes: <String, String>{'data-node-path': path, 'data-event': event ?? '', 'role': 'group', 'aria-label': 'Trigger ${index + 1}'},
       <Widget>[
         dom.div(classes: 'animus-node-tools', <Widget>[
-          dom.span(classes: 'animus-node-caption', <Widget>[Component.text('trigger ${index + 1}')]),
+          dom.span(classes: 'animus-node-caption', <Widget>[
+            withTip(Component.text('trigger ${index + 1}'), spec == null ? null : '${spec.description}${spec.carriesPlayer ? '' : ' No player is carried.'}', docs: Docs.behaviorTriggers),
+          ]),
           GuiSelect(
             value: event,
             options: events,
@@ -301,10 +302,7 @@ class BehaviorEditor extends StatelessWidget {
               if (next != null) put(<Object?>[...triggers]..[index] = changeTriggerEvent(trigger, next, _catalog));
             },
           ),
-          if (spec == null)
-            const dom.span(classes: 'animus-node-help', <Widget>[Component.text('Unknown event, kept as written')])
-          else if ('${spec.description}${spec.carriesPlayer ? '' : ' No player is carried.'}'.trim() case final String about when about.isNotEmpty)
-            InfoTip(text: about, topic: event ?? 'Event', docs: Docs.behaviorTriggers),
+          if (spec == null) const dom.span(classes: 'animus-node-help', <Widget>[Component.text('Unknown event, kept as written')]),
           if (index > 0) GuiIconButton(icon: ArcaneIcon.arrowUp(size: IconSize.sm), label: 'Move trigger ${index + 1} up', onPressed: () => put(moveItem(triggers, index, index - 1))),
           if (index < triggers.length - 1)
             GuiIconButton(icon: ArcaneIcon.arrowDown(size: IconSize.sm), label: 'Move trigger ${index + 1} down', onPressed: () => put(moveItem(triggers, index, index + 1))),
