@@ -54,6 +54,8 @@ public final class PathPlanner {
     }
     private static final int CELLS = 4096;
     private static final double EPSILON = MotionValidator.EPSILON, SAMPLE = 0.25;
+    /** Surfaces no thicker than this (carpets, thin snow) count as the level below when falls are counted. */
+    private static final double THIN = 0.125;
     private enum Kind { OPEN, BLOCKED, UNKNOWN }
     private record Place(Kind kind, double y, boolean swimming) {}
     private record Edge(BlockPos target, double y, double peak, Motion motion, boolean swimming) {}
@@ -256,7 +258,7 @@ public final class PathPlanner {
             if (column == null) return null;
             Vec3 start = centre(from.feet(), from.y());
             int samples = (int) Math.ceil(Math.hypot(dx, dz) / SAMPLE - EPSILON);
-            double feet = from.y(), peak = from.y(), drop = Math.max(profile.stepHeight(), profile.maximumFall());
+            double feet = from.y(), peak = from.y(), drop = Math.max(profile.stepHeight(), profile.maximumFall() + 1);
             BodyTerrain.Rest rest = null;
             for (int i = 1; i <= samples; i++) {
                 double climb = jumping ? Math.max(0, profile.jumpHeight() - (feet - from.y())) : profile.stepHeight();
@@ -267,7 +269,7 @@ public final class PathPlanner {
                 if (!rest.usable()) return null;
                 feet = rest.feet(); peak = Math.max(peak, feet);
             }
-            if (rest == null || from.y() - feet > drop + EPSILON) return null;
+            if (rest == null || !fallAllowed(from.y(), feet)) return null;
             boolean swimming = rest.kind() == BodyTerrain.Kind.SWIM;
             Motion motion = jumping ? Motion.JUMP : peak - from.y() > EPSILON ? Motion.STEP
                     : from.y() - feet > profile.stepHeight() + EPSILON ? Motion.FALL : swimming ? Motion.SWIM : Motion.WALK;
@@ -280,6 +282,15 @@ public final class PathPlanner {
             BlockPos target = new BlockPos(column.x(), floor(feet), column.z());
             return new Edge(target, feet, peak, motion, swimming);
         }
+        /**
+         * A step down is always allowed; a fall may drop {@code maximumFall} levels. A level is the block a body stands
+         * on, as the game's pathfinder (and Citizens' fall distance) counts it, so a body lands on a slab, stair or path
+         * one level down even though it drops more than a block; a carpet or thin snow is part of the level below.
+         */
+        private boolean fallAllowed(double from, double to) {
+            return from - to <= profile.stepHeight() + EPSILON || level(from) - level(to) <= profile.maximumFall();
+        }
+        private static int level(double feet) { return (int) Math.ceil(feet - THIN - EPSILON); }
         private boolean scorched(Node node) {
             Vec3 at = centre(node.feet(), node.y());
             return rest(at.x(), at.z(), node.y(), 0, 0, false).kind() == BodyTerrain.Kind.HAZARD;
