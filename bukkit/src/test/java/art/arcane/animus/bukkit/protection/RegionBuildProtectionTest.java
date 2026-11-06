@@ -41,6 +41,14 @@ class RegionBuildProtectionTest {
         assertEquals(List.of(Flag.BLOCK_BREAK), flags.queries.getFirst().flags());
     }
 
+    @Test void openingADoorRunsTheBuildTestWithUse() {
+        FakeRegionFlags flags = new FakeRegionFlags().set(20, 3, Flag.USE, State.DENY);
+        RegionBuildProtection protection = new RegionBuildProtection(flags);
+        assertEquals(Decision.ALLOW, protection.decide(request(4, Action.USE)));
+        assertEquals(List.of(Flag.USE), flags.queries.getFirst().flags());
+        assertEquals(Decision.DENY, protection.decide(request(20, Action.USE)));
+    }
+
     @Test void aFailedBuildTestSkipsTheBlockAndAPassedOneProceeds() {
         FakeRegionFlags flags = new FakeRegionFlags().build(20.5, 3.5, null, false);
         RegionBuildProtection protection = new RegionBuildProtection(flags);

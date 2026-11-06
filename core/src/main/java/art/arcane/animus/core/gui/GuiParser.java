@@ -289,7 +289,7 @@ final class GuiParser {
                     try { double number = Double.parseDouble(constant.source().trim()); if (!(number >= 0 && number <= 1)) throw new NumberFormatException(); }
                     catch (NumberFormatException invalid) { problem(path + ".progress", "expected a number from 0 to 1"); }
                 });
-                String color = object.has("color") ? choice(object, "color", path, Set.of("pink", "blue", "red", "green", "yellow", "purple", "white")).orElse("white") : "white";
+                String color = object.has("color") ? choice(object, "color", path, Set.of("pink", "blue", "red", "green", "yellow", "purple", "white")).orElse("pink") : "pink";
                 String style = object.has("style") ? choice(object, "style", path, Set.of("solid", "segmented_6", "segmented_10", "segmented_12", "segmented_20")).orElse("solid") : "solid";
                 int ticks = object.has("ticks") ? integer(object, "ticks", path, 0, 1200).orElse(100) : 100;
                 if (object.has("priority")) choice(object, "priority", path, Set.of("ambient", "notice", "status", "progress", "interactive", "modal", "pinned"));

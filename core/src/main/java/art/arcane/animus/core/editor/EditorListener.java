@@ -34,6 +34,8 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -54,11 +56,12 @@ public final class EditorListener implements AutoCloseable {
     private static final int HEAD_BYTES = 16 * 1024, WEBSOCKET_FRAME_BYTES = 64 * 1024, REQUESTS_PER_CONNECTION = 1000;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
     private static final String WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    private final EditorSettings settings;
+    private volatile EditorSettings settings;
     private final Path dataDirectory;
     private final EditorRequestHandler handler;
     private final Consumer<String> log;
     private final Semaphore connections;
+    private final Set<Socket> open = ConcurrentHashMap.newKeySet();
     private volatile ServerSocket server;
     private volatile boolean closed;
     private Thread acceptor;
@@ -89,6 +92,19 @@ public final class EditorListener implements AutoCloseable {
         acceptor = Thread.ofPlatform().daemon().name("Animus-editor-listener").start(this::accept);
     }
 
+    /** True when {@code next} needs a new socket: the address, port, TLS files, connection bound or the switch changed. */
+    public static boolean rebind(EditorSettings current, EditorSettings next) {
+        return current.listenerEnabled() != next.listenerEnabled() || !current.listenAddress().equals(next.listenAddress()) || current.port() != next.port()
+                || !current.tlsCertificate().equals(next.tlsCertificate()) || !current.tlsPrivateKey().equals(next.tlsPrivateKey())
+                || current.openConnections() != next.openConnections();
+    }
+
+    /** A hotload that keeps the socket: body limits apply to the next request. */
+    public void settings(EditorSettings next) {
+        if (rebind(settings, next)) throw new IllegalArgumentException("These settings need a new listener");
+        settings = next;
+    }
+
     /** The bound port, which differs from the setting when it was 0 in tests. */
     public int port() {
         ServerSocket socket = server;
@@ -111,6 +127,10 @@ public final class EditorListener implements AutoCloseable {
             try { socket.close(); }
             catch (IOException ignored) { /* Closing an accepting socket only ends the accept loop. */ }
         }
+        for (Socket connection : open) {
+            try { connection.close(); }
+            catch (IOException ignored) { /* The connection thread ends on its next read or write. */ }
+        }
     }
 
     private void accept() {
@@ -125,9 +145,20 @@ public final class EditorListener implements AutoCloseable {
                 Thread.ofVirtual().start(() -> refuse(socket));
                 continue;
             }
+            open.add(socket);
+            if (closed) {
+                open.remove(socket);
+                connections.release();
+                try { socket.close(); }
+                catch (IOException ignored) { /* Closing while stopping. */ }
+                return;
+            }
             Thread.ofVirtual().name("Animus-editor-connection").start(() -> {
                 try { serve(socket); }
-                finally { connections.release(); }
+                finally {
+                    open.remove(socket);
+                    connections.release();
+                }
             });
         }
     }

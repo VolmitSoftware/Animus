@@ -47,6 +47,8 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     @FunctionalInterface interface InteractionObserver { void accepted(UUID npc, UUID viewer, boolean attack, double distance, boolean preview); }
 
     boolean available();
+    /** Whether {@code npcs.enabled} turns this runtime on and off in place; false where that needs a restart (Folia). */
+    default boolean switchesLive() { return true; }
     /** Connect during startup. A later call replaces the listener. */
     void interactions(InteractionListener<P> listener);
     /** Connect during startup. A later call replaces the observer. */
@@ -89,6 +91,8 @@ public interface NpcRuntime<P, I> extends AutoCloseable {
     UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond);
     boolean stopNavigation(String id);
     void lookAt(String id, WorldPosition target);
+    /** Turns the NPC to one of its definition's named poses. @throws IllegalArgumentException for a pose it does not declare */
+    void pose(String id, String pose);
     void followRoute(String id, String route);
     CompletableFuture<Void> awaitRoute(String id);
     void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset);

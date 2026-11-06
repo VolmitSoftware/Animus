@@ -551,7 +551,6 @@ class _Presentation {
       if (!yaw.isFinite || !pitch.isFinite) break;
       facing = Facing(yaw, pitch > 90 ? 90 : (pitch < -90 ? -90 : pitch));
       converted.add('/traits/poses/defaultPose');
-      warnings.add('/traits/poses: default pose $wanted sets the facing; other named poses are kept for review');
       return;
     }
     warnings.add('/traits/poses: default pose $wanted is not in the list; kept for review');

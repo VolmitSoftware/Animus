@@ -1,8 +1,16 @@
 # Animus Editor
 
-The browser editor for Animus. It is a client-mode Jaspr app on arcane_jaspr, hosted on Firebase as `animus-editor.web.app` (project `animus-editor`). The design is in [docs/editor-design.md](../docs/editor-design.md) and the shared contracts in [docs/editor-contracts.md](../docs/editor-contracts.md).
+The browser editor for Animus. It is a client-mode Jaspr app on arcane_jaspr, hosted on Firebase as `animus-editor.web.app` (project `animus-editor`). The design is in [dev/editor-design.md](../dev/editor-design.md) and the shared contracts in [dev/editor-contracts.md](../dev/editor-contracts.md).
 
-The first screen opens a data folder (`plugins/Animus`, or `config/animus` on mod servers) from a directory pick or a zip. It lists NPCs, behaviors, packs, shops, GUIs, rigs and animations, checks each against the schemas in `../schema` in the browser, and keeps the result as a local workspace in IndexedDB. Each document has Visual, Preview, Code and Split views. Nothing is uploaded.
+The first screen starts a workspace: blank and named, seeded with the example packs from `../examples/packs` (embedded at build time by `tool/embed_starter_packs.dart`), or opened from a data folder (`plugins/Animus`, or `config/animus` on mod servers) as a directory pick or a zip. Workspaces are listed there with Rename, Duplicate, Export zip and Delete (confirmed; Restore brings the last one back while the tab is open). Every document is checked against the schemas in `../schema` in the browser, and the workspace and its undo steps (50) are kept in IndexedDB. Each document has Visual, Preview, Code and Split views. Nothing is uploaded, and no server is needed for any of it.
+
+## Working without a server
+
+New document (`#/workspace/<id>/new`) lists every kind with a guided first step that makes a valid document (`lib/logic/offline/new_documents.dart`): an NPC from its name, folder, body, skin (a PNG file or address, kept as `editor/skins/<hash>.png` so the preview wears it after a reload) and position, with a behavior from a template; behaviors from the greeter, dialogue, patrol, shop, guard and quest templates; packs, routes, shops, chest GUIs, menus, holograms, rigs (empty or a block figure), animations (empty, bob or wave), skins, text animations and presets. Schematics are not editor documents. Every document has Rename, Duplicate and Delete (confirmed, undoable); a move takes along the NPCs that list a renamed behavior and the animations and NPCs of a renamed rig. Diagnostics offer fixes where the editor knows the repair (`lib/logic/offline/document_fixes.dart`).
+
+An NPC's Preview draws the rig its `rig` names, with its animations playable. A behavior's Preview is a dry run (`lib/logic/offline/dry_run.dart`): pick a trigger, step through what the NPC says, asks and walks to, answer prompts (the matching `dialogue_choice` trigger runs next), flip conditions only a server can answer, and see commands, combat, building and shop trades listed as server only, not run. An NPC that lists the behavior speaks on the stage.
+
+Send to a server (`#/workspace/<id>/sync`) works once a server is paired: Compare sorts the workspace into documents new to the server, different from its copy and already the same; Validate runs the server's validators on the selection; Push sends it as one change set, new documents with no base and replaced ones against the revision and hash the compare saw, so a copy that moved in between is not overwritten. Pull lists the server catalog and copies the chosen documents in as one undo step, keeping local edits unless told otherwise. The workspace stays local.
 
 ## Building
 
@@ -13,6 +21,7 @@ cd animus-web
 tool/link_arcane_jaspr.sh            # symlink ~/Developer/RemoteGit/ArcaneArts/arcane_jaspr; or pass a path
 dart pub get
 dart run tool/embed_schemas.dart     # after any change under ../schema
+dart run tool/embed_starter_packs.dart  # after any change under ../examples/packs
 dart run tool/extract_minecraft_world_assets.dart --jar=<26.3 client jar> --version=26.3
 dart analyze
 dart test
@@ -29,6 +38,7 @@ The browser check opens `../schema/fixtures/export` in the built site at desktop
 
 ```sh
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright node test/home_browser.cjs
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/brand_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/npc_preview_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/rig_editor_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/gui_editors_browser.cjs
@@ -37,7 +47,13 @@ dart run tool/fake_server.dart &     # for the live editing check
 dart run tool/fake_server.dart --data=test/fixtures/npc_browser --port=9897 &
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_FAKE_URL=http://127.0.0.1:9897 ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/npc_browser_browser.cjs
 PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/live_editing_browser.cjs
+dart run tool/fake_server.dart --data=test/fixtures/npc_browser &
+PLAYWRIGHT_MODULE=/path/to/node_modules/playwright ANIMUS_SCREENSHOTS=/tmp/animus-shots node test/offline_editor_browser.cjs
 ```
+
+`offline_editor_browser.cjs` makes a blank workspace and one document of every kind from its guided step, duplicates and deletes with undo, fixes a broken id, plays a rig animation on an NPC, dry-runs a dialogue (answering its prompt) and a shop (a server-only step), exports the zip, checks persistence across a reload and the starter workspace, then pairs with the fake server, pulls an NPC, changes it and pushes the workspace with that conflict resolved, at both widths with no console errors and no sideways scrolling.
+
+`brand_browser.cjs` checks the Animus colours (`lib/config/brand.dart`: pink `#FF5FA8` on near-black `#0D0D0F` in dark, deep pink `#C2185B` on `#F5F3F4` in light, greys for text and borders) in both themes at both widths: the surfaces and `theme-color`, the primary button's fill and contrast, the pink focus ring, the selected view tab, grey panels and the theme toggle, with no console errors and no sideways scrolling.
 
 `rig_editor_browser.cjs` opens `test/fixtures/rig_editor` (the shared golem rig and two clips), moves a bone with the gizmo, undoes it, renames a bone, keys and scrubs an animation, plays it, downloads the server files and the workspace zip, and imports `test/fixtures/bbmodel/robot.bbmodel`, at both widths with no console errors.
 
@@ -94,7 +110,7 @@ Browse (beside NPCs in the sidebar, `#/workspace/<id>/npcs`) lists every NPC wit
 
 `tags` is part of the NPC schema: at most 32 unique labels of 1-32 lowercase letters, digits, `_` and `-`.
 
-An NPC's Visual view puts the inspector beside the 3D stage. The inspector has typed editors for tags, the skin (workspace skins with their face once a PNG is loaded, or a hash, plus PNG from a file or URL), equipment (a row per slot with suggestions, icon, count and components), the route (`animus:navigation`: waypoints of its own drawn on a top-down grid where a click adds a point or guide and a drag moves one, with order, mode, speed, waits, loop, link distance and wander; or a reusable route shown read-only), combat (`animus:combat`, every section of docs/combat.md, checked in the browser with the server's paths and messages by `lib/logic/npc/combat_settings.dart`), and the shop binding. Other modules get fields from their schema (the connected server's when online, so loaded modules are typed too) or JSON. The stage draws the route's points, guides and links around the body. Route documents open in the same route editor. A behavior that says or asks anything shows its conversation as a tree: what starts it, each line, each prompt with its answers and what each answer's `dialogue_choice` trigger runs, with the lines editable in place.
+An NPC's Visual view puts the inspector beside the 3D stage. The inspector has typed editors for tags, the skin (workspace skins with their face once a PNG is loaded, or a hash, plus PNG from a file or URL), equipment (a row per slot with suggestions, icon, count and components), the route (`animus:navigation`: waypoints of its own drawn on a top-down grid where a click adds a point or guide and a drag moves one, with order, mode, speed, waits, loop, link distance and wander; or a reusable route shown read-only), combat (`animus:combat`, every section of wiki animus/08-combat, checked in the browser with the server's paths and messages by `lib/logic/npc/combat_settings.dart`), and the shop binding. Other modules get fields from their schema (the connected server's when online, so loaded modules are typed too) or JSON. The stage draws the route's points, guides and links around the body. Route documents open in the same route editor. A behavior that says or asks anything shows its conversation as a tree: what starts it, each line, each prompt with its answers and what each answer's `dialogue_choice` trigger runs, with the lines editable in place.
 
 ## Rig editor
 
@@ -105,13 +121,13 @@ A rig's Visual and Preview views (and an animation's, which opens its rig) are t
 - Stage: the bones drawn as the client draws the display entities (item displays turned 180 degrees and centred, block displays from their corner, text displays), the skeleton, and move, rotate and scale handles. In the rest pose a handle edits the pivot (with the subtree), rest rotation or visual scale; with an animation open it keys the bone at the playhead.
 - Timeline: animation picker and new animation, duration, loop mode, playback speed, play, a scrubber, a lane per track with keyframe diamonds, and per keyframe its tick, value and easing (`linear`, `hold`, `ease_in`, `ease_out`, `ease_in_out`, `back_out`, `bezier(...)`). Playback uses `lib/logic/rig_sampler.dart`, the Dart port that matches the shared goldens.
 - Import .bbmodel: every group becomes a bone, its cubes an item model at `pack/assets/animus/models/item/<rig path>/<bone>.json` with an item definition and the embedded textures beside it, and every Blockbench animation an animation document. The import is bounded (16 MiB file, 4,096 elements, 16 textures of at most 1024 px width, 64 animations, 256 keyframes per channel) and refuses a file over a bound. Cube rotations in 22.5-degree steps stay on the element; others become their own bone. Molang values, catmullrom and bezier keyframes and non-cube elements are approximated or skipped with a warning.
-- Build resource pack: downloads `<rig>-server-files.zip` with the rig, its animations and the `pack/assets/` sources its bones use, laid out as data-folder files; `/animus pack build` on the server turns them into the resource pack. The pack layout and zip format are in [docs/runtime.md](../docs/runtime.md#resource-pack-layout), and `schema/fixtures/pack/` (written by `dart run tool/write_pack_fixture.dart`, checked by `test/pack_fixture_test.dart`) is what the server's importer must match. Export zip (top bar) downloads the whole workspace the same way.
+- Build resource pack: downloads `<rig>-server-files.zip` with the rig, its animations and the `pack/assets/` sources its bones use, laid out as data-folder files; `/animus pack build` on the server turns them into the resource pack. The pack layout and zip format are in [wiki animus/04-npc-definitions](https://github.com/VolmitSoftware/docs/blob/master/animus/04-npc-definitions.md#resource-pack-layout), and `schema/fixtures/pack/` (written by `dart run tool/write_pack_fixture.dart`, checked by `test/pack_fixture_test.dart`) is what the server's importer must match. Export zip (top bar) downloads the whole workspace the same way.
 
 Every edit is a workspace commit to IndexedDB and can be undone; gizmo drags commit once on release. Files under `pack/assets/` are kept as workspace resources when a folder or zip is opened.
 
 ## GUI editors
 
-Chest GUIs, shops, holographic menus and holograms (Gloss formats, docs/gui.md and docs/shops.md) have visual editors, adapted from Gloss Web's editors. Visual shows the editor beside its live preview, Preview the preview alone, and Split the editor beside the code.
+Chest GUIs, shops, holographic menus and holograms (Gloss formats, wiki animus/11-guis-holograms-menus and wiki animus/10-shops) have visual editors, adapted from Gloss Web's editors. Visual shows the editor beside its live preview, Preview the preview alone, and Split the editor beside the code.
 
 - Chest GUI: the window painted like the client's (title in the Minecraft font, item icons meshed by the stage renderer at their `gui` pose, counts, name and lore tooltips). Click a slot to edit what draws it: a mask key, an explicit slot or the list template. A brush paints keys into the mask. Tabs edit the window (title, size, mask rows, `show`, refresh), keys, the list (area, variable, source, page size, template), variants (which fields each replaces; the window shows and edits the chosen one) and named action lists.
 - Shop: pages, the buy, sell and trade grids painted as the shop window with its bottom-row controls, and per entry its type, item, display, price, trade goods, command entries (with the allow-list note), limits with resets, stock, discount, permission and broadcast.
@@ -128,10 +144,10 @@ Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. Th
 | Path | Contents |
 | --- | --- |
 | `lib/model/` | Document kinds and documents; documents keep their exact source so unknown keys survive |
-| `lib/logic/` | JSON Schema validator, shared schema catalog, data folder import and export, rig sampler, rig rules and edits, Blockbench import, change sets and the three-way merge; `inspect/` schema fields, completion and JSON outlines; `gui/` the GUI catalog, expressions, checks, layout and Gloss bundles |
+| `lib/logic/` | JSON Schema validator, shared schema catalog, data folder import and export, rig sampler, rig rules and edits, Blockbench import, change sets and the three-way merge; `inspect/` schema fields, completion and JSON outlines; `gui/` the GUI catalog, expressions, checks, layout and Gloss bundles; `offline/` new-document defaults and templates, fixes, the dry run, the starter workspace and push and pull plans |
 | `lib/state/` | Hash routes, editor store with undo, workspace repositories (IndexedDB, memory), the server hub and live sessions |
 | `lib/mc/` | Renderer core adapted from Gloss Web: assets and model resolver, meshers, rigs, scene, camera, `npc/` (definition to scene), `rig/` (sampled rig to scene) and `gui/` (holograms and menus to scene) |
-| `lib/components/` | Shell and document views; `mc/` holds the WebGL2 stage, renderer and asset loader; `rig/` the rig editor, gizmo and timeline; `gui/` the GUI editors; `inspect/` the NPC inspector, behavior editor and code view; `server/` pairing, connection status, the live bar, merges and the server overview |
+| `lib/components/` | Shell and document views; `mc/` holds the WebGL2 stage, renderer and asset loader; `rig/` the rig editor, gizmo and timeline; `gui/` the GUI editors; `inspect/` the NPC inspector, behavior editor and code view; `server/` pairing, connection status, the live bar, merges and the server overview; `offline/` the home page, the New page, the dry run panel and the sync page |
 | `lib/services/` | Theme preference, hash changes and file picking; `server/` pairing codes, saved servers and tokens, the direct and relay transports and the connection |
 | `lib/config/shared_schemas.g.dart` | `../schema` embedded by `tool/embed_schemas.dart` |
 | `web/` | `index.html`, `bootstrap.js` (pre-paint theme), numbered CSS, fonts; `assets/mc/` is generated |
@@ -139,7 +155,7 @@ Browser checks beyond the schemas are in `lib/logic/gui/gui_validation.dart`. Th
 
 ## Deploying
 
-The editor is live at https://animus-editor.web.app. To deploy a new build from this folder (full steps, the relay and the server settings are in [docs/deployment.md](../docs/deployment.md)):
+The editor is live at https://animus-editor.web.app. To deploy a new build from this folder (full steps, the relay and the server settings are in [dev/deployment.md](../dev/deployment.md)):
 
 ```sh
 dart run tool/extract_minecraft_world_assets.dart --jar=<26.3 client jar> --version=26.3

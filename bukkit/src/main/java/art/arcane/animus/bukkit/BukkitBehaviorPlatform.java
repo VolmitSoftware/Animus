@@ -180,6 +180,11 @@ final class BukkitBehaviorPlatform implements BehaviorPlatform {
         PlatformRefusals.mapped(() -> { living.lookAt(active.id(), new WorldPosition(active.state().position().world(), target)); return true; });
     }
 
+    @Override public void pose(NpcHandle npc, String pose) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.pose(active.id(), pose); return true; });
+    }
+
     @Override public void lookAtPlayer(NpcHandle npc, UUID player) {
         NpcRuntime.ActiveNpc active = require(npc);
         if (!living.players().online(player)) throw PlatformRefusals.offline();

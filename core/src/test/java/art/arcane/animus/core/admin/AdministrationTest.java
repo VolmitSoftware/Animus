@@ -10,6 +10,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AdministrationTest {
     @TempDir Path root;
+    @Test void statusShowsTheBudgetsInEffectAfterAHotload() throws Exception {
+        try (AnimusRuntime runtime = new AnimusRuntime(new RuntimeEnvironment(Platform.BUKKIT, "26.3", root))) {
+            runtime.start(); Administration admin = new Administration(runtime);
+            assertTrue(admin.execute(new String[]{"status"}).stream().anyMatch((String line) -> line.startsWith("Settings in effect:") && line.contains("packetsPerTick=32")));
+            art.arcane.animus.core.config.SettingsEdit.apply(runtime, "npcs", (com.google.gson.JsonObject npcs) -> npcs.addProperty("packetsPerTick", 12));
+            art.arcane.animus.core.config.SettingsEdit.apply(runtime, "editor", (com.google.gson.JsonObject editor) -> editor.addProperty("port", 9811));
+            String line = admin.execute(new String[]{"status"}).stream().filter((String text) -> text.startsWith("Settings in effect:")).findFirst().orElseThrow();
+            assertTrue(line.contains("packetsPerTick=12"), line);
+            assertTrue(line.contains("127.0.0.1:9811"), line);
+        }
+    }
     @Test void commandEditsPersistAcrossRestartAndCanBeUndone() throws Exception {
         RuntimeEnvironment environment = new RuntimeEnvironment(Platform.BUKKIT, "26.3", root);
         try (AnimusRuntime runtime = new AnimusRuntime(environment)) {

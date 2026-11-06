@@ -16,7 +16,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 /** NPC runtime for screen tests: chosen NPCs are active, and player work runs at once. */
-public final class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
+public class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
     final Map<UUID, ActiveNpc> active = new HashMap<>();
     private final Function<UUID, Optional<P>> players;
 
@@ -58,6 +58,7 @@ public final class FakeNpcRuntime<P> implements NpcRuntime<P, Object> {
     @Override public UUID navigate(String id, WorldPosition destination, MovementProfile.Mode mode, double blocksPerSecond) { throw new UnsupportedOperationException(); }
     @Override public boolean stopNavigation(String id) { return false; }
     @Override public void lookAt(String id, WorldPosition target) {}
+    @Override public void pose(String id, String pose) {}
     @Override public void followRoute(String id, String route) {}
     @Override public CompletableFuture<Void> awaitRoute(String id) { return CompletableFuture.completedFuture(null); }
     @Override public void setAppearance(String id, Optional<String> name, Optional<String> skin, boolean reset) {}

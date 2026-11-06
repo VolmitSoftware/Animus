@@ -157,4 +157,42 @@ class RouteSchedulerTest {
         assertEquals(Set.of(1, 2), seen);
         assertEquals(0, routes.size());
     }
+
+    @Test void shouldServeOnlyTheLoweredBudgetAndKeepEveryRouteAfterAHotload() {
+        RouteScheduler<Patrol> routes = scheduler(64, 64);
+        List<Patrol> all = patrols(routes, 200, 0);
+        assertEquals(64, routes.tick(0, listener()).served());
+        routes.budgets(8, 4);
+        RouteScheduler.Tick lowered = routes.tick(1, listener());
+        assertEquals(8, lowered.served(), "the next tick spends the lowered budget");
+        assertEquals(200, routes.size(), "no route is dropped when the budget shrinks");
+        for (long tick = 2; tick < 60; tick++) assertTrue(routes.tick(tick, listener()).served() <= 8);
+        for (Patrol patrol : all) assertTrue(patrol.served >= 1, "patrol " + patrol.id + " still gets turns");
+    }
+
+    @Test void shouldServeMoreRoutesAfterRaisingTheBudget() {
+        RouteScheduler<Patrol> routes = scheduler(4, 4);
+        patrols(routes, 100, 0);
+        assertEquals(4, routes.tick(0, listener()).served());
+        routes.budgets(50, 4);
+        assertEquals(50, routes.tick(1, listener()).served());
+    }
+
+    @Test void shouldCheckOnlyTheLoweredNumberOfSleepingRoutesPerTick() {
+        RouteScheduler<Patrol> routes = scheduler(32, 64);
+        List<Patrol> all = patrols(routes, 64, 0);
+        for (Patrol patrol : all) patrol.watched = false;
+        routes.tick(0, listener()); routes.tick(1, listener());
+        assertEquals(64, routes.sleeping());
+        routes.budgets(32, 2);
+        for (Patrol patrol : all) patrol.watched = true;
+        routes.tick(2, listener());
+        assertEquals(62, routes.sleeping(), "two wake checks a tick after the hotload");
+    }
+
+    @Test void shouldRefuseNonPositiveBudgetsOnHotload() {
+        RouteScheduler<Patrol> routes = scheduler(4, 4);
+        assertThrows(IllegalArgumentException.class, () -> routes.budgets(0, 4));
+        assertThrows(IllegalArgumentException.class, () -> routes.budgets(4, 0));
+    }
 }

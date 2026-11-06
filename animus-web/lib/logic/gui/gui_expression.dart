@@ -1,6 +1,6 @@
 /// Expression checks, sample evaluation and completion for GUI documents:
 /// `{{ expr }}` holes in text, and whole-expression fields (`show`, `when`,
-/// `condition`, `on`, `source`, `amount`). Limits and names follow docs/gui.md.
+/// `condition`, `on`, `source`, `amount`). Limits and names follow wiki animus/11-guis-holograms-menus.
 library;
 
 import 'gui_catalog.dart';

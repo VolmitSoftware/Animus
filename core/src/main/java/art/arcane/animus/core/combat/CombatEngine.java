@@ -32,6 +32,9 @@ import java.util.random.RandomGenerator;
  * A regionized server runs one engine per NPC on that NPC's owner. Such an engine reaches combatants it does not hold
  * only through its world: their published views ({@link CombatWorld#peer}), hits and alerts delivered to their owners,
  * and fights reported to engines elsewhere; per-tick work is drawn from the region's shared {@link Allowance}.
+ * <p>
+ * Budgets change live through {@link #reconfigure}. A lowered cap never cuts work short: NPCs holding a slot keep it until
+ * they idle or release, newcomers wait while usage is at or above the cap, and helpers in flight live out their lifetime.
  */
 public final class CombatEngine implements CombatOperations, AutoCloseable {
     public record Status(UUID npc, CombatState state, Optional<TargetRef> target, boolean disengaged, int ammunition) {}
@@ -57,7 +60,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private static final int SIGHTS_PER_EVENT = 8;
     /** Registered combat NPCs, sleeping ones included; the same bound as the NPC runtime's active NPCs. */
     public static final int MAXIMUM_REGISTERED = 10_000;
-    private final CombatBudgets budgets;
+    private CombatBudgets budgets;
     private final CombatWorld world;
     private final ProtectionGate protection;
     private final RandomGenerator random;
@@ -86,6 +89,8 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     private int alertsLeft;
     private int sightsLeft;
     private boolean closed;
+    /** Winding down: no brain turns or events, only helpers in flight until they land or expire. */
+    private boolean stopping;
 
     public CombatEngine(CombatBudgets budgets, CombatWorld world, ProtectionAdapter adapter, RandomGenerator random, Consumer<String> diagnostics) {
         this(budgets, world, adapter, random, diagnostics, Allowance.UNLIMITED);
@@ -99,6 +104,46 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
         this.random = Objects.requireNonNull(random, "random");
         helpers = new HelperLedger(budgets.maximumHelpers(), budgets.helpersPerNpc());
     }
+
+    /**
+     * Applies new budgets now. Owner thread only; owners call it at the start of a tick with what a hotload left pending.
+     * Raised caps hand free slots to waiting NPCs at once; lowered caps drain as described on the class.
+     */
+    public void reconfigure(CombatBudgets next) {
+        budgets = Objects.requireNonNull(next, "budgets");
+        helpers.limits(next.maximumHelpers(), next.helpersPerNpc());
+        if (!closed && !stopping) grant();
+    }
+    /** The budgets in effect. */
+    public CombatBudgets budgets() { return budgets; }
+
+    /**
+     * Winds combat down without cutting anything short: every NPC drops its target and movement and gives up its slot,
+     * fights and chat are no longer examined, and helpers in flight keep flying until they land or expire. Owner thread only.
+     */
+    public void stop() {
+        if (closed || stopping) return;
+        stopping = true;
+        for (CombatBrain brain : waiting) brain.slot(CombatBrain.Slot.NONE);
+        waiting.clear();
+        for (CombatBrain brain : brains.values()) {
+            brain.stand();
+            brain.slot(CombatBrain.Slot.NONE);
+        }
+        active = 0;
+        pressure = false;
+        fights.clear();
+        chats.clear();
+    }
+    /** Undoes {@link #stop} while helpers still drain: every NPC takes its turn again next tick. */
+    public void resume() {
+        if (closed || !stopping) return;
+        stopping = false;
+        for (CombatBrain brain : brains.values()) schedule(brain, tick + 1);
+    }
+    public boolean stopping() { return stopping; }
+    /** Whether a stopping engine has nothing left in flight and may be closed. */
+    public boolean drained() { return closed || stopping && helpers.size() == 0; }
 
     public int size() { return brains.size(); }
     /** NPCs holding one of the {@code maximumNpcs} slots: fighting, fleeing, returning or scanning near a player. */
@@ -141,7 +186,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
 
     /** Starts or replaces this NPC's combat. False when {@link #MAXIMUM_REGISTERED} NPCs are registered. */
     public boolean register(UUID npc, String handle, CombatSettings settings, CombatLoadout loadout) {
-        if (closed) return false;
+        if (closed || stopping) return false;
         CombatBrain previous = brains.get(npc);
         if (previous != null && previous.settings().equals(settings) && previous.loadout().equals(loadout)) return true;
         if (previous == null && brains.size() >= MAXIMUM_REGISTERED) return false;
@@ -176,6 +221,13 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     public void tick() {
         if (closed) return;
         tick++;
+        if (stopping) {
+            if (helpers.size() > 0) {
+                int visits = allowance.take(Allowance.Kind.HELPER_UPDATES, Math.min(budgets.helperUpdatesPerTick(), helpers.size()));
+                allowance.refund(Allowance.Kind.HELPER_UPDATES, visits - updateHelpers(visits));
+            }
+            return;
+        }
         Scheduled due = schedule.peek();
         boolean work = due != null && due.wake() <= tick || helpers.size() > 0 || !fights.isEmpty() || !chats.isEmpty();
         if (!work) return;
@@ -206,7 +258,6 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     }
 
     long now() { return tick; }
-    CombatBudgets budgets() { return budgets; }
     RandomGenerator random() { return random; }
     boolean takeScan() { return scansLeft > 0 && scansLeft-- > 0; }
     boolean takePath() { return pathsLeft > 0 && pathsLeft-- > 0; }
@@ -351,7 +402,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     /** A squad mate another engine holds offers this target. */
     public void alerted(UUID npc, TargetRef target) {
         CombatBrain member = brains.get(npc);
-        if (closed || member == null || !member.awaitsTarget()) return;
+        if (closed || stopping || member == null || !member.awaitsTarget()) return;
         member.alerted(target);
         wake(member);
     }
@@ -361,19 +412,20 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
      * fight rules learn of it on a later tick.
      */
     public void realDamaged(TargetRef victim, TargetRef attacker) {
+        if (stopping) return;
         for (CombatBrain guardian : guardians.getOrDefault(victim, List.of())) guardian.alerted(attacker);
         fought(attacker, victim);
     }
     /** A fight another engine saw or the platform reported for this engine only: it is not passed on again. */
     public void heardFight(TargetRef victim, TargetRef attacker) {
-        if (closed) return;
+        if (closed || stopping) return;
         for (CombatBrain guardian : guardians.getOrDefault(victim, List.of())) { guardian.alerted(attacker); wake(guardian); }
         witnessed(attacker, victim);
     }
 
     /** A player said this in chat. NPCs with chat rules nearby learn of it on a later tick. Owner thread only. */
     public void chat(TargetRef player, String message) {
-        if (closed || watchers.isEmpty() || message == null || message.isEmpty()) return;
+        if (closed || stopping || watchers.isEmpty() || message == null || message.isEmpty()) return;
         if (chats.size() >= EVENT_QUEUE) { droppedEvents++; return; }
         chats.addLast(new Chat(player, message.toLowerCase(Locale.ROOT)));
     }
@@ -458,7 +510,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     public CombatWorld.DamageOutcome struck(UUID npc, TargetRef attacker, WorldPosition from, double amount, double knockback) {
         CombatBrain defender = brains.get(npc);
         Optional<VirtualNpcState.Snapshot> snapshot = world.npc(npc);
-        if (closed || defender == null || snapshot.isEmpty() || !snapshot.get().active() || !(amount > 0))
+        if (closed || stopping || defender == null || snapshot.isEmpty() || !snapshot.get().active() || !(amount > 0))
             return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
         CombatWorld.DamageOutcome outcome = strike(defender, attacker, from, view(defender, snapshot.get()), amount, knockback);
         wake(defender);
@@ -639,7 +691,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
 
     /** A real player hit this NPC's validated hitbox. NPCs with no enabled combat cannot be hurt. */
     public CombatWorld.DamageOutcome playerAttack(UUID npc, TargetRef player, WorldPosition from, double amount) {
-        CombatBrain brain = brains.get(npc);
+        CombatBrain brain = stopping ? null : brains.get(npc);
         Optional<VirtualNpcState.Snapshot> snapshot = world.npc(npc);
         if (brain == null || snapshot.isEmpty() || !snapshot.get().active() || !(amount > 0))
             return new CombatWorld.DamageOutcome(CombatWorld.DamageStatus.NO_CHANGE, 0, false);
@@ -648,13 +700,13 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
 
     /** Applies this NPC's defense to a hit from outside the engine. Returns the amount to apply, or 0. */
     public double mitigateExternal(UUID npc, TargetRef attacker, WorldPosition from, double amount) {
-        CombatBrain brain = brains.get(npc);
+        CombatBrain brain = stopping ? null : brains.get(npc);
         return brain == null ? amount : brain.mitigate(attacker, from, amount, resolve(attacker));
     }
 
     /** Reports a hit applied outside the engine, such as a controlled mob's. */
     public void externalHit(UUID npc, TargetRef attacker, VirtualNpcState.Snapshot after) {
-        CombatBrain brain = brains.get(npc);
+        CombatBrain brain = stopping ? null : brains.get(npc);
         if (brain == null) return;
         fought(attacker, new TargetRef(TargetKind.NPC, npc));
         if (after.health() == 0) brain.die(after.position());
@@ -715,7 +767,7 @@ public final class CombatEngine implements CombatOperations, AutoCloseable {
     }
     private interface Control { Result apply(CombatBrain brain); }
     private Result control(UUID npc, Control control) {
-        if (closed) return new Result(CombatOperations.Status.UNAVAILABLE, "Combat is shutting down");
+        if (closed || stopping) return new Result(CombatOperations.Status.UNAVAILABLE, "Combat is shutting down");
         CombatBrain brain = brains.get(npc);
         if (brain == null) return new Result(CombatOperations.Status.NOT_COMBATANT, "NPC has no enabled combat");
         if (brain.state() == CombatState.DEAD) return new Result(CombatOperations.Status.DEAD, "NPC is dead");

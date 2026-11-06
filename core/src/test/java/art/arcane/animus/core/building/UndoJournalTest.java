@@ -22,6 +22,28 @@ class UndoJournalTest {
         assertEquals(2, journal.size());
     }
 
+    @Test void aGroupIsRecordedWholeOrNotAtAllAndKeepsItsLinksAndScaffoldMarksWhenSaved() {
+        UndoJournal journal = new UndoJournal(4);
+        journal.record(new BlockPos(5, 64, 0), "minecraft:air", "minecraft:stone");
+        assertTrue(journal.group(List.of(new UndoJournal.Change(new BlockPos(0, 64, 0), "minecraft:air", "minecraft:oak_door[half=lower]"),
+                new UndoJournal.Change(new BlockPos(0, 65, 0), "minecraft:air", "minecraft:oak_door[half=upper]"))));
+        assertFalse(journal.group(List.of(new UndoJournal.Change(new BlockPos(1, 64, 0), "minecraft:air", "minecraft:red_bed[part=foot]"),
+                new UndoJournal.Change(new BlockPos(1, 64, 1), "minecraft:air", "minecraft:red_bed[part=head]"))));
+        assertEquals(3, journal.size());
+        assertTrue(journal.truncated());
+        assertEquals(1, journal.groupStart(2));
+        assertEquals(1, journal.groupStart(1));
+        assertEquals(0, journal.groupStart(0));
+        UndoJournal scaffolds = new UndoJournal(10);
+        scaffolds.scaffold(new BlockPos(0, 64, 0), "minecraft:air", "minecraft:scaffolding");
+        scaffolds.group(List.of(new UndoJournal.Change(new BlockPos(0, 64, 0), "a:a", "b:b"), new UndoJournal.Change(new BlockPos(0, 65, 0), "a:a", "b:b")));
+        UndoJournal restored = UndoJournal.restore(10, false, List.of(scaffolds.chunk(0)));
+        assertTrue(restored.get(0).scaffold());
+        assertFalse(restored.get(1).linked());
+        assertTrue(restored.get(2).linked());
+        assertEquals(1, restored.groupStart(2));
+    }
+
     @Test void chunksRoundTripInOrder() {
         UndoJournal journal = new UndoJournal(10_000);
         for (int index = 0; index < UndoJournal.CHUNK + 10; index++)

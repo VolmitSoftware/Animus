@@ -1,5 +1,6 @@
 package art.arcane.animus.core.command;
 
+import art.arcane.animus.core.text.Palette;
 import art.arcane.animus.core.metrics.AnimusMetrics;
 import art.arcane.animus.core.metrics.DebugFormat;
 import art.arcane.animus.core.metrics.DebugWatch;
@@ -25,7 +26,7 @@ import java.util.function.Supplier;
  */
 public final class DebugCommands implements AnimusCommands.Extra {
     public static final String PERMISSION = "animus.debug";
-    private static final String HEADER = "&8&m        &r &6Animus debug &8&m        ";
+    private static final String HEADER = "&8&m        &r " + Palette.PINK + "Animus debug &8&m        ";
     private static final String HONEST = "&8Measured on this server. Bytes are estimates from typical packet sizes.";
     private final Supplier<AnimusMetrics> metrics;
     private final DebugWatch watch;

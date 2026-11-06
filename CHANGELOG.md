@@ -103,6 +103,10 @@
 - Animus publishes 24 metrics to React as source `animus` when React is installed, with no dependency on React (`docs/react.md`).
 - `/animus import citizens` converts Denizen scripts into `denizen:` behaviors and imports Denizen flag values as behavior state, with a `denizen` review category; `converter denizen-preview` and a browser Denizen converter with the same output.
 - Route legs of any length: long legs are planned in bounded terrain segments that climb, swim, fly and detour along cliffs and shores; guided routes reach destinations no guide links to.
+- Walking routes open and close wooden doors, fence gates and trapdoors (`movement.openDoors`); `targetableByMobs` lets nearby melee hostile mobs attack an NPC on Paper and Spigot; definition `poses` and the `animus:pose` action; WorldGuard `use` checks for doors NPCs open.
+- `/animus status` shows the main budgets in effect.
+- Editor: offline workspaces (blank or with the example packs), a guided New page for every document kind with behavior templates, rename, duplicate and confirmed delete, one-click fixes, rig animation playback in the NPC preview, a behavior dry run with server-only steps listed as not run, and push or pull between a local workspace and a paired server.
+- Builders place doors, beds, tall plants, double chests, extended pistons and dripleaf columns as one unit, paid once; they put up, climb and take down scaffolding to reach high blocks (`scaffolding` build option); walking NPCs climb ladders, vines and scaffolding.
 
 ### Changed
 
@@ -156,9 +160,16 @@
 - Mod-server command replies render colours through the shared text formatter.
 - `movement.pathRange` limits how far each plan reaches instead of making longer legs unreachable; a step blocked by new terrain replans; a leg terrain blocks is logged once per NPC.
 - Removed the Citizens import warnings for long legs and unlinked guided destinations.
+- Mob control covers husks, drowned, zombie villagers and vindicators; Citizens converter v11 converts door opening, targetable, vanilla AI and named poses.
+- Every `config.toml` key applies live (only `npcs.enabled` on Folia still needs a restart): a lowered budget lets work in flight finish, editor listener and relay changes restart only that part with paired tokens kept, and `[modules] enabled` switches modules live (changing a module jar still needs a restart).
+- Editor undo steps are kept in IndexedDB and survive a reload.
+- Undo and clearing treat multi-block objects as one group.
 
 ### Fixed
 
+- A builder standing inside its target block walks aside instead of teleporting.
+- A valid NPC edit is no longer refused because another NPC file is invalid.
+- Imported Citizens routes with no saved `avoidwater` swim across water as Citizens does.
 - Citizens hologram lines import in the right order.
 - Combat, builds and container shops refuse when WorldGuard is installed but disabled, at startup or later.
 - NPC builds work with WorldGuard installed; NPCs are asked about as non-members, so a region without `build` allowed is closed to them.

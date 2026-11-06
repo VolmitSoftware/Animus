@@ -1,4 +1,4 @@
-/// The rig sampler from docs/editor-contracts.md. The server's Java sampler
+/// The rig sampler from dev/editor-contracts.md. The server's Java sampler
 /// implements the same rules; both are pinned by
 /// schema/fixtures/animation/samples/.
 library;

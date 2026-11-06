@@ -8,7 +8,7 @@
   "type": "minecraft:player",
   "spawned": false,
   "migration": {
-    "importId": "033401d4e0b6d477db02237cb6d9ff2ad982bbcccb8697dff1551c2f8118c927",
+    "importId": "fe77ba8cdcd2c9e794aa84542f7850d459b5fc27ac314882f426512db0d84bd9",
     "citizensId": 0,
     "originalSpawned": null,
     "references": [],
@@ -81,6 +81,7 @@
       "afterTicks": 120,
       "teleport": true
     },
+    "openDoors": true,
     "stepHeight": 1.0
   },
   "teamColor": "dark_red",

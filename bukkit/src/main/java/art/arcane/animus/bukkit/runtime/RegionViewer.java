@@ -72,8 +72,10 @@ final class RegionViewer {
         this.host = host; this.player = player; this.epoch = epoch;
         id = player.getUniqueId(); world = player.getWorld().getUID();
         preview = new PreviewBodies<>(host.previews, id);
-        guard = new ViewerSession(id, UUID.randomUUID(), new ViewerSession.Limits(host.settings.maximumVisible(), RegionNpcRuntime.MAX_ISSUED_IDS, 100_000_000L, 4.5));
+        guard = new ViewerSession(id, UUID.randomUUID(), limits(host.settings().maximumVisible()));
     }
+
+    private static ViewerSession.Limits limits(int maximumVisible) { return new ViewerSession.Limits(maximumVisible, RegionNpcRuntime.MAX_ISSUED_IDS, 100_000_000L, 4.5); }
 
     /** Packet completions arrive on Netty; they are applied on the next viewer tick, on the player's owner. */
     void enqueue(Runnable completion) {
@@ -95,10 +97,13 @@ final class RegionViewer {
         if (!player.isOnline()) { host.disconnect(this); return; }
         if (player.isDead()) { host.disconnect(this); return; }
         if (!epoch.equals(host.epochs.capture(player)) || !world.equals(player.getWorld().getUID())
-                || guard.issuedCount() >= RegionNpcRuntime.MAX_ISSUED_IDS - host.settings.maximumVisible()) {
+                || guard.issuedCount() >= RegionNpcRuntime.MAX_ISSUED_IDS - host.settings().maximumVisible()) {
             host.reset(this); return;
         }
         ticks++;
+        // A hotloaded maximumVisible: bodies already shown stay; new spawns wait until under it.
+        int maximumVisible = host.settings().maximumVisible();
+        if (guard.limits().maxVisible() != maximumVisible) guard.limits(limits(maximumVisible));
         for (int i = 0; i < MAX_COMPLETIONS; i++) {
             Runnable completion = completions.poll();
             if (completion == null) break;
@@ -109,15 +114,15 @@ final class RegionViewer {
         WorldPosition at = position(player.getLocation());
         TriggerDispatcher dispatcher = host.triggers;
         if (dispatcher != null) {
-            if (proximity == null) proximity = new ProximityTracker(dispatcher.settings().proximityLimits(), host.index, dispatcher::hides);
+            if (proximity == null) proximity = new ProximityTracker(dispatcher::proximityLimits, host.index, dispatcher::hides);
             proximity.tick(dispatcher.proximityPlan(), List.of(id), viewer -> Optional.of(at), dispatcher::publish);
         }
         if ((ticks - 1) % WAKE_INTERVAL == 0) host.wakeNear(player, at);
         // Viewers take turns: with more viewers than updatesPerTick, each one updates every stride ticks, offset by its own phase.
-        int stride = Math.max(1, (host.viewerCount() + host.settings.updatesPerTick() - 1) / host.settings.updatesPerTick());
+        int stride = Math.max(1, (host.viewerCount() + host.settings().updatesPerTick() - 1) / host.settings().updatesPerTick());
         if ((ticks + phase) % stride != 0 || host.budget.take(RegionBudget.Kind.VIEWERS, 1) == 0) return;
         // An equal share of the region's packet work, so the first viewers in scheduler order cannot use all of it.
-        int share = Math.max(2, host.settings.packetsPerTick() / Math.max(1, Math.min(host.settings.updatesPerTick(), host.viewerCount())));
+        int share = Math.max(2, host.settings().packetsPerTick() / Math.max(1, Math.min(host.settings().updatesPerTick(), host.viewerCount())));
         int budget = host.budget.take(RegionBudget.Kind.PACKETS, share);
         int used = update(at, budget);
         if (used >= budget) host.budget.shortOfPackets();
@@ -155,11 +160,11 @@ final class RegionViewer {
         }
         if (ready && retirements.isEmpty() && sent < packetBudget) { sent += rosters(packetBudget - sent); if (!host.current(this)) return sent; }
         if (ready && sent < packetBudget)
-            sent += preview.update(player, host.packets, at, host.settings.viewDistance(), sentChunk, host::previewSpec,
+            sent += preview.update(player, host.packets, at, host.settings().viewDistance(), sentChunk, host::previewSpec,
                     (Runnable completion) -> enqueue(() -> { if (host.current(this)) completion.run(); }), nativeIds, packetBudget - sent);
-        if (!ready || !retirements.isEmpty() || sent >= packetBudget || pendingSpawns >= host.settings.pendingSpawnsPerViewer() || visible.size() >= host.settings.maximumVisible()) return sent;
-        int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(host.settings.maximumVisible() - visible.size(), host.settings.pendingSpawnsPerViewer() - pendingSpawns));
-        SpatialNpcIndex.Scan scan = host.index.scan(new SpatialNpcIndex.Query(at, host.settings.viewDistance()), cursor, new SpatialNpcIndex.Budget(32, Math.max(1, capacity * 2)), sentChunk);
+        if (!ready || !retirements.isEmpty() || sent >= packetBudget || pendingSpawns >= host.settings().pendingSpawnsPerViewer() || visible.size() >= host.settings().maximumVisible()) return sent;
+        int capacity = Math.min(Math.min(8, packetBudget - sent), Math.min(host.settings().maximumVisible() - visible.size(), host.settings().pendingSpawnsPerViewer() - pendingSpawns));
+        SpatialNpcIndex.Scan scan = host.index.scan(new SpatialNpcIndex.Query(at, host.settings().viewDistance()), cursor, new SpatialNpcIndex.Budget(32, Math.max(1, capacity * 2)), sentChunk);
         cursor = scan.next().orElse(null);
         for (VirtualNpcState.Snapshot candidate : scan.candidates()) {
             if (capacity == 0) break;
@@ -175,7 +180,7 @@ final class RegionViewer {
     /** A live NPC a preview stands in for stays hidden from this viewer only. */
     private boolean eligible(RegionActor.Publication now, WorldPosition at, Predicate<ChunkPosition> sentChunk) {
         return now.live() && !host.previews.hides(id, now.spec().definition().id(), now.spec().definition().uuid()) && now.snapshot().position().world().equals(at.world())
-                && now.snapshot().position().point().distance(at.point()) <= host.settings.viewDistance() && sentChunk.test(now.snapshot().position().chunk());
+                && now.snapshot().position().point().distance(at.point()) <= host.settings().viewDistance() && sentChunk.test(now.snapshot().position().chunk());
     }
     private boolean eligibleNow(RegionActor actor) {
         if (!host.current(this) || !player.isOnline() || player.isDead()) return false;
@@ -239,7 +244,7 @@ final class RegionViewer {
     private int presentCosmetics(int packetBudget) {
         if (!ready || !retirements.isEmpty()) return 0;
         int sent = 0;
-        int[] rigBudget = {host.rigs.updatesPerTick()};
+        int[] rigBudget = {host.rigs().updatesPerTick()};
         for (int i = 0, count = rigOrder.size(); i < count && (sent < packetBudget || rigBudget[0] > 0); i++) {
             Presented body = rigOrder.removeFirst();
             if (body.retired) continue;
@@ -256,7 +261,7 @@ final class RegionViewer {
         if (rigReplaced(body, now) || shown == null || shown.frame() == null || !body.spawnFinished || body.retired || body.rigFailed) return 0;
         RigFrame frame = shown.frame();
         if (body.bones == null) {
-            if (packetBudget <= 0 || bones + shown.displays().size() > host.rigs.maximumBones()) return 0;
+            if (packetBudget <= 0 || bones + shown.displays().size() > host.rigs().maximumBones()) return 0;
             try { body.bones = host.packets.createBones(body.body, shown.displays()); }
             catch (RuntimeException invalid) { body.rigFailed = true; host.cosmeticFailed(this, "rig bones", body.actor, invalid); return 0; }
             body.rigIdentity = shown.identity(); body.view = new RigView(body.bones.count()); bones += body.bones.count();

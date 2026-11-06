@@ -114,6 +114,7 @@ final class RecordingPlatform implements BehaviorPlatform {
     @Override public boolean stopNavigation(NpcHandle npc) { record("stop"); return true; }
     @Override public void look(NpcHandle npc, Vec3 target) { record("look-point"); }
     @Override public void lookAtPlayer(NpcHandle npc, UUID player) { record("look-player"); }
+    @Override public void pose(NpcHandle npc, String pose) { record("pose:" + pose); }
     @Override public void setAppearance(NpcHandle npc, AppearanceChange change) { record("appearance:" + change.name().orElse("") + ":" + change.reset()); }
     @Override public void setEquipment(NpcHandle npc, EquipmentSlot slot, Optional<String> item) { record("equipment:" + slot + ":" + item.orElse("none")); }
     @Override public void playAnimation(NpcHandle npc, String animation, double speed, Optional<String> loop, int layer) { record("animation:" + animation + ":" + speed + ":" + loop.orElse("clip") + ":" + layer); }

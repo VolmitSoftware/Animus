@@ -17,7 +17,11 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
-/** Opt-in mechanical proof, isolated to each viewer. Never runs real commands or damages real entities. */
+/**
+ * Opt-in mechanical proof, isolated to each viewer. Never runs real commands or damages real entities.
+ * {@code packetProofEnabled} is read live: the adapter binds on first use once it is true, and while it is false
+ * requests are refused and the cleanup pass clears every proof body within a second.
+ */
 final class PacketProofService implements Listener, AutoCloseable {
     private volatile art.arcane.animus.core.runtime.NpcRuntime.InteractionObserver observer;
     /** Accepted proof clicks reach module subscribers as preview notices. */
@@ -28,8 +32,13 @@ final class PacketProofService implements Listener, AutoCloseable {
     private static final long LIFETIME_NANOS = 120_000_000_000L;
     private final JavaPlugin plugin;
     private final ReplyScheduler scheduler;
-    private final NativePacketAdapter packets;
-    private final String unavailable;
+    private final String version;
+    private final AutoCloseable settingsSubscription;
+    /** Set on the file lane by a hotload; owner-thread work reads it. */
+    private volatile boolean enabled;
+    private boolean bindAttempted;
+    private NativePacketAdapter packets;
+    private String unavailable;
     private final Map<UUID, ProofSession> sessions = new HashMap<>();
     private final Map<UUID, SkinRequest> skinRequests = new HashMap<>();
     private BukkitTask cleanup;
@@ -37,20 +46,25 @@ final class PacketProofService implements Listener, AutoCloseable {
     private OwnerNavigation navigation;
     private boolean closed;
 
-    PacketProofService(JavaPlugin plugin, ReplyScheduler scheduler, String version, boolean enabled) {
+    /** Construct on the main thread. */
+    PacketProofService(JavaPlugin plugin, ReplyScheduler scheduler, String version, art.arcane.animus.core.AnimusRuntime runtime) {
         this.plugin = plugin;
         this.scheduler = scheduler;
-        NativePacketAdapter bound = null;
-        String reason = null;
-        if (!enabled) reason = "disabled; set packetProofEnabled = true in config.toml and restart";
-        else if (scheduler.isFolia()) reason = "unavailable on Folia until region-safe world snapshot validation is proven";
-        else try { bound = NativePacketAdapter.bind(plugin, version); }
+        this.version = version;
+        enabled = runtime.packetProofEnabled();
+        settingsSubscription = runtime.onSettings((art.arcane.animus.core.config.PluginSettings next) -> enabled = next.packetProofEnabled());
+        if (enabled) bind();
+    }
+
+    /** Binds the adapter once, the first time proof is enabled. Main thread. */
+    private void bind() {
+        bindAttempted = true;
+        if (scheduler.isFolia()) { unavailable = "unavailable on Folia until region-safe world snapshot validation is proven"; return; }
+        try { packets = NativePacketAdapter.bind(plugin, version); }
         catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
-            reason = "native binding failed: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+            unavailable = "native binding failed: " + e.getClass().getSimpleName() + ": " + e.getMessage();
             plugin.getLogger().log(java.util.logging.Level.WARNING, "Packet proof unavailable for " + version, e);
         }
-        packets = bound;
-        unavailable = reason;
         if (packets != null) {
             navigation = new OwnerNavigation(new BukkitTerrain(plugin.getServer()), (Runnable tick) -> plugin.getServer().getScheduler().runTaskTimer(plugin, tick, 1, 1)::cancel, NavigationLimits.DEFAULT);
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
@@ -58,7 +72,12 @@ final class PacketProofService implements Listener, AutoCloseable {
         }
     }
 
-    boolean available() { return packets != null && !closed; }
+    boolean available() { return enabled && packets != null && !closed; }
+    /** Main thread: binds on first use after a hotload enabled proof. */
+    private boolean live() {
+        if (enabled && !bindAttempted && !closed) bind();
+        return available();
+    }
     record SkinRequest(UUID world, UUID requestId) {}
     SkinRequest beginSkinLoad(Player viewer) {
         requireAvailable();
@@ -76,7 +95,7 @@ final class PacketProofService implements Listener, AutoCloseable {
                 && request.world().equals(viewer.getWorld().getUID());
     }
     String status(Player viewer) {
-        if (!available()) return "Packet proof " + (closed ? "closed" : unavailable);
+        if (!live()) return "Packet proof " + (closed ? "closed" : !enabled ? "disabled; set packetProofEnabled = true in config.toml" : unavailable);
         ProofSession session = viewer == null ? null : sessions.get(viewer.getUniqueId());
         int count = session == null ? 0 : session.bodies.size();
         long registered = session == null ? 0 : session.bodies.values().stream()
@@ -397,6 +416,12 @@ final class PacketProofService implements Listener, AutoCloseable {
     }
 
     private void expire() {
+        if (!enabled) {
+            // A hotload turned proof off: every proof body goes, as a clear does.
+            for (ProofSession session : List.copyOf(sessions.values())) clear(session.viewer);
+            skinRequests.clear();
+            return;
+        }
         long now = System.nanoTime();
         for (ProofSession session : List.copyOf(sessions.values())) {
             if (!session.viewer.isOnline() || session.viewer.isDead() || now - session.expiresAt >= 0) { clear(session.viewer); continue; }
@@ -421,7 +446,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         }
     }
 
-    private boolean current(ProofSession session) { return !closed && sessions.get(session.viewer.getUniqueId()) == session && session.viewer.isOnline(); }
+    private boolean current(ProofSession session) { return !closed && enabled && sessions.get(session.viewer.getUniqueId()) == session && session.viewer.isOnline(); }
     private void fail(ProofSession session, Throwable failure) {
         if (!current(session)) return;
         clear(session.viewer);
@@ -430,7 +455,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         session.viewer.sendMessage("Packet proof failed: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
         plugin.getLogger().log(java.util.logging.Level.WARNING, "Packet proof operation failed", failure);
     }
-    private void requireAvailable() { if (!available()) throw new IllegalStateException(status(null)); }
+    private void requireAvailable() { if (!live()) throw new IllegalStateException(status(null)); }
     private ProofSession session(Player viewer) {
         ProofSession session = sessions.get(viewer.getUniqueId());
         if (session == null) throw new IllegalArgumentException("No proof bodies for this viewer");
@@ -453,6 +478,7 @@ final class PacketProofService implements Listener, AutoCloseable {
         for (ProofSession session : List.copyOf(sessions.values())) clear(session.viewer);
         skinRequests.clear();
         closed = true;
+        try { settingsSubscription.close(); } catch (Exception ignored) { /* Removing a listener cannot fail. */ }
         if (cleanup != null) cleanup.cancel();
         if (controlTicker != null) controlTicker.cancel();
         if (navigation != null) navigation.close();

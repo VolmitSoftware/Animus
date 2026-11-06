@@ -7,7 +7,7 @@ import 'package:animus_editor/model/animus_document.dart';
 import 'package:animus_editor/model/document_kind.dart';
 import 'package:test/test.dart';
 
-/// The settings example from docs/combat.md.
+/// The settings example from wiki animus/08-combat.
 const String _documented = '''
 {
   "enabled": true,
@@ -44,6 +44,11 @@ void main() {
       }),
       isEmpty,
     );
+  });
+
+  test('should accept targetableByMobs only as a boolean', () {
+    expect(_errors(<String, Object?>{'targetableByMobs': true}), isEmpty);
+    expect(_errors(<String, Object?>{'targetableByMobs': 'yes'}), <String>[r'$.modules.animus:combat.targetableByMobs: expected boolean']);
   });
 
   test('should refuse a module that is not an object', () {

@@ -112,7 +112,7 @@ async function run(browser, viewport, label) {
   // Rename a bone through the tree.
   await page.locator('.animus-rig-bone[data-bone="arm"]').click();
   await page.getByLabel('Bone name').fill('right-arm');
-  await page.getByRole('button', {name: 'Rename'}).click();
+  await page.locator('.animus-rig-tree').getByRole('button', {name: 'Rename'}).click();
   await page.locator('.animus-rig-bone[data-bone="right-arm"]').waitFor();
 
   // Pick the walk animation, scrub, add a keyframe, key with the gizmo.

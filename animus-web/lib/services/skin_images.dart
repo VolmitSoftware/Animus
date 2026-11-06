@@ -5,7 +5,9 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
+import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 
@@ -30,6 +32,24 @@ final class SkinImages {
   static final Map<String, LoadedSkin> _loaded = <String, LoadedSkin>{};
 
   static LoadedSkin? forKey(String key) => _loaded[key];
+
+  /// The skin under [key], registering [png] (a 64x64 PNG the workspace
+  /// keeps, see `skinImagePath`) the first time it is asked for.
+  static LoadedSkin? forKeyOrWorkspace(String key, Uint8List? png) {
+    final LoadedSkin? loaded = _loaded[key];
+    if (loaded != null || png == null || png.isEmpty) return loaded;
+    final String id = 'skin:$key';
+    final String url = 'data:image/png;base64,${base64Encode(png)}';
+    McAssetLoader.registerImage(id, url);
+    return _loaded[key] = LoadedSkin(textureId: id, source: 'the PNG kept in this workspace', dataUrl: url);
+  }
+
+  /// Keeps [skin] under another key too (a skin made before its hash was
+  /// known).
+  static void alias(String key, LoadedSkin skin) => _loaded[key] = skin;
+
+  /// The PNG bytes of a loaded skin.
+  static Uint8List pngBytes(LoadedSkin skin) => base64Decode(skin.dataUrl.substring(skin.dataUrl.indexOf(',') + 1));
 
   /// Lets the user pick a PNG and keeps it under [key]. Null when cancelled.
   static Future<LoadedSkin?> pickFile(String key) async {

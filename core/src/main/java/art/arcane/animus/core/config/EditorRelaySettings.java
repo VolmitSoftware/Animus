@@ -8,7 +8,8 @@ import java.util.Set;
 /**
  * The relay client's keys in the {@code [editor]} table of {@code config.toml}. The server connects out to {@code relayUrl}
  * (its {@code /agent} path) and the browser reaches it through the same relay's {@code /app} path. The relay operator can
- * read the traffic it forwards until relay end-to-end encryption ships. Requires a restart.
+ * read the traffic it forwards until relay end-to-end encryption ships. A hotload that changes any of these keys restarts
+ * only the relay client.
  */
 public record EditorRelaySettings(boolean enabled, String url, int reconnectMinSeconds, int reconnectMaxSeconds, int frameBytes,
                                   int concurrentRequests) {

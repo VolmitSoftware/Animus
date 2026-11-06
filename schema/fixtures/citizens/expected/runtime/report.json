@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "converterVersion": 10,
+  "converterVersion": 11,
   "fieldPathFormat": "json-pointer",
-  "importId": "efa03c8dd29a16d028f1825661077135240d3bc41f212ef466d6dc80879fd119",
+  "importId": "b4cd7923fcdeee77e058a1020662aa10d935bcad16a058e8ac7457c7e604c646",
   "sourceSha256": "af47d1342d6ceb90babb1439357ec6f225b699137a6bc95e549fe1d9f3baed5d",
   "worldMap": {
     "old_town": "town"
@@ -72,13 +72,13 @@
     "4": "0a1b2c3d-0000-4000-8000-000000000304"
   },
   "documents": {
-    "npcs/town-r0_0/citizens-0.json": "73a69137f4c7b3daaedef04fb1d2b435f7b6b786e5a30a3d52c6baf71d58ea02",
-    "npcs/town-r0_0/citizens-1.json": "b8d9c939095dfd8c802c5cd466f4ce751e18d13096433b447dc21cc8ae2fc54f",
+    "npcs/town-r0_0/citizens-0.json": "230de5c48b961701d45e8b80fedeaaead92d26d17f3643f8dc87f688eab35fcf",
+    "npcs/town-r0_0/citizens-1.json": "42a5dd0a7d354ae61669fefb7b02124fde07bfd1b22d5b7e8385fa46c6a8b655",
     "behaviors/citizens/text-2.json": "fd86b6d89e566471ce36cb74f5c889cd2355336dd7330f02375f7421cafd5674",
-    "npcs/town-r-1_0/citizens-2.json": "b4136b7a146a2aa7d25c2a452185721e2c79758ece9925df75c033b40860182d",
+    "npcs/town-r-1_0/citizens-2.json": "4e12e4e8f912d5f965271e14a01964cd4c6d69112202888ec2a4659818e55ca3",
     "behaviors/citizens/text-3.json": "2500899a3646cabd0c82cd0c2ddc83ee3a2be0f694052a1b2e4ae7049be79f75",
     "behaviors/citizens/commands-3.json": "56f79ffcffec46c36987f97bd074c2cf148401ff4bdff425837ed408ff96417d",
-    "npcs/town-r0_0/citizens-3.json": "2c1b9efdcb6641275297df44fafd437804a4210731886564589e607424a45abc",
-    "npcs/town-r0_0/citizens-4.json": "a0e08eae3ea8fe10893ec9c887d7fab2c6885fbf8e4ae2eb634ee90b80333a7a"
+    "npcs/town-r0_0/citizens-3.json": "c61e39b421212ef356d34f5d603b89eb0ea0640a7f540388412b7dde20d692af",
+    "npcs/town-r0_0/citizens-4.json": "7e4b31b0933614578e0455a76a7e1f692c8e344e77ddd567cecf74ffe3392c40"
   }
 }

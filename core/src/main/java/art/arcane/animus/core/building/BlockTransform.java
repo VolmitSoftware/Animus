@@ -52,6 +52,17 @@ public record BlockTransform(Rotation rotation, Mirror mirror) {
         return new int[]{px, pz};
     }
 
+    /** The schematic offset that {@link #apply(int, int)} turns into this one. */
+    public int[] invert(int x, int z) {
+        int px = x, pz = z;
+        for (int turn = 0; turn < rotation.turns(); turn++) {
+            int next = pz;
+            pz = -px;
+            px = next;
+        }
+        return new int[]{mirror == Mirror.X ? -px : px, mirror == Mirror.Z ? -pz : pz};
+    }
+
     /** A horizontal direction name after the transform; other names pass through. */
     public String direction(String name) {
         int index = HORIZONTAL.indexOf(name);

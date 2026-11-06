@@ -55,7 +55,7 @@ class HotloadServiceTest {
 
     private List<String> shown() { return lines.stream().map((String line) -> RichText.sectionRuns(line).stream().map(RichText.Run::text).reduce("", String::concat)).toList(); }
 
-    @Test void configEditAppliesLiveKeysAndMarksRestartKeys() throws Exception {
+    @Test void configEditAppliesEveryKeyLiveWithoutARestartMarker() throws Exception {
         Path config = root.resolve("config.toml");
         String text = Files.readString(config);
         Files.writeString(config, text.replace("statusMessage = \"Hello from Animus\"", "statusMessage = \"Hotloaded hello\"")
@@ -65,9 +65,24 @@ class HotloadServiceTest {
         assertEquals(40, runtime.npcSettings().viewDistance());
         List<String> shown = shown();
         assertTrue(shown.contains("[Animus]: Animus Hotloaded: [config.toml] [statusMessage] [\"Hello from Animus\" -> \"Hotloaded hello\"]"), shown.toString());
-        assertTrue(shown.contains("[Animus]: Animus Hotloaded: [config.toml] [npcs.viewDistance] [48 -> 40] [restart required]"), shown.toString());
+        assertTrue(shown.contains("[Animus]: Animus Hotloaded: [config.toml] [npcs.viewDistance] [48 -> 40]"), shown.toString());
+        assertTrue(shown.stream().noneMatch((String line) -> line.contains("restart required")), shown.toString());
         assertTrue(dings.stream().allMatch(Boolean::booleanValue));
         assertTrue(refreshed.contains("screens"));
+    }
+
+    @Test void theNpcSwitchIsMarkedForRestartWhereTheRuntimeCannotSwitchLive() throws Exception {
+        hotload.close();
+        hotload = new HotloadService(new HotloadService.Parts(runtime, runtime.fileExecutor((Runnable task, art.arcane.animus.core.extension.MutationLane.EngineTaskEvent event, Throwable failure) -> {}),
+                Runnable::run, new FakeNpcRuntime<Object>((java.util.UUID id) -> Optional.empty()) { @Override public boolean switchesLive() { return false; } },
+                (List<String> sent, boolean sound) -> lines.addAll(sent), () -> {}, (String line) -> {}));
+        hotload.listen();
+        hotload.cycle();
+        Path config = root.resolve("config.toml");
+        Files.writeString(config, Files.readString(config).replaceFirst("\\[npcs]\n((?:.*\n)*?)enabled = true", "[npcs]\n$1enabled = false").replace("viewDistance = 48", "viewDistance = 40"));
+        settle();
+        assertTrue(shown().contains("[Animus]: Animus Hotloaded: [config.toml] [npcs.enabled] [true -> false] [restart required]"), shown().toString());
+        assertTrue(shown().contains("[Animus]: Animus Hotloaded: [config.toml] [npcs.viewDistance] [48 -> 40]"), shown().toString());
     }
 
     @Test void invalidConfigKeepsTheRunningSettingsWithTheFieldError() throws Exception {
@@ -113,6 +128,31 @@ class HotloadServiceTest {
         settle();
         assertEquals("Captain Guard", runtime.npcs().find("guard").orElseThrow().name());
         assertEquals(List.of("[Animus]: Animus Hotloaded: [npcs/town/guard.json] [name] [\"Guard\" -> \"Captain Guard\"]"), shown());
+    }
+
+    @Test void aValidNpcEditAppliesWhileAnotherNpcFileIsInvalid() throws Exception {
+        Path guard = root.resolve("npcs/town/guard.json");
+        Files.createDirectories(guard.getParent());
+        Files.writeString(guard, NPC);
+        settle();
+        Files.writeString(guard, NPC.replace("\"y\":64", "\"y\":\"high\""));
+        settle();
+        lines.clear();
+
+        Path baker = root.resolve("npcs/town/baker.json");
+        Files.writeString(baker, NPC.replace("12345678-1234-1234-1234-123456789abc", "22345678-1234-1234-1234-123456789abc")
+                .replace("\"id\":\"guard\"", "\"id\":\"baker\"").replace("\"Guard\"", "\"Baker\""));
+        settle();
+        assertEquals("Baker", runtime.npcs().find("baker").orElseThrow().name());
+        assertEquals("Guard", runtime.npcs().find("guard").orElseThrow().name());
+        assertEquals(List.of("[Animus]: Animus Hotloaded: [npcs/town/baker.json] [name] [<missing> -> \"Baker\"]"), shown().stream().filter((String line) -> line.contains("[name]")).toList());
+        assertTrue(shown().stream().noneMatch((String line) -> line.contains("refused")), shown().toString());
+
+        lines.clear();
+        Files.writeString(baker, Files.readString(baker).replace("\"Baker\"", "\"Head Baker\""));
+        settle();
+        assertEquals("Head Baker", runtime.npcs().find("baker").orElseThrow().name());
+        assertEquals(List.of("[Animus]: Animus Hotloaded: [npcs/town/baker.json] [name] [\"Baker\" -> \"Head Baker\"]"), shown());
     }
 
     @Test void animusOwnWritesProduceNoHotloadMessage() throws Exception {

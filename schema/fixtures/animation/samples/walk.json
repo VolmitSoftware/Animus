@@ -1,5 +1,5 @@
 {
-  "description": "Sampled channels and model-space 3x4 matrices (row-major) for every bone. Tolerances per docs/editor-contracts.md.",
+  "description": "Sampled channels and model-space 3x4 matrices (row-major) for every bone. Tolerances per dev/editor-contracts.md.",
   "rig": "rigs/golem.json",
   "layers": [
     {

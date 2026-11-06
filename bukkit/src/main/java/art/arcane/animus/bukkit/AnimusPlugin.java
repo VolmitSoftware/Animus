@@ -80,7 +80,6 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Function;
 import java.util.logging.Level;
-import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -104,7 +103,7 @@ public final class AnimusPlugin extends JavaPlugin {
     private BukkitScreens screens;
     private volatile ShopService<Player, ItemStack> shops;
     private volatile HoloService<Player, ItemStack> guis;
-    private AutoCloseable screenTicks, hireTicks;
+    private AutoCloseable screenTicks, hireTicks, triggerTicks;
     private final DialogueTriggers dialogueTriggers = new DialogueTriggers(() -> {
         BehaviorCommands current = behaviors;
         return current == null ? null : current.triggers();
@@ -149,9 +148,9 @@ public final class AnimusPlugin extends JavaPlugin {
                 if (event == MutationLane.EngineTaskEvent.FAILED)
                     getLogger().log(Level.WARNING, "Animus file task failed", failure);
             });
-            proof = new PacketProofService(this, replies, environment.minecraftVersion(), runtime.packetProofEnabled());
+            proof = new PacketProofService(this, replies, environment.minecraftVersion(), runtime);
             if (replies.isFolia()) {
-                foliaProof = new FoliaStationaryProofService(this, environment.minecraftVersion(), runtime.packetProofEnabled(), runtime.documents(), commands);
+                foliaProof = new FoliaStationaryProofService(this, environment.minecraftVersion(), runtime, runtime.documents(), commands);
                 getLogger().info(foliaProof.status());
             }
             NpcRuntimeSettings npcSettings = runtime.npcSettings();
@@ -192,7 +191,7 @@ public final class AnimusPlugin extends JavaPlugin {
             getLogger().info(guis.status());
             startBuilds(mainThread);
             BukkitOwners scheduling = new BukkitOwners(this, regions);
-            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, () -> buildsUnavailable,
+            builtins = new BuiltinCapabilities(new BukkitBehaviorPlatform(this, living, combat, builds, this::buildsRefusal,
                     (Runnable tick) -> ownerTicks.apply(measured.timed(Subsystem.BEHAVIORS, tick)), () -> guis, scheduling, mainThread),
                     runtime.behaviorState(), this::publishChoice,
                     runtime.behaviorSettings().actions(), message -> getLogger().info(message));
@@ -202,6 +201,7 @@ public final class AnimusPlugin extends JavaPlugin {
                         if (current != null) current.modulesInitialized(initialized);
                     }, builtins);
             extensions.connectHooks(runtime.moduleHooks());
+            extensions.follow(runtime);
             ExtensionRuntime modules = extensions;
             living.observeInteractions(modules::interacted);
             proof.observeInteractions(modules::interacted);
@@ -218,32 +218,20 @@ public final class AnimusPlugin extends JavaPlugin {
                     (String message) -> getLogger().info(message)));
             hotload.start();
             TriggerDispatcher triggers = behaviors.triggers();
-            if (triggers != null) {
-                if (living.available()) { triggers.connect(); living.bindTriggers(triggers); }
-                else {
-                    triggers.unavailable(living.status());
-                    getLogger().info("Behavior triggers unavailable: " + living.status());
-                }
-            }
             ServerTriggerDispatcher servers = behaviors.servers();
-            if (servers != null) {
-                if (living.available()) servers.connect();
-                else servers.unavailable(living.status());
-            }
-            if (behaviors.diagnosticRuntime() != null) {
-                Function<UUID, Optional<VirtualNpcState.Snapshot>> states = owners::state;
-                AnimusRuntime definitions = runtime;
-                SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(() -> definitions.npcs().snapshot(), states));
-                serverBehaviors = new BukkitServerBehaviors(this, scheduling, servers, facts, (String message) -> getLogger().info(message));
-                behaviors.facts(facts);
-                serverBehaviors.start();
-            }
+            if (triggers != null) triggerTicks = ownerTicks.apply(new art.arcane.animus.core.behavior.trigger.TriggerLink(triggers, servers, living, (String message) -> getLogger().info(message)));
+            Function<UUID, Optional<VirtualNpcState.Snapshot>> states = owners::state;
+            AnimusRuntime definitions = runtime;
+            SnapshotFacts facts = new SnapshotFacts(SnapshotFacts.npcs(() -> definitions.npcs().snapshot(), states));
+            serverBehaviors = new BukkitServerBehaviors(this, scheduling, servers, facts, (String message) -> getLogger().info(message));
+            behaviors.facts(facts);
+            serverBehaviors.start();
             Map<String, AnimusCommands.Extra> extras = new HashMap<>();
             extras.put("proof", new ProofCommand());
             extras.put("shop", shops.shopCommand());
             extras.put("gui", guis.command());
             if (foliaProof != null) extras.put("foliaproof", new FoliaProofCommand());
-            extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsUnavailable)));
+            extras.put("build", new BuildCommands(() -> builds, () -> Optional.ofNullable(buildsRefusal())));
             extras.put("editor", new EditorCommands(() -> editor, commands));
             AnimusRuntime measuredRuntime = runtime;
             extras.put("debug", new DebugCommands(() -> metrics, debugWatch,
@@ -301,7 +289,7 @@ public final class AnimusPlugin extends JavaPlugin {
         if (serverBehaviors != null) { serverBehaviors.close(); serverBehaviors = null; }
         if (behaviors != null) behaviors.close();
         if (builtins != null) builtins.close();
-        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks, metricsTicks)) {
+        for (AutoCloseable ticks : java.util.Arrays.asList(hireTicks, screenTicks, triggerTicks, metricsTicks)) {
             if (ticks == null) continue;
             try { ticks.close(); }
             catch (Exception ignored) { /* The scheduler stops with the plugin. */ }
@@ -356,7 +344,7 @@ public final class AnimusPlugin extends JavaPlugin {
                 }
                 @Override public void unregister(Object provider) { getServer().getServicesManager().unregister(provider); }
             });
-            getLogger().info("React metrics: published as source " + ReactMetricCatalog.SOURCE_ID + " (" + ReactMetricCatalog.SPECS.size() + " metrics; see docs/react.md)");
+            getLogger().info("React metrics: published as source " + ReactMetricCatalog.SOURCE_ID + " (" + ReactMetricCatalog.SPECS.size() + " metrics; see the Animus debug and React metrics docs)");
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
             getLogger().warning("React is installed but its metric API is unavailable: " + failure.getClass().getSimpleName() + ": " + failure.getMessage());
         }
@@ -379,7 +367,8 @@ public final class AnimusPlugin extends JavaPlugin {
         java.util.function.Supplier<Map<String, EditorHost.Feature>> features = () -> {
             Map<String, EditorHost.Feature> available = new HashMap<>();
             available.put("combat", combat.status().toLowerCase(Locale.ROOT).contains("unavailable") ? EditorHost.Feature.no(combat.status()) : EditorHost.Feature.yes());
-            available.put("builds", buildsUnavailable == null ? EditorHost.Feature.yes() : EditorHost.Feature.no(buildsUnavailable));
+            String buildsRefused = buildsRefusal();
+            available.put("builds", buildsRefused == null ? EditorHost.Feature.yes() : EditorHost.Feature.no(buildsRefused));
             available.put("gloss", getServer().getPluginManager().isPluginEnabled("Gloss") ? EditorHost.Feature.yes() : EditorHost.Feature.no("Gloss is not installed"));
             available.put("placeholderapi", getServer().getPluginManager().isPluginEnabled("PlaceholderAPI") ? EditorHost.Feature.yes() : EditorHost.Feature.no("PlaceholderAPI is not installed"));
             return available;
@@ -411,8 +400,13 @@ public final class AnimusPlugin extends JavaPlugin {
                 tick -> getServer().getScheduler().runTaskTimer(this, tick, 1, 1)::cancel,
                 () -> { BehaviorCommands current = behaviors; return current == null ? null : current.triggers(); },
                 (String message) -> getLogger().info(message), null);
-        buildsUnavailable = builds.unavailable().orElse(null);
         getLogger().info(builds.status());
+    }
+
+    /** Why builds cannot run now, or null; follows {@code builds.enabled} in config.toml live. */
+    private String buildsRefusal() {
+        BuildService<Player, ItemStack> service = builds;
+        return service != null ? service.unavailable().orElse(null) : buildsUnavailable;
     }
 
     private void publishChoice(DialogueChoice choice) {
@@ -527,26 +521,6 @@ public final class AnimusPlugin extends JavaPlugin {
     }
 
     private void printSplash(String splash) {
-        StringBuilder colored = new StringBuilder();
-        ChatColor previous = null;
-        for (int index = 0; index < splash.length(); index++) {
-            char glyph = splash.charAt(index);
-            ChatColor color;
-            if (glyph == '█') {
-                color = ChatColor.DARK_GRAY;
-            } else if (glyph >= '─' && glyph <= '╿') {
-                color = ChatColor.GOLD;
-            } else {
-                color = ChatColor.GRAY;
-            }
-            if (color != previous) {
-                colored.append(color);
-                previous = color;
-            }
-            colored.append(glyph);
-        }
-        getServer().getConsoleSender().sendMessage(colored.toString()
-                .replace("Startup: READY", "Startup: " + ChatColor.GREEN + "READY" + ChatColor.GRAY)
-                + ChatColor.RESET);
+        getServer().getConsoleSender().sendMessage(AnimusSplash.colored(splash));
     }
 }

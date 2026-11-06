@@ -2,11 +2,13 @@ package art.arcane.animus.bukkit.runtime;
 
 import art.arcane.animus.core.text.RichText;
 import art.arcane.animus.bukkit.event.VirtualNpcInteractionEvent;
+import art.arcane.animus.bukkit.navigation.BukkitDoors;
 import art.arcane.animus.bukkit.navigation.BukkitTerrain;
 import art.arcane.animus.bukkit.navigation.TerrainChanges;
 import art.arcane.animus.bukkit.navigation.VirtualNpcWaypointEvent;
 import art.arcane.animus.bukkit.packet.NativePacketAdapter;
 import art.arcane.animus.core.AnimusRuntime;
+import art.arcane.animus.core.navigation.DoorPassage;
 import art.arcane.animus.core.navigation.MotionValidator;
 import art.arcane.animus.core.npc.NpcItem;
 import art.arcane.animus.core.presentation.BodyTransport;
@@ -47,6 +49,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     private final String minecraftVersion;
     private final NativePacketAdapter.Scheduler replies;
     private final BukkitTerrain terrain;
+    private DoorPassage.Doors doors = DoorPassage.NONE;
     private ChunkDelivery chunks;
     private PersistedNpcService<Player, ItemStack> service;
 
@@ -59,11 +62,14 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
     public static PersistedNpcService<Player, ItemStack> start(JavaPlugin plugin, AnimusRuntime runtime, String minecraftVersion, Executor io,
                                                                PersistedNpcService.Settings settings, NativePacketAdapter.Scheduler replies) {
         BukkitRuntimeHost host = new BukkitRuntimeHost(plugin, minecraftVersion, replies);
+        host.doors = BukkitDoors.bind(plugin, runtime, new BukkitDoors.Owners() {
+            @Override public boolean owns(World world, int chunkX, int chunkZ) { return Bukkit.isPrimaryThread(); }
+            @Override public void run(World world, int chunkX, int chunkZ, Runnable work) { if (plugin.isEnabled()) plugin.getServer().getScheduler().runTask(plugin, work); }
+        });
         host.service = new PersistedNpcService<>(host, runtime, io, settings);
-        if (host.service.available()) {
-            plugin.getServer().getPluginManager().registerEvents(host, plugin);
-            plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(host.service::terrainChanged), plugin);
-        }
+        // Registered even while disabled: every handler checks availability, and a hotload may enable the runtime.
+        plugin.getServer().getPluginManager().registerEvents(host, plugin);
+        plugin.getServer().getPluginManager().registerEvents(new TerrainChanges(host.service::terrainChanged), plugin);
         return host.service;
     }
 
@@ -119,6 +125,7 @@ public final class BukkitRuntimeHost implements RuntimeHost<Player, ItemStack>, 
         return world.rayTraceBlocks(new Location(world, eye.x(), eye.y(), eye.z()), new Vector(direction.x(), direction.y(), direction.z()),
                 distance, FluidCollisionMode.NEVER, true) == null;
     }
+    @Override public DoorPassage.Doors doors() { return doors; }
     @Override public boolean solid(String world, int x, int y, int z) {
         World loaded = terrain.world(world);
         if (loaded == null || y < loaded.getMinHeight() || y >= loaded.getMaxHeight() || !loaded.isChunkLoaded(x >> 4, z >> 4)) return false;

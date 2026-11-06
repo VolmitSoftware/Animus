@@ -225,7 +225,21 @@ class ModuleLoadingTest {
     }
     @Test void orchestratorDisabledSettingsDoNotInitializeArchives()throws Exception {
         Path modules=temp.resolve("modules");jar(modules,"base");var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,new ModuleSettings(false,4,1000,250),ignored->{});
-        try{runtime.start();assertEquals(ExtensionRuntime.State.DISABLED,runtime.status().state());assertTrue(runtime.status().invocations().closed());assertNull(System.getProperty("module.init.base"));assertTrue(runtime.startupStatuses().isEmpty());assertEquals(Outcome.Status.UNAVAILABLE,runtime.action(new Capabilities.Key("base","none"),new NpcHandle(UUID.randomUUID()),Optional.empty(),"{}").toCompletableFuture().get(1,TimeUnit.SECONDS).status());}finally{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(2)));}
+        try{runtime.start();assertEquals(ExtensionRuntime.State.DISABLED,runtime.status().state());assertNull(System.getProperty("module.init.base"));assertTrue(runtime.startupStatuses().isEmpty());assertEquals(Outcome.Status.UNAVAILABLE,runtime.action(new Capabilities.Key("base","none"),new NpcHandle(UUID.randomUUID()),Optional.empty(),"{}").toCompletableFuture().get(1,TimeUnit.SECONDS).status());}finally{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(2)));}
+    }
+    @Test void orchestratorHotloadSwitchLoadsArchivesOnceThenSuspendsAndResumes()throws Exception {
+        Path modules=temp.resolve("late-modules");jar(modules,"late");List<String> states=new CopyOnWriteArrayList<>();
+        var runtime=new ExtensionRuntime(modules,Platform.PAPER,DEFINITIONS,new ModuleSettings(false,4,1000,250),ignored->{},state->states.add(state.name()));
+        try{
+            runtime.start();assertNull(System.getProperty("module.init.late"));
+            runtime.settings(new ModuleSettings(true,4,1000,250));until(()->runtime.status().state()==ExtensionRuntime.State.READY);
+            assertEquals("true",System.getProperty("module.init.late"));assertEquals("ACTIVE",runtime.startupStatuses().getFirst().state());
+            runtime.settings(new ModuleSettings(false,4,1000,250));assertEquals(ExtensionRuntime.State.DISABLED,runtime.status().state());
+            assertFalse(runtime.catalogResolver().module("late").available());
+            runtime.settings(new ModuleSettings(true,4,1000,250));assertEquals(ExtensionRuntime.State.READY,runtime.status().state());
+            assertTrue(runtime.catalogResolver().module("late").available());assertEquals(1,runtime.startupStatuses().size(),"archives load once per server start");
+            assertEquals(List.of("DISABLED"),states,"the startup observer hears only the first terminal state");
+        }finally{runtime.close();assertTrue(runtime.awaitStopped(Duration.ofSeconds(3)));}
     }
     @Test void engineInitializationObserverReceivesExactlyOneTerminalStartupState()throws Exception {
         for(ExtensionRuntime.State expected:List.of(ExtensionRuntime.State.READY,ExtensionRuntime.State.DISABLED,ExtensionRuntime.State.FAILED)){
