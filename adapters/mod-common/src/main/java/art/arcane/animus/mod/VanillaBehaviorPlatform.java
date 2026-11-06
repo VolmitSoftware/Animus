@@ -189,6 +189,11 @@ final class VanillaBehaviorPlatform implements BehaviorPlatform {
         ItemStack stack = item.map(VanillaBehaviorPlatform::stack).orElse(ItemStack.EMPTY);
         PlatformRefusals.mapped(() -> { living.setEquipment(active.id(), slot, stack); return true; });
     }
+
+    @Override public void setAttribute(NpcHandle npc, String attribute, java.util.OptionalDouble value) {
+        NpcRuntime.ActiveNpc active = require(npc);
+        PlatformRefusals.mapped(() -> { living.setAttribute(active.id(), attribute, value); return true; });
+    }
     private static ItemStack stack(String key) {
         Identifier id = Identifier.tryParse(key);
         if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) throw PlatformRefusals.unknownItem(key);

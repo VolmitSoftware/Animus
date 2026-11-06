@@ -47,6 +47,7 @@ public final class AnimusCommandTree extends CommandGroup {
     ServiceCommands.Editor editor;
     BehaviorTree.Behaviors behaviors;
     TraitGroupCommands groups;
+    NpcCommands npc;
     DiagnosticCommands.Debug debug;
     DiagnosticCommands.Proof proof;
     DiagnosticCommands.FoliaProof foliaproof;
@@ -67,6 +68,7 @@ public final class AnimusCommandTree extends CommandGroup {
         editor = new ServiceCommands.Editor(services);
         behaviors = new BehaviorTree.Behaviors(services);
         groups = new TraitGroupCommands(services);
+        npc = new NpcCommands(services);
         debug = new DiagnosticCommands.Debug(services);
         proof = new DiagnosticCommands.Proof(services);
         foliaproof = new DiagnosticCommands.FoliaProof(services);
@@ -88,6 +90,7 @@ public final class AnimusCommandTree extends CommandGroup {
             case "state" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.stateBehaviors(); }
             case "execution" -> { BehaviorCommands current = services.behaviors().get(); yield current == null ? List.of() : current.executionIds(); }
             case "group-id" -> runtime().npcs().groups().groups().keySet().stream().limit(100).toList();
+            case "attribute" -> NpcCommands.ids();
             case "shop" -> services.shops().shopIds();
             case "gui" -> services.guis().guiIds();
             case "menu" -> services.guis().menuIds();

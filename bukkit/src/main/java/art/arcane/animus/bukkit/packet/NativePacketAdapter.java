@@ -5,6 +5,7 @@ import art.arcane.animus.core.presentation.PassengerGraph;
 
 import art.arcane.animus.core.npc.EquipmentSlot;
 import art.arcane.animus.core.npc.NpcAppearance;
+import art.arcane.animus.core.npc.NpcAttributes;
 import art.arcane.animus.core.presentation.BodyLook;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.presentation.BodyPose;
@@ -398,6 +399,25 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         return result;
     }
 
+    @Override public CompletionStage<Void> attributes(Player viewer, BodyTransport.Body presented, NpcAttributes values) {
+        Body body = checkBody(presented);
+        if (nativeApi.attributes == null) return CompletableFuture.completedFuture(null);
+        Session session = sessions.get(viewer.getUniqueId());
+        if (session == null || session.viewer != viewer || !current(session)) return unwatched("Viewer is not watched");
+        Presentation presentation = session.visible.get(body.entityId);
+        if (presentation == null || presentation.body != body) return failed("Body is not visible to this viewer");
+        Object packet;
+        try { packet = nativeApi.attributes.packet(body.entityId, body.nativeType, values); }
+        catch (ReflectiveOperationException | RuntimeException failure) { return failed("Body attribute update failed: " + failure.getClass().getSimpleName()); }
+        if (packet == null) return CompletableFuture.completedFuture(null);
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        submit(session, result, false, () -> {
+            if (session.visible.get(body.entityId) != presentation) throw new CancellationException("Body was despawned before its attributes");
+            write(session, body, PacketKind.METADATA, List.of(packet)).whenComplete((nothing, failure) -> complete(result, failure));
+        });
+        return result;
+    }
+
     @Override public boolean bonesAvailable() { return nativeApi.bones != null; }
 
     @Override public Bones createBones(BodyTransport.Body presented, List<BoneDisplay<ItemStack>> displays) {
@@ -774,6 +794,7 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
         private final EquipmentBindings equipment;
         private final NativePresentation presentation;
         private final NativeBones bones;
+        private final NativeAttributes attributes;
         private final Object textDisplayType, seatType;
         private final NativeEntityIds ids;
         private final Object entityRegistry, zeroVelocity, survival, playerSkinAccessor;
@@ -879,6 +900,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             try { boundBones = new NativeBones(dataValueCreate, craftPackage, entityType("minecraft:item_display"), entityType("minecraft:block_display"), textDisplayType, presentation); }
             catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC rig bones unavailable: " + missing.getClass().getSimpleName()); }
             bones = boundBones;
+            NativeAttributes boundAttributes = null;
+            try { boundAttributes = new NativeAttributes(identifierParse); }
+            catch (ReflectiveOperationException | RuntimeException | LinkageError missing) { plugin.getLogger().warning("NPC attributes unavailable: " + missing.getClass().getSimpleName()); }
+            attributes = boundAttributes;
             playerConnection = type("net.minecraft.server.level.ServerPlayer").getField("connection");
             networkConnection = field(type("net.minecraft.server.network.ServerCommonPacketListenerImpl"), "connection");
             channel = field(type("net.minecraft.network.Connection"), "channel");
@@ -982,8 +1007,10 @@ public final class NativePacketAdapter implements BodyTransport<Player, ItemStac
             if (body.playerInfo != null) values.add(dataValueCreate.invoke(null, playerSkinAccessor, (byte) 0x7f));
             if (presentation != null) values.addAll(presentation.bodyValues(look, body.typeKey));
             if (!values.isEmpty()) packets.add(metadataPacket.newInstance(body.entityId, values));
+            Object attributed = attributes == null ? null : attributes.packet(body.entityId, body.nativeType, look.traits().attributes());
+            if (attributed != null) packets.add(attributed);
             if (body.displayIds.length > 0) {
-                double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate());
+                double lift = BodyLook.lift(body.height, body.seat.seatY(), look.aboveNativeNameplate(), look.traits().attributes().scale());
                 for (int row = 0; row < body.displayIds.length; row++) {
                     BodyLook.TextRow text = look.rows().get(row);
                     packets.add(addEntity.newInstance(body.displayIds[row], body.displayUuids[row], pose.x(), pose.y() + body.height, pose.z(), 0f, 0f, textDisplayType, 0, zeroVelocity, 0d));
