@@ -1,5 +1,6 @@
 package art.arcane.animus.core.runtime;
 
+import art.arcane.animus.core.AnimusLog;
 import art.arcane.animus.core.AnimusRuntime;
 import art.arcane.animus.core.behavior.trigger.TriggerDispatcher;
 import art.arcane.animus.core.behavior.trigger.TriggerEvent;
@@ -615,7 +616,6 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (triggers != null) triggers.activated(npc);
         return true;
     }
-    /** Restarts the definition's own waypoint patrol from its first point, if it declares one and nothing else moves the NPC. */
     /**
      * Restarts the definition's own patrol if nothing else moves the NPC: a recording stopped earlier continues from its
      * cursor, a declared recording or reusable route is read again, and inline waypoints start from their first point.
@@ -629,7 +629,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             startRecording(value, RecordingRun.resume(held.source(), held.document(), Optional.of(held.state())));
             return true;
         }
-        value.waypoints = WaypointSettings.parse(value.spec.definition()).map((WaypointSettings declared) -> progress(value, declared)).orElse(null);
+        value.waypoints = WaypointSettings.parse(value.spec.definition()).map((WaypointSettings declared) -> progress(value, declared, WaypointProgress.INLINE)).orElse(null);
         if (value.waypoints != null) { beginLeg(value, value.waypoints.start(value.state.snapshot().position().point())); return true; }
         if (value.recordingSource != null) {
             value.heldRecording = null;
@@ -1108,10 +1108,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private void blockLeg(Route route, String reason) {
         if (route.recording != null) { failLeg(route, reason); return; }
         Value value = route.value;
-        if (!value.blockedWarned) {
-            value.blockedWarned = true;
-            host.warn(blockedLeg(value.spec.definition().id(), route.waypoint, route.origin, route.goal, reason,
-                    route.leg != null && value.movement.teleportsWhenStuck()));
+        if (exactPoint(route, reason)) return;
+        String id = value.spec.definition().id();
+        boolean once = AnimusLog.shared().debug();
+        if (!once || !value.blockedWarned) {
+            if (once) value.blockedWarned = true;
+            AnimusLog.shared().routine(BLOCKED_LEGS, id, blockedLeg(id, route.waypoint, route.origin, route.goal, reason,
+                    route.leg != null && value.movement.teleportsWhenStuck()), host::warn);
         }
         failLeg(route, reason);
     }
@@ -1119,6 +1122,9 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
      * The one log line for an NPC whose leg terrain blocks; shared by every runtime. An NPC whose movement teleports when
      * stuck goes on from the point instead of stopping.
      */
+    /** The routine diagnostic kind of a blocked leg, counted per NPC while debug mode is off. */
+    public static final String BLOCKED_LEGS = "NPCs hit blocked route legs";
+
     public static String blockedLeg(String npc, int waypoint, Vec3 from, WorldPosition to, String reason, boolean teleports) {
         return "NPC " + npc + (teleports ? " teleported" : " stopped") + ": terrain blocks its route leg" + (waypoint < 0 ? "" : " to waypoint " + waypoint)
                 + " from " + block(from) + " to " + block(to.point()) + " in " + to.world() + " (" + reason + "); later blocked legs of this NPC are not logged";
@@ -1151,8 +1157,8 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (route == null) value.navigationStatus = reason;
         else { routeStatus(route, reason, ""); failWatch(value, reason); }
     }
-    private WaypointProgress progress(Value value, WaypointSettings declared) {
-        return WaypointProgress.of(declared, value.spec.position().point(), value.spec.definition().uuid());
+    private WaypointProgress progress(Value value, WaypointSettings declared, String route) {
+        return WaypointProgress.of(declared, value.spec.position().point(), value.spec.definition().uuid(), route);
     }
     /** Queues the route's next leg. A pause leg holds the route's slot until its wait ends; a random or wander leg that cannot start pauses instead. */
     private void beginLeg(Value value, Optional<WaypointProgress.Leg> next) {
@@ -1166,6 +1172,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (!leg.pause()) {
             try { validateDestination(value, goal, waypointSettings.mode(), speed); }
             catch (IllegalArgumentException invalid) {
+                if (leg.jittered()) { beginLeg(value, progress.exact(leg)); return; }
                 value.navigationStatus = "invalid waypoint " + leg.arrival() + ": " + invalid.getMessage(); failWatch(value, value.navigationStatus);
                 Optional<WaypointProgress.Leg> retry = progress.failed(leg);
                 if (retry.isPresent()) beginLeg(value, retry);
@@ -1180,13 +1187,26 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
     private void failLeg(Route route, String reason) {
         if (route.recording != null) { recordingWalkFailed(route, reason); return; }
         Value value = route.value;
-        if (teleportStuck(route)) return;
+        if (exactPoint(route, reason) || teleportStuck(route)) return;
         WaypointProgress progress = value.waypoints;
         stopRoute(value, reason);
         if (progress == null || route.leg == null || !progress.retries() || value.route != null || !valueCurrent(value)) return;
         String failure = value.navigationStatus;
         beginLeg(value, progress.failed(route.leg));
         if (value.route != null) routeStatus(value.route, "waiting to retry", "after " + failure);
+    }
+    /** A leg aimed at a jittered goal that cannot finish walks to its exact point instead, once, before any stuck rule. */
+    private boolean exactPoint(Route route, String reason) {
+        Value value = route.value; WaypointProgress progress = value.waypoints;
+        if (route.leg == null || !route.leg.jittered() || progress == null || value.route != route || !routeCurrent(route)) return false;
+        Optional<WaypointProgress.Leg> exact = progress.exact(route.leg);
+        if (exact.isEmpty()) return false;
+        if (route.plan != null) route.plan.cancel();
+        if (route.execution != null) route.execution.cancel();
+        routeOrder.remove(route); value.route = null;
+        beginLeg(value, exact);
+        if (value.route != null) routeStatus(value.route, "queued", "exact point after " + reason);
+        return true;
     }
     /**
      * A waypoint leg of an NPC whose movement teleports when stuck ends at its point, as Citizens' default stuck action
@@ -1519,7 +1539,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             if (value.routeWatch != null && completion.settings.endless()) { value.navigationStatus = "invalid: a looping route never finishes"; failWatch(value, value.navigationStatus); continue; }
             if (value.waypoints != null && !value.waypoints.reload(completion.settings)) continue;
             stopRoute(value, "replaced by reusable route reload");
-            if (value.waypoints == null) value.waypoints = progress(value, completion.settings);
+            if (value.waypoints == null) value.waypoints = progress(value, completion.settings, task.source);
             beginLeg(value, value.waypoints.start(value.state.snapshot().position().point()));
         }
         for (int i = 0; i < MAX_ROUTE_READS && routeReads.size() < MAX_ROUTE_READS && !routeReadQueue.isEmpty(); i++) {
@@ -1733,7 +1753,7 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
         if (entry.value.lookClose != null) lookOrder.addLast(entry.value);
         if (!sameNpc && triggers != null) triggers.activated(spec.definition().uuid());
         Value created = entry.value;
-        created.waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(created, declared)).orElse(null);
+        created.waypoints = WaypointSettings.parse(spec.definition()).map((WaypointSettings declared) -> progress(created, declared, WaypointProgress.INLINE)).orElse(null);
         if (created.waypoints != null) beginLeg(created, created.waypoints.start(created.state.snapshot().position().point()));
         else requestRouteRead(entry.value);
     }
@@ -1972,10 +1992,13 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
                 || body.value.state.snapshot().revision() != validated.npc().revision()
                 || !DefinitionSpec.spawned(runtime.npcs().snapshot().get(body.value.spec.definition().id()))) return;
         accepted++;
-        if (triggers != null) triggers.interaction(body.body.uuid(), host.id(viewer.player),
-                action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT, false);
+        boolean consumed = triggers != null && triggers.interaction(body.body.uuid(), host.id(viewer.player),
+                action == RuntimeHost.Interaction.ATTACK ? TriggerEvent.Action.ATTACK : TriggerEvent.Action.INTERACT,
+                input.secondaryAction(), TriggerEvent.Interaction.hand(input.hand()), false);
         InteractionObserver observed = observer;
         if (observed != null) observed.accepted(body.body.uuid(), host.id(viewer.player), action == RuntimeHost.Interaction.ATTACK, validated.distance(), false);
+        // A behavior that consumes the click owns it: modules, riding and selection never see it.
+        if (consumed) return;
         InteractionListener<P> listener = interactions;
         if (listener != null && listener.interacted(viewer.player, body.body.uuid(), action == RuntimeHost.Interaction.ATTACK, input.secondaryAction())) return;
         // A sneaking interaction keeps its administrative meaning, so a rideable NPC can still be selected.
@@ -1984,9 +2007,11 @@ public final class PersistedNpcService<P, I> implements NpcRuntime<P, I> {
             if (refusal != null) host.tell(viewer.player, "Cannot ride " + body.value.spec.name() + ": " + refusal);
             return;
         }
-        if (host.permitted(viewer.player, "animus.admin")) {
-            select(host.id(viewer.player), body.value.spec.definition().id());
-            host.tell(viewer.player, "Selected " + body.value.spec.definition().id() + " via " + action);
+        // Click selection tells an administrator once; clicking the selected NPC again, as play does, stays quiet.
+        String id = body.value.spec.definition().id();
+        if (host.permitted(viewer.player, "animus.admin") && !selection(host.id(viewer.player)).filter(id::equals).isPresent()) {
+            select(host.id(viewer.player), id);
+            host.tell(viewer.player, "Selected " + id + " via " + action);
         }
     }
 

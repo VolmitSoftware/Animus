@@ -2,6 +2,7 @@ package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.npc.DefinitionBatch;
 import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import art.arcane.animus.core.storage.JsonDocuments;
 import com.google.gson.JsonArray;
@@ -17,7 +18,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -139,7 +139,7 @@ public final class DenizenImporter {
      * behavior with other content, or behavior state already stored for the {@code denizen} flags or quests of a
      * subject, stops the whole apply. A bound NPC that is not installed is listed and skipped.
      */
-    public Applied apply(DocumentStore store, String id, Collection<NpcDefinition> installed) throws IOException {
+    public Applied apply(DocumentStore store, String id, NpcRepository.Installed installed) throws IOException {
         if (!id.matches("[a-f0-9]{64}")) throw new IOException("Invalid import ID");
         Path staged = store.resolve(IMPORTS + "/" + id);
         Preview preview = read(staged, id);
@@ -165,7 +165,7 @@ public final class DenizenImporter {
             changes.add(new DocumentStore.Change(target, "missing", content));
         }
         Map<String, NpcDefinition> byId = new HashMap<>();
-        for (NpcDefinition definition : installed) byId.put(definition.id(), definition);
+        for (NpcDefinition definition : installed.definitions()) byId.put(definition.id(), definition);
         List<NpcDefinition> edited = new ArrayList<>();
         Map<String, String> expected = new HashMap<>();
         List<String> problems = new ArrayList<>();
@@ -186,7 +186,7 @@ public final class DenizenImporter {
             json.add("modules", modules);
             json.addProperty("revision", target.revision() + 1);
             edited.add(NpcDefinition.parse(JsonDocuments.write(json)));
-            expected.put(target.path(), store.hash(target.path()));
+            expected.put(target.path(), installed.expectedHash(target));
         }
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);

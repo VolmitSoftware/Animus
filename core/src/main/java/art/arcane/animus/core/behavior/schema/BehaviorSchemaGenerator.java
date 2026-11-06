@@ -17,6 +17,7 @@ import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.schema.CapabilitySchema;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.NpcPaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -439,6 +440,7 @@ public final class BehaviorSchemaGenerator {
             case "routine" -> new Field(described(reference("identifier"), "Starts this routine instead of entry."), "routine", false);
             case "cooldownTicks" -> new Field(described(range("integer", 0, TriggerCompiler.MAX_COOLDOWN_TICKS), "Overrides the configured cooldown, per trigger on each NPC."), "integer", false);
             case "action" -> new Field(described(choices(lower(TriggerBinding.InteractionFilter.values())), "Which hit fires it; interact by default."), "string", false);
+            case "consume" -> new Field(described(expressionText(), "An expression checked when the click arrives, over flags, facts, context.sneaking and context.hand. When it holds, the click belongs to this behavior: shops, hiring, GUIs, riding and selection do not see it. Omit to leave the click to them."), "expression", false);
             case "phase" -> new Field(described(choices(lower(TriggerBinding.Phase.values())), "Entering or leaving the radius."), "string", true);
             case "radius" -> {
                 JsonObject radius = type("number");
@@ -476,7 +478,7 @@ public final class BehaviorSchemaGenerator {
         JsonObject root = new JsonObject();
         root.addProperty("$schema", DIALECT);
         root.addProperty("title", "Animus NPC definition");
-        root.addProperty("description", "npcs/<group>/<id>.json. Unknown fields and modules are kept as written.");
+        root.addProperty("description", "npcs/<folders>/<id>.json, in npcs/ itself or up to " + NpcPaths.MAX_FOLDERS + " folders deep. Unknown fields and modules are kept as written.");
         root.addProperty("type", "object");
         root.add("required", strings("schemaVersion", "revision", "uuid", "id", "group", "name", "type", "spawned", "position"));
         JsonObject properties = new JsonObject();
@@ -484,7 +486,7 @@ public final class BehaviorSchemaGenerator {
         properties.add("revision", described(range("integer", 1, Long.MAX_VALUE), "Raise this with every edit."));
         properties.add("uuid", described(pattern("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"), "A canonical lowercase UUID that never changes."));
         properties.add("id", described(pattern(IDENTIFIER), "Matches the file name."));
-        properties.add("group", described(pattern(IDENTIFIER), "Matches the directory name."));
+        properties.add("group", described(pattern("^" + NpcPaths.FOLDER + "$"), "The folder under npcs/, empty for npcs/ itself. Animus sets it from where the file is."));
         properties.add("name", described(pattern(NONBLANK), "The displayed name."));
         properties.add("type", described(pattern("^[a-z0-9_]+:[a-z0-9_/]+$"), "An entity type such as minecraft:player."));
         properties.add("spawned", described(type("boolean"), "Whether the NPC is presented."));
@@ -504,7 +506,13 @@ public final class BehaviorSchemaGenerator {
         tags.addProperty("maxItems", NpcDefinition.MAX_TAGS);
         tags.addProperty("uniqueItems", true);
         properties.add("tags", tags);
-        JsonObject rig = described(type("object"), "The rig under rigs/ this NPC's body shows.");
+        JsonObject groups = described(type("array"), "Trait groups under groups/ whose values this NPC takes, in merge order; the NPC's own fields win.");
+        groups.add("items", pattern("^[a-z0-9][a-z0-9_-]{0,63}$"));
+        groups.addProperty("minItems", 1);
+        groups.addProperty("maxItems", NpcDefinition.MAX_GROUPS);
+        groups.addProperty("uniqueItems", true);
+        properties.add("groups", groups);
+        JsonObject rig =described(type("object"), "The rig under rigs/ this NPC's body shows.");
         rig.addProperty("additionalProperties", false);
         rig.add("required", strings("id"));
         rig.add("properties", property("id", pattern("^[a-z0-9_-]{1,64}:[a-z0-9_-]{1,64}(/[a-z0-9_-]{1,64}){0,14}$")).getAsJsonObject("properties"));
@@ -562,9 +570,23 @@ public final class BehaviorSchemaGenerator {
         properties.add("speed", range("number", 1, 5));
         properties.add("order", described(choices(List.of("sequence", "pingpong", "random", "wander")), "How the next point is chosen. sequence by default."));
         properties.add("loop", described(type("boolean"), "Order sequence only: start again from the first point."));
-        properties.add("waitTicks", described(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), "Wait before the first leg and after each arrival."));
+        properties.add("waitTicks", described(waitTicks(), "Wait before the first leg and after each arrival: ticks, or [min, max] drawn per arrival."));
+        properties.add("seed", described(choices(List.of("npc", "random")), "npc (default): choices stable per NPC and route, across restarts. random: mixed with the clock."));
+        properties.add("startOffset", described(choices(List.of("first", "random")), "random: start at a random point after a random 0..waitTicks wait. first by default."));
+        properties.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Leg goals move by a random whole-block x/z offset within this radius."));
         JsonObject point = coordinate();
-        point.getAsJsonObject("properties").add("waitTicks", described(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), "Wait after arriving here, instead of the route's."));
+        JsonObject pointFields = point.getAsJsonObject("properties");
+        pointFields.add("waitTicks", described(waitTicks(), "Wait after arriving here, instead of the route's."));
+        pointFields.add("jitter", described(range("integer", 0, WaypointSettings.MAXIMUM_JITTER), "Jitter radius of this point, instead of the route's."));
+        pointFields.add("weight", described(range("integer", 1, WaypointSettings.MAXIMUM_WEIGHT), "Order random only: how often this point is chosen."));
+        JsonObject junction = type("object");
+        junction.addProperty("additionalProperties", false);
+        junction.add("required", strings("to"));
+        JsonObject way = new JsonObject();
+        way.add("to", range("integer", 0, WaypointSettings.MAXIMUM_POINTS - 1));
+        way.add("weight", range("integer", 1, WaypointSettings.MAXIMUM_WEIGHT));
+        junction.add("properties", way);
+        pointFields.add("next", list(junction, 1, WaypointSettings.MAXIMUM_JUNCTIONS, "Order sequence only: after this point, the next point is drawn from these by weight."));
         properties.add("points", list(point, 0, WaypointSettings.MAXIMUM_POINTS, "Route points in the NPC's world; wander centres for order wander."));
         properties.add("guides", list(coordinate(), 0, WaypointSettings.MAXIMUM_GUIDES, "Order random only: helper nodes a path may pass through."));
         properties.add("linkDistance", described(range("number", WaypointSettings.MINIMUM_LINK_DISTANCE, WaypointSettings.MAXIMUM_LINK_DISTANCE), "Order random only: the longest link between two nodes."));
@@ -623,8 +645,43 @@ public final class BehaviorSchemaGenerator {
         rules.add(onlyWithOrder("guides", "random", false));
         rules.add(onlyWithOrder("linkDistance", "random", false));
         rules.add(onlyWithOrder("wander", "wander", false));
+        rules.add(pointOnlyWithOrder("weight", "random", false));
+        rules.add(pointOnlyWithOrder("next", "sequence", true));
+        JsonObject noJitter = new JsonObject();
+        noJitter.add("if", orderIs("wander"));
+        JsonObject refused = new JsonObject();
+        refused.add("not", anyRequired(List.of("jitter")));
+        noJitter.add("then", refused);
+        rules.add(noJitter);
         navigation.add("allOf", rules);
         return navigation;
+    }
+    private static JsonObject waitTicks() {
+        JsonObject between = list(range("integer", 0, WaypointSettings.MAXIMUM_WAIT), 2, 2, "[min, max] in ticks, min not above max.");
+        JsonArray either = new JsonArray();
+        either.add(range("integer", 0, WaypointSettings.MAXIMUM_WAIT));
+        either.add(between);
+        JsonObject wait = new JsonObject();
+        wait.add("oneOf", either);
+        return wait;
+    }
+    /** A point field that only one order reads; the default order counts when it is the default. */
+    private static JsonObject pointOnlyWithOrder(String field, String order, boolean isDefault) {
+        JsonObject rule = new JsonObject();
+        JsonObject other = new JsonObject();
+        if (isDefault) {
+            other.add("required", strings("order"));
+            JsonObject same = new JsonObject();
+            same.add("properties", property("order", constant(order)).getAsJsonObject("properties"));
+            other.add("not", same);
+        } else other.add("not", orderIs(order));
+        rule.add("if", other);
+        JsonObject without = new JsonObject();
+        without.add("not", anyRequired(List.of(field)));
+        JsonObject items = new JsonObject();
+        items.add("items", without);
+        rule.add("then", property("points", items));
+        return rule;
     }
     private static JsonObject coordinate() {
         JsonObject point = type("object");

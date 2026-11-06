@@ -1,5 +1,6 @@
 package art.arcane.animus.bukkit;
 
+import art.arcane.animus.core.command.CombatControl;
 import art.arcane.animus.core.hire.CombatGuarding;
 import art.arcane.animus.core.hire.HireDesk;
 import art.arcane.animus.bukkit.runtime.RegionNpcRuntime;
@@ -66,7 +67,6 @@ import org.bukkit.scheduler.BukkitTask;
  */
 final class RuntimeCombatService implements Listener, AutoCloseable {
     private record Registration(String id, VirtualNpcState state, BukkitCombatBridge.Combatant combatant) {}
-    private static final String USAGE = CombatModule.MODULE_USAGE + " | attack <npc-id> <target-uuid> [damage] | target <npc-id> <mob-uuid>|stop";
     /** How often targetable NPCs look for idle mobs, how far, how many mobs one NPC draws at once, and NPCs per pass. */
     static final int TARGETABLE_SCAN_TICKS = 20, TARGETABLE_PER_NPC = 3, TARGETABLE_NPCS_PER_PASS = 32;
     static final double TARGETABLE_RANGE = 16;
@@ -122,45 +122,56 @@ final class RuntimeCombatService implements Listener, AutoCloseable {
                 + (capability.mobControlUnavailableReason() == null ? "" : " | " + capability.mobControlUnavailableReason());
     }
 
-    String execute(String[] args) {
-        if (args.length > 0 && args[0].equals("combat")) {
-            if (args.length == 1 || args.length == 2 && args[1].equals("status")) return status();
-            if (regions != null) {
-                if (regionUnavailable != null) throw new IllegalStateException("Combat module " + regionUnavailable);
-                return regions.combatCommand(args);
+    /** The platform side of {@code /animus combat}, {@code attack} and {@code target}. Owner thread only. */
+    CombatControl control() {
+        return new CombatControl() {
+            @Override public String status() { return RuntimeCombatService.this.status(); }
+            @Override public String npc(String npc, Operation operation, Optional<UUID> target) {
+                if (regions != null) {
+                    if (regionUnavailable != null) throw new IllegalStateException("Combat module " + regionUnavailable);
+                    return regions.combatCommand(npc, operation, target);
+                }
+                return module.command(npc, operation, target);
             }
-            return module.execute(args);
-        }
+            @Override public String attack(String npc, UUID target, double damage) {
+                LivingEntity victim = manual(target);
+                AttackProfile attack = new AttackProfile(damage, AttackProfile.DEFAULT.reach(), AttackProfile.DEFAULT.cooldownTicks());
+                BukkitCombatBridge.AttackResult result = registration(npc).combatant().attack(victim, attack);
+                return "Attack " + npc + ": " + result.status() + " applied=" + result.appliedDamage()
+                        + " health-before=" + result.healthBefore() + " health-after=" + result.healthAfter();
+            }
+            @Override public String control(String npc, UUID mob) {
+                if (!(manual(mob) instanceof Mob controlled)) throw new IllegalArgumentException("Target control requires an existing supported mob");
+                BukkitCombatBridge.MobLease lease = registration(npc).combatant().control(controlled, MobProfile.DEFAULT);
+                leases.put(mob, lease);
+                return "Mob control started npc=" + npc + " mob=" + mob + " lifetime-ticks=" + MobProfile.DEFAULT.lifetimeTicks();
+            }
+            @Override public String releaseMobs(String npc) {
+                manualAvailable();
+                int released = 0;
+                for (Registration registration : List.copyOf(registrations.values())) if (registration.id().equals(npc)) {
+                    for (Map.Entry<UUID, BukkitCombatBridge.MobLease> entry : List.copyOf(leases.entrySet())) if (entry.getValue().npcId().equals(registration.combatant().npcId())) {
+                        BukkitCombatBridge.MobLease previous = entry.getValue();
+                        previous.close(); leases.remove(entry.getKey(), previous); released++;
+                    }
+                }
+                return "Released " + released + " mob control leases for " + npc;
+            }
+        };
+    }
+
+    /** Manual attack and mob control run on the main-thread bridge only. */
+    private void manualAvailable() {
         if (regions != null) throw new IllegalStateException("Manual attack and mob control are " + BukkitCombatBridge.FOLIA_UNAVAILABLE);
         if (!bridge.available()) throw new IllegalStateException(status());
         prune();
-        if (args.length == 3 && args[0].equals("target") && args[2].equals("stop")) {
-            int released = 0;
-            for (Registration registration : List.copyOf(registrations.values())) if (registration.id().equals(args[1])) {
-                for (Map.Entry<UUID, BukkitCombatBridge.MobLease> entry : List.copyOf(leases.entrySet())) if (entry.getValue().npcId().equals(registration.combatant().npcId())) {
-                    BukkitCombatBridge.MobLease previous = entry.getValue();
-                    previous.close(); leases.remove(entry.getKey(), previous); released++;
-                }
-            }
-            return "Released " + released + " mob control leases for " + args[1];
-        }
-        if (args.length < 3 || args.length > 4 || args[0].equals("target") && args.length != 3) throw new IllegalArgumentException(USAGE);
-        UUID targetId = CombatModule.uuid(args[2]);
-        Entity entity = plugin.getServer().getEntity(targetId);
-        if (!(entity instanceof LivingEntity target)) throw new IllegalArgumentException("Target must be a loaded living entity");
-        if (args[0].equals("attack")) {
-            double amount = args.length == 4 ? Double.parseDouble(args[3]) : AttackProfile.DEFAULT.damage();
-            AttackProfile attack = new AttackProfile(amount, AttackProfile.DEFAULT.reach(), AttackProfile.DEFAULT.cooldownTicks());
-            Registration npc = registration(args[1]);
-            BukkitCombatBridge.AttackResult result = npc.combatant().attack(target, attack);
-            return "Attack " + args[1] + ": " + result.status() + " applied=" + result.appliedDamage()
-                    + " health-before=" + result.healthBefore() + " health-after=" + result.healthAfter();
-        }
-        if (!args[0].equals("target") || !(target instanceof Mob mob)) throw new IllegalArgumentException("Target control requires an existing supported mob");
-        Registration npc = registration(args[1]);
-        BukkitCombatBridge.MobLease lease = npc.combatant().control(mob, MobProfile.DEFAULT);
-        leases.put(targetId, lease);
-        return "Mob control started npc=" + args[1] + " mob=" + targetId + " lifetime-ticks=" + MobProfile.DEFAULT.lifetimeTicks();
+    }
+
+    private LivingEntity manual(UUID target) {
+        manualAvailable();
+        Entity entity = plugin.getServer().getEntity(target);
+        if (!(entity instanceof LivingEntity living)) throw new IllegalArgumentException("Target must be a loaded living entity");
+        return living;
     }
 
     /** Behavior operations. A refusal carries the reason back to the behavior. Owner thread only. */

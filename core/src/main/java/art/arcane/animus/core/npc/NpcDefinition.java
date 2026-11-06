@@ -2,6 +2,7 @@ package art.arcane.animus.core.npc;
 
 import art.arcane.animus.core.combat.CombatSettings;
 import art.arcane.animus.core.storage.JsonDocuments;
+import art.arcane.animus.core.storage.NpcPaths;
 import art.arcane.animus.core.control.RideSettings;
 import art.arcane.animus.core.mount.MountDeclaration;
 import art.arcane.animus.core.navigation.WaypointSettings;
@@ -13,9 +14,11 @@ import java.util.*;
 public final class NpcDefinition {
     /** The most labels one NPC may carry. */
     public static final int MAX_TAGS = 32;
+    /** The most trait groups one NPC may list. */
+    public static final int MAX_GROUPS = 16;
     private final JsonObject data;
     private final boolean spawned, imported;
-    private final List<String> behaviors, tags;
+    private final List<String> behaviors, tags, groups;
     private NpcDefinition(JsonObject data) {
         this.data = data.deepCopy();
         spawned = data.get("spawned").getAsBoolean();
@@ -26,6 +29,16 @@ public final class NpcDefinition {
         List<String> labels = new ArrayList<>();
         if (data.has("tags")) for (JsonElement tag : data.getAsJsonArray("tags")) labels.add(tag.getAsString());
         tags = List.copyOf(labels);
+        List<String> members = new ArrayList<>();
+        if (data.has("groups")) for (JsonElement group : data.getAsJsonArray("groups")) members.add(group.getAsString());
+        groups = List.copyOf(members);
+    }
+
+    /** A definition from an object that has already passed {@link #validate}. */
+    static NpcDefinition validated(JsonObject object) throws IOException {
+        List<String> errors = validate(object);
+        if (!errors.isEmpty()) throw new IOException(String.join("; ", errors));
+        return new NpcDefinition(object);
     }
 
     public static NpcDefinition parse(String json) throws IOException {
@@ -35,6 +48,21 @@ public final class NpcDefinition {
         return new NpcDefinition(object);
     }
 
+    /**
+     * The definition stored at {@code path}. The file name must be its id; the folder it sits in is its group, so a file
+     * the owner moved to another folder keeps working and its {@code group} follows on the next save.
+     */
+    public static NpcDefinition read(String path, String json) throws IOException {
+        if (!NpcPaths.file(path)) throw new IOException("$.id/group: " + path + " is not npcs/<folders>/<id>.json with at most " + NpcPaths.MAX_FOLDERS + " folders");
+        NpcDefinition definition = parse(json);
+        if (!definition.id().equals(NpcPaths.idOf(path))) throw new IOException("$.id: must match the file name " + NpcPaths.idOf(path) + ".json");
+        String folder = NpcPaths.folderOf(path);
+        if (definition.group().equals(folder)) return definition;
+        JsonObject moved = definition.json();
+        moved.addProperty("group", folder);
+        return new NpcDefinition(moved);
+    }
+
     public static List<String> validate(JsonObject object) {
         List<String> errors = new ArrayList<>();
         integer(object, "schemaVersion", 1, 1, errors);
@@ -42,10 +70,10 @@ public final class NpcDefinition {
         String uuid = string(object, "uuid", errors);
         try { if (!UUID.fromString(uuid).toString().equals(uuid)) throw new IllegalArgumentException(); }
         catch (IllegalArgumentException e) { errors.add("$.uuid: expected canonical UUID"); }
-        for (String key : List.of("id", "group")) {
-            if (!string(object, key, errors).matches("[a-z0-9][a-z0-9_-]{0,63}"))
-                errors.add("$." + key + ": expected 1–64 lowercase letters, digits, _ or -");
-        }
+        if (!string(object, "id", errors).matches(NpcPaths.SEGMENT))
+            errors.add("$.id: expected 1–64 lowercase letters, digits, _ or -");
+        if (!string(object, "group", errors).matches(NpcPaths.FOLDER))
+            errors.add("$.group: expected the folder under npcs/: empty, or up to " + NpcPaths.MAX_FOLDERS + " names of 1–64 lowercase letters, digits, _ or - joined by /");
         if (!NpcAppearance.displayText(string(object, "name", errors)))
             errors.add("$.name: expected at most " + NpcAppearance.MAX_TEXT + " characters without control characters");
         if (!string(object, "type", errors).matches("[a-z0-9_]+:[a-z0-9_/]+"))
@@ -85,6 +113,21 @@ public final class NpcDefinition {
                     if (!tag.isJsonPrimitive() || !tag.getAsJsonPrimitive().isString() || !tag.getAsString().matches("[a-z0-9][a-z0-9_-]{0,31}"))
                         errors.add("$.tags[" + i + "]: expected 1–32 lowercase letters, digits, _ or -");
                     else if (!seen.add(tag.getAsString())) errors.add("$.tags[" + i + "]: duplicate tag");
+                }
+            }
+        }
+        if (object.has("groups")) {
+            JsonElement value = object.get("groups");
+            if (!value.isJsonArray() || value.getAsJsonArray().isEmpty() || value.getAsJsonArray().size() > MAX_GROUPS)
+                errors.add("$.groups: expected an array of 1-" + MAX_GROUPS + " group ids");
+            else {
+                Set<String> seen = new HashSet<>();
+                JsonArray groups = value.getAsJsonArray();
+                for (int i = 0; i < groups.size(); i++) {
+                    JsonElement group = groups.get(i);
+                    if (!group.isJsonPrimitive() || !group.getAsJsonPrimitive().isString() || !group.getAsString().matches(GroupDocument.ID))
+                        errors.add("$.groups[" + i + "]: expected 1-64 lowercase letters, digits, _ or -");
+                    else if (!seen.add(group.getAsString())) errors.add("$.groups[" + i + "]: duplicate group");
                 }
             }
         }
@@ -148,7 +191,9 @@ public final class NpcDefinition {
     /** The owning player, when one is recorded. Plugins and modules may use it for their own permission rules. */
     public Optional<UUID> owner() { return data.has("owner") ? Optional.of(UUID.fromString(data.get("owner").getAsString())) : Optional.empty(); }
     public long revision() { return data.get("revision").getAsLong(); }
-    public String path() { return "npcs/" + group() + "/" + id() + ".json"; }
+    public String path() { return NpcPaths.path(group(), id()); }
+    /** The id with its folder, {@code world/town/blacksmith}, or the bare id for a file directly in {@code npcs/}. */
+    public String qualifiedId() { return group().isEmpty() ? id() : group() + "/" + id(); }
     public boolean spawned() { return spawned; }
     /** True for a definition installed by an import, which keeps its {@code migration} record. */
     public boolean imported() { return imported; }
@@ -156,6 +201,8 @@ public final class NpcDefinition {
     public List<String> behaviors() { return behaviors; }
     /** Labels the editor uses to find and group NPCs; empty when none are declared. */
     public List<String> tags() { return tags; }
+    /** Trait groups whose values this NPC takes, in merge order; empty when none are listed. */
+    public List<String> groups() { return groups; }
     public JsonObject json() { return data.deepCopy(); }
     public String serialize() { return JsonDocuments.write(data); }
 }

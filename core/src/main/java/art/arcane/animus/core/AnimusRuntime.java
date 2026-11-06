@@ -52,6 +52,8 @@ public final class AnimusRuntime implements AutoCloseable {
 
     public synchronized void start() throws IOException {
         if (settings != null) throw new IllegalStateException(BuildIdentity.NAME + " is already running or closing");
+        // Debug mode lasts until the server restarts; a new start begins quiet.
+        AnimusLog.shared().debug(false);
         if (fileWork != null) {
             MutationLane.Status previous = fileWork.status();
             if (previous.cleanupState() != MutationLane.CleanupState.SUCCEEDED || !previous.quiescent())

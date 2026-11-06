@@ -1,5 +1,6 @@
 package art.arcane.animus.core.migration;
 
+import art.arcane.animus.core.npc.GroupDocument;
 import art.arcane.animus.core.npc.NpcDefinition;
 import art.arcane.animus.core.presentation.BodyRules;
 import art.arcane.animus.core.runtime.DefinitionSpec;
@@ -18,13 +19,13 @@ import java.util.*;
 
 /** Local, loss-preserving conversion. Conversion status describes data, never gameplay parity. */
 public final class CitizensImporter {
-    public static final int CONVERTER_VERSION = 11;
+    public static final int CONVERTER_VERSION = 12;
     /**
      * A staged or installed imported definition path: {@code <source prefix>-<source number>}. Citizens uses the
      * {@code citizens} prefix; module converters use theirs. Groups other than {@code citizens} come from converter version 7.
      */
     static final String NPC_PATH = "npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,62}-[0-9]+\\.json";
-    static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+)\\.json";
+    static final String BUNDLE_PATH = "(?:npcs/[a-z0-9][a-z0-9_-]{0,63}/[a-z0-9][a-z0-9_-]{0,62}-[0-9]+|skins/[a-f0-9]{64}|behaviors/citizens/(?:text|commands)-[0-9]+|groups/citizens-[a-f0-9]{8})\\.json";
     /** A generated behavior of converter version 8 and later. */
     static final String BEHAVIOR_PATH = "behaviors/citizens/(?:text|commands)-[0-9]+\\.json";
     public enum Status { CONVERTED, REQUIRES_INTEGRATION, REQUIRES_REVIEW, UNSUPPORTED_PRESERVED }
@@ -35,6 +36,8 @@ public final class CitizensImporter {
         @Override public JsonObject summary() { return summary.deepCopy(); }
         /** Generated behavior documents in the bundle; none before converter version 8. */
         public int behaviors() { return summary.has("behaviors") ? summary.get("behaviors").getAsInt() : 0; }
+        /** Trait groups factored out with the {@code factor-groups} option; none without it. */
+        public int groups() { return summary.has("groups") ? summary.get("groups").getAsInt() : 0; }
         /** Counts only: routes and their points, look-close and generated behaviors. */
         public String conversions() {
             if (!summary.has("conversions")) return "nothing (converter v" + converterVersion() + ")";
@@ -57,11 +60,16 @@ public final class CitizensImporter {
         return "Citizens draws skins only on player NPCs, so this " + body + " never showed it; kept for when the NPC becomes a player";
     }
 
-    public Preview preview(Path source, Path destination, Map<String, String> worldMap) throws IOException {
-        try (DocumentStore store = new DocumentStore(destination)) { return preview(source, store, worldMap); }
+    public Preview preview(Path source, Path destination, Map<String, String> worldMap) throws IOException { return preview(source, destination, worldMap, false); }
+
+    public Preview preview(Path source, Path destination, Map<String, String> worldMap, boolean factorGroups) throws IOException {
+        try (DocumentStore store = new DocumentStore(destination)) { return preview(source, store, worldMap, factorGroups); }
     }
 
-    public Preview preview(Path source, DocumentStore store, Map<String, String> worldMap) throws IOException {
+    public Preview preview(Path source, DocumentStore store, Map<String, String> worldMap) throws IOException { return preview(source, store, worldMap, false); }
+
+    /** With {@code factorGroups}, NPCs that share their groupable fields are factored into trait groups ({@link GroupFactoring}). */
+    public Preview preview(Path source, DocumentStore store, Map<String, String> worldMap, boolean factorGroups) throws IOException {
         String original = JsonDocuments.read(source);
         JsonObject options = new JsonObject();
         for (var entry : new TreeMap<>(worldMap).entrySet()) {
@@ -69,7 +77,7 @@ public final class CitizensImporter {
                 throw new IOException("World mappings require nonblank source and destination names");
             options.addProperty(entry.getKey(), entry.getValue());
         }
-        String id = JsonDocuments.hash("animus-citizens-v" + CONVERTER_VERSION + "\n" + JsonDocuments.hash(original) + "\n" + options);
+        String id = JsonDocuments.hash("animus-citizens-v" + CONVERTER_VERSION + "\n" + JsonDocuments.hash(original) + "\n" + options + (factorGroups ? "\nfactor-groups" : ""));
         {
             Path imports = store.resolve("imports");
             Files.createDirectories(imports);
@@ -116,6 +124,7 @@ public final class CitizensImporter {
                 Set<Integer> numericIds = new HashSet<>();
                 int valid = 0;
                 Set<String> skins = new HashSet<>();
+                Map<String, JsonObject> deferred = new LinkedHashMap<>();
                 for (var npc : root.getAsJsonObject("npc").entrySet()) {
                     String key = npc.getKey();
                     if (!key.matches("0|[1-9][0-9]{0,9}")) throw new IOException("$.npc." + key + ": invalid numeric ID");
@@ -171,7 +180,7 @@ public final class CitizensImporter {
                         position.addProperty("pitch", facing.pitch());
                     });
                     definition.add("position", position);
-                    definition.addProperty("group", group(world, position.get("x"), position.get("z")));
+                    definition.addProperty("group", group(world));
                     for (Map.Entry<String, JsonElement> field : presentation.fields().entrySet()) definition.add(field.getKey(), field.getValue());
                     // A skin is only drawn on a player body; any other body keeps it under citizens:review.
                     boolean skinApplied = traits.has("skintrait") && definition.get("type").getAsString().equals(BodyRules.PLAYER);
@@ -275,9 +284,26 @@ public final class CitizensImporter {
                     if (!errors.isEmpty()) issues.add("citizens-" + key + ": " + String.join("; ", errors));
                     else valid++;
 
-                    writeBundle(temporary, "npcs/" + definition.get("group").getAsString() + "/citizens-" + key + ".json", JsonDocuments.write(definition), manifest);
+                    String npcPath = "npcs/" + definition.get("group").getAsString() + "/citizens-" + key + ".json";
+                    if (factorGroups) deferred.put(npcPath, definition);
+                    else writeBundle(temporary, npcPath, JsonDocuments.write(definition), manifest);
                     DocumentStore.atomic(temporary.resolve("records/" + key + ".json"), JsonDocuments.write(record));
                     DocumentStore.atomic(temporary.resolve("reports/" + key + ".json"), JsonDocuments.write(report));
+                }
+                if (factorGroups) {
+                    GroupFactoring.Result factored = GroupFactoring.factor(deferred);
+                    for (Map.Entry<String, JsonObject> definition : factored.definitions().entrySet())
+                        writeBundle(temporary, definition.getKey(), JsonDocuments.write(definition.getValue()), manifest);
+                    JsonArray groups = new JsonArray();
+                    for (GroupFactoring.Group group : factored.groups()) {
+                        writeBundle(temporary, group.path(), group.content(), manifest);
+                        JsonObject entry = new JsonObject();
+                        entry.addProperty("id", group.id());
+                        entry.addProperty("members", group.members().size());
+                        groups.add(entry);
+                    }
+                    summary.addProperty("groups", factored.groups().size());
+                    summary.add("factoredGroups", groups);
                 }
                 summary.addProperty("records", numericIds.size());
                 summary.addProperty("valid", valid);
@@ -354,9 +380,8 @@ public final class CitizensImporter {
         Set<UUID> identities = new HashSet<>();
         Set<String> ids = new HashSet<>();
         Path active = store.resolve("npcs");
-        for (Path path : JsonDocumentTree.files(active)) {
-            NpcDefinition definition = NpcDefinition.parse(JsonDocuments.read(path));
-            if (!store.resolve(definition.path()).equals(path)) throw new IOException("Existing NPC path mismatch: " + path);
+        for (Path path : JsonDocumentTree.files(active, NpcPaths.TREE_DEPTH)) {
+            NpcDefinition definition = NpcDefinition.read("npcs/" + active.relativize(path).toString().replace('\\', '/'), JsonDocuments.read(path));
             if (!identities.add(definition.uuid()) || !ids.add(definition.id())) throw new IOException("Existing NPC identity collision: " + path);
         }
         if ((long) identities.size() + preview.records() > 100_000) throw new IOException("NPC definition limit exceeded: 100000");
@@ -364,7 +389,7 @@ public final class CitizensImporter {
         int npcCount = 0;
         Set<String> requiredSkins = new HashSet<>();
         Set<String> bundledSkins = new HashSet<>();
-        int behaviorCount = 0;
+        int behaviorCount = 0, groupCount = 0;
         for (var document : documents.entrySet()) {
             String relative = document.getKey();
             if (!relative.matches(BUNDLE_PATH)) throw new IOException("Invalid bundle path: " + relative);
@@ -380,6 +405,11 @@ public final class CitizensImporter {
                 JsonObject json = definition.json();
                 if (json.has("skin")) requiredSkins.add("skins/" + json.get("skin").getAsString() + ".json");
                 npcCount++;
+            } else if (relative.startsWith("groups/")) {
+                groupCount++;
+                if (GroupDocument.parse(relative.substring(7, relative.length() - 5), content).group().isEmpty()) throw new IOException("Invalid factored group: " + relative);
+                if (before != null && !before.equals(content)) throw new IOException("Group collision: " + relative + " exists with other content");
+                if (before != null) continue;
             } else if (relative.startsWith("behaviors/")) {
                 behaviorCount++;
                 if (before != null && !before.equals(content)) throw new IOException("Behavior collision: " + relative + " exists with other content");
@@ -392,7 +422,7 @@ public final class CitizensImporter {
             }
             changes.add(new DocumentStore.Change(relative, "missing", content));
         }
-        if (npcCount != preview.records() || bundledSkins.size() != preview.skins() || behaviorCount != preview.behaviors() || !bundledSkins.containsAll(requiredSkins))
+        if (npcCount != preview.records() || bundledSkins.size() != preview.skins() || behaviorCount != preview.behaviors() || groupCount != preview.groups() || !bundledSkins.containsAll(requiredSkins))
             throw new IOException("Incomplete import manifest or missing referenced skins");
         JsonObject receipt = new JsonObject();
         receipt.addProperty("importId", id);
@@ -402,28 +432,16 @@ public final class CitizensImporter {
         return store.commit(changes);
     }
 
-    /** Blocks per side of a Minecraft region file, the area one import folder covers. */
-    public static final int GROUP_AREA = 512;
-
     /**
-     * The folder an imported NPC goes in: its world after world mapping and the region file it stands in, such as
-     * {@code world-r0_-1} for {@code region/r.0.-1.mca}. The world becomes a lowercase path segment of at most 48
-     * characters. Without usable x and z coordinates the folder is the world alone, and without a world it is
-     * {@code citizens}. The same save always gives the same folders.
+     * The folder an imported NPC goes in: its world after world mapping, as a lowercase path segment of at most 48
+     * characters, or {@code citizens} without a world. Files are named by their unique {@code citizens-<id>}, so the
+     * same save always gives the same files.
      */
-    public static String group(String world, JsonElement x, JsonElement z) {
+    public static String group(String world) {
         String lowered = world.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]+", "-").replaceAll("-{2,}", "-")
                 .replaceAll("^[^a-z0-9]+", "").replaceAll("[-_]+$", "");
         if (lowered.length() > 48) lowered = lowered.substring(0, 48).replaceAll("[-_]+$", "");
-        if (lowered.isEmpty()) return "citizens";
-        if (!coordinate(x) || !coordinate(z)) return lowered;
-        long regionX = (long) Math.floor(x.getAsDouble() / GROUP_AREA), regionZ = (long) Math.floor(z.getAsDouble() / GROUP_AREA);
-        return lowered + "-r" + regionX + "_" + regionZ;
-    }
-
-    private static boolean coordinate(JsonElement value) {
-        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()
-                && Double.isFinite(value.getAsDouble()) && Math.abs(value.getAsDouble()) <= 30_000_000;
+        return lowered.isEmpty() ? "citizens" : lowered;
     }
 
     /** A Citizens {@code controllable} trait that is on becomes a disabled {@code animus:riding} section waiting for review. */

@@ -2,7 +2,7 @@ package art.arcane.animus.core.migration;
 
 import art.arcane.animus.core.behavior.catalog.ServerBehaviorList;
 import art.arcane.animus.core.storage.JsonDocuments;
-import art.arcane.animus.core.npc.NpcDefinition;
+import art.arcane.animus.core.npc.NpcRepository;
 import art.arcane.animus.core.storage.DocumentStore;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -89,7 +88,7 @@ final class DenizenDropIn {
     }
 
     /** Applies the staged import, binding behaviors to the installed NPCs. Adds its transaction to {@code transactions}. */
-    static List<String> apply(DocumentStore store, JsonObject state, Collection<NpcDefinition> installed, JsonArray transactions) throws IOException {
+    static List<String> apply(DocumentStore store, JsonObject state, NpcRepository.Installed installed, JsonArray transactions) throws IOException {
         JsonObject part = state.getAsJsonObject("denizen");
         DenizenImporter.Applied applied = new DenizenImporter().apply(store, part.get("importId").getAsString(), installed);
         transactions.add(applied.transaction());

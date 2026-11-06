@@ -84,6 +84,7 @@ class SharedSchemaContractTest {
                 try { PackManifest.parse(source, id); yield List.of(); }
                 catch (IllegalArgumentException invalid) { yield List.of(invalid.getMessage()); }
             }
+            case "group" -> art.arcane.animus.core.npc.GroupDocument.parse(id, source).problems();
             case "shop" -> ShopDocument.parse(id, source).problems();
             case "inventory" -> GuiDocument.parse(id, source).problems();
             case "hologram" -> art.arcane.animus.core.gui.HologramDocument.parse(id, source).problems();

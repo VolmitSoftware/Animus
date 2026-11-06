@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000201",
+  "id": "citizens-1",
+  "group": "survival-world",
+  "name": "true",
+  "type": "minecraft:villager",
+  "spawned": false,
+  "migration": {
+    "importId": "5d73934e0a7c844e7e84883abe92895f8fd77ffe2dd4ac00293449197c2cc131",
+    "citizensId": 1,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "Survival World",
+    "x": 1,
+    "y": 2,
+    "z": 3,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "villager",
+      "location": {
+        "world": "Survival World",
+        "x": 1,
+        "y": 2,
+        "z": 3
+      }
+    }
+  }
+}

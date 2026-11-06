@@ -426,6 +426,11 @@ public final class NativeProtocolClient {
                 send(new ServerboundInteractPacket(command.get("id").getAsInt(), InteractionHand.MAIN_HAND, point, false));
                 event("interaction_point","id",command.get("id").getAsInt(),"x",point.x,"y",point.y,"z",point.z);
             }
+            case "swing" -> {
+                if (!loaded) throw new IllegalStateException("Swing requires an active game connection");
+                send(ProtocolRevision.swing());
+                event("swing");
+            }
             case "input" -> {
                 if (!loaded) throw new IllegalStateException("Input requires an active game connection");
                 Input keys = new Input(flag(command, "forward"), flag(command, "backward"), flag(command, "left"),

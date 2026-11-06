@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "denizen:task/crier_story",
+  "entry": "main",
+  "routines": {
+    "main": {
+      "type": "sequence",
+      "steps": [
+        {
+          "type": "action",
+          "capability": "animus:message",
+          "arguments": {
+            "text": null
+          },
+          "templates": {
+            "/text": "Extra, extra! The gate opens at dawn, {{ player.name }}."
+          }
+        },
+        {
+          "type": "action",
+          "capability": "animus:set-flag",
+          "arguments": {
+            "name": "crier_heard",
+            "scope": "player"
+          }
+        }
+      ]
+    }
+  }
+}

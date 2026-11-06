@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "uuid": "0a1b2c3d-0000-4000-8000-000000000104",
+  "id": "citizens-4",
+  "group": "world",
+  "name": "Absent 4",
+  "type": "minecraft:ender_dragon",
+  "spawned": false,
+  "migration": {
+    "importId": "61ff927202b9166f3ee29a1f98a87796df80a6cd033cff814ba243e33cfdbbbc",
+    "citizensId": 4,
+    "originalSpawned": null,
+    "references": []
+  },
+  "position": {
+    "world": "world",
+    "x": 4,
+    "y": 64,
+    "z": 4,
+    "yaw": 0,
+    "pitch": 0
+  },
+  "modules": {
+    "citizens:review": {
+      "type": "ENDER_DRAGON",
+      "location": {
+        "world": "world",
+        "x": 4,
+        "y": 64,
+        "z": 4
+      },
+      "polarbeartrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "potioneffects": {
+        "enabled": true
+      },
+      "pufferfishtrait": [
+        1,
+        2
+      ],
+      "shulkertrait": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "sniffertrait": "text",
+      "snowmantrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "spellcastertrait": {
+        "enabled": true
+      },
+      "sulfurcubetrait": [
+        1,
+        2
+      ],
+      "textdisplaytrait": {
+        "value": 3.5,
+        "list": [
+          "a"
+        ]
+      },
+      "tropicalfishtrait": "text",
+      "vextrait": {
+        "nested": {
+          "flag": false,
+          "count": 2
+        }
+      },
+      "villagertrait": {
+        "enabled": true
+      },
+      "wardentrait": [
+        1,
+        2
+      ]
+    }
+  }
+}

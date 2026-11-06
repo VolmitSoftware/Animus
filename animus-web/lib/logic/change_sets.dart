@@ -236,6 +236,7 @@ Object? withServerRevision(DocumentKind kind, Object? source, int revision) {
 /// Kinds whose stored `revision` the server raises on apply.
 const Set<DocumentKind> revisionedKinds = <DocumentKind>{
   DocumentKind.npc,
+  DocumentKind.group,
   DocumentKind.behavior,
   DocumentKind.shop,
   DocumentKind.inventory,

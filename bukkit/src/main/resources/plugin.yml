@@ -9,7 +9,7 @@ softdepend: [WorldGuard, Vault, Gloss, React]
 commands:
   ${projectId}:
     description: Manages virtual NPCs, definitions and staged Citizens imports.
-    usage: '/<command> [status|list|create|select|inspect|edit|clone|delete|spawn|despawn|navigate|navigation|look|ride|attack|target|combat|build|proof|modules|behaviors|shop|gui|validate|reload|import|rollback|debug]'
+    usage: '/<command> help'
 
 permissions:
   animus.status:
@@ -23,6 +23,9 @@ permissions:
     default: true
   animus.debug:
     description: Read Animus network and performance diagnostics with /animus debug.
+    default: op
+  animus.debug.mode:
+    description: Switch /animus debug mode, which logs every per-NPC route, activation and packet diagnostic until restart.
     default: op
   animus.admin:
     description: Manage NPCs, movement, combat, builds, modules, behaviors, imports, and backups.

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "revision": 1,
+  "id": "harbor",
+  "values": {
+    "modules": {
+      "animus:look-close": {
+        "range": 6
+      },
+      "town:uniform": {
+        "badge": {
+          "rank": 3
+        }
+      }
+    },
+    "behaviors": [
+      "harbor:ships",
+      "town:greeting"
+    ],
+    "tags": [
+      "harbor",
+      "guard"
+    ],
+    "teamColor": "aqua",
+    "hologram": {
+      "lines": [
+        "Harbor watch",
+        "Ask about ships"
+      ]
+    }
+  }
+}

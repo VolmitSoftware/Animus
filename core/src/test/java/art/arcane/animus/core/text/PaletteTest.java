@@ -64,10 +64,13 @@ class PaletteTest {
         assertEquals("Animus", RichText.sectionRuns(Palette.reply("Animus 1.0 | BUKKIT | Minecraft 26.3 | Hello: world")).getFirst().text());
     }
 
-    @Test void replyLeavesOtherMessagesAlone() {
-        assertEquals("Selected guard", Palette.reply("Selected guard"));
-        assertEquals("Animusless", Palette.reply("Animusless"));
+    @Test void replyPrefixesOtherPlainMessages() {
+        assertEquals("[Animus]: Selected guard", RichText.plain(Palette.reply("Selected guard")));
+        assertTrue(Palette.reply("Selected guard").endsWith("Selected guard"), "the text is left as written");
+        assertEquals("[Animus]: Animusless", RichText.plain(Palette.reply("Animusless")));
         assertEquals("§cAnimus refused", Palette.reply("§cAnimus refused"));
+        assertEquals(OptionalInt.of(0xFF5555), RichText.sectionRuns(Palette.error("No such NPC")).getLast().rgb(), "refusals are semantic red");
+        assertEquals(OptionalInt.of(0x55FF55), RichText.sectionRuns(Palette.success("Saved")).getLast().rgb(), "changes are semantic green");
         assertNull(Palette.reply(null));
         assertEquals("§dAnimus§8:§7 oops", RichText.legacy(Palette.reply("Animus: oops")));
     }

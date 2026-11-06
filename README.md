@@ -35,7 +35,7 @@ The build automatically uses a sibling/ancestor VolmLib checkout. Override with 
 
 ## Citizens import
 
-To move a server from Citizens, follow [migrating from Citizens](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md): put `saves.yml` in `plugins/Animus/imports/` (or leave `plugins/Citizens/saves.yml` after removing Citizens), then run `/animus import citizens`, `/animus import citizens apply` and `/animus import citizens accept all`. The rest of this section is the lower-level converter.
+To move a server from Citizens, follow [migrating from Citizens](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md): put `saves.yml` in `plugins/Animus/imports/` (or leave `plugins/Citizens/saves.yml` after removing Citizens), then run `/animus import citizens preview`, `/animus import citizens apply` and `/animus import citizens accept all`. The rest of this section is the lower-level converter.
 
 Keep private saves and generated bundles outside the repository. The converter accepts at most 16 MiB of UTF-8 YAML, with a maximum nesting depth of 64. It rejects duplicate keys, aliases, unsafe construction, and non-finite values. It never changes the source file.
 
@@ -48,7 +48,7 @@ Preview writes `imports/<import-id>/` containing:
 - `source.yml`: original input, preserved exactly for valid UTF-8.
 - `records/<citizens-id>.json`: every original NPC record.
 - `reports/<citizens-id>.json`: per-field data classification and exact definition errors.
-- `npcs/<world>-r<x>_<z>/citizens-<id>.json`: individually editable candidate definitions, one folder per world (after world mapping) and region file, such as `npcs/world-r0_-1/` for `region/r.0.-1.mca`; see [where the files go](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md#where-the-files-go).
+- `npcs/<world>/citizens-<id>.json`: individually editable candidate definitions, one folder per world after world mapping, such as `npcs/world/`; see [where the files go](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md#where-the-files-go).
 - `skins/<sha256>.json`: deduplicated complete skin traits, including texture and signature.
 - `report.json`: counts, trait/Sentinel inventories, UUID mapping, world mapping, and a document hash manifest.
 
@@ -66,7 +66,7 @@ converter/build/install/converter/bin/converter validate /path/to/Animus
 converter/build/install/converter/bin/converter rollback /path/to/Animus <transaction-id>
 ```
 
-Apply installs definitions with `spawned: false` and imported combat disabled. Unknown traits, Denizen flags/assignments, and unimplemented settings remain preserved. Denizen scripts convert through `/animus import citizens` or `converter denizen-preview`; see [migrating from Citizens](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md#denizen). Version 2 remaps known spawn, waypoint, Sentinel, and sitting locations and resolves known mount/guard references through the UUID map. Unknown references remain preserved with diagnostics. Reviewable transformed traits live in `modules["citizens:review"]`; original records remain unchanged in the archive. Sentinel historical statistics are separated from settings. These data transformations do not execute behavior.
+Apply installs definitions with `spawned: false` and imported combat disabled. Unknown traits, Denizen flags/assignments, and unimplemented settings remain preserved. Denizen scripts convert through `/animus import citizens preview` or `converter denizen-preview`; see [migrating from Citizens](https://github.com/VolmitSoftware/docs/blob/master/animus/13-migrating-from-citizens.md#denizen). Version 2 remaps known spawn, waypoint, Sentinel, and sitting locations and resolves known mount/guard references through the UUID map. Unknown references remain preserved with diagnostics. Reviewable transformed traits live in `modules["citizens:review"]`; original records remain unchanged in the archive. Sentinel historical statistics are separated from settings. These data transformations do not execute behavior.
 
 A repeated identical preview reuses its versioned import ID. Version 1 bundles remain readable; version 2 conversion uses a distinct identity. Repeated default apply reports `already-applied`; other identity/path collisions are rejected. A modified candidate fails hash verification; import it first, then edit installed definitions through the validation service. Rollback refuses to overwrite subsequent edits and removes the receipt, allowing a fresh apply afterward.
 
@@ -84,37 +84,37 @@ The local CLI cannot open a running server's data directory: both hold the same 
 
 ## Server commands
 
-`animus.status` is available by default; `animus.admin` and `animus.debug` default to operators. `/animus debug` shows what Animus measured on this server: `network [player]` for packets and estimated bytes by kind and viewer, `performance` for server time per subsystem over 1, 10 and 60 seconds, `npc <id>` for one NPC's share, and `watch` to toggle a live action-bar line. [Debug and React metrics](https://github.com/VolmitSoftware/docs/blob/master/animus/17-debug-react-metrics.md) lists the metrics Animus publishes to React. Commands, imports and API edits share one serial file worker, with 32 admitted operations by default. Separate bounded workers deliver API results. Replies use the Bukkit scheduler or Folia player/global scheduler. Commands are also usable from the console.
+Commands run on VolmLib's Director, like the other Volmit plugins. `/animus` or `/animus help` opens the clickable help; required values are bare words in order, optional values are always `key=value`, quotes keep spaces together, and a JSON object is one value. `animus.status` is available by default; `animus.admin`, `animus.debug` and `animus.debug.mode` default to operators. `/animus debug summary`, `network`, `performance`, `npc <npc>` and `watch` show what Animus measured on this server; `/animus debug mode` logs every per-NPC route, activation and packet diagnostic until restart, which are otherwise summarized every five minutes. [Debug and React metrics](https://github.com/VolmitSoftware/docs/blob/master/animus/17-debug-react-metrics.md) lists the metrics Animus publishes to React. Commands, imports and API edits share one serial file worker, with 32 admitted operations by default. Separate bounded workers deliver API results. Replies use the Bukkit scheduler or Folia player/global scheduler. Commands are also usable from the console. The full list is in [commands and permissions](https://github.com/VolmitSoftware/docs/blob/master/animus/02-commands-permissions.md).
 
 ```text
 /animus status
-/animus list [page]
-/animus create <id> <namespace:type> <world> <x> <y> <z> <group> <name...>
-/animus select [id]
-/animus spawn [id]
-/animus despawn [id]
-/animus inspect [id]
-/animus edit <id> {"name":"Updated name"}
-/animus clone <id> <new-id>
-/animus delete <id>
+/animus list [page=1]
+/animus create <id> <namespace:type> <world> <x> <y> <z> <group> "<name>"
+/animus select <npc>
+/animus spawn <npc>
+/animus despawn <npc>
+/animus inspect <npc>
+/animus edit <npc> {"name": "Updated name"}
+/animus clone <npc> <new-id>
+/animus delete <npc>
 /animus validate
 /animus reload
-/animus navigate <id> <x> <y> <z> [walk|swim|fly] [speed]
-/animus navigation <id> [status|stop]
-/animus look <id> <x> <y> <z>
-/animus import citizens [reject|replace|duplicate <label>] [oldWorld=newWorld ...]
-/animus import citizens apply | review | accept <spawn|combat|riding|shops|builder|all> | rollback
-/animus import preview <filename.yml> [oldWorld=newWorld ...]
+/animus navigate <npc> <x> <y> <z> [mode=walk] [speed=2.0]
+/animus navigation status|stop <npc>
+/animus look <npc> <x> <y> <z>
+/animus import citizens preview [mode=reject] [copy=<label>] [worlds=old:new,...]
+/animus import citizens apply | review | accept <spawn,combat,...|all> | rollback
+/animus import preview <filename.yml> [worlds=old:new,...]
 /animus import apply <import-id>
 /animus rollback <transaction-id>
 /animus modules status
-/animus modules list [page]
-/animus modules capabilities [page]
-/animus modules action <namespace:name> <npc-id> <JSON object>
-/animus modules condition <namespace:name> <npc-id> <JSON object>
+/animus modules list [page=1]
+/animus modules capabilities [page=1]
+/animus modules action <namespace:name> <npc> <JSON object>
+/animus modules condition <namespace:name> <npc> <JSON object>
 ```
 
-Place server import files in `plugins/Animus/imports/inbox/`. Create/clone produce dormant definitions. Spawn validates live world/type/name capabilities before saving activation intent. A player can select an ID or click a visible NPC; spawn/despawn/inspect/delete accept the selected ID when omitted. Console commands require explicit IDs. Edit applies a top-level JSON patch, increments the revision, and preserves unspecified fields. Identity and file-path changes require a dedicated future operation. Status and inspect distinguish active runtime state, dormant definitions, and unavailable capabilities.
+Place server import files in `plugins/Animus/imports/inbox/`. Create/clone produce dormant definitions. Spawn validates live world/type/name capabilities before saving activation intent. A player can select an NPC or click a visible one, then write `@selected` wherever a command takes an NPC id. Console commands require explicit IDs. Edit applies a top-level JSON patch, increments the revision, and preserves unspecified fields. Identity and file-path changes require a dedicated future operation. Status and inspect distinguish active runtime state, dormant definitions, and unavailable capabilities.
 
 Accepted definitions have durable last-valid recovery across restart. Invalid source edits remain untouched and visible in diagnostics; deleting a source still deletes its NPC. See [storage and rollback](https://github.com/VolmitSoftware/docs/blob/master/animus/12-storage-recovery.md) for recovery, conflict handling and read-only CLI validation.
 
