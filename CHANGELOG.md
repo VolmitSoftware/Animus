@@ -167,6 +167,11 @@
 - GUI editor: chest GUI select, refresh mode and condition ticks, icon count format and head refresh.
 - GUI editor: clicking a menu component on the stage selects it, with a pink ring on the selection.
 - Importing a Gloss bundle whose ids the workspace already has asks before replacing those documents, and the import notice lists what the bundle does not keep.
+- Web editor: the NPC browser's folders are a tree of `npcs/` and its nested folders, with expand and collapse kept per workspace and NPC counts per folder and per collapsed subtree.
+- Web editor: new, rename, move and delete for NPC folders; a rename or move takes the whole subtree along in one undo step, checked against the server's folder rules first.
+- Web editor: `folder:=town` matches one folder and `folder:=` the NPCs directly in `npcs/`.
+- Web editor: "New NPC in" a folder opens the new NPC form with that folder filled in.
+- Change sets can move a document: `from` names the old id, and the server writes the new file and removes the old one in one transaction, keeping the revision chain; undo moves it back.
 
 ### Changed
 
@@ -239,6 +244,10 @@
 - Optional command values are always `key=value`; stray words and unknown keys are refused with the usage line.
 - Many commands have new shapes: `navigation`, `combat`, `build`, `import citizens preview`, `worlds=old:new`, comma-separated `accept` (including `commands`), `page=`, `player=` and `debug summary`.
 - `/animus navigate` treats whole-number x and z as the centre of that block.
+- Web editor: `folder:town` matches `npcs/town/` and every folder below it.
+- Web editor: the NPC browser's move to folder picks from the folder tree or takes a new nested path, including `npcs/` itself.
+- Web editor: moving NPCs to other folders on a server workspace goes out as moves in the next apply, and the live bar counts them as moved.
+- Web editor: a stale `group` in an NPC file is a warning, since the server takes the group from the folder.
 
 ### Removed
 - The `debug perf` alias and running `spawn`, `despawn`, `inspect` or `delete` with no NPC id.
@@ -369,6 +378,8 @@
 - NPC browser rows and a skin's wearers show names without legacy colour codes.
 - Field help gives the bounds as their own sentence ("At most 64 characters.").
 - GUI editor section tabs use the same selected style as the view tabs.
+- The web editor opens, creates and names NPCs directly in `npcs/` or nested folders the way the server does, instead of assuming one folder.
+- Undoing an apply on a server workspace drops the documents it removed without asking the server for them.
 
 ### Notes
 
